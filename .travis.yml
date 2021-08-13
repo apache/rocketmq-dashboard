@@ -1,14 +1,18 @@
+dist: trusty
+
 notifications:
   email:
     recipients:
-      - styletang.me@gmail.com
+      - dev@rocketmq.apache.org
   on_success: change
   on_failure: always
 
 language: java
+
 jdk:
-#  - oraclejdk8
-  - oraclejdk7
+  - oraclejdk8
+  - oraclejdk11
+
 script:
   - travis_retry mvn -B clean
   - travis_retry mvn -B package findbugs:findbugs jacoco:report coveralls:report
