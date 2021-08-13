@@ -64,7 +64,7 @@
 * 消息详情可以展示这条消息的详细信息，查看消息对应到具体消费组的消费情况（如果异常，可以查看具体的异常信息）。可以向指定的消费组重发消息。
 
 
-## HTTPS 方式访问Console
+## HTTPS 方式访问Dashboard
 * HTTPS功能实际上是使用SpringBoot提供的配置功能即可完成，首先，需要有一个SSL KeyStore来存放服务端证书，可以使用本工程所提供的测试密钥库:
 resources/rmqcngkeystore.jks, 它可以通过如下keytool命令生成
 ```
@@ -76,7 +76,7 @@ keytool -list -v -keystore rmqcngkeystore.jks
 keytool -importkeystore -srckeystore rmqcngkeystore.jks -destkeystore rmqcngkeystore.jks -deststoretype pkcs12 
 ```
 
-* 配置resources/application.properties, 打开SSL的相关选项, 启动console后即开启了HTTPS.
+* 配置resources/application.properties, 打开SSL的相关选项, 启动dashboard后即开启了HTTPS.
 ```
 #设置https端口
 server.port=8443
@@ -88,8 +88,8 @@ server.port=8443
 #server.ssl.keyAlias=rmqcngkey
 ```
 
-## 登录访问Console
-在访问Console时支持按用户名和密码登录控制台，在操作完成后登出。需要做如下的设置:
+## 登录访问Dashboard
+在访问Dashboard时支持按用户名和密码登录控制台，在操作完成后登出。需要做如下的设置:
 
 * 1.在Spring配置文件resources/application.properties中修改 开启登录功能
 ```$xslt

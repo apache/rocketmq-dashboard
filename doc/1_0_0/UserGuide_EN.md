@@ -1,7 +1,7 @@
 # RocketMQ User Guide
 
 ## OPS Page
-* You can change console's namesrvAddr here
+* You can change dashboard's namesrvAddr here
 * You can change the value of useVIPChannel  here (if you rocketMQ version < 3.5.8,the value of useVIPChannel should be false)
 
 ## DashBoard Page
@@ -65,7 +65,7 @@
 you can send this message to the group you selected
 
 
-## Access Console with HTTPS
+## Access Dashboard with HTTPS
 * SpringBoot itself has provided the SSL configuration. You can use the project test Keystore:resources/rmqcngkeystore.jks. The store is generated with the following unix keytool commands:
 ```
 #Generate Keystore and add alias rmqcngKey
@@ -76,7 +76,7 @@ keytool -list -v -keystore rmqcngkeystore.jks
 keytool -importkeystore -srckeystore rmqcngkeystore.jks -destkeystore rmqcngkeystore.jks -deststoretype pkcs12 
 ```
 
-* Uncomment the following SSL properties in resources/application.properties. restart Console then access with HTTPS.
+* Uncomment the following SSL properties in resources/application.properties. restart Dashboard then access with HTTPS.
 
 ```
 #Set https port
@@ -89,8 +89,8 @@ server.ssl.keyStoreType=PKCS12
 server.ssl.keyAlias=rmqcngkey
 ```
 
-## Login/Logout on Console
-Access Console with username and password and logout to leave the console。To stage the function on, we need the steps below:
+## Login/Logout on Dashboard
+Access Dashboard with username and password and logout to leave the dashboard。To stage the function on, we need the steps below:
 
 * 1.Turn on the property in resources/application.properties.
 ```$xslt
@@ -101,7 +101,7 @@ rocketmq.config.loginRequired=true
 rocketmq.config.dataPath=/tmp/rocketmq-console/data
 ```
 * 2.Make sure the directory defined in property ${rocketmq.config.dataPath} exists and the file "users.properties" is created under it. 
-The console system will use the resources/users.properties by default if a customized file is not found。
+The dashboard system will use the resources/users.properties by default if a customized file is not found。
 
 The format in the content of users.properties:
 ```$xslt
@@ -115,4 +115,4 @@ admin=admin,1
 user1=user1
 user2=user2
 ```
-* 3. Restart Console Application after above configuration setting well.  
+* 3. Restart Dashboard Application after above configuration setting well.  
