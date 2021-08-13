@@ -5,3 +5,7 @@ github:
     issues: true
     # Enable wiki
     wiki: true
+  enabled_merge_buttons:
+    squash:  true
+    merge:   false
+    rebase:  false
