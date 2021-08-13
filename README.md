@@ -1,4 +1,4 @@
-## RocketMQ-Console-NG [![Coverage Status](https://coveralls.io/repos/github/rocketmq/rocketmq-console-ng/badge.svg?branch=master)](https://coveralls.io/github/rocketmq/rocketmq-console-ng?branch=master)
+## RocketMQ Dashboard [![Coverage Status](https://coveralls.io/repos/github/apache/rocketmq-dashboard/badge.svg?branch=master)](https://coveralls.io/github/apache/rocketmq-dashboard?branch=master)
 [![License](https://img.shields.io/badge/license-Apache%202-4EB1BA.svg)](https://www.apache.org/licenses/LICENSE-2.0.html)
 ## How To Install
 
@@ -64,15 +64,3 @@ java -jar target/rocketmq-console-ng-2.0.0.jar
 [English](https://github.com/apache/incubator-rocketmq-externals/blob/master/rocketmq-console/doc/1_0_0/UserGuide_EN.md)
 
 [中文](https://github.com/apache/incubator-rocketmq-externals/blob/master/rocketmq-console/doc/1_0_0/UserGuide_CN.md)
-
-## Contact
-
-* Issue / Pull Request
-* You can join us and make a contribute for rocketmq-console.
-
-[RocketMQ Contact](http://rocketmq.apache.org/about/contact/)
-#### Mailing Lists
-
-DEV dev@rocketmq.incubator.apache.org
-
-USERS users@rocketmq.incubator.apache.org
