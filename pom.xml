@@ -11,10 +11,10 @@
 
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.apache</groupId>
-    <artifactId>rocketmq-console-ng</artifactId>
+    <artifactId>rocketmq-dashboard</artifactId>
     <packaging>jar</packaging>
     <version>2.0.0</version>
-    <name>rocketmq-console-ng</name>
+    <name>rocketmq-dashboard</name>
 
     <mailingLists>
         <mailingList>

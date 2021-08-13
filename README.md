@@ -42,7 +42,7 @@ mvn spring-boot:run
 or
 ```
 mvn clean package -Dmaven.test.skip=true
-java -jar target/rocketmq-console-ng-2.0.0.jar
+java -jar target/rocketmq-dashboard-2.0.0.jar
 ```
 
 #### Tips
@@ -59,14 +59,14 @@ java -jar target/rocketmq-console-ng-2.0.0.jar
   </mirrors>
   ```
   
-* if you use the rocketmq < 3.5.8,please add -Dcom.rocketmq.sendMessageWithVIPChannel=false when you start rocketmq-console-ng(or you can change it in ops page)
+* if you use the rocketmq < 3.5.8,please add -Dcom.rocketmq.sendMessageWithVIPChannel=false when you start rocketmq-dashboard(or you can change it in ops page)
 * change the rocketmq.config.namesrvAddr in resource/application.properties.(or you can change it in ops page)
 
 ## UserGuide
 
-[English](https://github.com/apache/incubator-rocketmq-externals/blob/master/rocketmq-console/doc/1_0_0/UserGuide_EN.md)
+[English](https://github.com/apache/rocketmq-dashboard/blob/master/doc/1_0_0/UserGuide_EN.md)
 
-[中文](https://github.com/apache/incubator-rocketmq-externals/blob/master/rocketmq-console/doc/1_0_0/UserGuide_CN.md)
+[中文](https://github.com/apache/rocketmq-dashboard/blob/master/doc/1_0_0/UserGuide_CN.md)
 
 ## Contributing
 
