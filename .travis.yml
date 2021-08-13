@@ -15,7 +15,7 @@ jdk:
 
 script:
   - travis_retry mvn -B clean
-  - travis_retry mvn -B package findbugs:findbugs
+  - travis_retry mvn -B package findbugs:findbugs jacoco:report coveralls:report
   
 #    - travis_retry mvn -B package findbugs:findbugs coveralls:report
 #after_success:
