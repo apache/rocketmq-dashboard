@@ -1,5 +1,5 @@
 var zh = {
-    "TITLE": "RocketMQ控制台",
+    "TITLE": "RocketMQ仪表板",
     "CLOSE": "关闭",
     "NO": "编号",
     "ADDRESS": "地址",
@@ -85,6 +85,6 @@ var zh = {
     "PASSWORD":"密码",
     "NO_DATA":"不存在 ",
     "SYSTEM":"系统",
-    "WELCOME":"您好，欢迎使用RocketMQ控制台",
+    "WELCOME":"您好，欢迎使用RocketMQ仪表盘",
     "ENABLE_MESSAGE_TRACE":"开启消息轨迹"
 }

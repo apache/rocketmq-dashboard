@@ -1,5 +1,5 @@
 var en = {
-    "TITLE": "RocketMQ-Console",
+    "TITLE": "RocketMQ-Dashboard",
     "CLOSE": "Close",
     "NO": "NO.",
     "ADDRESS": "Address",
@@ -84,6 +84,6 @@ var en = {
     "PASSWORD":"Password",
     "NO_DATA":"Don't have ",
     "SYSTEM":"SYSTEM",
-    "WELCOME":"Hi, welcome using RocketMQ Console",
+    "WELCOME":"Hi, welcome using RocketMQ Dashboard",
     "ENABLE_MESSAGE_TRACE":"Enable Message Trace"
 }
