@@ -17,6 +17,7 @@
 package org.apache.rocketmq.dashboard.controller;
 
 import javax.annotation.Resource;
+import org.apache.rocketmq.dashboard.permission.Permission;
 import org.apache.rocketmq.dashboard.service.OpsService;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -26,6 +27,7 @@ import org.springframework.web.bind.annotation.ResponseBody;
 
 @Controller
 @RequestMapping("/ops")
+@Permission
 public class OpsController {
 
     @Resource

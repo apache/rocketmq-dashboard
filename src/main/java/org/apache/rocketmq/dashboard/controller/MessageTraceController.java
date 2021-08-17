@@ -26,6 +26,7 @@ import javax.annotation.Resource;
 import org.apache.rocketmq.common.Pair;
 import org.apache.rocketmq.dashboard.model.MessageView;
 import org.apache.rocketmq.dashboard.model.trace.MessageTraceGraph;
+import org.apache.rocketmq.dashboard.permission.Permission;
 import org.apache.rocketmq.dashboard.service.MessageService;
 import org.apache.rocketmq.dashboard.service.MessageTraceService;
 import org.apache.rocketmq.tools.admin.api.MessageTrack;
@@ -37,6 +38,7 @@ import org.springframework.web.bind.annotation.ResponseBody;
 
 @Controller
 @RequestMapping("/messageTrace")
+@Permission
 public class MessageTraceController {
 
     @Resource

@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.dashboard.controller;
 
+import org.apache.rocketmq.dashboard.permission.Permission;
 import org.apache.rocketmq.dashboard.service.ClusterService;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -27,6 +28,7 @@ import org.springframework.web.bind.annotation.ResponseBody;
 
 @Controller
 @RequestMapping("/cluster")
+@Permission
 public class ClusterController {
 
     @Resource

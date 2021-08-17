@@ -18,6 +18,7 @@ package org.apache.rocketmq.dashboard.controller;
 
 import javax.annotation.Resource;
 import org.apache.rocketmq.dashboard.model.ConsumerMonitorConfig;
+import org.apache.rocketmq.dashboard.permission.Permission;
 import org.apache.rocketmq.dashboard.service.MonitorService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,6 +30,7 @@ import org.springframework.web.bind.annotation.ResponseBody;
 
 @Controller
 @RequestMapping("/monitor")
+@Permission
 public class MonitorController {
 
     private Logger logger = LoggerFactory.getLogger(MonitorController.class);
