@@ -15,10 +15,12 @@
  * limitations under the License.
  */
 
-app.controller('opsController', ['$scope','$location','$http','Notification','remoteApi','tools', function ($scope,$location,$http,Notification,remoteApi,tools) {
+app.controller('opsController', ['$scope', '$location', '$http', 'Notification', 'remoteApi', 'tools', '$window', function ($scope, $location, $http, Notification, remoteApi, tools, $window) {
     $scope.namesvrAddrList = "";
     $scope.useVIPChannel = true;
     $scope.useTLS = false;
+    $scope.userRole = $window.sessionStorage.getItem("userrole");
+    ;
     $http({
         method: "GET",
         url: "ops/homePage.query"
@@ -27,7 +29,7 @@ app.controller('opsController', ['$scope','$location','$http','Notification','re
             $scope.namesvrAddrList = resp.data.namesvrAddrList.join(";");
             $scope.useVIPChannel = resp.data.useVIPChannel;
             $scope.useTLS = resp.data.useTLS;
-        }else{
+        } else {
             Notification.error({message: resp.errMsg, delay: 2000});
         }
     });
@@ -36,11 +38,11 @@ app.controller('opsController', ['$scope','$location','$http','Notification','re
         $http({
             method: "POST",
             url: "ops/updateNameSvrAddr.do",
-            params:{nameSvrAddrList:$scope.namesvrAddrList}
+            params: {nameSvrAddrList: $scope.namesvrAddrList}
         }).success(function (resp) {
             if (resp.status == 0) {
                 Notification.info({message: "SUCCESS", delay: 2000});
-            }else{
+            } else {
                 Notification.error({message: resp.errMsg, delay: 2000});
             }
         });
@@ -49,11 +51,11 @@ app.controller('opsController', ['$scope','$location','$http','Notification','re
         $http({
             method: "POST",
             url: "ops/updateIsVIPChannel.do",
-            params:{useVIPChannel:$scope.useVIPChannel}
+            params: {useVIPChannel: $scope.useVIPChannel}
         }).success(function (resp) {
             if (resp.status == 0) {
                 Notification.info({message: "SUCCESS", delay: 2000});
-            }else{
+            } else {
                 Notification.error({message: resp.errMsg, delay: 2000});
             }
         });
@@ -62,11 +64,11 @@ app.controller('opsController', ['$scope','$location','$http','Notification','re
         $http({
             method: "POST",
             url: "ops/updateUseTLS.do",
-            params:{useTLS:$scope.useTLS}
+            params: {useTLS: $scope.useTLS}
         }).success(function (resp) {
             if (resp.status == 0) {
                 Notification.info({message: "SUCCESS", delay: 2000});
-            }else{
+            } else {
                 Notification.error({message: resp.errMsg, delay: 2000});
             }
         });

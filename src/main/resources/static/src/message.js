@@ -17,14 +17,14 @@
 
 var module = app;
 
-module.controller('messageController', ['$scope', 'ngDialog', '$http','Notification',function ($scope, ngDialog, $http,Notification) {
+module.controller('messageController', ['$scope', 'ngDialog', '$http', 'Notification', function ($scope, ngDialog, $http, Notification) {
     $scope.allTopicList = [];
-    $scope.selectedTopic =[];
-    $scope.key ="";
-    $scope.messageId ="";
-    $scope.queryMessageByTopicResult=[];
-    $scope.queryMessageByTopicAndKeyResult=[];
-    $scope.queryMessageByMessageIdResult={};
+    $scope.selectedTopic = [];
+    $scope.key = "";
+    $scope.messageId = "";
+    $scope.queryMessageByTopicResult = [];
+    $scope.queryMessageByTopicAndKeyResult = [];
+    $scope.queryMessageByMessageIdResult = {};
     $http({
         method: "GET",
         url: "topic/list.query",
@@ -32,16 +32,16 @@ module.controller('messageController', ['$scope', 'ngDialog', '$http','Notificat
             skipSysProcess: 'true'
         }
     }).success(function (resp) {
-        if(resp.status ==0){
+        if (resp.status == 0) {
             $scope.allTopicList = resp.data.topicList.sort();
             console.log($scope.allTopicList);
-        }else {
+        } else {
             Notification.error({message: resp.errMsg, delay: 2000});
         }
     });
-    $scope.timepickerBegin = moment().subtract(1, 'hour').format('YYYY-MM-DD HH:mm');
-    $scope.timepickerEnd = moment().add(1,'hour').format('YYYY-MM-DD HH:mm');
-    $scope.timepickerOptions ={format: 'YYYY-MM-DD HH:mm', showClear: true};
+    $scope.timepickerBegin = moment().subtract(3, 'hour').format('YYYY-MM-DD HH:mm');
+    $scope.timepickerEnd = moment().format('YYYY-MM-DD HH:mm');
+    $scope.timepickerOptions = {format: 'YYYY-MM-DD HH:mm', showClear: true};
 
     $scope.taskId = "";
 
@@ -62,7 +62,7 @@ module.controller('messageController', ['$scope', 'ngDialog', '$http','Notificat
             Notification.error({message: "endTime is later than beginTime!", delay: 2000});
             return
         }
-        if( $scope.selectedTopic === [] || (typeof $scope.selectedTopic) == "object"){
+        if ($scope.selectedTopic === [] || (typeof $scope.selectedTopic) == "object") {
             return
         }
         $http({
@@ -80,13 +80,13 @@ module.controller('messageController', ['$scope', 'ngDialog', '$http','Notificat
             if (resp.status === 0) {
                 console.log(resp);
                 $scope.messageShowList = resp.data.page.content;
-                if(resp.data.page.first){
+                if (resp.data.page.first) {
                     $scope.paginationConf.currentPage = 1;
                 }
                 $scope.paginationConf.currentPage = resp.data.page.number + 1;
                 $scope.paginationConf.totalItems = resp.data.page.totalElements;
                 $scope.taskId = resp.data.taskId
-            }else {
+            } else {
                 Notification.error({message: resp.errMsg, delay: 2000});
             }
         });
@@ -114,10 +114,10 @@ module.controller('messageController', ['$scope', 'ngDialog', '$http','Notificat
             if (resp.status == 0) {
                 console.log(resp);
                 $scope.queryMessageByTopicResult = resp.data;
-                $scope.changeShowMessageList(1,$scope.queryMessageByTopicResult.length);
+                $scope.changeShowMessageList(1, $scope.queryMessageByTopicResult.length);
                 // todo
                 // console.log($scope.queryMessageByTopicResult);
-            }else {
+            } else {
                 Notification.error({message: resp.errMsg, delay: 2000});
             }
         });
@@ -131,26 +131,26 @@ module.controller('messageController', ['$scope', 'ngDialog', '$http','Notificat
             url: "message/queryMessageByTopicAndKey.query",
             params: {
                 topic: $scope.selectedTopic,
-                key:$scope.key
+                key: $scope.key
             }
         }).success(function (resp) {
             if (resp.status == 0) {
                 console.log(resp);
                 $scope.queryMessageByTopicAndKeyResult = resp.data;
                 console.log($scope.queryMessageByTopicAndKeyResult);
-            }else {
+            } else {
                 Notification.error({message: resp.errMsg, delay: 2000});
             }
         });
     };
 
-    $scope.queryMessageByBrokerAndOffset = function (storeHost,commitLogOffset) {
+    $scope.queryMessageByBrokerAndOffset = function (storeHost, commitLogOffset) {
         $http({
             method: "GET",
             url: "message/viewMessageByBrokerAndOffset.query",
             params: {
                 brokerHost: storeHost.address,
-                port:storeHost.port,
+                port: storeHost.port,
                 offset: commitLogOffset
             }
         }).success(function (resp) {
@@ -167,13 +167,13 @@ module.controller('messageController', ['$scope', 'ngDialog', '$http','Notificat
         });
     };
 
-    $scope.queryMessageByMessageId = function (messageId,topic) {
+    $scope.queryMessageByMessageId = function (messageId, topic) {
         $http({
             method: "GET",
             url: "message/viewMessage.query",
             params: {
                 msgId: messageId,
-                topic:topic
+                topic: topic
             }
         }).success(function (resp) {
             if (resp.status == 0) {
@@ -181,23 +181,23 @@ module.controller('messageController', ['$scope', 'ngDialog', '$http','Notificat
                 ngDialog.open({
                     template: 'messageDetailViewDialog',
                     controller: 'messageDetailViewDialogController',
-                    data:resp.data
+                    data: resp.data
                 });
-            }else {
+            } else {
                 Notification.error({message: resp.errMsg, delay: 2000});
             }
         });
     };
 
-    $scope.changeShowMessageList = function (currentPage,totalItem) {
+    $scope.changeShowMessageList = function (currentPage, totalItem) {
         var perPage = $scope.paginationConf.itemsPerPage;
         var from = (currentPage - 1) * perPage;
-        var to = (from + perPage)>totalItem?totalItem:from + perPage;
+        var to = (from + perPage) > totalItem ? totalItem : from + perPage;
         $scope.messageShowList = $scope.queryMessageByTopicResult.slice(from, to);
-        $scope.paginationConf.totalItems = totalItem ;
+        $scope.paginationConf.totalItems = totalItem;
     };
 
-    $scope.onChangeQueryCondition = function (){
+    $scope.onChangeQueryCondition = function () {
         console.log("change")
         $scope.taskId = "";
         $scope.paginationConf.currentPage = 1;
@@ -205,12 +205,12 @@ module.controller('messageController', ['$scope', 'ngDialog', '$http','Notificat
     }
 }]);
 
-module.controller('messageDetailViewDialogController',['$scope', 'ngDialog', '$http','Notification', function ($scope, ngDialog, $http,Notification) {
+module.controller('messageDetailViewDialogController', ['$scope', 'ngDialog', '$http', 'Notification', function ($scope, ngDialog, $http, Notification) {
 
-        $scope.resendMessage = function (messageView,consumerGroup) {
+        $scope.resendMessage = function (messageView, consumerGroup) {
             var topic = messageView.topic;
             var msgId = messageView.msgId;
-            console.log('==='+topic+'==='+msgId);
+            console.log('===' + topic + '===' + msgId);
             if (topic.startsWith('%DLQ%')) {
                 if (messageView.properties.hasOwnProperty("RETRY_TOPIC")) {
                     topic = messageView.properties.RETRY_TOPIC;
@@ -220,42 +220,41 @@ module.controller('messageDetailViewDialogController',['$scope', 'ngDialog', '$h
                 }
 
             }
-            console.log('==='+topic+'==='+msgId);
+            console.log('===' + topic + '===' + msgId);
             $http({
                 method: "POST",
                 url: "message/consumeMessageDirectly.do",
                 params: {
                     msgId: msgId,
-                    consumerGroup:consumerGroup,
-                    topic:topic
+                    consumerGroup: consumerGroup,
+                    topic: topic
                 }
             }).success(function (resp) {
                 if (resp.status == 0) {
                     ngDialog.open({
                         template: 'operationResultDialog',
-                        data:{
-                            result:resp.data
+                        data: {
+                            result: resp.data
                         }
                     });
-                }
-                else {
+                } else {
                     ngDialog.open({
                         template: 'operationResultDialog',
-                        data:{
-                            result:resp.errMsg
+                        data: {
+                            result: resp.errMsg
                         }
                     });
                 }
             });
         };
         $scope.showExceptionDesc = function (errmsg) {
-            if(errmsg == null){
+            if (errmsg == null) {
                 errmsg = "Don't have Exception"
             }
             ngDialog.open({
                 template: 'operationResultDialog',
-                data:{
-                    result:errmsg
+                data: {
+                    result: errmsg
                 }
             });
         };
