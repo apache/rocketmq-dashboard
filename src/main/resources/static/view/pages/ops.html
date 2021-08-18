@@ -15,13 +15,13 @@
   ~ limitations under the License.
   -->
 <div class="container-fluid" id="deployHistoryList">
-    <div class="page-content" ng-init="adminFlag = userRole == null ? true : (userRole == 1 ? true : false)">
+    <div class="page-content">
         <h2 class="md-title">NameServerAddressList</h2>
         <div class="pull-left">
-            <input type="text" class="form-control" ng-model="namesvrAddrList" ng-disabled="{{!adminFlag}}"/>
+            <input type="text" class="form-control" ng-model="namesvrAddrList" ng-disabled="{{!writeOperationEnabled}}"/>
         </div>
         <div class="pull-left">
-            <button class="btn btn-raised btn-sm btn-primary" type="button" ng-show="{{adminFlag}}"
+            <button class="btn btn-raised btn-sm btn-primary" type="button" ng-show="{{writeOperationEnabled}}"
                     ng-click="updateNameSvrAddr()">{{'UPDATE' | translate}}
             </button>
         </div>
@@ -29,12 +29,12 @@
         <br/>
         <h2 class="md-title">IsUseVIPChannel</h2>
         <div class="pull-left">
-            <md-switch class="md-primary" ng-disabled="{{!adminFlag}}" md-no-ink aria-label="Switch No Ink"
+            <md-switch class="md-primary" ng-disabled="{{!writeOperationEnabled}}" md-no-ink aria-label="Switch No Ink"
                        ng-model="useVIPChannel">
             </md-switch>
         </div>
         <div class="pull-left">
-            <button class="btn btn-raised btn-sm btn-primary" type="button" ng-show="{{adminFlag}}"
+            <button class="btn btn-raised btn-sm btn-primary" type="button" ng-show="{{writeOperationEnabled}}"
                     ng-click="updateIsVIPChannel()">{{'UPDATE' | translate}}
             </button>
         </div>
@@ -44,12 +44,12 @@
         <br/>
         <h2 class="md-title">useTLS</h2>
         <div class="pull-left">
-            <md-switch class="md-primary" ng-disabled="{{!adminFlag}}" md-no-ink aria-label="Switch No Ink"
+            <md-switch class="md-primary" ng-disabled="{{!writeOperationEnabled}}" md-no-ink aria-label="Switch No Ink"
                        ng-model="useTLS">
             </md-switch>
         </div>
         <div class="pull-left">
-            <button class="btn btn-raised btn-sm btn-primary" type="button" ng-show="{{adminFlag}}"
+            <button class="btn btn-raised btn-sm btn-primary" type="button" ng-show="{{writeOperationEnabled}}"
                     ng-click="updateUseTLS()">{{'UPDATE' | translate}}
             </button>
         </div>

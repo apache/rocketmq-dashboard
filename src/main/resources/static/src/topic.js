@@ -37,6 +37,7 @@ module.controller('topicController', ['$scope', 'ngDialog', '$http', 'Notificati
     $scope.allTopicList = [];
     $scope.topicShowList = [];
     $scope.userRole = $window.sessionStorage.getItem("userrole");
+    $scope.writeOperationEnabled =  $scope.userRole == null ? true : ($scope.userRole == 1 ? true : false);
 
     $scope.refreshTopicList = function () {
         $http({
@@ -293,7 +294,7 @@ module.controller('topicController', ['$scope', 'ngDialog', '$http', 'Notificati
         });
     };
 
-    $scope.openUpdateDialog = function (topic, sysFlag, adminFlag) {
+    $scope.openUpdateDialog = function (topic, sysFlag) {
         $http({
             method: "GET",
             url: "topic/examineTopicConfig.query",
@@ -302,14 +303,14 @@ module.controller('topicController', ['$scope', 'ngDialog', '$http', 'Notificati
             }
         }).success(function (resp) {
             if (resp.status == 0) {
-                $scope.openCreateOrUpdateDialog(resp.data, sysFlag, adminFlag);
+                $scope.openCreateOrUpdateDialog(resp.data, sysFlag);
             } else {
                 Notification.error({message: resp.errMsg, delay: 2000});
             }
         });
     };
 
-    $scope.openCreateOrUpdateDialog = function (request, sysFlag, adminFlag) {
+    $scope.openCreateOrUpdateDialog = function (request, sysFlag) {
         var bIsUpdate = true;
         if (request == null) {
             request = [{
@@ -341,15 +342,15 @@ module.controller('topicController', ['$scope', 'ngDialog', '$http', 'Notificati
                         allClusterNameList: Object.keys(resp.data.clusterInfo.clusterAddrTable),
                         allBrokerNameList: Object.keys(resp.data.brokerServer),
                         bIsUpdate: bIsUpdate,
-                        adminFlag: adminFlag
+                        writeOperationEnabled: $scope.writeOperationEnabled
                     }
                 });
             }
         });
     }
 
-    $scope.openAddDialog = function (adminFlag) {
-        $scope.openCreateOrUpdateDialog(null, false, adminFlag);
+    $scope.openAddDialog = function () {
+        $scope.openCreateOrUpdateDialog(null, false);
     }
 
 }]);

@@ -42,6 +42,7 @@ module.controller('consumerController', ['$scope', 'ngDialog', '$http', 'Notific
         $scope.doSort();
     };
     $scope.userRole = $window.sessionStorage.getItem("userrole");
+    $scope.writeOperationEnabled =  $scope.userRole == null ? true : ($scope.userRole == 1 ? true : false);
 
     $scope.doSort = function () {// todo  how to change this fe's code ? (it's dirty)
         if ($scope.sortKey == 'diffTotal') {
@@ -151,10 +152,10 @@ module.controller('consumerController', ['$scope', 'ngDialog', '$http', 'Notific
         console.log($scope.paginationConf.totalItems)
         $scope.doSort()
     };
-    $scope.openAddDialog = function (adminFlag) {
-        $scope.openCreateOrUpdateDialog(null, adminFlag);
+    $scope.openAddDialog = function () {
+        $scope.openCreateOrUpdateDialog(null);
     };
-    $scope.openCreateOrUpdateDialog = function (request, adminFlag) {
+    $scope.openCreateOrUpdateDialog = function (request) {
         var bIsUpdate = true;
         if (request == null) {
             request = [{
@@ -191,7 +192,7 @@ module.controller('consumerController', ['$scope', 'ngDialog', '$http', 'Notific
                         allClusterNameList: Object.keys(resp.data.clusterInfo.clusterAddrTable),
                         allBrokerNameList: Object.keys(resp.data.brokerServer),
                         bIsUpdate: bIsUpdate,
-                        adminFlag: adminFlag
+                        writeOperationEnabled: $scope.writeOperationEnabled
                     }
                 });
             } else {
@@ -236,7 +237,7 @@ module.controller('consumerController', ['$scope', 'ngDialog', '$http', 'Notific
             }
         });
     };
-    $scope.updateConfigDialog = function (consumerGroupName, adminFlag) {
+    $scope.updateConfigDialog = function (consumerGroupName) {
         $http({
             method: "GET",
             url: "consumer/examineSubscriptionGroupConfig.query",
@@ -244,7 +245,7 @@ module.controller('consumerController', ['$scope', 'ngDialog', '$http', 'Notific
         }).success(function (resp) {
             if (resp.status == 0) {
                 console.log(resp);
-                $scope.openCreateOrUpdateDialog(resp.data, adminFlag);
+                $scope.openCreateOrUpdateDialog(resp.data);
             } else {
                 Notification.error({message: resp.errMsg, delay: 2000});
             }

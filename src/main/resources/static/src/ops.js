@@ -20,7 +20,7 @@ app.controller('opsController', ['$scope', '$location', '$http', 'Notification',
     $scope.useVIPChannel = true;
     $scope.useTLS = false;
     $scope.userRole = $window.sessionStorage.getItem("userrole");
-    ;
+    $scope.writeOperationEnabled =  $scope.userRole == null ? true : ($scope.userRole == 1 ? true : false);
     $http({
         method: "GET",
         url: "ops/homePage.query"
