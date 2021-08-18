@@ -16,8 +16,6 @@
  */
 package org.apache.rocketmq.dashboard.permisssion;
 
-import java.util.List;
-import java.util.Map;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
@@ -36,9 +34,6 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 @Aspect
 @Component
 public class PermissionAspect {
-
-    public static final String ORDINARY = "ordinary";
-    public static final String ADMIN = "admin";
 
     @Resource
     private RMQConfigure configure;
@@ -64,16 +59,8 @@ public class PermissionAspect {
             if (userInfo == null || userInfo.getUser() == null) {
                 throw new ServiceException(-1, "user not login");
             }
-            int type = userInfo.getUser().getType();
-            // 1:admin    0:ordinary
-            String loginUserRole = type == 1 ? ADMIN : ORDINARY;
-            // if it is admin, it could access all resources
-            if (loginUserRole == ADMIN) {
-                return joinPoint.proceed();
-            }
-            Map<String, List<String>> map = permissionService.queryRolePerms();
-            List<String> perms = map.get(loginUserRole);
-            if (!perms.contains(url)) {
+            boolean checkResult = permissionService.checkUrlAvailable(userInfo, url);
+            if (!checkResult) {
                 throw new ServiceException(-1, "no permission");
             }
         }

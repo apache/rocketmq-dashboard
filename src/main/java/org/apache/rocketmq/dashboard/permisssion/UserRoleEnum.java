@@ -14,11 +14,25 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-package org.apache.rocketmq.dashboard.service;
+package org.apache.rocketmq.dashboard.permisssion;
 
-import org.apache.rocketmq.dashboard.model.UserInfo;
+public enum UserRoleEnum {
+    ADMIN(1, "admin"),
+    ORDINARY(0, "ordinary");
 
-public interface PermissionService {
+    private int roleType;
+    private String roleName;
 
-    boolean checkUrlAvailable(UserInfo userInfo, String url);
+    UserRoleEnum(int roleType, String roleName) {
+        this.roleType = roleType;
+        this.roleName = roleName;
+    }
+
+    public int getRoleType() {
+        return roleType;
+    }
+
+    public String getRoleName() {
+        return roleName;
+    }
 }

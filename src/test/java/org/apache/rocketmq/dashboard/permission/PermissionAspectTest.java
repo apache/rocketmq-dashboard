@@ -1,11 +1,18 @@
 package org.apache.rocketmq.dashboard.permission;
 
+import com.google.common.collect.Lists;
+import com.google.common.io.Files;
+import java.io.File;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import org.apache.rocketmq.dashboard.BaseTest;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.model.User;
 import org.apache.rocketmq.dashboard.model.UserInfo;
 import org.apache.rocketmq.dashboard.permisssion.PermissionAspect;
 import org.apache.rocketmq.dashboard.service.impl.PermissionServiceImpl;
+import org.apache.rocketmq.dashboard.util.JsonUtil;
 import org.apache.rocketmq.dashboard.util.WebUtil;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.junit.Assert;
@@ -82,5 +89,33 @@ public class PermissionAspectTest extends BaseTest {
         request.getSession().setAttribute(WebUtil.USER_INFO, info);
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
         permissionAspect.checkPermission(joinPoint);
+    }
+
+    @Test
+    public void testFileBasedPermissionStoreWatch() throws Exception {
+        when(configure.getRocketMqDashboardDataPath()).thenReturn("/tmp/rocketmq-console/test/data");
+        Map<String, Map<String, List<String>>> rolePermsMap = new HashMap<>();
+        Map<String, List<String>> rolePerms = new HashMap<>();
+        List<String> accessUrls = Lists.asList("/topic/route.query", new String[] {"/topic/stats.query"});
+        rolePerms.put("admin", accessUrls);
+        rolePermsMap.put("rolePerms", rolePerms);
+        File file = createTestFile(rolePermsMap);
+        new PermissionServiceImpl.PermissionFileStore(configure);
+        rolePerms.put("ordinary", accessUrls);
+        // Update file and flush to yaml file
+        Files.write(JsonUtil.obj2String(rolePerms).getBytes(), file);
+        Thread.sleep(1000);
+        if (file != null && file.exists()) {
+            file.delete();
+        }
+    }
+
+    private File createTestFile(Map map) throws Exception {
+        String fileName = "/tmp/rocketmq-console/test/data/role-permission.yml";
+        File file = new File(fileName);
+        file.delete();
+        file.createNewFile();
+        Files.write(JsonUtil.obj2String(map).getBytes(), file);
+        return file;
     }
 }

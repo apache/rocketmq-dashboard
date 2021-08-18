@@ -17,7 +17,6 @@
 package org.apache.rocketmq.dashboard.service.impl;
 
 import com.alibaba.fastjson.JSONObject;
-import java.io.File;
 import java.io.FileReader;
 import java.io.InputStream;
 import java.util.List;
@@ -26,62 +25,56 @@ import java.util.concurrent.ConcurrentHashMap;
 import javax.annotation.Resource;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.exception.ServiceException;
+import org.apache.rocketmq.dashboard.model.UserInfo;
 import org.apache.rocketmq.dashboard.service.PermissionService;
-import org.apache.rocketmq.srvutil.FileWatchService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.stereotype.Service;
 import org.yaml.snakeyaml.Yaml;
+
+import static org.apache.rocketmq.dashboard.permisssion.UserRoleEnum.ADMIN;
+import static org.apache.rocketmq.dashboard.permisssion.UserRoleEnum.ORDINARY;
 
 @Service
 public class PermissionServiceImpl implements PermissionService, InitializingBean {
 
     @Resource
-    RMQConfigure configure;
+    private RMQConfigure configure;
 
-    FileBasedPermissionStore fileBasedPermissionStore;
-
-    @Override
-    public Map<String, List<String>> queryRolePerms() {
-        return fileBasedPermissionStore.rolePerms;
-    }
+    private PermissionFileStore permissionFileStore;
 
     @Override
     public void afterPropertiesSet() {
         if (configure.isLoginRequired()) {
-            fileBasedPermissionStore = new FileBasedPermissionStore(configure);
+            permissionFileStore = new PermissionFileStore(configure);
         }
     }
 
-    public static class FileBasedPermissionStore {
-        private final Logger log = LoggerFactory.getLogger(this.getClass());
+    @Override
+    public boolean checkUrlAvailable(UserInfo userInfo, String url) {
+        int type = userInfo.getUser().getType();
+        // if it is admin, it could access all resources
+        if (type == ADMIN.getRoleType()) {
+            return true;
+        }
+        String loginUserRole = ORDINARY.getRoleName();
+        Map<String, List<String>> rolePerms = PermissionFileStore.rolePerms;
+        List<String> perms = rolePerms.get(loginUserRole);
+        if (!perms.contains(url)) {
+            return false;
+        }
+        return true;
+    }
+
+    public static class PermissionFileStore extends AbstractFileStore {
         private static final String FILE_NAME = "role-permission.yml";
 
-        private String filePath;
-        private Map<String/**role**/, List<String>/**accessUrls**/> rolePerms = new ConcurrentHashMap<>();
+        private static Map<String/**role**/, List<String>/**accessUrls**/> rolePerms = new ConcurrentHashMap<>();
 
-        public FileBasedPermissionStore(RMQConfigure configure) {
-            filePath = configure.getRocketMqDashboardDataPath() + File.separator + FILE_NAME;
-            if (!new File(filePath).exists()) {
-                InputStream inputStream = getClass().getResourceAsStream("/" + FILE_NAME);
-                if (inputStream == null) {
-                    log.error(String.format("Can not found the file %s in Spring Boot jar", FILE_NAME));
-                    System.exit(1);
-                } else {
-                    load(inputStream);
-                }
-            } else {
-                log.info(String.format("User Permission configure file is %s", filePath));
-                load();
-                watch();
-            }
+        public PermissionFileStore(RMQConfigure configure) {
+            super(configure, FILE_NAME);
         }
 
-        private void load() {
-            load(null);
-        }
-
+        @Override
         public void load(InputStream inputStream) {
             Yaml yaml = new Yaml();
             JSONObject rolePermsData = null;
@@ -95,25 +88,8 @@ public class PermissionServiceImpl implements PermissionService, InitializingBea
                 log.error("load user-permission.yml failed", e);
                 throw new ServiceException(0, String.format("Failed to load rolePermission property file: %s", filePath));
             }
-            rolePerms = rolePermsData.getObject("rolePerms", Map.class);
-        }
-
-        private boolean watch() {
-            try {
-                FileWatchService fileWatchService = new FileWatchService(new String[] {filePath}, new FileWatchService.Listener() {
-                    @Override
-                    public void onChanged(String path) {
-                        log.info("The userPermInfoMap property file changed, reload the context");
-                        load();
-                    }
-                });
-                fileWatchService.start();
-                log.info("Succeed to start rolePermissionWatcherService");
-                return true;
-            } catch (Exception e) {
-                log.error("Failed to start rolePermissionWatcherService", e);
-            }
-            return false;
+            rolePerms.clear();
+            rolePerms.putAll(rolePermsData.getObject("rolePerms", Map.class));
         }
     }
 }
