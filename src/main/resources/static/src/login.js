@@ -15,28 +15,29 @@
  * limitations under the License.
  */
 
-app.controller('loginController', ['$scope','$location','$http','Notification','$cookies','$window', function ($scope,$location,$http,Notification,$cookies, $window) {
+app.controller('loginController', ['$scope', '$location', '$http', 'Notification', '$cookies', '$window', function ($scope, $location, $http, Notification, $cookies, $window) {
     $scope.login = function () {
-        if(!$("#username").val()) {
-    		alert("用户名不能为空");
-    		return;
-    	}
-    	if(!$("#password").val()) {
-    		alert("密码不能为空");
-    		return;
-    	}
+        if (!$("#username").val()) {
+            alert("用户名不能为空");
+            return;
+        }
+        if (!$("#password").val()) {
+            alert("密码不能为空");
+            return;
+        }
 
         $http({
             method: "POST",
             url: "login/login.do",
-            params:{username:$("#username").val(), password:$("#password").val()}
+            params: {username: $("#username").val(), password: $("#password").val()}
         }).success(function (resp) {
             if (resp.status == 0) {
                 Notification.info({message: 'Login successful, redirect now', delay: 2000});
-                $window.sessionStorage.setItem("username", $("#username").val());
-                window.location = resp.data;
+                $window.sessionStorage.setItem("username", resp.data.loginUserName);
+                $window.sessionStorage.setItem("userrole", resp.data.loginUserRole);
+                window.location = resp.data.contextPath;
                 initFlag = false;
-            } else{
+            } else {
                 Notification.error({message: resp.errMsg, delay: 2000});
             }
         });
