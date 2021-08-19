@@ -27,6 +27,7 @@ import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.exception.ServiceException;
 import org.apache.rocketmq.dashboard.model.UserInfo;
 import org.apache.rocketmq.dashboard.service.PermissionService;
+import org.apache.rocketmq.dashboard.util.MatcherUtil;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.stereotype.Service;
 import org.yaml.snakeyaml.Yaml;
@@ -59,10 +60,12 @@ public class PermissionServiceImpl implements PermissionService, InitializingBea
         String loginUserRole = ORDINARY.getRoleName();
         Map<String, List<String>> rolePerms = PermissionFileStore.rolePerms;
         List<String> perms = rolePerms.get(loginUserRole);
-        if (!perms.contains(url)) {
-            return false;
+        for (String perm : perms) {
+            if (MatcherUtil.match(perm, url)) {
+                return true;
+            }
         }
-        return true;
+        return false;
     }
 
     public static class PermissionFileStore extends AbstractFileStore {

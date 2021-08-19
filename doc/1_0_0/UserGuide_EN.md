@@ -129,24 +129,30 @@ rocketmq.config.loginRequired=true
 # Directory of ashboard & login user configure file 
 rocketmq.config.dataPath=/tmp/rocketmq-console/data
 ```
-* 2.Make sure the directory defined in property ${rocketmq.config.dataPath} exists and the file "role-permission.yml" is created under it. 
+* 2.Make sure the directory defined in property ${rocketmq.config.dataPath} exists and the permission control file "role-permission.yml" is created under it. 
 The console system will use the resources/role-permission.yml by default if a customized file is not found。
 
 The format in the content of role-permission.yml:
 ```$xslt
 # This file supports hot change, any change will be auto-reloaded without Console restarting.
 # Format: To add or delete interface permissions, add or delete interface addresses from the list.
+# the interface paths can be configured with wildcard characters.
+# ?: Matches 1 characters.
+# *: Matches 0 or more characters that are not /.
+# **: Matches 0 or more characters.
 
-# ordinary user
 rolePerms:
+  # ordinary user
   ordinary:
     - /rocketmq/nsaddr
-    - /ops/homepage.query
-    - /cluster/list.query
-    - /cluster/brokerConfig.query
-    - /dashboard/broker.query
-    - /dashboard/topic.query
-    - /dashboard/topicCurrent
+    - /ops/*
+    - /dashboard/**
+    - /topic/*.query
+    - /topic/sendTopicMessage.do
+    - /producer/*.query
+    - /message/*
+    - /messageTrace/*
+    - /monitor/*
     ....
 ```
-* 3.On the front page, operation buttons such as deleting and updating resources are not displayed for common users in order to better distinguish the rights of common users and admin users. 
+* 3.On the front page, operation buttons such as deleting and updating resources are not displayed for common users in order to better distinguish the rights of common users and admin users. If need to operate related resources, log out and use the admin role to log in

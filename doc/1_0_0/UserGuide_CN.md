@@ -91,7 +91,7 @@ server.port=8443
 ## 登录访问Dashboard
 在访问Dashboard时支持按用户名和密码登录控制台，在操作完成后登出。需要做如下的设置:
 
-* 1.在Spring配置文件resources/application.properties中修改 开启登录功能
+* 1.在Spring配置文件resources/application.properties中修改rocketmq.config.loginRequired=true开启登录功能
 ```$xslt
 # 开启登录功能
 rocketmq.config.loginRequired=true
@@ -116,31 +116,37 @@ user2=user2
 
 ## 权限检验
 如果用户访问console时开启了登录功能，会按照登录的角色对访问的接口进行权限控制。
-* 1.在Spring配置文件resources/application.properties中修改 开启登录功能
+* 1.在Spring配置文件resources/application.properties中修改rocketmq.config.loginRequired=true开启登录功能
 ```$xslt
-    # 开启登录功能
-    rocketmq.config.loginRequired=true
-    
-    # Dashboard文件目录，登录用户配置文件所在目录
-    rocketmq.config.dataPath=/tmp/rocketmq-console/data   
+# 开启登录功能
+rocketmq.config.loginRequired=true
+
+# Dashboard文件目录，登录用户配置文件所在目录
+rocketmq.config.dataPath=/tmp/rocketmq-console/data   
 ```
-* 2.确保${rocketmq.config.dataPath}定义的目录存在，并且该目录下创建登录配置文件"role-permission.yml", 
-如果该目录下不存在此文件，则默认使用resources/role-permission.yml文件。改文件保存了普通用户角色所有能访问的接口地址。
+* 2.确保${rocketmq.config.dataPath}定义的目录存在，并且该目录下创建访问权限配置文件"role-permission.yml", 
+如果该目录下不存在此文件，则默认使用resources/role-permission.yml文件。该文件保存了普通用户角色所有能访问的接口地址。
 role-permission.yml文件格式为:
 ```$xslt
 # 该文件支持热修改，即添加和修改用户时，不需要重新启动console
 # 格式，如果增加和删除接口权限，直接在列表中增加和删除接口地址即可。
+# 接口路径配置支持通配符
+# * 表示匹配0或多个不是/的字符
+# ** 表示匹配0或多个任意字符
+# ? 表示匹配1个任意字符
 
-# 普通用户
 rolePerms:
+  # 普通用户
   ordinary:
     - /rocketmq/nsaddr
-    - /ops/homepage.query
-    - /cluster/list.query
-    - /cluster/brokerConfig.query
-    - /dashboard/broker.query
-    - /dashboard/topic.query
-    - /dashboard/topicCurrent
+    - /ops/*
+    - /dashboard/**
+    - /topic/*.query
+    - /topic/sendTopicMessage.do
+    - /producer/*.query
+    - /message/*
+    - /messageTrace/*
+    - /monitor/*
     ....
 ```
-* 3.前端页面显示上，为了更好区分普通用户和admin用户权限，关于资源的删除、更新等操作按钮不对普通用户角色显示。
+* 3.前端页面显示上，为了更好区分普通用户和admin用户权限，关于资源的删除、更新等操作按钮不对普通用户角色显示，如果要执行资源相关操作，需要退出使用admin角色登录。

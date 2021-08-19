@@ -17,6 +17,7 @@
 package org.apache.rocketmq.dashboard.service.impl;
 
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.srvutil.FileWatchService;
@@ -37,7 +38,17 @@ public abstract class AbstractFileStore {
                 log.error(String.format("Can not found the file %s in Spring Boot jar", fileName));
                 System.exit(1);
             } else {
-                load(inputStream);
+                try {
+                    load(inputStream);
+                } catch (Exception e) {
+                    log.error("fail to load file {}", filePath, e);
+                } finally {
+                    try {
+                        inputStream.close();
+                    } catch (IOException e) {
+                        log.error("inputStream close exception", e);
+                    }
+                }
             }
         } else {
             log.info(String.format("configure file is %s", filePath));
