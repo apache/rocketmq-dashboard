@@ -14,7 +14,7 @@ jdk:
   - oraclejdk11
 
 script:
-  - travis_retry mvn -B clean
+  - travis_retry mvn -B clean apache-rat:check
   - travis_retry mvn -B package findbugs:findbugs jacoco:report coveralls:report
   
 #    - travis_retry mvn -B package findbugs:findbugs coveralls:report
