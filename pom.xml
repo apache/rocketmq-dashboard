@@ -314,6 +314,19 @@
                     </dependency>
                 </dependencies>
             </plugin>
+             <plugin>
+                <groupId>org.apache.rat</groupId>
+                <artifactId>apache-rat-plugin</artifactId>
+                <version>0.12</version>
+                <configuration>
+                    <excludes>
+                        <exclude>.gitignore</exclude>
+                        <exclude>.travis.yml</exclude>
+                        <exclude>.asf.yaml</exclude>
+                        <exclude>README.md</exclude>>
+                    </excludes>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 
