@@ -343,6 +343,8 @@
                         <exclude>README.md</exclude>
                         <exclude>.github/**</exclude>
                         <exclude>docs/**</exclude>
+                        <exclude>src/main/resources/static/vendor/**</exclude>
+                        <exclude>src/main/resources/static/src/data/**</exclude>
                     </excludes>
                 </configuration>
             </plugin>
