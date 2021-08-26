@@ -343,7 +343,6 @@
                         <exclude>README.md</exclude>
                         <exclude>.github/**</exclude>
                         <exclude>docs/**</exclude>
-
                     </excludes>
                 </configuration>
             </plugin>
