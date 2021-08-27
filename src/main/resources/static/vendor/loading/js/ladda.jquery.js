@@ -1,3 +1,11 @@
+/*!
+ * Ladda for jQuery
+ * http://lab.hakim.se/ladda
+ * MIT licensed
+ *
+ * Copyright (C) 2014 Hakim El Hattab, http://hakim.se
+ */
+
 (function( Ladda, $ ) {
 	if ($ === undefined)
 		return console.error( 'jQuery required for Ladda.jQuery' );
