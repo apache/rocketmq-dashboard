@@ -345,6 +345,12 @@
                         <exclude>docs/**</exclude>
                         <exclude>src/main/resources/static/vendor/**</exclude>
                         <exclude>src/main/resources/static/src/data/**</exclude>
+                        <exclude>frontend/node_modules/**</exclude>
+                        <exclude>frontend/build/**</exclude>
+                        <exclude>frontend/**.json</exclude>
+                        <exclude>frontend/**.lock</exclude>
+                        <exclude>frontend/public/manifest.json</exclude>
+                        <exclude>package-lock.json</exclude>
                     </excludes>
                 </configuration>
             </plugin>
