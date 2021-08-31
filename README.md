@@ -64,9 +64,9 @@ java -jar target/rocketmq-dashboard-2.0.0.jar
 
 ## UserGuide
 
-[English](https://github.com/apache/rocketmq-dashboard/blob/master/doc/1_0_0/UserGuide_EN.md)
+[English](https://github.com/apache/rocketmq-dashboard/blob/master/docs/1_0_0/UserGuide_EN.md)
 
-[中文](https://github.com/apache/rocketmq-dashboard/blob/master/doc/1_0_0/UserGuide_CN.md)
+[中文](https://github.com/apache/rocketmq-dashboard/blob/master/docs/1_0_0/UserGuide_CN.md)
 
 ## Contributing
 
