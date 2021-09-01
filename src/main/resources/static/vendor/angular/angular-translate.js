@@ -1,3 +1,8 @@
+/*!
+ * angular-translate - v2.13.1 - 2016-12-06
+ * 
+ * Copyright (c) 2016 The angular-translate team, Pascal Precht; Licensed MIT
+ */
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
     // AMD. Register as an anonymous module unless amdModuleId is set

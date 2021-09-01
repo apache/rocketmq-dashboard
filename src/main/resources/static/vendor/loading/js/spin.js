@@ -1,3 +1,7 @@
+/**
+ * Copyright (c) 2011-2014 Felix Gnass
+ * Licensed under the MIT license
+ */
 (function(root, factory) {
 
   /* CommonJS */
