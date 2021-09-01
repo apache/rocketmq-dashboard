@@ -8,17 +8,18 @@
  *
  *     http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.apache.rocketmq.dashboard.controller;
 
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.model.LoginInfo;
+import org.apache.rocketmq.dashboard.model.LoginResult;
 import org.apache.rocketmq.dashboard.model.User;
 import org.apache.rocketmq.dashboard.model.UserInfo;
 import org.apache.rocketmq.dashboard.service.UserService;
@@ -65,10 +66,10 @@ public class LoginController {
 
     @RequestMapping(value = "/login.do", method = RequestMethod.POST)
     @ResponseBody
-    public JsonResult<String> login(@RequestParam("username") String username,
-                            @RequestParam(value = "password") String password,
-                            HttpServletRequest request,
-                            HttpServletResponse response) throws Exception {
+    public Object login(@RequestParam("username") String username,
+        @RequestParam(value = "password") String password,
+        HttpServletRequest request,
+        HttpServletResponse response) throws Exception {
         logger.info("user:{} login", username);
         User user = userService.queryByUsernameAndPassword(username, password);
 
@@ -80,7 +81,8 @@ public class LoginController {
             WebUtil.setSessionValue(request, WebUtil.USER_INFO, userInfo);
             WebUtil.setSessionValue(request, WebUtil.USER_NAME, username);
             userInfo.setSessionId(WebUtil.getSessionId(request));
-            return new JsonResult<>(contextPath);
+            LoginResult result = new LoginResult(username, user.getType(), contextPath);
+            return result;
         }
     }
 

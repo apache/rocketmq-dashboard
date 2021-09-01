@@ -14,12 +14,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.rocketmq.dashboard.model;
 
-package org.apache.rocketmq.dashboard.service;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class LoginResult {
 
-public interface LoginService {
-    boolean login(HttpServletRequest request, HttpServletResponse response);
+    private String loginUserName;
+
+    /**
+     * 0: normal 1: admin
+     */
+    private int loginUserRole;
+
+    private String contextPath;
 }
