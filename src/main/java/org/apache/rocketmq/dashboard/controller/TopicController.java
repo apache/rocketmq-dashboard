@@ -17,6 +17,7 @@
 package org.apache.rocketmq.dashboard.controller;
 
 import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.dashboard.permisssion.Permission;
 import org.apache.rocketmq.remoting.exception.RemotingException;
 import org.apache.rocketmq.dashboard.model.request.SendTopicMessageRequest;
 import org.apache.rocketmq.dashboard.model.request.TopicConfigInfo;
@@ -38,6 +39,7 @@ import org.springframework.web.bind.annotation.ResponseBody;
 
 @Controller
 @RequestMapping("/topic")
+@Permission
 public class TopicController {
     private Logger logger = LoggerFactory.getLogger(TopicController.class);
 

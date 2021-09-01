@@ -21,15 +21,11 @@ import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.exception.ServiceException;
 import org.apache.rocketmq.dashboard.model.User;
 import org.apache.rocketmq.dashboard.service.UserService;
-import org.apache.rocketmq.srvutil.FileWatchService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
 import javax.validation.constraints.NotNull;
-import java.io.File;
 import java.io.FileReader;
 import java.io.InputStream;
 import java.util.HashMap;
@@ -40,9 +36,9 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 public class UserServiceImpl implements UserService, InitializingBean {
     @Resource
-    RMQConfigure configure;
+    private RMQConfigure configure;
 
-    FileBasedUserInfoStore fileBasedUserInfoStore;
+    private FileBasedUserInfoStore fileBasedUserInfoStore;
 
     @Override
     public User queryByName(String name) {
@@ -61,40 +57,17 @@ public class UserServiceImpl implements UserService, InitializingBean {
         }
     }
 
-    public static class FileBasedUserInfoStore {
-        private final Logger log = LoggerFactory.getLogger(this.getClass());
+    public static class FileBasedUserInfoStore extends AbstractFileStore {
         private static final String FILE_NAME = "users.properties";
 
-        private String filePath;
-        private final Map<String, User> userMap = new ConcurrentHashMap<>();
-
+        private static Map<String, User> userMap = new ConcurrentHashMap<>();
 
         public FileBasedUserInfoStore(RMQConfigure configure) {
-            filePath = configure.getRocketMqDashboardDataPath() + File.separator + FILE_NAME;
-            if (!new File(filePath).exists()) {
-                //Use the default path
-                InputStream inputStream = getClass().getResourceAsStream("/" + FILE_NAME);
-                if (inputStream == null) {
-                    log.error(String.format("Can not found the file %s in Spring Boot jar", FILE_NAME));
-                    System.out.printf(String.format("Can not found file %s in Spring Boot jar or %s, stop the dashboard starting",
-                            FILE_NAME, configure.getRocketMqDashboardDataPath()));
-                    System.exit(1);
-                } else {
-                    load(inputStream);
-                }
-            } else {
-                log.info(String.format("Login Users configure file is %s", filePath));
-                load();
-                watch();
-            }
+            super(configure, FILE_NAME);
         }
 
-        private void load() {
-            load(null);
-        }
-
-        private void load(InputStream inputStream) {
-
+        @Override
+        public void load(InputStream inputStream) {
             Properties prop = new Properties();
             try {
                 if (inputStream == null) {
@@ -112,7 +85,8 @@ public class UserServiceImpl implements UserService, InitializingBean {
             int role;
             for (String key : prop.stringPropertyNames()) {
                 String v = prop.getProperty(key);
-                if (v == null) continue;
+                if (v == null)
+                    continue;
                 arrs = v.split(",", 2);
                 if (arrs.length == 0) {
                     continue;
@@ -125,29 +99,9 @@ public class UserServiceImpl implements UserService, InitializingBean {
                 loadUserMap.put(key, new User(key, arrs[0].trim(), role));
             }
 
-
             userMap.clear();
             userMap.putAll(loadUserMap);
         }
-
-        private boolean watch() {
-            try {
-                FileWatchService fileWatchService = new FileWatchService(new String[]{filePath}, new FileWatchService.Listener() {
-                    @Override
-                    public void onChanged(String path) {
-                        log.info("The loginUserInfo property file changed, reload the context");
-                        load();
-                    }
-                });
-                fileWatchService.start();
-                log.info("Succeed to start LoginUserWatcherService");
-                return true;
-            } catch (Exception e) {
-                log.error("Failed to start LoginUserWatcherService", e);
-            }
-            return false;
-        }
-
 
         public User queryByName(String name) {
             return userMap.get(name);
@@ -158,7 +112,6 @@ public class UserServiceImpl implements UserService, InitializingBean {
             if (user != null && password.equals(user.getPassword())) {
                 return user.cloneOne();
             }
-
             return null;
         }
     }
