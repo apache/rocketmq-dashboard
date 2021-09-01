@@ -357,38 +357,16 @@ SOFTWARE.
 
 echarts
 ----------------------------------
-https://github.com/ecomfe/echarts
+https://github.com/apache/echarts
 
-Copyright (c) 2017, Baidu Inc.
-All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
-
-1. Redistributions of source code must retain the above copyright notice, this
-   list of conditions and the following disclaimer.
-2. Redistributions in binary form must reproduce the above copyright notice,
-   this list of conditions and the following disclaimer in the documentation
-   and/or other materials provided with the distribution.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
-ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
-ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-The views and conclusions contained in the software and documentation are those
-of the authors and should not be interpreted as representing official policies,
-either expressed or implied, of the FreeBSD Project.
+                                 Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
 
 html5-boilerplate
 ------------------------------------------
 https://github.com/h5bp/html5-boilerplate
+h5bp/html5-boilerplate is licensed under the MIT License
 Copyright (c) HTML5 Boilerplate
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
@@ -413,17 +391,13 @@ Font-Awesome
 ----------------------
 https://github.com/FortAwesome/Font-Awesome
 
-License
+Font Awesome Free License
+Font Awesome Free is free, open source, and GPL friendly. You can use it for
+commercial projects, open source projects, or really almost whatever you want.
+Full Font Awesome Free license: https://fontawesome.com/license/free.
 
-The Font Awesome font is licensed under the SIL OFL 1.1:
-http://scripts.sil.org/OFL
-Font Awesome CSS, LESS, and Sass files are licensed under the MIT License:
-https://opensource.org/licenses/mit-license.html
-The Font Awesome documentation is licensed under the CC BY 3.0 License:
-http://creativecommons.org/licenses/by/3.0/
-Attribution is no longer required as of Font Awesome 3.0, but much appreciated:
-Font Awesome by Dave Gandy - http://fontawesome.io
-Full details: http://fontawesome.io/license/
+In the Font Awesome Free download, the MIT license applies to all non-font and non-icon files.
+https://fontawesome.com/license/free
 
 
 jquery
@@ -550,6 +524,15 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+pagination
+---------------------
+https://github.com/317482454/tm.pagination
+                                Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
 
 
 bootstrap-validator
