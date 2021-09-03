@@ -16,20 +16,17 @@
  */
 package org.apache.rocketmq.dashboard.aspect.admin;
 
-import org.apache.rocketmq.dashboard.aspect.admin.annotation.MultiMQAdminCmdMethod;
-import org.apache.rocketmq.dashboard.config.RMQConfigure;
+import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.apache.rocketmq.dashboard.service.client.MQAdminInstance;
+import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Pointcut;
-import org.aspectj.lang.reflect.MethodSignature;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-
-import java.lang.reflect.Method;
 
 @Aspect
 @Service
@@ -37,7 +34,7 @@ public class MQAdminAspect {
     private Logger logger = LoggerFactory.getLogger(MQAdminAspect.class);
 
     @Autowired
-    private RMQConfigure rmqConfigure;
+    private GenericObjectPool<MQAdminExt> mqAdminExtPool;
 
     public MQAdminAspect() {
     }
@@ -57,19 +54,11 @@ public class MQAdminAspect {
         long start = System.currentTimeMillis();
         Object obj = null;
         try {
-            MethodSignature signature = (MethodSignature)joinPoint.getSignature();
-            Method method = signature.getMethod();
-            MultiMQAdminCmdMethod multiMQAdminCmdMethod = method.getAnnotation(MultiMQAdminCmdMethod.class);
-            if (multiMQAdminCmdMethod != null && multiMQAdminCmdMethod.timeoutMillis() > 0) {
-                MQAdminInstance.initMQAdminInstance(multiMQAdminCmdMethod.timeoutMillis(),rmqConfigure.getAccessKey(),rmqConfigure.getSecretKey(), rmqConfigure.isUseTLS());
-            }
-            else {
-                MQAdminInstance.initMQAdminInstance(0,rmqConfigure.getAccessKey(),rmqConfigure.getSecretKey(), rmqConfigure.isUseTLS());
-            }
+            MQAdminInstance.createMQAdmin(mqAdminExtPool);
             obj = joinPoint.proceed();
         }
         finally {
-            MQAdminInstance.destroyMQAdminInstance();
+            MQAdminInstance.returnMQAdmin(mqAdminExtPool);
             logger.debug("op=look method={} cost={}", joinPoint.getSignature().getName(), System.currentTimeMillis() - start);
         }
         return obj;

@@ -21,11 +21,14 @@ import com.google.common.collect.Maps;
 import java.util.List;
 import java.util.Map;
 import javax.annotation.Resource;
+import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.service.AbstractCommonService;
 import org.apache.rocketmq.dashboard.service.OpsService;
 import org.apache.rocketmq.dashboard.service.checker.CheckerType;
 import org.apache.rocketmq.dashboard.service.checker.RocketMqChecker;
+import org.apache.rocketmq.tools.admin.MQAdminExt;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -33,6 +36,9 @@ public class OpsServiceImpl extends AbstractCommonService implements OpsService 
 
     @Resource
     private RMQConfigure configure;
+
+    @Autowired
+    private GenericObjectPool<MQAdminExt> mqAdminExtPool;
 
     @Resource
     private List<RocketMqChecker> rocketMqCheckerList;
@@ -49,6 +55,8 @@ public class OpsServiceImpl extends AbstractCommonService implements OpsService 
     @Override
     public void updateNameSvrAddrList(String nameSvrAddrList) {
         configure.setNamesrvAddr(nameSvrAddrList);
+        // when update namesrvAddr, clean the mqAdminExt objects pool.
+        mqAdminExtPool.clear();
     }
 
     @Override

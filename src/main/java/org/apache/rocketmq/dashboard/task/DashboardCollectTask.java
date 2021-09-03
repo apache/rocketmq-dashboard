@@ -24,7 +24,6 @@ import org.apache.rocketmq.common.protocol.body.TopicList;
 import org.apache.rocketmq.common.protocol.route.BrokerData;
 import org.apache.rocketmq.common.protocol.route.TopicRouteData;
 import org.apache.rocketmq.common.topic.TopicValidator;
-import org.apache.rocketmq.dashboard.aspect.admin.annotation.MultiMQAdminCmdMethod;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.apache.rocketmq.tools.command.stats.StatsAllSubCommand;
@@ -69,12 +68,11 @@ public class DashboardCollectTask {
     private final static Logger log = LoggerFactory.getLogger(DashboardCollectTask.class);
 
     @Scheduled(cron = "30 0/1 * * * ?")
-    @MultiMQAdminCmdMethod(timeoutMillis = 5000)
     public void collectTopic() {
         if (!rmqConfigure.isEnableDashBoardCollect()) {
             return;
         }
-        
+
         Date date = new Date();
         Stopwatch stopwatch = Stopwatch.createUnstarted();
         try {
@@ -83,8 +81,8 @@ public class DashboardCollectTask {
             this.addSystemTopic();
             for (String topic : topicSet) {
                 if (topic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)
-                        || topic.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX)
-                        || TopicValidator.isSystemTopic(topic)) {
+                    || topic.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX)
+                    || TopicValidator.isSystemTopic(topic)) {
                     continue;
                 }
                 TopicRouteData topicRouteData = mqAdminExt.examineTopicRouteInfo(topic);
@@ -323,7 +321,7 @@ public class DashboardCollectTask {
         }
         return newTpsList;
     }
-    
+
     private void addSystemTopic() throws Exception {
         ClusterInfo clusterInfo = mqAdminExt.examineBrokerClusterInfo();
         HashMap<String, Set<String>> clusterTable = clusterInfo.getClusterAddrTable();
