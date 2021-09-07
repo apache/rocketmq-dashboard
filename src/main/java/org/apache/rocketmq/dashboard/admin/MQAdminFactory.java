@@ -8,11 +8,11 @@
  *
  *     http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package org.apache.rocketmq.dashboard.admin;
 
@@ -35,12 +35,11 @@ public class MQAdminFactory {
 
     public MQAdminExt getInstance() throws Exception {
         RPCHook rpcHook = null;
-        boolean isEnableAcl = !StringUtils.isEmpty(rmqConfigure.getAccessKey())
-            && !StringUtils.isEmpty(rmqConfigure.getSecretKey());
+        final String accessKey = rmqConfigure.getAccessKey();
+        final String secretKey = rmqConfigure.getSecretKey();
+        boolean isEnableAcl = StringUtils.isNotEmpty(accessKey) && StringUtils.isNotEmpty(secretKey);
         if (isEnableAcl) {
-            SessionCredentials credentials = new SessionCredentials(rmqConfigure.getAccessKey(),
-                rmqConfigure.getSecretKey());
-            rpcHook = new AclClientRPCHook(credentials);
+            rpcHook = new AclClientRPCHook(new SessionCredentials(accessKey, secretKey));
         }
         DefaultMQAdminExt mqAdminExt = null;
         if (rmqConfigure.getTimeoutMillis() == null) {
