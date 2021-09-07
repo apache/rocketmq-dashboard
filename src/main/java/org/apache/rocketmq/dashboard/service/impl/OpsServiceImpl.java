@@ -75,12 +75,14 @@ public class OpsServiceImpl extends AbstractCommonService implements OpsService 
 
     @Override public boolean updateIsVIPChannel(String useVIPChannel) {
         configure.setIsVIPChannel(useVIPChannel);
+        mqAdminExtPool.clear();
         return true;
     }
 
     @Override
     public boolean updateUseTLS(boolean useTLS) {
         configure.setUseTLS(useTLS);
+        mqAdminExtPool.clear();
         return true;
     }
 }

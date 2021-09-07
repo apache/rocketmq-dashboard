@@ -96,6 +96,20 @@ public class OpsControllerTest extends BaseControllerTest {
             .andExpect(jsonPath("$.data").value(true));
     }
 
+
+    @Test
+    public void testUpdateUseTLS() throws Exception {
+        final String url = "/ops/updateUseTLS.do";
+        {
+            doNothing().when(configure).setUseTLS(true);
+        }
+        requestBuilder = MockMvcRequestBuilders.post(url);
+        requestBuilder.param("useTLS", "true");
+        perform = mockMvc.perform(requestBuilder);
+        perform.andExpect(status().isOk())
+            .andExpect(jsonPath("$.data").value(true));
+    }
+
     @Test
     public void testClusterStatus() throws Exception {
         final String url = "/ops/rocketMqStatus.query";

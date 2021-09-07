@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.dashboard.aspect.admin;
 
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.apache.rocketmq.dashboard.service.client.MQAdminInstance;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
@@ -23,15 +24,13 @@ import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Pointcut;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Aspect
 @Service
+@Slf4j
 public class MQAdminAspect {
-    private Logger logger = LoggerFactory.getLogger(MQAdminAspect.class);
 
     @Autowired
     private GenericObjectPool<MQAdminExt> mqAdminExtPool;
@@ -44,22 +43,16 @@ public class MQAdminAspect {
 
     }
 
-    @Pointcut("@annotation(org.apache.rocketmq.dashboard.aspect.admin.annotation.MultiMQAdminCmdMethod)")
-    public void multiMQAdminMethodPointCut() {
-
-    }
-
-    @Around(value = "mQAdminMethodPointCut() || multiMQAdminMethodPointCut()")
+    @Around(value = "mQAdminMethodPointCut()")
     public Object aroundMQAdminMethod(ProceedingJoinPoint joinPoint) throws Throwable {
         long start = System.currentTimeMillis();
         Object obj = null;
         try {
             MQAdminInstance.createMQAdmin(mqAdminExtPool);
             obj = joinPoint.proceed();
-        }
-        finally {
+        } finally {
             MQAdminInstance.returnMQAdmin(mqAdminExtPool);
-            logger.debug("op=look method={} cost={}", joinPoint.getSignature().getName(), System.currentTimeMillis() - start);
+            log.debug("op=look method={} cost={}", joinPoint.getSignature().getName(), System.currentTimeMillis() - start);
         }
         return obj;
     }

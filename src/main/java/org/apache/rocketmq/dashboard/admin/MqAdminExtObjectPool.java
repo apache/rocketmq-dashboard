@@ -14,19 +14,18 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-package org.apache.rocketmq.dashboard.config;
+package org.apache.rocketmq.dashboard.admin;
 
 import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
-import org.apache.rocketmq.dashboard.admin.MQAdminFactory;
-import org.apache.rocketmq.dashboard.admin.MQAdminPooledObjectFactory;
+import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-public class PoolConfig {
+public class MqAdminExtObjectPool {
 
     @Autowired
     private RMQConfigure rmqConfigure;
@@ -35,7 +34,6 @@ public class PoolConfig {
     public GenericObjectPool<MQAdminExt> mqAdminExtPool() {
         GenericObjectPoolConfig genericObjectPoolConfig = new GenericObjectPoolConfig();
         genericObjectPoolConfig.setTestWhileIdle(true);
-        genericObjectPoolConfig.setMaxTotal(3);
         genericObjectPoolConfig.setMaxWaitMillis(10000);
         genericObjectPoolConfig.setTimeBetweenEvictionRunsMillis(20000);
         MQAdminPooledObjectFactory mqAdminPooledObjectFactory = new MQAdminPooledObjectFactory();

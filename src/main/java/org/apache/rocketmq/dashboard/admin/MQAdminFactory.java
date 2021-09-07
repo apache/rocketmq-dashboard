@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.dashboard.admin;
 
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.acl.common.AclClientRPCHook;
 import org.apache.rocketmq.acl.common.SessionCredentials;
@@ -23,11 +24,9 @@ import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
+@Slf4j
 public class MQAdminFactory {
-    private Logger logger = LoggerFactory.getLogger(this.getClass());
     private RMQConfigure rmqConfigure;
 
     public MQAdminFactory(RMQConfigure rmqConfigure) {
@@ -35,7 +34,6 @@ public class MQAdminFactory {
     }
 
     public MQAdminExt getInstance() throws Exception {
-        DefaultMQAdminExt mqAdminExt = null;
         RPCHook rpcHook = null;
         boolean isEnableAcl = !StringUtils.isEmpty(rmqConfigure.getAccessKey())
             && !StringUtils.isEmpty(rmqConfigure.getSecretKey());
@@ -44,11 +42,17 @@ public class MQAdminFactory {
                 rmqConfigure.getSecretKey());
             rpcHook = new AclClientRPCHook(credentials);
         }
-        mqAdminExt = new DefaultMQAdminExt(rpcHook);
-        mqAdminExt.setVipChannelEnabled(false);
+        DefaultMQAdminExt mqAdminExt = null;
+        if (rmqConfigure.getTimeoutMillis() == null) {
+            mqAdminExt = new DefaultMQAdminExt(rpcHook);
+        } else {
+            mqAdminExt = new DefaultMQAdminExt(rpcHook, rmqConfigure.getTimeoutMillis());
+        }
+        mqAdminExt.setVipChannelEnabled(Boolean.parseBoolean(rmqConfigure.getIsVIPChannel()));
+        mqAdminExt.setUseTLS(rmqConfigure.isUseTLS());
         mqAdminExt.setInstanceName(Long.toString(System.currentTimeMillis()));
         mqAdminExt.start();
-        logger.info("create MQAdmin instance {} success.", mqAdminExt);
+        log.info("create MQAdmin instance {} success.", mqAdminExt);
         return mqAdminExt;
     }
 }

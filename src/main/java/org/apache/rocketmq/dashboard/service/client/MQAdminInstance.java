@@ -29,9 +29,13 @@ import org.slf4j.LoggerFactory;
 public class MQAdminInstance {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(MQAdminInstance.class);
-    private static MQAdminExt mqAdminExt;
+    private static final ThreadLocal<MQAdminExt> MQ_ADMIN_EXT_THREAD_LOCAL = new ThreadLocal<>();
 
     public static MQAdminExt threadLocalMQAdminExt() {
+        MQAdminExt mqAdminExt = MQ_ADMIN_EXT_THREAD_LOCAL.get();
+        if (mqAdminExt == null) {
+            throw new IllegalStateException("defaultMQAdminExt should be init before you get this");
+        }
         return mqAdminExt;
     }
 
@@ -49,13 +53,15 @@ public class MQAdminInstance {
     public static void createMQAdmin(GenericObjectPool<MQAdminExt> mqAdminExtPool) {
         try {
             // Get the mqAdmin instance from the object pool
-            mqAdminExt = mqAdminExtPool.borrowObject();
+            MQAdminExt mqAdminExt = mqAdminExtPool.borrowObject();
+            MQ_ADMIN_EXT_THREAD_LOCAL.set(mqAdminExt);
         } catch (Exception e) {
             LOGGER.error("get mqAdmin from pool error", e);
         }
     }
 
     public static void returnMQAdmin(GenericObjectPool<MQAdminExt> mqAdminExtPool) {
+        MQAdminExt mqAdminExt = MQ_ADMIN_EXT_THREAD_LOCAL.get();
         if (mqAdminExt != null) {
             try {
                 // After execution, return the mqAdmin instance to the object pool
@@ -64,5 +70,6 @@ public class MQAdminInstance {
                 LOGGER.error("return mqAdmin to pool error", e);
             }
         }
+        MQ_ADMIN_EXT_THREAD_LOCAL.remove();
     }
 }

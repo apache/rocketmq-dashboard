@@ -16,17 +16,15 @@
  */
 package org.apache.rocketmq.dashboard.admin;
 
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.pool2.PooledObject;
 import org.apache.commons.pool2.PooledObjectFactory;
 import org.apache.commons.pool2.impl.DefaultPooledObject;
 import org.apache.rocketmq.common.protocol.body.ClusterInfo;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
+@Slf4j
 public class MQAdminPooledObjectFactory implements PooledObjectFactory<MQAdminExt> {
-
-    private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
     private MQAdminFactory mqAdminFactory;
 
@@ -44,10 +42,10 @@ public class MQAdminPooledObjectFactory implements PooledObjectFactory<MQAdminEx
             try {
                 mqAdmin.shutdown();
             } catch (Exception e) {
-                logger.warn("MQAdminExt shutdown err", e);
+                log.warn("MQAdminExt shutdown err", e);
             }
         }
-        logger.info("destroy object {}", p.getObject());
+        log.info("destroy object {}", p.getObject());
     }
 
     @Override
@@ -57,7 +55,7 @@ public class MQAdminPooledObjectFactory implements PooledObjectFactory<MQAdminEx
         try {
             clusterInfo = mqAdmin.examineBrokerClusterInfo();
         } catch (Exception e) {
-            logger.warn("validate object {} err", p.getObject(), e);
+            log.warn("validate object {} err", p.getObject(), e);
         }
         if (clusterInfo == null) {
             return false;
@@ -73,7 +71,6 @@ public class MQAdminPooledObjectFactory implements PooledObjectFactory<MQAdminEx
 
     @Override
     public void activateObject(PooledObject<MQAdminExt> p) {
-
     }
 
     @Override

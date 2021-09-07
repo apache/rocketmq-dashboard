@@ -21,7 +21,6 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.apache.rocketmq.dashboard.aspect.admin.MQAdminAspect;
-import org.apache.rocketmq.dashboard.aspect.admin.annotation.MultiMQAdminCmdMethod;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -41,9 +40,6 @@ public class MQAdminAspectTest {
         ProceedingJoinPoint joinPoint = mock(ProceedingJoinPoint.class);
         MethodSignature signature = mock(MethodSignature.class);
         Method method = mock(Method.class);
-        MultiMQAdminCmdMethod annotationValue = mock(MultiMQAdminCmdMethod.class);
-        when(annotationValue.timeoutMillis()).thenReturn(0L).thenReturn(3000L);
-        when(method.getAnnotation(MultiMQAdminCmdMethod.class)).thenReturn(annotationValue);
         when(signature.getMethod()).thenReturn(method);
         when(joinPoint.getSignature()).thenReturn(signature);
 

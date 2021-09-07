@@ -19,7 +19,6 @@ package org.apache.rocketmq.dashboard.admin;
 import org.apache.commons.pool2.PooledObject;
 import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.apache.rocketmq.common.protocol.body.ClusterInfo;
-import org.apache.rocketmq.dashboard.config.PoolConfig;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.util.MockObjectUtil;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
@@ -34,7 +33,7 @@ import static org.mockito.Mockito.when;
 
 public class MQAdminPoolTest {
 
-    private PoolConfig poolConfig;
+    private MqAdminExtObjectPool mqAdminExtObjectPool;
 
     private GenericObjectPool<MQAdminExt> pool;
 
@@ -42,13 +41,13 @@ public class MQAdminPoolTest {
 
     @Before
     public void init() {
-        poolConfig = new PoolConfig();
+        mqAdminExtObjectPool = new MqAdminExtObjectPool();
         RMQConfigure rmqConfigure = mock(RMQConfigure.class);
         when(rmqConfigure.getNamesrvAddr()).thenReturn("127.0.0.1:9876");
         when(rmqConfigure.getAccessKey()).thenReturn("rocketmq");
         when(rmqConfigure.getSecretKey()).thenReturn("12345678");
-        ReflectionTestUtils.setField(poolConfig, "rmqConfigure", rmqConfigure);
-        pool = poolConfig.mqAdminExtPool();
+        ReflectionTestUtils.setField(mqAdminExtObjectPool, "rmqConfigure", rmqConfigure);
+        pool = mqAdminExtObjectPool.mqAdminExtPool();
         mqAdminPooledObjectFactory = (MQAdminPooledObjectFactory) pool.getFactory();
     }
 

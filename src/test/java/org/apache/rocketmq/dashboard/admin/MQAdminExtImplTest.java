@@ -112,10 +112,13 @@ public class MQAdminExtImplTest {
 
     @Before
     public void init() throws Exception {
-        defaultMQAdminExt = mock(DefaultMQAdminExt.class);
-        Field field = MQAdminInstance.class.getDeclaredField("mqAdminExt");
+        Field field = MQAdminInstance.class.getDeclaredField("MQ_ADMIN_EXT_THREAD_LOCAL");
         field.setAccessible(true);
-        field.set(null, defaultMQAdminExt);
+        Object object = field.get(mqAdminExtImpl);
+        assertNotNull(object);
+        ThreadLocal<DefaultMQAdminExt> threadLocal = (ThreadLocal<DefaultMQAdminExt>) object;
+        defaultMQAdminExt = mock(DefaultMQAdminExt.class);
+        threadLocal.set(defaultMQAdminExt);
 
         ReflectionTestUtils.setField(defaultMQAdminExt, "defaultMQAdminExtImpl", defaultMQAdminExtImpl);
         ReflectionTestUtils.setField(defaultMQAdminExtImpl, "mqClientInstance", mqClientInstance);
