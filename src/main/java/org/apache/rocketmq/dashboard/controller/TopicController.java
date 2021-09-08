@@ -51,8 +51,7 @@ public class TopicController {
 
     @RequestMapping(value = "/list.query", method = RequestMethod.GET)
     @ResponseBody
-    public Object list(@RequestParam(value = "skipSysProcess", required = false) String skipSysProcess)
-            throws MQClientException, RemotingException, InterruptedException {
+    public Object list(@RequestParam(value = "skipSysProcess", required = false) String skipSysProcess) {
         boolean flag = false;
         if ("true".equals(skipSysProcess)) {
             flag = true;

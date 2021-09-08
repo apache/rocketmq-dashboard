@@ -19,11 +19,14 @@ package org.apache.rocketmq.dashboard;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.web.servlet.ServletComponentScan;
+import org.springframework.context.annotation.EnableMBeanExport;
+import org.springframework.jmx.support.RegistrationPolicy;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
 @EnableScheduling
 @ServletComponentScan
+@EnableMBeanExport(registration = RegistrationPolicy.IGNORE_EXISTING)
 public class App {
 
     public static void main(String[] args) {

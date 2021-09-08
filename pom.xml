@@ -89,6 +89,7 @@
         <spring.boot.version>2.2.2.RELEASE</spring.boot.version>
         <mockito-inline.version>3.3.3</mockito-inline.version>
         <jaxb-api.version>2.3.1</jaxb-api.version>
+        <commons-pool2.version>2.4.3</commons-pool2.version>
     </properties>
 
     <dependencies>
@@ -218,6 +219,11 @@
             <version>${mockito-inline.version}</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-pool2</artifactId>
+            <version>${commons-pool2.version}</version>
+        </dependency>
     </dependencies>
     <build>
         <plugins>
@@ -251,7 +257,7 @@
                     </execution>
                 </executions>
             </plugin>
-             <!-- Use dockerfile-maven instead, https://github.com/spotify/dockerfile-maven -->
+            <!-- Use dockerfile-maven instead, https://github.com/spotify/dockerfile-maven -->
             <plugin>
                 <groupId>com.spotify</groupId>
                 <artifactId>docker-maven-plugin</artifactId>
@@ -331,7 +337,7 @@
                     </dependency>
                 </dependencies>
             </plugin>
-             <plugin>
+            <plugin>
                 <groupId>org.apache.rat</groupId>
                 <artifactId>apache-rat-plugin</artifactId>
                 <version>0.12</version>

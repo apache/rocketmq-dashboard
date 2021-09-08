@@ -43,7 +43,6 @@ import org.apache.rocketmq.common.protocol.body.GroupList;
 import org.apache.rocketmq.common.protocol.body.SubscriptionGroupWrapper;
 import org.apache.rocketmq.common.protocol.route.BrokerData;
 import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
-import org.apache.rocketmq.dashboard.aspect.admin.annotation.MultiMQAdminCmdMethod;
 import org.apache.rocketmq.dashboard.model.ConsumerGroupRollBackStat;
 import org.apache.rocketmq.dashboard.model.GroupConsumeInfo;
 import org.apache.rocketmq.dashboard.model.QueueStatInfo;
@@ -64,7 +63,6 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
     private Logger logger = LoggerFactory.getLogger(ConsumerServiceImpl.class);
 
     @Override
-    @MultiMQAdminCmdMethod
     public List<GroupConsumeInfo> queryGroupList() {
         Set<String> consumerGroupSet = Sets.newHashSet();
         try {
@@ -86,7 +84,6 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
     }
 
     @Override
-    @MultiMQAdminCmdMethod
     public GroupConsumeInfo queryGroup(String consumerGroup) {
         GroupConsumeInfo groupConsumeInfo = new GroupConsumeInfo();
         try {
@@ -133,7 +130,6 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
     }
 
     @Override
-    @MultiMQAdminCmdMethod
     public List<TopicConsumerInfo> queryConsumeStatsList(final String topic, String groupName) {
         ConsumeStats consumeStats = null;
         try {
@@ -184,7 +180,6 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
     }
 
     @Override
-    @MultiMQAdminCmdMethod
     public Map<String /*groupName*/, TopicConsumerInfo> queryConsumeStatsListByTopicName(String topic) {
         Map<String, TopicConsumerInfo> group2ConsumerInfoMap = Maps.newHashMap();
         try {
@@ -206,7 +201,6 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
     }
 
     @Override
-    @MultiMQAdminCmdMethod
     public Map<String, ConsumerGroupRollBackStat> resetOffset(ResetOffsetRequest resetOffsetRequest) {
         Map<String, ConsumerGroupRollBackStat> groupRollbackStats = Maps.newHashMap();
         for (String consumerGroup : resetOffsetRequest.getConsumerGroupList()) {
@@ -251,7 +245,6 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
     }
 
     @Override
-    @MultiMQAdminCmdMethod
     public List<ConsumerConfigInfo> examineSubscriptionGroupConfig(String group) {
         List<ConsumerConfigInfo> consumerConfigInfoList = Lists.newArrayList();
         try {
@@ -272,7 +265,6 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
     }
 
     @Override
-    @MultiMQAdminCmdMethod
     public boolean deleteSubGroup(DeleteSubGroupRequest deleteSubGroupRequest) {
         try {
             ClusterInfo clusterInfo = mqAdminExt.examineBrokerClusterInfo();
@@ -303,7 +295,6 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
     }
 
     @Override
-    @MultiMQAdminCmdMethod
     public Set<String> fetchBrokerNameSetBySubscriptionGroup(String group) {
         Set<String> brokerNameSet = Sets.newHashSet();
         try {

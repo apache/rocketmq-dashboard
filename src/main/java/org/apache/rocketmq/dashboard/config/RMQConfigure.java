@@ -58,6 +58,8 @@ public class RMQConfigure {
 
     private boolean useTLS = false;
 
+    private Long timeoutMillis;
+
     public String getAccessKey() {
         return accessKey;
     }
@@ -146,6 +148,14 @@ public class RMQConfigure {
 
     public void setUseTLS(boolean useTLS) {
         this.useTLS = useTLS;
+    }
+
+    public Long getTimeoutMillis() {
+        return timeoutMillis;
+    }
+
+    public void setTimeoutMillis(Long timeoutMillis) {
+        this.timeoutMillis = timeoutMillis;
     }
 
     // Error Page process logic, move to a central configure later

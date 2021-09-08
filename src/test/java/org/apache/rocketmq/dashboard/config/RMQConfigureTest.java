@@ -40,6 +40,7 @@ public class RMQConfigureTest {
         rmqConfigure.setLoginRequired(true);
         rmqConfigure.setMsgTrackTopicName(null);
         rmqConfigure.setNamesrvAddr("127.0.0.1:9876");
+        rmqConfigure.setTimeoutMillis(3000L);
     }
 
     @Test
@@ -56,6 +57,7 @@ public class RMQConfigureTest {
         Assert.assertTrue(rmqConfigure.isLoginRequired());
         Assert.assertEquals(rmqConfigure.getMsgTrackTopicNameOrDefault(), TopicValidator.RMQ_SYS_TRACE_TOPIC);
         Assert.assertEquals(rmqConfigure.getNamesrvAddr(), "127.0.0.1:9876");
+        Assert.assertEquals(rmqConfigure.getTimeoutMillis().longValue(), 3000L);
         ErrorPageRegistrar registrar = rmqConfigure.errorPageRegistrar();
         registrar.registerErrorPages(new ErrorPageRegistry() {
             @Override
