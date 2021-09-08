@@ -65,7 +65,6 @@ import org.apache.rocketmq.store.stats.BrokerStatsManager;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExtImpl;
 import org.apache.rocketmq.tools.admin.api.MessageTrack;
-import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -121,22 +120,10 @@ public class MQAdminExtImplTest {
         defaultMQAdminExt = mock(DefaultMQAdminExt.class);
         threadLocal.set(defaultMQAdminExt);
 
-        field = MQAdminInstance.class.getDeclaredField("INIT_COUNTER");
-        field.setAccessible(true);
-        object = field.get(mqAdminExtImpl);
-        assertNotNull(object);
-        ThreadLocal<Integer> threadLocal1 = (ThreadLocal<Integer>) object;
-        threadLocal1.set(1);
-
         ReflectionTestUtils.setField(defaultMQAdminExt, "defaultMQAdminExtImpl", defaultMQAdminExtImpl);
         ReflectionTestUtils.setField(defaultMQAdminExtImpl, "mqClientInstance", mqClientInstance);
         ReflectionTestUtils.setField(mqClientInstance, "mQClientAPIImpl", mQClientAPIImpl);
         ReflectionTestUtils.setField(mQClientAPIImpl, "remotingClient", remotingClient);
-    }
-
-    @After
-    public void destroy() {
-        MQAdminInstance.destroyMQAdminInstance();
     }
 
     @Test

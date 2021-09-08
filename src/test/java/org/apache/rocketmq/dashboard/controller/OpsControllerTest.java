@@ -19,14 +19,17 @@ package org.apache.rocketmq.dashboard.controller;
 
 import java.util.ArrayList;
 import java.util.List;
+import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.apache.rocketmq.dashboard.service.checker.RocketMqChecker;
 import org.apache.rocketmq.dashboard.service.checker.impl.ClusterHealthCheckerImpl;
 import org.apache.rocketmq.dashboard.service.checker.impl.TopicOnlyOneBrokerCheckerImpl;
 import org.apache.rocketmq.dashboard.service.impl.OpsServiceImpl;
+import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.InjectMocks;
+import org.mockito.Mock;
 import org.mockito.Spy;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
@@ -43,6 +46,9 @@ public class OpsControllerTest extends BaseControllerTest {
 
     @Spy
     private OpsServiceImpl opsService;
+
+    @Mock
+    private GenericObjectPool<MQAdminExt> mqAdminExtPool;
 
     @Before
     public void init() {
@@ -67,6 +73,7 @@ public class OpsControllerTest extends BaseControllerTest {
         final String url = "/ops/updateNameSvrAddr.do";
         {
             doNothing().when(configure).setNamesrvAddr(anyString());
+            doNothing().when(mqAdminExtPool).clear();
         }
         requestBuilder = MockMvcRequestBuilders.post(url);
         requestBuilder.param("nameSvrAddrList", "127.0.0.1:9876");
@@ -84,6 +91,20 @@ public class OpsControllerTest extends BaseControllerTest {
         }
         requestBuilder = MockMvcRequestBuilders.post(url);
         requestBuilder.param("useVIPChannel", "true");
+        perform = mockMvc.perform(requestBuilder);
+        perform.andExpect(status().isOk())
+            .andExpect(jsonPath("$.data").value(true));
+    }
+
+
+    @Test
+    public void testUpdateUseTLS() throws Exception {
+        final String url = "/ops/updateUseTLS.do";
+        {
+            doNothing().when(configure).setUseTLS(true);
+        }
+        requestBuilder = MockMvcRequestBuilders.post(url);
+        requestBuilder.param("useTLS", "true");
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
             .andExpect(jsonPath("$.data").value(true));
