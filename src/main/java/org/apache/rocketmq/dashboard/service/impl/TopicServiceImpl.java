@@ -61,16 +61,28 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
     private RMQConfigure configure;
 
     @Override
-    public TopicList fetchAllTopicList(boolean skipSysProcess) {
+    public TopicList fetchAllTopicList(boolean skipSysProcess, boolean skipRetryAndDlq) {
         try {
             TopicList allTopics = mqAdminExt.fetchAllTopicList();
             if (skipSysProcess) {
                 return allTopics;
             }
 
-            TopicList sysTopics = getSystemTopicList();
             Set<String> topics = new HashSet<>();
+            if (skipRetryAndDlq) {
+                for (String topic : allTopics.getTopicList()) {
+                    if (topic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)
+                        || topic.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX)) {
+                        continue;
+                    }
+                    topics.add(topic);
+                }
+                allTopics.getTopicList().clear();
+                allTopics.getTopicList().addAll(topics);
+                return allTopics;
+            }
 
+            TopicList sysTopics = getSystemTopicList();
             for (String topic : allTopics.getTopicList()) {
                 if (sysTopics.getTopicList().contains(topic)) {
                     topics.add(String.format("%s%s", "%SYS%", topic));

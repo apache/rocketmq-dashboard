@@ -39,7 +39,7 @@ module.controller('messageTraceController', ['$scope', '$routeParams', 'ngDialog
         method: "GET",
         url: "topic/list.query",
         params: {
-            skipSysProcess: "true"
+            skipSysProcess: true
         }
     }).success(function (resp) {
         if (resp.status == 0) {
@@ -93,28 +93,61 @@ module.controller('messageTraceController', ['$scope', '$routeParams', 'ngDialog
         });
     };
 
-    $scope.queryMessageTraceByMessageId = function (messageId, topic) {
+    $scope.openMsgTraceDetailDialog = function (msgId) {
         $http({
             method: "GET",
-            url: "messageTrace/viewMessageTraceGraph.query",
+            url: "topic/list.query",
             params: {
-                msgId: messageId,
-                topic: topic
+                skipSysProcess: false,
+                skipRetryAndDlq: true
             }
         }).success(function (resp) {
             if (resp.status == 0) {
-                console.log(resp);
+                if (resp.data.topicList == null) {
+                    Notification.error({message: "no topic", delay: 2000});
+                    return
+                }
                 ngDialog.open({
-                    template: 'messageTraceDetailViewDialog',
-                    controller: 'messageTraceDetailViewDialogController',
-                    data: resp.data
+                    template: 'traceTopicSelectDialog',
+                    controller: 'traceTopicSelectDialogController',
+                    data: {
+                        msgId: msgId,
+                        selectedTraceTopic: [],
+                        allTopicList: resp.data.topicList
+                    }
                 });
             } else {
                 Notification.error({message: resp.errMsg, delay: 2000});
             }
         });
     };
+
 }]);
+
+module.controller('traceTopicSelectDialogController', ['$scope', 'ngDialog', '$http', 'Notification', function ($scope, ngDialog, $http, Notification) {
+        $scope.queryMessageTraceByMessageId = function () {
+            $http({
+                method: "GET",
+                url: "messageTrace/viewMessageTraceGraph.query",
+                params: {
+                    msgId: $scope.ngDialogData.msgId,
+                    traceTopic: $scope.ngDialogData.selectedTraceTopic
+                }
+            }).success(function (resp) {
+                if (resp.status == 0) {
+                    ngDialog.open({
+                        template: 'messageTraceDetailViewDialog',
+                        controller: 'messageTraceDetailViewDialogController',
+                        data: resp.data
+                    });
+                    ngDialog.close(this);
+                } else {
+                    Notification.error({message: resp.errMsg, delay: 2000});
+                }
+            });
+        };
+    }]
+);
 
 module.controller('messageTraceDetailViewDialogController', ['$scope', '$timeout', 'ngDialog', '$http', 'Notification', function ($scope, $timeout, ngDialog, $http, Notification) {
         $scope.displayMessageTraceGraph = function (messageTraceGraph) {

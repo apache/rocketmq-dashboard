@@ -64,7 +64,7 @@
                                     </td>
                                     <td class="text-center">
                                         <button class="btn btn-raised btn-sm btn-primary" type="button"
-                                                ng-click="queryMessageTraceByMessageId(item.msgId,item.topic)">Message Trace Detail
+                                                ng-click="openMsgTraceDetailDialog(item.msgId)">{{ 'MESSAGE_TRACE_DETAIL' | translate }}
                                         </button>
                                     </td>
                                 </tr>
@@ -114,7 +114,7 @@
                                     </td>
                                     <td class="text-center">
                                         <button class="btn btn-raised btn-sm btn-primary" type="button"
-                                                ng-click="queryMessageTraceByMessageId(item.msgId,item.topic)">Message Trace Detail
+                                                ng-click="openMsgTraceDetailDialog(item.msgId)">{{ 'MESSAGE_TRACE_DETAIL' | translate }}
                                         </button>
                                     </td>
                                 </tr>
@@ -127,6 +127,38 @@
 
     </div>
 </div>
+
+
+<script type="text/ng-template" id="traceTopicSelectDialog">
+    <div class="modal-header">
+        <h4 class="modal-title">{{topic}} {{'SELECT_TRACE_TOPIC'|translate}}</h4>
+    </div>
+    <div class="modal-body">
+        <form class="form-horizontal" novalidate>
+            <div class="form-group">
+                <label class="control-label col-sm-2"> {{ 'TRACE_TOPIC' | translate }}:</label>
+                <div class="col-sm-10">
+                    <select name="mySelect" chosen
+                            ng-model="ngDialogData.selectedTraceTopic"
+                            ng-options="item for item in ngDialogData.allTopicList"
+                            required>
+                        <option value=""></option>
+                    </select>
+                </div>
+            </div>
+        </form>
+    </div>
+    <div class="modal-footer">
+        <div class="ngdialog-buttons">
+            <button type="button" class="ngdialog-button ngdialog-button-primary"
+                    ng-click="queryMessageTraceByMessageId()">{{ 'COMMIT' | translate }}
+            </button>
+            <button type="button" class="ngdialog-button ngdialog-button-secondary"
+                    ng-click="closeThisDialog('Cancel')">{{ 'CLOSE' | translate }}
+            </button>
+        </div>
+    </div>
+</script>
 
 
 <script type="text/ng-template" id="messageTraceDetailViewDialog">
@@ -302,10 +334,12 @@
             </div>
         </div>
     </md-content>
-    <div class="ngdialog-buttons">
-        <button type="button" class="ngdialog-button ngdialog-button-secondary"
-                ng-click="closeThisDialog('Cancel')">{{ 'CLOSE' | translate }}
-        </button>
+    <div class="modal-footer">
+        <div class="ngdialog-buttons">
+            <button type="button" class="ngdialog-button ngdialog-button-secondary"
+                    ng-click="closeThisDialog('Cancel')">{{ 'CLOSE' | translate }}
+            </button>
+        </div>
     </div>
 </script>
 

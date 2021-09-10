@@ -91,6 +91,8 @@ public class TopicControllerTest extends BaseControllerTest {
             topicSet.add("common_topic2");
             topicSet.add("system_topic1");
             topicSet.add("system_topic2");
+            topicSet.add("%DLQ%topic");
+            topicSet.add("%RETRY%topic");
             topicList.setTopicList(topicSet);
             when(mqAdminExt.fetchAllTopicList()).thenReturn(topicList);
             // mock system topics
@@ -118,9 +120,17 @@ public class TopicControllerTest extends BaseControllerTest {
         requestBuilder.param("skipSysProcess", String.valueOf(true));
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.topicList", hasSize(6)));
+
+        // 2、list all topic filter DLQ and Retry topic
+        requestBuilder = MockMvcRequestBuilders.get(url);
+        requestBuilder.param("skipSysProcess", String.valueOf(false));
+        requestBuilder.param("skipRetryAndDlq", String.valueOf(true));
+        perform = mockMvc.perform(requestBuilder);
+        perform.andExpect(status().isOk())
             .andExpect(jsonPath("$.data.topicList", hasSize(4)));
 
-        // 2、filter system topic
+        // 3、filter system topic
         requestBuilder = MockMvcRequestBuilders.get(url);
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())

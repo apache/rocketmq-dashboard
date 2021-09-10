@@ -86,8 +86,8 @@ public class MessageTraceServiceImpl implements MessageTraceService {
     }
 
     @Override
-    public MessageTraceGraph queryMessageTraceGraph(String key) {
-        List<MessageTraceView> messageTraceViews = queryMessageTraceKey(key);
+    public MessageTraceGraph queryMessageTraceGraph(String key, String topic) {
+        List<MessageTraceView> messageTraceViews = queryMessageTraceByTopicAndKey(topic, key);
         return buildMessageTraceGraph(messageTraceViews);
     }
 
