@@ -16,19 +16,13 @@ mvn clean package -Dmaven.test.skip=true docker:build
 or
 
 ```
-docker pull apacherocketmq/rocketmq-console
+docker pull apacherocketmq/rocketmq-console:2.0.0
 ```
 
 > currently the newest available docker image is apacherocketmq/rocketmq-console:2.0.0
 
 
 * run it (change namesvrAddr and port yourself)
-
-```
-docker run -e "JAVA_OPTS=-Drocketmq.namesrv.addr=127.0.0.1:9876 -Dcom.rocketmq.sendMessageWithVIPChannel=false" -p 8080:8080 -t apacherocketmq/rocketmq-console
-```
-
-or 
 
 ```
 docker run -e "JAVA_OPTS=-Drocketmq.namesrv.addr=127.0.0.1:9876 -Dcom.rocketmq.sendMessageWithVIPChannel=false" -p 8080:8080 -t apacherocketmq/rocketmq-console:2.0.0
