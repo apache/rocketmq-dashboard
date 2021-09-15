@@ -44,6 +44,8 @@ import org.apache.rocketmq.dashboard.model.request.TopicConfigInfo;
 import org.apache.rocketmq.dashboard.service.impl.ConsumerServiceImpl;
 import org.apache.rocketmq.dashboard.service.impl.TopicServiceImpl;
 import org.apache.rocketmq.dashboard.util.MockObjectUtil;
+import org.apache.rocketmq.remoting.RPCHook;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.InjectMocks;
@@ -259,7 +261,7 @@ public class TopicControllerTest extends BaseControllerTest {
             when(producer.send(any(Message.class))).thenReturn(result);
             doReturn(producer).when(topicService).buildDefaultMQProducer(anyString(), any(), anyBoolean());
         }
-
+        Assert.assertNotNull(topicService.buildDefaultMQProducer("group_test", mock(RPCHook.class)));
         SendTopicMessageRequest request = new SendTopicMessageRequest();
         request.setTopic(topicName);
         request.setMessageBody("hello world");

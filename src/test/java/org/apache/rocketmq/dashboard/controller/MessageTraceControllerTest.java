@@ -114,7 +114,6 @@ public class MessageTraceControllerTest extends BaseControllerTest {
         final String url = "/messageTrace/viewMessageTraceGraph.query";
         requestBuilder = MockMvcRequestBuilders.get(url);
         requestBuilder.param("msgId", "0A9A003F00002A9F0000000000000319");
-        requestBuilder.param("traceTopic", "RMQ_SYS_TRACE_TOPIC");
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
             .andExpect(jsonPath("$.data").isMap())
