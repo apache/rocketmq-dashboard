@@ -64,7 +64,8 @@ public class MessageTraceController {
 
     @RequestMapping(value = "/viewMessageTraceGraph.query", method = RequestMethod.GET)
     @ResponseBody
-    public MessageTraceGraph viewMessageTraceGraph(@RequestParam String msgId, @RequestParam String traceTopic) {
+    public MessageTraceGraph viewMessageTraceGraph(@RequestParam String msgId,
+        @RequestParam(required = false) String traceTopic) {
         return messageTraceService.queryMessageTraceGraph(msgId, traceTopic);
     }
 }

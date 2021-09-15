@@ -98,7 +98,7 @@ module.controller('messageTraceController', ['$scope', '$routeParams', 'ngDialog
             method: "GET",
             url: "topic/list.query",
             params: {
-                skipSysProcess: false,
+                skipSysProcess: true,
                 skipRetryAndDlq: true
             }
         }).success(function (resp) {
