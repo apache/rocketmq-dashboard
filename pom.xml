@@ -28,14 +28,14 @@
     <groupId>org.apache</groupId>
     <artifactId>rocketmq-dashboard</artifactId>
     <packaging>jar</packaging>
-    <version>1.0.0</version>
+    <version>1.0.1-SNAPSHOT</version>
     <name>rocketmq-dashboard</name>
 
     <scm>
         <url>git@github.com:apache/rocketmq-dashboard.git</url>
         <connection>scm:git:git@github.com:apache/rocketmq-dashboard.git</connection>
         <developerConnection>scm:git:git@github.com:apache/rocketmq-dashboard.git</developerConnection>
-        <tag>rocketmq-dashboard-1.0.0</tag>
+        <tag>1.0.0-beta</tag>
     </scm>
 
     <mailingLists>
