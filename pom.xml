@@ -16,9 +16,7 @@
   ~ limitations under the License.
   -->
 
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 
     <parent>
         <groupId>org.apache</groupId>
@@ -30,8 +28,15 @@
     <groupId>org.apache</groupId>
     <artifactId>rocketmq-dashboard</artifactId>
     <packaging>jar</packaging>
-    <version>1.0.0</version>
+    <version>1.0.0-SNAPSHOT</version>
     <name>rocketmq-dashboard</name>
+
+    <scm>
+        <url>git@github.com:apache/rocketmq-dashboard.git</url>
+        <connection>scm:git:git@github.com:apache/rocketmq-dashboard.git</connection>
+        <developerConnection>scm:git:git@github.com:apache/rocketmq-dashboard.git</developerConnection>
+        <tag>1.0.0-beta</tag>
+    </scm>
 
     <mailingLists>
         <mailingList>
@@ -61,6 +66,11 @@
             <url>https://rocketmq.apache.org/</url>
         </developer>
     </developers>
+
+    <organization>
+        <name>Apache Software Foundation</name>
+        <url>http://www.apache.org</url>
+    </organization>
 
     <licenses>
         <license>
@@ -356,5 +366,4 @@
             </plugin>
         </plugins>
     </build>
-
 </project>
