@@ -30,7 +30,7 @@
     <groupId>org.apache</groupId>
     <artifactId>rocketmq-dashboard</artifactId>
     <packaging>jar</packaging>
-    <version>2.0.0</version>
+    <version>1.0.0-SNAPSHOT</version>
     <name>rocketmq-dashboard</name>
 
     <mailingLists>
