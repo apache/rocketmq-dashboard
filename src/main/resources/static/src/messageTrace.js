@@ -26,9 +26,13 @@ const TIME_FORMAT_PATTERN = "YYYY-MM-DD HH:mm:ss.SSS";
 const DEFAULT_DISPLAY_DURATION = 10 * 1000
 // transactionTraceNode do not have costTime, assume it cost 50ms
 const TRANSACTION_CHECK_COST_TIME = 50;
+const RETRY_GROUP_TOPIC_PREFIX = "%RETRY%";
+const DLQ_GROUP_TOPIC_PREFIX = "%DLQ%";
 module.controller('messageTraceController', ['$scope', '$routeParams', 'ngDialog', '$http', 'Notification', function ($scope, $routeParams, ngDialog, $http, Notification) {
     $scope.allTopicList = [];
     $scope.selectedTopic = [];
+    $scope.allTraceTopicList = [];
+    $scope.selectedTraceTopic = [];
     $scope.key = "";
     $scope.messageId = $routeParams.messageId;
     $scope.queryMessageByTopicAndKeyResult = [];
@@ -44,11 +48,20 @@ module.controller('messageTraceController', ['$scope', '$routeParams', 'ngDialog
     }).success(function (resp) {
         if (resp.status == 0) {
             $scope.allTopicList = resp.data.topicList.sort();
-            console.log($scope.allTopicList);
+            console.log($scope.allTopicList)
+            for (const topic of $scope.allTopicList) {
+                if (topic.startsWith(RETRY_GROUP_TOPIC_PREFIX)
+                    || topic.startsWith(DLQ_GROUP_TOPIC_PREFIX)) {
+                    continue;
+                }
+                $scope.allTraceTopicList.push(topic);
+            }
+            console.log($scope.allTraceTopicList)
         } else {
             Notification.error({message: resp.errMsg, delay: 2000});
         }
     });
+
     $scope.timepickerBegin = moment().subtract(1, 'hour').format('YYYY-MM-DD HH:mm');
     $scope.timepickerEnd = moment().add(1, 'hour').format('YYYY-MM-DD HH:mm');
     $scope.timepickerOptions = {format: 'YYYY-MM-DD HH:mm', showClear: true};
@@ -93,61 +106,28 @@ module.controller('messageTraceController', ['$scope', '$routeParams', 'ngDialog
         });
     };
 
-    $scope.openMsgTraceDetailDialog = function (msgId) {
+    $scope.queryMessageTraceByMessageId = function (messageId, topic) {
         $http({
             method: "GET",
-            url: "topic/list.query",
+            url: "messageTrace/viewMessageTraceGraph.query",
             params: {
-                skipSysProcess: true,
-                skipRetryAndDlq: true
+                msgId: messageId,
+                traceTopic: topic
             }
         }).success(function (resp) {
             if (resp.status == 0) {
-                if (resp.data.topicList == null) {
-                    Notification.error({message: "no topic", delay: 2000});
-                    return
-                }
+                console.log(resp);
                 ngDialog.open({
-                    template: 'traceTopicSelectDialog',
-                    controller: 'traceTopicSelectDialogController',
-                    data: {
-                        msgId: msgId,
-                        selectedTraceTopic: [],
-                        allTopicList: resp.data.topicList
-                    }
+                    template: 'messageTraceDetailViewDialog',
+                    controller: 'messageTraceDetailViewDialogController',
+                    data: resp.data
                 });
             } else {
                 Notification.error({message: resp.errMsg, delay: 2000});
             }
         });
     };
-
 }]);
-
-module.controller('traceTopicSelectDialogController', ['$scope', 'ngDialog', '$http', 'Notification', function ($scope, ngDialog, $http, Notification) {
-        $scope.queryMessageTraceByMessageId = function () {
-            $http({
-                method: "GET",
-                url: "messageTrace/viewMessageTraceGraph.query",
-                params: {
-                    msgId: $scope.ngDialogData.msgId,
-                    traceTopic: $scope.ngDialogData.selectedTraceTopic
-                }
-            }).success(function (resp) {
-                if (resp.status == 0) {
-                    ngDialog.open({
-                        template: 'messageTraceDetailViewDialog',
-                        controller: 'messageTraceDetailViewDialogController',
-                        data: resp.data
-                    });
-                    ngDialog.close(this);
-                } else {
-                    Notification.error({message: resp.errMsg, delay: 2000});
-                }
-            });
-        };
-    }]
-);
 
 module.controller('messageTraceDetailViewDialogController', ['$scope', '$timeout', 'ngDialog', '$http', 'Notification', function ($scope, $timeout, ngDialog, $http, Notification) {
         $scope.displayMessageTraceGraph = function (messageTraceGraph) {
