@@ -36,7 +36,7 @@ mvn spring-boot:run
 or
 ```
 mvn clean package -Dmaven.test.skip=true
-java -jar target/rocketmq-dashboard-1.0.0-SNAPSHOT.jar
+java -jar target/rocketmq-dashboard-1.0.0.jar
 ```
 
 #### Tips
