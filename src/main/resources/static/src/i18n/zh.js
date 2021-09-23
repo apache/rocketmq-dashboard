@@ -106,5 +106,8 @@ var zh = {
     "NO_DATA":"不存在 ",
     "SYSTEM":"系统",
     "WELCOME":"您好，欢迎使用RocketMQ仪表盘",
-    "ENABLE_MESSAGE_TRACE":"开启消息轨迹"
+    "ENABLE_MESSAGE_TRACE":"开启消息轨迹",
+    "MESSAGE_TRACE_DETAIL":"消息轨迹详情",
+    "TRACE_TOPIC":"消息轨迹主题",
+    "SELECT_TRACE_TOPIC":"选择消息轨迹主题"
 }

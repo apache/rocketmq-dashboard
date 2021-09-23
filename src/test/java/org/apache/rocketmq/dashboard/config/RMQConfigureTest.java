@@ -18,7 +18,6 @@
 package org.apache.rocketmq.dashboard.config;
 
 import java.io.File;
-import org.apache.rocketmq.common.topic.TopicValidator;
 import org.junit.Assert;
 import org.junit.Test;
 import org.springframework.boot.web.server.ErrorPage;
@@ -38,7 +37,6 @@ public class RMQConfigureTest {
         rmqConfigure.setIsVIPChannel("true");
         rmqConfigure.setUseTLS(true);
         rmqConfigure.setLoginRequired(true);
-        rmqConfigure.setMsgTrackTopicName(null);
         rmqConfigure.setNamesrvAddr("127.0.0.1:9876");
         rmqConfigure.setTimeoutMillis(3000L);
     }
@@ -55,7 +53,6 @@ public class RMQConfigureTest {
         Assert.assertEquals(rmqConfigure.getIsVIPChannel(), "true");
         Assert.assertTrue(rmqConfigure.isEnableDashBoardCollect());
         Assert.assertTrue(rmqConfigure.isLoginRequired());
-        Assert.assertEquals(rmqConfigure.getMsgTrackTopicNameOrDefault(), TopicValidator.RMQ_SYS_TRACE_TOPIC);
         Assert.assertEquals(rmqConfigure.getNamesrvAddr(), "127.0.0.1:9876");
         Assert.assertEquals(rmqConfigure.getTimeoutMillis().longValue(), 3000L);
         ErrorPageRegistrar registrar = rmqConfigure.errorPageRegistrar();

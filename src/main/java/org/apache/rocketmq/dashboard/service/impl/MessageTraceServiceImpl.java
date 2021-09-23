@@ -33,6 +33,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.client.trace.TraceType;
 import org.apache.rocketmq.common.Pair;
 import org.apache.rocketmq.common.message.MessageExt;
+import org.apache.rocketmq.common.topic.TopicValidator;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.model.MessageTraceView;
 import org.apache.rocketmq.dashboard.model.trace.ProducerNode;
@@ -65,7 +66,7 @@ public class MessageTraceServiceImpl implements MessageTraceService {
 
     @Override
     public List<MessageTraceView> queryMessageTraceKey(String key) {
-        String queryTopic = configure.getMsgTrackTopicNameOrDefault();
+        String queryTopic = TopicValidator.RMQ_SYS_TRACE_TOPIC;
         logger.info("query data topic name is:{}", queryTopic);
         return queryMessageTraceByTopicAndKey(queryTopic, key);
     }
@@ -86,8 +87,11 @@ public class MessageTraceServiceImpl implements MessageTraceService {
     }
 
     @Override
-    public MessageTraceGraph queryMessageTraceGraph(String key) {
-        List<MessageTraceView> messageTraceViews = queryMessageTraceKey(key);
+    public MessageTraceGraph queryMessageTraceGraph(String key, String topic) {
+        if (StringUtils.isEmpty(topic)) {
+            topic = TopicValidator.RMQ_SYS_TRACE_TOPIC;
+        }
+        List<MessageTraceView> messageTraceViews = queryMessageTraceByTopicAndKey(topic, key);
         return buildMessageTraceGraph(messageTraceViews);
     }
 

@@ -18,7 +18,6 @@ package org.apache.rocketmq.dashboard.config;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.common.MixAll;
-import org.apache.rocketmq.common.topic.TopicValidator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -47,8 +46,6 @@ public class RMQConfigure {
     private String dataPath = "/tmp/rocketmq-console/data";
 
     private boolean enableDashBoardCollect;
-
-    private String msgTrackTopicName;
 
     private boolean loginRequired = false;
 
@@ -121,17 +118,6 @@ public class RMQConfigure {
 
     public void setEnableDashBoardCollect(String enableDashBoardCollect) {
         this.enableDashBoardCollect = Boolean.valueOf(enableDashBoardCollect);
-    }
-
-    public String getMsgTrackTopicNameOrDefault() {
-        if (StringUtils.isEmpty(msgTrackTopicName)) {
-            return TopicValidator.RMQ_SYS_TRACE_TOPIC;
-        }
-        return msgTrackTopicName;
-    }
-
-    public void setMsgTrackTopicName(String msgTrackTopicName) {
-        this.msgTrackTopicName = msgTrackTopicName;
     }
 
     public boolean isLoginRequired() {

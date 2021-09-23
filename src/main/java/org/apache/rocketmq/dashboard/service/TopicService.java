@@ -29,7 +29,7 @@ import org.apache.rocketmq.dashboard.model.request.TopicConfigInfo;
 import java.util.List;
 
 public interface TopicService {
-    TopicList fetchAllTopicList(boolean skipSysProcess);
+    TopicList fetchAllTopicList(boolean skipSysProcess, boolean skipRetryAndDlq);
 
     TopicStatsTable stats(String topic);
 

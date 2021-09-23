@@ -23,7 +23,7 @@ module.controller('producerController', ['$scope', '$http','Notification',functi
         method: "GET",
         url: "topic/list.query",
         params:{
-            skipSysProcess:"true"
+            skipSysProcess: true
         }
     }).success(function (resp) {
         if(resp.status ==0){

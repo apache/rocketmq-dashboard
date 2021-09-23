@@ -27,5 +27,5 @@ public interface MessageTraceService {
 
     List<MessageTraceView> queryMessageTraceByTopicAndKey(final String topic, final String key);
 
-    MessageTraceGraph queryMessageTraceGraph(final String key);
+    MessageTraceGraph queryMessageTraceGraph(final String key, final String traceTopic);
 }

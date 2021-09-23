@@ -26,9 +26,13 @@ const TIME_FORMAT_PATTERN = "YYYY-MM-DD HH:mm:ss.SSS";
 const DEFAULT_DISPLAY_DURATION = 10 * 1000
 // transactionTraceNode do not have costTime, assume it cost 50ms
 const TRANSACTION_CHECK_COST_TIME = 50;
+const RETRY_GROUP_TOPIC_PREFIX = "%RETRY%";
+const DLQ_GROUP_TOPIC_PREFIX = "%DLQ%";
 module.controller('messageTraceController', ['$scope', '$routeParams', 'ngDialog', '$http', 'Notification', function ($scope, $routeParams, ngDialog, $http, Notification) {
     $scope.allTopicList = [];
     $scope.selectedTopic = [];
+    $scope.allTraceTopicList = [];
+    $scope.selectedTraceTopic = [];
     $scope.key = "";
     $scope.messageId = $routeParams.messageId;
     $scope.queryMessageByTopicAndKeyResult = [];
@@ -39,16 +43,25 @@ module.controller('messageTraceController', ['$scope', '$routeParams', 'ngDialog
         method: "GET",
         url: "topic/list.query",
         params: {
-            skipSysProcess: "true"
+            skipSysProcess: true
         }
     }).success(function (resp) {
         if (resp.status == 0) {
             $scope.allTopicList = resp.data.topicList.sort();
-            console.log($scope.allTopicList);
+            console.log($scope.allTopicList)
+            for (const topic of $scope.allTopicList) {
+                if (topic.startsWith(RETRY_GROUP_TOPIC_PREFIX)
+                    || topic.startsWith(DLQ_GROUP_TOPIC_PREFIX)) {
+                    continue;
+                }
+                $scope.allTraceTopicList.push(topic);
+            }
+            console.log($scope.allTraceTopicList)
         } else {
             Notification.error({message: resp.errMsg, delay: 2000});
         }
     });
+
     $scope.timepickerBegin = moment().subtract(1, 'hour').format('YYYY-MM-DD HH:mm');
     $scope.timepickerEnd = moment().add(1, 'hour').format('YYYY-MM-DD HH:mm');
     $scope.timepickerOptions = {format: 'YYYY-MM-DD HH:mm', showClear: true};
@@ -99,7 +112,7 @@ module.controller('messageTraceController', ['$scope', '$routeParams', 'ngDialog
             url: "messageTrace/viewMessageTraceGraph.query",
             params: {
                 msgId: messageId,
-                topic: topic
+                traceTopic: topic
             }
         }).success(function (resp) {
             if (resp.status == 0) {

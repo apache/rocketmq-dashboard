@@ -105,5 +105,8 @@ var en = {
     "NO_DATA":"Don't have ",
     "SYSTEM":"SYSTEM",
     "WELCOME":"Hi, welcome using RocketMQ Dashboard",
-    "ENABLE_MESSAGE_TRACE":"Enable Message Trace"
+    "ENABLE_MESSAGE_TRACE":"Enable Message Trace",
+    "MESSAGE_TRACE_DETAIL":"Message Trace Detail",
+    "TRACE_TOPIC":"TraceTopic",
+    "SELECT_TRACE_TOPIC":"selectTraceTopic"
 }

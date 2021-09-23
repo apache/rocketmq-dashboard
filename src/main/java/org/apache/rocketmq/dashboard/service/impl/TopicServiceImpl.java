@@ -20,6 +20,7 @@ package org.apache.rocketmq.dashboard.service.impl;
 import com.google.common.base.Throwables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.acl.common.AclClientRPCHook;
 import org.apache.rocketmq.acl.common.SessionCredentials;
@@ -36,6 +37,7 @@ import org.apache.rocketmq.common.protocol.body.GroupList;
 import org.apache.rocketmq.common.protocol.body.TopicList;
 import org.apache.rocketmq.common.protocol.route.BrokerData;
 import org.apache.rocketmq.common.protocol.route.TopicRouteData;
+import org.apache.rocketmq.common.topic.TopicValidator;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.model.request.SendTopicMessageRequest;
 import org.apache.rocketmq.dashboard.model.request.TopicConfigInfo;
@@ -61,23 +63,23 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
     private RMQConfigure configure;
 
     @Override
-    public TopicList fetchAllTopicList(boolean skipSysProcess) {
+    public TopicList fetchAllTopicList(boolean skipSysProcess, boolean skipRetryAndDlq) {
         try {
             TopicList allTopics = mqAdminExt.fetchAllTopicList();
-            if (skipSysProcess) {
-                return allTopics;
-            }
-
             TopicList sysTopics = getSystemTopicList();
-            Set<String> topics = new HashSet<>();
-
-            for (String topic : allTopics.getTopicList()) {
-                if (sysTopics.getTopicList().contains(topic)) {
-                    topics.add(String.format("%s%s", "%SYS%", topic));
-                } else {
-                    topics.add(topic);
-                }
-            }
+            Set<String> topics =
+                allTopics.getTopicList().stream().map(topic -> {
+                    if (!skipSysProcess && sysTopics.getTopicList().contains(topic)) {
+                        topic = String.format("%s%s", "%SYS%", topic);
+                    }
+                    return topic;
+                }).filter(topic -> {
+                    if (skipRetryAndDlq) {
+                        return !(topic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)
+                            || topic.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX));
+                    }
+                    return true;
+                }).collect(Collectors.toSet());
             allTopics.getTopicList().clear();
             allTopics.getTopicList().addAll(topics);
             return allTopics;
@@ -209,7 +211,7 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
     }
 
     public DefaultMQProducer buildDefaultMQProducer(String producerGroup, RPCHook rpcHook, boolean traceEnabled) {
-        DefaultMQProducer defaultMQProducer = new DefaultMQProducer(producerGroup, rpcHook, traceEnabled, configure.getMsgTrackTopicNameOrDefault());
+        DefaultMQProducer defaultMQProducer = new DefaultMQProducer(producerGroup, rpcHook, traceEnabled, TopicValidator.RMQ_SYS_TRACE_TOPIC);
         defaultMQProducer.setUseTLS(configure.isUseTLS());
         return defaultMQProducer;
     }
