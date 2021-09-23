@@ -51,12 +51,9 @@ public class TopicController {
 
     @RequestMapping(value = "/list.query", method = RequestMethod.GET)
     @ResponseBody
-    public Object list(@RequestParam(value = "skipSysProcess", required = false) String skipSysProcess) {
-        boolean flag = false;
-        if ("true".equals(skipSysProcess)) {
-            flag = true;
-        }
-        return topicService.fetchAllTopicList(flag);
+    public Object list(@RequestParam(value = "skipSysProcess", required = false) boolean skipSysProcess,
+        @RequestParam(value = "skipRetryAndDlq", required = false) boolean skipRetryAndDlq) {
+        return topicService.fetchAllTopicList(skipSysProcess, skipRetryAndDlq);
     }
 
     @RequestMapping(value = "/stats.query", method = RequestMethod.GET)

@@ -15,6 +15,20 @@
   ~ limitations under the License.
   -->
 <div class="container-fluid" id="deployHistoryList">
+    <div class="modal-header">
+        <div class="row">
+            <label style="color: #000000">{{ 'TRACE_TOPIC' | translate }}:</label>
+            <div style="display: inline-block; min-width: 300px">
+                <select name="mySelect" chosen
+                        ng-model="selectedTraceTopic"
+                        ng-options="item for item in allTraceTopicList"
+                        required>
+                    <option value=""></option>
+                </select>
+            </div>
+            <div style="display: inline-block; color: #BDBDBD">(if no select, it will use RMQ_SYS_TRACE_TOPIC)</div>
+        </div>
+    </div>
     <div class="modal-body">
         <div ng-cloak="" class="tabsdemoDynamicHeight">
             <md-content>
@@ -64,7 +78,7 @@
                                     </td>
                                     <td class="text-center">
                                         <button class="btn btn-raised btn-sm btn-primary" type="button"
-                                                ng-click="queryMessageTraceByMessageId(item.msgId,item.topic)">Message Trace Detail
+                                                ng-click="queryMessageTraceByMessageId(item.msgId, selectedTraceTopic)">{{ 'MESSAGE_TRACE_DETAIL' | translate }}
                                         </button>
                                     </td>
                                 </tr>
@@ -114,7 +128,7 @@
                                     </td>
                                     <td class="text-center">
                                         <button class="btn btn-raised btn-sm btn-primary" type="button"
-                                                ng-click="queryMessageTraceByMessageId(item.msgId,item.topic)">Message Trace Detail
+                                                ng-click="queryMessageTraceByMessageId(item.msgId, selectedTraceTopic)">{{ 'MESSAGE_TRACE_DETAIL' | translate }}
                                         </button>
                                     </td>
                                 </tr>
@@ -274,14 +288,14 @@
                                         <tr ng-repeat="consumeNode in subscriptionNode.consumeNodeList">
                                             <td class="text-center">
                                                 {{consumeNode.beginTimestamp < 0 ? 'N/A' :
-                                                    (consumeNode.beginTimestamp | date:'yyyy-MM-dd HH:mm:ss.sss')}}
+                                                (consumeNode.beginTimestamp | date:'yyyy-MM-dd HH:mm:ss.sss')}}
                                             </td>
                                             <td class="text-center">
                                                 {{consumeNode.endTimestamp < 0 ? 'N/A' :
-                                                    (consumeNode.endTimestamp | date:'yyyy-MM-dd HH:mm:ss.sss')}}
+                                                (consumeNode.endTimestamp | date:'yyyy-MM-dd HH:mm:ss.sss')}}
                                             </td>
                                             <td class="text-center">{{consumeNode.costTime < 0 ? 'N/A' :
-                                                    ((consumeNode.costTime === 0 ? '<1' : consumeNode.costTime) + 'ms')}}
+                                                ((consumeNode.costTime === 0 ? '<1' : consumeNode.costTime) + 'ms')}}
                                             </td>
                                             <td class="text-center">{{consumeNode.status}}</td>
                                             <td class="text-center">
@@ -302,10 +316,12 @@
             </div>
         </div>
     </md-content>
-    <div class="ngdialog-buttons">
-        <button type="button" class="ngdialog-button ngdialog-button-secondary"
-                ng-click="closeThisDialog('Cancel')">{{ 'CLOSE' | translate }}
-        </button>
+    <div class="modal-footer">
+        <div class="ngdialog-buttons">
+            <button type="button" class="ngdialog-button ngdialog-button-secondary"
+                    ng-click="closeThisDialog('Cancel')">{{ 'CLOSE' | translate }}
+            </button>
+        </div>
     </div>
 </script>
 
