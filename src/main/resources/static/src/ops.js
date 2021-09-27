@@ -16,17 +16,18 @@
  */
 
 app.controller('opsController', ['$scope', '$location', '$http', 'Notification', 'remoteApi', 'tools', '$window', function ($scope, $location, $http, Notification, remoteApi, tools, $window) {
-    $scope.namesvrAddrList = "";
+    $scope.namesvrAddrList = [];
     $scope.useVIPChannel = true;
     $scope.useTLS = false;
     $scope.userRole = $window.sessionStorage.getItem("userrole");
     $scope.writeOperationEnabled =  $scope.userRole == null ? true : ($scope.userRole == 1 ? true : false);
+    $scope.inputReadonly = !$scope.writeOperationEnabled;
     $http({
         method: "GET",
         url: "ops/homePage.query"
     }).success(function (resp) {
         if (resp.status == 0) {
-            $scope.namesvrAddrList = resp.data.namesvrAddrList.join(";");
+            $scope.namesvrAddrList = resp.data.namesvrAddrList;
             $scope.useVIPChannel = resp.data.useVIPChannel;
             $scope.useTLS = resp.data.useTLS;
         } else {
@@ -34,11 +35,15 @@ app.controller('opsController', ['$scope', '$location', '$http', 'Notification',
         }
     });
 
+    $scope.eleChange = function (data){
+        $scope.namesvrAddrList = data;
+    }
+
     $scope.updateNameSvrAddr = function () {
         $http({
             method: "POST",
             url: "ops/updateNameSvrAddr.do",
-            params: {nameSvrAddrList: $scope.namesvrAddrList}
+            params: {nameSvrAddrList: $scope.namesvrAddrList.join(";")}
         }).success(function (resp) {
             if (resp.status == 0) {
                 Notification.info({message: "SUCCESS", delay: 2000});
