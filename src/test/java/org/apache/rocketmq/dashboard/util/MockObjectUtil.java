@@ -135,10 +135,13 @@ public class MockObjectUtil {
 
     public static SubscriptionGroupWrapper createSubscriptionGroupWrapper() {
         SubscriptionGroupWrapper wrapper = new SubscriptionGroupWrapper();
+        ConcurrentMap<String, SubscriptionGroupConfig> subscriptionGroupTable = new ConcurrentHashMap(2);
         SubscriptionGroupConfig config = new SubscriptionGroupConfig();
         config.setGroupName("group_test");
-        ConcurrentMap<String, SubscriptionGroupConfig> subscriptionGroupTable = new ConcurrentHashMap(2);
         subscriptionGroupTable.put("group_test", config);
+        SubscriptionGroupConfig sysGroupConfig = new SubscriptionGroupConfig();
+        sysGroupConfig.setGroupName(MixAll.TOOLS_CONSUMER_GROUP);
+        subscriptionGroupTable.put(MixAll.TOOLS_CONSUMER_GROUP, sysGroupConfig);
         wrapper.setSubscriptionGroupTable(subscriptionGroupTable);
         wrapper.setDataVersion(new DataVersion());
         return wrapper;
