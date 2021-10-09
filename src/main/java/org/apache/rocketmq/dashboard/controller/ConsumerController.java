@@ -47,8 +47,8 @@ public class ConsumerController {
 
     @RequestMapping(value = "/groupList.query")
     @ResponseBody
-    public Object list() {
-        return consumerService.queryGroupList();
+    public Object list(@RequestParam(value = "skipSysGroup", required = false) boolean skipSysGroup) {
+        return consumerService.queryGroupList(skipSysGroup);
     }
 
     @RequestMapping(value = "/group.query")

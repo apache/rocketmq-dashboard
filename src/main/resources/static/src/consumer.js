@@ -43,6 +43,8 @@ module.controller('consumerController', ['$scope', 'ngDialog', '$http', 'Notific
     };
     $scope.userRole = $window.sessionStorage.getItem("userrole");
     $scope.writeOperationEnabled =  $scope.userRole == null ? true : ($scope.userRole == 1 ? true : false);
+    $scope.filterNormal = true;
+    $scope.filterSystem = false;
 
     $scope.doSort = function () {// todo  how to change this fe's code ? (it's dirty)
         if ($scope.sortKey == 'diffTotal') {
@@ -125,13 +127,37 @@ module.controller('consumerController', ['$scope', 'ngDialog', '$http', 'Notific
         $scope.filterList(1)
     });
 
+    $scope.$watch('filterNormal', function () {
+        $scope.filterList(1);
+    });
+
+    $scope.$watch('filterSystem', function () {
+        $scope.filterList(1);
+    });
+
+    $scope.filterByType = function (str) {
+        if ($scope.filterSystem) {
+            if (str.startsWith("%S")) {
+                return true
+            }
+        }
+        if ($scope.filterNormal) {
+            if (str.startsWith("%") == false) {
+                return true
+            }
+        }
+        return false;
+    };
+
     $scope.filterList = function (currentPage) {
         var lowExceptStr = $scope.filterStr.toLowerCase();
         var canShowList = [];
         $scope.allConsumerGrouopList.forEach(function (element) {
             console.log(element)
-            if (element.group.toLowerCase().indexOf(lowExceptStr) != -1) {
-                canShowList.push(element);
+            if ($scope.filterByType(element.group)) {
+                if (element.group.toLowerCase().indexOf(lowExceptStr) != -1) {
+                    canShowList.push(element);
+                }
             }
         });
         $scope.paginationConf.totalItems = canShowList.length;
