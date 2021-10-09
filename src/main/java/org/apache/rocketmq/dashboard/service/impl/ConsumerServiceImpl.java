@@ -24,13 +24,16 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.common.MQVersion;
+import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.admin.ConsumeStats;
 import org.apache.rocketmq.common.admin.RollbackStats;
 import org.apache.rocketmq.common.message.MessageQueue;
@@ -62,8 +65,21 @@ import static com.google.common.base.Throwables.propagate;
 public class ConsumerServiceImpl extends AbstractCommonService implements ConsumerService {
     private Logger logger = LoggerFactory.getLogger(ConsumerServiceImpl.class);
 
+    private static final Set<String> SYSTEM_GROUP_SET = new HashSet<>();
+
+    static {
+        SYSTEM_GROUP_SET.add(MixAll.TOOLS_CONSUMER_GROUP);
+        SYSTEM_GROUP_SET.add(MixAll.FILTERSRV_CONSUMER_GROUP);
+        SYSTEM_GROUP_SET.add(MixAll.SELF_TEST_CONSUMER_GROUP);
+        SYSTEM_GROUP_SET.add(MixAll.ONS_HTTP_PROXY_GROUP);
+        SYSTEM_GROUP_SET.add(MixAll.CID_ONSAPI_PULL_GROUP);
+        SYSTEM_GROUP_SET.add(MixAll.CID_ONSAPI_PERMISSION_GROUP);
+        SYSTEM_GROUP_SET.add(MixAll.CID_ONSAPI_OWNER_GROUP);
+        SYSTEM_GROUP_SET.add(MixAll.CID_SYS_RMQ_TRANS);
+    }
+
     @Override
-    public List<GroupConsumeInfo> queryGroupList() {
+    public List<GroupConsumeInfo> queryGroupList(boolean skipSysGroup) {
         Set<String> consumerGroupSet = Sets.newHashSet();
         try {
             ClusterInfo clusterInfo = mqAdminExt.examineBrokerClusterInfo();
@@ -78,6 +94,14 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
         List<GroupConsumeInfo> groupConsumeInfoList = Lists.newArrayList();
         for (String consumerGroup : consumerGroupSet) {
             groupConsumeInfoList.add(queryGroup(consumerGroup));
+        }
+        if (!skipSysGroup) {
+            groupConsumeInfoList.stream().map(group -> {
+                if (SYSTEM_GROUP_SET.contains(group.getGroup())) {
+                    group.setGroup(String.format("%s%s", "%SYS%", group.getGroup()));
+                }
+                return group;
+            }).collect(Collectors.toList());
         }
         Collections.sort(groupConsumeInfoList);
         return groupConsumeInfoList;

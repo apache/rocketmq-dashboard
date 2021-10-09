@@ -92,7 +92,7 @@ public class ConsumerControllerTest extends BaseControllerTest {
         requestBuilder = MockMvcRequestBuilders.get(url);
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data", hasSize(1)))
+            .andExpect(jsonPath("$.data", hasSize(2)))
             .andExpect(jsonPath("$.data[0].group").value("group_test"))
             .andExpect(jsonPath("$.data[0].consumeType").value(ConsumeType.CONSUME_ACTIVELY.name()))
             .andExpect(jsonPath("$.data[0].messageModel").value(MessageModel.CLUSTERING.name()));

@@ -24,27 +24,25 @@
                     <label>{{ 'SUBSCRIPTION_GROUP' | translate}}:</label>
                     <input type="text" class="form-control" ng-model="filterStr">
                 </div>
-                <div class="form-group form-group-sm">
-                    <button class="btn btn-raised btn-sm btn-primary" type="button" ng-show="{{writeOperationEnabled}}"
-                            ng-click="openAddDialog()">{{'ADD' | translate}}/ {{'UPDATE' | translate}}
-                    </button>
-                </div>
-                <div class="form-group form-group-sm">
-                    <button class="btn btn-raised btn-sm btn-primary" type="button" ng-click="refreshConsumerData()">
-                        {{'REFRESH' | translate}}
-                    </button>
-                </div>
-                <div class="form-group form-group-sm">
-                    <md-switch class="md-primary" md-no-ink aria-label="Switch No Ink" ng-model="intervalProcessSwitch">
-                        {{'AUTO_REFRESH' | translate}}
-                    </md-switch>
-                </div>
+                <md-checkbox aria-label="Checkbox" ng-model="filterNormal" class="md-primary">{{'NORMAL' | translate}}
+                </md-checkbox>
+                <md-checkbox aria-label="Checkbox" ng-model="filterSystem" class="md-primary">{{'SYSTEM' | translate}}
+                </md-checkbox>
+                <button class="btn btn-raised btn-sm btn-primary" type="button" ng-show="{{writeOperationEnabled}}"
+                        ng-click="openAddDialog()">{{'ADD' | translate}}/ {{'UPDATE' | translate}}
+                </button>
+                <button class="btn btn-raised btn-sm btn-primary" type="button" ng-click="refreshConsumerData()">
+                    {{'REFRESH' | translate}}
+                </button>
+                <md-switch class="md-primary" md-no-ink aria-label="Switch No Ink" ng-model="intervalProcessSwitch">
+                    {{'AUTO_REFRESH' | translate}}
+                </md-switch>
             </form>
         </div>
         <br>
         <div>
             <div id="deployList" class="row">
-                <table class="table table-bordered">
+                <table class="table table-bordered text-middle">
                     <tr>
                         <th class="text-center"><a ng-click="sortByKey('group')">{{ 'SUBSCRIPTION_GROUP' | translate}}</a></th>
                         <th class="text-center"><a ng-click="sortByKey('count')">{{ 'QUANTITY' | translate}}</a></th>
@@ -55,15 +53,17 @@
                         <th class="text-center"><a ng-click="sortByKey('diffTotal')">{{ 'DELAY' | translate}}</a></th>
                         <th class="text-center">{{ 'OPERATION' | translate}}</th>
                     </tr>
-                    <tr ng-repeat="consumerGroup in consumerGroupShowList">
-                        <td class="text-left">{{consumerGroup.group}}</td>
+                    <tr ng-repeat="consumerGroup in consumerGroupShowList"
+                        ng-init="sysFlag = consumerGroup.group.startsWith('%SYS%')">
+                        <td class="text-center"><font color={{sysFlag?"red":""}}>
+                            {{sysFlag?consumerGroup.group.substring(5):consumerGroup.group}}</font></td>
                         <td class="text-center">{{consumerGroup.count}}</td>
                         <td class="text-center">{{consumerGroup.version}}</td>
                         <td class="text-center">{{consumerGroup.consumeType}}</td>
                         <td class="text-center">{{consumerGroup.messageModel}}</td>
                         <td class="text-center">{{consumerGroup.consumeTps}}</td>
                         <td class="text-center">{{consumerGroup.diffTotal}}</td>
-                        <td class="text-center">
+                        <td class="text-left">
                             <button name="client" ng-click="client(consumerGroup.group)"
                                     class="btn btn-raised btn-sm btn-primary"
                                     type="button">{{'CLIENT' | translate}}
@@ -80,7 +80,7 @@
                             <!--</button>-->
                             <button name="client" ng-click="delete(consumerGroup.group)"
                                     class="btn btn-raised btn-sm btn-danger"
-                                    ng-show="{{writeOperationEnabled}}"
+                                    ng-show="{{!sysFlag && writeOperationEnabled}}"
                                     type="button">{{'DELETE' | translate}}
                             </button>
 
@@ -284,7 +284,7 @@
                     <!--</div>-->
                     <!--</div>-->
                     <div class="form-group">
-                        <label class="control-label col-sm-4">brokerId:</label>
+                        <label class="control-label col-sm-2">brokerId:</label>
                         <div class="col-sm-8">
                             <input class="form-control" ng-model="item.subscriptionGroupConfig.brokerId" type="text"
                                    ng-disabled="{{!ngDialogData.writeOperationEnabled}}" required/>
@@ -292,7 +292,7 @@
                         </div>
                     </div>
                     <div class="form-group">
-                        <label class="control-label col-sm-4">whichBrokerWhenConsumeSlowly:</label>
+                        <label class="control-label col-sm-2">whichBrokerWhenConsumeSlowly:</label>
                         <div class="col-sm-8">
                             <input class="form-control"
                                    ng-model="item.subscriptionGroupConfig.whichBrokerWhenConsumeSlowly" type="text"

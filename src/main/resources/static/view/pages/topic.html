@@ -48,7 +48,7 @@
                     </tr>
                     <tr ng-repeat="fTopic in topicShowList"
                         ng-init="sysFlag = fTopic.startsWith('%SYS%'); topic = sysFlag?fTopic.substring(5):fTopic">
-                        <td class="text-left"><font color={{sysFlag?"red":""}}>{{topic}}</font></td>
+                        <td class="text-center"><font color={{sysFlag?"red":""}}>{{topic}}</font></td>
                         <td class="text-left">
                             <button class="btn btn-raised btn-sm btn-primary" type="button"
                                     ng-click="statsView(topic)">{{'STATUS' | translate}}
