@@ -19,19 +19,19 @@
         <div ng-cloak="" class="tabsdemoDynamicHeight">
             <md-content>
                 <md-tabs md-dynamic-height="" md-border-bottom="">
-                    <md-tab label="Topic">
+                    <md-tab label="Consumer">
                         <h5 class="md-display-5">Total {{paginationConf.totalItems}} Messages</h5>
                         <md-content class="md-padding" style="min-height:600px">
                             <div class="row">
                                 <form class="form-inline pull-left">
                                     <div class="form-group">
-                                        <label>{{'TOPIC' | translate}}:</label>
+                                        <label>{{'CONSUMER' | translate}}:</label>
                                     </div>
                                     <div class="form-group ">
                                         <div style="width: 300px">
-                                            <select name="mySelectTopic" chosen
-                                                    ng-model="selectedTopic"
-                                                    ng-options="item for item in allTopicList"
+                                            <select name="mySelectGroup" chosen
+                                                    ng-model="selectedConsumerGroup"
+                                                    ng-options="item for item in allConsumerGroupList"
                                                     ng-change="onChangeQueryCondition()"
                                                     required>
                                                 <option value=""></option>
@@ -61,8 +61,8 @@
                                     <button id="searchAppsButton" type="button"
                                             class="btn btn-raised btn-sm  btn-primary"
                                             data-toggle="modal"
-                                            ng-click="queryMessagePageByTopic()">
-                                        <span class="glyphicon glyphicon-search"></span>{{ 'SEARCH' | translate}}
+                                            ng-click="queryDlqMessageByConsumerGroup()">
+                                        <span class="glyphicon glyphicon-search"></span> {{ 'SEARCH' | translate}}
                                     </button>
                                 </form>
                                 <table class="table table-bordered text-middle">
@@ -72,6 +72,9 @@
                                         <th class="text-center">Key</th>
                                         <th class="text-center">StoreTime</th>
                                         <th class="text-center">Operation</th>
+                                    </tr>
+                                    <tr style="display: none" id="noMsgTip">
+                                        <td colspan="6" style="text-align: center">{{'NO_MATCH_RESULT' | translate}}</td>
                                     </tr>
                                     <tr ng-repeat="item in messageShowList">
                                         <td class="text-center">{{item.msgId}}</td>
@@ -81,65 +84,21 @@
                                         </td>
                                         <td class="text-center">
                                             <button class="btn btn-raised btn-sm btn-primary" type="button"
-                                                    ng-click="queryMessageByMessageId(item.msgId,item.topic)">{{'MESSAGE_DETAIL' | translate}}
+                                                    ng-click="queryDlqMessageDetail(item.msgId, selectedConsumerGroup)">
+                                                {{'MESSAGE_DETAIL' | translate}}
+                                            </button>
+                                            <button class="btn btn-raised btn-sm btn-primary" type="button"
+                                                    ng-click="resendDlqMessage(item, selectedConsumerGroup)">
+                                                {{'RESEND_MESSAGE' | translate}}
+                                            </button>
+                                            <button class="btn btn-raised btn-sm btn-primary" type="button"
+                                                    ng-click="exportDlqMessage(item.msgId, selectedConsumerGroup)">
+                                                {{'EXPORT' | translate}}
                                             </button>
                                         </td>
                                     </tr>
                                 </table>
                                 <tm-pagination conf="paginationConf"></tm-pagination>
-                            </div>
-                        </md-content>
-                    </md-tab>
-                    <md-tab label="Message Key">
-                        <h5 class="md-display-5">Only Return 64 Messages</h5>
-                        <md-content class="md-padding" style="min-height:600px">
-                            <div class="row">
-                                <form class="form-inline pull-left">
-                                    <div class="form-group">
-                                        <label>Topic:</label>
-                                    </div>
-                                    <div class="form-group">
-                                        <div style="width: 300px">
-                                            <select name="mySelectTopic" chosen
-                                                    ng-model="selectedTopic"
-                                                    ng-options="item for item in allTopicList"
-                                                    required>
-                                                <option value=""></option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div class="form-group">
-                                        <label>Key:</label>
-                                        <input class="form-control" style="width: 450px" type="text" ng-model="key"
-                                               required/>
-                                    </div>
-
-                                    <button type="button" class="btn btn-raised btn-sm  btn-primary" data-toggle="modal"
-                                            ng-click="queryMessageByTopicAndKey()">
-                                        <span class="glyphicon glyphicon-search"></span>{{ 'SEARCH' | translate}}
-                                    </button>
-                                </form>
-                                <table class="table table-bordered text-middle">
-                                    <tr>
-                                        <th class="text-center">Message ID</th>
-                                        <th class="text-center">Tag</th>
-                                        <th class="text-center">Key</th>
-                                        <th class="text-center">StoreTime</th>
-                                        <th class="text-center">Operation</th>
-                                    </tr>
-                                    <tr ng-repeat="item in queryMessageByTopicAndKeyResult">
-                                        <td class="text-center">{{item.msgId}}</td>
-                                        <td class="text-center">{{item.properties.TAGS}}</td>
-                                        <td class="text-center">{{item.properties.KEYS}}</td>
-                                        <td class="text-center">{{item.storeTimestamp | date:'yyyy-MM-dd HH:mm:ss'}}
-                                        </td>
-                                        <td class="text-center">
-                                            <button class="btn btn-raised btn-sm btn-primary" type="button"
-                                                    ng-click="queryMessageByMessageId(item.msgId,item.topic)">Message Detail
-                                            </button>
-                                        </td>
-                                    </tr>
-                                </table>
                             </div>
                         </md-content>
                     </md-tab>
@@ -149,13 +108,14 @@
                             <div class="row">
                                 <form class="form-inline pull-left">
                                     <div class="form-group">
-                                        <label>Topic:</label>
+                                        <label>{{'CONSUMER' | translate}}:</label>
                                     </div>
                                     <div class="form-group ">
                                         <div style="width: 300px">
-                                            <select name="mySelectTopic" chosen
-                                                    ng-model="selectedTopic"
-                                                    ng-options="item for item in allTopicList"
+                                            <select name="mySelectGroup" chosen
+                                                    ng-model="selectedConsumerGroup"
+                                                    ng-options="item for item in allConsumerGroupList"
+                                                    ng-change="onChangeQueryCondition()"
                                                     required>
                                                 <option value=""></option>
                                             </select>
@@ -167,10 +127,40 @@
                                                required/>
                                     </div>
                                     <button type="button" class="btn btn-raised btn-sm  btn-primary" data-toggle="modal"
-                                            ng-click="queryMessageByMessageId(messageId,selectedTopic)">
-                                        <span class="glyphicon glyphicon-search"></span>{{ 'SEARCH' | translate}}
+                                            ng-click="queryDlqMessageByMessageId(messageId, selectedConsumerGroup)">
+                                        <span class="glyphicon glyphicon-search"></span> {{ 'SEARCH' | translate}}
                                     </button>
                                 </form>
+                                <table class="table table-bordered text-middle">
+                                    <tr>
+                                        <th class="text-center">Message ID</th>
+                                        <th class="text-center">Tag</th>
+                                        <th class="text-center">Key</th>
+                                        <th class="text-center">StoreTime</th>
+                                        <th class="text-center">Operation</th>
+                                    </tr>
+                                    <tr ng-repeat="item in queryDlqMessageByMessageIdResult">
+                                        <td class="text-center">{{item.msgId}}</td>
+                                        <td class="text-center">{{item.properties.TAGS}}</td>
+                                        <td class="text-center">{{item.properties.KEYS}}</td>
+                                        <td class="text-center">{{item.storeTimestamp | date:'yyyy-MM-dd HH:mm:ss'}}
+                                        </td>
+                                        <td class="text-center">
+                                            <button class="btn btn-raised btn-sm btn-primary" type="button"
+                                                    ng-click="queryDlqMessageDetail(item.msgId, selectedConsumerGroup)">
+                                                {{'MESSAGE_DETAIL' | translate}}
+                                            </button>
+                                            <button class="btn btn-raised btn-sm btn-primary" type="button"
+                                                    ng-click="resendDlqMessage(item, selectedConsumerGroup)">
+                                                {{'RESEND_MESSAGE' | translate}}
+                                            </button>
+                                            <button class="btn btn-raised btn-sm btn-primary" type="button"
+                                                    ng-click="exportDlqMessage(item.msgId, selectedConsumerGroup)">
+                                                {{'EXPORT' | translate}}
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </table>
                             </div>
                         </md-content>
                     </md-tab>
@@ -182,7 +172,7 @@
 </div>
 
 
-<script type="text/ng-template" id="messageDetailViewDialog">
+<script type="text/ng-template" id="dlqMessageDetailViewDialog">
     <md-content class="md-padding">
         <div>
             <form id="addAppForm" name="addAppForm" class="form-horizontal" novalidate>
@@ -196,6 +186,20 @@
                     <label class="control-label col-sm-2">Topic:</label>
                     <div class="col-sm-10">
                         <label class="form-control">{{ngDialogData.messageView.topic}}</label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="control-label col-sm-2">Properties:</label>
+                    <div class="col-sm-10">
+                        <textarea class="form-control"
+                                  style="min-height:60px; resize: none"
+                                  readonly>{{ngDialogData.messageView.properties}}</textarea>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="control-label col-sm-2">ReconsumeTimes:</label>
+                    <div class="col-sm-10">
+                        <label class="form-control">{{ngDialogData.messageView.reconsumeTimes}}</label>
                     </div>
                 </div>
                 <div class="form-group">
@@ -217,39 +221,22 @@
                     </div>
                 </div>
                 <div class="form-group">
+                    <label class="control-label col-sm-2">StoreHost:</label>
+                    <div class="col-sm-10">
+                        <label class="form-control">{{ngDialogData.messageView.storeHost}}</label>
+                    </div>
+                </div>
+                <div class="form-group">
                     <label class="control-label col-sm-2">Message body:</label>
                     <div class="col-sm-10">
                         <textarea class="form-control"
                                   ng-model="ngDialogData.messageView.messageBody"
-                                  style="min-height:200px; resize: none"
+                                  style="min-height:100px; resize: none"
                                   readonly></textarea>
                     </div>
                 </div>
             </form>
         </div>
-        <p>messageTrackList:</p>
-        <table class="table-bordered table text-middle">
-            <tr>
-                <th class="text-center">consumerGroup</th>
-                <th class="text-center">trackType</th>
-                <!--<th class="text-center">exceptionDesc</th>-->
-                <th class="text-center">Operation</th>
-            </tr>
-            <tr ng-repeat="item in ngDialogData.messageTrackList">
-                <td class="text-center">{{item.consumerGroup}}</td>
-                <td class="text-center">{{item.trackType}}</td>
-                <td class="text-center">
-                    <button class="btn btn-raised btn-sm btn-primary" type="button"
-                            ng-click="resendMessage(ngDialogData.messageView,item.consumerGroup)">
-                        {{ 'RESEND_MESSAGE' | translate}}
-                    </button>
-                    <button class="btn btn-raised btn-sm btn-primary" type="button"
-                            ng-click="showExceptionDesc(item.exceptionDesc)">
-                        {{ 'VIEW_EXCEPTION' | translate}}
-                    </button>
-                </td>
-            </tr>
-        </table>
     </md-content>
     <div class="modal-footer">
         <div class="ngdialog-buttons">
