@@ -3,45 +3,47 @@
 [![Average time to resolve an issue](http://isitmaintained.com/badge/resolution/apache/rocketmq-dashboard.svg)](http://isitmaintained.com/project/apache/rocketmq-dashboard "Average time to resolve an issue")
 [![Percentage of issues still open](http://isitmaintained.com/badge/open/apache/rocketmq-dashboard.svg)](http://isitmaintained.com/project/apache/rocketmq-dashboard "Percentage of issues still open")
 [![Twitter Follow](https://img.shields.io/twitter/follow/ApacheRocketMQ?style=social)](https://twitter.com/intent/follow?screen_name=ApacheRocketMQ)
-## How To Install
+## Quick Start
 
-### With Docker
+### Run with docker
 
-* get docker image
+#### Pull from [docker hub(rocketmq-dashboard)](https://hub.docker.com/r/apacherocketmq/rocketmq-dashboard/tags)
 
-```
-mvn clean package -Dmaven.test.skip=true docker:build
-```
-
-or
-
-```
-docker pull apacherocketmq/rocketmq-console:2.0.0
+```shell
+docker pull apacherocketmq/rocketmq-dashboard:latest
 ```
 
-> currently the newest available docker image is apacherocketmq/rocketmq-console:2.0.0
+#### Run it (use your own `rocketmq.namesrv.addr` and `port`)
 
-
-* run it (change namesvrAddr and port yourself)
-
-```
-docker run -e "JAVA_OPTS=-Drocketmq.namesrv.addr=127.0.0.1:9876 -Dcom.rocketmq.sendMessageWithVIPChannel=false" -p 8080:8080 -t apacherocketmq/rocketmq-console:2.0.0
+```shell
+docker run -d --name rocketmq-dashboard -e "JAVA_OPTS=-Drocketmq.namesrv.addr=127.0.0.1:9876" -p 8080:8080 -t apacherocketmq/rocketmq-dashboard:latest
 ```
 
-### Without Docker
-require java 1.8+
-```
+### Run with source code
+
+
+#### Prerequisite
+1. 64bit OS, Linux/Unix/Mac is recommended;
+2. 64bit JDK 1.8+;
+3. Maven 3.2.x;
+
+#### Maven spring-boot run
+
+```shell
 mvn spring-boot:run
 ```
 or
-```
+
+#### Maven build and run
+
+```shell
 mvn clean package -Dmaven.test.skip=true
 java -jar target/rocketmq-dashboard-1.0.1-SNAPSHOT.jar
 ```
 
 #### Tips
-* if you download package slow,you can change maven's mirror(maven's settings.xml)
-  
+* If you download the package slowly, you can change maven's mirror(maven's settings.xml)
+
   ```
   <mirrors>
       <mirror>
@@ -52,9 +54,8 @@ java -jar target/rocketmq-dashboard-1.0.1-SNAPSHOT.jar
       </mirror>
   </mirrors>
   ```
-  
-* if you use the rocketmq < 3.5.8,please add -Dcom.rocketmq.sendMessageWithVIPChannel=false when you start rocketmq-dashboard(or you can change it in ops page)
-* change the rocketmq.config.namesrvAddr in resource/application.properties.(or you can change it in ops page)
+
+* Change the rocketmq.config.namesrvAddr in resource/application.properties.(or you can change it in ops page)
 
 ## UserGuide
 
@@ -64,7 +65,7 @@ java -jar target/rocketmq-dashboard-1.0.1-SNAPSHOT.jar
 
 ## Contributing
 
-We are always very happy to have contributions, whether for trivial cleanups or big new features. Please see the RocketMQ main website to read [details](http://rocketmq.apache.org/docs/how-to-contribute/).
+We are always very happy to have contributions, whether for trivial cleanups or big new features. Please see the RocketMQ main website to read the [details](http://rocketmq.apache.org/docs/how-to-contribute/).
 
 ## License
-[Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.html) Copyright (C) Apache Software Foundation 
+[Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.html) Copyright (C) Apache Software Foundation
