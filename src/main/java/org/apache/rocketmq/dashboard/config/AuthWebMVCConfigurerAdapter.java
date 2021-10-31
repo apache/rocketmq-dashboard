@@ -30,6 +30,7 @@ import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.method.support.ModelAndViewContainer;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+import org.springframework.web.servlet.config.annotation.ViewControllerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurerAdapter;
 
 import javax.annotation.Resource;
@@ -85,5 +86,10 @@ public class AuthWebMVCConfigurerAdapter extends WebMvcConfigurerAdapter {
         });
 
         super.addArgumentResolvers(argumentResolvers);  //REVIEW ME
+    }
+
+    @Override
+    public void addViewControllers(ViewControllerRegistry registry) {
+        registry.addViewController("*.htm").setViewName("forward:/app.html");
     }
 }
