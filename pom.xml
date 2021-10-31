@@ -100,6 +100,8 @@
         <mockito-inline.version>3.3.3</mockito-inline.version>
         <jaxb-api.version>2.3.1</jaxb-api.version>
         <commons-pool2.version>2.4.3</commons-pool2.version>
+        <easyexcel.version>2.2.10</easyexcel.version>
+        <asm.version>4.2</asm.version>
     </properties>
 
     <dependencies>
@@ -234,6 +236,17 @@
             <artifactId>commons-pool2</artifactId>
             <version>${commons-pool2.version}</version>
         </dependency>
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>easyexcel</artifactId>
+            <version>${easyexcel.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.ow2.asm</groupId>
+            <artifactId>asm</artifactId>
+            <version>${asm.version}</version>
+        </dependency>
+
     </dependencies>
     <build>
         <plugins>

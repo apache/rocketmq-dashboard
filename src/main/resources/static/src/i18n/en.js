@@ -41,6 +41,7 @@ var en = {
     "RESEND_MESSAGE":"Resend Message",
     "VIEW_EXCEPTION":"View Exception",
     "MESSAGETRACE":"MessageTrace",
+    "DLQ_MESSAGE":"DLQMessage",
     "COMMIT": "Commit",
     "OPERATION": "Operation",
     "ADD": "Add",
@@ -108,5 +109,7 @@ var en = {
     "ENABLE_MESSAGE_TRACE":"Enable Message Trace",
     "MESSAGE_TRACE_DETAIL":"Message Trace Detail",
     "TRACE_TOPIC":"TraceTopic",
-    "SELECT_TRACE_TOPIC":"selectTraceTopic"
+    "SELECT_TRACE_TOPIC":"selectTraceTopic",
+    "EXPORT": "export",
+    "NO_MATCH_RESULT": "no match result"
 }
