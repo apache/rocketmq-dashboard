@@ -111,5 +111,7 @@ var en = {
     "TRACE_TOPIC":"TraceTopic",
     "SELECT_TRACE_TOPIC":"selectTraceTopic",
     "EXPORT": "export",
-    "NO_MATCH_RESULT": "no match result"
+    "NO_MATCH_RESULT": "no match result",
+    "BATCH_RESEND": "batchReSend",
+    "BATCH_EXPORT": "batchExport"
 }
