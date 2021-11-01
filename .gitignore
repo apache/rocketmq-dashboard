@@ -5,3 +5,7 @@
 .project
 .factorypath
 .settings/
+/frontend/src/.umi
+/frontend/src/.umi-production
+/frontend/src/node_modules
+/frontend/dist
