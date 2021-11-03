@@ -14,18 +14,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.rocketmq.dashboard.model;
 
-package org.apache.rocketmq.dashboard.service;
+import lombok.Data;
+import org.apache.rocketmq.common.protocol.body.CMResult;
+import org.apache.rocketmq.common.protocol.body.ConsumeMessageDirectlyResult;
 
-import java.util.List;
-import org.apache.rocketmq.dashboard.model.DlqMessageResendResult;
-import org.apache.rocketmq.dashboard.model.DlqMessageRequest;
-import org.apache.rocketmq.dashboard.model.MessagePage;
-import org.apache.rocketmq.dashboard.model.request.MessageQuery;
+@Data
+public class DlqMessageResendResult {
+    private CMResult consumeResult;
+    private String remark;
+    private String msgId;
 
-public interface DlqMessageService {
-
-    MessagePage queryDlqMessageByPage(MessageQuery query);
-
-    List<DlqMessageResendResult> batchResendDlqMessage(List<DlqMessageRequest> dlqMessages);
+    public DlqMessageResendResult(ConsumeMessageDirectlyResult consumeMessageDirectlyResult, String msgId) {
+        this.consumeResult = consumeMessageDirectlyResult.getConsumeResult();
+        this.remark = consumeMessageDirectlyResult.getRemark();
+        this.msgId = msgId;
+    }
 }

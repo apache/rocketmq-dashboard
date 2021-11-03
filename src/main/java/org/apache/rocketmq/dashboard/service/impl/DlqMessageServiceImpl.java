@@ -27,6 +27,7 @@ import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.protocol.ResponseCode;
 import org.apache.rocketmq.common.protocol.body.ConsumeMessageDirectlyResult;
+import org.apache.rocketmq.dashboard.model.DlqMessageResendResult;
 import org.apache.rocketmq.dashboard.model.DlqMessageRequest;
 import org.apache.rocketmq.dashboard.model.MessagePage;
 import org.apache.rocketmq.dashboard.model.MessageView;
@@ -70,14 +71,15 @@ public class DlqMessageServiceImpl implements DlqMessageService {
     }
 
     @Override
-    public ConsumeMessageDirectlyResult batchResendDlqMessage(List<DlqMessageRequest> dlqMessages) {
-        List<ConsumeMessageDirectlyResult> consumeMessageDirectlyResults = new LinkedList<>();
+    public List<DlqMessageResendResult> batchResendDlqMessage(List<DlqMessageRequest> dlqMessages) {
+        List<DlqMessageResendResult> batchResendResults = new LinkedList<>();
         for (DlqMessageRequest dlqMessage : dlqMessages) {
-            ConsumeMessageDirectlyResult consumeMessageDirectlyResult = messageService.consumeMessageDirectly(dlqMessage.getTopicName(),
+            ConsumeMessageDirectlyResult result = messageService.consumeMessageDirectly(dlqMessage.getTopicName(),
                 dlqMessage.getMsgId(), dlqMessage.getConsumerGroup(),
                 dlqMessage.getClientId());
-            consumeMessageDirectlyResults.add(consumeMessageDirectlyResult);
+            DlqMessageResendResult resendResult = new DlqMessageResendResult(result, dlqMessage.getMsgId());
+            batchResendResults.add(resendResult);
         }
-        return consumeMessageDirectlyResults.get(0);
+        return batchResendResults;
     }
 }

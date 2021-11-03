@@ -87,14 +87,17 @@ public class DlqMessageController {
     public void batchExportDlqMessage(HttpServletResponse response, @RequestBody List<DlqMessageRequest> dlqMessages) {
         List<DlqMessageExcelModel> dlqMessageExcelModelList = new ArrayList<>(dlqMessages.size());
         for (DlqMessageRequest dlqMessage : dlqMessages) {
+            DlqMessageExcelModel excelModel = new DlqMessageExcelModel();
             try {
                 String topic = MixAll.DLQ_GROUP_TOPIC_PREFIX + dlqMessage.getConsumerGroup();
                 MessageExt messageExt = mqAdminExt.viewMessage(topic, dlqMessage.getMsgId());
-                DlqMessageExcelModel excelModel = new DlqMessageExcelModel(messageExt);
-                dlqMessageExcelModelList.add(excelModel);
+                excelModel = new DlqMessageExcelModel(messageExt);
             } catch (Exception e) {
-                log.error("Failed to query message by Id:{}", dlqMessage.getMsgId());
+                log.error("Failed to query message by Id:{}", dlqMessage.getMsgId(), e);
+                excelModel.setMsgId(dlqMessage.getMsgId());
+                excelModel.setException(e.getMessage());
             }
+            dlqMessageExcelModelList.add(excelModel);
         }
         try {
             ExcelUtil.writeExcel(response, dlqMessageExcelModelList, "dlqs", "dlqs", DlqMessageExcelModel.class);

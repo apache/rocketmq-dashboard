@@ -150,7 +150,8 @@ public class DlqMessageControllerTest extends BaseControllerTest {
         requestBuilder.content(JSON.toJSONString(dlqMessages));
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.consumeResult").value(CMResult.CR_SUCCESS.name()));
+            .andExpect(jsonPath("$.data", hasSize(2)))
+            .andExpect(jsonPath("$.data[0].consumeResult").value("CR_SUCCESS"));
     }
 
     @Test
