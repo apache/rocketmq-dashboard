@@ -17,12 +17,16 @@
 package org.apache.rocketmq.dashboard.controller;
 
 import com.google.common.collect.Lists;
+import java.util.ArrayList;
+import java.util.List;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.dashboard.exception.ServiceException;
 import org.apache.rocketmq.dashboard.model.DlqMessageExcelModel;
+import org.apache.rocketmq.dashboard.model.DlqMessageRequest;
 import org.apache.rocketmq.dashboard.model.request.MessageQuery;
 import org.apache.rocketmq.dashboard.permisssion.Permission;
 import org.apache.rocketmq.dashboard.service.DlqMessageService;
@@ -30,6 +34,7 @@ import org.apache.rocketmq.dashboard.util.ExcelUtil;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
@@ -39,6 +44,7 @@ import org.springframework.web.bind.annotation.ResponseBody;
 @Controller
 @RequestMapping("/dlqMessage")
 @Permission
+@Slf4j
 public class DlqMessageController {
 
     @Resource
@@ -66,6 +72,35 @@ public class DlqMessageController {
         DlqMessageExcelModel excelModel = new DlqMessageExcelModel(messageExt);
         try {
             ExcelUtil.writeExcel(response, Lists.newArrayList(excelModel), "dlq", "dlq", DlqMessageExcelModel.class);
+        } catch (Exception e) {
+            throw new ServiceException(-1, String.format("export dlq message failed!"));
+        }
+    }
+
+    @PostMapping(value = "/batchResendDlqMessage.do")
+    @ResponseBody
+    public Object batchResendDlqMessage(@RequestBody List<DlqMessageRequest> dlqMessages) {
+        return dlqMessageService.batchResendDlqMessage(dlqMessages);
+    }
+
+    @PostMapping(value = "/batchExportDlqMessage.do")
+    public void batchExportDlqMessage(HttpServletResponse response, @RequestBody List<DlqMessageRequest> dlqMessages) {
+        List<DlqMessageExcelModel> dlqMessageExcelModelList = new ArrayList<>(dlqMessages.size());
+        for (DlqMessageRequest dlqMessage : dlqMessages) {
+            DlqMessageExcelModel excelModel = new DlqMessageExcelModel();
+            try {
+                String topic = MixAll.DLQ_GROUP_TOPIC_PREFIX + dlqMessage.getConsumerGroup();
+                MessageExt messageExt = mqAdminExt.viewMessage(topic, dlqMessage.getMsgId());
+                excelModel = new DlqMessageExcelModel(messageExt);
+            } catch (Exception e) {
+                log.error("Failed to query message by Id:{}", dlqMessage.getMsgId(), e);
+                excelModel.setMsgId(dlqMessage.getMsgId());
+                excelModel.setException(e.getMessage());
+            }
+            dlqMessageExcelModelList.add(excelModel);
+        }
+        try {
+            ExcelUtil.writeExcel(response, dlqMessageExcelModelList, "dlqs", "dlqs", DlqMessageExcelModel.class);
         } catch (Exception e) {
             throw new ServiceException(-1, String.format("export dlq message failed!"));
         }

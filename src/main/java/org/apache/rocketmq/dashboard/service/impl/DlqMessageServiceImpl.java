@@ -19,12 +19,16 @@ package org.apache.rocketmq.dashboard.service.impl;
 
 import com.google.common.base.Throwables;
 import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
 import javax.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.protocol.ResponseCode;
+import org.apache.rocketmq.common.protocol.body.ConsumeMessageDirectlyResult;
+import org.apache.rocketmq.dashboard.model.DlqMessageResendResult;
+import org.apache.rocketmq.dashboard.model.DlqMessageRequest;
 import org.apache.rocketmq.dashboard.model.MessagePage;
 import org.apache.rocketmq.dashboard.model.MessageView;
 import org.apache.rocketmq.dashboard.model.request.MessageQuery;
@@ -64,5 +68,18 @@ public class DlqMessageServiceImpl implements DlqMessageService {
             throw Throwables.propagate(e);
         }
         return messageService.queryMessageByPage(query);
+    }
+
+    @Override
+    public List<DlqMessageResendResult> batchResendDlqMessage(List<DlqMessageRequest> dlqMessages) {
+        List<DlqMessageResendResult> batchResendResults = new LinkedList<>();
+        for (DlqMessageRequest dlqMessage : dlqMessages) {
+            ConsumeMessageDirectlyResult result = messageService.consumeMessageDirectly(dlqMessage.getTopicName(),
+                dlqMessage.getMsgId(), dlqMessage.getConsumerGroup(),
+                dlqMessage.getClientId());
+            DlqMessageResendResult resendResult = new DlqMessageResendResult(result, dlqMessage.getMsgId());
+            batchResendResults.add(resendResult);
+        }
+        return batchResendResults;
     }
 }

@@ -64,9 +64,22 @@
                                             ng-click="queryDlqMessageByConsumerGroup()">
                                         <span class="glyphicon glyphicon-search"></span> {{ 'SEARCH' | translate}}
                                     </button>
+                                    <button type="button" id="batchResendBtn"
+                                            class="btn btn-raised btn-sm  btn-primary disabled"
+                                            data-toggle="modal"
+                                            ng-click="batchResendDlqMessage(selectedConsumerGroup)">
+                                        <span class="glyphicon glyphicon-send"></span> {{ 'BATCH_RESEND' | translate}}
+                                    </button>
+                                    <button type="button" id="batchExportBtn"
+                                            class="btn btn-raised btn-sm btn-primary disabled"
+                                            data-toggle="modal"
+                                            ng-click="batchExportDlqMessage(selectedConsumerGroup)">
+                                        <span class="glyphicon glyphicon-export"></span> {{ 'BATCH_EXPORT' | translate}}
+                                    </button>
                                 </form>
                                 <table class="table table-bordered text-middle">
                                     <tr>
+                                        <th class="text-center"><input type="checkbox" ng-model='checkedAll' ng-change="selectAll()"/></th>
                                         <th class="text-center">Message ID</th>
                                         <th class="text-center">Tag</th>
                                         <th class="text-center">Key</th>
@@ -77,6 +90,9 @@
                                         <td colspan="6" style="text-align: center">{{'NO_MATCH_RESULT' | translate}}</td>
                                     </tr>
                                     <tr ng-repeat="item in messageShowList">
+                                        <td class="text-center">
+                                            <input type="checkbox" ng-model='item.checked' ng-change="selectItem()"/>
+                                        </td>
                                         <td class="text-center">{{item.msgId}}</td>
                                         <td class="text-center">{{item.properties.TAGS}}</td>
                                         <td class="text-center">{{item.properties.KEYS}}</td>
@@ -192,7 +208,7 @@
                     <label class="control-label col-sm-2">Properties:</label>
                     <div class="col-sm-10">
                         <textarea class="form-control"
-                                  style="min-height:60px; resize: none"
+                                  style="min-height:100px; resize: none"
                                   readonly>{{ngDialogData.messageView.properties}}</textarea>
                     </div>
                 </div>

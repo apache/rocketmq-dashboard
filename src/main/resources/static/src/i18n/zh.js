@@ -112,5 +112,7 @@ var zh = {
     "TRACE_TOPIC":"消息轨迹主题",
     "SELECT_TRACE_TOPIC":"选择消息轨迹主题",
     "EXPORT": "导出",
-    "NO_MATCH_RESULT": "没有查到符合条件的结果"
+    "NO_MATCH_RESULT": "没有查到符合条件的结果",
+    "BATCH_RESEND": "批量重发",
+    "BATCH_EXPORT": "批量导出"
 }

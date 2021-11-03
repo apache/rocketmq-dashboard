@@ -25,9 +25,11 @@ import com.google.common.base.Charsets;
 import java.io.Serializable;
 import java.util.Date;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 import org.apache.rocketmq.common.message.MessageExt;
 
 @Data
+@NoArgsConstructor
 public class DlqMessageExcelModel extends BaseRowModel implements Serializable {
 
     @ExcelProperty(value = "topic", index = 0)
@@ -65,6 +67,10 @@ public class DlqMessageExcelModel extends BaseRowModel implements Serializable {
     @ExcelProperty(value = "bodyCRC", index = 8)
     @ColumnWidth(value = 15)
     private int bodyCRC;
+
+    @ExcelProperty(value = "exception", index = 9)
+    @ColumnWidth(value = 30)
+    private String exception;
 
     public DlqMessageExcelModel(MessageExt messageExt) {
         this.topic = messageExt.getTopic();
