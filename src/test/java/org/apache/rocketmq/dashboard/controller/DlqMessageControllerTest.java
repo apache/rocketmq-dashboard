@@ -18,10 +18,14 @@ package org.apache.rocketmq.dashboard.controller;
 
 import com.alibaba.fastjson.JSON;
 import com.google.common.collect.Lists;
+import java.util.List;
 import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.protocol.ResponseCode;
+import org.apache.rocketmq.common.protocol.body.CMResult;
+import org.apache.rocketmq.common.protocol.body.ConsumeMessageDirectlyResult;
 import org.apache.rocketmq.common.protocol.route.TopicRouteData;
+import org.apache.rocketmq.dashboard.model.DlqMessageRequest;
 import org.apache.rocketmq.dashboard.model.MessagePage;
 import org.apache.rocketmq.dashboard.model.MessageView;
 import org.apache.rocketmq.dashboard.model.request.MessageQuery;
@@ -130,6 +134,42 @@ public class DlqMessageControllerTest extends BaseControllerTest {
         perform.andExpect(status().is(200))
             .andExpect(content().contentType("application/vnd.ms-excel"));
 
+    }
+
+    @Test
+    public void testBatchResendDlqMessage() throws Exception {
+        final String url = "/dlqMessage/batchResendDlqMessage.do";
+        List<DlqMessageRequest> dlqMessages = MockObjectUtil.createDlqMessageRequest();
+        {
+            ConsumeMessageDirectlyResult result = new ConsumeMessageDirectlyResult();
+            result.setConsumeResult(CMResult.CR_SUCCESS);
+            when(messageService.consumeMessageDirectly(any(), any(), any(), any())).thenReturn(result);
+        }
+        requestBuilder = MockMvcRequestBuilders.post(url);
+        requestBuilder.contentType(MediaType.APPLICATION_JSON_UTF8);
+        requestBuilder.content(JSON.toJSONString(dlqMessages));
+        perform = mockMvc.perform(requestBuilder);
+        perform.andExpect(status().isOk())
+            .andExpect(jsonPath("$.data", hasSize(2)))
+            .andExpect(jsonPath("$.data[0].consumeResult").value("CR_SUCCESS"));
+    }
+
+    @Test
+    public void testBatchExportDlqMessage() throws Exception {
+        final String url = "/dlqMessage/batchExportDlqMessage.do";
+        {
+            when(mqAdminExt.viewMessage("%DLQ%group_test", "0A9A003F00002A9F0000000000000310"))
+                .thenThrow(new RuntimeException());
+            when(mqAdminExt.viewMessage("%DLQ%group_test", "0A9A003F00002A9F0000000000000311"))
+                .thenReturn(MockObjectUtil.createMessageExt());
+        }
+        List<DlqMessageRequest> dlqMessages = MockObjectUtil.createDlqMessageRequest();
+        requestBuilder = MockMvcRequestBuilders.post(url);
+        requestBuilder.contentType(MediaType.APPLICATION_JSON_UTF8);
+        requestBuilder.content(JSON.toJSONString(dlqMessages));
+        perform = mockMvc.perform(requestBuilder);
+        perform.andExpect(status().is(200))
+            .andExpect(content().contentType("application/vnd.ms-excel"));
     }
 
     @Override protected Object getTestController() {

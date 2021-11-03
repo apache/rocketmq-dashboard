@@ -57,6 +57,7 @@ import org.apache.rocketmq.common.protocol.route.BrokerData;
 import org.apache.rocketmq.common.protocol.route.QueueData;
 import org.apache.rocketmq.common.protocol.route.TopicRouteData;
 import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
+import org.apache.rocketmq.dashboard.model.DlqMessageRequest;
 import org.apache.rocketmq.remoting.protocol.LanguageCode;
 
 import static org.apache.rocketmq.common.protocol.heartbeat.ConsumeType.CONSUME_ACTIVELY;
@@ -297,5 +298,17 @@ public class MockObjectUtil {
         statsMinute.setTps(100.0);
         brokerStatsData.setStatsMinute(statsMinute);
         return brokerStatsData;
+    }
+
+    public static List<DlqMessageRequest> createDlqMessageRequest() {
+        List<DlqMessageRequest> dlqMessages = new ArrayList<>();
+        for (int i = 0; i < 2; i++) {
+            DlqMessageRequest dlqMessageRequest = new DlqMessageRequest();
+            dlqMessageRequest.setConsumerGroup("group_test");
+            dlqMessageRequest.setTopicName("topic_test");
+            dlqMessageRequest.setMsgId("0A9A003F00002A9F000000000000031" + i);
+            dlqMessages.add(dlqMessageRequest);
+        }
+        return dlqMessages;
     }
 }
