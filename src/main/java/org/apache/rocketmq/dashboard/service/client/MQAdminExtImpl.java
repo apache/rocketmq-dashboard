@@ -236,6 +236,12 @@ public class MQAdminExtImpl implements MQAdminExt {
     }
 
     @Override
+    public int addWritePermOfBroker(String namesrvAddr,
+        String brokerName) throws RemotingCommandException, RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException, InterruptedException, MQClientException {
+        return MQAdminInstance.threadLocalMQAdminExt().addWritePermOfBroker(namesrvAddr, brokerName);
+    }
+
+    @Override
     public void putKVConfig(String namespace, String key, String value) {
         MQAdminInstance.threadLocalMQAdminExt().putKVConfig(namespace, key, value);
     }
@@ -511,9 +517,21 @@ public class MQAdminExtImpl implements MQAdminExt {
     }
 
     @Override
-    public TopicConfigSerializeWrapper getAllTopicGroup(String brokerAddr,
+    public SubscriptionGroupWrapper getUserSubscriptionGroup(String brokerAddr,
         long timeoutMillis) throws InterruptedException, RemotingTimeoutException, RemotingSendRequestException, RemotingConnectException, MQBrokerException {
-        return MQAdminInstance.threadLocalMQAdminExt().getAllTopicGroup(brokerAddr, timeoutMillis);
+        return MQAdminInstance.threadLocalMQAdminExt().getUserSubscriptionGroup(brokerAddr, timeoutMillis);
+    }
+
+    @Override
+    public TopicConfigSerializeWrapper getAllTopicConfig(String brokerAddr,
+        long timeoutMillis) throws InterruptedException, RemotingTimeoutException, RemotingSendRequestException, RemotingConnectException, MQBrokerException {
+        return MQAdminInstance.threadLocalMQAdminExt().getAllTopicConfig(brokerAddr, timeoutMillis);
+    }
+
+    @Override
+    public TopicConfigSerializeWrapper getUserTopicConfig(String brokerAddr, boolean specialTopic,
+        long timeoutMillis) throws InterruptedException, RemotingException, MQBrokerException, MQClientException {
+        return MQAdminInstance.threadLocalMQAdminExt().getUserTopicConfig(brokerAddr, specialTopic, timeoutMillis);
     }
 
     @Override

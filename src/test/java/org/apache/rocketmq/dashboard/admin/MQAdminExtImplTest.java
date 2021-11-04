@@ -759,16 +759,6 @@ public class MQAdminExtImplTest {
     }
 
     @Test
-    public void testGetAllTopicGroup() throws Exception {
-        assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.getAllTopicGroup(anyString(), anyLong())).thenReturn(new TopicConfigSerializeWrapper());
-        }
-        TopicConfigSerializeWrapper wrapper = mqAdminExtImpl.getAllTopicGroup(brokerAddr, 5000L);
-        Assert.assertNotNull(wrapper);
-    }
-
-    @Test
     public void testUpdateConsumeOffset() throws Exception {
         assertNotNull(mqAdminExtImpl);
         {
@@ -801,4 +791,42 @@ public class MQAdminExtImplTest {
         Assert.assertFalse(mqAdminExtImpl.resumeCheckHalfMessage("topic_test", "7F000001ACC018B4AAC2116AF6500000"));
     }
 
+    @Test
+    public void testAddWritePermOfBroker() throws Exception {
+        assertNotNull(mqAdminExtImpl);
+        {
+            when(defaultMQAdminExt.addWritePermOfBroker(anyString(), anyString())).thenReturn(6);
+        }
+        Assert.assertEquals(mqAdminExtImpl.addWritePermOfBroker("127.0.0.1:9876", "broker-a"), 6);
+    }
+
+    @Test
+    public void testGetUserSubscriptionGroup() throws Exception {
+        assertNotNull(mqAdminExtImpl);
+        SubscriptionGroupWrapper wrapper = new SubscriptionGroupWrapper();
+        {
+            when(defaultMQAdminExt.getUserSubscriptionGroup(anyString(), anyLong())).thenReturn(wrapper);
+        }
+        Assert.assertEquals(mqAdminExtImpl.getUserSubscriptionGroup("127.0.0.1:10911", 3000), wrapper);
+    }
+
+    @Test
+    public void testGetAllTopicConfig() throws Exception {
+        assertNotNull(mqAdminExtImpl);
+        TopicConfigSerializeWrapper wrapper = new TopicConfigSerializeWrapper();
+        {
+            when(defaultMQAdminExt.getAllTopicConfig(anyString(), anyLong())).thenReturn(wrapper);
+        }
+        Assert.assertEquals(mqAdminExtImpl.getAllTopicConfig("127.0.0.1:10911", 3000), wrapper);
+    }
+
+    @Test
+    public void testGetUserTopicConfig() throws Exception {
+        assertNotNull(mqAdminExtImpl);
+        TopicConfigSerializeWrapper wrapper = new TopicConfigSerializeWrapper();
+        {
+            when(defaultMQAdminExt.getUserTopicConfig(anyString(), anyBoolean(), anyLong())).thenReturn(wrapper);
+        }
+        Assert.assertEquals(mqAdminExtImpl.getUserTopicConfig("127.0.0.1:10911", true, 3000), wrapper);
+    }
 }
