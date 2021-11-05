@@ -135,10 +135,10 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
         ClusterInfo clusterInfo = null;
         try {
             clusterInfo = mqAdminExt.examineBrokerClusterInfo();
+            return mqAdminExt.examineTopicConfig(clusterInfo.getBrokerAddrTable().get(brokerName).selectBrokerAddr(), topic);
         } catch (Exception e) {
             throw Throwables.propagate(e);
         }
-        return mqAdminExt.examineTopicConfig(clusterInfo.getBrokerAddrTable().get(brokerName).selectBrokerAddr(), topic);
     }
 
     @Override
