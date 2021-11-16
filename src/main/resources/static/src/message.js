@@ -58,6 +58,7 @@ module.controller('messageController', ['$scope', 'ngDialog', '$http', 'Notifica
     };
 
     $scope.queryMessagePageByTopic = function () {
+        $("#noMsgTip").css("display", "none");
         if ($scope.timepickerEnd < $scope.timepickerBegin) {
             Notification.error({message: "endTime is later than beginTime!", delay: 2000});
             return
@@ -80,6 +81,9 @@ module.controller('messageController', ['$scope', 'ngDialog', '$http', 'Notifica
             if (resp.status === 0) {
                 console.log(resp);
                 $scope.messageShowList = resp.data.page.content;
+                if ($scope.messageShowList.length == 0){
+                    $("#noMsgTip").removeAttr("style");
+                }
                 if (resp.data.page.first) {
                     $scope.paginationConf.currentPage = 1;
                 }
