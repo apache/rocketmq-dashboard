@@ -278,8 +278,9 @@ public class MQAdminExtImpl implements MQAdminExt {
     }
 
     @Override
-    public void deleteSubscriptionGroup(String addr, String groupName, boolean removeOffset) throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
-        throw new UnsupportedOperationException();
+    public void deleteSubscriptionGroup(String addr, String groupName, boolean removeOffset)
+        throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+        MQAdminInstance.threadLocalMQAdminExt().deleteSubscriptionGroup(addr, groupName, removeOffset);
     }
 
     @Override
