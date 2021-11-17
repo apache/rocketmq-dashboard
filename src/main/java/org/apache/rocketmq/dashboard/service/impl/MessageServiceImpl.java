@@ -31,6 +31,7 @@ import org.apache.rocketmq.acl.common.SessionCredentials;
 import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
 import org.apache.rocketmq.client.consumer.PullResult;
 import org.apache.rocketmq.client.consumer.PullStatus;
+import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.Pair;
 import org.apache.rocketmq.common.message.MessageClientIDSetter;
@@ -111,6 +112,9 @@ public class MessageServiceImpl implements MessageService {
                 }
             });
         } catch (Exception err) {
+            if (err instanceof MQClientException) {
+                throw new ServiceException(-1, ((MQClientException) err).getErrorMessage());
+            }
             throw Throwables.propagate(err);
         }
     }
