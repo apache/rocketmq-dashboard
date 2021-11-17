@@ -20,8 +20,6 @@ package org.apache.rocketmq.dashboard.service.impl;
 import com.google.common.base.Function;
 import com.google.common.collect.Lists;
 
-import com.google.common.base.Throwables;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +33,7 @@ import org.apache.rocketmq.common.Pair;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.topic.TopicValidator;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
+import org.apache.rocketmq.dashboard.exception.ServiceException;
 import org.apache.rocketmq.dashboard.model.MessageTraceView;
 import org.apache.rocketmq.dashboard.model.trace.ProducerNode;
 import org.apache.rocketmq.dashboard.model.trace.MessageTraceGraph;
@@ -82,7 +81,7 @@ public class MessageTraceServiceImpl implements MessageTraceService {
             }
             return messageTraceViews;
         } catch (Exception err) {
-            throw Throwables.propagate(err);
+            throw new ServiceException(-1, String.format("Failed to query message trace by msgId %s", key));
         }
     }
 

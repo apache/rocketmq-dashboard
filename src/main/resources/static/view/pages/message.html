@@ -73,6 +73,9 @@
                                         <th class="text-center">StoreTime</th>
                                         <th class="text-center">Operation</th>
                                     </tr>
+                                    <tr style="display: none" id="noMsgTip">
+                                        <td colspan="5" style="text-align: center">{{'NO_MATCH_RESULT' | translate}}</td>
+                                    </tr>
                                     <tr ng-repeat="item in messageShowList">
                                         <td class="text-center">{{item.msgId}}</td>
                                         <td class="text-center">{{item.properties.TAGS}}</td>
