@@ -418,8 +418,10 @@ public class MQAdminExtImplTest {
         assertNotNull(mqAdminExtImpl);
         {
             doNothing().when(defaultMQAdminExt).deleteSubscriptionGroup(anyString(), anyString());
+            doNothing().when(defaultMQAdminExt).deleteSubscriptionGroup(anyString(), anyString(), anyBoolean());
         }
         mqAdminExtImpl.deleteSubscriptionGroup(brokerAddr, "group_test");
+        mqAdminExtImpl.deleteSubscriptionGroup(brokerAddr, "group_test", true);
     }
 
     @Test
