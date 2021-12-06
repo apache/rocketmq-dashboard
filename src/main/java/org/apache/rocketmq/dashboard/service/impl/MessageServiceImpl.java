@@ -329,7 +329,7 @@ public class MessageServiceImpl implements MessageService {
                         List<MessageExt> msgFoundList = pullResult.getMsgFoundList();
                         for (int i = msgFoundList.size() - 1; i >= 0; i--) {
                             MessageExt messageExt = msgFoundList.get(i);
-                            if (messageExt.getStoreTimestamp() < query.getBegin()) {
+                            if (messageExt.getStoreTimestamp() > query.getEnd()) {
                                 end--;
                             } else {
                                 hasIllegalOffset = false;
