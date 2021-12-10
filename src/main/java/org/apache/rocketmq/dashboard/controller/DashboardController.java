@@ -51,7 +51,7 @@ public class DashboardController {
         return dashboardService.queryTopicData(date,topicName);
     }
 
-    @RequestMapping(value = "/topicCurrent", method = RequestMethod.GET)
+    @RequestMapping(value = "/topicCurrent.query", method = RequestMethod.GET)
     @ResponseBody
     public Object topicCurrent() {
         return dashboardService.queryTopicCurrentData();
