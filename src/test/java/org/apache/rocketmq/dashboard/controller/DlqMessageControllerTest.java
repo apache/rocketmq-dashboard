@@ -113,7 +113,7 @@ public class DlqMessageControllerTest extends BaseControllerTest {
 
     @Test
     public void testExportDlqMessage() throws Exception {
-        final String url = "/dlqMessage/exportDlqMessage.do";
+        final String url = "/dlqMessage/exportDlqMessage.query";
         {
             when(mqAdminExt.viewMessage(any(), any()))
                 .thenThrow(new RuntimeException())
@@ -156,7 +156,7 @@ public class DlqMessageControllerTest extends BaseControllerTest {
 
     @Test
     public void testBatchExportDlqMessage() throws Exception {
-        final String url = "/dlqMessage/batchExportDlqMessage.do";
+        final String url = "/dlqMessage/batchExportDlqMessage.query";
         {
             when(mqAdminExt.viewMessage("%DLQ%group_test", "0A9A003F00002A9F0000000000000310"))
                 .thenThrow(new RuntimeException());

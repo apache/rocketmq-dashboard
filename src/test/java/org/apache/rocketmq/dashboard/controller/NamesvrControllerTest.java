@@ -34,7 +34,7 @@ public class NamesvrControllerTest extends BaseControllerTest {
 
     @Test
     public void testNsaddr() throws Exception {
-        final String url = "/rocketmq/nsaddr";
+        final String url = "/rocketmq/nsaddr.query";
         {
             super.mockRmqConfigure();
         }
