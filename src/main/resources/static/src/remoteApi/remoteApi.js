@@ -54,7 +54,7 @@ app.service('remoteApi', ['$http','tools', function ($http,tools) {
     }
 
     var queryTopicCurrentData = function(callback){
-        var url = 'dashboard/topicCurrent';
+        var url = 'dashboard/topicCurrent.query';
         var setting = {
             type: "GET",
             timeout:15000,//data is too large,so master set time out is long enough

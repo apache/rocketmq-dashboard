@@ -32,7 +32,7 @@ public class NamesvrController {
     @Resource
     private OpsService opsService;
 
-    @RequestMapping(value = "/nsaddr", method = RequestMethod.GET)
+    @RequestMapping(value = "/nsaddr.query", method = RequestMethod.GET)
     @ResponseBody
     @OriginalControllerReturnValue
     public Object nsaddr() {

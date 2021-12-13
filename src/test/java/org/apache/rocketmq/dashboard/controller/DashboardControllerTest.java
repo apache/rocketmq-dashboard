@@ -152,7 +152,7 @@ public class DashboardControllerTest extends BaseControllerTest {
 
     @Test
     public void testTopicCurrent() throws Exception {
-        final String url = "/dashboard/topicCurrent";
+        final String url = "/dashboard/topicCurrent.query";
         requestBuilder = MockMvcRequestBuilders.get(url);
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
