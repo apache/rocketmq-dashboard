@@ -34,4 +34,6 @@ rolePerms:
     - /monitor/*.query
     - /consumer/*.query
     - /cluster/*.query
-    - /dlqMessage/**
+    - /dlqMessage/*.query
+    - /dlqMessage/exportDlqMessage.do
+    - /dlqMessage/batchResendDlqMessage.do
