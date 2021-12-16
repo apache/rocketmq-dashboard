@@ -59,7 +59,7 @@ public class DlqMessageController {
         return dlqMessageService.queryDlqMessageByPage(query);
     }
 
-    @GetMapping(value = "/exportDlqMessage.query")
+    @GetMapping(value = "/exportDlqMessage.do")
     public void exportDlqMessage(HttpServletResponse response, @RequestParam String consumerGroup,
         @RequestParam String msgId) {
         MessageExt messageExt = null;
@@ -83,7 +83,7 @@ public class DlqMessageController {
         return dlqMessageService.batchResendDlqMessage(dlqMessages);
     }
 
-    @PostMapping(value = "/batchExportDlqMessage.query")
+    @PostMapping(value = "/batchExportDlqMessage.do")
     public void batchExportDlqMessage(HttpServletResponse response, @RequestBody List<DlqMessageRequest> dlqMessages) {
         List<DlqMessageExcelModel> dlqMessageExcelModelList = new ArrayList<>(dlqMessages.size());
         for (DlqMessageRequest dlqMessage : dlqMessages) {

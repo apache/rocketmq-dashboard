@@ -182,7 +182,7 @@ module.controller('dlqMessageController', ['$scope', 'ngDialog', '$http', 'Notif
     };
 
     $scope.exportDlqMessage = function (msgId, consumerGroup) {
-        window.location.href = "dlqMessage/exportDlqMessage.query?msgId=" + msgId + "&consumerGroup=" + consumerGroup;
+        window.location.href = "dlqMessage/exportDlqMessage.do?msgId=" + msgId + "&consumerGroup=" + consumerGroup;
     };
 
     $scope.selectedDlqMessage = [];
@@ -227,7 +227,7 @@ module.controller('dlqMessageController', ['$scope', 'ngDialog', '$http', 'Notif
         }
         $http({
             method: "POST",
-            url: "dlqMessage/batchExportDlqMessage.query",
+            url: "dlqMessage/batchExportDlqMessage.do",
             data: $scope.selectedDlqMessage,
             headers: {
                 'Content-type': 'application/json'
