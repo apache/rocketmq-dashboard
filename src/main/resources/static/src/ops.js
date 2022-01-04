@@ -30,6 +30,7 @@ app.controller('opsController', ['$scope', '$location', '$http', 'Notification',
             $scope.namesvrAddrList = resp.data.namesvrAddrList;
             $scope.useVIPChannel = resp.data.useVIPChannel;
             $scope.useTLS = resp.data.useTLS;
+            $scope.selectedNamesrv = resp.data.currentNamesrv;
         } else {
             Notification.error({message: resp.errMsg, delay: 2000});
         }
@@ -43,7 +44,7 @@ app.controller('opsController', ['$scope', '$location', '$http', 'Notification',
         $http({
             method: "POST",
             url: "ops/updateNameSvrAddr.do",
-            params: {nameSvrAddrList: $scope.namesvrAddrList.join(";")}
+            params: {nameSvrAddrList: $scope.selectedNamesrv}
         }).success(function (resp) {
             if (resp.status == 0) {
                 Notification.info({message: "SUCCESS", delay: 2000});

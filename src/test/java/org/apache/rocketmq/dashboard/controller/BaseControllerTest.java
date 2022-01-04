@@ -62,6 +62,7 @@ public abstract class BaseControllerTest extends BaseTest {
         when(configure.getAccessKey()).thenReturn("12345678");
         when(configure.getSecretKey()).thenReturn("rocketmq");
         when(configure.getNamesrvAddr()).thenReturn("127.0.0.1:9876");
+        when(configure.getNamesrvAddrs()).thenReturn("127.0.0.1:9876");
         when(configure.isACLEnabled()).thenReturn(true);
         when(configure.isUseTLS()).thenReturn(false);
     }
