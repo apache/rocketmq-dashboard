@@ -302,8 +302,8 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
                 logger.info("addr={} groupName={}", clusterInfo.getBrokerAddrTable().get(brokerName).selectBrokerAddr(), deleteSubGroupRequest.getGroupName());
                 mqAdminExt.deleteSubscriptionGroup(clusterInfo.getBrokerAddrTable().get(brokerName).selectBrokerAddr(), deleteSubGroupRequest.getGroupName(), true);
                 // delete %RETRY%+Group and %DLQ%+Group in broker and namesrv
-                deleteDlqOrRetryTopic(MixAll.RETRY_GROUP_TOPIC_PREFIX + deleteSubGroupRequest.getGroupName(), brokerName, clusterInfo);
-                deleteDlqOrRetryTopic(MixAll.DLQ_GROUP_TOPIC_PREFIX + deleteSubGroupRequest.getGroupName(), brokerName, clusterInfo);
+                deleteResources(MixAll.RETRY_GROUP_TOPIC_PREFIX + deleteSubGroupRequest.getGroupName(), brokerName, clusterInfo);
+                deleteResources(MixAll.DLQ_GROUP_TOPIC_PREFIX + deleteSubGroupRequest.getGroupName(), brokerName, clusterInfo);
             }
         }
         catch (Exception e) {
@@ -312,7 +312,7 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
         return true;
     }
 
-    private void deleteDlqOrRetryTopic(String topic, String brokerName, ClusterInfo clusterInfo) throws Exception {
+    private void deleteResources(String topic, String brokerName, ClusterInfo clusterInfo) throws Exception {
         mqAdminExt.deleteTopicInBroker(Sets.newHashSet(clusterInfo.getBrokerAddrTable().get(brokerName).selectBrokerAddr()), topic);
         Set<String> nameServerSet = null;
         if (StringUtils.isNotBlank(configure.getNamesrvAddr())) {
