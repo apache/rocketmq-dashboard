@@ -88,7 +88,7 @@ public class RMQConfigure {
     public void setNamesrvAddrs(String namesrvAddrs) {
         if (StringUtils.isNotBlank(namesrvAddrs)) {
             this.namesrvAddrs = namesrvAddrs;
-            List<String> nameSrvAddrList = Splitter.on(";").splitToList(this.namesrvAddrs);
+            List<String> nameSrvAddrList = Splitter.on("@").splitToList(this.namesrvAddrs);
             if (!nameSrvAddrList.isEmpty()) {
                 this.setNamesrvAddr(nameSrvAddrList.get(0));
             }
