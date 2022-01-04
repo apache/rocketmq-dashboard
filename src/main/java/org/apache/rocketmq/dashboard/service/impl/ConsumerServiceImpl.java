@@ -23,12 +23,14 @@ import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import javax.annotation.Resource;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.client.exception.MQClientException;
@@ -46,6 +48,7 @@ import org.apache.rocketmq.common.protocol.body.GroupList;
 import org.apache.rocketmq.common.protocol.body.SubscriptionGroupWrapper;
 import org.apache.rocketmq.common.protocol.route.BrokerData;
 import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
+import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.model.ConsumerGroupRollBackStat;
 import org.apache.rocketmq.dashboard.model.GroupConsumeInfo;
 import org.apache.rocketmq.dashboard.model.QueueStatInfo;
@@ -64,6 +67,9 @@ import static com.google.common.base.Throwables.propagate;
 @Service
 public class ConsumerServiceImpl extends AbstractCommonService implements ConsumerService {
     private Logger logger = LoggerFactory.getLogger(ConsumerServiceImpl.class);
+
+    @Resource
+    private RMQConfigure configure;
 
     private static final Set<String> SYSTEM_GROUP_SET = new HashSet<>();
 
@@ -295,12 +301,25 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
             for (String brokerName : deleteSubGroupRequest.getBrokerNameList()) {
                 logger.info("addr={} groupName={}", clusterInfo.getBrokerAddrTable().get(brokerName).selectBrokerAddr(), deleteSubGroupRequest.getGroupName());
                 mqAdminExt.deleteSubscriptionGroup(clusterInfo.getBrokerAddrTable().get(brokerName).selectBrokerAddr(), deleteSubGroupRequest.getGroupName(), true);
+                // delete %RETRY%+Group and %DLQ%+Group in broker and namesrv
+                deleteDlqOrRetryTopic(MixAll.RETRY_GROUP_TOPIC_PREFIX + deleteSubGroupRequest.getGroupName(), brokerName, clusterInfo);
+                deleteDlqOrRetryTopic(MixAll.DLQ_GROUP_TOPIC_PREFIX + deleteSubGroupRequest.getGroupName(), brokerName, clusterInfo);
             }
         }
         catch (Exception e) {
             throw propagate(e);
         }
         return true;
+    }
+
+    private void deleteDlqOrRetryTopic(String topic, String brokerName, ClusterInfo clusterInfo) throws Exception {
+        mqAdminExt.deleteTopicInBroker(Sets.newHashSet(clusterInfo.getBrokerAddrTable().get(brokerName).selectBrokerAddr()), topic);
+        Set<String> nameServerSet = null;
+        if (StringUtils.isNotBlank(configure.getNamesrvAddr())) {
+            String[] ns = configure.getNamesrvAddr().split(";");
+            nameServerSet = new HashSet<>(Arrays.asList(ns));
+        }
+        mqAdminExt.deleteTopicInNameServer(nameServerSet, topic);
     }
 
     @Override
