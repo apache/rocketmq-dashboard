@@ -296,14 +296,22 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
 
     @Override
     public boolean deleteSubGroup(DeleteSubGroupRequest deleteSubGroupRequest) {
+        Set<String> brokerSet = this.fetchBrokerNameSetBySubscriptionGroup(deleteSubGroupRequest.getGroupName());
+        List<String> brokerList = deleteSubGroupRequest.getBrokerNameList();
+        boolean deleteInNsFlag = false;
+        // If the list of brokers passed in by the request contains the list of brokers that the consumer is in,
+        // delete RETRY and DLQ topic in namesrv
+        if (brokerList.containsAll(brokerSet)) {
+            deleteInNsFlag = true;
+        }
         try {
             ClusterInfo clusterInfo = mqAdminExt.examineBrokerClusterInfo();
             for (String brokerName : deleteSubGroupRequest.getBrokerNameList()) {
                 logger.info("addr={} groupName={}", clusterInfo.getBrokerAddrTable().get(brokerName).selectBrokerAddr(), deleteSubGroupRequest.getGroupName());
                 mqAdminExt.deleteSubscriptionGroup(clusterInfo.getBrokerAddrTable().get(brokerName).selectBrokerAddr(), deleteSubGroupRequest.getGroupName(), true);
                 // delete %RETRY%+Group and %DLQ%+Group in broker and namesrv
-                deleteResources(MixAll.RETRY_GROUP_TOPIC_PREFIX + deleteSubGroupRequest.getGroupName(), brokerName, clusterInfo);
-                deleteResources(MixAll.DLQ_GROUP_TOPIC_PREFIX + deleteSubGroupRequest.getGroupName(), brokerName, clusterInfo);
+                deleteResources(MixAll.RETRY_GROUP_TOPIC_PREFIX + deleteSubGroupRequest.getGroupName(), brokerName, clusterInfo, deleteInNsFlag);
+                deleteResources(MixAll.DLQ_GROUP_TOPIC_PREFIX + deleteSubGroupRequest.getGroupName(), brokerName, clusterInfo, deleteInNsFlag);
             }
         }
         catch (Exception e) {
@@ -312,14 +320,16 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
         return true;
     }
 
-    private void deleteResources(String topic, String brokerName, ClusterInfo clusterInfo) throws Exception {
+    private void deleteResources(String topic, String brokerName, ClusterInfo clusterInfo, boolean deleteInNsFlag) throws Exception {
         mqAdminExt.deleteTopicInBroker(Sets.newHashSet(clusterInfo.getBrokerAddrTable().get(brokerName).selectBrokerAddr()), topic);
         Set<String> nameServerSet = null;
         if (StringUtils.isNotBlank(configure.getNamesrvAddr())) {
             String[] ns = configure.getNamesrvAddr().split(";");
             nameServerSet = new HashSet<>(Arrays.asList(ns));
         }
-        mqAdminExt.deleteTopicInNameServer(nameServerSet, topic);
+        if (deleteInNsFlag) {
+            mqAdminExt.deleteTopicInNameServer(nameServerSet, topic);
+        }
     }
 
     @Override
