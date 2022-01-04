@@ -46,7 +46,8 @@ public class OpsServiceImpl extends AbstractCommonService implements OpsService 
     @Override
     public Map<String, Object> homePageInfo() {
         Map<String, Object> homePageInfoMap = Maps.newHashMap();
-        homePageInfoMap.put("namesvrAddrList", Splitter.on(";").splitToList(configure.getNamesrvAddr()));
+        homePageInfoMap.put("currentNamesrv", configure.getNamesrvAddr());
+        homePageInfoMap.put("namesvrAddrList", Splitter.on(";").splitToList(configure.getNamesrvAddrs()));
         homePageInfoMap.put("useVIPChannel", Boolean.valueOf(configure.getIsVIPChannel()));
         homePageInfoMap.put("useTLS", configure.isUseTLS());
         return homePageInfoMap;
