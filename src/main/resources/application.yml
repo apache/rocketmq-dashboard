@@ -1,0 +1,46 @@
+server:
+  port: 8080
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
+## SSL setting
+#  ssl:
+#    key-store: classpath:rmqcngkeystore.jks
+#    key-store-password: rocketmq
+#    key-store-type: PKCS12
+#    key-alias: rmqcngkey
+
+spring:
+  application:
+    name: rocketmq-dashboard
+
+logging:
+  config: classpath:logback.xml
+
+rocketmq:
+  config:
+    # if this value is empty,use env value rocketmq.config.namesrvAddr  NAMESRV_ADDR | now, default localhost:9876
+    # configure multiple namesrv addresses to manage multiple different clusters
+    namesrvAddrs:
+      - 127.0.0.1:9876
+      - 127.0.0.2:9876
+    # if you use rocketmq version < 3.5.8, rocketmq.config.isVIPChannel should be false.default true
+    isVIPChannel:
+    # timeout for mqadminExt, default 5000ms
+    timeoutMillis:
+    # rocketmq-console's data path:dashboard/monitor
+    dataPath: /tmp/rocketmq-console/data
+    # set it false if you don't want use dashboard.default true
+    enableDashBoardCollect: true
+    # set the message track trace topic if you don't want use the default one
+    msgTrackTopicName:
+    ticketKey: ticket
+    # must create userInfo file: ${rocketmq.config.dataPath}/users.properties if the login is required
+    loginRequired: false
+    useTLS: false
+    # set the accessKey and secretKey if you used acl
+    accessKey:  # if version > 4.4.0
+    secretKey:  # if version > 4.4.0
+
