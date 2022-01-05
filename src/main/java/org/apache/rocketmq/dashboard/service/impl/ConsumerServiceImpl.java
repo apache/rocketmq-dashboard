@@ -299,8 +299,7 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
         Set<String> brokerSet = this.fetchBrokerNameSetBySubscriptionGroup(deleteSubGroupRequest.getGroupName());
         List<String> brokerList = deleteSubGroupRequest.getBrokerNameList();
         boolean deleteInNsFlag = false;
-        // If the list of brokers passed in by the request contains the list of brokers that the consumer is in,
-        // delete RETRY and DLQ topic in namesrv
+        // If the list of brokers passed in by the request contains the list of brokers that the consumer is in, delete RETRY and DLQ topic in namesrv
         if (brokerList.containsAll(brokerSet)) {
             deleteInNsFlag = true;
         }
@@ -309,7 +308,7 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
             for (String brokerName : deleteSubGroupRequest.getBrokerNameList()) {
                 logger.info("addr={} groupName={}", clusterInfo.getBrokerAddrTable().get(brokerName).selectBrokerAddr(), deleteSubGroupRequest.getGroupName());
                 mqAdminExt.deleteSubscriptionGroup(clusterInfo.getBrokerAddrTable().get(brokerName).selectBrokerAddr(), deleteSubGroupRequest.getGroupName(), true);
-                // delete %RETRY%+Group and %DLQ%+Group in broker and namesrv
+                // Delete %RETRY%+Group and %DLQ%+Group in broker and namesrv
                 deleteResources(MixAll.RETRY_GROUP_TOPIC_PREFIX + deleteSubGroupRequest.getGroupName(), brokerName, clusterInfo, deleteInNsFlag);
                 deleteResources(MixAll.DLQ_GROUP_TOPIC_PREFIX + deleteSubGroupRequest.getGroupName(), brokerName, clusterInfo, deleteInNsFlag);
             }
