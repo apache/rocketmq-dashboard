@@ -132,7 +132,7 @@ public class DlqMessageControllerTest extends BaseControllerTest {
         // 2、export dlqMessage success
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().is(200))
-            .andExpect(content().contentType("application/vnd.ms-excel"));
+            .andExpect(content().contentType("application/vnd.ms-excel;charset=utf-8"));
 
     }
 
@@ -169,7 +169,7 @@ public class DlqMessageControllerTest extends BaseControllerTest {
         requestBuilder.content(JSON.toJSONString(dlqMessages));
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().is(200))
-            .andExpect(content().contentType("application/vnd.ms-excel"));
+            .andExpect(content().contentType("application/vnd.ms-excel;charset=utf-8"));
     }
 
     @Override protected Object getTestController() {
