@@ -210,7 +210,8 @@ module.controller('messageController', ['$scope', 'ngDialog', '$http', 'Notifica
 }]);
 
 module.controller('messageDetailViewDialogController', ['$scope', 'ngDialog', '$http', 'Notification', function ($scope, ngDialog, $http, Notification) {
-
+        $scope.messageTrackList = $scope.ngDialogData.messageTrackList;
+        $scope.messageTrackShowList = $scope.ngDialogData.messageTrackList;
         $scope.resendMessage = function (messageView, consumerGroup) {
             var topic = messageView.topic;
             var msgId = messageView.msgId;
@@ -262,5 +263,18 @@ module.controller('messageDetailViewDialogController', ['$scope', 'ngDialog', '$
                 }
             });
         };
+
+        $scope.filterConsumerGroup = "";
+        $scope.$watch('filterConsumerGroup', function () {
+            const lowExceptStr = $scope.filterConsumerGroup.toLowerCase();
+            const canShowList = [];
+
+            $scope.messageTrackList.forEach(function (element) {
+                if (element.consumerGroup.toLowerCase().indexOf(lowExceptStr) != -1) {
+                    canShowList.push(element);
+                }
+            });
+            $scope.messageTrackShowList = canShowList;
+        });
     }]
 );
