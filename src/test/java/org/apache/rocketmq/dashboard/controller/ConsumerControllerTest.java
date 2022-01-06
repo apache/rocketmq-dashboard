@@ -182,6 +182,8 @@ public class ConsumerControllerTest extends BaseControllerTest {
         final String url = "/consumer/deleteSubGroup.do";
         {
             doNothing().when(mqAdminExt).deleteSubscriptionGroup(any(), anyString());
+            doNothing().when(mqAdminExt).deleteTopicInBroker(any(), anyString());
+            doNothing().when(mqAdminExt).deleteTopicInNameServer(any(), anyString());
         }
         DeleteSubGroupRequest request = new DeleteSubGroupRequest();
         request.setBrokerNameList(Lists.newArrayList("broker-a"));
