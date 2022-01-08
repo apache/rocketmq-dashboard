@@ -103,6 +103,7 @@
         <easyexcel.version>2.2.10</easyexcel.version>
         <asm.version>4.2</asm.version>
         <junit.version>4.12</junit.version>
+        <snakeyaml.version>1.30</snakeyaml.version>
     </properties>
 
     <dependencies>
@@ -263,6 +264,11 @@
             <artifactId>junit</artifactId>
             <version>${junit.version}</version>
             <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.yaml</groupId>
+            <artifactId>snakeyaml</artifactId>
+            <version>${snakeyaml.version}</version>
         </dependency>
 
     </dependencies>

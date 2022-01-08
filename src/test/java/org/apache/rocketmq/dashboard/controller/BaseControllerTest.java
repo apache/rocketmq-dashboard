@@ -17,6 +17,7 @@
 
 package org.apache.rocketmq.dashboard.controller;
 
+import com.google.common.collect.Lists;
 import org.apache.rocketmq.dashboard.BaseTest;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.support.GlobalExceptionHandler;
@@ -62,7 +63,7 @@ public abstract class BaseControllerTest extends BaseTest {
         when(configure.getAccessKey()).thenReturn("12345678");
         when(configure.getSecretKey()).thenReturn("rocketmq");
         when(configure.getNamesrvAddr()).thenReturn("127.0.0.1:9876");
-        when(configure.getNamesrvAddrs()).thenReturn("127.0.0.1:9876");
+        when(configure.getNamesrvAddrs()).thenReturn(Lists.asList("127.0.0.1:9876", new String[] {"127.0.0.2:9876"}));
         when(configure.isACLEnabled()).thenReturn(true);
         when(configure.isUseTLS()).thenReturn(false);
     }
