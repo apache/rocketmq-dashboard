@@ -16,7 +16,6 @@
  */
 package org.apache.rocketmq.dashboard.service.impl;
 
-import com.google.common.base.Splitter;
 import com.google.common.collect.Maps;
 import java.util.List;
 import java.util.Map;
@@ -47,7 +46,7 @@ public class OpsServiceImpl extends AbstractCommonService implements OpsService 
     public Map<String, Object> homePageInfo() {
         Map<String, Object> homePageInfoMap = Maps.newHashMap();
         homePageInfoMap.put("currentNamesrv", configure.getNamesrvAddr());
-        homePageInfoMap.put("namesvrAddrList", Splitter.on("@").splitToList(configure.getNamesrvAddrs()));
+        homePageInfoMap.put("namesvrAddrList", configure.getNamesrvAddrs());
         homePageInfoMap.put("useVIPChannel", Boolean.valueOf(configure.getIsVIPChannel()));
         homePageInfoMap.put("useTLS", configure.isUseTLS());
         return homePageInfoMap;

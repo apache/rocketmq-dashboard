@@ -64,7 +64,7 @@ public class OpsControllerTest extends BaseControllerTest {
             .andExpect(jsonPath("$.data").isMap())
             .andExpect(jsonPath("$.data.useVIPChannel").value(false))
             .andExpect(jsonPath("$.data.namesvrAddrList").isArray())
-            .andExpect(jsonPath("$.data.namesvrAddrList", hasSize(1)))
+            .andExpect(jsonPath("$.data.namesvrAddrList", hasSize(2)))
             .andExpect(jsonPath("$.data.namesvrAddrList[0]").value("127.0.0.1:9876"));
     }
 
@@ -95,7 +95,6 @@ public class OpsControllerTest extends BaseControllerTest {
         perform.andExpect(status().isOk())
             .andExpect(jsonPath("$.data").value(true));
     }
-
 
     @Test
     public void testUpdateUseTLS() throws Exception {

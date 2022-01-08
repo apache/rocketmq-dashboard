@@ -17,6 +17,7 @@
 
 package org.apache.rocketmq.dashboard.config;
 
+import com.google.common.collect.Lists;
 import java.io.File;
 import org.junit.Assert;
 import org.junit.Test;
@@ -39,6 +40,7 @@ public class RMQConfigureTest {
         rmqConfigure.setLoginRequired(true);
         rmqConfigure.setNamesrvAddr("127.0.0.1:9876");
         rmqConfigure.setTimeoutMillis(3000L);
+        rmqConfigure.setNamesrvAddrs(Lists.asList("127.0.0.1:9876", new String[] {"127.0.0.2:9876"}));
     }
 
     @Test
@@ -54,6 +56,7 @@ public class RMQConfigureTest {
         Assert.assertTrue(rmqConfigure.isEnableDashBoardCollect());
         Assert.assertTrue(rmqConfigure.isLoginRequired());
         Assert.assertEquals(rmqConfigure.getNamesrvAddr(), "127.0.0.1:9876");
+        Assert.assertEquals(rmqConfigure.getNamesrvAddrs().size(), 2);
         Assert.assertEquals(rmqConfigure.getTimeoutMillis().longValue(), 3000L);
         ErrorPageRegistrar registrar = rmqConfigure.errorPageRegistrar();
         registrar.registerErrorPages(new ErrorPageRegistry() {

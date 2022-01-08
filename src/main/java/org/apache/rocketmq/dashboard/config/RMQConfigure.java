@@ -16,7 +16,8 @@
  */
 package org.apache.rocketmq.dashboard.config;
 
-import com.google.common.base.Splitter;
+import java.util.ArrayList;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.common.MixAll;
 import org.slf4j.Logger;
@@ -59,7 +60,7 @@ public class RMQConfigure {
 
     private Long timeoutMillis;
 
-    private String namesrvAddrs;
+    private List<String> namesrvAddrs = new ArrayList<>();
 
     public String getAccessKey() {
         return accessKey;
@@ -81,17 +82,14 @@ public class RMQConfigure {
         return namesrvAddr;
     }
 
-    public String getNamesrvAddrs() {
+    public List<String> getNamesrvAddrs() {
         return namesrvAddrs;
     }
 
-    public void setNamesrvAddrs(String namesrvAddrs) {
-        if (StringUtils.isNotBlank(namesrvAddrs)) {
-            this.namesrvAddrs = namesrvAddrs;
-            List<String> nameSrvAddrList = Splitter.on("@").splitToList(this.namesrvAddrs);
-            if (!nameSrvAddrList.isEmpty()) {
-                this.setNamesrvAddr(nameSrvAddrList.get(0));
-            }
+    public void setNamesrvAddrs(List<String> namesrvAddrs) {
+        this.namesrvAddrs = namesrvAddrs;
+        if (CollectionUtils.isNotEmpty(namesrvAddrs)) {
+            this.setNamesrvAddr(namesrvAddrs.get(0));
         }
     }
 
