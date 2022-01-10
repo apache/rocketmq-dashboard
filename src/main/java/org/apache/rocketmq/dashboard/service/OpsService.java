@@ -31,4 +31,6 @@ public interface OpsService {
     boolean updateIsVIPChannel(String useVIPChannel);
 
     boolean updateUseTLS(boolean useTLS);
+
+    void addNameSvrAddr(String namesrvAddr);
 }
