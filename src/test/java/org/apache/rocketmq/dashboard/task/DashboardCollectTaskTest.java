@@ -71,6 +71,9 @@ public class DashboardCollectTaskTest extends BaseTest {
     @Mock
     private RMQConfigure rmqConfigure;
 
+    @Mock
+    private ExecutorService collectExecutor;
+
     private int taskExecuteNum = 10;
 
     private File brokerFile;
@@ -99,6 +102,7 @@ public class DashboardCollectTaskTest extends BaseTest {
         {
             TopicList topicList = new TopicList();
             Set<String> topicSet = new HashSet<>();
+            topicSet.add("rmq_sys_xxx");
             topicSet.add("topic_test");
             topicSet.add("%RETRY%group_test");
             topicSet.add("%DLQ%group_test");
@@ -124,13 +128,9 @@ public class DashboardCollectTaskTest extends BaseTest {
         } catch (Exception e) {
             Assert.assertEquals(e.getMessage(), "fetchAllTopicList exception");
         }
-        // collectExecutor not init
-        try {
-            dashboardCollectTask.collectTopic();
-        } catch (Exception e) {
-            Assert.assertTrue(e instanceof NullPointerException);
-        }
+        dashboardCollectTask.collectTopic();
 
+        // multiple topic collection
         CollectExecutorConfig config = new CollectExecutorConfig();
         config.setCoreSize(10);
         config.setMaxSize(10);
