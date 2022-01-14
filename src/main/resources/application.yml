@@ -41,8 +41,9 @@ rocketmq:
     # if this value is empty,use env value rocketmq.config.namesrvAddr  NAMESRV_ADDR | now, default localhost:9876
     # configure multiple namesrv addresses to manage multiple different clusters
     namesrvAddrs:
-      - 127.0.0.1:9876
-      - 127.0.0.2:9876
+#      - 10.253.141.99:9876;10.253.141.102:9876
+      - 100.76.6.97:9876
+#      - 10.200.102.1:9876
     # if you use rocketmq version < 3.5.8, rocketmq.config.isVIPChannel should be false.default true
     isVIPChannel:
     # timeout for mqadminExt, default 5000ms
@@ -61,3 +62,9 @@ rocketmq:
     accessKey:  # if version > 4.4.0
     secretKey:  # if version > 4.4.0
 
+threadpool:
+  config:
+    coreSize: 10
+    maxSize: 10
+    keepAliveTime: 3000
+    queueSize: 5000
