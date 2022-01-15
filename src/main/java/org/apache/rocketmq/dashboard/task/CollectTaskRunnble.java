@@ -67,8 +67,7 @@ public class CollectTaskRunnble implements Runnable {
                         inTPS += bsd.getStatsMinute().getTps();
                         inMsgCntToday += StatsAllSubCommand.compute24HourSum(bsd);
                     } catch (Exception e) {
-                        log.warn("Exception caught: mqAdminExt get broker stats data TOPIC_PUT_NUMS failed");
-                        log.warn("Response [{}] ", e.getMessage());
+                        log.warn("Exception caught: mqAdminExt get broker stats data TOPIC_PUT_NUMS failed", e.getMessage());
                     }
                 }
             }
@@ -83,8 +82,7 @@ public class CollectTaskRunnble implements Runnable {
                                 outTPS += bsd.getStatsMinute().getTps();
                                 outMsgCntToday += StatsAllSubCommand.compute24HourSum(bsd);
                             } catch (Exception e) {
-                                log.warn("Exception caught: mqAdminExt get broker stats data GROUP_GET_NUMS failed");
-                                log.warn("Response [{}] ", e.getMessage());
+                                log.warn("Exception caught: mqAdminExt get broker stats data GROUP_GET_NUMS failed", e.getMessage());
                             }
                         }
                     }
@@ -104,7 +102,7 @@ public class CollectTaskRunnble implements Runnable {
             list.add(date.getTime() + "," + new BigDecimal(inTPS).setScale(5, BigDecimal.ROUND_HALF_UP) + "," + inMsgCntToday + "," + new BigDecimal(outTPS).setScale(5, BigDecimal.ROUND_HALF_UP) + "," + outMsgCntToday);
             dashboardCollectService.getTopicMap().put(topic, list);
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Failed to collect topic: {} data", topic, e);
         }
     }
 }
