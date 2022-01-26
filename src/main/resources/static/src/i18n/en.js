@@ -113,5 +113,13 @@ var en = {
     "EXPORT": "export",
     "NO_MATCH_RESULT": "no match result",
     "BATCH_RESEND": "batchReSend",
-    "BATCH_EXPORT": "batchExport"
+    "BATCH_EXPORT": "batchExport",
+    "WHITE_LIST":"White List",
+    "ACCOUNT_INFO":"Account Info",
+    "IS_ADMIN":"Is Admin",
+    "DEFAULT_TOPIC_PERM":"Default Topic Permission",
+    "DEFAULT_GROUP_PERM":"Default Group Permission",
+    "TOPIC_PERM":"Topic Permission",
+    "GROUP_PERM":"Group Permission",
+    "SYNCHRONIZE":"Synchronize Data"
 }

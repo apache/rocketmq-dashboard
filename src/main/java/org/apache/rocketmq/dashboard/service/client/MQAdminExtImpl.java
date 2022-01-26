@@ -93,17 +93,17 @@ public class MQAdminExtImpl implements MQAdminExt {
 
     @Override public void createAndUpdatePlainAccessConfig(String addr,
         PlainAccessConfig plainAccessConfig) throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
-        
+        MQAdminInstance.threadLocalMQAdminExt().createAndUpdatePlainAccessConfig(addr, plainAccessConfig);
     }
 
     @Override public void deletePlainAccessConfig(String addr,
         String accessKey) throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
-
+        MQAdminInstance.threadLocalMQAdminExt().deletePlainAccessConfig(addr, accessKey);
     }
 
     @Override public void updateGlobalWhiteAddrConfig(String addr,
         String globalWhiteAddrs) throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
-
+        MQAdminInstance.threadLocalMQAdminExt().updateGlobalWhiteAddrConfig(addr, globalWhiteAddrs);
     }
 
     @Override public ClusterAclVersionInfo examineBrokerClusterAclVersionInfo(
@@ -113,7 +113,7 @@ public class MQAdminExtImpl implements MQAdminExt {
 
     @Override public AclConfig examineBrokerClusterAclConfig(
         String addr) throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
-        return null;
+        return MQAdminInstance.threadLocalMQAdminExt().examineBrokerClusterAclConfig(addr);
     }
 
     @Override

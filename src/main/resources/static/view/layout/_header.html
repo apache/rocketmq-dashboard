@@ -36,6 +36,7 @@
                 <li ng-class="path =='message' ? 'active':''"><a ng-href="#/message">{{'MESSAGE' | translate}}</a></li>
                 <li ng-class="path =='dlqMessage' ? 'active':''"><a ng-href="#/dlqMessage">{{'DLQ_MESSAGE' | translate}}</a></li>
                 <li ng-class="path =='messageTrace' ? 'active':''"><a ng-href="#/messageTrace">{{'MESSAGETRACE' | translate}}</a></li>
+                <li ng-show="{{ show }}" ng-class="path =='acl' ? 'active':''"><a ng-href="#/acl">Acl</a></li>
             </ul>
             <ul class="nav navbar-nav navbar-right">
                 <li class="dropdown">
