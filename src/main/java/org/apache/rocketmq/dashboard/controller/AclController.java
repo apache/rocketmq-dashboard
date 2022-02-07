@@ -18,14 +18,13 @@ package org.apache.rocketmq.dashboard.controller;
 
 import com.google.common.base.Preconditions;
 import java.util.List;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.common.AclConfig;
 import org.apache.rocketmq.common.PlainAccessConfig;
+import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.model.request.AclRequest;
 import org.apache.rocketmq.dashboard.service.AclService;
 import org.apache.rocketmq.dashboard.support.JsonResult;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -41,16 +40,12 @@ public class AclController {
     @Autowired
     private AclService aclService;
 
-    @Value("${rocketmq.config.accessKey}")
-    private String accessKey;
-
-    @Value("${rocketmq.config.secretKey}")
-    private String secretKey;
+    @Autowired
+    private RMQConfigure configure;
 
     @GetMapping("/enable.query")
     public Object isEnableAcl() {
-        boolean isEnable = StringUtils.isNotBlank(accessKey) && StringUtils.isNotBlank(secretKey);
-        return new JsonResult<>(isEnable);
+        return new JsonResult<>(configure.isACLEnabled());
     }
 
     @GetMapping("/config.query")
