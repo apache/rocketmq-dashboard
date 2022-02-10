@@ -187,6 +187,9 @@ module.controller('dlqMessageController', ['$scope', 'ngDialog', '$http', 'Notif
 
     $scope.selectedDlqMessage = [];
     $scope.batchResendDlqMessage = function (consumerGroup) {
+        if ($("#batchResendBtn").hasClass("disabled")) {
+            return;
+        }
         for (const message of $scope.messageCheckedList) {
             const dlqMessage = {};
             dlqMessage.topic = message.properties.RETRY_TOPIC;
@@ -219,6 +222,9 @@ module.controller('dlqMessageController', ['$scope', 'ngDialog', '$http', 'Notif
     };
 
     $scope.batchExportDlqMessage = function (consumerGroup) {
+        if ($("#batchExportBtn").hasClass("disabled")) {
+            return;
+        }
         for (const message of $scope.messageCheckedList) {
             const dlqMessage = {};
             dlqMessage.msgId = message.msgId;
