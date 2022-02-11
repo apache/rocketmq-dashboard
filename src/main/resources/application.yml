@@ -61,3 +61,9 @@ rocketmq:
     accessKey:  # if version > 4.4.0
     secretKey:  # if version > 4.4.0
 
+threadpool:
+  config:
+    coreSize: 10
+    maxSize: 10
+    keepAliveTime: 3000
+    queueSize: 5000

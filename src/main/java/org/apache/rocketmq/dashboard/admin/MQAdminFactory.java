@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.dashboard.admin;
 
+import java.util.concurrent.atomic.AtomicLong;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.acl.common.AclClientRPCHook;
@@ -33,6 +34,8 @@ public class MQAdminFactory {
         this.rmqConfigure = rmqConfigure;
     }
 
+    private final AtomicLong adminIndex = new AtomicLong(0);
+
     public MQAdminExt getInstance() throws Exception {
         RPCHook rpcHook = null;
         final String accessKey = rmqConfigure.getAccessKey();
@@ -47,6 +50,7 @@ public class MQAdminFactory {
         } else {
             mqAdminExt = new DefaultMQAdminExt(rpcHook, rmqConfigure.getTimeoutMillis());
         }
+        mqAdminExt.setAdminExtGroup(mqAdminExt.getAdminExtGroup() + "_" + adminIndex.getAndIncrement());
         mqAdminExt.setVipChannelEnabled(Boolean.parseBoolean(rmqConfigure.getIsVIPChannel()));
         mqAdminExt.setUseTLS(rmqConfigure.isUseTLS());
         mqAdminExt.setInstanceName(Long.toString(System.currentTimeMillis()));

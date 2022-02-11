@@ -30,6 +30,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.protocol.body.BrokerStatsData;
 import org.apache.rocketmq.common.protocol.body.ClusterInfo;
@@ -38,6 +40,7 @@ import org.apache.rocketmq.common.protocol.body.KVTable;
 import org.apache.rocketmq.common.protocol.body.TopicList;
 import org.apache.rocketmq.common.protocol.route.TopicRouteData;
 import org.apache.rocketmq.dashboard.BaseTest;
+import org.apache.rocketmq.dashboard.config.CollectExecutorConfig;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.service.impl.DashboardCollectServiceImpl;
 import org.apache.rocketmq.dashboard.util.JsonUtil;
@@ -68,6 +71,9 @@ public class DashboardCollectTaskTest extends BaseTest {
     @Mock
     private RMQConfigure rmqConfigure;
 
+    @Mock
+    private ExecutorService collectExecutor;
+
     private int taskExecuteNum = 10;
 
     private File brokerFile;
@@ -96,6 +102,7 @@ public class DashboardCollectTaskTest extends BaseTest {
         {
             TopicList topicList = new TopicList();
             Set<String> topicSet = new HashSet<>();
+            topicSet.add("rmq_sys_xxx");
             topicSet.add("topic_test");
             topicSet.add("%RETRY%group_test");
             topicSet.add("%DLQ%group_test");
@@ -121,19 +128,35 @@ public class DashboardCollectTaskTest extends BaseTest {
         } catch (Exception e) {
             Assert.assertEquals(e.getMessage(), "fetchAllTopicList exception");
         }
+        dashboardCollectTask.collectTopic();
+
+        // multiple topic collection
+        CollectExecutorConfig config = new CollectExecutorConfig();
+        config.setCoreSize(10);
+        config.setMaxSize(10);
+        config.setQueueSize(500);
+        config.setKeepAliveTime(3000);
+        ExecutorService collectExecutor = config.collectExecutor(config);
         for (int i = 0; i < taskExecuteNum; i++) {
-            dashboardCollectTask.collectTopic();
+            CollectTaskRunnble collectTask = new CollectTaskRunnble("topic_test" + i, mqAdminExt, dashboardCollectService);
+            collectExecutor.submit(collectTask);
         }
+        collectExecutor.shutdown();
+        boolean loop = true;
+        do {
+            // Wait for all collectTasks to complete
+            loop = !collectExecutor.awaitTermination(Long.MAX_VALUE, TimeUnit.MINUTES);
+        }
+        while (loop);
         LoadingCache<String, List<String>> map = dashboardCollectService.getTopicMap();
-        Assert.assertEquals(map.size(), 1);
-        Assert.assertEquals(map.get("topic_test").size(), taskExecuteNum);
+        Assert.assertEquals(map.size(), taskExecuteNum);
         dashboardCollectTask.saveData();
         Assert.assertEquals(topicFile.exists(), true);
         Map<String, List<String>> topicData =
             JsonUtil.string2Obj(MixAll.file2String(topicFile),
                 new TypeReference<Map<String, List<String>>>() {
                 });
-        Assert.assertEquals(topicData.get("topic_test").size(), taskExecuteNum);
+        Assert.assertEquals(topicData.size(), taskExecuteNum);
     }
 
     @Test
@@ -187,8 +210,8 @@ public class DashboardCollectTaskTest extends BaseTest {
 
     private void mockBrokerFileExistBeforeSaveData() throws Exception {
         Map<String, List<String>> map = new HashMap<>();
-        map.put("broker-a" + ":" + MixAll.MASTER_ID,  Lists.asList("1000", new String[] {"1000"}));
-        map.put("broker-b" + ":" + MixAll.MASTER_ID,  Lists.asList("1000", new String[] {"1000"}));
+        map.put("broker-a" + ":" + MixAll.MASTER_ID, Lists.asList("1000", new String[] {"1000"}));
+        map.put("broker-b" + ":" + MixAll.MASTER_ID, Lists.asList("1000", new String[] {"1000"}));
         MixAll.string2File(JsonUtil.obj2String(map), brokerFile.getAbsolutePath());
     }
 }
