@@ -21,4 +21,4 @@ script:
 #after_success:
 #    - mvn sonar:sonar
 after_success:
-  - bash <(curl -s https://codecov.io/bash) || echo 'Codecov failed to upload'
+  - bash <(curl -s https://codecov.io/bash) -t 996e4d8e-8a00-49f2-b649-38c03716d690 || echo 'Codecov failed to upload'
