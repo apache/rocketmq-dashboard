@@ -28,6 +28,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.client.exception.MQBrokerException;
 import org.apache.rocketmq.client.exception.MQClientException;
@@ -43,14 +44,11 @@ import org.apache.rocketmq.remoting.exception.RemotingConnectException;
 import org.apache.rocketmq.remoting.exception.RemotingException;
 import org.apache.rocketmq.remoting.exception.RemotingSendRequestException;
 import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 @Service
+@Slf4j
 public class AclServiceImpl extends AbstractCommonService implements AclService {
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(AclServiceImpl.class);
 
     @Override
     public AclConfig getAclConfig() {
@@ -60,11 +58,11 @@ public class AclServiceImpl extends AbstractCommonService implements AclService 
                 return mqAdminExt.examineBrokerClusterAclConfig(addr.get());
             }
         } catch (Exception e) {
-            LOGGER.error("getAclConfig error.", e);
+            log.error("getAclConfig error.", e);
             throw Throwables.propagate(e);
         }
         AclConfig aclConfig = new AclConfig();
-        aclConfig.setGlobalWhiteAddrs(Collections.EMPTY_LIST);
+        aclConfig.setGlobalWhiteAddrs(Collections.emptyList());
         aclConfig.setPlainAccessConfigs(Collections.emptyList());
         return aclConfig;
     }
@@ -103,11 +101,11 @@ public class AclServiceImpl extends AbstractCommonService implements AclService 
     public void deleteAclConfig(PlainAccessConfig config) {
         try {
             for (String addr : getBrokerAddrs()) {
-                LOGGER.info("Start to delete acl [{}] from broker [{}]", config.getAccessKey(), addr);
+                log.info("Start to delete acl [{}] from broker [{}]", config.getAccessKey(), addr);
                 if (isExistAccessKey(config.getAccessKey(), addr)) {
                     mqAdminExt.deletePlainAccessConfig(addr, config.getAccessKey());
                 }
-                LOGGER.info("Delete acl [{}] from broker [{}] complete", config.getAccessKey(), addr);
+                log.info("Delete acl [{}] from broker [{}] complete", config.getAccessKey(), addr);
             }
         } catch (Exception e) {
             throw Throwables.propagate(e);
@@ -156,7 +154,7 @@ public class AclServiceImpl extends AbstractCommonService implements AclService 
                     }
                 }
                 if (remoteConfig == null) {
-                    // May be the broker no acl config of the access key, therefore add it;
+                    // Maybe the broker no acl config of the access key, therefore add it;
                     mqAdminExt.createAndUpdatePlainAccessConfig(addr, addConfig);
                 } else {
                     if (remoteConfig.getTopicPerms() == null) {
@@ -209,8 +207,8 @@ public class AclServiceImpl extends AbstractCommonService implements AclService 
         try {
             PlainAccessConfig deleteConfig = request.getConfig();
 
-            String topic = request.getTopicPerm() != null && !request.getTopicPerm().isEmpty() ? request.getTopicPerm().split("=")[0] : null;
-            String group = request.getGroupPerm() != null && !request.getGroupPerm().isEmpty() ? request.getGroupPerm().split("=")[0] : null;
+            String topic = StringUtils.isNotEmpty(request.getTopicPerm()) ? request.getTopicPerm().split("=")[0] : null;
+            String group = StringUtils.isNotEmpty(request.getGroupPerm()) ? request.getGroupPerm().split("=")[0] : null;
             if (deleteConfig.getTopicPerms() != null && topic != null) {
                 removeExist(deleteConfig.getTopicPerms(), topic);
             }
@@ -230,7 +228,7 @@ public class AclServiceImpl extends AbstractCommonService implements AclService 
                     }
                 }
                 if (remoteConfig == null) {
-                    // May be the broker no acl config of the access key, therefore add it;
+                    // Maybe the broker no acl config of the access key, therefore add it;
                     mqAdminExt.createAndUpdatePlainAccessConfig(addr, deleteConfig);
                 } else {
                     if (remoteConfig.getTopicPerms() != null && topic != null) {
@@ -336,11 +334,9 @@ public class AclServiceImpl extends AbstractCommonService implements AclService 
     }
 
     private Set<BrokerData> getBrokerDataSet() throws InterruptedException, RemotingConnectException, RemotingTimeoutException, RemotingSendRequestException, MQBrokerException {
-        Set<BrokerData> brokerDataSet = new HashSet<>();
         ClusterInfo clusterInfo = mqAdminExt.examineBrokerClusterInfo();
         Map<String, BrokerData> brokerDataMap = clusterInfo.getBrokerAddrTable();
-        brokerDataSet.addAll(brokerDataMap.values());
-        return brokerDataSet;
+        return new HashSet<>(brokerDataMap.values());
     }
 
     private Set<String> getMasterSet() throws InterruptedException, MQBrokerException, RemotingTimeoutException, RemotingSendRequestException, RemotingConnectException {
@@ -349,8 +345,7 @@ public class AclServiceImpl extends AbstractCommonService implements AclService 
 
     private Set<String> getBrokerAddrs() throws InterruptedException, MQBrokerException, RemotingTimeoutException, RemotingSendRequestException, RemotingConnectException {
         Set<String> brokerAddrs = new HashSet<>();
-        getBrokerDataSet().stream().forEach(data -> brokerAddrs.addAll(data.getBrokerAddrs().values()));
+        getBrokerDataSet().forEach(data -> brokerAddrs.addAll(data.getBrokerAddrs().values()));
         return brokerAddrs;
     }
-
 }

@@ -27,7 +27,7 @@
                                     <input class="form-control" style="width: 450px" type="text" ng-model="filterStr"/>
                                 </div>
 
-                                <button class="btn btn-raised btn-sm btn-primary" type="button"
+                                <button ng-show="writeOperationEnabled" class="btn btn-raised btn-sm btn-primary" type="button"
                                         ng-click="openAddDialog()">{{'ADD' |
                                 translate}}
                                 </button>
@@ -35,17 +35,17 @@
                             <table class="table table-bordered">
                                 <tr>
                                     <th class="text-center">Access Key</th>
-                                    <th class="text-center">Secret Key</th>
+                                    <th ng-show="writeOperationEnabled" class="text-center">Secret Key</th>
                                     <th class="text-center">{{'IS_ADMIN' | translate}}</th>
                                     <th class="text-center">{{'DEFAULT_TOPIC_PERM' | translate}}</th>
                                     <th class="text-center">{{'DEFAULT_GROUP_PERM' | translate}}</th>
                                     <th class="text-center">{{'TOPIC_PERM' | translate}}</th>
                                     <th class="text-center">{{'GROUP_PERM' | translate}}</th>
-                                    <th class="text-center">{{'OPERATION' | translate}}</th>
+                                    <th ng-show="writeOperationEnabled" class="text-center">{{'OPERATION' | translate}}</th>
                                 </tr>
                                 <tr ng-repeat="item in plainAccessConfigs">
                                     <td class="text-center">{{item.accessKey}}</td>
-                                    <td class="text-center">{{item.secretKey}}</td>
+                                    <td ng-show="writeOperationEnabled" class="text-center">{{item.secretKey}}</td>
                                     <td class="text-center">{{item.admin}}</td>
                                     <td class="text-center">{{item.defaultTopicPerm}}</td>
                                     <td class="text-center">{{item.defaultGroupPerm}}</td>
@@ -53,10 +53,10 @@
                                         <table ng-repeat="topic in item.topicPerms" class="perm-table">
                                             <tr>
                                                 <td class="perm-tg">{{topic}}</td>
-                                                <td class="center"><a href="javascript:;"
+                                                <td ng-show="writeOperationEnabled" class="center"><a href="javascript:;"
                                                                       ng-click="openUpdateTopicDialog(item, topic)">
                                                     {{'UPDATE' | translate}}</a></td>
-                                                <td><a href="javascript:;"
+                                                <td ng-show="writeOperationEnabled"><a href="javascript:;"
                                                        ng-confirm-click="Are you sure to delete {{topic}}?"
                                                        confirmed-click="deletePermConfig(item, topic, 'topic')">{{'DELETE' | translate}}</a>
                                                 </td>
@@ -67,17 +67,17 @@
                                         <table ng-repeat="group in item.groupPerms" class="perm-table">
                                             <tr>
                                                 <td class="perm-tg">{{group}}</td>
-                                                <td class="center"><a href="javascript:;"
+                                                <td ng-show="writeOperationEnabled" class="center"><a href="javascript:;"
                                                                       ng-click="openUpdateGroupDialog(item, group)">
                                                     {{'UPDATE' | translate}}</a></td>
-                                                <td><a href="javascript:;"
+                                                <td ng-show="writeOperationEnabled"><a href="javascript:;"
                                                        ng-confirm-click="Are you sure to delete {{group}}?"
                                                        confirmed-click="deletePermConfig(item, group, 'group')">{{'DELETE' | translate}}</a>
                                                 </td>
                                             </tr>
                                         </table>
                                     </td>
-                                    <td class="text-center">
+                                    <td ng-show="writeOperationEnabled" class="text-center">
                                         <button class="btn btn-raised btn-sm btn-primary" type="button"
                                                 ng-click="openAddTopicDialog(item)">
                                             {{'ADD' | translate}}topic
@@ -106,11 +106,11 @@
                     <md-tab label="Global White List">
                         <md-content class="md-padding" style="min-height:600px">
                             <form class="form-inline pull-left col-sm-12">
-                                <button class="btn btn-raised btn-sm btn-primary" type="button"
+                                <button ng-show="writeOperationEnabled" class="btn btn-raised btn-sm btn-primary" type="button"
                                         ng-click="openAddAddrDialog()">{{'ADD' |
                                 translate}}
                                 </button>
-                                <button class="btn btn-raised btn-sm btn-danger" type="button"
+                                <button ng-show="writeOperationEnabled" class="btn btn-raised btn-sm btn-danger" type="button"
                                         ng-confirm-click="Are you sure to synchronize white list to all broker int the cluster?"
                                         confirmed-click="synchronizeWhiteList(allGlobalWhiteAddrs)">{{'SYNCHRONIZE' | translate}}
                                 </button>
@@ -118,12 +118,12 @@
                             <table class="table table-bordered">
                                 <tr>
                                     <th class="text-center">{{'WHITE_LIST' | translate}}</th>
-                                    <th class="text-center">{{'OPERATION' | translate}}</th>
+                                    <th ng-show="writeOperationEnabled" class="text-center">{{'OPERATION' | translate}}</th>
                                 </tr>
                                 <tr ng-repeat="item in allGlobalWhiteAddrs">
                                     <td class="text-center">{{item}}
                                     </td>
-                                    <td class="text-center">
+                                    <td ng-show="writeOperationEnabled" class="text-center">
                                         <button class="btn btn-raised btn-sm btn-danger" type="button"
                                                 ng-confirm-click="Are you sure to delete {{item}}?"
                                                 confirmed-click="deleteGlobalWhiteAddr(item)">{{'DELETE' | translate}}

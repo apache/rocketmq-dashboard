@@ -17,7 +17,7 @@
 
 var module = app;
 
-module.controller('aclController', ['$scope', 'ngDialog', '$http', 'Notification', function ($scope, ngDialog, $http, Notification) {
+module.controller('aclController', ['$scope', 'ngDialog', '$http', 'Notification', '$window', function ($scope, ngDialog, $http, Notification, $window) {
     $scope.paginationConf = {
         currentPage: 1,
         totalItems: 0,
@@ -34,6 +34,8 @@ module.controller('aclController', ['$scope', 'ngDialog', '$http', 'Notification
     $scope.allPlainAccessConfigs = [];
     $scope.globalWhiteAddrs = [];
     $scope.allGlobalWhiteAddrs = [];
+    $scope.userRole = $window.sessionStorage.getItem("userrole");
+    $scope.writeOperationEnabled =  $scope.userRole == null ? true : ($scope.userRole == 1 ? true : false);
 
     $scope.refreshPlainAccessConfigs = function () {
         $http({
