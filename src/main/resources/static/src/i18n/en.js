@@ -121,5 +121,7 @@ var en = {
     "DEFAULT_GROUP_PERM":"Default Group Permission",
     "TOPIC_PERM":"Topic Permission",
     "GROUP_PERM":"Group Permission",
-    "SYNCHRONIZE":"Synchronize Data"
+    "SYNCHRONIZE":"Synchronize Data",
+    "SHOW":"Show",
+    "HIDE":"Hide"
 }

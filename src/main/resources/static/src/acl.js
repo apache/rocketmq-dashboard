@@ -35,7 +35,8 @@ module.controller('aclController', ['$scope', 'ngDialog', '$http', 'Notification
     $scope.globalWhiteAddrs = [];
     $scope.allGlobalWhiteAddrs = [];
     $scope.userRole = $window.sessionStorage.getItem("userrole");
-    $scope.writeOperationEnabled =  $scope.userRole == null ? true : ($scope.userRole == 1 ? true : false);
+    $scope.writeOperationEnabled = $scope.userRole == null ? true : ($scope.userRole == 1 ? true : false);
+    $scope.showSecretKeyType = {};
 
     $scope.refreshPlainAccessConfigs = function () {
         $http({
@@ -49,6 +50,11 @@ module.controller('aclController', ['$scope', 'ngDialog', '$http', 'Notification
             if (resp.status == 0) {
                 $scope.allPlainAccessConfigs = resp.data.plainAccessConfigs;
                 $scope.allGlobalWhiteAddrs = resp.data.globalWhiteAddrs;
+                $scope.showSecretKeyType = {};
+                $scope.allPlainAccessConfigs.forEach(e => $scope.showSecretKeyType[e.accessKey] = {
+                    type: 'password',
+                    action: 'SHOW'
+                });
                 $scope.showPlainAccessConfigs(1, $scope.allPlainAccessConfigs.length);
             } else {
                 Notification.error({message: resp.errMsg, delay: 2000});
@@ -297,6 +303,14 @@ module.controller('aclController', ['$scope', 'ngDialog', '$http', 'Notification
                 Notification.error({message: resp.errMsg, delay: 2000});
             }
         });
+    }
+
+    $scope.switchSecretKeyType = function (accessKey) {
+        if ($scope.showSecretKeyType[accessKey].type == 'password') {
+            $scope.showSecretKeyType[accessKey] = {type: 'text', action: 'HIDE'};
+        } else {
+            $scope.showSecretKeyType[accessKey] = {type: 'password', action: 'SHOW'};
+        }
     }
 }]);
 

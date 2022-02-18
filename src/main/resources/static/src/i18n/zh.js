@@ -122,5 +122,7 @@ var zh = {
     "DEFAULT_GROUP_PERM":"消费组默认权限",
     "TOPIC_PERM":"topic权限",
     "GROUP_PERM":"消费组权限",
-    "SYNCHRONIZE":"同步"
+    "SYNCHRONIZE":"同步",
+    "SHOW":"显示",
+    "HIDE":"隐藏"
 }
