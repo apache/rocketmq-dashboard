@@ -29,6 +29,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.client.exception.MQBrokerException;
 import org.apache.rocketmq.client.exception.MQClientException;
@@ -51,11 +52,19 @@ import org.springframework.stereotype.Service;
 public class AclServiceImpl extends AbstractCommonService implements AclService {
 
     @Override
-    public AclConfig getAclConfig() {
+    public AclConfig getAclConfig(boolean excludeSecretKey) {
         try {
             Optional<String> addr = getMasterSet().stream().findFirst();
             if (addr.isPresent()) {
-                return mqAdminExt.examineBrokerClusterAclConfig(addr.get());
+                if (!excludeSecretKey) {
+                    return mqAdminExt.examineBrokerClusterAclConfig(addr.get());
+                } else {
+                    AclConfig aclConfig = mqAdminExt.examineBrokerClusterAclConfig(addr.get());
+                    if (CollectionUtils.isNotEmpty(aclConfig.getPlainAccessConfigs())) {
+                        aclConfig.getPlainAccessConfigs().forEach(pac -> pac.setSecretKey(null));
+                    }
+                    return aclConfig;
+                }
             }
         } catch (Exception e) {
             log.error("getAclConfig error.", e);

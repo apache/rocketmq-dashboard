@@ -19,15 +19,19 @@ package org.apache.rocketmq.dashboard.controller;
 import com.google.common.base.Preconditions;
 import java.util.List;
 import javax.annotation.Resource;
+import javax.servlet.http.HttpServletRequest;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.common.AclConfig;
 import org.apache.rocketmq.common.PlainAccessConfig;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
+import org.apache.rocketmq.dashboard.model.User;
+import org.apache.rocketmq.dashboard.model.UserInfo;
 import org.apache.rocketmq.dashboard.model.request.AclRequest;
 import org.apache.rocketmq.dashboard.permisssion.Permission;
 import org.apache.rocketmq.dashboard.service.AclService;
 import org.apache.rocketmq.dashboard.support.JsonResult;
+import org.apache.rocketmq.dashboard.util.WebUtil;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -53,8 +57,13 @@ public class AclController {
     }
 
     @GetMapping("/config.query")
-    public AclConfig getAclConfig() {
-        return aclService.getAclConfig();
+    public AclConfig getAclConfig(HttpServletRequest request) {
+        if (!configure.isLoginRequired()) {
+            return aclService.getAclConfig(false);
+        }
+        UserInfo userInfo = (UserInfo) WebUtil.getValueFromSession(request, WebUtil.USER_INFO);
+        // if user info is null but reach here, must exclude secret key for safety.
+        return aclService.getAclConfig(userInfo == null || userInfo.getUser().getType() != User.ADMIN);
     }
 
     @PostMapping("/add.do")

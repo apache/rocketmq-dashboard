@@ -23,7 +23,7 @@ import org.apache.rocketmq.dashboard.model.request.AclRequest;
 
 public interface AclService {
 
-    AclConfig getAclConfig();
+    AclConfig getAclConfig(boolean excludeSecretKey);
 
     void addAclConfig(PlainAccessConfig config);
 

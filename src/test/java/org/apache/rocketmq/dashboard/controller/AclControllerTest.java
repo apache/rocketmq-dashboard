@@ -86,7 +86,8 @@ public class AclControllerTest extends BaseControllerTest {
         perform.andExpect(status().isOk())
             .andExpect(jsonPath("$.data").isMap())
             .andExpect(jsonPath("$.data.globalWhiteAddrs").isNotEmpty())
-            .andExpect(jsonPath("$.data.plainAccessConfigs").isNotEmpty());
+            .andExpect(jsonPath("$.data.plainAccessConfigs").isNotEmpty())
+            .andExpect(jsonPath("$.data.plainAccessConfigs[0].secretKey").isNotEmpty());
 
         // 2. broker addr table is empty.
         clusterInfo.getBrokerAddrTable().clear();
@@ -96,6 +97,16 @@ public class AclControllerTest extends BaseControllerTest {
             .andExpect(jsonPath("$.data.globalWhiteAddrs").isEmpty())
             .andExpect(jsonPath("$.data.plainAccessConfigs").isEmpty());
 
+        // 3. login required and user info is null.
+        when(configure.isLoginRequired()).thenReturn(true);
+        when(mqAdminExt.examineBrokerClusterInfo()).thenReturn(MockObjectUtil.createClusterInfo());
+        perform = mockMvc.perform(requestBuilder);
+        perform.andExpect(status().isOk())
+            .andExpect(jsonPath("$.data").isMap())
+            .andExpect(jsonPath("$.data.globalWhiteAddrs").isNotEmpty())
+            .andExpect(jsonPath("$.data.plainAccessConfigs").isNotEmpty())
+            .andExpect(jsonPath("$.data.plainAccessConfigs[0].secretKey").isEmpty());
+        // 4. login required, but user is not admin. emmmm, Mockito may can not mock static method.
     }
 
     @Test
