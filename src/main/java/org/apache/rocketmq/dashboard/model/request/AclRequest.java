@@ -16,44 +16,15 @@
  */
 package org.apache.rocketmq.dashboard.model.request;
 
+import lombok.Data;
 import org.apache.rocketmq.common.PlainAccessConfig;
 
+@Data
 public class AclRequest {
 
     private PlainAccessConfig config;
+
     private String topicPerm;
+
     private String groupPerm;
-
-    public PlainAccessConfig getConfig() {
-        return config;
-    }
-
-    public void setConfig(PlainAccessConfig config) {
-        this.config = config;
-    }
-
-    public String getTopicPerm() {
-        return topicPerm;
-    }
-
-    public void setTopicPerm(String topicPerm) {
-        this.topicPerm = topicPerm;
-    }
-
-    public String getGroupPerm() {
-        return groupPerm;
-    }
-
-    public void setGroupPerm(String groupPerm) {
-        this.groupPerm = groupPerm;
-    }
-
-    @Override
-    public String toString() {
-        return "AclRequest{" +
-            "config=" + config +
-            ", topicPerm='" + topicPerm + '\'' +
-            ", groupPerm='" + groupPerm + '\'' +
-            '}';
-    }
 }

@@ -85,8 +85,7 @@ public class AclServiceImpl extends AbstractCommonService implements AclService 
                 throw new IllegalStateException("broker addr list is empty");
             }
             // check to see if account is exists
-            for (String addr :
-                masterSet) {
+            for (String addr : masterSet) {
                 AclConfig aclConfig = mqAdminExt.examineBrokerClusterAclConfig(addr);
                 List<PlainAccessConfig> plainAccessConfigs = aclConfig.getPlainAccessConfigs();
                 for (PlainAccessConfig pac : plainAccessConfigs) {

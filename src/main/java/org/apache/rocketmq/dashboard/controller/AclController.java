@@ -71,21 +71,21 @@ public class AclController {
         Preconditions.checkArgument(StringUtils.isNotEmpty(config.getAccessKey()), "accessKey is null");
         Preconditions.checkArgument(StringUtils.isNotEmpty(config.getSecretKey()), "secretKey is null");
         aclService.addAclConfig(config);
-        return new JsonResult(0, "");
+        return true;
     }
 
     @PostMapping("/delete.do")
     public Object deleteAclConfig(@RequestBody PlainAccessConfig config) {
         Preconditions.checkArgument(StringUtils.isNotEmpty(config.getAccessKey()), "accessKey is null");
         aclService.deleteAclConfig(config);
-        return new JsonResult(0, "");
+        return true;
     }
 
     @PostMapping("/update.do")
     public Object updateAclConfig(@RequestBody PlainAccessConfig config) {
         Preconditions.checkArgument(StringUtils.isNotEmpty(config.getSecretKey()), "secretKey is null");
         aclService.updateAclConfig(config);
-        return new JsonResult(0, "");
+        return true;
     }
 
     @PostMapping("/topic/add.do")
@@ -95,7 +95,7 @@ public class AclController {
         Preconditions.checkArgument(CollectionUtils.isNotEmpty(request.getConfig().getTopicPerms()), "topic perms is null");
         Preconditions.checkArgument(StringUtils.isNotEmpty(request.getTopicPerm()), "topic perm is null");
         aclService.addOrUpdateAclTopicConfig(request);
-        return new JsonResult(0, "");
+        return true;
     }
 
     @PostMapping("/group/add.do")
@@ -105,7 +105,7 @@ public class AclController {
         Preconditions.checkArgument(CollectionUtils.isNotEmpty(request.getConfig().getGroupPerms()), "group perms is null");
         Preconditions.checkArgument(StringUtils.isNotEmpty(request.getGroupPerm()), "group perm is null");
         aclService.addOrUpdateAclGroupConfig(request);
-        return new JsonResult(0, "");
+        return true;
     }
 
     @PostMapping("/perm/delete.do")
@@ -113,7 +113,7 @@ public class AclController {
         Preconditions.checkArgument(StringUtils.isNotEmpty(request.getConfig().getAccessKey()), "accessKey is null");
         Preconditions.checkArgument(StringUtils.isNotEmpty(request.getConfig().getSecretKey()), "secretKey is null");
         aclService.deletePermConfig(request);
-        return new JsonResult(0, "");
+        return true;
     }
 
     @PostMapping("/sync.do")
@@ -121,26 +121,26 @@ public class AclController {
         Preconditions.checkArgument(StringUtils.isNotEmpty(config.getAccessKey()), "accessKey is null");
         Preconditions.checkArgument(StringUtils.isNotEmpty(config.getSecretKey()), "secretKey is null");
         aclService.syncData(config);
-        return new JsonResult(0, "");
+        return true;
     }
 
     @PostMapping("/white/list/add.do")
     public Object addWhiteList(@RequestBody List<String> whiteList) {
         Preconditions.checkArgument(CollectionUtils.isNotEmpty(whiteList), "white list is null");
         aclService.addWhiteList(whiteList);
-        return new JsonResult(0, "");
+        return true;
     }
 
     @DeleteMapping("/white/list/delete.do")
     public Object deleteWhiteAddr(@RequestParam String request) {
         aclService.deleteWhiteAddr(request);
-        return new JsonResult(0, "");
+        return true;
     }
 
     @PostMapping("/white/list/sync.do")
     public Object synchronizeWhiteList(@RequestBody List<String> whiteList) {
         Preconditions.checkArgument(CollectionUtils.isNotEmpty(whiteList), "white list is null");
         aclService.synchronizeWhiteList(whiteList);
-        return new JsonResult(0, "");
+        return true;
     }
 }
