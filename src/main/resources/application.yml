@@ -58,6 +58,6 @@ rocketmq:
     loginRequired: false
     useTLS: false
     # set the accessKey and secretKey if you used acl
-    accessKey: rocketmq2 # if version > 4.4.0
-    secretKey: 12345678 # if version > 4.4.0
+    accessKey: # if version > 4.4.0
+    secretKey: # if version > 4.4.0
 
