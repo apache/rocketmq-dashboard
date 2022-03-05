@@ -90,7 +90,8 @@
         <commons-lang.version>2.6</commons-lang.version>
         <commons-io.version>2.4</commons-io.version>
         <commons-cli.version>1.2</commons-cli.version>
-        <rocketmq.version>4.9.2</rocketmq.version>
+        <commons-collections.version>3.2.2</commons-collections.version>
+        <rocketmq.version>4.9.3</rocketmq.version>
         <surefire.version>2.19.1</surefire.version>
         <aspectj.version>1.9.6</aspectj.version>
         <lombok.version>1.18.12</lombok.version>
@@ -104,6 +105,9 @@
         <asm.version>4.2</asm.version>
         <junit.version>4.12</junit.version>
         <snakeyaml.version>1.30</snakeyaml.version>
+        <cglib.version>2.2.2</cglib.version>
+        <joor.version>0.9.6</joor.version>
+        <bcpkix-jdk15on.version>1.68</bcpkix-jdk15on.version>
     </properties>
 
     <dependencies>
@@ -142,7 +146,7 @@
         <dependency>
             <groupId>commons-collections</groupId>
             <artifactId>commons-collections</artifactId>
-            <version>3.2.2</version>
+            <version>${commons-collections.version}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.rocketmq</groupId>
@@ -216,17 +220,17 @@
         <dependency>
             <groupId>cglib</groupId>
             <artifactId>cglib</artifactId>
-            <version>2.2.2</version>
+            <version>${cglib.version}</version>
         </dependency>
         <dependency>
             <groupId>org.jooq</groupId>
             <artifactId>joor</artifactId>
-            <version>0.9.6</version>
+            <version>${joor.version}</version>
         </dependency>
         <dependency>
             <groupId>org.bouncycastle</groupId>
             <artifactId>bcpkix-jdk15on</artifactId>
-            <version>1.68</version>
+            <version>${bcpkix-jdk15on.version}</version>
         </dependency>
         <dependency>
             <groupId>javax.xml.bind</groupId>
