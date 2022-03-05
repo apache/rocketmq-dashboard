@@ -289,3 +289,15 @@
 .table.text-middle>tbody>tr>td,.table.text-middle>tbody>tr>th{
     vertical-align: middle;
 }
+
+.perm-table{width: 100%;}
+.perm-table .perm-tg{width: 70%;}
+.perm-table .center{border-left: 1px solid #e4dddd; border-right: 1px solid #e4dddd;}
+
+.input-none {
+    border: 0;
+    outline: none;
+    background-color: rgba(0, 0, 0, 0);
+    cursor: text !important;
+    width: 60%;
+}

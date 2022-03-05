@@ -16,8 +16,10 @@
  */
 package org.apache.rocketmq.dashboard.util;
 
+import com.google.common.collect.Lists;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -30,8 +32,10 @@ import java.util.concurrent.ConcurrentMap;
 import org.apache.rocketmq.client.producer.LocalTransactionState;
 import org.apache.rocketmq.client.trace.TraceConstants;
 import org.apache.rocketmq.client.trace.TraceType;
+import org.apache.rocketmq.common.AclConfig;
 import org.apache.rocketmq.common.DataVersion;
 import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.common.PlainAccessConfig;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.admin.ConsumeStats;
 import org.apache.rocketmq.common.admin.OffsetWrapper;
@@ -59,6 +63,7 @@ import org.apache.rocketmq.common.protocol.route.TopicRouteData;
 import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.dashboard.model.DlqMessageRequest;
 import org.apache.rocketmq.remoting.protocol.LanguageCode;
+import org.checkerframework.checker.units.qual.A;
 
 import static org.apache.rocketmq.common.protocol.heartbeat.ConsumeType.CONSUME_ACTIVELY;
 
@@ -310,5 +315,27 @@ public class MockObjectUtil {
             dlqMessages.add(dlqMessageRequest);
         }
         return dlqMessages;
+    }
+
+    public static AclConfig createAclConfig() {
+        PlainAccessConfig adminConfig = new PlainAccessConfig();
+        adminConfig.setAdmin(true);
+        adminConfig.setAccessKey("rocketmq2");
+        adminConfig.setSecretKey("12345678");
+
+        PlainAccessConfig normalConfig = new PlainAccessConfig();
+        normalConfig.setAdmin(false);
+        normalConfig.setAccessKey("rocketmq");
+        normalConfig.setSecretKey("123456789");
+        normalConfig.setDefaultGroupPerm("SUB");
+        normalConfig.setDefaultTopicPerm("DENY");
+        normalConfig.setTopicPerms(Lists.newArrayList("topicA=DENY", "topicB=PUB|SUB"));
+        normalConfig.setGroupPerms(Lists.newArrayList("groupA=DENY", "groupB=PUB|SUB"));
+
+
+        AclConfig aclConfig = new AclConfig();
+        aclConfig.setPlainAccessConfigs(Lists.newArrayList(adminConfig, normalConfig));
+        aclConfig.setGlobalWhiteAddrs(Lists.newArrayList("localhost"));
+        return aclConfig;
     }
 }
