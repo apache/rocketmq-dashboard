@@ -1,0 +1,483 @@
+<!--
+  ~ Licensed to the Apache Software Foundation (ASF) under one or more
+  ~ contributor license agreements.  See the NOTICE file distributed with
+  ~ this work for additional information regarding copyright ownership.
+  ~ The ASF licenses this file to You under the Apache License, Version 2.0
+  ~ (the "License"); you may not use this file except in compliance with
+  ~ the License.  You may obtain a copy of the License at
+  ~
+  ~     http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
+<div class="container-fluid" id="deployHistoryList">
+    <div class="modal-body">
+        <div ng-cloak="" class="tabsdemoDynamicHeight">
+            <md-content>
+                <md-tabs md-dynamic-height="" md-border-bottom="">
+                    <md-tab label="Account Info">
+                        <md-content class="md-padding" style="min-height:600px">
+                            <form class="form-inline pull-left col-sm-12">
+                                <div class="form-group">
+                                    <label>Access Key:</label>
+                                    <input class="form-control" style="width: 450px" type="text" ng-model="filterStr"/>
+                                </div>
+
+                                <button ng-show="writeOperationEnabled" class="btn btn-raised btn-sm btn-primary"
+                                        type="button"
+                                        ng-click="openAddDialog()">{{'ADD' |
+                                translate}}
+                                </button>
+                            </form>
+                            <table class="table table-bordered">
+                                <tr>
+                                    <th class="text-center">Access Key</th>
+                                    <th ng-show="writeOperationEnabled" class="text-center">Secret Key</th>
+                                    <th class="text-center">{{'IS_ADMIN' | translate}}</th>
+                                    <th class="text-center">{{'DEFAULT_TOPIC_PERM' | translate}}</th>
+                                    <th class="text-center">{{'DEFAULT_GROUP_PERM' | translate}}</th>
+                                    <th class="text-center">{{'TOPIC_PERM' | translate}}</th>
+                                    <th class="text-center">{{'GROUP_PERM' | translate}}</th>
+                                    <th ng-show="writeOperationEnabled" class="text-center">
+                                        {{'OPERATION' | translate}}
+                                    </th>
+                                </tr>
+                                <tr ng-repeat="item in plainAccessConfigs">
+                                    <td class="text-center">{{item.accessKey}}</td>
+                                    <td ng-show="writeOperationEnabled" class="text-center">
+                                        <input type="{{showSecretKeyType[item.accessKey].type}}"
+                                               value="{{item.secretKey}}" class="input-none" ng-disabled="true"/>
+                                        <a href="javascript:;"
+                                           ng-click="switchSecretKeyType(item.accessKey)">{{showSecretKeyType[item.accessKey].action | translate}}</a>
+                                    </td>
+                                    <td class="text-center">{{item.admin}}</td>
+                                    <td class="text-center">{{item.defaultTopicPerm}}</td>
+                                    <td class="text-center">{{item.defaultGroupPerm}}</td>
+                                    <td class="text-center">
+                                        <table ng-repeat="topic in item.topicPerms" class="perm-table">
+                                            <tr>
+                                                <td class="perm-tg">{{topic}}</td>
+                                                <td ng-show="writeOperationEnabled" class="center"><a
+                                                        href="javascript:;"
+                                                        ng-click="openUpdateTopicDialog(item, topic)">
+                                                    {{'UPDATE' | translate}}</a></td>
+                                                <td ng-show="writeOperationEnabled"><a href="javascript:;"
+                                                                                       ng-confirm-click="Are you sure to delete {{topic}}?"
+                                                                                       confirmed-click="deletePermConfig(item, topic, 'topic')">{{'DELETE' | translate}}</a>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                    <td class="text-center">
+                                        <table ng-repeat="group in item.groupPerms" class="perm-table">
+                                            <tr>
+                                                <td class="perm-tg">{{group}}</td>
+                                                <td ng-show="writeOperationEnabled" class="center"><a
+                                                        href="javascript:;"
+                                                        ng-click="openUpdateGroupDialog(item, group)">
+                                                    {{'UPDATE' | translate}}</a></td>
+                                                <td ng-show="writeOperationEnabled"><a href="javascript:;"
+                                                                                       ng-confirm-click="Are you sure to delete {{group}}?"
+                                                                                       confirmed-click="deletePermConfig(item, group, 'group')">{{'DELETE' | translate}}</a>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                    <td ng-show="writeOperationEnabled" class="text-center">
+                                        <button class="btn btn-raised btn-sm btn-primary" type="button"
+                                                ng-click="openAddTopicDialog(item)">
+                                            {{'ADD' | translate}}topic
+                                        </button>
+                                        <button class="btn btn-raised btn-sm btn-primary" type="button"
+                                                ng-click="openAddGroupDialog(item)">
+                                            {{'ADD' | translate}}group
+                                        </button>
+                                        <button class="btn btn-raised btn-sm btn-primary" type="button"
+                                                ng-click="openUpdateDialog(item)">
+                                            {{'UPDATE' | translate}}
+                                        </button>
+                                        <button class="btn btn-raised btn-sm btn-danger" type="button"
+                                                ng-confirm-click="Are you sure to delete {{item.accessKey}}?"
+                                                confirmed-click="deleteAclConfig(item.accessKey)">{{'DELETE' | translate}}
+                                        </button>
+                                        <button class="btn btn-raised btn-sm btn-danger" type="button"
+                                                ng-click="synchronizeData(item)">{{'SYNCHRONIZE' | translate}}
+                                        </button>
+                                    </td>
+                                </tr>
+                            </table>
+                            <tm-pagination conf="paginationConf"></tm-pagination>
+                        </md-content>
+                    </md-tab>
+                    <md-tab label="Global White List">
+                        <md-content class="md-padding" style="min-height:600px">
+                            <form class="form-inline pull-left col-sm-12">
+                                <button ng-show="writeOperationEnabled" class="btn btn-raised btn-sm btn-primary"
+                                        type="button"
+                                        ng-click="openAddAddrDialog()">{{'ADD' |
+                                translate}}
+                                </button>
+                                <button ng-show="writeOperationEnabled" class="btn btn-raised btn-sm btn-danger"
+                                        type="button"
+                                        ng-confirm-click="Are you sure to synchronize white list to all broker int the cluster?"
+                                        confirmed-click="synchronizeWhiteList(allGlobalWhiteAddrs)">
+                                    {{'SYNCHRONIZE' | translate}}
+                                </button>
+                            </form>
+                            <table class="table table-bordered">
+                                <tr>
+                                    <th class="text-center">{{'WHITE_LIST' | translate}}</th>
+                                    <th ng-show="writeOperationEnabled" class="text-center">
+                                        {{'OPERATION' | translate}}
+                                    </th>
+                                </tr>
+                                <tr ng-repeat="item in allGlobalWhiteAddrs">
+                                    <td class="text-center">{{item}}
+                                    </td>
+                                    <td ng-show="writeOperationEnabled" class="text-center">
+                                        <button class="btn btn-raised btn-sm btn-danger" type="button"
+                                                ng-confirm-click="Are you sure to delete {{item}}?"
+                                                confirmed-click="deleteGlobalWhiteAddr(item)">{{'DELETE' | translate}}
+                                        </button>
+                                    </td>
+                                </tr>
+                            </table>
+                        </md-content>
+                    </md-tab>
+                </md-tabs>
+            </md-content>
+        </div>
+    </div>
+</div>
+
+<script type="text/ng-template" id="addAclAccountDialog">
+    <div class="modal-header">
+        <h4 class="modal-title">{{'ADD' | translate }}</h4>
+    </div>
+    <div class="modal-body ">
+        <form id="addAppForm" name="addAppForm" class="form-horizontal" novalidate>
+            <div class="form-group">
+                <label class="control-label col-sm-2">Access Key:</label>
+                <div class="col-sm-10">
+                    <input class="form-control" ng-model="ngDialogData.accessKey" type="text" required/>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="control-label col-sm-2">Secret Key:</label>
+                <div class="col-sm-10">
+                    <input class="form-control" ng-model="ngDialogData.secretKey" type="text" required/>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="control-label col-sm-2">{{'IS_ADMIN' | translate}}:</label>
+                <div class="col-sm-8">
+                    <md-switch class="md-primary" md-no-ink aria-label="Switch No Ink"
+                               ng-model="ngDialogData.admin">
+                    </md-switch>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="control-label col-sm-2">{{'DEFAULT_TOPIC_PERM' | translate}}:</label>
+                <div class="col-sm-10">
+                    <input class="form-control" ng-model="ngDialogData.defaultTopicPerm" type="text" readonly/>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="control-label col-sm-2">{{'DEFAULT_GROUP_PERM' | translate}}:</label>
+                <div class="col-sm-10">
+                    <input class="form-control" ng-model="ngDialogData.defaultGroupPerm" type="text" readonly/>
+                </div>
+            </div>
+        </form>
+        <div class="modal-footer">
+            <div class="ngdialog-buttons">
+                <button type="button" class="ngdialog-button ngdialog-button-primary"
+                        ng-click="addRequest({'accessKey':ngDialogData.accessKey, 'secretKey': ngDialogData.secretKey, 'admin': ngDialogData.admin, 'defaultTopicPerm': ngDialogData.defaultTopicPerm, 'defaultGroupPerm': ngDialogData.defaultGroupPerm})">
+                    {{ 'COMMIT' | translate }}
+                </button>
+                <button type="button" class="ngdialog-button ngdialog-button-secondary"
+                        ng-click="closeThisDialog('Cancel')">{{ 'CLOSE' | translate }}
+                </button>
+            </div>
+        </div>
+    </div>
+
+</script>
+
+<script type="text/ng-template" id="updateAclAccountDialog">
+    <div class="modal-header">
+        <h4 class="modal-title">{{'UPDATE' | translate }}</h4>
+    </div>
+    <div class="modal-body ">
+        <form id="updateAccountForm" name="updateAccountForm" class="form-horizontal" novalidate>
+            <div class="form-group">
+                <label class="control-label col-sm-2">Access Key:</label>
+                <div class="col-sm-10">
+                    <input class="form-control" ng-model="ngDialogData.accessKey" type="text" disabled/>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="control-label col-sm-2">Secret Key:</label>
+                <div class="col-sm-10">
+                    <input class="form-control" ng-model="ngDialogData.secretKey" type="text" required/>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="control-label col-sm-2">{{'IS_ADMIN' | translate}}:</label>
+                <div class="col-sm-8">
+                    <md-switch class="md-primary" md-no-ink aria-label="Switch No Ink"
+                               ng-model="ngDialogData.admin">
+                    </md-switch>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="control-label col-sm-2">{{'DEFAULT_TOPIC_PERM' | translate}}:</label>
+                <div class="col-sm-10">
+                    <input class="form-control" ng-model="ngDialogData.defaultTopicPerm" type="text" disabled/>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="control-label col-sm-2">{{'DEFAULT_GROUP_PERM' | translate}}:</label>
+                <div class="col-sm-10">
+                    <input class="form-control" ng-model="ngDialogData.defaultGroupPerm" type="text" disabled/>
+                </div>
+            </div>
+        </form>
+        <div class="modal-footer">
+            <div class="ngdialog-buttons">
+                <button type="button" class="ngdialog-button ngdialog-button-primary"
+                        ng-click="updateAclAccountRequest({'accessKey':ngDialogData.accessKey, 'secretKey': ngDialogData.secretKey, 'admin': ngDialogData.admin, 'defaultTopicPerm': ngDialogData.defaultTopicPerm, 'defaultGroupPerm': ngDialogData.defaultGroupPerm})">
+                    {{ 'COMMIT' | translate }}
+                </button>
+                <button type="button" class="ngdialog-button ngdialog-button-secondary"
+                        ng-click="closeThisDialog('Cancel')">{{ 'CLOSE' | translate }}
+                </button>
+            </div>
+        </div>
+    </div>
+
+</script>
+
+<script type="text/ng-template" id="addAclTopicDialog">
+    <div class="modal-header">
+        <h4 class="modal-title">{{'ADD' | translate }}{{'TOPIC_PERM' | translate }}</h4>
+    </div>
+    <div class="modal-body ">
+        <form id="addAclTopicForm" name="addAclTopicForm" class="form-horizontal" novalidate>
+            <div class="form-group">
+                <label class="control-label col-sm-2">Access Key:</label>
+                <div class="col-sm-10">
+                    <input class="form-control" ng-model="ngDialogData.accessKey" type="text" disabled/>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="control-label col-sm-2">Secret Key:</label>
+                <div class="col-sm-10">
+                    <input class="form-control" ng-model="ngDialogData.secretKey" type="text" disabled/>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="control-label col-sm-2">{{'TOPIC' | translate}}:</label>
+                <div class="col-sm-10">
+                    <input class="form-control" ng-model="topic" type="text" required/>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="control-label col-sm-2">{{'TOPIC_PERM' | translate}}:</label>
+                <div class="col-sm-8">
+                    <md-checkbox class="md-primary" ng-model="ngDialogData.pub">PUB</md-checkbox>
+                    <md-checkbox class="md-primary" ng-model="ngDialogData.sub">SUB</md-checkbox>
+                    <md-checkbox class="md-primary" ng-model="ngDialogData.deny">DENY</md-checkbox>
+                </div>
+            </div>
+        </form>
+        <div class="modal-footer">
+            <div class="ngdialog-buttons">
+                <button type="button" class="ngdialog-button ngdialog-button-primary"
+                        ng-click="updateAclAccountRequest({'originalData':ngDialogData,'topic': topic , 'pub': ngDialogData.pub, 'sub': ngDialogData.sub, 'deny': ngDialogData.deny})">
+                    {{ 'COMMIT' | translate }}
+                </button>
+                <button type="button" class="ngdialog-button ngdialog-button-secondary"
+                        ng-click="closeThisDialog('Cancel')">{{ 'CLOSE' | translate }}
+                </button>
+            </div>
+        </div>
+    </div>
+
+</script>
+
+<script type="text/ng-template" id="updateAclTopicDialog">
+    <div class="modal-header">
+        <h4 class="modal-title">{{'UPDATE' | translate }}{{'TOPIC_PERM' | translate }}</h4>
+    </div>
+    <div class="modal-body ">
+        <form id="updateAclTopicForm" name="updateAclTopicForm" class="form-horizontal" novalidate>
+            <div class="form-group">
+                <label class="control-label col-sm-2">Access Key:</label>
+                <div class="col-sm-10">
+                    <input class="form-control" ng-model="ngDialogData.accessKey" type="text" disabled/>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="control-label col-sm-2">Secret Key:</label>
+                <div class="col-sm-10">
+                    <input class="form-control" ng-model="ngDialogData.secretKey" type="text" disabled/>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="control-label col-sm-2">{{'TOPIC' | translate}}:</label>
+                <div class="col-sm-10">
+                    <input class="form-control" ng-model="ngDialogData.topic" type="text" disabled/>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="control-label col-sm-2">{{'TOPIC_PERM' | translate}}:</label>
+                <div class="col-sm-8">
+                    <md-checkbox class="md-primary" ng-model="ngDialogData.pub">PUB</md-checkbox>
+                    <md-checkbox class="md-primary" ng-model="ngDialogData.sub">SUB</md-checkbox>
+                    <md-checkbox class="md-primary" ng-model="ngDialogData.deny">DENY</md-checkbox>
+                </div>
+            </div>
+        </form>
+        <div class="modal-footer">
+            <div class="ngdialog-buttons">
+                <button type="button" class="ngdialog-button ngdialog-button-primary"
+                        ng-click="updateAclAccountRequest({'originalData':ngDialogData,'topic': ngDialogData.topic , 'pub': ngDialogData.pub, 'sub': ngDialogData.sub, 'deny': ngDialogData.deny})">
+                    {{ 'COMMIT' | translate }}
+                </button>
+                <button type="button" class="ngdialog-button ngdialog-button-secondary"
+                        ng-click="closeThisDialog('Cancel')">{{ 'CLOSE' | translate }}
+                </button>
+            </div>
+        </div>
+    </div>
+
+</script>
+
+<script type="text/ng-template" id="addAclGroupDialog">
+    <div class="modal-header">
+        <h4 class="modal-title">{{'ADD' | translate }}{{'GROUP_PERM' | translate }}</h4>
+    </div>
+    <div class="modal-body ">
+        <form id="addAclGroupForm" name="addAclGroupForm" class="form-horizontal" novalidate>
+            <div class="form-group">
+                <label class="control-label col-sm-2">Access Key:</label>
+                <div class="col-sm-10">
+                    <input class="form-control" ng-model="ngDialogData.accessKey" type="text" disabled/>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="control-label col-sm-2">Secret Key:</label>
+                <div class="col-sm-10">
+                    <input class="form-control" ng-model="ngDialogData.secretKey" type="text" disabled/>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="control-label col-sm-2">{{'CONSUMER' | translate}}:</label>
+                <div class="col-sm-10">
+                    <input class="form-control" ng-model="group" type="text" required/>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="control-label col-sm-2">{{'GROUP_PERM' | translate}}:</label>
+                <div class="col-sm-8">
+                    <md-checkbox class="md-primary" ng-model="ngDialogData.pub">PUB</md-checkbox>
+                    <md-checkbox class="md-primary" ng-model="ngDialogData.sub">SUB</md-checkbox>
+                    <md-checkbox class="md-primary" ng-model="ngDialogData.deny">DENY</md-checkbox>
+                </div>
+            </div>
+        </form>
+        <div class="modal-footer">
+            <div class="ngdialog-buttons">
+                <button type="button" class="ngdialog-button ngdialog-button-primary"
+                        ng-click="updateAclAccountRequest({'originalData':ngDialogData,'group': group , 'pub': ngDialogData.pub, 'sub': ngDialogData.sub, 'deny': ngDialogData.deny})">
+                    {{ 'COMMIT' | translate }}
+                </button>
+                <button type="button" class="ngdialog-button ngdialog-button-secondary"
+                        ng-click="closeThisDialog('Cancel')">{{ 'CLOSE' | translate }}
+                </button>
+            </div>
+        </div>
+    </div>
+
+</script>
+
+<script type="text/ng-template" id="updateAclGroupDialog">
+    <div class="modal-header">
+        <h4 class="modal-title">{{'UPDATE' | translate }}{{'GROUP_PERM' | translate }}</h4>
+    </div>
+    <div class="modal-body ">
+        <form id="updateAclGroupForm" name="updateAclGroupForm" class="form-horizontal" novalidate>
+            <div class="form-group">
+                <label class="control-label col-sm-2">Access Key:</label>
+                <div class="col-sm-10">
+                    <input class="form-control" ng-model="ngDialogData.accessKey" type="text" disabled/>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="control-label col-sm-2">Secret Key:</label>
+                <div class="col-sm-10">
+                    <input class="form-control" ng-model="ngDialogData.secretKey" type="text" disabled/>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="control-label col-sm-2">{{'CONSUMER' | translate}}:</label>
+                <div class="col-sm-10">
+                    <input class="form-control" ng-model="ngDialogData.group" type="text" disabled/>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="control-label col-sm-2">{{'GROUP_PERM' | translate}}:</label>
+                <div class="col-sm-8">
+                    <md-checkbox class="md-primary" ng-model="ngDialogData.pub">PUB</md-checkbox>
+                    <md-checkbox class="md-primary" ng-model="ngDialogData.sub">SUB</md-checkbox>
+                    <md-checkbox class="md-primary" ng-model="ngDialogData.deny">DENY</md-checkbox>
+                </div>
+            </div>
+        </form>
+        <div class="modal-footer">
+            <div class="ngdialog-buttons">
+                <button type="button" class="ngdialog-button ngdialog-button-primary"
+                        ng-click="updateAclAccountRequest({'originalData':ngDialogData,'group': ngDialogData.group , 'pub': ngDialogData.pub, 'sub': ngDialogData.sub, 'deny': ngDialogData.deny})">
+                    {{ 'COMMIT' | translate }}
+                </button>
+                <button type="button" class="ngdialog-button ngdialog-button-secondary"
+                        ng-click="closeThisDialog('Cancel')">{{ 'CLOSE' | translate }}
+                </button>
+            </div>
+        </div>
+    </div>
+
+</script>
+
+<script type="text/ng-template" id="addWhiteListDialog">
+    <div class="modal-header">
+        <h4 class="modal-title">{{'ADD' | translate }}{{'WHITE_LIST' | translate }}</h4>
+    </div>
+    <div class="modal-body ">
+        <form id="addWhiteListForm" name="addWhiteListForm" class="form-horizontal" novalidate>
+            <div class="form-group">
+                <label class="control-label col-sm-2">{{'WHITE_LIST' | translate }}:</label>
+                <div class="col-sm-10">
+                    <input class="form-control" ng-model="ip" type="text"/>
+                </div>
+            </div>
+        </form>
+        <div class="modal-footer">
+            <div class="ngdialog-buttons">
+                <button type="button" class="ngdialog-button ngdialog-button-primary"
+                        ng-click="addWhiteListRequest(ip)">
+                    {{ 'COMMIT' | translate }}
+                </button>
+                <button type="button" class="ngdialog-button ngdialog-button-secondary"
+                        ng-click="closeThisDialog('Cancel')">{{ 'CLOSE' | translate }}
+                </button>
+            </div>
+        </div>
+    </div>
+
+</script>

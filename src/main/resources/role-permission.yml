@@ -37,3 +37,4 @@ rolePerms:
     - /dlqMessage/*.query
     - /dlqMessage/exportDlqMessage.do
     - /dlqMessage/batchResendDlqMessage.do
+    - /acl/*.query

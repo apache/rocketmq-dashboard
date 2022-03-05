@@ -114,5 +114,15 @@ var zh = {
     "EXPORT": "导出",
     "NO_MATCH_RESULT": "没有查到符合条件的结果",
     "BATCH_RESEND": "批量重发",
-    "BATCH_EXPORT": "批量导出"
+    "BATCH_EXPORT": "批量导出",
+    "WHITE_LIST":"白名单",
+    "ACCOUNT_INFO":"账户信息",
+    "IS_ADMIN":"是否管理员",
+    "DEFAULT_TOPIC_PERM":"topic默认权限",
+    "DEFAULT_GROUP_PERM":"消费组默认权限",
+    "TOPIC_PERM":"topic权限",
+    "GROUP_PERM":"消费组权限",
+    "SYNCHRONIZE":"同步",
+    "SHOW":"显示",
+    "HIDE":"隐藏"
 }

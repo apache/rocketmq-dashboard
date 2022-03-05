@@ -49,6 +49,15 @@ var app = angular.module('app', [
                 }
                 console.log('initFlag0='+ initFlag + ' loginFlag0==='+loginFlag);
 
+                $http({
+                    method: "GET",
+                    url: "acl/enable.query"
+                }).success(function (resp) {
+                    if (resp && resp.status == 0) {
+                        $rootScope.show = resp.data;
+                    }
+                });
+
                 $rootScope.$on('$locationChangeStart', function (event, next, current) {
                    // redirect to login page if not logged in and trying to access a restricted page
                    init(function(resp){
@@ -204,6 +213,9 @@ app.config(['$routeProvider', '$httpProvider','$cookiesProvider','getDictNamePro
         }).when('/ops', {
             templateUrl: 'view/pages/ops.html',
             controller:'opsController'
+        }).when('/acl', {
+            templateUrl: 'view/pages/acl.html',
+            controller: 'aclController'
         }).when('/404', {
             templateUrl: 'view/pages/404.html'
         }).otherwise('/404');
