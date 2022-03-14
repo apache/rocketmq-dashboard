@@ -61,7 +61,8 @@ public class AuthWebMVCConfigurerAdapter extends WebMvcConfigurerAdapter {
                 "/ops/**",
                 "/producer/**",
                 "/test/**",
-                "/topic/**");
+                "/topic/**",
+                "/acl/**");
         }
     }
 
