@@ -254,6 +254,7 @@ public class DashboardCollectTask {
         for (Map.Entry<String, Set<String>> entry : clusterTable.entrySet()) {
             String clusterName = entry.getKey();
             TopicValidator.addSystemTopic(clusterName);
+            TopicValidator.addSystemTopic(MixAll.getReplyTopic(clusterName));
             Set<String> brokerNames = entry.getValue();
             for (String brokerName : brokerNames) {
                 TopicValidator.addSystemTopic(brokerName);
