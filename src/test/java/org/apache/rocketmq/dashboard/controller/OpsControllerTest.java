@@ -35,6 +35,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
 import static org.hamcrest.Matchers.hasSize;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -81,6 +82,20 @@ public class OpsControllerTest extends BaseControllerTest {
         perform.andExpect(status().isOk())
             .andExpect(jsonPath("$.data").value(true));
         Assert.assertEquals(configure.getNamesrvAddr(), "127.0.0.1:9876");
+    }
+
+    @Test
+    public void testAddNameSvrAddr() throws Exception {
+        final String url = "/ops/addNameSvrAddr.do";
+        {
+            doNothing().when(configure).setNamesrvAddrs(any());
+        }
+        requestBuilder = MockMvcRequestBuilders.post(url);
+        requestBuilder.param("newNamesrvAddr", "127.0.0.3:9876");
+        perform = mockMvc.perform(requestBuilder);
+        perform.andExpect(status().isOk())
+            .andExpect(jsonPath("$.data").value(true));
+        Assert.assertEquals(configure.getNamesrvAddrs().size(), 3);
     }
 
     @Test

@@ -73,7 +73,8 @@ public class OpsServiceImpl extends AbstractCommonService implements OpsService 
         return checkResultMap;
     }
 
-    @Override public boolean updateIsVIPChannel(String useVIPChannel) {
+    @Override
+    public boolean updateIsVIPChannel(String useVIPChannel) {
         configure.setIsVIPChannel(useVIPChannel);
         mqAdminExtPool.clear();
         return true;
@@ -84,5 +85,14 @@ public class OpsServiceImpl extends AbstractCommonService implements OpsService 
         configure.setUseTLS(useTLS);
         mqAdminExtPool.clear();
         return true;
+    }
+
+    @Override
+    public void addNameSvrAddr(String namesrvAddr) {
+        List<String> namesrvAddrs = configure.getNamesrvAddrs();
+        if (namesrvAddrs != null && !namesrvAddrs.contains(namesrvAddr)) {
+            namesrvAddrs.add(namesrvAddr);
+        }
+        configure.setNamesrvAddrs(namesrvAddrs);
     }
 }
