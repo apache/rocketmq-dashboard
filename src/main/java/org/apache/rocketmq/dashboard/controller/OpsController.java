@@ -16,7 +16,9 @@
  */
 package org.apache.rocketmq.dashboard.controller;
 
+import com.google.common.base.Preconditions;
 import javax.annotation.Resource;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.dashboard.permisssion.Permission;
 import org.apache.rocketmq.dashboard.service.OpsService;
 import org.springframework.stereotype.Controller;
@@ -46,6 +48,15 @@ public class OpsController {
         return true;
     }
 
+    @RequestMapping(value = "/addNameSvrAddr.do", method = RequestMethod.POST)
+    @ResponseBody
+    public Object addNameSvrAddr(@RequestParam String newNamesrvAddr) {
+        Preconditions.checkArgument(StringUtils.isNotEmpty(newNamesrvAddr),
+            "namesrvAddr can not be blank");
+        opsService.addNameSvrAddr(newNamesrvAddr);
+        return true;
+    }
+
     @RequestMapping(value = "/updateIsVIPChannel.do", method = RequestMethod.POST)
     @ResponseBody
     public Object updateIsVIPChannel(@RequestParam String useVIPChannel) {
@@ -53,13 +64,11 @@ public class OpsController {
         return true;
     }
 
-
     @RequestMapping(value = "/rocketMqStatus.query", method = RequestMethod.GET)
     @ResponseBody
     public Object clusterStatus() {
         return opsService.rocketMqStatusCheck();
     }
-
 
     @RequestMapping(value = "/updateUseTLS.do", method = RequestMethod.POST)
     @ResponseBody

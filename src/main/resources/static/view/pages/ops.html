@@ -28,6 +28,15 @@
                     ng-click="updateNameSvrAddr()">{{'UPDATE' | translate}}
             </button>
         </div>
+        <form class="form-inline pull-left" style="margin-left: 20px" ng-show="{{writeOperationEnabled}}">
+            <div class="form-group" style="margin: 0">
+                <label for="namesrvAddr">NamesrvAddr:</label>
+                <input id="namesrvAddr" class="form-control" style="width: 300px; margin: 0 10px 0 10px" type="text" ng-model="newNamesrvAddr" required/>
+                <button class="btn btn-raised btn-sm btn-primary" type="button"
+                        ng-click="addNameSvrAddr()"> {{ 'ADD' | translate}}
+                </button>
+            </div>
+        </form>
         <br/>
         <br/>
         <h2 class="md-title">IsUseVIPChannel</h2>
