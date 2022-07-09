@@ -24,6 +24,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.MethodParameter;
+import org.springframework.http.converter.HttpMessageConverter;
+import org.springframework.http.converter.StringHttpMessageConverter;
 import org.springframework.web.bind.support.WebDataBinderFactory;
 import org.springframework.web.context.request.NativeWebRequest;
 import org.springframework.web.method.support.HandlerMethodArgumentResolver;
@@ -62,7 +64,8 @@ public class AuthWebMVCConfigurerAdapter extends WebMvcConfigurerAdapter {
                 "/producer/**",
                 "/test/**",
                 "/topic/**",
-                "/acl/**");
+                "/acl/**",
+                "/connect/**");
         }
     }
 
@@ -93,5 +96,10 @@ public class AuthWebMVCConfigurerAdapter extends WebMvcConfigurerAdapter {
     @Override
     public void addViewControllers(ViewControllerRegistry registry) {
         registry.addViewController("*.htm").setViewName("forward:/app.html");
+    }
+
+    @Override
+    public void configureMessageConverters(List<HttpMessageConverter<?>> converters) {
+        converters.removeIf(e -> e.getClass().isAssignableFrom(StringHttpMessageConverter.class));
     }
 }

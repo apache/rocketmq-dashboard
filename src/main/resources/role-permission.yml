@@ -38,3 +38,5 @@ rolePerms:
     - /dlqMessage/exportDlqMessage.do
     - /dlqMessage/batchResendDlqMessage.do
     - /acl/*.query
+    - /connect/*.query
+    - /connect/*.do
