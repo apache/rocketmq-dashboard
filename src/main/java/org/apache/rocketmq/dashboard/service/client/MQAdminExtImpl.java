@@ -52,6 +52,7 @@ import org.apache.rocketmq.common.protocol.body.QueueTimeSpan;
 import org.apache.rocketmq.common.protocol.body.SubscriptionGroupWrapper;
 import org.apache.rocketmq.common.protocol.body.TopicConfigSerializeWrapper;
 import org.apache.rocketmq.common.protocol.body.TopicList;
+import org.apache.rocketmq.common.protocol.body.TopicRouteRulesResponseBody;
 import org.apache.rocketmq.common.protocol.route.TopicRouteData;
 import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.dashboard.util.JsonUtil;
@@ -571,5 +572,15 @@ public class MQAdminExtImpl implements MQAdminExt {
     @Override public boolean resumeCheckHalfMessage(String topic,
         String msgId) throws RemotingException, MQClientException, InterruptedException, MQBrokerException {
         return false;
+    }
+
+    @Override
+    public boolean updateTopicRouteRules(List<String> nameServers, boolean updateAll, byte[] ruleBytes) throws RemotingException, MQClientException, InterruptedException, MQBrokerException {
+        return MQAdminInstance.threadLocalMQAdminExt().updateTopicRouteRules(nameServers, updateAll, ruleBytes);
+    }
+
+    @Override
+    public TopicRouteRulesResponseBody queryTopicRouteRules(List<String> nameServers, boolean showAll, int servicePort, String clusterName) throws RemotingException, MQClientException, InterruptedException, MQBrokerException {
+        return MQAdminInstance.threadLocalMQAdminExt().queryTopicRouteRules(nameServers, showAll, servicePort, clusterName);
     }
 }
