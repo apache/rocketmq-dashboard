@@ -26,7 +26,7 @@
                                 <button id="reloadAppButton" type="button"
                                         class="btn btn-raised btn-sm  btn-primary"
                                         data-toggle="modal"
-                                        ng-click="queryWorkerConnectorList()">
+                                        ng-click="showWorkerConnectorList()">
                                     <span class="glyphicon glyphicon-search"></span>{{ 'REFRESH' | translate}}
                                 </button>
                                 <button id="createConnector" type="button"
@@ -51,7 +51,7 @@
                                         <th class="text-center">Update Time</th>
                                         <th class="text-center">Operation</th>
                                     </tr>
-                                    <tr ng-repeat="item in messageShowList">
+                                    <tr ng-repeat="item in connectorList">
                                         <td class="text-center">{{item.connectorName}}</td>
                                         <td class="text-center">{{item.connectorClass}}</td>
                                         <td class="text-center">{{item.connectTopicname}}</td>
@@ -69,9 +69,9 @@
                                                     confirmed-click="stopThisConnector(item.connectorName)"> {{ 'STOP' | translate }}
                                             </button>
                                         </td>
-
                                     </tr>
                                 </table>
+                                <tm-pagination conf="connectorPaginationConf"></tm-pagination>
                             </div>
                         </md-content>
                     </md-tab>
@@ -81,7 +81,7 @@
                             <button id="reloadTaskButton" type="button"
                                     class="btn btn-raised btn-sm  btn-primary"
                                     data-toggle="modal"
-                                    ng-click="queryWorkerTaskList()">
+                                    ng-click="showWorkerTaskList()">
                                 <span class="glyphicon glyphicon-search"></span>{{ 'REFRESH' | translate}}
                             </button>
                             <table class="table table-bordered">
@@ -106,6 +106,7 @@
                                     </td>
                                 </tr>
                             </table>
+                            <tm-pagination conf="taskPaginationConf"></tm-pagination>
                         </md-content>
                     </md-tab>
 
@@ -114,23 +115,19 @@
                             <button id="reloadWorkerButton" type="button"
                                     class="btn btn-raised btn-sm  btn-primary"
                                     data-toggle="modal"
-                                    ng-click="queryWorkerList()">
+                                    ng-click="showWorkerList()">
                                 <span class="glyphicon glyphicon-search"></span>{{ 'REFRESH' | translate}}
                             </button>
                             <table class="table table-bordered">
                                 <tr>
                                     <th class="text-center">Cluster IP</th>
                                     <th class="text-center">Namesrv Addr</th>
-<!--                                    <th class="text-center">Working Connectors</th>-->
-<!--                                    <th class="text-center">Existing Tasks</th>-->
                                     <th class="text-center">Operation</th>
 
                                 </tr>
-                                <tr ng-repeat="item in workerTaskList">
+                                <tr ng-repeat="item in allWorkerList">
                                     <td class="text-center">{{item.ipAddr}}</td>
                                     <td class="text-center">{{item.namesrvAddr}}</td>
-<!--                                    <td class="text-center">1</td>-->
-<!--                                    <td class="text-center">1</td>-->
                                     <td class="text-center">
                                         <button class="btn btn-raised btn-sm btn-primary" type="button"
                                                 ng-click="workerDetail(item)">{{ 'DETAIL' | translate}}
@@ -138,6 +135,7 @@
                                     </td>
                                 </tr>
                             </table>
+                            <tm-pagination conf="workerPaginationConf"></tm-pagination>
                         </md-content>
                     </md-tab>
                 </md-tabs>
@@ -260,6 +258,18 @@
                         <label class="form-control">{{ngDialogData.namesrvAddr}}</label>
                     </div>
                 </div>
+<!--                <div class="form-group">-->
+<!--                    <label class="control-label col-sm-2">Allocated Connectors:</label>-->
+<!--                    <div class="col-sm-10">-->
+<!--                        <label class="form-control">{{ngDialogData.connectors}}</label>-->
+<!--                    </div>-->
+<!--                </div>-->
+<!--                <div class="form-group">-->
+<!--                    <label class="control-label col-sm-2">Allocated Tasks:</label>-->
+<!--                    <div class="col-sm-10">-->
+<!--                        <label class="form-control">{{ngDialogData.tasks}}</label>-->
+<!--                    </div>-->
+<!--                </div>-->
             </form>
         </div>
 

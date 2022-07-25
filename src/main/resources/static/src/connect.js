@@ -19,10 +19,78 @@ var module = app;
 
 module.controller('connectController', ['$scope', 'ngDialog', '$http', 'Notification', function ($scope, ngDialog, $http, Notification) {
     $scope.allTopicList = [];
-    $scope.allWorkerList = [];
     $scope.selectedTopic = [];
-    $scope.key = "";
 
+    $scope.connectorList = [];
+    $scope.workerTaskList = [];
+    $scope.allWorkerList = [];
+
+    $scope.respConnectors = [];
+    $scope.respTasks = [];
+    $scope.respWorkers = [];
+
+    $scope.connectorPaginationConf  = {
+        currentPage: 1,
+        totalItems: 0,
+        itemsPerPage: 10,
+        pagesLength: 15,
+        perPageOptions: [10],
+        rememberPerPage: 'perPageItems',
+        onChange: function () {
+            $scope.queryWorkerConnectorList(this.currentPage, this.totalItems);
+        }
+    };
+
+    $scope.taskPaginationConf = {
+        currentPage: 1,
+        totalItems: 0,
+        itemsPerPage: 10,
+        pagesLength: 15,
+        perPageOptions: [10],
+        rememberPerPage: 'perPageItems',
+        onChange: function () {
+            $scope.queryWorkerTaskList(this.currentPage, this.totalItems);
+        }
+    };
+
+    $scope.workerPaginationConf = {
+        currentPage: 1,
+        totalItems: 0,
+        itemsPerPage: 10,
+        pagesLength: 15,
+        perPageOptions: [10],
+        rememberPerPage: 'perPageItems',
+        onChange: function () {
+            $scope.queryWorkerList(this.currentPage, this.totalItems);
+        }
+    };
+
+    $scope.queryWorkerConnectorList = function (currentPage, totalItem) {
+        var perPage = $scope.connectorPaginationConf.itemsPerPage;
+        var from = (currentPage - 1) * perPage;
+        var to = (from + perPage) > totalItem ? totalItem : from + perPage;
+        $scope.connectorList = $scope.respConnectors.slice(from, to);
+        $scope.connectorPaginationConf.totalItems = totalItem;
+
+    };
+
+    $scope.queryWorkerTaskList = function (currentPage, totalItem) {
+        var perPage = $scope.taskPaginationConf.itemsPerPage;
+        var from = (currentPage - 1) * perPage;
+        var to = (from + perPage) > totalItem ? totalItem : from + perPage;
+        $scope.workerTaskList = $scope.respTasks.slice(from, to);
+        $scope.taskPaginationConf.totalItems = totalItem;
+
+    };
+
+    $scope.queryWorkerList = function (currentPage, totalItem) {
+        var perPage = $scope.workerPaginationConf.itemsPerPage;
+        var from = (currentPage - 1) * perPage;
+        var to = (from + perPage) > totalItem ? totalItem : from + perPage;
+        $scope.allWorkerList = $scope.respWorkers.slice(from, to);
+        $scope.workerPaginationConf.totalItems = totalItem;
+
+    };
 
     function queryTopicName() {
         $http({
@@ -38,52 +106,57 @@ module.controller('connectController', ['$scope', 'ngDialog', '$http', 'Notifica
         });
     }
 
-    function queryWorkerConnectorList() {
+
+
+    $scope.showWorkerTaskList = function () {
+        $http({
+            method: "GET",
+            url: "connect/workerTasks.query",
+        }).success(function (resp) {
+            if (resp.status === 0) {
+                console.log(resp);
+
+                $scope.respTasks = resp.data;
+                $scope.queryWorkerTaskList($scope.taskPaginationConf.currentPage, $scope.respTasks.length);
+
+            } else {
+                Notification.error({message: resp.errMsg, delay: 2000});
+            }
+        });
+    };
+
+    $scope.showWorkerConnectorList = function () {
         $http({
             method: "GET",
             url: "connect/WorkerConnectors.query",
         }).success(function (resp) {
             if (resp.status === 0) {
                 console.log(resp);
-                $scope.messageShowList = resp.data;
+                $scope.respConnectors = resp.data;
+
+                $scope.queryWorkerConnectorList($scope.connectorPaginationConf.currentPage, $scope.respConnectors.length);
             } else {
                 Notification.error({message: resp.errMsg, delay: 2000});
             }
         });
-    }
+    };
 
-    function queryWorkerList() {
+    $scope.showWorkerList = function () {
         $http({
             method: "GET",
             url: "connect/worker.query",
         }).success(function (resp) {
-            if (resp.status == 0) {
+            if (resp.status === 0) {
                 console.log(resp);
-                $scope.allWorkerList = resp.data;
-                $scope.workerTaskList = resp.data;
+
+                $scope.respWorkers = resp.data;
+                $scope.queryWorkerList($scope.workerPaginationConf.currentPage, $scope.respWorkers.length);
+
             } else {
                 Notification.error({message: resp.errMsg, delay: 2000});
             }
         });
     };
-
-    $scope.queryWorkerTaskList = function () {
-        $http({
-            method: "GET",
-            url: "connect/workerTasks.query",
-        }).success(function (resp) {
-            if (resp.status == 0) {
-                console.log(resp);
-                $scope.workerTaskList = resp.data;
-            } else {
-                Notification.error({message: resp.errMsg, delay: 2000});
-            }
-        });
-    };
-
-    $scope.queryWorkerConnectorList = queryWorkerConnectorList;
-
-    $scope.queryWorkerList = queryWorkerList;
 
 
     $scope.queryConnectorStatus = function (name) {
@@ -121,7 +194,7 @@ module.controller('connectController', ['$scope', 'ngDialog', '$http', 'Notifica
             } else {
                 Notification.error({message: resp.errMsg, delay: 2000});
             }
-            queryWorkerConnectorList();
+            $scope.showWorkerConnectorList();
         })
     };
 
@@ -139,7 +212,7 @@ module.controller('connectController', ['$scope', 'ngDialog', '$http', 'Notifica
             } else {
                 Notification.error({message: resp.errMsg, delay: 2000});
             }
-            queryWorkerConnectorList();
+            $scope.queryWorkerConnectorList();
         })
     };
 
@@ -185,7 +258,7 @@ module.controller('connectController', ['$scope', 'ngDialog', '$http', 'Notifica
 
 
     $scope.openCreationDialog = function () {
-        queryWorkerList();
+        $scope.showWorkerList();
         queryTopicName();
         ngDialog.open({
             template: 'connectorCreationDialog',
@@ -208,7 +281,7 @@ module.controller('connectController', ['$scope', 'ngDialog', '$http', 'Notifica
             if (resp.status == 0) {
                 if (resp.data === "success") {
                     Notification.info({message: "success!", delay: 2000});
-                    queryWorkerConnectorList();
+                    $scope.queryWorkerConnectorList();
                     ngDialog.close(this);
                 } else {
                     Notification.error(resp.data);

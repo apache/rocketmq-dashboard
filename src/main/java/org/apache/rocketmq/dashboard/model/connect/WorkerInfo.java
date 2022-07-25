@@ -12,15 +12,15 @@ public class WorkerInfo {
 
     private String namesrvAddr;
 
-    private List<WorkerConnector> workingConnectors;
+    private List<WorkerConnector> allocatedConnectors;
 
-    private List<WorkerTask> existingTasks;
+    private List<WorkerTask> allocatedTasks;
 
-    public WorkerInfo(String ipAddr, String namesrvAddr, List<WorkerConnector> workingConnectors, List<WorkerTask> existingTasks) {
+    public WorkerInfo(String ipAddr, String namesrvAddr, List<WorkerConnector> allocatedConnectors, List<WorkerTask> allocatedTasks) {
         this.ipAddr = ipAddr;
         this.namesrvAddr = namesrvAddr;
-        this.workingConnectors = workingConnectors;
-        this.existingTasks = existingTasks;
+        this.allocatedConnectors = allocatedConnectors;
+        this.allocatedTasks = allocatedTasks;
     }
 
     public WorkerInfo() {
@@ -46,20 +46,20 @@ public class WorkerInfo {
         this.namesrvAddr = namesrvAddr;
     }
 
-    public List<WorkerConnector> getWorkingConnectors() {
-        return workingConnectors;
+    public List<WorkerConnector> getAllocatedConnectors() {
+        return allocatedConnectors;
     }
 
-    public void setWorkingConnectors(List<WorkerConnector> workingConnectors) {
-        this.workingConnectors = workingConnectors;
+    public void setAllocatedConnectors(List<WorkerConnector> allocatedConnectors) {
+        this.allocatedConnectors = allocatedConnectors;
     }
 
-    public List<WorkerTask> getExistingTasks() {
-        return existingTasks;
+    public List<WorkerTask> getAllocatedTasks() {
+        return allocatedTasks;
     }
 
-    public void setExistingTasks(List<WorkerTask> existingTasks) {
-        this.existingTasks = existingTasks;
+    public void setAllocatedTasks(List<WorkerTask> allocatedTasks) {
+        this.allocatedTasks = allocatedTasks;
     }
 
     @Override
@@ -67,8 +67,8 @@ public class WorkerInfo {
         return "WorkerInfo{" +
                 "ipAddr='" + ipAddr + '\'' +
                 ", namesrvAddr='" + namesrvAddr + '\'' +
-                ", workingConnectors=" + workingConnectors +
-                ", existingTasks=" + existingTasks +
+                ", workingConnectors=" + allocatedConnectors +
+                ", existingTasks=" + allocatedTasks +
                 '}';
     }
 }
