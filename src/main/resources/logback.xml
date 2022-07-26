@@ -42,9 +42,18 @@
 		</encoder>
 	</appender>
 
+	<appender name="FILE_ASYNC" class="ch.qos.logback.classic.AsyncAppender">
+		<!-- get caller info -->
+		<includeCallerData>true</includeCallerData>
+		<!-- never block main thread -->
+		<neverBlock>true</neverBlock>
+		<queueSize>256</queueSize>
+		<appender-ref ref="FILE"/>
+	</appender>
+
 	<root level="INFO">
 		<appender-ref ref="STDOUT" />
-		<appender-ref ref="FILE" />
+		<appender-ref ref="FILE_ASYNC" />
 	</root>
 
 </configuration> 
