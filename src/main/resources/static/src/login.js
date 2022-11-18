@@ -42,4 +42,36 @@ app.controller('loginController', ['$scope', '$location', '$http', 'Notification
             }
         });
     };
+    $scope.toCasdoorLogin = function () {
+        $http({
+            method: "POST",
+            url: "login/casdoor-login-url",
+            params: {origin: window.location.origin}
+        }).success(function (resp){
+            window.location.href=resp.data;
+        })
+    };
+    $scope.casdoorLogin = function () {
+        const url = window.document.location.href
+        const u = new URL(url)
+        let code = u.searchParams.get('code')
+        let state = u.searchParams.get('state')
+        if(code != null && state != null){
+            $http({
+                method: "POST",
+                url: "login/casdoor-login",
+                params: {code: code,state: state}
+            }).success(function (resp){
+                if (resp.status == 0) {
+                    Notification.info({message: 'Login successful, redirect now', delay: 2000});
+                    $window.sessionStorage.setItem("username", resp.data.loginUserName);
+                    $window.sessionStorage.setItem("userrole", resp.data.loginUserRole);
+                    window.location = resp.data.contextPath;
+                    initFlag = false;
+                } else {
+                    Notification.error({message: resp.errMsg, delay: 2000});
+                }
+            })
+        }
+    }
 }]);
