@@ -94,7 +94,7 @@ public class LoginController {
     @RequestMapping(value = "/casdoor-login-url", method = RequestMethod.POST)
     @ResponseBody
     public JsonResult<String> getCasdoorUrl(HttpServletRequest request,
-                                            HttpServletResponse response){
+                                            HttpServletResponse response) {
         String origin = request.getParameter("origin");
         return new JsonResult<>(casdoorAuthService.getSigninUrl(origin));
     }
@@ -102,13 +102,13 @@ public class LoginController {
     @RequestMapping(value = "/casdoor-login", method = RequestMethod.POST)
     @ResponseBody
     public Object CasdoorLogin(HttpServletRequest request,
-                                            HttpServletResponse response){
+                                            HttpServletResponse response) {
         String code = request.getParameter("code");
         String state = request.getParameter("state");
         String token = casdoorAuthService.getOAuthToken(code, state);
         CasdoorUser casdoorUser = casdoorAuthService.parseJwtToken(token);
         int type = 0;
-        if(casdoorUser.isAdmin()){
+        if (casdoorUser.isAdmin()) {
             type = 1;
         }
         User user = new User(casdoorUser.getName(),null,type);
