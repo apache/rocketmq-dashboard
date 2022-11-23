@@ -54,6 +54,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -135,8 +136,9 @@ public class TopicControllerTest extends BaseControllerTest {
         // 3、filter system topic
         requestBuilder = MockMvcRequestBuilders.get(url);
         perform = mockMvc.perform(requestBuilder);
+        String[] topicString = {"%SYS%system_topic2","common_topic2","%SYS%system_topic1","common_topic1"};
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.topicList[2]").value("%SYS%system_topic1"));
+            .andExpect(jsonPath("$.data.topicList").value(containsInAnyOrder(topicString)));
     }
 
     @Test
