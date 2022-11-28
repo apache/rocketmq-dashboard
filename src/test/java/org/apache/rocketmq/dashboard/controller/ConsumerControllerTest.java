@@ -67,6 +67,7 @@ public class ConsumerControllerTest extends BaseControllerTest {
 
     @Before
     public void init() throws Exception {
+        consumerService.afterPropertiesSet();
         super.mockRmqConfigure();
         ClusterInfo clusterInfo = MockObjectUtil.createClusterInfo();
         when(mqAdminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo);
@@ -93,9 +94,10 @@ public class ConsumerControllerTest extends BaseControllerTest {
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
             .andExpect(jsonPath("$.data", hasSize(2)))
-            .andExpect(jsonPath("$.data[0].group").value("group_test"))
             .andExpect(jsonPath("$.data[0].consumeType").value(ConsumeType.CONSUME_ACTIVELY.name()))
             .andExpect(jsonPath("$.data[0].messageModel").value(MessageModel.CLUSTERING.name()));
+        // executorService shutdown
+        consumerService.destroy();
     }
 
     @Test
