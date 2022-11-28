@@ -46,8 +46,9 @@
                 </div>
             </div>
             </form>
-            <div class="modal-footer">
+            <div class="modal-footer" ng-controller="casdoorLogin">
                 <button class="btn btn-raised btn-sm btn-primary" type="button" ng-click="login()">{{'LOGIN' | translate}}</button>
+                <button class="btn btn-raised btn-sm btn-primary" type="button" ng-click="toCasdoorLogin()">{{'LoginWithCasdoor' | translate}}</button>
             </div>
         </div>
     </div>
@@ -57,3 +58,4 @@ $(function(){
 	 //$("#loginModal").modal("hide");
 })
 </script>
+

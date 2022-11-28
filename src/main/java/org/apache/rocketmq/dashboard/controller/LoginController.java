@@ -25,6 +25,8 @@ import org.apache.rocketmq.dashboard.model.UserInfo;
 import org.apache.rocketmq.dashboard.service.UserService;
 import org.apache.rocketmq.dashboard.support.JsonResult;
 import org.apache.rocketmq.dashboard.util.WebUtil;
+import org.casbin.casdoor.entity.CasdoorUser;
+import org.casbin.casdoor.service.CasdoorAuthService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -49,6 +51,9 @@ public class LoginController {
 
     @Autowired
     private UserService userService;
+
+    @Autowired
+    private CasdoorAuthService casdoorAuthService;
 
     @Value("${server.servlet.context-path:/}")
     private String contextPath;
@@ -84,6 +89,35 @@ public class LoginController {
             LoginResult result = new LoginResult(username, user.getType(), contextPath);
             return result;
         }
+    }
+
+    @RequestMapping(value = "/casdoor-login-url", method = RequestMethod.POST)
+    @ResponseBody
+    public JsonResult<String> getCasdoorUrl(HttpServletRequest request,
+                                            HttpServletResponse response) {
+        String origin = request.getParameter("origin");
+        return new JsonResult<>(casdoorAuthService.getSigninUrl(origin));
+    }
+
+    @RequestMapping(value = "/casdoor-login", method = RequestMethod.POST)
+    @ResponseBody
+    public Object CasdoorLogin(HttpServletRequest request,
+                                            HttpServletResponse response) {
+        String code = request.getParameter("code");
+        String state = request.getParameter("state");
+        String token = casdoorAuthService.getOAuthToken(code, state);
+        CasdoorUser casdoorUser = casdoorAuthService.parseJwtToken(token);
+        int type = 0;
+        if (casdoorUser.isAdmin()) {
+            type = 1;
+        }
+        User user = new User(casdoorUser.getName(),null,type);
+        UserInfo userInfo = WebUtil.setLoginInfo(request, response, user);
+        WebUtil.setSessionValue(request, WebUtil.USER_INFO, userInfo);
+        WebUtil.setSessionValue(request, WebUtil.USER_NAME, user.getName());
+        userInfo.setSessionId(WebUtil.getSessionId(request));
+        LoginResult result = new LoginResult(user.getName(), user.getType(), contextPath);
+        return result;
     }
 
     @RequestMapping(value = "/logout.do", method = RequestMethod.POST)
