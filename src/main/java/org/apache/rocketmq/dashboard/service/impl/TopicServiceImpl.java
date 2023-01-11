@@ -124,6 +124,10 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
             for (String brokerName : changeToBrokerNameSet(clusterInfo.getClusterAddrTable(),
                 topicCreateOrUpdateRequest.getClusterNameList(), topicCreateOrUpdateRequest.getBrokerNameList())) {
                 mqAdminExt.createAndUpdateTopicConfig(clusterInfo.getBrokerAddrTable().get(brokerName).selectBrokerAddr(), topicConfig);
+                if (topicCreateOrUpdateRequest.isOrder()) {
+                    String orderConf = brokerName + ":" + topicConfig.getWriteQueueNums();
+                    mqAdminExt.createOrUpdateOrderConf(topicConfig.getTopicName(), orderConf, false);
+                }
             }
         } catch (Exception err) {
             throw Throwables.propagate(err);
