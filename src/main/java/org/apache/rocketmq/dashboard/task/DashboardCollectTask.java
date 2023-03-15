@@ -16,11 +16,6 @@
  */
 package org.apache.rocketmq.dashboard.task;
 
-import com.google.common.base.Throwables;
-import com.google.common.cache.LoadingCache;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
-import com.google.common.io.Files;
 import java.io.File;
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -32,21 +27,29 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
+
 import javax.annotation.Resource;
+
 import org.apache.rocketmq.common.MixAll;
-import org.apache.rocketmq.common.protocol.body.ClusterInfo;
-import org.apache.rocketmq.common.protocol.body.KVTable;
-import org.apache.rocketmq.common.protocol.body.TopicList;
-import org.apache.rocketmq.common.protocol.route.BrokerData;
 import org.apache.rocketmq.common.topic.TopicValidator;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.service.DashboardCollectService;
 import org.apache.rocketmq.dashboard.util.JsonUtil;
+import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
+import org.apache.rocketmq.remoting.protocol.body.KVTable;
+import org.apache.rocketmq.remoting.protocol.body.TopicList;
+import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+
+import com.google.common.base.Throwables;
+import com.google.common.cache.LoadingCache;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
+import com.google.common.io.Files;
 
 @Component
 public class DashboardCollectTask {
@@ -250,7 +253,7 @@ public class DashboardCollectTask {
 
     private void addSystemTopic() throws Exception {
         ClusterInfo clusterInfo = mqAdminExt.examineBrokerClusterInfo();
-        HashMap<String, Set<String>> clusterTable = clusterInfo.getClusterAddrTable();
+        Map<String, Set<String>> clusterTable = clusterInfo.getClusterAddrTable();
         for (Map.Entry<String, Set<String>> entry : clusterTable.entrySet()) {
             String clusterName = entry.getKey();
             TopicValidator.addSystemTopic(clusterName);

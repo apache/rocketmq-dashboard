@@ -17,18 +17,18 @@
 
 package org.apache.rocketmq.dashboard.service;
 
-import org.apache.rocketmq.common.protocol.body.ConsumerConnection;
-import org.apache.rocketmq.common.protocol.body.ConsumerRunningInfo;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
 import org.apache.rocketmq.dashboard.model.ConsumerGroupRollBackStat;
 import org.apache.rocketmq.dashboard.model.GroupConsumeInfo;
 import org.apache.rocketmq.dashboard.model.TopicConsumerInfo;
 import org.apache.rocketmq.dashboard.model.request.ConsumerConfigInfo;
 import org.apache.rocketmq.dashboard.model.request.DeleteSubGroupRequest;
 import org.apache.rocketmq.dashboard.model.request.ResetOffsetRequest;
-
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
+import org.apache.rocketmq.remoting.protocol.body.ConsumerRunningInfo;
 
 public interface ConsumerService {
     List<GroupConsumeInfo> queryGroupList(boolean skipSysGroup);

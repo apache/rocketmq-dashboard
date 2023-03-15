@@ -17,16 +17,16 @@
 
 package org.apache.rocketmq.dashboard.service;
 
+import java.util.List;
+
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.common.TopicConfig;
-import org.apache.rocketmq.common.admin.TopicStatsTable;
-import org.apache.rocketmq.common.protocol.body.GroupList;
-import org.apache.rocketmq.common.protocol.body.TopicList;
-import org.apache.rocketmq.common.protocol.route.TopicRouteData;
 import org.apache.rocketmq.dashboard.model.request.SendTopicMessageRequest;
 import org.apache.rocketmq.dashboard.model.request.TopicConfigInfo;
-
-import java.util.List;
+import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
+import org.apache.rocketmq.remoting.protocol.body.GroupList;
+import org.apache.rocketmq.remoting.protocol.body.TopicList;
+import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 
 public interface TopicService {
     TopicList fetchAllTopicList(boolean skipSysProcess, boolean skipRetryAndDlq);

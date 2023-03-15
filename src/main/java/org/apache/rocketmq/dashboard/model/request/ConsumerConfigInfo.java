@@ -16,9 +16,9 @@
  */
 package org.apache.rocketmq.dashboard.model.request;
 
-import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
-
 import java.util.List;
+
+import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 
 public class ConsumerConfigInfo {
     private List<String> clusterNameList;

@@ -16,10 +16,9 @@
  */
 package org.apache.rocketmq.dashboard.controller;
 
-import com.google.common.base.Preconditions;
 import javax.annotation.Resource;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.rocketmq.common.protocol.body.ConsumerConnection;
+
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.rocketmq.dashboard.model.ConnectionInfo;
 import org.apache.rocketmq.dashboard.model.request.ConsumerConfigInfo;
 import org.apache.rocketmq.dashboard.model.request.DeleteSubGroupRequest;
@@ -27,6 +26,7 @@ import org.apache.rocketmq.dashboard.model.request.ResetOffsetRequest;
 import org.apache.rocketmq.dashboard.permisssion.Permission;
 import org.apache.rocketmq.dashboard.service.ConsumerService;
 import org.apache.rocketmq.dashboard.util.JsonUtil;
+import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Controller;
@@ -35,6 +35,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
+
+import com.google.common.base.Preconditions;
 
 @Controller
 @RequestMapping("/consumer")

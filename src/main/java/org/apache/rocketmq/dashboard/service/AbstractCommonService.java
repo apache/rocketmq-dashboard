@@ -16,19 +16,22 @@
  */
 package org.apache.rocketmq.dashboard.service;
 
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import javax.annotation.Resource;
+
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
+
 import com.google.common.base.Throwables;
 import com.google.common.collect.Sets;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Set;
-import javax.annotation.Resource;
-import org.apache.commons.collections.CollectionUtils;
 
 public abstract class AbstractCommonService {
     @Resource
     protected MQAdminExt mqAdminExt;
-    protected final Set<String> changeToBrokerNameSet(HashMap<String, Set<String>> clusterAddrTable,
+    protected final Set<String> changeToBrokerNameSet(Map<String, Set<String>> clusterAddrTable,
         List<String> clusterNameList, List<String> brokerNameList) {
         Set<String> finalBrokerNameList = Sets.newHashSet();
         if (CollectionUtils.isNotEmpty(clusterNameList)) {

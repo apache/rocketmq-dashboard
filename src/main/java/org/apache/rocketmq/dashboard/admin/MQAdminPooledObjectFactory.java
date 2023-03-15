@@ -16,13 +16,14 @@
  */
 package org.apache.rocketmq.dashboard.admin;
 
-import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.pool2.PooledObject;
 import org.apache.commons.pool2.PooledObjectFactory;
 import org.apache.commons.pool2.impl.DefaultPooledObject;
-import org.apache.rocketmq.common.protocol.body.ClusterInfo;
+import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
+
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class MQAdminPooledObjectFactory implements PooledObjectFactory<MQAdminExt> {

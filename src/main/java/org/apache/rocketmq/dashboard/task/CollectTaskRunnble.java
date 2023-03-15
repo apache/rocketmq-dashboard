@@ -16,22 +16,25 @@
  */
 package org.apache.rocketmq.dashboard.task;
 
-import com.google.common.base.Throwables;
-import com.google.common.collect.Lists;
 import java.math.BigDecimal;
 import java.util.Date;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
-import lombok.extern.slf4j.Slf4j;
+
 import org.apache.rocketmq.common.MixAll;
-import org.apache.rocketmq.common.protocol.body.BrokerStatsData;
-import org.apache.rocketmq.common.protocol.body.GroupList;
-import org.apache.rocketmq.common.protocol.route.BrokerData;
-import org.apache.rocketmq.common.protocol.route.TopicRouteData;
 import org.apache.rocketmq.dashboard.service.DashboardCollectService;
+import org.apache.rocketmq.remoting.protocol.body.BrokerStatsData;
+import org.apache.rocketmq.remoting.protocol.body.GroupList;
+import org.apache.rocketmq.remoting.protocol.route.BrokerData;
+import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.apache.rocketmq.tools.command.stats.StatsAllSubCommand;
+
+import com.google.common.base.Throwables;
+import com.google.common.collect.Lists;
+
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class CollectTaskRunnble implements Runnable {
