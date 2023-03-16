@@ -21,7 +21,7 @@ import com.google.common.collect.Lists;
 import java.util.List;
 import org.apache.rocketmq.common.AclConfig;
 import org.apache.rocketmq.common.PlainAccessConfig;
-import org.apache.rocketmq.common.protocol.body.ClusterInfo;
+import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.dashboard.model.request.AclRequest;
 import org.apache.rocketmq.dashboard.service.impl.AclServiceImpl;
 import org.apache.rocketmq.dashboard.util.MockObjectUtil;
