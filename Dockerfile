@@ -4,4 +4,4 @@ VOLUME /tmp
 ADD ./target/rocketmq-dashboard-1.0.1-SNAPSHOT.jar rocketmq-dashboard.jar
 EXPOSE 8080
 ENV JAVA_OPTS=""
-ENTRYPOINT [ "java", "$JAVA_OPTS", "-Xms512m", "-Xmx1024m", "-Dfile.encoding=UTF-8", "-Djava.security.egd=file:/dev/./urandom", "-jar", "/rocketmq-dashboard.jar" ]
+ENTRYPOINT [ "sh", "-c", "java $JAVA_OPTS -Xms512m -Xmx1024m -Dfile.encoding=UTF-8 -Djava.security.egd=file:/dev/./urandom -Duser.timezone=Asia/Shanghai -jar /rocketmq-dashboard.jar" ]

@@ -17,14 +17,16 @@
 package org.apache.rocketmq.dashboard.admin;
 
 import java.util.concurrent.atomic.AtomicLong;
-import lombok.extern.slf4j.Slf4j;
+
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.acl.common.AclClientRPCHook;
 import org.apache.rocketmq.acl.common.SessionCredentials;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
+import org.apache.rocketmq.dashboard.service.client.MQAdminExtImpl;
 import org.apache.rocketmq.remoting.RPCHook;
-import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
+
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class MQAdminFactory {
@@ -44,11 +46,11 @@ public class MQAdminFactory {
         if (isEnableAcl) {
             rpcHook = new AclClientRPCHook(new SessionCredentials(accessKey, secretKey));
         }
-        DefaultMQAdminExt mqAdminExt = null;
+        MQAdminExtImpl mqAdminExt = null;
         if (rmqConfigure.getTimeoutMillis() == null) {
-            mqAdminExt = new DefaultMQAdminExt(rpcHook);
+            mqAdminExt = new MQAdminExtImpl(rpcHook);
         } else {
-            mqAdminExt = new DefaultMQAdminExt(rpcHook, rmqConfigure.getTimeoutMillis());
+            mqAdminExt = new MQAdminExtImpl(rpcHook, rmqConfigure.getTimeoutMillis());
         }
         mqAdminExt.setAdminExtGroup(mqAdminExt.getAdminExtGroup() + "_" + adminIndex.getAndIncrement());
         mqAdminExt.setVipChannelEnabled(Boolean.parseBoolean(rmqConfigure.getIsVIPChannel()));
