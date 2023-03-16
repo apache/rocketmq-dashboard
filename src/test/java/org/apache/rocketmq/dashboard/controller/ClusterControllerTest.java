@@ -18,8 +18,8 @@ package org.apache.rocketmq.dashboard.controller;
 
 import java.util.HashMap;
 import java.util.Properties;
-import org.apache.rocketmq.common.protocol.body.ClusterInfo;
-import org.apache.rocketmq.common.protocol.body.KVTable;
+import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
+import org.apache.rocketmq.remoting.protocol.body.KVTable;
 import org.apache.rocketmq.dashboard.service.impl.ClusterServiceImpl;
 import org.apache.rocketmq.dashboard.util.MockObjectUtil;
 import org.junit.Test;

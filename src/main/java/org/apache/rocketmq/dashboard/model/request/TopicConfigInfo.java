@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 package org.apache.rocketmq.dashboard.model.request;
-
+import org.apache.rocketmq.common.TopicConfig;
 import com.google.common.base.Objects;
 
 import java.util.List;
@@ -97,8 +97,8 @@ public class TopicConfigInfo {
         return messageType;
     }
 
-    public void setMessageType(String messageType) {
-        this.messageType = messageType;
+    public void setMessageType(TopicConfig topicConfig) {
+        this.messageType = topicConfig.getAttributes().getOrDefault("message.type", "");
     }
 
     @Override

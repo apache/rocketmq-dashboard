@@ -34,10 +34,10 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import javax.annotation.Resource;
 import org.apache.rocketmq.common.MixAll;
-import org.apache.rocketmq.common.protocol.body.ClusterInfo;
-import org.apache.rocketmq.common.protocol.body.KVTable;
-import org.apache.rocketmq.common.protocol.body.TopicList;
-import org.apache.rocketmq.common.protocol.route.BrokerData;
+import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
+import org.apache.rocketmq.remoting.protocol.body.KVTable;
+import org.apache.rocketmq.remoting.protocol.body.TopicList;
+import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.common.topic.TopicValidator;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.service.DashboardCollectService;
@@ -250,7 +250,7 @@ public class DashboardCollectTask {
 
     private void addSystemTopic() throws Exception {
         ClusterInfo clusterInfo = mqAdminExt.examineBrokerClusterInfo();
-        HashMap<String, Set<String>> clusterTable = clusterInfo.getClusterAddrTable();
+        Map<String, Set<String>> clusterTable = clusterInfo.getClusterAddrTable();
         for (Map.Entry<String, Set<String>> entry : clusterTable.entrySet()) {
             String clusterName = entry.getKey();
             TopicValidator.addSystemTopic(clusterName);

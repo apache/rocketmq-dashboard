@@ -17,9 +17,9 @@
 
 package org.apache.rocketmq.dashboard.service.impl;
 
-import org.apache.rocketmq.common.protocol.body.ClusterInfo;
-import org.apache.rocketmq.common.protocol.body.KVTable;
-import org.apache.rocketmq.common.protocol.route.BrokerData;
+import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
+import org.apache.rocketmq.remoting.protocol.body.KVTable;
+import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.apache.rocketmq.dashboard.service.ClusterService;
 import org.apache.rocketmq.dashboard.util.JsonUtil;
