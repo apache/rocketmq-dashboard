@@ -148,7 +148,6 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
         for (BrokerData brokerData : topicRouteData.getBrokerDatas()) {
             TopicConfigInfo topicConfigInfo = new TopicConfigInfo();
             TopicConfig topicConfig = examineTopicConfig(topic, brokerData.getBrokerName());
-            topicConfigInfo.setMessageType(topicConfig);
             BeanUtils.copyProperties(topicConfig, topicConfigInfo);
             topicConfigInfo.setBrokerNameList(Lists.newArrayList(brokerData.getBrokerName()));
             topicConfigInfoList.add(topicConfigInfo);
