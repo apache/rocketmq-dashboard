@@ -16,9 +16,9 @@
  */
 package org.apache.rocketmq.dashboard.model.request;
 
-import com.google.common.base.Objects;
-
 import java.util.List;
+
+import com.google.common.base.Objects;
 
 public class TopicConfigInfo {
 

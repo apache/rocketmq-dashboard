@@ -28,20 +28,20 @@ import org.apache.rocketmq.tools.admin.MQAdminExt;
 import com.google.common.collect.Sets;
 
 public abstract class AbstractCommonService {
-	@Resource
-	protected MQAdminExt mqAdminExt;
+    @Resource
+    protected MQAdminExt mqAdminExt;
 
-	protected final Set<String> changeToBrokerNameSet(Map<String, Set<String>> clusterAddrTable,
-			List<String> clusterNameList, List<String> brokerNameList) {
-		Set<String> finalBrokerNameList = Sets.newHashSet();
-		if (CollectionUtils.isNotEmpty(clusterNameList)) {
-			for (String clusterName : clusterNameList) {
-				finalBrokerNameList.addAll(clusterAddrTable.get(clusterName));
-			}
-		}
-		if (CollectionUtils.isNotEmpty(brokerNameList)) {
-			finalBrokerNameList.addAll(brokerNameList);
-		}
-		return finalBrokerNameList;
-	}
+    protected final Set<String> changeToBrokerNameSet(Map<String, Set<String>> clusterAddrTable,
+            List<String> clusterNameList, List<String> brokerNameList) {
+        Set<String> finalBrokerNameList = Sets.newHashSet();
+        if (CollectionUtils.isNotEmpty(clusterNameList)) {
+            for (String clusterName : clusterNameList) {
+                finalBrokerNameList.addAll(clusterAddrTable.get(clusterName));
+            }
+        }
+        if (CollectionUtils.isNotEmpty(brokerNameList)) {
+            finalBrokerNameList.addAll(brokerNameList);
+        }
+        return finalBrokerNameList;
+    }
 }

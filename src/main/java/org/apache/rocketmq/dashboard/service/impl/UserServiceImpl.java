@@ -17,21 +17,22 @@
 
 package org.apache.rocketmq.dashboard.service.impl;
 
-import org.apache.rocketmq.dashboard.config.RMQConfigure;
-import org.apache.rocketmq.dashboard.exception.ServiceException;
-import org.apache.rocketmq.dashboard.model.User;
-import org.apache.rocketmq.dashboard.service.UserService;
-import org.springframework.beans.factory.InitializingBean;
-import org.springframework.stereotype.Service;
-
-import javax.annotation.Resource;
-import javax.validation.constraints.NotNull;
 import java.io.FileReader;
 import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
+
+import javax.annotation.Resource;
+import javax.validation.constraints.NotNull;
+
+import org.apache.rocketmq.dashboard.config.RMQConfigure;
+import org.apache.rocketmq.dashboard.exception.ServiceException;
+import org.apache.rocketmq.dashboard.model.User;
+import org.apache.rocketmq.dashboard.service.UserService;
+import org.springframework.beans.factory.InitializingBean;
+import org.springframework.stereotype.Service;
 
 @Service
 public class UserServiceImpl implements UserService, InitializingBean {

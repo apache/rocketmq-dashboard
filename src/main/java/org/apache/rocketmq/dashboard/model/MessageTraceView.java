@@ -17,15 +17,16 @@
 
 package org.apache.rocketmq.dashboard.model;
 
-import com.google.common.base.Charsets;
+import java.util.ArrayList;
+import java.util.List;
+
 import org.apache.rocketmq.client.trace.TraceBean;
 import org.apache.rocketmq.client.trace.TraceContext;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.dashboard.model.trace.MessageTraceStatusEnum;
 import org.apache.rocketmq.dashboard.util.MsgTraceDecodeUtil;
 
-import java.util.ArrayList;
-import java.util.List;
+import com.google.common.base.Charsets;
 
 public class MessageTraceView {
     private String requestId;

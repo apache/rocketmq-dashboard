@@ -16,13 +16,19 @@
  */
 package org.apache.rocketmq.dashboard.controller;
 
-import com.google.common.base.Preconditions;
 import javax.annotation.Resource;
+
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.dashboard.permisssion.Permission;
 import org.apache.rocketmq.dashboard.service.OpsService;
 import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseBody;
+
+import com.google.common.base.Preconditions;
 
 @Controller
 @RequestMapping("/ops")

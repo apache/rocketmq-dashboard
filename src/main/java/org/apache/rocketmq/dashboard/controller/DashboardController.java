@@ -19,7 +19,6 @@ package org.apache.rocketmq.dashboard.controller;
 
 import javax.annotation.Resource;
 
-import com.google.common.base.Strings;
 import org.apache.rocketmq.dashboard.permisssion.Permission;
 import org.apache.rocketmq.dashboard.service.DashboardService;
 import org.springframework.stereotype.Controller;
@@ -27,6 +26,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
+
+import com.google.common.base.Strings;
 
 @Controller
 @RequestMapping("/dashboard")

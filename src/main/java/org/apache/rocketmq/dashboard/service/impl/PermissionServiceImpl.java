@@ -16,13 +16,17 @@
  */
 package org.apache.rocketmq.dashboard.service.impl;
 
-import com.alibaba.fastjson.JSONObject;
+import static org.apache.rocketmq.dashboard.permisssion.UserRoleEnum.ADMIN;
+import static org.apache.rocketmq.dashboard.permisssion.UserRoleEnum.ORDINARY;
+
 import java.io.FileReader;
 import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+
 import javax.annotation.Resource;
+
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.exception.ServiceException;
 import org.apache.rocketmq.dashboard.model.UserInfo;
@@ -32,8 +36,7 @@ import org.springframework.beans.factory.InitializingBean;
 import org.springframework.stereotype.Service;
 import org.yaml.snakeyaml.Yaml;
 
-import static org.apache.rocketmq.dashboard.permisssion.UserRoleEnum.ADMIN;
-import static org.apache.rocketmq.dashboard.permisssion.UserRoleEnum.ORDINARY;
+import com.alibaba.fastjson.JSONObject;
 
 @Service
 public class PermissionServiceImpl implements PermissionService, InitializingBean {

@@ -17,10 +17,11 @@
 
 package org.apache.rocketmq.dashboard.model.trace;
 
-import lombok.Data;
+import java.util.List;
+
 import org.apache.rocketmq.dashboard.model.MessageTraceView;
 
-import java.util.List;
+import lombok.Data;
 
 @Data
 public class MessageTraceGraph {

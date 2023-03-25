@@ -16,8 +16,9 @@
  */
 package org.apache.rocketmq.dashboard.model.request;
 
-import lombok.Data;
 import org.apache.rocketmq.common.PlainAccessConfig;
+
+import lombok.Data;
 
 @Data
 public class AclRequest {

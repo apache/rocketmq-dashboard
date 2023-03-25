@@ -16,12 +16,12 @@
  */
 package org.apache.rocketmq.dashboard.controller;
 
-import com.google.common.collect.Lists;
 import java.util.ArrayList;
 import java.util.List;
+
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletResponse;
-import lombok.extern.slf4j.Slf4j;
+
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.dashboard.exception.ServiceException;
@@ -39,6 +39,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
+
+import com.google.common.collect.Lists;
+
+import lombok.extern.slf4j.Slf4j;
 
 @Controller
 @RequestMapping("/dlqMessage")

@@ -16,9 +16,9 @@
  */
 package org.apache.rocketmq.dashboard.model.trace;
 
-import lombok.Data;
-
 import java.util.List;
+
+import lombok.Data;
 
 @Data
 public class SubscriptionNode {
