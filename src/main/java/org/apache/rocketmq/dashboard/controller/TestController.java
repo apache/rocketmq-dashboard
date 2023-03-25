@@ -34,8 +34,8 @@ import org.apache.rocketmq.dashboard.util.JsonUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.ResponseBody;
 
 @Controller
@@ -47,7 +47,7 @@ public class TestController {
     @Resource
     private RMQConfigure rMQConfigure;
 
-    @RequestMapping(value = "/runTask.do", method = RequestMethod.GET)
+    @GetMapping("/runTask.do")
     @ResponseBody
     public Object list() throws MQClientException, RemotingException, InterruptedException {
         DefaultMQPushConsumer consumer = new DefaultMQPushConsumer(testTopic + "Group");

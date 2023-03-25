@@ -16,11 +16,15 @@
  */
 package org.apache.rocketmq.dashboard.admin;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
 import org.apache.commons.pool2.PooledObject;
+import org.apache.commons.pool2.impl.DefaultPooledObject;
 import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.util.MockObjectUtil;
@@ -29,7 +33,6 @@ import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
-import org.springframework.test.util.ReflectionTestUtils;
 
 public class MQAdminPoolTest {
 
@@ -46,8 +49,7 @@ public class MQAdminPoolTest {
         when(rmqConfigure.getNamesrvAddr()).thenReturn("127.0.0.1:9876");
         when(rmqConfigure.getAccessKey()).thenReturn("rocketmq");
         when(rmqConfigure.getSecretKey()).thenReturn("12345678");
-        ReflectionTestUtils.setField(mqAdminExtObjectPool, "rmqConfigure", rmqConfigure);
-        pool = mqAdminExtObjectPool.mqAdminExtPool();
+        pool = mqAdminExtObjectPool.mqAdminExtPool(rmqConfigure);
         mqAdminPooledObjectFactory = (MQAdminPooledObjectFactory) pool.getFactory();
     }
 
@@ -59,20 +61,20 @@ public class MQAdminPoolTest {
 
     @Test
     public void testDestroyObject() {
-        PooledObject<MQAdminExt> mqAdmin = mock(PooledObject.class);
+        PooledObject<MQAdminExt> mqAdmin = spy(new DefaultPooledObject<MQAdminExt>(null));
         Assert.assertNotNull(mqAdmin);
         MQAdminExt mqAdminExt = mock(MQAdminExt.class);
         doNothing().doThrow(new RuntimeException("shutdown exception")).when(mqAdminExt).shutdown();
         when(mqAdmin.getObject()).thenReturn(mqAdminExt);
         // shutdown
-        mqAdminPooledObjectFactory.destroyObject(mqAdmin);
+        assertDoesNotThrow(() -> mqAdminPooledObjectFactory.destroyObject(mqAdmin));
         // exception
-        mqAdminPooledObjectFactory.destroyObject(mqAdmin);
+        assertThrows(RuntimeException.class, () -> mqAdminPooledObjectFactory.destroyObject(mqAdmin), "shutdown exception");
     }
 
     @Test
     public void testValidateObject() throws Exception {
-        PooledObject<MQAdminExt> mqAdmin = mock(PooledObject.class);
+        PooledObject<MQAdminExt> mqAdmin = spy(new DefaultPooledObject<MQAdminExt>(null));
         Assert.assertNotNull(mqAdmin);
         MQAdminExt mqAdminExt = mock(MQAdminExt.class);
         ClusterInfo clusterInfo = MockObjectUtil.createClusterInfo();

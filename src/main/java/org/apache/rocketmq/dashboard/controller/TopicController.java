@@ -29,10 +29,7 @@ import org.apache.commons.collections.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
 import org.springframework.web.bind.annotation.ResponseBody;
@@ -49,27 +46,27 @@ public class TopicController {
     @Resource
     private ConsumerService consumerService;
 
-    @RequestMapping(value = "/list.query", method = RequestMethod.GET)
+    @GetMapping("/list.query")
     @ResponseBody
     public Object list(@RequestParam(value = "skipSysProcess", required = false) boolean skipSysProcess,
         @RequestParam(value = "skipRetryAndDlq", required = false) boolean skipRetryAndDlq) {
         return topicService.fetchAllTopicList(skipSysProcess, skipRetryAndDlq);
     }
 
-    @RequestMapping(value = "/stats.query", method = RequestMethod.GET)
+    @GetMapping("/stats.query")
     @ResponseBody
     public Object stats(@RequestParam String topic) {
         return topicService.stats(topic);
     }
 
-    @RequestMapping(value = "/route.query", method = RequestMethod.GET)
+    @GetMapping("/route.query")
     @ResponseBody
     public Object route(@RequestParam String topic) {
         return topicService.route(topic);
     }
 
 
-    @RequestMapping(value = "/createOrUpdate.do", method = { RequestMethod.POST})
+    @PostMapping("/createOrUpdate.do")
     @ResponseBody
     public Object topicCreateOrUpdateRequest(@RequestBody TopicConfigInfo topicCreateOrUpdateRequest) {
         Preconditions.checkArgument(CollectionUtils.isNotEmpty(topicCreateOrUpdateRequest.getBrokerNameList()) || CollectionUtils.isNotEmpty(topicCreateOrUpdateRequest.getClusterNameList()),
@@ -79,39 +76,39 @@ public class TopicController {
         return true;
     }
 
-    @RequestMapping(value = "/queryConsumerByTopic.query")
+    @GetMapping("/queryConsumerByTopic.query")
     @ResponseBody
     public Object queryConsumerByTopic(@RequestParam String topic) {
         return consumerService.queryConsumeStatsListByTopicName(topic);
     }
 
-    @RequestMapping(value = "/queryTopicConsumerInfo.query")
+    @GetMapping("/queryTopicConsumerInfo.query")
     @ResponseBody
     public Object queryTopicConsumerInfo(@RequestParam String topic) {
         return topicService.queryTopicConsumerInfo(topic);
     }
 
-    @RequestMapping(value = "/examineTopicConfig.query")
+    @GetMapping("/examineTopicConfig.query")
     @ResponseBody
     public Object examineTopicConfig(@RequestParam String topic,
         @RequestParam(required = false) String brokerName) throws RemotingException, MQClientException, InterruptedException {
         return topicService.examineTopicConfig(topic);
     }
 
-    @RequestMapping(value = "/sendTopicMessage.do", method = {RequestMethod.POST})
+    @PostMapping("/sendTopicMessage.do")
     @ResponseBody
     public Object sendTopicMessage(
         @RequestBody SendTopicMessageRequest sendTopicMessageRequest) throws RemotingException, MQClientException, InterruptedException {
         return topicService.sendTopicMessageRequest(sendTopicMessageRequest);
     }
 
-    @RequestMapping(value = "/deleteTopic.do", method = {RequestMethod.POST})
+    @PostMapping("/deleteTopic.do")
     @ResponseBody
     public Object delete(@RequestParam(required = false) String clusterName, @RequestParam String topic) {
         return topicService.deleteTopic(topic, clusterName);
     }
 
-    @RequestMapping(value = "/deleteTopicByBroker.do", method = {RequestMethod.POST})
+    @PostMapping("/deleteTopicByBroker.do")
     @ResponseBody
     public Object deleteTopicByBroker(@RequestParam String brokerName, @RequestParam String topic) {
         return topicService.deleteTopicInBroker(brokerName, topic);

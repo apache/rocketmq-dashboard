@@ -37,7 +37,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 
@@ -53,7 +52,7 @@ public class DlqMessageController {
     @Resource
     private MQAdminExt mqAdminExt;
 
-    @RequestMapping(value = "/queryDlqMessageByConsumerGroup.query", method = RequestMethod.POST)
+    @PostMapping("/queryDlqMessageByConsumerGroup.query")
     @ResponseBody
     public Object queryDlqMessageByConsumerGroup(@RequestBody MessageQuery query) {
         return dlqMessageService.queryDlqMessageByPage(query);

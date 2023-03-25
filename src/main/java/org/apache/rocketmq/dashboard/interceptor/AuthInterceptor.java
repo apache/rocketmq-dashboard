@@ -17,16 +17,16 @@
 
 package org.apache.rocketmq.dashboard.interceptor;
 
-import org.apache.rocketmq.dashboard.service.LoginService;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
-import org.springframework.web.servlet.handler.HandlerInterceptorAdapter;
-
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
+import org.apache.rocketmq.dashboard.service.LoginService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
+import org.springframework.web.servlet.AsyncHandlerInterceptor;
+
 @Component
-public class AuthInterceptor extends HandlerInterceptorAdapter {
+public class AuthInterceptor implements AsyncHandlerInterceptor {
     @Autowired
     private LoginService loginService;
 

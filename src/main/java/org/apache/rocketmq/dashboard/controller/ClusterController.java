@@ -19,8 +19,8 @@ package org.apache.rocketmq.dashboard.controller;
 import org.apache.rocketmq.dashboard.permisssion.Permission;
 import org.apache.rocketmq.dashboard.service.ClusterService;
 import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 
 import javax.annotation.Resource;
@@ -34,13 +34,13 @@ public class ClusterController {
     @Resource
     private ClusterService clusterService;
 
-    @RequestMapping(value = "/list.query", method = RequestMethod.GET)
+    @GetMapping("/list.query")
     @ResponseBody
     public Object list() {
         return clusterService.list();
     }
 
-    @RequestMapping(value = "/brokerConfig.query", method = RequestMethod.GET)
+    @GetMapping("/brokerConfig.query")
     @ResponseBody
     public Object brokerConfig(@RequestParam String brokerAddr) {
         return clusterService.getBrokerConfig(brokerAddr);

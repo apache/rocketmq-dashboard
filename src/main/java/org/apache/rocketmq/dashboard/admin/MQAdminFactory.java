@@ -22,8 +22,8 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.acl.common.AclClientRPCHook;
 import org.apache.rocketmq.acl.common.SessionCredentials;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
-import org.apache.rocketmq.dashboard.service.client.MQAdminExtImpl;
 import org.apache.rocketmq.remoting.RPCHook;
+import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 
 import lombok.extern.slf4j.Slf4j;
@@ -46,11 +46,11 @@ public class MQAdminFactory {
         if (isEnableAcl) {
             rpcHook = new AclClientRPCHook(new SessionCredentials(accessKey, secretKey));
         }
-        MQAdminExtImpl mqAdminExt = null;
+        DefaultMQAdminExt mqAdminExt = null;
         if (rmqConfigure.getTimeoutMillis() == null) {
-            mqAdminExt = new MQAdminExtImpl(rpcHook);
+            mqAdminExt = new DefaultMQAdminExt(rpcHook);
         } else {
-            mqAdminExt = new MQAdminExtImpl(rpcHook, rmqConfigure.getTimeoutMillis());
+            mqAdminExt = new DefaultMQAdminExt(rpcHook, rmqConfigure.getTimeoutMillis());
         }
         mqAdminExt.setAdminExtGroup(mqAdminExt.getAdminExtGroup() + "_" + adminIndex.getAndIncrement());
         mqAdminExt.setVipChannelEnabled(Boolean.parseBoolean(rmqConfigure.getIsVIPChannel()));

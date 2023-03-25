@@ -23,8 +23,8 @@ import org.apache.rocketmq.dashboard.permisssion.Permission;
 import org.apache.rocketmq.dashboard.service.ProducerService;
 import org.apache.rocketmq.remoting.protocol.body.ProducerConnection;
 import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 
@@ -36,7 +36,7 @@ public class ProducerController {
     @Resource
     private ProducerService producerService;
 
-    @RequestMapping(value = "/producerConnection.query", method = {RequestMethod.GET})
+    @GetMapping("/producerConnection.query")
     @ResponseBody
     public Object producerConnection(@RequestParam String producerGroup, @RequestParam String topic) {
         ProducerConnection producerConnection = producerService.getProducerConnection(producerGroup, topic);

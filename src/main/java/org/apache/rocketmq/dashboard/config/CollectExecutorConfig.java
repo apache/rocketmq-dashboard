@@ -23,10 +23,12 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
-import lombok.Data;
+
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+
+import lombok.Data;
 
 @Configuration
 @ConfigurationProperties(prefix = "threadpool.config")
@@ -39,7 +41,7 @@ public class CollectExecutorConfig {
 
     @Bean(name = "collectExecutor")
     public ExecutorService collectExecutor(CollectExecutorConfig collectExecutorConfig) {
-        ExecutorService collectExecutor = new ThreadPoolExecutor(
+        return new ThreadPoolExecutor(
             collectExecutorConfig.getCoreSize(),
             collectExecutorConfig.getMaxSize(),
             collectExecutorConfig.getKeepAliveTime(),
@@ -55,6 +57,5 @@ public class CollectExecutorConfig {
             },
             new ThreadPoolExecutor.DiscardOldestPolicy()
         );
-        return collectExecutor;
     }
 }

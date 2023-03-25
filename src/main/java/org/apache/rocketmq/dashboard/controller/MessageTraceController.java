@@ -31,8 +31,8 @@ import org.apache.rocketmq.dashboard.service.MessageService;
 import org.apache.rocketmq.dashboard.service.MessageTraceService;
 import org.apache.rocketmq.tools.admin.api.MessageTrack;
 import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 
@@ -47,7 +47,7 @@ public class MessageTraceController {
     @Resource
     private MessageTraceService messageTraceService;
 
-    @RequestMapping(value = "/viewMessage.query", method = RequestMethod.GET)
+    @GetMapping("/viewMessage.query")
     @ResponseBody
     public Object viewMessage(@RequestParam(required = false) String topic, @RequestParam String msgId) {
         Map<String, Object> messageViewMap = Maps.newHashMap();
@@ -56,13 +56,13 @@ public class MessageTraceController {
         return messageViewMap;
     }
 
-    @RequestMapping(value = "/viewMessageTraceDetail.query", method = RequestMethod.GET)
+    @GetMapping("/viewMessageTraceDetail.query")
     @ResponseBody
     public Object viewTraceMessages(@RequestParam String msgId) {
         return messageTraceService.queryMessageTraceKey(msgId);
     }
 
-    @RequestMapping(value = "/viewMessageTraceGraph.query", method = RequestMethod.GET)
+    @GetMapping("/viewMessageTraceGraph.query")
     @ResponseBody
     public MessageTraceGraph viewMessageTraceGraph(@RequestParam String msgId,
         @RequestParam(required = false) String traceTopic) {

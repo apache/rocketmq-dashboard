@@ -162,7 +162,7 @@ public class RMQConfigure {
 
     // Error Page process logic, move to a central configure later
     @Bean
-    public ErrorPageRegistrar errorPageRegistrar() {
+    ErrorPageRegistrar errorPageRegistrar() {
         return new MyErrorPageRegistrar();
     }
 

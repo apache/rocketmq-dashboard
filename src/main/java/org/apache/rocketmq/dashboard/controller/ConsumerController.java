@@ -30,12 +30,7 @@ import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseBody;
-
+import org.springframework.web.bind.annotation.*;
 import com.google.common.base.Preconditions;
 
 @Controller
@@ -47,45 +42,45 @@ public class ConsumerController {
     @Resource
     private ConsumerService consumerService;
 
-    @RequestMapping(value = "/groupList.query")
+    @GetMapping("/groupList.query")
     @ResponseBody
     public Object list(@RequestParam(value = "skipSysGroup", required = false) boolean skipSysGroup) {
         return consumerService.queryGroupList(skipSysGroup);
     }
 
-    @RequestMapping(value = "/group.query")
+    @GetMapping("/group.query")
     @ResponseBody
     public Object groupQuery(@RequestParam String consumerGroup) {
         return consumerService.queryGroup(consumerGroup);
     }
 
-    @RequestMapping(value = "/resetOffset.do", method = {RequestMethod.POST})
+    @PostMapping("/resetOffset.do")
     @ResponseBody
     public Object resetOffset(@RequestBody ResetOffsetRequest resetOffsetRequest) {
         logger.info("op=look resetOffsetRequest={}", JsonUtil.obj2String(resetOffsetRequest));
         return consumerService.resetOffset(resetOffsetRequest);
     }
 
-    @RequestMapping(value = "/skipAccumulate.do", method = {RequestMethod.POST})
+    @PostMapping("/skipAccumulate.do")
     @ResponseBody
     public Object skipAccumulate(@RequestBody ResetOffsetRequest resetOffsetRequest) {
         logger.info("op=look resetOffsetRequest={}", JsonUtil.obj2String(resetOffsetRequest));
         return consumerService.resetOffset(resetOffsetRequest);
     }
 
-    @RequestMapping(value = "/examineSubscriptionGroupConfig.query")
+    @GetMapping("/examineSubscriptionGroupConfig.query")
     @ResponseBody
     public Object examineSubscriptionGroupConfig(@RequestParam String consumerGroup) {
         return consumerService.examineSubscriptionGroupConfig(consumerGroup);
     }
 
-    @RequestMapping(value = "/deleteSubGroup.do", method = {RequestMethod.POST})
+    @PostMapping("/deleteSubGroup.do")
     @ResponseBody
     public Object deleteSubGroup(@RequestBody DeleteSubGroupRequest deleteSubGroupRequest) {
         return consumerService.deleteSubGroup(deleteSubGroupRequest);
     }
 
-    @RequestMapping(value = "/createOrUpdate.do", method = {RequestMethod.POST})
+    @PostMapping("/createOrUpdate.do")
     @ResponseBody
     public Object consumerCreateOrUpdateRequest(@RequestBody ConsumerConfigInfo consumerConfigInfo) {
         Preconditions.checkArgument(CollectionUtils.isNotEmpty(consumerConfigInfo.getBrokerNameList()) || CollectionUtils.isNotEmpty(consumerConfigInfo.getClusterNameList()),
@@ -93,19 +88,19 @@ public class ConsumerController {
         return consumerService.createAndUpdateSubscriptionGroupConfig(consumerConfigInfo);
     }
 
-    @RequestMapping(value = "/fetchBrokerNameList.query", method = {RequestMethod.GET})
+    @GetMapping("/fetchBrokerNameList.query")
     @ResponseBody
     public Object fetchBrokerNameList(@RequestParam String consumerGroup) {
         return consumerService.fetchBrokerNameSetBySubscriptionGroup(consumerGroup);
     }
 
-    @RequestMapping(value = "/queryTopicByConsumer.query")
+    @GetMapping("/queryTopicByConsumer.query")
     @ResponseBody
     public Object queryConsumerByTopic(@RequestParam String consumerGroup) {
         return consumerService.queryConsumeStatsListByGroupName(consumerGroup);
     }
 
-    @RequestMapping(value = "/consumerConnection.query")
+    @GetMapping("/consumerConnection.query")
     @ResponseBody
     public Object consumerConnection(@RequestParam(required = false) String consumerGroup) {
         ConsumerConnection consumerConnection = consumerService.getConsumerConnection(consumerGroup);
@@ -113,7 +108,7 @@ public class ConsumerController {
         return consumerConnection;
     }
 
-    @RequestMapping(value = "/consumerRunningInfo.query")
+    @GetMapping("/consumerRunningInfo.query")
     @ResponseBody
     public Object getConsumerRunningInfo(@RequestParam String consumerGroup, @RequestParam String clientId,
         @RequestParam boolean jstack) {
