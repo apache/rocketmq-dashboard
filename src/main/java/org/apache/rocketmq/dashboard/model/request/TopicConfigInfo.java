@@ -19,6 +19,8 @@ import com.google.common.base.Objects;
 
 import java.util.List;
 
+import org.apache.rocketmq.common.TopicConfig;
+
 public class TopicConfigInfo {
 
     private List<String> clusterNameList;
@@ -30,6 +32,7 @@ public class TopicConfigInfo {
     private int readQueueNums;
     private int perm;
     private boolean order;
+    private String messageType;
 
     public List<String> getClusterNameList() {
         return clusterNameList;
@@ -91,6 +94,14 @@ public class TopicConfigInfo {
         this.order = order;
     }
 
+    public String getMessageType() {
+        return messageType;
+    }
+
+    public void setMessageType(TopicConfig topicConfig) {
+        this.messageType = topicConfig.getAttributes().getOrDefault("message.type", "");
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o)
@@ -102,12 +113,13 @@ public class TopicConfigInfo {
             readQueueNums == that.readQueueNums &&
             perm == that.perm &&
             order == that.order &&
+            messageType == that.messageType &&
             Objects.equal(topicName, that.topicName);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hashCode(topicName, writeQueueNums, readQueueNums, perm, order);
+        return Objects.hashCode(topicName, writeQueueNums, readQueueNums, perm, order, messageType);
     }
 
 }
