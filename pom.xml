@@ -91,7 +91,7 @@
         <commons-io.version>2.4</commons-io.version>
         <commons-cli.version>1.2</commons-cli.version>
         <commons-collections.version>3.2.2</commons-collections.version>
-        <rocketmq.version>4.9.3</rocketmq.version>
+        <rocketmq.version>5.1.0</rocketmq.version>
         <surefire.version>2.19.1</surefire.version>
         <aspectj.version>1.9.6</aspectj.version>
         <lombok.version>1.18.22</lombok.version>

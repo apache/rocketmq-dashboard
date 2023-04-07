@@ -17,8 +17,8 @@
 
 package org.apache.rocketmq.dashboard.service;
 
-import org.apache.rocketmq.common.protocol.body.ConsumerConnection;
-import org.apache.rocketmq.common.protocol.body.ConsumerRunningInfo;
+import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
+import org.apache.rocketmq.remoting.protocol.body.ConsumerRunningInfo;
 import org.apache.rocketmq.dashboard.model.ConsumerGroupRollBackStat;
 import org.apache.rocketmq.dashboard.model.GroupConsumeInfo;
 import org.apache.rocketmq.dashboard.model.TopicConsumerInfo;

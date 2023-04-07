@@ -16,7 +16,7 @@
  */
 package org.apache.rocketmq.dashboard.model.request;
 
-import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
+import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 
 import java.util.List;
 

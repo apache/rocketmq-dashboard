@@ -17,7 +17,7 @@
 
 package org.apache.rocketmq.dashboard.service;
 
-import org.apache.rocketmq.common.protocol.body.ProducerConnection;
+import org.apache.rocketmq.remoting.protocol.body.ProducerConnection;
 
 public interface ProducerService {
     ProducerConnection getProducerConnection(String producerGroup, String topic);

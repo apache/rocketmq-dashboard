@@ -29,31 +29,41 @@ import org.apache.rocketmq.client.impl.MQAdminImpl;
 import org.apache.rocketmq.common.AclConfig;
 import org.apache.rocketmq.common.PlainAccessConfig;
 import org.apache.rocketmq.common.TopicConfig;
-import org.apache.rocketmq.common.admin.ConsumeStats;
-import org.apache.rocketmq.common.admin.RollbackStats;
-import org.apache.rocketmq.common.admin.TopicStatsTable;
+import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
+import org.apache.rocketmq.remoting.protocol.admin.RollbackStats;
+import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
 import org.apache.rocketmq.common.message.MessageClientIDSetter;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageQueue;
-import org.apache.rocketmq.common.protocol.RequestCode;
-import org.apache.rocketmq.common.protocol.ResponseCode;
-import org.apache.rocketmq.common.protocol.body.BrokerStatsData;
-import org.apache.rocketmq.common.protocol.body.ClusterAclVersionInfo;
-import org.apache.rocketmq.common.protocol.body.ClusterInfo;
-import org.apache.rocketmq.common.protocol.body.ConsumeMessageDirectlyResult;
-import org.apache.rocketmq.common.protocol.body.ConsumeStatsList;
-import org.apache.rocketmq.common.protocol.body.ConsumerConnection;
-import org.apache.rocketmq.common.protocol.body.ConsumerRunningInfo;
-import org.apache.rocketmq.common.protocol.body.GroupList;
-import org.apache.rocketmq.common.protocol.body.KVTable;
-import org.apache.rocketmq.common.protocol.body.ProducerConnection;
-import org.apache.rocketmq.common.protocol.body.QueryConsumeQueueResponseBody;
-import org.apache.rocketmq.common.protocol.body.QueueTimeSpan;
-import org.apache.rocketmq.common.protocol.body.SubscriptionGroupWrapper;
-import org.apache.rocketmq.common.protocol.body.TopicConfigSerializeWrapper;
-import org.apache.rocketmq.common.protocol.body.TopicList;
-import org.apache.rocketmq.common.protocol.route.TopicRouteData;
-import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
+import org.apache.rocketmq.common.message.MessageRequestMode;
+import org.apache.rocketmq.remoting.protocol.RequestCode;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
+import org.apache.rocketmq.remoting.protocol.body.BrokerReplicasInfo;
+import org.apache.rocketmq.remoting.protocol.body.BrokerStatsData;
+import org.apache.rocketmq.remoting.protocol.body.ClusterAclVersionInfo;
+import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
+import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
+import org.apache.rocketmq.remoting.protocol.body.ConsumeStatsList;
+import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
+import org.apache.rocketmq.remoting.protocol.body.ConsumerRunningInfo;
+import org.apache.rocketmq.remoting.protocol.body.EpochEntryCache;
+import org.apache.rocketmq.remoting.protocol.body.GroupList;
+import org.apache.rocketmq.remoting.protocol.body.HARuntimeInfo;
+import org.apache.rocketmq.remoting.protocol.body.KVTable;
+import org.apache.rocketmq.remoting.protocol.body.ProducerConnection;
+import org.apache.rocketmq.remoting.protocol.body.ProducerTableInfo;
+import org.apache.rocketmq.remoting.protocol.body.QueryConsumeQueueResponseBody;
+import org.apache.rocketmq.remoting.protocol.body.QueueTimeSpan;
+import org.apache.rocketmq.remoting.protocol.body.SubscriptionGroupWrapper;
+import org.apache.rocketmq.remoting.protocol.body.TopicConfigSerializeWrapper;
+import org.apache.rocketmq.remoting.protocol.body.TopicList;
+import org.apache.rocketmq.remoting.protocol.header.controller.ElectMasterResponseHeader;
+import org.apache.rocketmq.remoting.protocol.header.controller.GetMetaDataResponseHeader;
+import org.apache.rocketmq.remoting.protocol.heartbeat.SubscriptionData;
+import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
+import org.apache.rocketmq.remoting.protocol.statictopic.TopicQueueMappingDetail;
+import org.apache.rocketmq.remoting.protocol.subscription.GroupForbidden;
+import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.dashboard.util.JsonUtil;
 import org.apache.rocketmq.remoting.RemotingClient;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
@@ -63,7 +73,9 @@ import org.apache.rocketmq.remoting.exception.RemotingSendRequestException;
 import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
+import org.apache.rocketmq.tools.admin.api.BrokerOperatorResult;
 import org.apache.rocketmq.tools.admin.api.MessageTrack;
+import org.apache.rocketmq.tools.admin.common.AdminToolResult;
 import org.joor.Reflect;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -81,7 +93,7 @@ public class MQAdminExtImpl implements MQAdminExt {
     @Override
     public void updateBrokerConfig(String brokerAddr, Properties properties)
         throws RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException,
-        UnsupportedEncodingException, InterruptedException, MQBrokerException {
+        UnsupportedEncodingException, InterruptedException, MQBrokerException, MQClientException {
         MQAdminInstance.threadLocalMQAdminExt().updateBrokerConfig(brokerAddr, properties);
     }
 
@@ -376,14 +388,14 @@ public class MQAdminExtImpl implements MQAdminExt {
     }
 
     @Override
-    public void createTopic(String key, String newTopic, int queueNum) throws MQClientException {
-        MQAdminInstance.threadLocalMQAdminExt().createTopic(key, newTopic, queueNum);
+    public void createTopic(String key, String newTopic, int queueNum, Map<String, String> attributes) throws MQClientException {
+        MQAdminInstance.threadLocalMQAdminExt().createTopic(key, newTopic, queueNum, attributes);
     }
 
     @Override
-    public void createTopic(String key, String newTopic, int queueNum, int topicSysFlag)
+    public void createTopic(String key, String newTopic, int queueNum, int topicSysFlag, Map<String, String> attributes)
         throws MQClientException {
-        MQAdminInstance.threadLocalMQAdminExt().createTopic(key, newTopic, queueNum, topicSysFlag);
+        MQAdminInstance.threadLocalMQAdminExt().createTopic(key, newTopic, queueNum, topicSysFlag, attributes);
     }
 
     @Override
@@ -571,5 +583,258 @@ public class MQAdminExtImpl implements MQAdminExt {
     @Override public boolean resumeCheckHalfMessage(String topic,
         String msgId) throws RemotingException, MQClientException, InterruptedException, MQBrokerException {
         return false;
+    }
+
+    @Override
+    public void addBrokerToContainer(String brokerContainerAddr, String brokerConfig) throws InterruptedException,
+            MQBrokerException, RemotingTimeoutException, RemotingSendRequestException, RemotingConnectException {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'addBrokerToContainer'");
+    }
+
+    @Override
+    public void removeBrokerFromContainer(String brokerContainerAddr, String clusterName, String brokerName,
+            long brokerId) throws InterruptedException, MQBrokerException, RemotingTimeoutException,
+            RemotingSendRequestException, RemotingConnectException {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'removeBrokerFromContainer'");
+    }
+
+    @Override
+    public void updateGlobalWhiteAddrConfig(String addr, String globalWhiteAddrs, String aclFileFullPath)
+            throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'updateGlobalWhiteAddrConfig'");
+    }
+
+    @Override
+    public TopicStatsTable examineTopicStats(String brokerAddr, String topic)
+            throws RemotingException, MQClientException, InterruptedException, MQBrokerException {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'examineTopicStats'");
+    }
+
+    @Override
+    public AdminToolResult<TopicStatsTable> examineTopicStatsConcurrent(String topic) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'examineTopicStatsConcurrent'");
+    }
+
+    @Override
+    public ConsumeStats examineConsumeStats(String brokerAddr, String consumerGroup, String topicName,
+            long timeoutMillis) throws InterruptedException, RemotingTimeoutException, RemotingSendRequestException,
+            RemotingConnectException, MQBrokerException {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'examineConsumeStats'");
+    }
+
+    @Override
+    public AdminToolResult<ConsumeStats> examineConsumeStatsConcurrent(String consumerGroup, String topic) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'examineConsumeStatsConcurrent'");
+    }
+
+    @Override
+    public ConsumerConnection examineConsumerConnectionInfo(String consumerGroup, String brokerAddr)
+            throws InterruptedException, MQBrokerException, RemotingException, MQClientException {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'examineConsumerConnectionInfo'");
+    }
+
+    @Override
+    public ProducerTableInfo getAllProducerInfo(String brokerAddr)
+            throws RemotingException, MQClientException, InterruptedException, MQBrokerException {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'getAllProducerInfo'");
+    }
+
+    @Override
+    public void deleteTopic(String topicName, String clusterName)
+            throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'deleteTopic'");
+    }
+
+    @Override
+    public AdminToolResult<BrokerOperatorResult> deleteTopicInBrokerConcurrent(Set<String> addrs, String topic) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'deleteTopicInBrokerConcurrent'");
+    }
+
+    @Override
+    public void deleteTopicInNameServer(Set<String> addrs, String clusterName, String topic)
+            throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'deleteTopicInNameServer'");
+    }
+
+    @Override
+    public AdminToolResult<BrokerOperatorResult> resetOffsetNewConcurrent(String group, String topic, long timestamp) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'resetOffsetNewConcurrent'");
+    }
+
+    @Override
+    public TopicList queryTopicsByConsumer(String group)
+            throws InterruptedException, MQBrokerException, RemotingException, MQClientException {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'queryTopicsByConsumer'");
+    }
+
+    @Override
+    public AdminToolResult<TopicList> queryTopicsByConsumerConcurrent(String group) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'queryTopicsByConsumerConcurrent'");
+    }
+
+    @Override
+    public SubscriptionData querySubscription(String group, String topic)
+            throws InterruptedException, MQBrokerException, RemotingException, MQClientException {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'querySubscription'");
+    }
+
+    @Override
+    public AdminToolResult<List<QueueTimeSpan>> queryConsumeTimeSpanConcurrent(String topic, String group) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'queryConsumeTimeSpanConcurrent'");
+    }
+
+    @Override
+    public boolean deleteExpiredCommitLog(String cluster) throws RemotingConnectException, RemotingSendRequestException,
+            RemotingTimeoutException, MQClientException, InterruptedException {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'deleteExpiredCommitLog'");
+    }
+
+    @Override
+    public boolean deleteExpiredCommitLogByAddr(String addr) throws RemotingConnectException,
+            RemotingSendRequestException, RemotingTimeoutException, MQClientException, InterruptedException {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'deleteExpiredCommitLogByAddr'");
+    }
+
+    @Override
+    public ConsumerRunningInfo getConsumerRunningInfo(String consumerGroup, String clientId, boolean jstack,
+            boolean metrics) throws RemotingException, MQClientException, InterruptedException {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'getConsumerRunningInfo'");
+    }
+
+    @Override
+    public List<MessageTrack> messageTrackDetailConcurrent(MessageExt msg)
+            throws RemotingException, MQClientException, InterruptedException, MQBrokerException {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'messageTrackDetailConcurrent'");
+    }
+
+    @Override
+    public void setMessageRequestMode(String brokerAddr, String topic, String consumerGroup, MessageRequestMode mode,
+            int popWorkGroupSize, long timeoutMillis) throws InterruptedException, RemotingTimeoutException,
+            RemotingSendRequestException, RemotingConnectException, MQClientException {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'setMessageRequestMode'");
+    }
+
+    @Override
+    public long searchOffset(String brokerAddr, String topicName, int queueId, long timestamp, long timeoutMillis)
+            throws RemotingException, MQBrokerException, InterruptedException {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'searchOffset'");
+    }
+
+    @Override
+    public void resetOffsetByQueueId(String brokerAddr, String consumerGroup, String topicName, int queueId,
+            long resetOffset) throws RemotingException, InterruptedException, MQBrokerException {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'resetOffsetByQueueId'");
+    }
+
+    @Override
+    public void createStaticTopic(String addr, String defaultTopic, TopicConfig topicConfig,
+            TopicQueueMappingDetail mappingDetail, boolean force)
+            throws RemotingException, InterruptedException, MQBrokerException {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'createStaticTopic'");
+    }
+
+    @Override
+    public GroupForbidden updateAndGetGroupReadForbidden(String brokerAddr, String groupName, String topicName,
+            Boolean readable) throws RemotingException, InterruptedException, MQBrokerException {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'updateAndGetGroupReadForbidden'");
+    }
+
+    @Override
+    public MessageExt queryMessage(String clusterName, String topic, String msgId)
+            throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'queryMessage'");
+    }
+
+    @Override
+    public HARuntimeInfo getBrokerHAStatus(String brokerAddr) throws RemotingConnectException,
+            RemotingSendRequestException, RemotingTimeoutException, InterruptedException, MQBrokerException {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'getBrokerHAStatus'");
+    }
+
+    @Override
+    public BrokerReplicasInfo getInSyncStateData(String controllerAddress, List<String> brokers)
+            throws RemotingException, InterruptedException, MQBrokerException {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'getInSyncStateData'");
+    }
+
+    @Override
+    public EpochEntryCache getBrokerEpochCache(String brokerAddr)
+            throws RemotingException, InterruptedException, MQBrokerException {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'getBrokerEpochCache'");
+    }
+
+    @Override
+    public GetMetaDataResponseHeader getControllerMetaData(String controllerAddr)
+            throws RemotingException, InterruptedException, MQBrokerException {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'getControllerMetaData'");
+    }
+
+    @Override
+    public void resetMasterFlushOffset(String brokerAddr, long masterFlushOffset) throws InterruptedException,
+            MQBrokerException, RemotingTimeoutException, RemotingSendRequestException, RemotingConnectException {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'resetMasterFlushOffset'");
+    }
+
+    @Override
+    public Map<String, Properties> getControllerConfig(List<String> controllerServers)
+            throws InterruptedException, RemotingTimeoutException, RemotingSendRequestException,
+            RemotingConnectException, MQClientException, UnsupportedEncodingException {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'getControllerConfig'");
+    }
+
+    @Override
+    public void updateControllerConfig(Properties properties, List<String> controllers)
+            throws InterruptedException, RemotingConnectException, UnsupportedEncodingException,
+            RemotingSendRequestException, RemotingTimeoutException, MQClientException, MQBrokerException {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'updateControllerConfig'");
+    }
+
+    @Override
+    public ElectMasterResponseHeader electMaster(String controllerAddr, String clusterName, String brokerName,
+            String brokerAddr) throws RemotingException, InterruptedException, MQBrokerException {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'electMaster'");
+    }
+
+    @Override
+    public void cleanControllerBrokerData(String controllerAddr, String clusterName, String brokerName,
+            String brokerAddr, boolean isCleanLivingBroker)
+            throws RemotingException, InterruptedException, MQBrokerException {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'cleanControllerBrokerData'");
     }
 }
