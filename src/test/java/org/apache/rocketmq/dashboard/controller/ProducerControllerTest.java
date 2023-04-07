@@ -36,8 +36,8 @@ import org.apache.rocketmq.dashboard.util.WebUtil;
 import org.apache.rocketmq.remoting.protocol.LanguageCode;
 import org.apache.rocketmq.remoting.protocol.body.Connection;
 import org.apache.rocketmq.remoting.protocol.body.ProducerConnection;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Spy;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -65,7 +65,7 @@ public class ProducerControllerTest extends BaseControllerTest {
         return innerMockMvc;
     }
 
-    @Before
+    @BeforeEach
     public void init(){
         createMockMvc();
     }

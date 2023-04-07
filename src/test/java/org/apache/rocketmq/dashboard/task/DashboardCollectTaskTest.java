@@ -46,10 +46,10 @@ import org.apache.rocketmq.remoting.protocol.body.KVTable;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
 import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.mockito.Spy;
@@ -82,7 +82,7 @@ public class DashboardCollectTaskTest extends BaseTest {
 
     private File topicFile;
 
-    @Before
+    @BeforeEach
     public void init() throws Exception {
         MockitoAnnotations.initMocks(this);
         when(rmqConfigure.getDashboardCollectData()).thenReturn("/tmp/rocketmq-console/test/data");
@@ -128,7 +128,7 @@ public class DashboardCollectTaskTest extends BaseTest {
         try {
             dashboardCollectTask.collectTopic();
         } catch (Exception e) {
-            Assert.assertEquals(e.getMessage(), "fetchAllTopicList exception");
+            Assertions.assertEquals(e.getMessage(), "fetchAllTopicList exception");
         }
         dashboardCollectTask.collectTopic();
 
@@ -151,14 +151,14 @@ public class DashboardCollectTaskTest extends BaseTest {
         }
         while (loop);
         LoadingCache<String, List<String>> map = dashboardCollectService.getTopicMap();
-        Assert.assertEquals(map.size(), taskExecuteNum);
+        Assertions.assertEquals(map.size(), taskExecuteNum);
         dashboardCollectTask.saveData();
-        Assert.assertEquals(topicFile.exists(), true);
+        Assertions.assertEquals(topicFile.exists(), true);
         Map<String, List<String>> topicData =
             JsonUtil.string2Obj(MixAll.file2String(topicFile),
                 new TypeReference<Map<String, List<String>>>() {
                 });
-        Assert.assertEquals(topicData.size(), taskExecuteNum);
+        Assertions.assertEquals(topicData.size(), taskExecuteNum);
     }
 
     @Test
@@ -181,26 +181,26 @@ public class DashboardCollectTaskTest extends BaseTest {
         try {
             dashboardCollectTask.collectBroker();
         } catch (Exception e) {
-            Assert.assertEquals(e.getMessage(), "fetchBrokerRuntimeStats exception");
+            Assertions.assertEquals(e.getMessage(), "fetchBrokerRuntimeStats exception");
         }
 
         for (int i = 0; i < taskExecuteNum; i++) {
             dashboardCollectTask.collectBroker();
         }
         LoadingCache<String, List<String>> map = dashboardCollectService.getBrokerMap();
-        Assert.assertEquals(map.size(), 1);
-        Assert.assertEquals(map.get("broker-a" + ":" + MixAll.MASTER_ID).size(), taskExecuteNum);
+        Assertions.assertEquals(map.size(), 1);
+        Assertions.assertEquals(map.get("broker-a" + ":" + MixAll.MASTER_ID).size(), taskExecuteNum);
         mockBrokerFileExistBeforeSaveData();
         dashboardCollectTask.saveData();
-        Assert.assertEquals(brokerFile.exists(), true);
+        Assertions.assertEquals(brokerFile.exists(), true);
         Map<String, List<String>> brokerData =
             JsonUtil.string2Obj(MixAll.file2String(brokerFile),
                 new TypeReference<Map<String, List<String>>>() {
                 });
-        Assert.assertEquals(brokerData.get("broker-a" + ":" + MixAll.MASTER_ID).size(), taskExecuteNum + 2);
+        Assertions.assertEquals(brokerData.get("broker-a" + ":" + MixAll.MASTER_ID).size(), taskExecuteNum + 2);
     }
 
-    @After
+    @AfterEach
     public void after() {
         if (brokerFile != null && brokerFile.exists()) {
             brokerFile.delete();

@@ -33,7 +33,7 @@ import com.alibaba.excel.write.style.HorizontalCellStyleStrategy;
 public class ExcelUtil {
 
     public static void writeExcel(HttpServletResponse response, List<? extends Object> data, String fileName,
-        String sheetName, Class clazz) throws Exception {
+        String sheetName, Class<?> clazz) throws Exception {
         WriteCellStyle headWriteCellStyle = new WriteCellStyle();
         WriteFont writeFont = new WriteFont();
         writeFont.setFontHeightInPoints((short)12);

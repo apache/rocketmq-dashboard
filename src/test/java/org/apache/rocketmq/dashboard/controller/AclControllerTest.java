@@ -31,8 +31,8 @@ import org.apache.rocketmq.dashboard.model.request.AclRequest;
 import org.apache.rocketmq.dashboard.service.impl.AclServiceImpl;
 import org.apache.rocketmq.dashboard.util.MockObjectUtil;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Spy;
 import org.springframework.http.MediaType;
@@ -49,7 +49,7 @@ public class AclControllerTest extends BaseControllerTest {
     @Spy
     private AclServiceImpl aclService;
 
-    @Before
+    @BeforeEach
     public void init() throws Exception {
         AclConfig aclConfig = MockObjectUtil.createAclConfig();
         when(mqAdminExt.examineBrokerClusterAclConfig(anyString())).thenReturn(aclConfig);
@@ -116,7 +116,7 @@ public class AclControllerTest extends BaseControllerTest {
         final String url = "/acl/add.do";
         PlainAccessConfig accessConfig = new PlainAccessConfig();
         requestBuilder = MockMvcRequestBuilders.post(url);
-        requestBuilder.contentType(MediaType.APPLICATION_JSON_UTF8);
+        requestBuilder.contentType(MediaType.APPLICATION_JSON);
 
         // 1. access key is null.
         requestBuilder.content(JSON.toJSONString(accessConfig));
@@ -166,7 +166,7 @@ public class AclControllerTest extends BaseControllerTest {
         final String url = "/acl/delete.do";
         PlainAccessConfig accessConfig = new PlainAccessConfig();
         requestBuilder = MockMvcRequestBuilders.post(url);
-        requestBuilder.contentType(MediaType.APPLICATION_JSON_UTF8);
+        requestBuilder.contentType(MediaType.APPLICATION_JSON);
 
         // 1. access key is null.
         requestBuilder.content(JSON.toJSONString(accessConfig));
@@ -188,7 +188,7 @@ public class AclControllerTest extends BaseControllerTest {
         final String url = "/acl/update.do";
         PlainAccessConfig accessConfig = new PlainAccessConfig();
         requestBuilder = MockMvcRequestBuilders.post(url);
-        requestBuilder.contentType(MediaType.APPLICATION_JSON_UTF8);
+        requestBuilder.contentType(MediaType.APPLICATION_JSON);
 
         // 1. secret key is null.
         accessConfig.setAccessKey("rocketmq");
@@ -215,7 +215,7 @@ public class AclControllerTest extends BaseControllerTest {
         // 1. if not exist.
         request.setTopicPerm("test_topic=PUB");
         requestBuilder = MockMvcRequestBuilders.post(url);
-        requestBuilder.contentType(MediaType.APPLICATION_JSON_UTF8);
+        requestBuilder.contentType(MediaType.APPLICATION_JSON);
         requestBuilder.content(JSON.toJSONString(request));
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
@@ -245,7 +245,7 @@ public class AclControllerTest extends BaseControllerTest {
         // 1. if not exist.
         request.setGroupPerm("test_consumer=PUB|SUB");
         requestBuilder = MockMvcRequestBuilders.post(url);
-        requestBuilder.contentType(MediaType.APPLICATION_JSON_UTF8);
+        requestBuilder.contentType(MediaType.APPLICATION_JSON);
         requestBuilder.content(JSON.toJSONString(request));
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
@@ -272,7 +272,7 @@ public class AclControllerTest extends BaseControllerTest {
         AclRequest request = new AclRequest();
         request.setConfig(createDefaultPlainAccessConfig());
         requestBuilder = MockMvcRequestBuilders.post(url);
-        requestBuilder.contentType(MediaType.APPLICATION_JSON_UTF8);
+        requestBuilder.contentType(MediaType.APPLICATION_JSON);
         requestBuilder.content(JSON.toJSONString(request));
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
@@ -290,7 +290,7 @@ public class AclControllerTest extends BaseControllerTest {
     public void testSyncConfig() throws Exception {
         final String url = "/acl/sync.do";
         requestBuilder = MockMvcRequestBuilders.post(url);
-        requestBuilder.contentType(MediaType.APPLICATION_JSON_UTF8);
+        requestBuilder.contentType(MediaType.APPLICATION_JSON);
         requestBuilder.content(JSON.toJSONString(createDefaultPlainAccessConfig()));
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
@@ -304,7 +304,7 @@ public class AclControllerTest extends BaseControllerTest {
 
         // 1. if global white list is not null.
         requestBuilder = MockMvcRequestBuilders.post(url);
-        requestBuilder.contentType(MediaType.APPLICATION_JSON_UTF8);
+        requestBuilder.contentType(MediaType.APPLICATION_JSON);
         requestBuilder.content(JSON.toJSONString(whiteList));
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
@@ -336,7 +336,7 @@ public class AclControllerTest extends BaseControllerTest {
 
         // 1. if white list for syncing is empty.
         requestBuilder = MockMvcRequestBuilders.post(url);
-        requestBuilder.contentType(MediaType.APPLICATION_JSON_UTF8);
+        requestBuilder.contentType(MediaType.APPLICATION_JSON);
         requestBuilder.content(JSON.toJSONString(whiteList));
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())

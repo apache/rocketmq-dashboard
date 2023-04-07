@@ -49,8 +49,8 @@ import org.apache.rocketmq.remoting.protocol.body.SubscriptionGroupWrapper;
 import org.apache.rocketmq.remoting.protocol.heartbeat.ConsumeType;
 import org.apache.rocketmq.remoting.protocol.heartbeat.MessageModel;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Spy;
 import org.springframework.http.MediaType;
@@ -67,7 +67,7 @@ public class ConsumerControllerTest extends BaseControllerTest {
     @Spy
     private ConsumerServiceImpl consumerService;
 
-    @Before
+    @BeforeEach
     public void init() throws Exception {
         consumerService.afterPropertiesSet();
         super.mockRmqConfigure();

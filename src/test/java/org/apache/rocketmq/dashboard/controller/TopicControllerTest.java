@@ -56,9 +56,9 @@ import org.apache.rocketmq.remoting.protocol.body.ConsumerRunningInfo;
 import org.apache.rocketmq.remoting.protocol.body.GroupList;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
 import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Spy;
 import org.springframework.http.MediaType;
@@ -81,7 +81,7 @@ public class TopicControllerTest extends BaseControllerTest {
 
     private String topicName = "topic_test";
 
-    @Before
+    @BeforeEach
     public void init() {
         super.mockRmqConfigure();
     }
@@ -175,7 +175,7 @@ public class TopicControllerTest extends BaseControllerTest {
 
         // 1、clusterName and brokerName all blank
         requestBuilder = MockMvcRequestBuilders.post(url);
-        requestBuilder.contentType(MediaType.APPLICATION_JSON_UTF8);
+        requestBuilder.contentType(MediaType.APPLICATION_JSON);
         TopicConfigInfo info = new TopicConfigInfo();
         requestBuilder.content(JSON.toJSONString(info));
         perform = mockMvc.perform(requestBuilder);
@@ -195,7 +195,7 @@ public class TopicControllerTest extends BaseControllerTest {
         info.setClusterNameList(clusterNameList);
         // 2、create topic
         requestBuilder = MockMvcRequestBuilders.post(url);
-        requestBuilder.contentType(MediaType.APPLICATION_JSON_UTF8);
+        requestBuilder.contentType(MediaType.APPLICATION_JSON);
         requestBuilder.content(JSON.toJSONString(info));
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
@@ -265,12 +265,12 @@ public class TopicControllerTest extends BaseControllerTest {
             when(producer.send(any(Message.class))).thenReturn(result);
             doReturn(producer).when(topicService).buildDefaultMQProducer(anyString(), any(), anyBoolean());
         }
-        Assert.assertNotNull(topicService.buildDefaultMQProducer("group_test", mock(RPCHook.class)));
+        Assertions.assertNotNull(topicService.buildDefaultMQProducer("group_test", mock(RPCHook.class)));
         SendTopicMessageRequest request = new SendTopicMessageRequest();
         request.setTopic(topicName);
         request.setMessageBody("hello world");
         requestBuilder = MockMvcRequestBuilders.post(url);
-        requestBuilder.contentType(MediaType.APPLICATION_JSON_UTF8);
+        requestBuilder.contentType(MediaType.APPLICATION_JSON);
         requestBuilder.content(JSON.toJSONString(request));
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())

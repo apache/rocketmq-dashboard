@@ -30,9 +30,9 @@ import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.util.MockObjectUtil;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class MQAdminPoolTest {
 
@@ -42,7 +42,7 @@ public class MQAdminPoolTest {
 
     private MQAdminPooledObjectFactory mqAdminPooledObjectFactory;
 
-    @Before
+    @BeforeEach
     public void init() {
         mqAdminExtObjectPool = new MqAdminExtObjectPool();
         RMQConfigure rmqConfigure = mock(RMQConfigure.class);
@@ -56,13 +56,13 @@ public class MQAdminPoolTest {
     @Test
     public void testMakeObject() throws Exception {
         PooledObject<MQAdminExt> mqAdmin = mqAdminPooledObjectFactory.makeObject();
-        Assert.assertNotNull(mqAdmin);
+        Assertions.assertNotNull(mqAdmin);
     }
 
     @Test
     public void testDestroyObject() {
         PooledObject<MQAdminExt> mqAdmin = spy(new DefaultPooledObject<MQAdminExt>(null));
-        Assert.assertNotNull(mqAdmin);
+        Assertions.assertNotNull(mqAdmin);
         MQAdminExt mqAdminExt = mock(MQAdminExt.class);
         doNothing().doThrow(new RuntimeException("shutdown exception")).when(mqAdminExt).shutdown();
         when(mqAdmin.getObject()).thenReturn(mqAdminExt);
@@ -75,7 +75,7 @@ public class MQAdminPoolTest {
     @Test
     public void testValidateObject() throws Exception {
         PooledObject<MQAdminExt> mqAdmin = spy(new DefaultPooledObject<MQAdminExt>(null));
-        Assert.assertNotNull(mqAdmin);
+        Assertions.assertNotNull(mqAdmin);
         MQAdminExt mqAdminExt = mock(MQAdminExt.class);
         ClusterInfo clusterInfo = MockObjectUtil.createClusterInfo();
         clusterInfo.getBrokerAddrTable().clear();
@@ -87,15 +87,15 @@ public class MQAdminPoolTest {
             .thenReturn(MockObjectUtil.createClusterInfo());
         when(mqAdmin.getObject()).thenReturn(mqAdminExt);
         // exception
-        Assert.assertFalse(mqAdminPooledObjectFactory.validateObject(mqAdmin));
+        Assertions.assertFalse(mqAdminPooledObjectFactory.validateObject(mqAdmin));
         // clusterInfo == null
-        Assert.assertFalse(mqAdminPooledObjectFactory.validateObject(mqAdmin));
+        Assertions.assertFalse(mqAdminPooledObjectFactory.validateObject(mqAdmin));
         // clusterInfo.getBrokerAddrTable() == null
-        Assert.assertFalse(mqAdminPooledObjectFactory.validateObject(mqAdmin));
+        Assertions.assertFalse(mqAdminPooledObjectFactory.validateObject(mqAdmin));
         // clusterInfo.getBrokerAddrTable().size() <= 0
-        Assert.assertFalse(mqAdminPooledObjectFactory.validateObject(mqAdmin));
+        Assertions.assertFalse(mqAdminPooledObjectFactory.validateObject(mqAdmin));
         // pass validate
-        Assert.assertTrue(mqAdminPooledObjectFactory.validateObject(mqAdmin));
+        Assertions.assertTrue(mqAdminPooledObjectFactory.validateObject(mqAdmin));
 
     }
 }

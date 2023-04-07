@@ -16,26 +16,28 @@
  */
 package org.apache.rocketmq.dashboard.controller;
 
-import com.fasterxml.jackson.core.type.TypeReference;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 import java.io.File;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.dashboard.model.ConsumerMonitorConfig;
 import org.apache.rocketmq.dashboard.service.impl.MonitorServiceImpl;
 import org.apache.rocketmq.dashboard.util.JsonUtil;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Spy;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
-import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import com.fasterxml.jackson.core.type.TypeReference;
 
 public class MonitorControllerTest extends BaseControllerTest {
 
@@ -51,7 +53,7 @@ public class MonitorControllerTest extends BaseControllerTest {
 
     private String consumeGroupName1 = "group_test1";
 
-    @Before
+    @BeforeEach
     public void init() {
         super.mockRmqConfigure();
         when(configure.getRocketMqDashboardDataPath()).thenReturn("/tmp/rocketmq-console/test/data");
@@ -76,8 +78,8 @@ public class MonitorControllerTest extends BaseControllerTest {
             JsonUtil.string2Obj(MixAll.file2String(filePath),
                 new TypeReference<Map<String, ConsumerMonitorConfig>>() {
                 });
-        Assert.assertEquals(map.size(), 2);
-        Assert.assertEquals(map.get(consumeGroupName).getMaxDiffTotal(), 100);
+        Assertions.assertEquals(map.size(), 2);
+        Assertions.assertEquals(map.get(consumeGroupName).getMaxDiffTotal(), 100);
 
         perform.andExpect(status().isOk())
             .andExpect(jsonPath("$.data").value(true));
@@ -116,14 +118,14 @@ public class MonitorControllerTest extends BaseControllerTest {
             JsonUtil.string2Obj(MixAll.file2String(filePath),
                 new TypeReference<Map<String, ConsumerMonitorConfig>>() {
                 });
-        Assert.assertEquals(map.size(), 1);
-        Assert.assertEquals(map.get(consumeGroupName1).getMaxDiffTotal(), 200);
+        Assertions.assertEquals(map.size(), 1);
+        Assertions.assertEquals(map.get(consumeGroupName1).getMaxDiffTotal(), 200);
 
         perform.andExpect(status().isOk())
             .andExpect(jsonPath("$.data").value(true));
     }
 
-    @After
+    @AfterEach
     public void after() {
         File file = new File(filePath);
         File bakFile = new File(filePath + ".bak");

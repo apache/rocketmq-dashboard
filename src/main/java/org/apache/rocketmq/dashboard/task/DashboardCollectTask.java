@@ -45,7 +45,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import com.google.common.base.Throwables;
 import com.google.common.cache.LoadingCache;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -62,80 +61,73 @@ public class DashboardCollectTask {
     @Resource
     private DashboardCollectService dashboardCollectService;
 
-    private final static Logger log = LoggerFactory.getLogger(DashboardCollectTask.class);
+    private static final Logger log = LoggerFactory.getLogger(DashboardCollectTask.class);
 
     @Resource
     private ExecutorService collectExecutor;
 
     @Scheduled(cron = "30 0/1 * * * ?")
-    public void collectTopic() {
+    public void collectTopic() throws Exception {
         if (!rmqConfigure.isEnableDashBoardCollect()) {
             return;
         }
-        try {
-            TopicList topicList = mqAdminExt.fetchAllTopicList();
-            Set<String> topicSet = topicList.getTopicList();
-            this.addSystemTopic();
-            for (String topic : topicSet) {
-                if (topic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)
-                    || topic.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX)
-                    || TopicValidator.isSystemTopic(topic)) {
-                    continue;
-                }
-                CollectTaskRunnble collectTask = new CollectTaskRunnble(topic, mqAdminExt, dashboardCollectService);
-                collectExecutor.submit(collectTask);
+        
+        TopicList topicList = mqAdminExt.fetchAllTopicList();
+        Set<String> topicSet = topicList.getTopicList();
+        this.addSystemTopic();
+        for (String topic : topicSet) {
+            if (topic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)
+                || topic.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX)
+                || TopicValidator.isSystemTopic(topic)) {
+                continue;
             }
-        }
-        catch (Exception err) {
-            throw Throwables.propagate(err);
+            CollectTaskRunnble collectTask = new CollectTaskRunnble(topic, mqAdminExt, dashboardCollectService);
+            collectExecutor.submit(collectTask);
         }
     }
 
     @Scheduled(cron = "0 0/1 * * * ?")
-    public void collectBroker() {
+    public void collectBroker() throws Exception {
         if (!rmqConfigure.isEnableDashBoardCollect()) {
             return;
         }
-        try {
-            Date date = new Date();
-            ClusterInfo clusterInfo = mqAdminExt.examineBrokerClusterInfo();
-            Set<Map.Entry<String, BrokerData>> clusterEntries = clusterInfo.getBrokerAddrTable().entrySet();
+        Date date = new Date();
+        ClusterInfo clusterInfo = mqAdminExt.examineBrokerClusterInfo();
+        Set<Map.Entry<String, BrokerData>> clusterEntries = clusterInfo.getBrokerAddrTable().entrySet();
 
-            Map<String, String> addresses = Maps.newHashMap();
-            for (Map.Entry<String, BrokerData> clusterEntry : clusterEntries) {
-                HashMap<Long, String> addrs = clusterEntry.getValue().getBrokerAddrs();
-                Set<Map.Entry<Long, String>> addrsEntries = addrs.entrySet();
-                for (Map.Entry<Long, String> addrEntry : addrsEntries) {
-                    addresses.put(addrEntry.getValue(), clusterEntry.getKey() + ":" + addrEntry.getKey());
-                }
+        Map<String, String> addresses = Maps.newHashMap();
+        for (Map.Entry<String, BrokerData> clusterEntry : clusterEntries) {
+            HashMap<Long, String> addrs = clusterEntry.getValue().getBrokerAddrs();
+            Set<Map.Entry<Long, String>> addrsEntries = addrs.entrySet();
+            for (Map.Entry<Long, String> addrEntry : addrsEntries) {
+                addresses.put(addrEntry.getValue(), clusterEntry.getKey() + ":" + addrEntry.getKey());
             }
-            Set<Map.Entry<String, String>> entries = addresses.entrySet();
-            for (Map.Entry<String, String> entry : entries) {
-                List<String> list = dashboardCollectService.getBrokerMap().get(entry.getValue());
-                if (null == list) {
-                    list = Lists.newArrayList();
-                }
-                KVTable kvTable = fetchBrokerRuntimeStats(entry.getKey(), 3);
-                if (kvTable == null) {
-                    continue;
-                }
-                String[] tpsArray = kvTable.getTable().get("getTotalTps").split(" ");
-                BigDecimal totalTps = new BigDecimal(0);
-                for (String tps : tpsArray) {
-                    totalTps = totalTps.add(new BigDecimal(tps));
-                }
-                BigDecimal averageTps = totalTps.divide(new BigDecimal(tpsArray.length), 5, BigDecimal.ROUND_HALF_UP);
-                list.add(date.getTime() + "," + averageTps.toString());
-                dashboardCollectService.getBrokerMap().put(entry.getValue(), list);
-            }
-            log.debug("Broker Collected Data in memory = {}" + JsonUtil.obj2String(dashboardCollectService.getBrokerMap().asMap()));
         }
-        catch (Exception e) {
-            throw Throwables.propagate(e);
+        Set<Map.Entry<String, String>> entries = addresses.entrySet();
+        for (Map.Entry<String, String> entry : entries) {
+            List<String> list = dashboardCollectService.getBrokerMap().get(entry.getValue());
+            if (null == list) {
+                list = Lists.newArrayList();
+            }
+            KVTable kvTable = fetchBrokerRuntimeStats(entry.getKey(), 3);
+            if (kvTable == null) {
+                continue;
+            }
+            String[] tpsArray = kvTable.getTable().get("getTotalTps").split(" ");
+            BigDecimal totalTps = new BigDecimal(0);
+            for (String tps : tpsArray) {
+                totalTps = totalTps.add(new BigDecimal(tps));
+            }
+            BigDecimal averageTps = totalTps.divide(new BigDecimal(tpsArray.length), 5, BigDecimal.ROUND_HALF_UP);
+            list.add(date.getTime() + "," + averageTps.toString());
+            dashboardCollectService.getBrokerMap().put(entry.getValue(), list);
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("Broker Collected Data in memory = {}", JsonUtil.obj2String(dashboardCollectService.getBrokerMap().asMap()));
         }
     }
 
-    private KVTable fetchBrokerRuntimeStats(String brokerAddr, Integer retryTime) {
+    private KVTable fetchBrokerRuntimeStats(String brokerAddr, Integer retryTime) throws Exception {
         if (retryTime == 0) {
             return null;
         }
@@ -147,15 +139,15 @@ public class DashboardCollectTask {
                 Thread.sleep(1000);
             }
             catch (InterruptedException e1) {
-                throw Throwables.propagate(e1);
+                Thread.currentThread().interrupt();
             }
             fetchBrokerRuntimeStats(brokerAddr, retryTime - 1);
-            throw Throwables.propagate(e);
+            throw e;
         }
     }
 
     @Scheduled(cron = "0/5 * * * * ?")
-    public void saveData() {
+    public void saveData() throws Exception {
         if (!rmqConfigure.isEnableDashBoardCollect()) {
             return;
         }
@@ -171,36 +163,32 @@ public class DashboardCollectTask {
         }
         File brokerFile = new File(dataLocationPath + nowDateStr + ".json");
         File topicFile = new File(dataLocationPath + nowDateStr + "_topic" + ".json");
-        try {
-            Map<String, List<String>> brokerFileMap;
-            Map<String, List<String>> topicFileMap;
-            if (brokerFile.exists()) {
-                brokerFileMap = dashboardCollectService.jsonDataFile2map(brokerFile);
-            }
-            else {
-                brokerFileMap = Maps.newHashMap();
-                Files.createParentDirs(brokerFile);
-            }
-
-            if (topicFile.exists()) {
-                topicFileMap = dashboardCollectService.jsonDataFile2map(topicFile);
-            }
-            else {
-                topicFileMap = Maps.newHashMap();
-                Files.createParentDirs(topicFile);
-            }
-
-            brokerFile.createNewFile();
-            topicFile.createNewFile();
-
-            writeFile(dashboardCollectService.getBrokerMap(), brokerFileMap, brokerFile);
-            writeFile(dashboardCollectService.getTopicMap(), topicFileMap, topicFile);
-            log.debug("Broker Collected Data in memory = {}" + JsonUtil.obj2String(dashboardCollectService.getBrokerMap().asMap()));
-            log.debug("Topic Collected Data in memory = {}" + JsonUtil.obj2String(dashboardCollectService.getTopicMap().asMap()));
-
+        Map<String, List<String>> brokerFileMap;
+        Map<String, List<String>> topicFileMap;
+        if (brokerFile.exists()) {
+            brokerFileMap = dashboardCollectService.jsonDataFile2map(brokerFile);
         }
-        catch (IOException e) {
-            throw Throwables.propagate(e);
+        else {
+            brokerFileMap = Maps.newHashMap();
+            Files.createParentDirs(brokerFile);
+        }
+
+        if (topicFile.exists()) {
+            topicFileMap = dashboardCollectService.jsonDataFile2map(topicFile);
+        }
+        else {
+            topicFileMap = Maps.newHashMap();
+            Files.createParentDirs(topicFile);
+        }
+
+        brokerFile.createNewFile();
+        topicFile.createNewFile();
+
+        writeFile(dashboardCollectService.getBrokerMap(), brokerFileMap, brokerFile);
+        writeFile(dashboardCollectService.getTopicMap(), topicFileMap, topicFile);
+        if (log.isDebugEnabled()) {
+            log.debug("Broker Collected Data in memory = {}", JsonUtil.obj2String(dashboardCollectService.getBrokerMap().asMap()));
+            log.debug("Topic Collected Data in memory = {}", JsonUtil.obj2String(dashboardCollectService.getTopicMap().asMap()));
         }
     }
 

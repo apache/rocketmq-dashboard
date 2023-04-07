@@ -27,7 +27,7 @@ import org.apache.rocketmq.dashboard.support.GlobalExceptionHandler;
 import org.apache.rocketmq.dashboard.support.GlobalRestfulResponseBodyAdvice;
 import org.apache.rocketmq.dashboard.util.MyPrintingResultHandler;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
-import org.junit.Before;
+import org.junit.jupiter.api.BeforeEach;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.springframework.test.web.servlet.MockMvc;
@@ -53,7 +53,7 @@ public abstract class BaseControllerTest extends BaseTest {
 
     protected abstract Object getTestController();
 
-    @Before
+    @BeforeEach
     public void beforeInit() throws Exception {
         MockitoAnnotations.initMocks(this);
         autoInjection();

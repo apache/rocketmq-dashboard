@@ -51,8 +51,8 @@ import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.tools.admin.api.MessageTrack;
 import org.apache.rocketmq.tools.admin.api.TrackType;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Spy;
 import org.springframework.http.MediaType;
@@ -73,7 +73,7 @@ public class MessageControllerTest extends BaseControllerTest {
 
     private DefaultMQPullConsumer defaultMQPullConsumer;
 
-    @Before
+    @BeforeEach
     public void init() throws Exception {
         super.mockRmqConfigure();
         {

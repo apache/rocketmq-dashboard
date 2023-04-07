@@ -93,7 +93,8 @@ public class AclServiceImpl extends AbstractCommonService implements AclService 
                 List<PlainAccessConfig> plainAccessConfigs = aclConfig.getPlainAccessConfigs();
                 for (PlainAccessConfig pac : plainAccessConfigs) {
                     if (pac.getAccessKey().equals(config.getAccessKey())) {
-                        throw new IllegalArgumentException(String.format("broker: %s, exist accessKey: %s", addr, config.getAccessKey()));
+                        throw new IllegalArgumentException(
+                                String.format("broker: %s, exist accessKey: %s", addr, config.getAccessKey()));
                     }
                 }
             }

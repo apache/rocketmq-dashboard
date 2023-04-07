@@ -140,7 +140,7 @@ public class MockObjectUtil {
 
     public static SubscriptionGroupWrapper createSubscriptionGroupWrapper() {
         SubscriptionGroupWrapper wrapper = new SubscriptionGroupWrapper();
-        ConcurrentMap<String, SubscriptionGroupConfig> subscriptionGroupTable = new ConcurrentHashMap(2);
+        ConcurrentMap<String, SubscriptionGroupConfig> subscriptionGroupTable = new ConcurrentHashMap<>(2);
         SubscriptionGroupConfig config = new SubscriptionGroupConfig();
         config.setGroupName("group_test");
         subscriptionGroupTable.put("group_test", config);
@@ -156,7 +156,7 @@ public class MockObjectUtil {
         TopicConfigSerializeWrapper wrapper = new TopicConfigSerializeWrapper();
         TopicConfig config = new TopicConfig();
         config.setTopicName("topic_test");
-        ConcurrentMap<String, TopicConfig> topicConfigTable = new ConcurrentHashMap(2);
+        ConcurrentMap<String, TopicConfig> topicConfigTable = new ConcurrentHashMap<>(2);
         topicConfigTable.put("topic_test", config);
         wrapper.setTopicConfigTable(topicConfigTable);
         wrapper.setDataVersion(new DataVersion());
