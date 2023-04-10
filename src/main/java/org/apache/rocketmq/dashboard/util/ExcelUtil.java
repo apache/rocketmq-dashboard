@@ -16,21 +16,24 @@
  */
 package org.apache.rocketmq.dashboard.util;
 
+import java.io.OutputStream;
+import java.net.URLEncoder;
+import java.util.List;
+
+import javax.servlet.http.HttpServletResponse;
+
+import org.apache.poi.ss.usermodel.HorizontalAlignment;
+
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.excel.support.ExcelTypeEnum;
 import com.alibaba.excel.write.metadata.style.WriteCellStyle;
 import com.alibaba.excel.write.metadata.style.WriteFont;
 import com.alibaba.excel.write.style.HorizontalCellStyleStrategy;
-import java.io.OutputStream;
-import java.net.URLEncoder;
-import java.util.List;
-import javax.servlet.http.HttpServletResponse;
-import org.apache.poi.ss.usermodel.HorizontalAlignment;
 
 public class ExcelUtil {
 
     public static void writeExcel(HttpServletResponse response, List<? extends Object> data, String fileName,
-        String sheetName, Class clazz) throws Exception {
+        String sheetName, Class<?> clazz) throws Exception {
         WriteCellStyle headWriteCellStyle = new WriteCellStyle();
         WriteFont writeFont = new WriteFont();
         writeFont.setFontHeightInPoints((short)12);

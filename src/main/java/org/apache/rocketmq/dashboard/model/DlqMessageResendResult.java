@@ -16,9 +16,10 @@
  */
 package org.apache.rocketmq.dashboard.model;
 
-import lombok.Data;
 import org.apache.rocketmq.remoting.protocol.body.CMResult;
 import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
+
+import lombok.Data;
 
 @Data
 public class DlqMessageResendResult {

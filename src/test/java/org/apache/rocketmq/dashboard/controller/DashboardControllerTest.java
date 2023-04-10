@@ -16,8 +16,12 @@
  */
 package org.apache.rocketmq.dashboard.controller;
 
-import com.google.common.collect.Maps;
-import com.google.common.io.Files;
+import static org.hamcrest.Matchers.hasKey;
+import static org.hamcrest.Matchers.hasSize;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 import java.io.File;
 import java.math.BigDecimal;
 import java.text.DateFormat;
@@ -26,21 +30,19 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+
 import org.apache.rocketmq.dashboard.service.impl.DashboardCollectServiceImpl;
 import org.apache.rocketmq.dashboard.service.impl.DashboardServiceImpl;
 import org.apache.rocketmq.dashboard.util.JsonUtil;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Spy;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
-import static org.hamcrest.Matchers.hasKey;
-import static org.hamcrest.Matchers.hasSize;
-import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import com.google.common.collect.Maps;
+import com.google.common.io.Files;
 
 public class DashboardControllerTest extends BaseControllerTest {
 
@@ -61,7 +63,7 @@ public class DashboardControllerTest extends BaseControllerTest {
 
     private File brokerDataFile;
 
-    @Before
+    @BeforeEach
     public void init() throws Exception {
         super.mockRmqConfigure();
         DateFormat format = new SimpleDateFormat("yyyy-MM-dd");
@@ -73,7 +75,7 @@ public class DashboardControllerTest extends BaseControllerTest {
         when(configure.getDashboardCollectData()).thenReturn("");
     }
 
-    @After
+    @AfterEach
     public void after() {
         // delete test file
         if (brokerDataFile != null && brokerDataFile.exists()) {

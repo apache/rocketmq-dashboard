@@ -18,18 +18,19 @@
 package org.apache.rocketmq.dashboard.util;
 
 import java.util.List;
+
 import org.apache.rocketmq.client.trace.TraceConstants;
 import org.apache.rocketmq.client.trace.TraceContext;
 import org.apache.rocketmq.common.UtilAll;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class MsgTraceDecodeUtilTest {
     private StringBuilder pubTraceDataBase;
     private StringBuilder subTraceDataBase;
 
-    @Before
+    @BeforeEach
     public void init() {
         pubTraceDataBase = new StringBuilder()
             .append("Pub").append(TraceConstants.CONTENT_SPLITOR)
@@ -66,41 +67,41 @@ public class MsgTraceDecodeUtilTest {
     @Test
     public void testDecodePubTraceMessage() {
         List<TraceContext> contexts = MsgTraceDecodeUtil.decoderFromTraceDataString(null);
-        Assert.assertEquals(contexts.size(), 0);
+        Assertions.assertEquals(contexts.size(), 0);
         String pubTraceData_V1 = new String(pubTraceDataBase);
         List<TraceContext> traceContextListV1 = MsgTraceDecodeUtil.decoderFromTraceDataString(pubTraceData_V1);
-        Assert.assertEquals(traceContextListV1.size(), 1);
-        Assert.assertEquals(traceContextListV1.get(0).getTraceType().toString(), "Pub");
-        Assert.assertEquals(traceContextListV1.get(0).isSuccess(), true);
-        Assert.assertEquals(traceContextListV1.get(0).getTraceBeans().get(0).getMsgId(), "0A741C02622500000000080cc6980189");
-        Assert.assertEquals(traceContextListV1.get(0).getTraceBeans().get(0).getOffsetMsgId(), "");
-        Assert.assertEquals(traceContextListV1.get(0).getTraceBeans().get(0).getStoreHost(), "10.10.10.10:30911");
-        Assert.assertEquals(traceContextListV1.get(0).getTraceBeans().get(0).getClientHost(), UtilAll.ipToIPv4Str(UtilAll.getIP()));
+        Assertions.assertEquals(traceContextListV1.size(), 1);
+        Assertions.assertEquals(traceContextListV1.get(0).getTraceType().toString(), "Pub");
+        Assertions.assertEquals(traceContextListV1.get(0).isSuccess(), true);
+        Assertions.assertEquals(traceContextListV1.get(0).getTraceBeans().get(0).getMsgId(), "0A741C02622500000000080cc6980189");
+        Assertions.assertEquals(traceContextListV1.get(0).getTraceBeans().get(0).getOffsetMsgId(), "");
+        Assertions.assertEquals(traceContextListV1.get(0).getTraceBeans().get(0).getStoreHost(), "10.10.10.10:30911");
+        Assertions.assertEquals(traceContextListV1.get(0).getTraceBeans().get(0).getClientHost(), UtilAll.ipToIPv4Str(UtilAll.getIP()));
 
         String pubTraceData_V2 = new StringBuilder(pubTraceDataBase)
             .append("false").append(TraceConstants.CONTENT_SPLITOR)
             .toString();
         List<TraceContext> traceContextListV2 = MsgTraceDecodeUtil.decoderFromTraceDataString(pubTraceData_V2);
-        Assert.assertEquals(traceContextListV2.size(), 1);
-        Assert.assertEquals(traceContextListV2.get(0).getTraceType().toString(), "Pub");
-        Assert.assertEquals(traceContextListV2.get(0).isSuccess(), false);
-        Assert.assertEquals(traceContextListV2.get(0).getTraceBeans().get(0).getMsgId(), "0A741C02622500000000080cc6980189");
-        Assert.assertEquals(traceContextListV2.get(0).getTraceBeans().get(0).getOffsetMsgId(), "");
-        Assert.assertEquals(traceContextListV2.get(0).getTraceBeans().get(0).getStoreHost(), "10.10.10.10:30911");
-        Assert.assertEquals(traceContextListV2.get(0).getTraceBeans().get(0).getClientHost(), UtilAll.ipToIPv4Str(UtilAll.getIP()));
+        Assertions.assertEquals(traceContextListV2.size(), 1);
+        Assertions.assertEquals(traceContextListV2.get(0).getTraceType().toString(), "Pub");
+        Assertions.assertEquals(traceContextListV2.get(0).isSuccess(), false);
+        Assertions.assertEquals(traceContextListV2.get(0).getTraceBeans().get(0).getMsgId(), "0A741C02622500000000080cc6980189");
+        Assertions.assertEquals(traceContextListV2.get(0).getTraceBeans().get(0).getOffsetMsgId(), "");
+        Assertions.assertEquals(traceContextListV2.get(0).getTraceBeans().get(0).getStoreHost(), "10.10.10.10:30911");
+        Assertions.assertEquals(traceContextListV2.get(0).getTraceBeans().get(0).getClientHost(), UtilAll.ipToIPv4Str(UtilAll.getIP()));
 
         String pubTraceData_V3 = new StringBuilder(pubTraceDataBase)
             .append("0A741D02000078BF000000000132F7C9").append(TraceConstants.CONTENT_SPLITOR)
             .append("true").append(TraceConstants.CONTENT_SPLITOR)
             .toString();
         List<TraceContext> traceContextListV3 = MsgTraceDecodeUtil.decoderFromTraceDataString(pubTraceData_V3);
-        Assert.assertEquals(traceContextListV3.size(), 1);
-        Assert.assertEquals(traceContextListV3.get(0).getTraceType().toString(), "Pub");
-        Assert.assertEquals(traceContextListV3.get(0).isSuccess(), true);
-        Assert.assertEquals(traceContextListV3.get(0).getTraceBeans().get(0).getMsgId(), "0A741C02622500000000080cc6980189");
-        Assert.assertEquals(traceContextListV3.get(0).getTraceBeans().get(0).getOffsetMsgId(), "0A741D02000078BF000000000132F7C9");
-        Assert.assertEquals(traceContextListV3.get(0).getTraceBeans().get(0).getStoreHost(), "10.10.10.10:30911");
-        Assert.assertEquals(traceContextListV3.get(0).getTraceBeans().get(0).getClientHost(), UtilAll.ipToIPv4Str(UtilAll.getIP()));
+        Assertions.assertEquals(traceContextListV3.size(), 1);
+        Assertions.assertEquals(traceContextListV3.get(0).getTraceType().toString(), "Pub");
+        Assertions.assertEquals(traceContextListV3.get(0).isSuccess(), true);
+        Assertions.assertEquals(traceContextListV3.get(0).getTraceBeans().get(0).getMsgId(), "0A741C02622500000000080cc6980189");
+        Assertions.assertEquals(traceContextListV3.get(0).getTraceBeans().get(0).getOffsetMsgId(), "0A741D02000078BF000000000132F7C9");
+        Assertions.assertEquals(traceContextListV3.get(0).getTraceBeans().get(0).getStoreHost(), "10.10.10.10:30911");
+        Assertions.assertEquals(traceContextListV3.get(0).getTraceBeans().get(0).getClientHost(), UtilAll.ipToIPv4Str(UtilAll.getIP()));
 
         String pubTraceData_V4 = new StringBuilder(pubTraceDataBase)
             .append("0A741D02000078BF000000000132F7C9").append(TraceConstants.CONTENT_SPLITOR)
@@ -108,13 +109,13 @@ public class MsgTraceDecodeUtilTest {
             .append("10.10.10.11").append(TraceConstants.CONTENT_SPLITOR)
             .toString();
         List<TraceContext> traceContextListV4 = MsgTraceDecodeUtil.decoderFromTraceDataString(pubTraceData_V4);
-        Assert.assertEquals(traceContextListV4.size(), 1);
-        Assert.assertEquals(traceContextListV4.get(0).getTraceType().toString(), "Pub");
-        Assert.assertEquals(traceContextListV4.get(0).isSuccess(), true);
-        Assert.assertEquals(traceContextListV4.get(0).getTraceBeans().get(0).getMsgId(), "0A741C02622500000000080cc6980189");
-        Assert.assertEquals(traceContextListV4.get(0).getTraceBeans().get(0).getOffsetMsgId(), "0A741D02000078BF000000000132F7C9");
-        Assert.assertEquals(traceContextListV4.get(0).getTraceBeans().get(0).getStoreHost(), "10.10.10.10:30911");
-        Assert.assertEquals(traceContextListV4.get(0).getTraceBeans().get(0).getClientHost(), "10.10.10.11");
+        Assertions.assertEquals(traceContextListV4.size(), 1);
+        Assertions.assertEquals(traceContextListV4.get(0).getTraceType().toString(), "Pub");
+        Assertions.assertEquals(traceContextListV4.get(0).isSuccess(), true);
+        Assertions.assertEquals(traceContextListV4.get(0).getTraceBeans().get(0).getMsgId(), "0A741C02622500000000080cc6980189");
+        Assertions.assertEquals(traceContextListV4.get(0).getTraceBeans().get(0).getOffsetMsgId(), "0A741D02000078BF000000000132F7C9");
+        Assertions.assertEquals(traceContextListV4.get(0).getTraceBeans().get(0).getStoreHost(), "10.10.10.10:30911");
+        Assertions.assertEquals(traceContextListV4.get(0).getTraceBeans().get(0).getClientHost(), "10.10.10.11");
 
         String pubTraceData_default = new StringBuilder(pubTraceDataBase)
             .append("0A741D02000078BF000000000132F7C9").append(TraceConstants.CONTENT_SPLITOR)
@@ -123,39 +124,39 @@ public class MsgTraceDecodeUtilTest {
             .append("10.10.10.11").append(TraceConstants.CONTENT_SPLITOR)
             .toString();
         List<TraceContext> traceContextList = MsgTraceDecodeUtil.decoderFromTraceDataString(pubTraceData_default);
-        Assert.assertEquals(traceContextList.size(), 1);
-        Assert.assertEquals(traceContextList.get(0).getTraceType().toString(), "Pub");
-        Assert.assertEquals(traceContextList.get(0).isSuccess(), true);
-        Assert.assertEquals(traceContextList.get(0).getTraceBeans().get(0).getMsgId(), "0A741C02622500000000080cc6980189");
-        Assert.assertEquals(traceContextList.get(0).getTraceBeans().get(0).getOffsetMsgId(), "0A741D02000078BF000000000132F7C9");
-        Assert.assertEquals(traceContextList.get(0).getTraceBeans().get(0).getStoreHost(), "10.10.10.10:30911");
-        Assert.assertEquals(traceContextList.get(0).getTraceBeans().get(0).getClientHost(), "10.10.10.11");
+        Assertions.assertEquals(traceContextList.size(), 1);
+        Assertions.assertEquals(traceContextList.get(0).getTraceType().toString(), "Pub");
+        Assertions.assertEquals(traceContextList.get(0).isSuccess(), true);
+        Assertions.assertEquals(traceContextList.get(0).getTraceBeans().get(0).getMsgId(), "0A741C02622500000000080cc6980189");
+        Assertions.assertEquals(traceContextList.get(0).getTraceBeans().get(0).getOffsetMsgId(), "0A741D02000078BF000000000132F7C9");
+        Assertions.assertEquals(traceContextList.get(0).getTraceBeans().get(0).getStoreHost(), "10.10.10.10:30911");
+        Assertions.assertEquals(traceContextList.get(0).getTraceBeans().get(0).getClientHost(), "10.10.10.11");
     }
 
     @Test
     public void testDecodeSubTraceMessage() {
         String subTraceData_V1 = new String(subTraceDataBase);
         List<TraceContext> traceContextListV1 = MsgTraceDecodeUtil.decoderFromTraceDataString(subTraceData_V1);
-        Assert.assertEquals(traceContextListV1.size(), 2);
-        Assert.assertEquals(traceContextListV1.get(0).getTraceType().toString(), "SubBefore");
-        Assert.assertEquals(traceContextListV1.get(0).isSuccess(), true);
-        Assert.assertEquals(traceContextListV1.get(0).getTraceBeans().get(0).getMsgId(), "0A741C02622500000000080cc698003f");
-        Assert.assertEquals(traceContextListV1.get(0).getTraceBeans().get(0).getRetryTimes(), 2);
+        Assertions.assertEquals(traceContextListV1.size(), 2);
+        Assertions.assertEquals(traceContextListV1.get(0).getTraceType().toString(), "SubBefore");
+        Assertions.assertEquals(traceContextListV1.get(0).isSuccess(), true);
+        Assertions.assertEquals(traceContextListV1.get(0).getTraceBeans().get(0).getMsgId(), "0A741C02622500000000080cc698003f");
+        Assertions.assertEquals(traceContextListV1.get(0).getTraceBeans().get(0).getRetryTimes(), 2);
         // FIXME bad case for compatibility backward
-        // Assert.assertEquals(traceContextListV1.get(0).getTraceBeans().get(0).getClientHost(), "10.10.10.11@39960");
-        Assert.assertEquals(traceContextListV1.get(1).getTraceType().toString(), "SubAfter");
-        Assert.assertEquals(traceContextListV1.get(1).isSuccess(), false);
-        Assert.assertEquals(traceContextListV1.get(1).getTraceBeans().get(0).getMsgId(), "0A741C02622500000000080cc698003f");
+        // Assertions.assertEquals(traceContextListV1.get(0).getTraceBeans().get(0).getClientHost(), "10.10.10.11@39960");
+        Assertions.assertEquals(traceContextListV1.get(1).getTraceType().toString(), "SubAfter");
+        Assertions.assertEquals(traceContextListV1.get(1).isSuccess(), false);
+        Assertions.assertEquals(traceContextListV1.get(1).getTraceBeans().get(0).getMsgId(), "0A741C02622500000000080cc698003f");
 
         String subTraceData_V2 = new StringBuilder(subTraceDataBase)
             .append("4").append(TraceConstants.CONTENT_SPLITOR)
             .toString();
         List<TraceContext> traceContextListV2 = MsgTraceDecodeUtil.decoderFromTraceDataString(subTraceData_V2);
-        Assert.assertEquals(traceContextListV2.size(), 2);
-        Assert.assertEquals(traceContextListV2.get(1).getTraceType().toString(), "SubAfter");
-        Assert.assertEquals(traceContextListV2.get(1).isSuccess(), false);
-        Assert.assertEquals(traceContextListV2.get(1).getTraceBeans().get(0).getMsgId(), "0A741C02622500000000080cc698003f");
-        Assert.assertEquals(traceContextListV2.get(1).getContextCode(), 4);
+        Assertions.assertEquals(traceContextListV2.size(), 2);
+        Assertions.assertEquals(traceContextListV2.get(1).getTraceType().toString(), "SubAfter");
+        Assertions.assertEquals(traceContextListV2.get(1).isSuccess(), false);
+        Assertions.assertEquals(traceContextListV2.get(1).getTraceBeans().get(0).getMsgId(), "0A741C02622500000000080cc698003f");
+        Assertions.assertEquals(traceContextListV2.get(1).getContextCode(), 4);
 
         String subTraceData_V3 = new StringBuilder(subTraceDataBase)
             .append("4").append(TraceConstants.CONTENT_SPLITOR)
@@ -163,11 +164,11 @@ public class MsgTraceDecodeUtilTest {
             .append("test_consumer_group").append(TraceConstants.CONTENT_SPLITOR)
             .toString();
         List<TraceContext> traceContextListV3 = MsgTraceDecodeUtil.decoderFromTraceDataString(subTraceData_V3);
-        Assert.assertEquals(traceContextListV3.size(), 2);
-        Assert.assertEquals(traceContextListV3.get(1).getTraceType().toString(), "SubAfter");
-        Assert.assertEquals(traceContextListV3.get(1).isSuccess(), false);
-        Assert.assertEquals(traceContextListV3.get(1).getTraceBeans().get(0).getMsgId(), "0A741C02622500000000080cc698003f");
-        Assert.assertEquals(traceContextListV3.get(1).getGroupName(), "test_consumer_group");
+        Assertions.assertEquals(traceContextListV3.size(), 2);
+        Assertions.assertEquals(traceContextListV3.get(1).getTraceType().toString(), "SubAfter");
+        Assertions.assertEquals(traceContextListV3.get(1).isSuccess(), false);
+        Assertions.assertEquals(traceContextListV3.get(1).getTraceBeans().get(0).getMsgId(), "0A741C02622500000000080cc698003f");
+        Assertions.assertEquals(traceContextListV3.get(1).getGroupName(), "test_consumer_group");
 
         String subTraceData_default = new StringBuilder(subTraceDataBase)
             .append("4").append(TraceConstants.CONTENT_SPLITOR)
@@ -176,10 +177,10 @@ public class MsgTraceDecodeUtilTest {
             .append("test_consumer_group").append(TraceConstants.CONTENT_SPLITOR)
             .toString();
         List<TraceContext> traceContextList = MsgTraceDecodeUtil.decoderFromTraceDataString(subTraceData_default);
-        Assert.assertEquals(traceContextList.size(), 2);
-        Assert.assertEquals(traceContextList.get(1).getTraceType().toString(), "SubAfter");
-        Assert.assertEquals(traceContextList.get(1).isSuccess(), false);
-        Assert.assertEquals(traceContextList.get(1).getTraceBeans().get(0).getMsgId(), "0A741C02622500000000080cc698003f");
-        Assert.assertEquals(traceContextList.get(1).getGroupName(), "test_consumer_group");
+        Assertions.assertEquals(traceContextList.size(), 2);
+        Assertions.assertEquals(traceContextList.get(1).getTraceType().toString(), "SubAfter");
+        Assertions.assertEquals(traceContextList.get(1).isSuccess(), false);
+        Assertions.assertEquals(traceContextList.get(1).getTraceBeans().get(0).getMsgId(), "0A741C02622500000000080cc698003f");
+        Assertions.assertEquals(traceContextList.get(1).getGroupName(), "test_consumer_group");
     }
 }

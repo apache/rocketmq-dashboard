@@ -17,6 +17,11 @@
 
 package org.apache.rocketmq.dashboard.config;
 
+import java.util.List;
+
+import javax.annotation.Resource;
+import javax.servlet.http.HttpServletRequest;
+
 import org.apache.rocketmq.dashboard.interceptor.AuthInterceptor;
 import org.apache.rocketmq.dashboard.model.UserInfo;
 import org.apache.rocketmq.dashboard.util.WebUtil;
@@ -31,14 +36,10 @@ import org.springframework.web.method.support.ModelAndViewContainer;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.ViewControllerRegistry;
-import org.springframework.web.servlet.config.annotation.WebMvcConfigurerAdapter;
-
-import javax.annotation.Resource;
-import javax.servlet.http.HttpServletRequest;
-import java.util.List;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
-public class AuthWebMVCConfigurerAdapter extends WebMvcConfigurerAdapter {
+public class AuthWebMVCConfigurerAdapter implements WebMvcConfigurer {
     @Autowired
     @Qualifier("authInterceptor")
     private AuthInterceptor authInterceptor;
@@ -87,7 +88,6 @@ public class AuthWebMVCConfigurerAdapter extends WebMvcConfigurerAdapter {
             }
         });
 
-        super.addArgumentResolvers(argumentResolvers);  //REVIEW ME
     }
 
     @Override

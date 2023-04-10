@@ -6,3 +6,5 @@
 .factorypath
 .settings/
 .vscode
+/Dockerfile
+/src/main/resources/application-local.yml

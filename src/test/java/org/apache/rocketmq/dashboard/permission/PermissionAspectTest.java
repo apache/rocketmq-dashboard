@@ -16,12 +16,14 @@
  */
 package org.apache.rocketmq.dashboard.permission;
 
-import com.google.common.collect.Lists;
-import com.google.common.io.Files;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
 import java.io.File;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
 import org.apache.rocketmq.dashboard.BaseTest;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.model.User;
@@ -31,9 +33,9 @@ import org.apache.rocketmq.dashboard.service.impl.PermissionServiceImpl;
 import org.apache.rocketmq.dashboard.util.JsonUtil;
 import org.apache.rocketmq.dashboard.util.WebUtil;
 import org.aspectj.lang.ProceedingJoinPoint;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
@@ -43,8 +45,8 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import com.google.common.collect.Lists;
+import com.google.common.io.Files;
 
 public class PermissionAspectTest extends BaseTest {
 
@@ -57,7 +59,7 @@ public class PermissionAspectTest extends BaseTest {
     @Spy
     private PermissionServiceImpl permissionService;
 
-    @Before
+    @BeforeEach
     public void init() {
         MockitoAnnotations.initMocks(this);
         autoInjection();
@@ -78,7 +80,7 @@ public class PermissionAspectTest extends BaseTest {
         try {
             permissionAspect.checkPermission(joinPoint);
         } catch (Throwable throwable) {
-            Assert.assertEquals(throwable.getMessage(), "user not login");
+            Assertions.assertEquals(throwable.getMessage(), "user not login");
         }
         // userRole is admin
         UserInfo info = new UserInfo();
@@ -97,7 +99,7 @@ public class PermissionAspectTest extends BaseTest {
         try {
             permissionAspect.checkPermission(joinPoint);
         } catch (Throwable throwable) {
-            Assert.assertEquals(throwable.getMessage(), "no permission");
+            Assertions.assertEquals(throwable.getMessage(), "no permission");
         }
 
         // no permission

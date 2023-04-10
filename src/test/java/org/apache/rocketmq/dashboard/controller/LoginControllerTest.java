@@ -16,22 +16,23 @@
  */
 package org.apache.rocketmq.dashboard.controller;
 
-import java.lang.reflect.Field;
-import org.apache.rocketmq.dashboard.model.User;
-import org.apache.rocketmq.dashboard.service.impl.UserServiceImpl;
-import org.apache.rocketmq.dashboard.util.WebUtil;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
-import org.mockito.InjectMocks;
-import org.mockito.Spy;
-import org.springframework.test.util.ReflectionTestUtils;
-import org.springframework.util.ReflectionUtils;
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
-
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import java.lang.reflect.Field;
+
+import org.apache.rocketmq.dashboard.model.User;
+import org.apache.rocketmq.dashboard.service.impl.UserServiceImpl;
+import org.apache.rocketmq.dashboard.util.WebUtil;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.InjectMocks;
+import org.mockito.Spy;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
+import org.springframework.util.ReflectionUtils;
 
 public class LoginControllerTest extends BaseControllerTest {
 
@@ -43,7 +44,7 @@ public class LoginControllerTest extends BaseControllerTest {
 
     private String contextPath = "/rocketmq-console";
 
-    @Before
+    @BeforeEach
     public void init() {
         super.mockRmqConfigure();
         when(configure.isLoginRequired()).thenReturn(true);
@@ -75,8 +76,8 @@ public class LoginControllerTest extends BaseControllerTest {
             UserServiceImpl.FileBasedUserInfoStore store
                 = new UserServiceImpl.FileBasedUserInfoStore(configure);
             User user = store.queryByName(username);
-            Assert.assertNotNull(user);
-            Assert.assertEquals(user.getPassword(), rightPwd);
+            Assertions.assertNotNull(user);
+            Assertions.assertEquals(user.getPassword(), rightPwd);
             ReflectionTestUtils.setField(userService, "fileBasedUserInfoStore", store);
         }
 

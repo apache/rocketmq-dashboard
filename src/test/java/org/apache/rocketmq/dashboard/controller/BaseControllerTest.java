@@ -17,14 +17,17 @@
 
 package org.apache.rocketmq.dashboard.controller;
 
-import com.google.common.collect.Lists;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 import org.apache.rocketmq.dashboard.BaseTest;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.support.GlobalExceptionHandler;
 import org.apache.rocketmq.dashboard.support.GlobalRestfulResponseBodyAdvice;
 import org.apache.rocketmq.dashboard.util.MyPrintingResultHandler;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
-import org.junit.Before;
+import org.junit.jupiter.api.BeforeEach;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.springframework.test.web.servlet.MockMvc;
@@ -32,9 +35,7 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
-import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import com.google.common.collect.Lists;
 
 public abstract class BaseControllerTest extends BaseTest {
 
@@ -52,7 +53,7 @@ public abstract class BaseControllerTest extends BaseTest {
 
     protected abstract Object getTestController();
 
-    @Before
+    @BeforeEach
     public void beforeInit() throws Exception {
         MockitoAnnotations.initMocks(this);
         autoInjection();

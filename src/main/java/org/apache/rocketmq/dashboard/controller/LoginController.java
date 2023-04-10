@@ -17,6 +17,10 @@
 
 package org.apache.rocketmq.dashboard.controller;
 
+import javax.annotation.Resource;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.model.LoginInfo;
 import org.apache.rocketmq.dashboard.model.LoginResult;
@@ -30,14 +34,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
-
-import javax.annotation.Resource;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
 
 @Controller
 @RequestMapping("/login")
@@ -53,7 +54,7 @@ public class LoginController {
     @Value("${server.servlet.context-path:/}")
     private String contextPath;
 
-    @RequestMapping(value = "/check.query", method = RequestMethod.GET)
+    @GetMapping("/check.query")
     @ResponseBody
     public Object check(HttpServletRequest request) {
         LoginInfo loginInfo = new LoginInfo();
@@ -64,7 +65,7 @@ public class LoginController {
         return loginInfo;
     }
 
-    @RequestMapping(value = "/login.do", method = RequestMethod.POST)
+    @PostMapping("/login.do")
     @ResponseBody
     public Object login(@RequestParam("username") String username,
         @RequestParam(value = "password") String password,
@@ -86,7 +87,7 @@ public class LoginController {
         }
     }
 
-    @RequestMapping(value = "/logout.do", method = RequestMethod.POST)
+    @PostMapping("/logout.do")
     @ResponseBody
     public JsonResult<String> logout(HttpServletRequest request) {
         WebUtil.removeSession(request);

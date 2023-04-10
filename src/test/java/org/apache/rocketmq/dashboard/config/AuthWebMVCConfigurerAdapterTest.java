@@ -17,12 +17,14 @@
 
 package org.apache.rocketmq.dashboard.config;
 
+import java.util.List;
+
 import org.apache.rocketmq.dashboard.BaseTest;
 import org.apache.rocketmq.dashboard.interceptor.AuthInterceptor;
 import org.assertj.core.util.Lists;
-import org.junit.Before;
-import org.junit.Test;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
@@ -31,8 +33,6 @@ import org.springframework.context.support.ClassPathXmlApplicationContext;
 import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.ViewControllerRegistry;
-
-import java.util.List;
 
 public class AuthWebMVCConfigurerAdapterTest extends BaseTest {
 
@@ -45,7 +45,7 @@ public class AuthWebMVCConfigurerAdapterTest extends BaseTest {
     @Mock
     private AuthInterceptor authInterceptor;
 
-    @Before
+    @BeforeEach
     public void init() throws Exception {
         MockitoAnnotations.initMocks(this);
     }

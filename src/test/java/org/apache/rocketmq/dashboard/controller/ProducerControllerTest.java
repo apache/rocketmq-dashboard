@@ -17,10 +17,15 @@
 
 package org.apache.rocketmq.dashboard.controller;
 
+import static org.hamcrest.Matchers.hasSize;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 import java.util.HashSet;
+
 import org.apache.rocketmq.client.exception.MQClientException;
-import org.apache.rocketmq.remoting.protocol.body.Connection;
-import org.apache.rocketmq.remoting.protocol.body.ProducerConnection;
 import org.apache.rocketmq.dashboard.interceptor.AuthInterceptor;
 import org.apache.rocketmq.dashboard.service.impl.LoginServiceImpl;
 import org.apache.rocketmq.dashboard.service.impl.ProducerServiceImpl;
@@ -29,20 +34,16 @@ import org.apache.rocketmq.dashboard.support.GlobalRestfulResponseBodyAdvice;
 import org.apache.rocketmq.dashboard.util.MyPrintingResultHandler;
 import org.apache.rocketmq.dashboard.util.WebUtil;
 import org.apache.rocketmq.remoting.protocol.LanguageCode;
-import org.junit.Before;
-import org.junit.Test;
+import org.apache.rocketmq.remoting.protocol.body.Connection;
+import org.apache.rocketmq.remoting.protocol.body.ProducerConnection;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Spy;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-
-import static org.hamcrest.Matchers.hasSize;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 public class ProducerControllerTest extends BaseControllerTest {
 
@@ -64,7 +65,7 @@ public class ProducerControllerTest extends BaseControllerTest {
         return innerMockMvc;
     }
 
-    @Before
+    @BeforeEach
     public void init(){
         createMockMvc();
     }

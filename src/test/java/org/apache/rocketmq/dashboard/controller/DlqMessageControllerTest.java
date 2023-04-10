@@ -16,15 +16,17 @@
  */
 package org.apache.rocketmq.dashboard.controller;
 
-import com.alibaba.fastjson.JSON;
-import com.google.common.collect.Lists;
+import static org.hamcrest.Matchers.hasSize;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 import java.util.List;
+
 import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.common.MixAll;
-import org.apache.rocketmq.remoting.protocol.ResponseCode;
-import org.apache.rocketmq.remoting.protocol.body.CMResult;
-import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
-import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.dashboard.model.DlqMessageRequest;
 import org.apache.rocketmq.dashboard.model.MessagePage;
 import org.apache.rocketmq.dashboard.model.MessageView;
@@ -32,7 +34,11 @@ import org.apache.rocketmq.dashboard.model.request.MessageQuery;
 import org.apache.rocketmq.dashboard.service.impl.DlqMessageServiceImpl;
 import org.apache.rocketmq.dashboard.service.impl.MessageServiceImpl;
 import org.apache.rocketmq.dashboard.util.MockObjectUtil;
-import org.junit.Test;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
+import org.apache.rocketmq.remoting.protocol.body.CMResult;
+import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
+import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
+import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
@@ -41,12 +47,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
-import static org.hamcrest.Matchers.hasSize;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import com.alibaba.fastjson.JSON;
+import com.google.common.collect.Lists;
 
 public class DlqMessageControllerTest extends BaseControllerTest {
 

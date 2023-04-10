@@ -18,8 +18,8 @@
 package org.apache.rocketmq.dashboard.controller;
 
 import org.apache.rocketmq.dashboard.service.impl.OpsServiceImpl;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Spy;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
@@ -41,7 +41,7 @@ public class NamesvrControllerTest extends BaseControllerTest {
         requestBuilder = MockMvcRequestBuilders.get(url);
         perform = mockMvc.perform(requestBuilder);
         String namesrvAddr = perform.andReturn().getResponse().getContentAsString();
-        Assert.assertEquals(namesrvAddr, "127.0.0.1:9876");
+        Assertions.assertEquals(namesrvAddr, "127.0.0.1:9876");
     }
 
     @Override protected Object getTestController() {

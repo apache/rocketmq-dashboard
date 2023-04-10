@@ -28,7 +28,7 @@
     <groupId>org.apache.rocketmq</groupId>
     <artifactId>rocketmq-dashboard</artifactId>
     <packaging>jar</packaging>
-    <version>1.0.1-SNAPSHOT</version>
+    <version>1.0.2-SNAPSHOT</version>
     <name>rocketmq-dashboard</name>
 
     <scm>
@@ -92,18 +92,18 @@
         <commons-cli.version>1.2</commons-cli.version>
         <commons-collections.version>3.2.2</commons-collections.version>
         <rocketmq.version>5.1.0</rocketmq.version>
-        <surefire.version>2.19.1</surefire.version>
+        <surefire.version>2.22.2</surefire.version>
         <aspectj.version>1.9.6</aspectj.version>
         <lombok.version>1.18.22</lombok.version>
         <main.basedir>${basedir}/../..</main.basedir>
         <docker.image.prefix>apacherocketmq</docker.image.prefix>
-        <spring.boot.version>2.6.0</spring.boot.version>
+        <spring.boot.version>2.7.5</spring.boot.version>
         <mockito-inline.version>3.3.3</mockito-inline.version>
         <jaxb-api.version>2.3.1</jaxb-api.version>
         <commons-pool2.version>2.4.3</commons-pool2.version>
         <easyexcel.version>2.2.10</easyexcel.version>
         <asm.version>4.2</asm.version>
-        <junit.version>4.12</junit.version>
+        <junit.version>5.9.2</junit.version>
         <snakeyaml.version>1.30</snakeyaml.version>
         <cglib.version>2.2.2</cglib.version>
         <joor.version>0.9.6</joor.version>
@@ -263,24 +263,30 @@
             <artifactId>asm</artifactId>
             <version>${asm.version}</version>
         </dependency>
-        <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-            <version>${junit.version}</version>
-            <scope>test</scope>
-        </dependency>
+        <!-- https://mvnrepository.com/artifact/org.junit.jupiter/junit-jupiter -->
+		<dependency>
+		    <groupId>org.junit.jupiter</groupId>
+		    <artifactId>junit-jupiter</artifactId>
+		    <version>${junit.version}</version>
+		    <scope>test</scope>
+		</dependency>
         <dependency>
             <groupId>org.yaml</groupId>
             <artifactId>snakeyaml</artifactId>
             <version>${snakeyaml.version}</version>
         </dependency>
 
+        <dependency>
+        	<groupId>org.springframework.boot</groupId>
+        	<artifactId>spring-boot-configuration-processor</artifactId>
+        	<optional>true</optional>
+        	<version>${spring.boot.version}</version>
+        </dependency>
     </dependencies>
     <build>
         <plugins>
             <plugin>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.5.1</version>
                 <configuration>
                     <source>${maven.compiler.source}</source>
                     <target>${maven.compiler.target}</target>
@@ -391,7 +397,6 @@
             <plugin>
                 <groupId>org.apache.rat</groupId>
                 <artifactId>apache-rat-plugin</artifactId>
-                <version>0.12</version>
                 <configuration>
                     <excludes>
                         <exclude>.gitignore</exclude>

@@ -16,10 +16,9 @@
  */
 package org.apache.rocketmq.dashboard.util;
 
-import com.google.common.collect.Lists;
+
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -29,21 +28,24 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+
 import org.apache.rocketmq.client.producer.LocalTransactionState;
 import org.apache.rocketmq.client.trace.TraceConstants;
 import org.apache.rocketmq.client.trace.TraceType;
 import org.apache.rocketmq.common.AclConfig;
-import org.apache.rocketmq.remoting.protocol.DataVersion;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.PlainAccessConfig;
 import org.apache.rocketmq.common.TopicConfig;
+import org.apache.rocketmq.common.consumer.ConsumeFromWhere;
+import org.apache.rocketmq.common.message.MessageExt;
+import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.dashboard.model.DlqMessageRequest;
+import org.apache.rocketmq.remoting.protocol.DataVersion;
+import org.apache.rocketmq.remoting.protocol.LanguageCode;
 import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
 import org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper;
 import org.apache.rocketmq.remoting.protocol.admin.TopicOffset;
 import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
-import org.apache.rocketmq.common.consumer.ConsumeFromWhere;
-import org.apache.rocketmq.common.message.MessageExt;
-import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.protocol.body.BrokerStatsData;
 import org.apache.rocketmq.remoting.protocol.body.BrokerStatsItem;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
@@ -61,11 +63,8 @@ import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.route.QueueData;
 import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
-import org.apache.rocketmq.dashboard.model.DlqMessageRequest;
-import org.apache.rocketmq.remoting.protocol.LanguageCode;
-import org.checkerframework.checker.units.qual.A;
 
-import static org.apache.rocketmq.remoting.protocol.heartbeat.ConsumeType.CONSUME_ACTIVELY;
+import com.google.common.collect.Lists;
 
 public class MockObjectUtil {
 
@@ -141,7 +140,7 @@ public class MockObjectUtil {
 
     public static SubscriptionGroupWrapper createSubscriptionGroupWrapper() {
         SubscriptionGroupWrapper wrapper = new SubscriptionGroupWrapper();
-        ConcurrentMap<String, SubscriptionGroupConfig> subscriptionGroupTable = new ConcurrentHashMap(2);
+        ConcurrentMap<String, SubscriptionGroupConfig> subscriptionGroupTable = new ConcurrentHashMap<>(2);
         SubscriptionGroupConfig config = new SubscriptionGroupConfig();
         config.setGroupName("group_test");
         subscriptionGroupTable.put("group_test", config);
@@ -157,7 +156,7 @@ public class MockObjectUtil {
         TopicConfigSerializeWrapper wrapper = new TopicConfigSerializeWrapper();
         TopicConfig config = new TopicConfig();
         config.setTopicName("topic_test");
-        ConcurrentMap<String, TopicConfig> topicConfigTable = new ConcurrentHashMap(2);
+        ConcurrentMap<String, TopicConfig> topicConfigTable = new ConcurrentHashMap<>(2);
         topicConfigTable.put("topic_test", config);
         wrapper.setTopicConfigTable(topicConfigTable);
         wrapper.setDataVersion(new DataVersion());
@@ -207,7 +206,7 @@ public class MockObjectUtil {
         consumerRunningInfo.setSubscriptionSet(subscriptionSet);
 
         Properties properties = new Properties();
-        properties.put(ConsumerRunningInfo.PROP_CONSUME_TYPE, CONSUME_ACTIVELY.name());
+        properties.put(ConsumerRunningInfo.PROP_CONSUME_TYPE, ConsumeType.CONSUME_ACTIVELY);
         properties.put(ConsumerRunningInfo.PROP_CONSUMER_START_TIMESTAMP, Long.toString(System.currentTimeMillis()));
         consumerRunningInfo.setProperties(properties);
         return consumerRunningInfo;

@@ -17,14 +17,14 @@
 package org.apache.rocketmq.dashboard.controller;
 
 import javax.annotation.Resource;
+
 import org.apache.rocketmq.dashboard.model.ConsumerMonitorConfig;
 import org.apache.rocketmq.dashboard.permisssion.Permission;
 import org.apache.rocketmq.dashboard.service.MonitorService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 
@@ -33,30 +33,29 @@ import org.springframework.web.bind.annotation.ResponseBody;
 @Permission
 public class MonitorController {
 
-    private Logger logger = LoggerFactory.getLogger(MonitorController.class);
     @Resource
     private MonitorService monitorService;
 
-    @RequestMapping(value = "/createOrUpdateConsumerMonitor.do", method = {RequestMethod.POST})
+    @PostMapping("/createOrUpdateConsumerMonitor.do")
     @ResponseBody
     public Object createOrUpdateConsumerMonitor(@RequestParam String consumeGroupName, @RequestParam int minCount,
         @RequestParam int maxDiffTotal) {
         return monitorService.createOrUpdateConsumerMonitor(consumeGroupName, new ConsumerMonitorConfig(minCount, maxDiffTotal));
     }
 
-    @RequestMapping(value = "/consumerMonitorConfig.query", method = {RequestMethod.GET})
+    @GetMapping("/consumerMonitorConfig.query")
     @ResponseBody
     public Object consumerMonitorConfig() {
         return monitorService.queryConsumerMonitorConfig();
     }
 
-    @RequestMapping(value = "/consumerMonitorConfigByGroupName.query", method = {RequestMethod.GET})
+    @GetMapping("/consumerMonitorConfigByGroupName.query")
     @ResponseBody
     public Object consumerMonitorConfigByGroupName(@RequestParam String consumeGroupName) {
         return monitorService.queryConsumerMonitorConfigByGroupName(consumeGroupName);
     }
 
-    @RequestMapping(value = "/deleteConsumerMonitor.do", method = {RequestMethod.POST})
+    @PostMapping("/deleteConsumerMonitor.do")
     @ResponseBody
     public Object deleteConsumerMonitor(@RequestParam String consumeGroupName) {
         return monitorService.deleteConsumerMonitor(consumeGroupName);
