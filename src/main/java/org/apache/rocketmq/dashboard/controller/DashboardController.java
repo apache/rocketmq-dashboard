@@ -19,14 +19,15 @@ package org.apache.rocketmq.dashboard.controller;
 
 import javax.annotation.Resource;
 
-import com.google.common.base.Strings;
 import org.apache.rocketmq.dashboard.permisssion.Permission;
 import org.apache.rocketmq.dashboard.service.DashboardService;
 import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
+
+import com.google.common.base.Strings;
 
 @Controller
 @RequestMapping("/dashboard")
@@ -36,13 +37,13 @@ public class DashboardController {
     @Resource
     DashboardService dashboardService;
 
-    @RequestMapping(value = "/broker.query", method = RequestMethod.GET)
+    @GetMapping("/broker.query")
     @ResponseBody
     public Object broker(@RequestParam String date) {
         return dashboardService.queryBrokerData(date);
     }
 
-    @RequestMapping(value = "/topic.query", method = RequestMethod.GET)
+    @GetMapping("/topic.query")
     @ResponseBody
     public Object topic(@RequestParam String date, String topicName) {
         if (Strings.isNullOrEmpty(topicName)) {
@@ -51,7 +52,7 @@ public class DashboardController {
         return dashboardService.queryTopicData(date,topicName);
     }
 
-    @RequestMapping(value = "/topicCurrent.query", method = RequestMethod.GET)
+    @GetMapping("/topicCurrent.query")
     @ResponseBody
     public Object topicCurrent() {
         return dashboardService.queryTopicCurrentData();

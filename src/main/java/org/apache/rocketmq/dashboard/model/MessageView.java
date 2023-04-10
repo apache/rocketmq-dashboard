@@ -16,12 +16,13 @@
  */
 package org.apache.rocketmq.dashboard.model;
 
-import org.apache.rocketmq.common.message.MessageExt;
-import com.google.common.base.Charsets;
-import org.springframework.beans.BeanUtils;
-
 import java.net.SocketAddress;
 import java.util.Map;
+
+import org.apache.rocketmq.common.message.MessageExt;
+import org.springframework.beans.BeanUtils;
+
+import com.google.common.base.Charsets;
 
 public class MessageView {
 

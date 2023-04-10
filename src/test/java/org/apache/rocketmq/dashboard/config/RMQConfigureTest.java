@@ -17,13 +17,15 @@
 
 package org.apache.rocketmq.dashboard.config;
 
-import com.google.common.collect.Lists;
 import java.io.File;
-import org.junit.Assert;
-import org.junit.Test;
+
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
 import org.springframework.boot.web.server.ErrorPage;
 import org.springframework.boot.web.server.ErrorPageRegistrar;
 import org.springframework.boot.web.server.ErrorPageRegistry;
+
+import com.google.common.collect.Lists;
 
 public class RMQConfigureTest {
 
@@ -46,18 +48,18 @@ public class RMQConfigureTest {
     @Test
     public void testGet() {
         testSet();
-        Assert.assertEquals(rmqConfigure.getAccessKey(), "rocketmq");
-        Assert.assertEquals(rmqConfigure.getSecretKey(), "12345678");
-        Assert.assertTrue(rmqConfigure.isACLEnabled());
-        Assert.assertTrue(rmqConfigure.isUseTLS());
-        Assert.assertEquals(rmqConfigure.getDashboardCollectData(), "/tmp/rocketmq-console/data/test" + File.separator + "dashboard");
-        Assert.assertEquals(rmqConfigure.getRocketMqDashboardDataPath(), "/tmp/rocketmq-console/data/test");
-        Assert.assertEquals(rmqConfigure.getIsVIPChannel(), "true");
-        Assert.assertTrue(rmqConfigure.isEnableDashBoardCollect());
-        Assert.assertTrue(rmqConfigure.isLoginRequired());
-        Assert.assertEquals(rmqConfigure.getNamesrvAddr(), "127.0.0.1:9876");
-        Assert.assertEquals(rmqConfigure.getNamesrvAddrs().size(), 2);
-        Assert.assertEquals(rmqConfigure.getTimeoutMillis().longValue(), 3000L);
+        Assertions.assertEquals(rmqConfigure.getAccessKey(), "rocketmq");
+        Assertions.assertEquals(rmqConfigure.getSecretKey(), "12345678");
+        Assertions.assertTrue(rmqConfigure.isACLEnabled());
+        Assertions.assertTrue(rmqConfigure.isUseTLS());
+        Assertions.assertEquals(rmqConfigure.getDashboardCollectData(), "/tmp/rocketmq-console/data/test" + File.separator + "dashboard");
+        Assertions.assertEquals(rmqConfigure.getRocketMqDashboardDataPath(), "/tmp/rocketmq-console/data/test");
+        Assertions.assertEquals(rmqConfigure.getIsVIPChannel(), "true");
+        Assertions.assertTrue(rmqConfigure.isEnableDashBoardCollect());
+        Assertions.assertTrue(rmqConfigure.isLoginRequired());
+        Assertions.assertEquals(rmqConfigure.getNamesrvAddr(), "127.0.0.1:9876");
+        Assertions.assertEquals(rmqConfigure.getNamesrvAddrs().size(), 2);
+        Assertions.assertEquals(rmqConfigure.getTimeoutMillis().longValue(), 3000L);
         ErrorPageRegistrar registrar = rmqConfigure.errorPageRegistrar();
         registrar.registerErrorPages(new ErrorPageRegistry() {
             @Override

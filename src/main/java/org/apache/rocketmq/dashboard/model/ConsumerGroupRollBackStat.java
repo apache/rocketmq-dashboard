@@ -16,10 +16,11 @@
  */
 package org.apache.rocketmq.dashboard.model;
 
-import org.apache.rocketmq.remoting.protocol.admin.RollbackStats;
-import com.google.common.collect.Lists;
-
 import java.util.List;
+
+import org.apache.rocketmq.remoting.protocol.admin.RollbackStats;
+
+import com.google.common.collect.Lists;
 
 public class ConsumerGroupRollBackStat {
     private boolean status;

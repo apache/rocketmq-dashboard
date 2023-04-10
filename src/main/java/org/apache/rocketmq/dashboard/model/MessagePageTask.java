@@ -16,9 +16,9 @@
  */
 package org.apache.rocketmq.dashboard.model;
 
-import org.springframework.data.domain.Page;
-
 import java.util.List;
+
+import org.springframework.data.domain.Page;
 
 public class MessagePageTask {
     private Page<MessageView> page;

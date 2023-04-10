@@ -17,16 +17,17 @@
 
 package org.apache.rocketmq.dashboard.util;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.rocketmq.dashboard.model.User;
-import org.apache.rocketmq.dashboard.model.UserInfo;
+import java.io.IOException;
+import java.io.PrintWriter;
 
 import javax.servlet.ServletRequest;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
-import java.io.IOException;
-import java.io.PrintWriter;
+
+import org.apache.commons.lang3.StringUtils;
+import org.apache.rocketmq.dashboard.model.User;
+import org.apache.rocketmq.dashboard.model.UserInfo;
 
 public class WebUtil {
     public static final String USER_INFO = "userInfo";

@@ -18,6 +18,7 @@
 package org.apache.rocketmq.dashboard.service;
 
 import java.util.List;
+
 import org.apache.rocketmq.dashboard.model.MessageTraceView;
 import org.apache.rocketmq.dashboard.model.trace.MessageTraceGraph;
 

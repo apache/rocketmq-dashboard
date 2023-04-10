@@ -19,8 +19,9 @@ package org.apache.rocketmq.dashboard.config;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.junit.Assert;
-import org.junit.Test;
+
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
 
 public class CollectExecutorConfigTest {
 
@@ -35,7 +36,7 @@ public class CollectExecutorConfigTest {
         config.setQueueSize(500);
         config.setKeepAliveTime(3000);
         ExecutorService collectExecutor = config.collectExecutor(config);
-        Assert.assertNotNull(collectExecutor);
+        Assertions.assertNotNull(collectExecutor);
         CountDownLatch countDownLatch = new CountDownLatch(COUNT);
         for (int i = 0; i < COUNT; i++) {
             collectExecutor.submit(() -> {
@@ -45,6 +46,6 @@ public class CollectExecutorConfigTest {
         }
         countDownLatch.await();
         System.out.println(collectExecutor.isTerminated());
-        Assert.assertEquals(COUNT, num.get());
+        Assertions.assertEquals(COUNT, num.get());
     }
 }

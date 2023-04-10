@@ -16,10 +16,10 @@
  */
 package org.apache.rocketmq.dashboard.testbase;
 
-import com.google.common.base.Throwables;
-import com.google.common.collect.Lists;
 import java.util.List;
+
 import javax.annotation.Resource;
+
 import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
 import org.apache.rocketmq.client.consumer.listener.ConsumeConcurrentlyContext;
 import org.apache.rocketmq.client.consumer.listener.ConsumeConcurrentlyStatus;
@@ -29,15 +29,18 @@ import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.common.consumer.ConsumeFromWhere;
 import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.common.message.MessageExt;
-import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.dashboard.model.request.ConsumerConfigInfo;
 import org.apache.rocketmq.dashboard.model.request.TopicConfigInfo;
 import org.apache.rocketmq.dashboard.service.ConsumerService;
 import org.apache.rocketmq.dashboard.service.TopicService;
 import org.apache.rocketmq.dashboard.util.JsonUtil;
+import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.ComponentScan;
+
+import com.google.common.base.Throwables;
+import com.google.common.collect.Lists;
 
 @ComponentScan(basePackageClasses = {TestRocketMQServer.class})
 public abstract class RocketMQConsoleTestBase {

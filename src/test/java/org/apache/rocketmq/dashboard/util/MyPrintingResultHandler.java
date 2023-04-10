@@ -18,6 +18,7 @@
 package org.apache.rocketmq.dashboard.util;
 
 import java.lang.reflect.Method;
+
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.web.servlet.result.PrintingResultHandler;
@@ -76,7 +77,7 @@ public class MyPrintingResultHandler extends PrintingResultHandler {
         Method method = ReflectionUtils.findMethod(getClass(), "printCookies");
         if (method != null) {
             ReflectionUtils.makeAccessible(method);
-            method.invoke(this, response.getCookies());
+            method.invoke(this, (Object[])response.getCookies());
         }
     }
 }

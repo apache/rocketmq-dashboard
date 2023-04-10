@@ -27,11 +27,8 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class MqAdminExtObjectPool {
 
-    @Autowired
-    private RMQConfigure rmqConfigure;
-
     @Bean
-    public GenericObjectPool<MQAdminExt> mqAdminExtPool() {
+    GenericObjectPool<MQAdminExt> mqAdminExtPool(@Autowired RMQConfigure rmqConfigure) {
         GenericObjectPoolConfig genericObjectPoolConfig = new GenericObjectPoolConfig();
         genericObjectPoolConfig.setTestWhileIdle(true);
         genericObjectPoolConfig.setMaxWaitMillis(10000);
@@ -39,9 +36,8 @@ public class MqAdminExtObjectPool {
         MQAdminPooledObjectFactory mqAdminPooledObjectFactory = new MQAdminPooledObjectFactory();
         MQAdminFactory mqAdminFactory = new MQAdminFactory(rmqConfigure);
         mqAdminPooledObjectFactory.setMqAdminFactory(mqAdminFactory);
-        GenericObjectPool<MQAdminExt> genericObjectPool = new GenericObjectPool<MQAdminExt>(
+        return new GenericObjectPool<>(
             mqAdminPooledObjectFactory,
             genericObjectPoolConfig);
-        return genericObjectPool;
     }
 }

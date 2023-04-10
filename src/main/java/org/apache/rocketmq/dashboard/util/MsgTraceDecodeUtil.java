@@ -17,6 +17,8 @@
 
 package org.apache.rocketmq.dashboard.util;
 
+import static org.apache.rocketmq.client.trace.TraceType.Pub;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -28,8 +30,6 @@ import org.apache.rocketmq.client.trace.TraceType;
 import org.apache.rocketmq.common.message.MessageType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import static org.apache.rocketmq.client.trace.TraceType.Pub;
 
 public class MsgTraceDecodeUtil {
     private final static Logger log = LoggerFactory.getLogger(MsgTraceDecodeUtil.class);

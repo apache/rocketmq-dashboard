@@ -17,6 +17,14 @@
 
 package org.apache.rocketmq.dashboard.util;
 
+import java.io.IOException;
+import java.io.Writer;
+import java.text.SimpleDateFormat;
+import java.util.Map;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
@@ -24,13 +32,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.ser.impl.SimpleFilterProvider;
 import com.google.common.base.Strings;
-import com.google.common.base.Throwables;
-import java.io.IOException;
-import java.io.Writer;
-import java.text.SimpleDateFormat;
-import java.util.Map;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 @SuppressWarnings("unchecked")
 public class JsonUtil {
@@ -46,18 +47,13 @@ public class JsonUtil {
         objectMapper.configure(SerializationFeature.WRITE_ENUMS_USING_TO_STRING, true);
         objectMapper.configure(DeserializationFeature.ACCEPT_SINGLE_VALUE_AS_ARRAY, true);
         objectMapper.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
-        objectMapper.setFilters(new SimpleFilterProvider().setFailOnUnknownId(false));
+        objectMapper.setFilterProvider(new SimpleFilterProvider().setFailOnUnknownId(false));
         objectMapper.setSerializationInclusion(JsonInclude.Include.NON_EMPTY);
         objectMapper.setDateFormat(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss"));
     }
 
-    public static void writeValue(Writer writer, Object obj) {
-        try {
-            objectMapper.writeValue(writer, obj);
-        }
-        catch (IOException e) {
-            Throwables.propagateIfPossible(e);
-        }
+    public static void writeValue(Writer writer, Object obj) throws IOException {
+        objectMapper.writeValue(writer, obj);
     }
 
     public static <T> String obj2String(T src) {

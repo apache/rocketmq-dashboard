@@ -17,29 +17,30 @@
 
 package org.apache.rocketmq.dashboard.controller;
 
-import java.util.ArrayList;
-import java.util.List;
-import org.apache.commons.pool2.impl.GenericObjectPool;
-import org.apache.rocketmq.dashboard.service.checker.RocketMqChecker;
-import org.apache.rocketmq.dashboard.service.checker.impl.ClusterHealthCheckerImpl;
-import org.apache.rocketmq.dashboard.service.checker.impl.TopicOnlyOneBrokerCheckerImpl;
-import org.apache.rocketmq.dashboard.service.impl.OpsServiceImpl;
-import org.apache.rocketmq.tools.admin.MQAdminExt;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.Spy;
-import org.springframework.test.util.ReflectionTestUtils;
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
-
 import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import org.apache.commons.pool2.impl.GenericObjectPool;
+import org.apache.rocketmq.dashboard.service.checker.RocketMqChecker;
+import org.apache.rocketmq.dashboard.service.checker.impl.ClusterHealthCheckerImpl;
+import org.apache.rocketmq.dashboard.service.checker.impl.TopicOnlyOneBrokerCheckerImpl;
+import org.apache.rocketmq.dashboard.service.impl.OpsServiceImpl;
+import org.apache.rocketmq.tools.admin.MQAdminExt;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.Spy;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
 public class OpsControllerTest extends BaseControllerTest {
     @InjectMocks
@@ -51,7 +52,7 @@ public class OpsControllerTest extends BaseControllerTest {
     @Mock
     private GenericObjectPool<MQAdminExt> mqAdminExtPool;
 
-    @Before
+    @BeforeEach
     public void init() {
         super.mockRmqConfigure();
     }
@@ -81,7 +82,7 @@ public class OpsControllerTest extends BaseControllerTest {
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
             .andExpect(jsonPath("$.data").value(true));
-        Assert.assertEquals(configure.getNamesrvAddr(), "127.0.0.1:9876");
+        Assertions.assertEquals(configure.getNamesrvAddr(), "127.0.0.1:9876");
     }
 
     @Test
@@ -95,7 +96,7 @@ public class OpsControllerTest extends BaseControllerTest {
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
             .andExpect(jsonPath("$.data").value(true));
-        Assert.assertEquals(configure.getNamesrvAddrs().size(), 3);
+        Assertions.assertEquals(configure.getNamesrvAddrs().size(), 3);
     }
 
     @Test

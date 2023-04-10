@@ -16,29 +16,31 @@
  */
 package org.apache.rocketmq.dashboard.controller;
 
-import com.google.common.collect.Maps;
+import java.util.List;
+import java.util.Map;
+
+import javax.annotation.Resource;
+
 import org.apache.rocketmq.common.Pair;
-import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
 import org.apache.rocketmq.dashboard.model.MessagePage;
 import org.apache.rocketmq.dashboard.model.MessageView;
 import org.apache.rocketmq.dashboard.model.request.MessageQuery;
 import org.apache.rocketmq.dashboard.permisssion.Permission;
 import org.apache.rocketmq.dashboard.service.MessageService;
 import org.apache.rocketmq.dashboard.util.JsonUtil;
+import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
 import org.apache.rocketmq.tools.admin.api.MessageTrack;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.ResponseBody;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseBody;
 
-import javax.annotation.Resource;
-import java.util.List;
-import java.util.Map;
+import com.google.common.collect.Maps;
 
 @Controller
 @RequestMapping("/message")
@@ -48,7 +50,7 @@ public class MessageController {
     @Resource
     private MessageService messageService;
 
-    @RequestMapping(value = "/viewMessage.query", method = RequestMethod.GET)
+    @GetMapping("/viewMessage.query")
     @ResponseBody
     public Object viewMessage(@RequestParam(required = false) String topic, @RequestParam String msgId) {
         Map<String, Object> messageViewMap = Maps.newHashMap();
@@ -64,20 +66,20 @@ public class MessageController {
         return messageService.queryMessageByPage(query);
     }
 
-    @RequestMapping(value = "/queryMessageByTopicAndKey.query", method = RequestMethod.GET)
+    @GetMapping("/queryMessageByTopicAndKey.query")
     @ResponseBody
     public Object queryMessageByTopicAndKey(@RequestParam String topic, @RequestParam String key) {
         return messageService.queryMessageByTopicAndKey(topic, key);
     }
 
-    @RequestMapping(value = "/queryMessageByTopic.query", method = RequestMethod.GET)
+    @GetMapping("/queryMessageByTopic.query")
     @ResponseBody
     public Object queryMessageByTopic(@RequestParam String topic, @RequestParam long begin,
                                       @RequestParam long end) {
         return messageService.queryMessageByTopic(topic, begin, end);
     }
 
-    @RequestMapping(value = "/consumeMessageDirectly.do", method = RequestMethod.POST)
+    @PostMapping("/consumeMessageDirectly.do")
     @ResponseBody
     public Object consumeMessageDirectly(@RequestParam String topic, @RequestParam String consumerGroup,
                                          @RequestParam String msgId,
