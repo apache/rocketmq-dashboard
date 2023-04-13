@@ -95,6 +95,7 @@ public class DashboardCollectServiceImpl implements DashboardCollectService {
     public LoadingCache<String, List<String>> getBrokerMap() {
         return brokerMap;
     }
+
     @Override
     public LoadingCache<String, List<String>> getTopicMap() {
         return topicMap;
@@ -105,17 +106,19 @@ public class DashboardCollectServiceImpl implements DashboardCollectService {
         List<String> strings;
         try {
             strings = Files.readLines(file, Charsets.UTF_8);
-        }
-        catch (IOException e) {
+        } catch (IOException e) {
             throw Throwables.propagate(e);
         }
         StringBuffer sb = new StringBuffer();
         for (String string : strings) {
             sb.append(string);
         }
-        JSONObject json = (JSONObject) JSONObject.parse(sb.toString());
-        Set<Map.Entry<String, Object>> entries = json.entrySet();
         Map<String, List<String>> map = Maps.newHashMap();
+        JSONObject json = (JSONObject) JSONObject.parse(sb.toString());
+        if (null == json) {
+            return map;
+        }
+        Set<Map.Entry<String, Object>> entries = json.entrySet();
         for (Map.Entry<String, Object> entry : entries) {
             JSONArray tpsArray = (JSONArray) entry.getValue();
             if (tpsArray == null) {
