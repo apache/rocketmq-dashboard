@@ -84,7 +84,8 @@ public class DashboardCollectTask {
             }
         }
         catch (Exception err) {
-            throw Throwables.propagate(err);
+            Throwables.throwIfUnchecked(err);
+            throw new RuntimeException(err);
         }
     }
 
@@ -128,7 +129,8 @@ public class DashboardCollectTask {
             log.debug("Broker Collected Data in memory = {}" + JsonUtil.obj2String(dashboardCollectService.getBrokerMap().asMap()));
         }
         catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
     }
 
@@ -144,10 +146,12 @@ public class DashboardCollectTask {
                 Thread.sleep(1000);
             }
             catch (InterruptedException e1) {
-                throw Throwables.propagate(e1);
+                Throwables.throwIfUnchecked(e1);
+                throw new RuntimeException(e1);
             }
             fetchBrokerRuntimeStats(brokerAddr, retryTime - 1);
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
     }
 
@@ -197,7 +201,8 @@ public class DashboardCollectTask {
 
         }
         catch (IOException e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
     }
 

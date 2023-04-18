@@ -35,7 +35,8 @@ public class ProducerServiceImpl implements ProducerService {
             return mqAdminExt.examineProducerConnectionInfo(producerGroup, topic);
         }
         catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
     }
 }
