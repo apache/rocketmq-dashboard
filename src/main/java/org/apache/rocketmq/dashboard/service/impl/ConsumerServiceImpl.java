@@ -73,8 +73,6 @@ import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.stereotype.Service;
 
-import static com.google.common.base.Throwables.propagate;
-
 @Service
 public class ConsumerServiceImpl extends AbstractCommonService implements ConsumerService, InitializingBean, DisposableBean {
     private Logger logger = LoggerFactory.getLogger(ConsumerServiceImpl.class);
@@ -131,7 +129,8 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
             }
         }
         catch (Exception err) {
-            throw Throwables.propagate(err);
+            Throwables.throwIfUnchecked(err);
+            throw new RuntimeException(err);
         }
         List<GroupConsumeInfo> groupConsumeInfoList = Collections.synchronizedList(Lists.newArrayList());
         CountDownLatch countDownLatch = new CountDownLatch(consumerGroupSet.size());
@@ -218,7 +217,8 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
             consumeStats = mqAdminExt.examineConsumeStats(groupName, topic);
         }
         catch (Exception e) {
-            throw propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
         List<MessageQueue> mqList = Lists.newArrayList(Iterables.filter(consumeStats.getOffsetTable().keySet(), new Predicate<MessageQueue>() {
             @Override
@@ -278,7 +278,8 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
             return group2ConsumerInfoMap;
         }
         catch (Exception e) {
-            throw propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
     }
 
@@ -341,7 +342,8 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
             }
         }
         catch (Exception e) {
-            throw propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
         return consumerConfigInfoList;
     }
@@ -366,7 +368,8 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
             }
         }
         catch (Exception e) {
-            throw propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
         return true;
     }
@@ -393,7 +396,8 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
             }
         }
         catch (Exception err) {
-            throw Throwables.propagate(err);
+            Throwables.throwIfUnchecked(err);
+            throw new RuntimeException(err);
         }
         return true;
     }
@@ -408,7 +412,8 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
             }
         }
         catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
         return brokerNameSet;
 
@@ -420,7 +425,8 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
             return mqAdminExt.examineConsumerConnectionInfo(consumerGroup);
         }
         catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
     }
 
@@ -430,7 +436,8 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
             return mqAdminExt.getConsumerRunningInfo(consumerGroup, clientId, jstack);
         }
         catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
     }
 }
