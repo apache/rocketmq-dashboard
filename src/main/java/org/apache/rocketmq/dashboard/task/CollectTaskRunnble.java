@@ -93,7 +93,8 @@ public class CollectTaskRunnble implements Runnable {
             try {
                 list = dashboardCollectService.getTopicMap().get(topic);
             } catch (ExecutionException e) {
-                throw Throwables.propagate(e);
+                Throwables.throwIfUnchecked(e);
+                throw new RuntimeException(e);
             }
             if (null == list) {
                 list = Lists.newArrayList();

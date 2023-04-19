@@ -59,7 +59,8 @@ public class ClusterServiceImpl implements ClusterService {
             return resultMap;
         }
         catch (Exception err) {
-            throw Throwables.propagate(err);
+            Throwables.throwIfUnchecked(err);
+            throw new RuntimeException(err);
         }
     }
 
@@ -70,7 +71,8 @@ public class ClusterServiceImpl implements ClusterService {
             return mqAdminExt.getBrokerConfig(brokerAddr);
         }
         catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
     }
 }

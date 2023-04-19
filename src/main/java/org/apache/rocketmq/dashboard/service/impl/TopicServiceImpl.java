@@ -84,7 +84,8 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
             allTopics.getTopicList().addAll(topics);
             return allTopics;
         } catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
     }
 
@@ -93,7 +94,8 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
         try {
             return mqAdminExt.examineTopicStats(topic);
         } catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
     }
 
@@ -102,7 +104,8 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
         try {
             return mqAdminExt.examineTopicRouteInfo(topic);
         } catch (Exception ex) {
-            throw Throwables.propagate(ex);
+            Throwables.throwIfUnchecked(ex);
+            throw new RuntimeException(ex);
         }
     }
 
@@ -111,7 +114,8 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
         try {
             return mqAdminExt.queryTopicConsumeByWho(topic);
         } catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
     }
 
@@ -126,7 +130,8 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
                 mqAdminExt.createAndUpdateTopicConfig(clusterInfo.getBrokerAddrTable().get(brokerName).selectBrokerAddr(), topicConfig);
             }
         } catch (Exception err) {
-            throw Throwables.propagate(err);
+            Throwables.throwIfUnchecked(err);
+            throw new RuntimeException(err);
         }
     }
 
@@ -137,7 +142,8 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
             clusterInfo = mqAdminExt.examineBrokerClusterInfo();
             return mqAdminExt.examineTopicConfig(clusterInfo.getBrokerAddrTable().get(brokerName).selectBrokerAddr(), topic);
         } catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
     }
 
@@ -170,7 +176,8 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
             }
             mqAdminExt.deleteTopicInNameServer(nameServerSet, topic);
         } catch (Exception err) {
-            throw Throwables.propagate(err);
+            Throwables.throwIfUnchecked(err);
+            throw new RuntimeException(err);
         }
         return true;
     }
@@ -181,7 +188,8 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
         try {
             clusterInfo = mqAdminExt.examineBrokerClusterInfo();
         } catch (Exception err) {
-            throw Throwables.propagate(err);
+            Throwables.throwIfUnchecked(err);
+            throw new RuntimeException(err);
         }
         for (String clusterName : clusterInfo.getClusterAddrTable().keySet()) {
             deleteTopic(topic, clusterName);
@@ -197,11 +205,13 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
             try {
                 clusterInfo = mqAdminExt.examineBrokerClusterInfo();
             } catch (Exception e) {
-                throw Throwables.propagate(e);
+                Throwables.throwIfUnchecked(e);
+                throw new RuntimeException(e);
             }
             mqAdminExt.deleteTopicInBroker(Sets.newHashSet(clusterInfo.getBrokerAddrTable().get(brokerName).selectBrokerAddr()), topic);
         } catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
         return true;
     }
@@ -230,7 +240,8 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
             producer.start();
             return producer.getDefaultMQProducerImpl().getmQClientFactory().getMQClientAPIImpl().getSystemTopicList(20000L);
         } catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         } finally {
             producer.shutdown();
         }
@@ -258,7 +269,8 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
             );
             return producer.send(msg);
         } catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         } finally {
             waitSendTraceFinish(producer, sendTopicMessageRequest.isTraceEnabled());
             producer.shutdown();

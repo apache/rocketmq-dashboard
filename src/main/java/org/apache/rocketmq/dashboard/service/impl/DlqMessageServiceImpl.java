@@ -62,10 +62,12 @@ public class DlqMessageServiceImpl implements DlqMessageService {
                 && e.getResponseCode() == ResponseCode.TOPIC_NOT_EXIST) {
                 return new MessagePage(new PageImpl<>(messageViews, page, 0), query.getTaskId());
             } else {
-                throw Throwables.propagate(e);
+                Throwables.throwIfUnchecked(e);
+                throw new RuntimeException(e);
             }
         } catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
         return messageService.queryMessageByPage(query);
     }

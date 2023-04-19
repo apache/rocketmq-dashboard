@@ -78,7 +78,8 @@ public abstract class RocketMQConsoleTestBase {
                     }
                 }
             }
-            throw Throwables.propagate(exception);
+            Throwables.throwIfUnchecked(exception);
+            throw new RuntimeException(exception);
         }
     }
 
@@ -91,7 +92,8 @@ public abstract class RocketMQConsoleTestBase {
             producer.start();
         }
         catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
     }
 
@@ -137,7 +139,8 @@ public abstract class RocketMQConsoleTestBase {
             consumer.start();
         }
         catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
     }
 

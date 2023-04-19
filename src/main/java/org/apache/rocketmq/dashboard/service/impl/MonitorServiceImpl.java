@@ -82,7 +82,8 @@ public class MonitorServiceImpl implements MonitorService {
             MixAll.string2File(dataStr, path);
         }
         catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
     }
 

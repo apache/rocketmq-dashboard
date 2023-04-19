@@ -140,7 +140,7 @@ public class MQAdminExtImpl implements MQAdminExt {
     }
 
     @Override
-    public SubscriptionGroupConfig examineSubscriptionGroupConfig(String addr, String group) {
+    public SubscriptionGroupConfig examineSubscriptionGroupConfig(String addr, String group) throws MQBrokerException {
         RemotingClient remotingClient = MQAdminInstance.threadLocalRemotingClient();
         RemotingCommand request = RemotingCommand.createRequestCommand(RequestCode.GET_ALL_SUBSCRIPTIONGROUP_CONFIG, null);
         RemotingCommand response = null;
@@ -148,7 +148,8 @@ public class MQAdminExtImpl implements MQAdminExt {
             response = remotingClient.invokeSync(addr, request, 3000);
         }
         catch (Exception err) {
-            throw Throwables.propagate(err);
+            Throwables.throwIfUnchecked(err);
+            throw new RuntimeException(err);
         }
         assert response != null;
         switch (response.getCode()) {
@@ -157,12 +158,12 @@ public class MQAdminExtImpl implements MQAdminExt {
                 return subscriptionGroupWrapper.getSubscriptionGroupTable().get(group);
             }
             default:
-                throw Throwables.propagate(new MQBrokerException(response.getCode(), response.getRemark()));
+                throw new MQBrokerException(response.getCode(), response.getRemark());
         }
     }
 
     @Override
-    public TopicConfig examineTopicConfig(String addr, String topic) {
+    public TopicConfig examineTopicConfig(String addr, String topic) throws MQBrokerException {
         RemotingClient remotingClient = MQAdminInstance.threadLocalRemotingClient();
         RemotingCommand request = RemotingCommand.createRequestCommand(RequestCode.GET_ALL_TOPIC_CONFIG, null);
         RemotingCommand response = null;
@@ -170,7 +171,8 @@ public class MQAdminExtImpl implements MQAdminExt {
             response = remotingClient.invokeSync(addr, request, 3000);
         }
         catch (Exception err) {
-            throw Throwables.propagate(err);
+            Throwables.throwIfUnchecked(err);
+            throw new RuntimeException(err);
         }
         switch (response.getCode()) {
             case ResponseCode.SUCCESS: {
@@ -178,7 +180,7 @@ public class MQAdminExtImpl implements MQAdminExt {
                 return topicConfigSerializeWrapper.getTopicConfigTable().get(topic);
             }
             default:
-                throw Throwables.propagate(new MQBrokerException(response.getCode(), response.getRemark()));
+                throw new MQBrokerException(response.getCode(), response.getRemark());
         }
     }
 

@@ -107,7 +107,8 @@ public class DashboardCollectServiceImpl implements DashboardCollectService {
             strings = Files.readLines(file, Charsets.UTF_8);
         }
         catch (IOException e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
         StringBuffer sb = new StringBuffer();
         for (String string : strings) {
