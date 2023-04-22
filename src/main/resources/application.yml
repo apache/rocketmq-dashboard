@@ -60,7 +60,8 @@ rocketmq:
     # set the accessKey and secretKey if you used acl
     accessKey: # if version > 4.4.0
     secretKey: # if version > 4.4.0
-
+    # set if use rocketmq-connect
+    connectAPIAddr: 127.0.0.1:8082
 threadpool:
   config:
     coreSize: 10

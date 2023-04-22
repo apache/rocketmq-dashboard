@@ -124,5 +124,13 @@ var zh = {
     "GROUP_PERM":"消费组权限",
     "SYNCHRONIZE":"同步",
     "SHOW":"显示",
-    "HIDE":"隐藏"
+    "HIDE":"隐藏",
+    "CONNECT":"连接",
+    "CREATE_CONNECTOR":"创建连接器",
+    "RELOAD_ALL_CONNECTORS": "重新载入连接器",
+    "STOP_ALL_CONNECTORS": "停止所有连接器",
+    "CONNECTOR_DETAIL": "连接器详情",
+    "STOP": "停止",
+    "TASK_DETAIL": "任务详情",
+    "DETAIL": "详情"
 }
