@@ -89,6 +89,7 @@ var zh = {
     "KEY":"值",
     "MESSAGE_BODY":"消息主体",
     "TOPIC_NAME":"主题名",
+    "MESSAGE_TYPE":"消息类型",
     "ORDER":"顺序",
     "CONSUMER_CLIENT":"消费者终端",
     "BROKER_OFFSET":"代理者位点",
