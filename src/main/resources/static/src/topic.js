@@ -333,7 +333,7 @@ module.controller('topicController', ['$scope', 'ngDialog', '$http', 'Notificati
                 perm: 6,
                 order: false,
                 topicName: "",
-                messageType: "",
+                messageType: "NORMAL",
                 brokerNameList: []
             }];
             bIsUpdate = false;

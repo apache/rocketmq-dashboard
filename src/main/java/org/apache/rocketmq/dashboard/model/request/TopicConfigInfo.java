@@ -99,7 +99,7 @@ public class TopicConfigInfo {
     }
 
     public void setMessageType(TopicConfig topicConfig) {
-        this.messageType = topicConfig.getAttributes().getOrDefault("message.type", "");
+        this.messageType = topicConfig.getAttributes().getOrDefault("message.type", "NORMAL");
     }
 
     @Override
