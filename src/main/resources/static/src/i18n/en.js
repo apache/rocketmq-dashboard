@@ -88,6 +88,7 @@ var en = {
     "KEY":"Key",
     "MESSAGE_BODY":"Message Body",
     "TOPIC_NAME":"topicName",
+    "MESSAGE_TYPE":"messageType",
     "ORDER":"order",
     "CONSUMER_CLIENT":"consumerClient",
     "BROKER_OFFSET":"brokerOffset",
