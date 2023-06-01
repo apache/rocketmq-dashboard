@@ -23,6 +23,7 @@ public class TopicConfigInfo {
 
     private List<String> clusterNameList;
     private List<String> brokerNameList;
+    private String messageType;
 
     /** topicConfig */
     private String topicName;
@@ -89,6 +90,14 @@ public class TopicConfigInfo {
 
     public void setOrder(boolean order) {
         this.order = order;
+    }
+
+    public String getMessageType() {
+        return messageType;
+    }
+
+    public void setMessageType(String messageType) {
+        this.messageType = messageType;
     }
 
     @Override
