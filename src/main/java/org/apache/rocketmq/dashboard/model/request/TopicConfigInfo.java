@@ -31,6 +31,7 @@ public class TopicConfigInfo {
     private int perm;
     private boolean order;
 
+    private String messageType;
     public List<String> getClusterNameList() {
         return clusterNameList;
     }
@@ -91,6 +92,18 @@ public class TopicConfigInfo {
         this.order = order;
     }
 
+
+    public String getMessageType() {
+        return messageType;
+    }
+
+    public void setMessageType(String messageType) {
+        this.messageType = messageType;
+    }
+
+
+
+
     @Override
     public boolean equals(Object o) {
         if (this == o)
@@ -102,12 +115,13 @@ public class TopicConfigInfo {
             readQueueNums == that.readQueueNums &&
             perm == that.perm &&
             order == that.order &&
-            Objects.equal(topicName, that.topicName);
+            Objects.equal(topicName, that.topicName) &&
+            Objects.equal(messageType, that.messageType);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hashCode(topicName, writeQueueNums, readQueueNums, perm, order);
+        return Objects.hashCode(topicName, writeQueueNums, readQueueNums, perm, order,messageType);
     }
 
 }
