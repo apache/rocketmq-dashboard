@@ -328,8 +328,8 @@ module.controller('topicController', ['$scope', 'ngDialog', '$http', 'Notificati
         var bIsUpdate = true;
         if (request == null) {
             request = [{
-                writeQueueNums: 16,
-                readQueueNums: 16,
+                writeQueueNums: 8,
+                readQueueNums: 8,
                 perm: 6,
                 order: false,
                 topicName: "",
@@ -355,6 +355,7 @@ module.controller('topicController', ['$scope', 'ngDialog', '$http', 'Notificati
                         topicRequestList: request,
                         allClusterNameList: Object.keys(resp.data.clusterInfo.clusterAddrTable),
                         allBrokerNameList: Object.keys(resp.data.brokerServer),
+                        allMessageTypeList: resp.data.messageTypes,
                         bIsUpdate: bIsUpdate,
                         writeOperationEnabled: $scope.writeOperationEnabled
                     }
