@@ -213,6 +213,33 @@
                     <span class="text-danger" ng-show="addAppForm.perm.$error.required">{{'PERM'|translate}}不能为空.</span>
                 </div>
             </div>
+            <div class="form-group">
+                <label class="control-label col-sm-2" style="margin: 0 !important;">{{'MESSAGE_TYPE'|translate}}:</label>
+                <div class="col-sm-10">
+                    <form name="messageType">
+                        <label>
+                            <input type="radio" ng-model="item.messageType" value="UNSPECIFIED" ng-disabled="{{!ngDialogData.writeOperationEnabled}}"/>
+                            {{'MESSAGE_TYPE_UNSPECIFIED'|translate}}
+                        </label>&nbsp;
+                        <label>
+                            <input type="radio" ng-model="item.messageType" value="NORMAL" ng-disabled="{{!ngDialogData.writeOperationEnabled}}"/>
+                            {{'MESSAGE_TYPE_NORMAL'|translate}}
+                        </label>&nbsp;
+                        <label>
+                            <input type="radio" ng-model="item.messageType" value="FIFO" ng-disabled="{{!ngDialogData.writeOperationEnabled}}"/>
+                            {{'MESSAGE_TYPE_FIFO'|translate}}
+                        </label>&nbsp;
+                        <label>
+                            <input type="radio" ng-model="item.messageType" value="DELAY" ng-disabled="{{!ngDialogData.writeOperationEnabled}}"/>
+                            {{'MESSAGE_TYPE_DELAY'|translate}}
+                        </label>&nbsp;
+                        <label>
+                            <input type="radio" ng-model="item.messageType" value="TRANSACTION" ng-disabled="{{!ngDialogData.writeOperationEnabled}}"/>
+                            {{'MESSAGE_TYPE_TRANSACTION'|translate}}
+                        </label>
+                    </form>
+                </div>
+            </div>
         </form>
         <div class="modal-footer">
             <div class="ngdialog-buttons">
