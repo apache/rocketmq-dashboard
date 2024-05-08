@@ -216,6 +216,9 @@ app.config(['$routeProvider', '$httpProvider','$cookiesProvider','getDictNamePro
         }).when('/acl', {
             templateUrl: 'view/pages/acl.html',
             controller: 'aclController'
+        }).when('/connect', {
+            templateUrl: 'view/pages/connect.html',
+            controller: 'connectController'
         }).when('/404', {
             templateUrl: 'view/pages/404.html'
         }).otherwise('/404');

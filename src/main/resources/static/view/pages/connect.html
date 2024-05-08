@@ -1,0 +1,385 @@
+<!--
+  ~ Licensed to the Apache Software Foundation (ASF) under one or more
+  ~ contributor license agreements.  See the NOTICE file distributed with
+  ~ this work for additional information regarding copyright ownership.
+  ~ The ASF licenses this file to You under the Apache License, Version 2.0
+  ~ (the "License"); you may not use this file except in compliance with
+  ~ the License.  You may obtain a copy of the License at
+  ~
+  ~     http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
+
+<!--<div class="container-fluid" id="deployHistoryList">-->
+    <div class="modal-body">
+        <div ng-cloak="" class="tabsdemoDynamicHeight">
+            <md-content>
+                <md-tabs md-dynamic-height="" md-border-bottom="">
+                    <md-tab label="Connectors">
+                        <md-content class="md-padding" style="min-height:600px">
+                            <div class="row">
+                                <button id="reloadAppButton" type="button"
+                                        class="btn btn-raised btn-sm  btn-primary"
+                                        data-toggle="modal"
+                                        ng-click="showWorkerConnectorList()">
+                                    <span class="glyphicon glyphicon-search"></span>{{ 'REFRESH' | translate}}
+                                </button>
+                                <button id="createConnector" type="button"
+                                        class="btn btn-raised btn-sm  btn-primary"
+                                        data-toggle="modal"
+                                        ng-click="openCreationDialog()">
+                                    <span class="glyphicon glyphicon-search"></span>{{ 'CREATE_CONNECTOR' | translate}}
+                                </button>
+                                <button class="btn btn-raised btn-sm btn-danger ng-binding"
+                                        ng-confirm-click="Are you sure to reload?"
+                                        confirmed-click="reloadAllConnectors(item.connectorName)"> {{ 'RELOAD_ALL_CONNECTORS' | translate }}
+                                </button>
+                                <button class="btn btn-raised btn-sm btn-danger ng-binding"
+                                        ng-confirm-click="Are you sure to stop all?"
+                                        confirmed-click="stopAllConnectors(item.connectorName)"> {{ 'STOP_ALL_CONNECTORS' | translate }}
+                                </button>
+                                <table class="table table-bordered">
+                                    <tr>
+                                        <th class="text-center">Connector Name</th>
+                                        <th class="text-center">Connector Class</th>
+                                        <th class="text-center">Connect Topicname</th>
+                                        <th class="text-center">Update Time</th>
+                                        <th class="text-center">Operation</th>
+                                    </tr>
+                                    <tr ng-repeat="item in connectorList">
+                                        <td class="text-center">{{item.connectorName}}</td>
+                                        <td class="text-center">{{item.connectorClass}}</td>
+                                        <td class="text-center">{{item.connectTopicname}}</td>
+                                        <td class="text-center">{{item.updateTimestamp | date:'yyyy-MM-dd HH:mm:ss'}}
+                                        </td>
+                                        <td class="text-center">
+                                            <button class="btn btn-raised btn-sm btn-primary" type="button"
+                                                    ng-click="queryConnectorStatus(item.connectorName)">{{'STATUS' | translate}}
+                                            </button>
+                                            <button class="btn btn-raised btn-sm btn-primary" type="button"
+                                                    ng-click="connectorDetail(item)">{{'CONNECTOR_DETAIL' | translate}}
+                                            </button>
+                                            <button class="btn btn-raised btn-sm btn-danger"
+                                                    ng-confirm-click="Are you sure to stop?"
+                                                    confirmed-click="stopThisConnector(item.connectorName)"> {{ 'STOP' | translate }}
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </table>
+                                <tm-pagination conf="connectorPaginationConf"></tm-pagination>
+                            </div>
+                        </md-content>
+                    </md-tab>
+
+                    <md-tab label="Tasks">
+                        <md-content class="md-padding" style="min-height:600px">
+                            <button id="reloadTaskButton" type="button"
+                                    class="btn btn-raised btn-sm  btn-primary"
+                                    data-toggle="modal"
+                                    ng-click="showWorkerTaskList()">
+                                <span class="glyphicon glyphicon-search"></span>{{ 'REFRESH' | translate}}
+                            </button>
+                            <table class="table table-bordered">
+                                <tr>
+                                    <th class="text-center">Task Class</th>
+                                    <th class="text-center">Connector Name</th>
+                                    <th class="text-center">Connector Class</th>
+                                    <th class="text-center">Connect Topicname</th>
+                                    <th class="text-center">Update Time</th>
+                                    <th class="text-center">Operation</th>
+                                </tr>
+                                <tr ng-repeat="item in workerTaskList">
+                                    <td class="text-center">{{item.taskClass}}</td>
+                                    <td class="text-center">{{item.connectorName}}</td>
+                                    <td class="text-center">{{item.connectorClass}}</td>
+                                    <td class="text-center">{{item.connectTopicname}}</td>
+                                    <td class="text-center">{{item.updateTimestamp | date:'yyyy-MM-dd HH:mm:ss'}}</td>
+                                    <td class="text-center">
+                                        <button class="btn btn-raised btn-sm btn-primary" type="button"
+                                                ng-click="taskDetail(item)">{{ 'DETAIL' | translate}}
+                                        </button>
+                                    </td>
+                                </tr>
+                            </table>
+                            <tm-pagination conf="taskPaginationConf"></tm-pagination>
+                        </md-content>
+                    </md-tab>
+
+                    <md-tab label="Clusters">
+                        <md-content class="md-padding" style="min-height:600px">
+                            <button id="reloadWorkerButton" type="button"
+                                    class="btn btn-raised btn-sm  btn-primary"
+                                    data-toggle="modal"
+                                    ng-click="showWorkerList()">
+                                <span class="glyphicon glyphicon-search"></span>{{ 'REFRESH' | translate}}
+                            </button>
+                            <table class="table table-bordered">
+                                <tr>
+                                    <th class="text-center">Cluster IP</th>
+                                    <th class="text-center">Namesrv Addr</th>
+                                    <th class="text-center">Operation</th>
+
+                                </tr>
+                                <tr ng-repeat="item in allWorkerList">
+                                    <td class="text-center">{{item.ipAddr}}</td>
+                                    <td class="text-center">{{item.namesrvAddr}}</td>
+                                    <td class="text-center">
+                                        <button class="btn btn-raised btn-sm btn-primary" type="button"
+                                                ng-click="workerDetail(item)">{{ 'DETAIL' | translate}}
+                                        </button>
+                                    </td>
+                                </tr>
+                            </table>
+                            <tm-pagination conf="workerPaginationConf"></tm-pagination>
+                        </md-content>
+                    </md-tab>
+                </md-tabs>
+            </md-content>
+        </div>
+
+    </div>
+<!--</div>-->
+
+
+<script type="text/ng-template" id="ConnectorViewDialog">
+    <md-content class="md-padding">
+        <div>
+            <form id="addAppForm" name="addAppForm" class="form-horizontal" novalidate>
+                <div class="form-group">
+                    <label class="control-label col-sm-2">Connector Name:</label>
+                    <div class="col-sm-10">
+                        <label class="form-control">{{ngDialogData.connectorName}}</label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="control-label col-sm-2">Connector Class:</label>
+                    <div class="col-sm-10">
+                        <label class="form-control">{{ngDialogData.connectorClass}}</label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="control-label col-sm-2">Connect Topicname:</label>
+                    <div class="col-sm-10">
+                        <label class="form-control">{{ngDialogData.connectTopicname}}</label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="control-label col-sm-2">Update Time:</label>
+                    <div class="col-sm-10">
+                        <label class="form-control">{{ngDialogData.updateTimestamp | date:'yyyy-MM-dd HH:mm:ss'}}</label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="control-label col-sm-2">Properties:</label>
+                    <div class="col-sm-10">
+                        <p ng-repeat="(x,y) in ngDialogData.properties">"{{x}}"  :  "{{y}}"</p>
+                    </div>
+                </div>
+            </form>
+        </div>
+    <div class="modal-footer">
+        <div class="ngdialog-buttons">
+            <button type="button" class="ngdialog-button ngdialog-button-secondary"
+                    ng-click="closeThisDialog('Cancel')">{{ 'CLOSE' | translate }}
+            </button>
+        </div>
+    </div>
+</script>
+
+<script type="text/ng-template" id="TaskViewDialog">
+    <md-content class="md-padding">
+        <div>
+            <form id="addAppForm1" name="addAppForm" class="form-horizontal" novalidate>
+                <div class="form-group">
+                    <label class="control-label col-sm-2">Connector Clas:</label>
+                    <div class="col-sm-10">
+                        <label class="form-control">{{ngDialogData.connectorClass}}</label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="control-label col-sm-2">Connector Name:</label>
+                    <div class="col-sm-10">
+                        <label class="form-control">{{ngDialogData.connectorName}}</label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="control-label col-sm-2">Connector Class:</label>
+                    <div class="col-sm-10">
+                        <label class="form-control">{{ngDialogData.connectorClass}}</label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="control-label col-sm-2">Connect Topicname:</label>
+                    <div class="col-sm-10">
+                        <label class="form-control">{{ngDialogData.connectTopicname}}</label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="control-label col-sm-2">Update Time:</label>
+                    <div class="col-sm-10">
+                        <label class="form-control">{{ngDialogData.updateTimestamp | date:'yyyy-MM-dd HH:mm:ss'}}</label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="control-label col-sm-2">Properties:</label>
+                    <div class="col-sm-10">
+                        <p ng-repeat="(x,y) in ngDialogData.properties">"{{x}}"  :  "{{y}}"</p>
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <div class="ngdialog-buttons">
+                <button type="button" class="ngdialog-button ngdialog-button-secondary"
+                        ng-click="closeThisDialog('Cancel')">{{ 'CLOSE' | translate }}
+                </button>
+            </div>
+        </div>
+</script>
+
+<script type="text/ng-template" id="WorkerViewDialog">
+    <md-content class="md-padding">
+        <div>
+            <form id="addAppForm2" name="addAppForm" class="form-horizontal" novalidate>
+                <div class="form-group">
+                    <label class="control-label col-sm-2">IP Address:</label>
+                    <div class="col-sm-10">
+                        <label class="form-control">{{ngDialogData.ipAddr}}</label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="control-label col-sm-2">Namesrv Address:</label>
+                    <div class="col-sm-10">
+                        <label class="form-control">{{ngDialogData.namesrvAddr}}</label>
+                    </div>
+                </div>
+<!--                <div class="form-group">-->
+<!--                    <label class="control-label col-sm-2">Allocated Connectors:</label>-->
+<!--                    <div class="col-sm-10">-->
+<!--                        <label class="form-control">{{ngDialogData.connectors}}</label>-->
+<!--                    </div>-->
+<!--                </div>-->
+<!--                <div class="form-group">-->
+<!--                    <label class="control-label col-sm-2">Allocated Tasks:</label>-->
+<!--                    <div class="col-sm-10">-->
+<!--                        <label class="form-control">{{ngDialogData.tasks}}</label>-->
+<!--                    </div>-->
+<!--                </div>-->
+            </form>
+        </div>
+
+        <div class="modal-footer">
+            <div class="ngdialog-buttons">
+                <button type="button" class="ngdialog-button ngdialog-button-secondary"
+                        ng-click="closeThisDialog('Cancel')">{{ 'CLOSE' | translate }}
+                </button>
+            </div>
+        </div>
+</script>
+
+<script type="text/ng-template" id="operationResultDialog">
+    <div class="modal-header">
+        <h4 class="modal-title">Result</h4>
+    </div>
+    <div class="modal-body ">
+        <form class="form-horizontal" novalidate>
+            {{ngDialogData.result}}
+        </form>
+    </div>
+    <div class="modal-footer">
+        <div class="ngdialog-buttons">
+
+            <button type="button" class="ngdialog-button ngdialog-button-secondary"
+                    ng-click="closeThisDialog('Cancel')">{{ 'CLOSE' | translate }}
+            </button>
+        </div>
+    </div>
+</script>
+
+<script type="text/ng-template" id="connectorCreationDialog">
+    <div>
+        <div>
+            <div class="modal-header">
+                <h4 class="modal-title">{{'CREATE_CONNECTOR'|translate}}</h4>
+            </div>
+            <div class="modal-body ">
+                <form id="addAppForm3" name="addAppForm" class="form-horizontal" novalidate>
+                    <div class="form-group">
+                        <label class="control-label col-sm-4">connectorName:</label>
+                        <div class="col-sm-8">
+                            <input class="form-control" ng-model="item.connectorName"
+                                   type="text" name="connectorName"
+                                   required/>
+                            <span class="text-danger" ng-show="addAppForm.connectorName.$error.required">connectorName不能为空.</span>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="control-label col-sm-4">clusterAddr:</label>
+                        <div class="col-sm-8">
+                            <select name="mySelectClusterNameList" chosen
+                                    ng-model="item.clusterAddr"
+                                    ng-options="x.ipAddr for x in allWorkerList">
+                                <option value="" name="clusterAddr"></option>
+                            </select>
+                            <span class="text-danger" ng-show="addAppForm.clusterAddr.$error.required">clusterAddr不能为空.</span>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="control-label col-sm-4">Port:</label>
+                        <div class="col-sm-8">
+                            <input class="form-control" ng-model="item.workerPort"
+                                   ng-init="item.workerPort='8082'" value=""
+                                   type="text" name="workerPort"
+                                   required/>
+                            <span class="text-danger" ng-show="addAppForm.workerPort.$error.required">Port不能为空.</span>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="control-label col-sm-4">connectorClass:</label>
+                        <div class="col-sm-8">
+                            <input class="form-control" ng-model="item.connectorClass"
+                                   type="text" name="connectorClass"
+                                   required/>
+                            <span class="text-danger" ng-show="addAppForm.connectorClass.$error.required">connectorClass不能为空.</span>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="control-label col-sm-4">connectTopicname:</label>
+                        <div class="col-sm-8">
+                            <select name="mySelectTopicNameList" chosen
+                                    ng-model="item.connectTopicname"
+                                    ng-options="y for y in allTopicList">
+                                <option value="" name="connectTopicname"></option>
+                            </select>
+                            <span class="text-danger" ng-show="addAppForm.connectTopicname.$error.required">connectTopicname不能为空.</span>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="control-label col-sm-4">Properties:</label>
+                        <div class="col-sm-8">
+                            <input class="form-control" ng-model="item.Properties"
+                                   type="text" ng-init="item.Properties='{}'" value=""
+                                   required/>
+                            <span class="text" >sample:  {"filename":"/usr/test/test-source-file.txt",......}</span>
+                        </div>
+                    </div>
+                </form>
+                <div class="modal-footer">
+                    <div class="ngdialog-buttons">
+                        <button type="button" class="ngdialog-button ngdialog-button-primary"
+                                ng-click="postConnectorRequest(item)">{{ 'COMMIT' | translate }}
+                        </button>
+                        <button type="button" class="ngdialog-button ngdialog-button-secondary"
+                                ng-click="closeThisDialog('Cancel')">{{ 'CLOSE' | translate }}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</script>
