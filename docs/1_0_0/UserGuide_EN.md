@@ -22,6 +22,7 @@
     * clusterName (create on which cluster)
     * brokerName (create on which broker)
     * topicName 
+    * messageType
     * writeQueueNums  
     * readQueueNums  
     * perm //2 for write 4 for read 6 for write and read
