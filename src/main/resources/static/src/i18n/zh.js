@@ -124,5 +124,11 @@ var zh = {
     "GROUP_PERM":"消费组权限",
     "SYNCHRONIZE":"同步",
     "SHOW":"显示",
-    "HIDE":"隐藏"
+    "HIDE":"隐藏",
+    "MESSAGE_TYPE":"消息类型",
+    "MESSAGE_TYPE_UNSPECIFIED": "未指定,为普通消息",
+    "MESSAGE_TYPE_NORMAL": "普通消息",
+    "MESSAGE_TYPE_FIFO": "顺序消息",
+    "MESSAGE_TYPE_DELAY": "定时/延时消息",
+    "MESSAGE_TYPE_TRANSACTION": "事务消息",
 }
