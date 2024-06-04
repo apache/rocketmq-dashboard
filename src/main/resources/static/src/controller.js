@@ -26,6 +26,20 @@ app.controller('AppCtrl', ['$scope','$window','$translate','$http','Notification
         localStorage.setItem("isV5", $scope.rmqVersion);
     }
 
+    $http({
+        method: "GET",
+        url: "proxy/homePage.query"
+    }).success(function (resp) {
+        if (resp.status == 0) {
+            $scope.proxyAddrList = resp.data.proxyAddrList;
+            $scope.selectedProxy = resp.data.currentProxyAddr;
+            $scope.showProxyDetailConfig($scope.selectedProxy);
+            localStorage.setItem('proxyAddr', $scope.selectedProxy);
+        } else {
+            Notification.error({message: resp.errMsg, delay: 2000});
+        }
+    });
+
     $scope.logout = function(){
         $http({
                     method: "POST",

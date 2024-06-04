@@ -133,4 +133,11 @@ var en = {
     "MESSAGE_TYPE_FIFO": "FIFO",
     "MESSAGE_TYPE_DELAY": "DELAY",
     "MESSAGE_TYPE_TRANSACTION": "TRANSACTION",
+    "PROXY":"Proxy",
+    "PROXY_NAME": "Proxy Name",
+    "PROXY_CLUSTER_NAME":"Proxy Cluster Name",
+    "ROCKETMQ_CLUSTER_NAME":"RMQ Cluster Name",
+    "PROXY_ADDR": "Proxy Address",
+    "PROXY_MODE": "Proxy Mode",
+    "DETAIL": "Detail"
 }

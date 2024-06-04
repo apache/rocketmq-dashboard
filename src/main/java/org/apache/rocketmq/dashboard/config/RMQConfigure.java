@@ -62,6 +62,10 @@ public class RMQConfigure {
 
     private List<String> namesrvAddrs = new ArrayList<>();
 
+    private volatile String proxyAddr;
+
+    private List<String> proxyAddrs = new ArrayList<>();
+
     public String getAccessKey() {
         return accessKey;
     }
@@ -84,6 +88,25 @@ public class RMQConfigure {
 
     public List<String> getNamesrvAddrs() {
         return namesrvAddrs;
+    }
+
+    public List<String> getProxyAddrs() {
+        return this.proxyAddrs;
+    }
+
+    public void setProxyAddrs(List<String> proxyAddrs) {
+        this.proxyAddrs = proxyAddrs;
+        if (CollectionUtils.isNotEmpty(proxyAddrs)) {
+            this.setProxyAddr(proxyAddrs.get(0));
+        }
+    }
+
+    public String getProxyAddr() {
+        return proxyAddr;
+    }
+
+    public void setProxyAddr(String proxyAddr) {
+        this.proxyAddr = proxyAddr;
     }
 
     public void setNamesrvAddrs(List<String> namesrvAddrs) {

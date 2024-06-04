@@ -134,4 +134,11 @@ var zh = {
     "MESSAGE_TYPE_FIFO": "顺序消息",
     "MESSAGE_TYPE_DELAY": "定时/延时消息",
     "MESSAGE_TYPE_TRANSACTION": "事务消息",
+    "PROXY":"代理",
+    "PROXY_NAME": "代理名称",
+    "PROXY_CLUSTER_NAME":"代理集群名称",
+    "ROCKETMQ_CLUSTER_NAME":"RMQ集群名称",
+    "PROXY_ADDR": "代理地址",
+    "PROXY_MODE": "代理模式",
+    "DETAIL": "详情"
 }

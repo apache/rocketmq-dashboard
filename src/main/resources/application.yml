@@ -62,6 +62,9 @@ rocketmq:
     # set the accessKey and secretKey if you used acl
 #    accessKey: rocketmq2
 #    secretKey: 12345678
+    proxyAddr: 127.0.0.1:8080
+    proxyAddrs:
+      - 127.0.0.1:8080
 
 threadpool:
   config:
