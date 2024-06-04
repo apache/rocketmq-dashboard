@@ -192,6 +192,9 @@ app.config(['$routeProvider', '$httpProvider','$cookiesProvider','getDictNamePro
         }).when('/cluster', {
             templateUrl: 'view/pages/cluster.html',
             controller:'clusterController'
+        }).when('/proxy', {
+            templateUrl: 'view/pages/proxy.html',
+            controller:'proxyController'
         }).when('/topic', {
             templateUrl: 'view/pages/topic.html',
             controller:'topicController'

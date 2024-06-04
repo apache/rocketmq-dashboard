@@ -40,6 +40,8 @@ import org.apache.rocketmq.common.topic.TopicValidator;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.model.request.SendTopicMessageRequest;
 import org.apache.rocketmq.dashboard.model.request.TopicConfigInfo;
+import org.apache.rocketmq.dashboard.model.request.TopicTypeList;
+import org.apache.rocketmq.dashboard.model.request.TopicTypeMeta;
 import org.apache.rocketmq.dashboard.service.AbstractCommonService;
 import org.apache.rocketmq.dashboard.service.TopicService;
 import org.apache.rocketmq.remoting.RPCHook;
@@ -54,7 +56,9 @@ import org.joor.Reflect;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -96,6 +100,41 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
         } catch (Exception e) {
             Throwables.throwIfUnchecked(e);
             throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public TopicTypeList examineAllTopicType() {
+        ArrayList<TopicTypeMeta> topicTypes = new ArrayList<>();
+        ArrayList<String> names = new ArrayList<>();
+        ArrayList<String> messageTypes = new ArrayList<>();
+        TopicList topicList = fetchAllTopicList(false, false);
+        checkTopicType(topicList, topicTypes);
+        topicTypes.sort((t1, t2) -> t1.getTopicName().compareTo(t2.getTopicName()));
+        for (TopicTypeMeta topicTypeMeta : topicTypes) {
+            names.add(topicTypeMeta.getTopicName());
+            messageTypes.add(topicTypeMeta.getMessageType());
+        }
+        return new TopicTypeList(names, messageTypes);
+    }
+
+    private void checkTopicType(TopicList topicList, ArrayList<TopicTypeMeta> topicTypes) {
+        for (String topicName : topicList.getTopicList()) {
+            TopicTypeMeta topicType = new TopicTypeMeta();
+            topicType.setTopicName(topicName);
+            if (topicName.startsWith("%R")) {
+                topicType.setMessageType("RETRY");
+            } else if (topicName.startsWith("%D")) {
+                topicType.setMessageType("DELAY");
+            } else if (topicName.startsWith("%S")) {
+                topicType.setMessageType("SYSTEM");
+            } else {
+                List<TopicConfigInfo> topicConfigInfos = examineTopicConfig(topicName);
+                if (!CollectionUtils.isEmpty(topicConfigInfos)) {
+                    topicType.setMessageType(topicConfigInfos.get(0).getMessageType());
+                }
+            }
+            topicTypes.add(topicType);
         }
     }
 

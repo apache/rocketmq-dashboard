@@ -15,9 +15,30 @@
  * limitations under the License.
  */
 app.controller('AppCtrl', ['$scope','$window','$translate','$http','Notification', function ($scope,$window,$translate, $http, Notification) {
+    $scope.rmqVersion = localStorage.getItem("isV5") === "true" ? true : false;
+
     $scope.changeTranslate = function(langKey){
         $translate.use(langKey);
     }
+
+    $scope.changeRMQVersion = function (version) {
+        $scope.rmqVersion = version === 5;
+        localStorage.setItem("isV5", $scope.rmqVersion);
+    }
+
+    $http({
+        method: "GET",
+        url: "proxy/homePage.query"
+    }).success(function (resp) {
+        if (resp.status == 0) {
+            $scope.proxyAddrList = resp.data.proxyAddrList;
+            $scope.selectedProxy = resp.data.currentProxyAddr;
+            $scope.showProxyDetailConfig($scope.selectedProxy);
+            localStorage.setItem('proxyAddr', $scope.selectedProxy);
+        } else {
+            Notification.error({message: resp.errMsg, delay: 2000});
+        }
+    });
 
     $scope.logout = function(){
         $http({
