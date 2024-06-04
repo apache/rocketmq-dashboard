@@ -123,5 +123,11 @@ var en = {
     "GROUP_PERM":"Group Permission",
     "SYNCHRONIZE":"Synchronize Data",
     "SHOW":"Show",
-    "HIDE":"Hide"
+    "HIDE":"Hide",
+    "MESSAGE_TYPE":"messageType",
+    "MESSAGE_TYPE_UNSPECIFIED": "UNSPECIFIED, is NORMAL",
+    "MESSAGE_TYPE_NORMAL": "NORMAL",
+    "MESSAGE_TYPE_FIFO": "FIFO",
+    "MESSAGE_TYPE_DELAY": "DELAY",
+    "MESSAGE_TYPE_TRANSACTION": "TRANSACTION",
 }
