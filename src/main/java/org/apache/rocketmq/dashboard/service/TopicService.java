@@ -19,6 +19,7 @@ package org.apache.rocketmq.dashboard.service;
 
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.common.TopicConfig;
+import org.apache.rocketmq.dashboard.model.request.TopicTypeList;
 import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
 import org.apache.rocketmq.remoting.protocol.body.GroupList;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
@@ -30,6 +31,8 @@ import java.util.List;
 
 public interface TopicService {
     TopicList fetchAllTopicList(boolean skipSysProcess, boolean skipRetryAndDlq);
+
+    TopicTypeList examineAllTopicType();
 
     TopicStatsTable stats(String topic);
 

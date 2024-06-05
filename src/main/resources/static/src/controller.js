@@ -15,8 +15,15 @@
  * limitations under the License.
  */
 app.controller('AppCtrl', ['$scope','$window','$translate','$http','Notification', function ($scope,$window,$translate, $http, Notification) {
+    $scope.rmqVersion = localStorage.getItem("isV5") === "true" ? true : false;
+
     $scope.changeTranslate = function(langKey){
         $translate.use(langKey);
+    }
+
+    $scope.changeRMQVersion = function (version) {
+        $scope.rmqVersion = version === 5;
+        localStorage.setItem("isV5", $scope.rmqVersion);
     }
 
     $scope.logout = function(){
