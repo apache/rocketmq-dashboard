@@ -27,6 +27,8 @@ public class GroupConsumeInfo implements Comparable<GroupConsumeInfo> {
     private MessageModel messageModel;
     private int consumeTps;
     private long diffTotal = -1;
+    private String subGroupType = "NORMAL";
+
 
     public String getGroup() {
         return group;
@@ -90,5 +92,13 @@ public class GroupConsumeInfo implements Comparable<GroupConsumeInfo> {
 
     public void setVersion(String version) {
         this.version = version;
+    }
+
+    public String getSubGroupType() {
+        return subGroupType;
+    }
+
+    public void setSubGroupType(String subGroupType) {
+        this.subGroupType = subGroupType;
     }
 }
