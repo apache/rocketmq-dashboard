@@ -177,6 +177,10 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
             }
 
             ConsumerConnection consumerConnection = null;
+            boolean isFifoType = examineSubscriptionGroupConfig(consumerGroup)
+                    .stream().map(ConsumerConfigInfo::getSubscriptionGroupConfig)
+                    .allMatch(SubscriptionGroupConfig::isConsumeMessageOrderly);
+
             try {
                 consumerConnection = mqAdminExt.examineConsumerConnectionInfo(consumerGroup);
             }
@@ -185,6 +189,13 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
             }
 
             groupConsumeInfo.setGroup(consumerGroup);
+            if (SYSTEM_GROUP_SET.contains(consumerGroup)) {
+                groupConsumeInfo.setSubGroupType("SYSTEM");
+            } else if (isFifoType) {
+                groupConsumeInfo.setSubGroupType("FIFO");
+            } else {
+                groupConsumeInfo.setSubGroupType("NORMAL");
+            }
 
             if (consumeStats != null) {
                 groupConsumeInfo.setConsumeTps((int)consumeStats.getConsumeTps());
