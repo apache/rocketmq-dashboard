@@ -100,6 +100,7 @@ var en = {
     "RESET_OFFSET":"resetOffset",
     "CLUSTER_NAME":"clusterName",
     "OPS":"OPS",
+    "PROXY":"Proxy",
     "AUTO_REFRESH":"AUTO_REFRESH",
     "REFRESH":"REFRESH",
     "LOGOUT":"Logout",

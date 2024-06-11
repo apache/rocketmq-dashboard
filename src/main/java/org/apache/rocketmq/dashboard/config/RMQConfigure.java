@@ -43,6 +43,8 @@ public class RMQConfigure {
     //use rocketmq.namesrv.addr first,if it is empty,than use system proerty or system env
     private volatile String namesrvAddr = System.getProperty(MixAll.NAMESRV_ADDR_PROPERTY, System.getenv(MixAll.NAMESRV_ADDR_ENV));
 
+    private volatile String proxyAddr;
+
     private volatile String isVIPChannel = System.getProperty(SEND_MESSAGE_WITH_VIP_CHANNEL_PROPERTY, "true");
 
 
@@ -61,6 +63,8 @@ public class RMQConfigure {
     private Long timeoutMillis;
 
     private List<String> namesrvAddrs = new ArrayList<>();
+
+    private List<String> proxyAddrs = new ArrayList<>();
 
     public String getAccessKey() {
         return accessKey;
@@ -84,6 +88,25 @@ public class RMQConfigure {
 
     public List<String> getNamesrvAddrs() {
         return namesrvAddrs;
+    }
+
+    public List<String> getProxyAddrs() {
+        return this.proxyAddrs;
+    }
+
+    public void setProxyAddrs(List<String> proxyAddrs) {
+        this.proxyAddrs = proxyAddrs;
+        if (CollectionUtils.isNotEmpty(proxyAddrs)) {
+            this.setProxyAddr(proxyAddrs.get(0));
+        }
+    }
+
+    public String getProxyAddr() {
+        return proxyAddr;
+    }
+
+    public void setProxyAddr(String proxyAddr) {
+        this.proxyAddr = proxyAddr;
     }
 
     public void setNamesrvAddrs(List<String> namesrvAddrs) {

@@ -627,7 +627,7 @@ public class MQAdminExtImpl implements MQAdminExt {
             long timeoutMillis) throws InterruptedException, RemotingTimeoutException, RemotingSendRequestException,
             RemotingConnectException, MQBrokerException {
         // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'examineConsumeStats'");
+        return MQAdminInstance.threadLocalMQAdminExt().examineConsumeStats(brokerAddr, consumerGroup, topicName, timeoutMillis);
     }
 
     @Override
@@ -639,8 +639,7 @@ public class MQAdminExtImpl implements MQAdminExt {
     @Override
     public ConsumerConnection examineConsumerConnectionInfo(String consumerGroup, String brokerAddr)
             throws InterruptedException, MQBrokerException, RemotingException, MQClientException {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'examineConsumerConnectionInfo'");
+        return MQAdminInstance.threadLocalMQAdminExt().examineConsumerConnectionInfo(consumerGroup, brokerAddr);
     }
 
     @Override

@@ -47,14 +47,14 @@ public class ConsumerController {
 
     @RequestMapping(value = "/groupList.query")
     @ResponseBody
-    public Object list(@RequestParam(value = "skipSysGroup", required = false) boolean skipSysGroup) {
-        return consumerService.queryGroupList(skipSysGroup);
+    public Object list(@RequestParam(value = "skipSysGroup", required = false) boolean skipSysGroup, String address) {
+        return consumerService.queryGroupList(skipSysGroup, address);
     }
 
     @RequestMapping(value = "/group.query")
     @ResponseBody
-    public Object groupQuery(@RequestParam String consumerGroup) {
-        return consumerService.queryGroup(consumerGroup);
+    public Object groupQuery(@RequestParam String consumerGroup, String address) {
+        return consumerService.queryGroup(consumerGroup, address);
     }
 
     @RequestMapping(value = "/resetOffset.do", method = {RequestMethod.POST})
@@ -99,14 +99,14 @@ public class ConsumerController {
 
     @RequestMapping(value = "/queryTopicByConsumer.query")
     @ResponseBody
-    public Object queryConsumerByTopic(@RequestParam String consumerGroup) {
-        return consumerService.queryConsumeStatsListByGroupName(consumerGroup);
+    public Object queryConsumerByTopic(@RequestParam String consumerGroup, String address) {
+        return consumerService.queryConsumeStatsListByGroupName(consumerGroup, address);
     }
 
     @RequestMapping(value = "/consumerConnection.query")
     @ResponseBody
-    public Object consumerConnection(@RequestParam(required = false) String consumerGroup) {
-        ConsumerConnection consumerConnection = consumerService.getConsumerConnection(consumerGroup);
+    public Object consumerConnection(@RequestParam(required = false) String consumerGroup, String address) {
+        ConsumerConnection consumerConnection = consumerService.getConsumerConnection(consumerGroup, address);
         consumerConnection.setConnectionSet(ConnectionInfo.buildConnectionInfoHashSet(consumerConnection.getConnectionSet()));
         return consumerConnection;
     }

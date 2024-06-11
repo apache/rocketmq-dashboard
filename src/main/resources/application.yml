@@ -59,6 +59,9 @@ rocketmq:
     # must create userInfo file: ${rocketmq.config.dataPath}/users.properties if the login is required
     loginRequired: false
     useTLS: false
+    proxyAddr: 127.0.0.1:8080
+    proxyAddrs:
+      - 127.0.0.1:8080
     # set the accessKey and secretKey if you used acl
 #    accessKey: rocketmq2
 #    secretKey: 12345678
