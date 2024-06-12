@@ -66,11 +66,11 @@
                         <td class="text-center">{{consumerGroup.consumeTps}}</td>
                         <td class="text-center">{{consumerGroup.diffTotal}}</td>
                         <td class="text-left">
-                            <button name="client" ng-click="client(consumerGroup.group)"
+                            <button name="client" ng-click="client(consumerGroup.group, consumerGroup.address)"
                                     class="btn btn-raised btn-sm btn-primary"
                                     type="button">{{'CLIENT' | translate}}
                             </button>
-                            <button name="client" ng-click="detail(consumerGroup.group)"
+                            <button name="client" ng-click="detail(consumerGroup.group, consumerGroup.address)"
                                     class="btn btn-raised btn-sm btn-primary"
                                     type="button">{{'CONSUME_DETAIL' | translate}}
                             </button>
