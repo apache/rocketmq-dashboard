@@ -101,6 +101,7 @@ var zh = {
     "RESET_OFFSET":"重置位点",
     "CLUSTER_NAME":"集群名",
     "OPS":"运维",
+    "PROXY":"代理",
     "AUTO_REFRESH":"自动刷新",
     "REFRESH":"刷新",
     "LOGOUT":"退出",

@@ -31,12 +31,12 @@ import java.util.Map;
 import java.util.Set;
 
 public interface ConsumerService {
-    List<GroupConsumeInfo> queryGroupList(boolean skipSysGroup);
+    List<GroupConsumeInfo> queryGroupList(boolean skipSysGroup,String address);
 
-    GroupConsumeInfo queryGroup(String consumerGroup);
+    GroupConsumeInfo queryGroup(String consumerGroup, String address);
 
 
-    List<TopicConsumerInfo> queryConsumeStatsListByGroupName(String groupName);
+    List<TopicConsumerInfo> queryConsumeStatsListByGroupName(String groupName, String address);
 
     List<TopicConsumerInfo> queryConsumeStatsList(String topic, String groupName);
 
@@ -52,7 +52,7 @@ public interface ConsumerService {
 
     Set<String> fetchBrokerNameSetBySubscriptionGroup(String group);
 
-    ConsumerConnection getConsumerConnection(String consumerGroup);
+    ConsumerConnection getConsumerConnection(String consumerGroup, String address);
 
     ConsumerRunningInfo getConsumerRunningInfo(String consumerGroup, String clientId, boolean jstack);
 }

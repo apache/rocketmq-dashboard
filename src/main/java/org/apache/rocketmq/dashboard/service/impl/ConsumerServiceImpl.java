@@ -23,8 +23,10 @@ import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -44,6 +46,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.common.MQVersion;
 import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.dashboard.service.client.ProxyAdmin;
 import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
 import org.apache.rocketmq.remoting.protocol.admin.RollbackStats;
 import org.apache.rocketmq.common.message.MessageQueue;
@@ -77,6 +80,8 @@ import org.springframework.stereotype.Service;
 public class ConsumerServiceImpl extends AbstractCommonService implements ConsumerService, InitializingBean, DisposableBean {
     private Logger logger = LoggerFactory.getLogger(ConsumerServiceImpl.class);
 
+    @Resource
+    protected ProxyAdmin proxyAdmin;
     @Resource
     private RMQConfigure configure;
 
@@ -119,25 +124,33 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
     }
 
     @Override
-    public List<GroupConsumeInfo> queryGroupList(boolean skipSysGroup) {
-        Set<String> consumerGroupSet = Sets.newHashSet();
+    public List<GroupConsumeInfo> queryGroupList(boolean skipSysGroup, String address) {
+        HashMap<String, List<String>> consumerGroupMap = Maps.newHashMap();
         try {
             ClusterInfo clusterInfo = mqAdminExt.examineBrokerClusterInfo();
             for (BrokerData brokerData : clusterInfo.getBrokerAddrTable().values()) {
                 SubscriptionGroupWrapper subscriptionGroupWrapper = mqAdminExt.getAllSubscriptionGroup(brokerData.selectBrokerAddr(), 3000L);
-                consumerGroupSet.addAll(subscriptionGroupWrapper.getSubscriptionGroupTable().keySet());
+                for (String groupName : subscriptionGroupWrapper.getSubscriptionGroupTable().keySet()) {
+                    if (!consumerGroupMap.containsKey(groupName)) {
+                        consumerGroupMap.putIfAbsent(groupName, new ArrayList<>());
+                    }
+                    List<String> addresses = consumerGroupMap.get(groupName);
+                    addresses.add(brokerData.selectBrokerAddr());
+                    consumerGroupMap.put(groupName, addresses);
+                }
             }
-        }
-        catch (Exception err) {
+        } catch (Exception err) {
             Throwables.throwIfUnchecked(err);
             throw new RuntimeException(err);
         }
         List<GroupConsumeInfo> groupConsumeInfoList = Collections.synchronizedList(Lists.newArrayList());
-        CountDownLatch countDownLatch = new CountDownLatch(consumerGroupSet.size());
-        for (String consumerGroup : consumerGroupSet) {
+        CountDownLatch countDownLatch = new CountDownLatch(consumerGroupMap.size());
+        for (Map.Entry<String, List<String>> entry : consumerGroupMap.entrySet()) {
+            String consumerGroup = entry.getKey();
             executorService.submit(() -> {
                 try {
-                    GroupConsumeInfo consumeInfo = queryGroup(consumerGroup);
+                    GroupConsumeInfo consumeInfo = queryGroup(consumerGroup, address);
+                    consumeInfo.setAddress(entry.getValue());
                     groupConsumeInfoList.add(consumeInfo);
                 } catch (Exception e) {
                     logger.error("queryGroup exception, consumerGroup: {}", consumerGroup, e);
@@ -165,7 +178,7 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
     }
 
     @Override
-    public GroupConsumeInfo queryGroup(String consumerGroup) {
+    public GroupConsumeInfo queryGroup(String consumerGroup, String address) {
         GroupConsumeInfo groupConsumeInfo = new GroupConsumeInfo();
         try {
             ConsumeStats consumeStats = null;
@@ -182,9 +195,12 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
                     .allMatch(SubscriptionGroupConfig::isConsumeMessageOrderly);
 
             try {
-                consumerConnection = mqAdminExt.examineConsumerConnectionInfo(consumerGroup);
-            }
-            catch (Exception e) {
+                if (StringUtils.isNotEmpty(address)) {
+                    consumerConnection = proxyAdmin.examineConsumerConnectionInfo(address, consumerGroup);
+                } else {
+                    consumerConnection = mqAdminExt.examineConsumerConnectionInfo(consumerGroup);
+                }
+            } catch (Exception e) {
                 logger.warn("examineConsumeStats exception to consumerGroup {}, response [{}]", consumerGroup, e.getMessage());
             }
 
@@ -217,8 +233,18 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
     }
 
     @Override
-    public List<TopicConsumerInfo> queryConsumeStatsListByGroupName(String groupName) {
-        return queryConsumeStatsList(null, groupName);
+    public List<TopicConsumerInfo> queryConsumeStatsListByGroupName(String groupName, String address) {
+        ConsumeStats consumeStats;
+        String topic = null;
+        try {
+            String[] addresses = address.split(",");
+            String addr = addresses[0];
+            consumeStats = mqAdminExt.examineConsumeStats(addr, groupName, null, 3000);
+        } catch (Exception e) {
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
+        }
+        return toTopicConsumerInfoList(topic, consumeStats, groupName);
     }
 
     @Override
@@ -231,6 +257,10 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
             Throwables.throwIfUnchecked(e);
             throw new RuntimeException(e);
         }
+        return toTopicConsumerInfoList(topic, consumeStats, groupName);
+    }
+
+    private List<TopicConsumerInfo> toTopicConsumerInfoList(String topic, ConsumeStats consumeStats, String groupName) {
         List<MessageQueue> mqList = Lists.newArrayList(Iterables.filter(consumeStats.getOffsetTable().keySet(), new Predicate<MessageQueue>() {
             @Override
             public boolean apply(MessageQueue o) {
@@ -431,11 +461,12 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
     }
 
     @Override
-    public ConsumerConnection getConsumerConnection(String consumerGroup) {
+    public ConsumerConnection getConsumerConnection(String consumerGroup, String address) {
         try {
-            return mqAdminExt.examineConsumerConnectionInfo(consumerGroup);
-        }
-        catch (Exception e) {
+            String[] addresses = address.split(",");
+            String addr = addresses[0];
+            return mqAdminExt.examineConsumerConnectionInfo(consumerGroup, addr);
+        } catch (Exception e) {
             Throwables.throwIfUnchecked(e);
             throw new RuntimeException(e);
         }

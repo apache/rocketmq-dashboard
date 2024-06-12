@@ -213,6 +213,9 @@ app.config(['$routeProvider', '$httpProvider','$cookiesProvider','getDictNamePro
         }).when('/ops', {
             templateUrl: 'view/pages/ops.html',
             controller:'opsController'
+        }).when('/proxy', {
+            templateUrl: 'view/pages/proxy.html',
+            controller:'proxyController'
         }).when('/acl', {
             templateUrl: 'view/pages/acl.html',
             controller: 'aclController'
