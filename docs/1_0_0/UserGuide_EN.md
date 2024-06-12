@@ -17,11 +17,12 @@
 
 ## Topic Page
 * show all the topics,you can filter topic by search bar
-* filter (Normal/retry/dead) topic 
+* filter (Normal/retry/dead) topic (RocketMQ-v5 version supports filtering for Delay/FIFO/Transaction topic)
 * Add/Update Topic
     * clusterName (create on which cluster)
     * brokerName (create on which broker)
     * topicName 
+    * messageType message type(RocketMQ-V5 version can choose FIFO/Delay/Normal...)
     * writeQueueNums  
     * readQueueNums  
     * perm //2 for write 4 for read 6 for write and read
@@ -34,14 +35,15 @@
 * DELETE （will delete the topic on all broker and namesrv）
 
 ## Consumer Page
-* show all the consumers,you can filter consumer by search bar
+* show all the consumers,you can filter consumer by search bar(V5 version supports FIFO type filtering, V4 will hide FIFO filtering options)
 * refresh page/refresh page per 5 seconds
 * order by SubscriptionGroup/Quantity/TPS/Delay
 * Add/Update Consumer
-    * clusterName (create on which cluster)
+    * clusterName (create on which cluster)(V5 version supports FIFO type filtering, V4 will hide FIFO filtering options)
     * brokerName (create on which broker)
     * groupName  (consumer group name)
     * consumeEnable (this group can't consume message if this is false)
+    * consumeOrderlyEnable (this option must be enabled for FIFO type subscription groups)
     * consumeBroadcastEnable (can't use broadcast is this is false)
     * retryQueueNums 
     * brokerId (consume form where when broker is normal)
@@ -64,6 +66,9 @@
 * look over this message's detail info.you can see the message's consume state(each group has one line),show the exception message if has exception.
 you can send this message to the group you selected
 
+## Proxy Page
+* Support adding new proxy node addresses, dropdown menu allows for querying and selecting proxy nodes that have already been added
+* ProxyAddr and ProxyAddrs properties can be configured in application.yml
 
 ## Access Dashboard with HTTPS
 * SpringBoot itself has provided the SSL configuration. You can use the project test Keystore:resources/rmqcngkeystore.jks. The store is generated with the following unix keytool commands:
