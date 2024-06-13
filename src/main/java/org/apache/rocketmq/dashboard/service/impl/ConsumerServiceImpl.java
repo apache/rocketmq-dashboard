@@ -121,6 +121,7 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
         SYSTEM_GROUP_SET.add(MixAll.CID_ONSAPI_PERMISSION_GROUP);
         SYSTEM_GROUP_SET.add(MixAll.CID_ONSAPI_OWNER_GROUP);
         SYSTEM_GROUP_SET.add(MixAll.CID_SYS_RMQ_TRANS);
+        SYSTEM_GROUP_SET.add("CID_DefaultHeartBeatSyncerTopic");
     }
 
     @Override
