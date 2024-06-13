@@ -17,7 +17,7 @@
 
 ## Topic Page
 * show all the topics,you can filter topic by search bar
-* filter (Normal/retry/dead) topic
+* filter (Normal/retry/dead) topic 
 * Add/Update Topic
     * clusterName (create on which cluster)
     * brokerName (create on which broker)
@@ -34,7 +34,7 @@
 * DELETE （will delete the topic on all broker and namesrv）
 
 ## Consumer Page
-* show all the consumers,you can filter consumer by search bar(V5 version supports FIFO type filtering, V4 will hide FIFO filtering options)
+* show all the consumers,you can filter consumer by search bar
 * refresh page/refresh page per 5 seconds
 * order by SubscriptionGroup/Quantity/TPS/Delay
 * Add/Update Consumer
