@@ -17,12 +17,11 @@
 
 ## 主题页面
 * 展示所有的主题，可以通过搜索框进行过滤
-* 筛选 普通/重试/死信 主题（RocketMQ-v5版本支持延迟/顺序/事务消息的筛选）
+* 筛选 普通/重试/死信 主题
 * 添加/更新主题
     * clusterName 创建在哪几个cluster上
     * brokerName 创建在哪几个broker上
     * topicName 主题名
-    * messageType 主题类型（RocketMQ-V5版本提供 FIFO/Delay/Normal...）
     * writeQueueNums  写队列数量
     * readQueueNums  读队列数量
     * perm //2是写 4是读 6是读写
@@ -35,7 +34,7 @@
 * 删除主题 （会删除掉所有broker以及namesrv上的主题配置和路由信息）
 
 ## 消费者页面
-* 展示所有的消费组，可以通过搜索框进行过滤（V5版本支持FIFO类型过滤，V4会隐藏FIFO过滤选项）
+* 展示所有的消费组，可以通过搜索框进行过滤
 * 刷新页面/每隔五秒定时刷新页面
 * 按照订阅组/数量/TPS/延迟 进行排序
 * 添加/更新消费组
@@ -43,7 +42,6 @@
     * brokerName 创建在哪几个broker上
     * groupName  消费组名字
     * consumeEnable //是否可以消费 FALSE的话将无法进行消费
-    * consumeOrderlyEnable //是否开启顺序消费，FIFO类型的订阅组一定需要开启此选项（V5版本提供）
     * consumeBroadcastEnable //是否可以广播消费
     * retryQueueNums //重试队列的大小
     * brokerId //正常情况从哪消费
@@ -65,9 +63,18 @@
 * 根据消息主题和消息Id进行消息的查询
 * 消息详情可以展示这条消息的详细信息，查看消息对应到具体消费组的消费情况（如果异常，可以查看具体的异常信息）。可以向指定的消费组重发消息。
 
-## 代理服务页面
-* 支持新增代理节点地址，下拉框可以查询和选择已经添加的代理节点
-* 代理节点地址配置：在application.yml中可对proxyAddr和proxyAddrs属性进行配置
+## RocketMQ-V5.0 仪表盘
+* 版本切换
+  * RocketMQ右上角可切换不同版本，用户可以自主选择 RocketMQ-5.x 或 RocketMQ-4.x 版本
+* 主题页面 
+  * 支持延迟/顺序/事务消息的筛选
+  * 支持延迟/顺序/事物/普通等多种消息类型主题的新增与更新
+* 消费页面
+  * 支持顺序消费类型订阅组的过滤
+  * 提供顺序消费类型订阅组的新增与更新，如果需要开启顺序消费，FIFO类型的订阅组一定需要打开consumeOrderlyEnable选项
+* 代理页面（RocketMQ 5.0新增） 
+  * 支持代理节点的新增与查询
+  * 支持代理节点地址配置：在application.yml中可对proxyAddr和proxyAddrs属性进行预配置
 
 ## HTTPS 方式访问Dashboard
 * HTTPS功能实际上是使用SpringBoot提供的配置功能即可完成，首先，需要有一个SSL KeyStore来存放服务端证书，可以使用本工程所提供的测试密钥库:
