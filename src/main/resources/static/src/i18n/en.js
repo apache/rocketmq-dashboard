@@ -60,6 +60,7 @@ var en = {
     "RETRY": "RETRY",
     "FIFO": "FIFO",
     "TRANSACTION": "TRANSACTION",
+    "UNSPECIFIED": "UNSPECIFIED",
     "DLQ": "DLQ",
     "QUANTITY":"Quantity",
     "TYPE":"Type",
