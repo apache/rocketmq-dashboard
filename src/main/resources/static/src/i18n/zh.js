@@ -61,6 +61,7 @@ var zh = {
     "RETRY": "重试",
     "FIFO": "顺序",
     "TRANSACTION": "事务",
+    "UNSPECIFIED": "未指定",
     "DLQ": "死信",
     "QUANTITY":"数量",
     "TYPE":"类型",

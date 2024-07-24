@@ -48,6 +48,7 @@ module.controller('topicController', ['$scope', 'ngDialog', '$http', 'Notificati
     $scope.filterDelay = false
     $scope.filterFifo = false
     $scope.filterTransaction = false
+    $scope.filterUnspecified = false
     $scope.filterRetry = false
     $scope.filterDLQ = false
     $scope.filterSystem = false
@@ -89,6 +90,9 @@ module.controller('topicController', ['$scope', 'ngDialog', '$http', 'Notificati
         $scope.filterList(1);
     });
     $scope.$watch('filterTransaction', function () {
+        $scope.filterList(1);
+    });
+    $scope.$watch('filterUnspecified', function () {
         $scope.filterList(1);
     });
     $scope.$watch('filterDelay', function () {
@@ -137,6 +141,11 @@ module.controller('topicController', ['$scope', 'ngDialog', '$http', 'Notificati
                 return true
             }
         }
+        if (localStorage.getItem('isV5') && $scope.filterUnspecified) {
+            if (type.includes("UNSPECIFIED")) {
+                return true
+            }
+        }
         if ($scope.filterNormal) {
             if (type.includes("NORMAL")) {
                 return true
@@ -145,17 +154,17 @@ module.controller('topicController', ['$scope', 'ngDialog', '$http', 'Notificati
                 return true
             }
         }
-        if ($scope.filterDelay) {
+        if (localStorage.getItem('isV5') && $scope.filterDelay) {
             if (type.includes("DELAY")) {
                 return true
             }
         }
-        if ($scope.filterFifo) {
+        if (localStorage.getItem('isV5') && $scope.filterFifo) {
             if (type.includes("FIFO")) {
                 return true
             }
         }
-        if ($scope.filterTransaction) {
+        if (localStorage.getItem('isV5') && $scope.filterTransaction) {
             if (type.includes("TRANSACTION")) {
                 return true
             }
