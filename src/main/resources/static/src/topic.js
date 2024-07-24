@@ -141,6 +141,9 @@ module.controller('topicController', ['$scope', 'ngDialog', '$http', 'Notificati
             if (type.includes("NORMAL")) {
                 return true
             }
+            if (!localStorage.getItem('isV5') && type.includes("UNSPECIFIED")) {
+                return true
+            }
         }
         if ($scope.filterDelay) {
             if (type.includes("DELAY")) {
