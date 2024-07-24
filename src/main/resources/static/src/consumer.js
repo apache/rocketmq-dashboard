@@ -273,7 +273,7 @@ module.controller('consumerController', ['$scope', 'ngDialog', '$http', 'Notific
                 console.log(resp);
                 ngDialog.open({
                     template: 'clientInfoDialog',
-                    // controller: 'addTopicDialogController',
+                     controller: 'consumerStackDialogController',
                     data: {data: resp.data, consumerGroupName: consumerGroupName}
                 });
             } else {
@@ -420,5 +420,34 @@ module.controller('consumerTopicViewDialogController', ['$scope', 'ngDialog', '$
                 }
             });
         };
+    }]
+);
+
+module.controller('consumerStackDialogController', ['$scope', 'ngDialog', '$http', 'Notification', function ($scope, ngDialog, $http, Notification) {
+    $scope.consumerStack = function (consumerGroup, clientId, jstack) {
+        $http({
+            method: "GET",
+            url: "consumer/consumerStack.query",
+            params: {
+                consumerGroup: consumerGroup
+                ,
+                clientId: clientId,
+                jstack: jstack
+            }
+        }).success(function (resp) {
+            if (resp.status == 0) {
+                console.log(resp);
+                ngDialog.open({
+                    template: 'consumerStackDialog',
+                    data: {
+                        consumerStack: resp.data,
+                        clientId: clientId
+                    }
+                });
+            } else {
+                Notification.error({message: resp.errMsg, delay: 2000});
+            }
+        });
+    };
     }]
 );

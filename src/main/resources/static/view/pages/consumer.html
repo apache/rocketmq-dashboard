@@ -160,7 +160,7 @@
     <div class="modal-header">
         <h4 class="modal-title">[{{ngDialogData.consumerGroupName}}]{{'CLIENT'|translate}}</h4>
     </div>
-    <div class="modal-body ">
+    <div class="modal-body " style="overflow: auto">
         <form class="form-horizontal" novalidate>
             <table class="table table-bordered">
                 <tr>
@@ -168,12 +168,15 @@
                     <th class="text-center">ClientAddr</th>
                     <th class="text-center">Language</th>
                     <th class="text-center">Version</th>
+                    <th class="text-center">Operation</th>
                 </tr>
                 <tr ng-repeat="conn in ngDialogData.data.connectionSet">
                     <td class="text-center">{{conn.clientId}}</td>
                     <td class="text-center">{{conn.clientAddr}}</td>
                     <td class="text-center">{{conn.language}}</td>
                     <td class="text-center">{{conn.versionDesc}}</td>
+                    <td class="text-center"><a
+                            ng-click="consumerStack(ngDialogData.consumerGroupName, conn.clientId, true)">{{'STACK' | translate}}</a></td>
                 </tr>
             </table>
             <p>Below is subscription:</p>
@@ -553,6 +556,30 @@
             </tr>
             </tbody>
         </table>
+        <div class="modal-footer">
+            <div class="ngdialog-buttons">
+                <button type="button" class="ngdialog-button ngdialog-button-secondary"
+                        ng-click="closeThisDialog('Cancel')">{{ 'CLOSE' | translate }}
+                </button>
+            </div>
+        </div>
+    </div>
+</script>
+
+<!--consumer stack-->
+<script type="text/ng-template" id="consumerStackDialog">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-header">
+            <h4 class="modal-title">{{ngDialogData.clientId}}</h4>
+        </div>
+        <div class="modal-body ">
+            <div ng-repeat="(thread, stackItem) in ngDialogData.consumerStack.stackMap">
+                <p style="white-space: pre-line;">
+                    <label style="color: #0da6e3;">Thread: {{thread}}</label>
+                    {{stackItem}}
+                </p>
+            </div>
+        </div>
         <div class="modal-footer">
             <div class="ngdialog-buttons">
                 <button type="button" class="ngdialog-button ngdialog-button-secondary"

@@ -56,7 +56,6 @@ public class OpsController {
         opsService.addNameSvrAddr(newNamesrvAddr);
         return true;
     }
-
     @RequestMapping(value = "/updateIsVIPChannel.do", method = RequestMethod.POST)
     @ResponseBody
     public Object updateIsVIPChannel(@RequestParam String useVIPChannel) {
