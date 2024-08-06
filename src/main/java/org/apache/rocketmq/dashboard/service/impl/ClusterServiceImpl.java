@@ -17,9 +17,10 @@
 
 package org.apache.rocketmq.dashboard.service.impl;
 
-import org.apache.rocketmq.common.protocol.body.ClusterInfo;
-import org.apache.rocketmq.common.protocol.body.KVTable;
-import org.apache.rocketmq.common.protocol.route.BrokerData;
+import org.apache.rocketmq.common.attribute.TopicMessageType;
+import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
+import org.apache.rocketmq.remoting.protocol.body.KVTable;
+import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.apache.rocketmq.dashboard.service.ClusterService;
 import org.apache.rocketmq.dashboard.util.JsonUtil;
@@ -30,8 +31,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.Properties;
+import java.util.stream.Collectors;
 
 @Service
 public class ClusterServiceImpl implements ClusterService {
@@ -56,10 +59,14 @@ public class ClusterServiceImpl implements ClusterService {
             }
             resultMap.put("clusterInfo", clusterInfo);
             resultMap.put("brokerServer", brokerServer);
+            // add messageType
+            resultMap.put("messageTypes", Arrays.stream(TopicMessageType.values()).sorted()
+                    .collect(Collectors.toMap(TopicMessageType::getValue, messageType ->String.format("MESSAGE_TYPE_%s",messageType.getValue()))));
             return resultMap;
         }
         catch (Exception err) {
-            throw Throwables.propagate(err);
+            Throwables.throwIfUnchecked(err);
+            throw new RuntimeException(err);
         }
     }
 
@@ -70,7 +77,8 @@ public class ClusterServiceImpl implements ClusterService {
             return mqAdminExt.getBrokerConfig(brokerAddr);
         }
         catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
     }
 }

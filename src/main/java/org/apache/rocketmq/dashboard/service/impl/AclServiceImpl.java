@@ -36,8 +36,8 @@ import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.common.AclConfig;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.PlainAccessConfig;
-import org.apache.rocketmq.common.protocol.body.ClusterInfo;
-import org.apache.rocketmq.common.protocol.route.BrokerData;
+import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
+import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.dashboard.model.request.AclRequest;
 import org.apache.rocketmq.dashboard.service.AbstractCommonService;
 import org.apache.rocketmq.dashboard.service.AclService;
@@ -68,7 +68,8 @@ public class AclServiceImpl extends AbstractCommonService implements AclService 
             }
         } catch (Exception e) {
             log.error("getAclConfig error.", e);
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
         AclConfig aclConfig = new AclConfig();
         aclConfig.setGlobalWhiteAddrs(Collections.emptyList());
@@ -100,7 +101,8 @@ public class AclServiceImpl extends AbstractCommonService implements AclService 
                 mqAdminExt.createAndUpdatePlainAccessConfig(addr, config);
             }
         } catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
 
     }
@@ -116,7 +118,8 @@ public class AclServiceImpl extends AbstractCommonService implements AclService 
                 log.info("Delete acl [{}] from broker [{}] complete", config.getAccessKey(), addr);
             }
         } catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
     }
 
@@ -142,7 +145,8 @@ public class AclServiceImpl extends AbstractCommonService implements AclService 
                 mqAdminExt.createAndUpdatePlainAccessConfig(addr, config);
             }
         } catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
     }
 
@@ -174,7 +178,8 @@ public class AclServiceImpl extends AbstractCommonService implements AclService 
                 }
             }
         } catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
     }
 
@@ -206,7 +211,8 @@ public class AclServiceImpl extends AbstractCommonService implements AclService 
                 }
             }
         } catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
     }
 
@@ -249,7 +255,8 @@ public class AclServiceImpl extends AbstractCommonService implements AclService 
                 }
             }
         } catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
 
     }
@@ -261,7 +268,8 @@ public class AclServiceImpl extends AbstractCommonService implements AclService 
                 mqAdminExt.createAndUpdatePlainAccessConfig(addr, config);
             }
         } catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
     }
 
@@ -281,7 +289,8 @@ public class AclServiceImpl extends AbstractCommonService implements AclService 
                 mqAdminExt.updateGlobalWhiteAddrConfig(addr, StringUtils.join(aclConfig.getGlobalWhiteAddrs(), ","));
             }
         } catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
     }
 
@@ -297,7 +306,8 @@ public class AclServiceImpl extends AbstractCommonService implements AclService 
                 mqAdminExt.updateGlobalWhiteAddrConfig(addr, StringUtils.join(aclConfig.getGlobalWhiteAddrs(), ","));
             }
         } catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
     }
 
@@ -311,7 +321,8 @@ public class AclServiceImpl extends AbstractCommonService implements AclService 
                 mqAdminExt.updateGlobalWhiteAddrConfig(addr, StringUtils.join(whiteList, ","));
             }
         } catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
     }
 

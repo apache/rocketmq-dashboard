@@ -14,11 +14,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.rocketmq.dashboard.service;
 
-import org.apache.rocketmq.remoting.protocol.body.ProducerConnection;
+import java.util.Map;
 
-public interface ProducerService {
-    ProducerConnection getProducerConnection(String producerGroup, String topic);
+public interface ProxyService {
+
+    void addProxyAddrList(String proxyAddr);
+
+    void updateProxyAddrList(String proxyAddr);
+
+    Map<String, Object>  getProxyHomePage();
 }

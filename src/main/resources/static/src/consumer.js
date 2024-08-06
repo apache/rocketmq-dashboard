@@ -45,6 +45,7 @@ module.controller('consumerController', ['$scope', 'ngDialog', '$http', 'Notific
     $scope.writeOperationEnabled =  $scope.userRole == null ? true : ($scope.userRole == 1 ? true : false);
     $scope.filterNormal = true;
     $scope.filterSystem = false;
+    $scope.filterFIFO = false;
 
     $scope.doSort = function () {// todo  how to change this fe's code ? (it's dirty)
         if ($scope.sortKey == 'diffTotal') {
@@ -75,7 +76,11 @@ module.controller('consumerController', ['$scope', 'ngDialog', '$http', 'Notific
 
         $http({
             method: "GET",
-            url: "consumer/groupList.query"
+            url: "consumer/groupList.query",
+            params: {
+                skipSysGroup: false,
+                address: localStorage.getItem('isV5') ? localStorage.getItem('proxyAddr') : null
+            }
         }).success(function (resp) {
             if (resp.status == 0) {
                 $scope.allConsumerGrouopList = resp.data;
@@ -135,15 +140,27 @@ module.controller('consumerController', ['$scope', 'ngDialog', '$http', 'Notific
         $scope.filterList(1);
     });
 
-    $scope.filterByType = function (str) {
+    $scope.$watch('filterFIFO', function () {
+        $scope.filterList(1);
+    });
+
+    $scope.filterByType = function (str, type,version) {
         if ($scope.filterSystem) {
-            if (str.startsWith("%S")) {
+            if (type === "SYSTEM") {
                 return true
             }
         }
         if ($scope.filterNormal) {
-            if (str.startsWith("%") == false) {
+            if (type === "NORMAL") {
                 return true
+            }
+            if(!version && type === "FIFO"){
+                return true;
+            }
+        }
+        if ($scope.filterFIFO) {
+            if (type === "FIFO") {
+                return true;
             }
         }
         return false;
@@ -154,7 +171,7 @@ module.controller('consumerController', ['$scope', 'ngDialog', '$http', 'Notific
         var canShowList = [];
         $scope.allConsumerGrouopList.forEach(function (element) {
             console.log(element)
-            if ($scope.filterByType(element.group)) {
+            if ($scope.filterByType(element.group, element.subGroupType, $scope.rmqVersion)) {
                 if (element.group.toLowerCase().indexOf(lowExceptStr) != -1) {
                     canShowList.push(element);
                 }
@@ -189,6 +206,7 @@ module.controller('consumerController', ['$scope', 'ngDialog', '$http', 'Notific
                 subscriptionGroupConfig: {
                     groupName: "",
                     consumeEnable: true,
+                    consumeMessageOrderly: false,
                     consumeFromMinEnable: true,
                     consumeBroadcastEnable: true,
                     retryQueueNums: 1,
@@ -211,7 +229,7 @@ module.controller('consumerController', ['$scope', 'ngDialog', '$http', 'Notific
                         // Refresh topic list
                         $scope.refreshConsumerData();
                     },
-                    template: 'consumerModifyDialog',
+                    template: $scope.rmqVersion ? 'consumerModifyDialogForV5' : 'consumerModifyDialog',
                     controller: 'consumerModifyDialogController',
                     data: {
                         consumerRequestList: request,
@@ -226,11 +244,11 @@ module.controller('consumerController', ['$scope', 'ngDialog', '$http', 'Notific
             }
         });
     };
-    $scope.detail = function (consumerGroupName) {
+    $scope.detail = function (consumerGroupName, address) {
         $http({
             method: "GET",
             url: "consumer/queryTopicByConsumer.query",
-            params: {consumerGroup: consumerGroupName}
+            params: {consumerGroup: consumerGroupName, address: address}
         }).success(function (resp) {
             if (resp.status == 0) {
                 console.log(resp);
@@ -245,11 +263,11 @@ module.controller('consumerController', ['$scope', 'ngDialog', '$http', 'Notific
         });
     };
 
-    $scope.client = function (consumerGroupName) {
+    $scope.client = function (consumerGroupName, address) {
         $http({
             method: "GET",
             url: "consumer/consumerConnection.query",
-            params: {consumerGroup: consumerGroupName}
+            params: {consumerGroup: consumerGroupName, address: address}
         }).success(function (resp) {
             if (resp.status == 0) {
                 console.log(resp);

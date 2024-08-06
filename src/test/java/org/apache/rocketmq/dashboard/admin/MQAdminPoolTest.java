@@ -18,7 +18,7 @@ package org.apache.rocketmq.dashboard.admin;
 
 import org.apache.commons.pool2.PooledObject;
 import org.apache.commons.pool2.impl.GenericObjectPool;
-import org.apache.rocketmq.common.protocol.body.ClusterInfo;
+import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.util.MockObjectUtil;
 import org.apache.rocketmq.tools.admin.MQAdminExt;

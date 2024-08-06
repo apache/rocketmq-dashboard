@@ -24,6 +24,14 @@
                 </div>
                 <md-checkbox aria-label="Checkbox" ng-model="filterNormal" class="md-primary">{{'NORMAL' | translate}}
                 </md-checkbox>
+                <md-checkbox aria-label="Checkbox" ng-model="filterDelay" class="md-primary" ng-show="rmqVersion">{{'DELAY' | translate}}
+                </md-checkbox>
+                <md-checkbox aria-label="Checkbox" ng-model="filterFifo" class="md-primary" ng-show="rmqVersion">{{'FIFO' | translate}}
+                </md-checkbox>
+                <md-checkbox aria-label="Checkbox" ng-model="filterTransaction" class="md-primary" ng-show="rmqVersion">{{'TRANSACTION' | translate}}
+                </md-checkbox>
+                <md-checkbox aria-label="Checkbox" ng-model="filterUnspecified" class="md-primary" ng-show="rmqVersion">{{'UNSPECIFIED' | translate}}
+                </md-checkbox>
                 <md-checkbox aria-label="Checkbox" ng-model="filterRetry" class="md-primary">{{'RETRY' | translate}}
                 </md-checkbox>
                 <md-checkbox aria-label="Checkbox" ng-model="filterDLQ" class="md-primary">{{'DLQ' | translate}}
@@ -63,6 +71,7 @@
                             <button class="btn btn-raised btn-sm btn-primary" type="button"
                                     ng-click="openUpdateDialog(topic, sysFlag)">topic {{'CONFIG' |translate}}
                             </button>
+<!--                            todo 发送消息，根据消息类型判断-->
                             <button class="btn btn-raised btn-sm btn-primary" type="button"
                                     ng-show="{{!sysFlag}}"
                                     ng-click="openSendTopicMessageDialog(topic)">{{'SEND_MSG' | translate}}
@@ -187,6 +196,18 @@
                     <input class="form-control" ng-model="item.topicName" name="topicName" type="text"
                            ng-disabled="ngDialogData.bIsUpdate" required/>
                     <span class="text-danger" ng-show="addAppForm.topicName.$error.required">{{'TOPIC_NAME'|translate}}不能为空.</span>
+                </div>
+            </div>
+            <!--            设置topic 类型 -->
+            <div class="form-group">
+                <label class="control-label col-sm-2">{{'MESSAGE_TYPE'|translate}}:</label>
+                <div class="col-sm-10">
+                    <select name="mySelectMessageType" chosen ng-disabled="ngDialogData.bIsUpdate"
+                            ng-model="item.messageType"
+                            ng-options="messageType as value | translate  disable when messageType=='UNSPECIFIED' for (messageType , value) in ngDialogData.allMessageTypeList"
+                    >
+                        <option value=""></option>
+                    </select>
                 </div>
             </div>
             <div class="form-group">

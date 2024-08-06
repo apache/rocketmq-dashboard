@@ -19,7 +19,7 @@ package org.apache.rocketmq.dashboard.service.impl;
 
 import com.google.common.base.Throwables;
 import javax.annotation.Resource;
-import org.apache.rocketmq.common.protocol.body.ProducerConnection;
+import org.apache.rocketmq.remoting.protocol.body.ProducerConnection;
 import org.apache.rocketmq.dashboard.service.ProducerService;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.springframework.stereotype.Service;
@@ -35,7 +35,8 @@ public class ProducerServiceImpl implements ProducerService {
             return mqAdminExt.examineProducerConnectionInfo(producerGroup, topic);
         }
         catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
     }
 }

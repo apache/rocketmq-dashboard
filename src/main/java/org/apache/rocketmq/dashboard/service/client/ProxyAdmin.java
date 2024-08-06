@@ -14,11 +14,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.rocketmq.dashboard.service.client;
 
-package org.apache.rocketmq.dashboard.service;
+import org.apache.rocketmq.client.exception.MQBrokerException;
+import org.apache.rocketmq.remoting.exception.RemotingConnectException;
+import org.apache.rocketmq.remoting.exception.RemotingSendRequestException;
+import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
+import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 
-import org.apache.rocketmq.remoting.protocol.body.ProducerConnection;
+public interface ProxyAdmin {
 
-public interface ProducerService {
-    ProducerConnection getProducerConnection(String producerGroup, String topic);
+    ConsumerConnection examineConsumerConnectionInfo(String addr, String consumerGroup) throws RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException, InterruptedException, MQBrokerException;
 }

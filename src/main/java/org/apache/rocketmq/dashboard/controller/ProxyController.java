@@ -16,30 +16,39 @@
  */
 package org.apache.rocketmq.dashboard.controller;
 
-import javax.annotation.Resource;
-import org.apache.rocketmq.remoting.protocol.body.ProducerConnection;
-import org.apache.rocketmq.dashboard.model.ConnectionInfo;
 import org.apache.rocketmq.dashboard.permisssion.Permission;
-import org.apache.rocketmq.dashboard.service.ProducerService;
+import org.apache.rocketmq.dashboard.service.ProxyService;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 
+import javax.annotation.Resource;
+
 @Controller
-@RequestMapping("/producer")
+@RequestMapping("/proxy")
 @Permission
-public class ProducerController {
-
+public class ProxyController {
     @Resource
-    private ProducerService producerService;
-
-    @RequestMapping(value = "/producerConnection.query", method = {RequestMethod.GET})
+    private ProxyService proxyService;
+    @RequestMapping(value = "/homePage.query", method = RequestMethod.GET)
     @ResponseBody
-    public Object producerConnection(@RequestParam String producerGroup, @RequestParam String topic) {
-        ProducerConnection producerConnection = producerService.getProducerConnection(producerGroup, topic);
-        producerConnection.setConnectionSet(ConnectionInfo.buildConnectionInfoHashSet(producerConnection.getConnectionSet()));
-        return producerConnection;
+    public Object homePage() {
+        return proxyService.getProxyHomePage();
+    }
+
+    @RequestMapping(value = "/addProxyAddr.do", method = RequestMethod.POST)
+    @ResponseBody
+    public Object addProxyAddr(@RequestParam String newProxyAddr) {
+        proxyService.addProxyAddrList(newProxyAddr);
+        return true;
+    }
+
+    @RequestMapping(value = "/updateProxyAddr.do", method = RequestMethod.POST)
+    @ResponseBody
+    public Object updateProxyAddr(@RequestParam String proxyAddr) {
+        proxyService.updateProxyAddrList(proxyAddr);
+        return true;
     }
 }

@@ -64,6 +64,18 @@
 * look over this message's detail info.you can see the message's consume state(each group has one line),show the exception message if has exception.
 you can send this message to the group you selected
 
+## RocketMQ-V5.0 dashboard
+* Version switching
+  * RocketMQ can switch between different versions in the upper right corner, and users can freely choose between RocketMQ-5.X or RocketMQ-4.X versions
+* Theme page
+  * Support filtering of delayed/sequential/transaction messages
+  * Support the addition and update of multiple message types such as delay, sequence, object, and ordinary themes
+* Consumption page
+  * Support filtering of subscription groups for fifo consumption types
+  * Provide the addition and update of subscription groups for sequential consumption types. If fifo consumption needs to be enabled, FIFO type subscription groups must have the consumeOrderlyEnable option enabled
+* Proxy page (Added in RocketMQ 5.0)
+  * Support for adding and querying proxy nodes
+  * Support proxy node address configuration: ProxyAddr and proxyAddrs properties can be pre configured in application.yml
 
 ## Access Dashboard with HTTPS
 * SpringBoot itself has provided the SSL configuration. You can use the project test Keystore:resources/rmqcngkeystore.jks. The store is generated with the following unix keytool commands:

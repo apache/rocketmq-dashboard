@@ -117,7 +117,8 @@ public class MessageServiceImpl implements MessageService {
             if (err instanceof MQClientException) {
                 throw new ServiceException(-1, ((MQClientException) err).getErrorMessage());
             }
-            throw Throwables.propagate(err);
+            Throwables.throwIfUnchecked(err);
+            throw new RuntimeException(err);
         }
     }
 
@@ -187,7 +188,8 @@ public class MessageServiceImpl implements MessageService {
             });
             return messageViewList;
         } catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         } finally {
             consumer.shutdown();
         }
@@ -211,7 +213,8 @@ public class MessageServiceImpl implements MessageService {
             try {
                 return mqAdminExt.consumeMessageDirectly(consumerGroup, clientId, topic, msgId);
             } catch (Exception e) {
-                throw Throwables.propagate(e);
+                Throwables.throwIfUnchecked(e);
+                throw new RuntimeException(e);
             }
         }
 
@@ -232,7 +235,8 @@ public class MessageServiceImpl implements MessageService {
                 throw new IllegalStateException("CONSUMER NOT SUBSCRIPT THIS TAG");
             }
         } catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
         throw new IllegalStateException("NO CONSUMER");
 
@@ -397,7 +401,8 @@ public class MessageServiceImpl implements MessageService {
             PageImpl<MessageView> page = new PageImpl<>(messageViews, query.page(), total);
             return new MessagePageTask(page, queueOffsetInfos);
         } catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         } finally {
             consumer.shutdown();
         }
@@ -464,7 +469,8 @@ public class MessageServiceImpl implements MessageService {
             }
             return new PageImpl<>(messageViews, query.page(), total);
         } catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         } finally {
             consumer.shutdown();
         }

@@ -14,11 +14,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.rocketmq.dashboard.model.request;
 
-package org.apache.rocketmq.dashboard.service;
+public class TopicTypeMeta {
+    private String topicName;
+    private String messageType;
 
-import org.apache.rocketmq.remoting.protocol.body.ProducerConnection;
+    public String getTopicName() {
+        return topicName;
+    }
 
-public interface ProducerService {
-    ProducerConnection getProducerConnection(String producerGroup, String topic);
+    public void setTopicName(String topicName) {
+        this.topicName = topicName;
+    }
+
+    public String getMessageType() {
+        return messageType;
+    }
+
+    public void setMessageType(String messageType) {
+        this.messageType = messageType;
+    }
 }

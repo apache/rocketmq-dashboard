@@ -14,11 +14,32 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.rocketmq.dashboard.model.request;
 
-package org.apache.rocketmq.dashboard.service;
+import java.util.List;
 
-import org.apache.rocketmq.remoting.protocol.body.ProducerConnection;
+public class TopicTypeList {
+    private List<String> topicNameList;
+    private List<String> messageTypeList;
 
-public interface ProducerService {
-    ProducerConnection getProducerConnection(String producerGroup, String topic);
+    public List<String> getTopicNameList() {
+        return topicNameList;
+    }
+
+    public void setTopicNameList(List<String> topicNameList) {
+        this.topicNameList = topicNameList;
+    }
+
+    public List<String> getMessageTypeList() {
+        return messageTypeList;
+    }
+
+    public void setMessageTypeList(List<String> messageTypeList) {
+        this.messageTypeList = messageTypeList;
+    }
+
+    public TopicTypeList(List<String> topicNameList, List<String> messageTypeList) {
+        this.topicNameList = topicNameList;
+        this.messageTypeList = messageTypeList;
+    }
 }

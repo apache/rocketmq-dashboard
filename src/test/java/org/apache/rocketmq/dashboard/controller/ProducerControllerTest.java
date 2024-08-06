@@ -19,8 +19,8 @@ package org.apache.rocketmq.dashboard.controller;
 
 import java.util.HashSet;
 import org.apache.rocketmq.client.exception.MQClientException;
-import org.apache.rocketmq.common.protocol.body.Connection;
-import org.apache.rocketmq.common.protocol.body.ProducerConnection;
+import org.apache.rocketmq.remoting.protocol.body.Connection;
+import org.apache.rocketmq.remoting.protocol.body.ProducerConnection;
 import org.apache.rocketmq.dashboard.interceptor.AuthInterceptor;
 import org.apache.rocketmq.dashboard.service.impl.LoginServiceImpl;
 import org.apache.rocketmq.dashboard.service.impl.ProducerServiceImpl;

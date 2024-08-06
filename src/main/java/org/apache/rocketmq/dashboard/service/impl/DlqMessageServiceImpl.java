@@ -25,8 +25,8 @@ import javax.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.common.MixAll;
-import org.apache.rocketmq.common.protocol.ResponseCode;
-import org.apache.rocketmq.common.protocol.body.ConsumeMessageDirectlyResult;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
+import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
 import org.apache.rocketmq.dashboard.model.DlqMessageResendResult;
 import org.apache.rocketmq.dashboard.model.DlqMessageRequest;
 import org.apache.rocketmq.dashboard.model.MessagePage;
@@ -62,10 +62,12 @@ public class DlqMessageServiceImpl implements DlqMessageService {
                 && e.getResponseCode() == ResponseCode.TOPIC_NOT_EXIST) {
                 return new MessagePage(new PageImpl<>(messageViews, page, 0), query.getTaskId());
             } else {
-                throw Throwables.propagate(e);
+                Throwables.throwIfUnchecked(e);
+                throw new RuntimeException(e);
             }
         } catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
         return messageService.queryMessageByPage(query);
     }
