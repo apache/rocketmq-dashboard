@@ -15,9 +15,16 @@
 # limitations under the License.
 #
 
-FROM java:8
-VOLUME /tmp
-ADD rocketmq-dashboard-*.jar rocketmq-dashboard.jar
-RUN sh -c 'touch /rocketmq-dashboard.jar'
-ENV JAVA_OPTS=""
-ENTRYPOINT [ "sh", "-c", "java $JAVA_OPTS -jar /rocketmq-dashboard.jar" ]
+FROM maven:3.8.6-openjdk-8 AS builder
+
+ADD . .
+
+# package jar
+RUN mvn clean package -Dmaven.test.skip=true
+
+FROM openjdk:8u342-jdk
+
+# copy jar from the builder stage
+COPY --from=builder target/rocketmq-dashboard-*.jar rocketmq-dashboard.jar
+
+ENTRYPOINT exec java $JAVA_OPTS -jar rocketmq-dashboard.jar
