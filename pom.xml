@@ -104,7 +104,7 @@
         <easyexcel.version>2.2.10</easyexcel.version>
         <asm.version>4.2</asm.version>
         <junit.version>4.12</junit.version>
-        <snakeyaml.version>1.30</snakeyaml.version>
+        <snakeyaml.version>1.32</snakeyaml.version>
         <cglib.version>2.2.2</cglib.version>
         <joor.version>0.9.6</joor.version>
         <bcpkix-jdk15on.version>1.68</bcpkix-jdk15on.version>
