@@ -17,6 +17,7 @@
 
 package org.apache.rocketmq.dashboard.service;
 
+import org.apache.rocketmq.dashboard.model.StackResult;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerRunningInfo;
 import org.apache.rocketmq.dashboard.model.ConsumerGroupRollBackStat;
@@ -55,4 +56,6 @@ public interface ConsumerService {
     ConsumerConnection getConsumerConnection(String consumerGroup, String address);
 
     ConsumerRunningInfo getConsumerRunningInfo(String consumerGroup, String clientId, boolean jstack);
+
+    StackResult getConsumerStack(String consumerGroup, String clientId, boolean jstack);
 }
