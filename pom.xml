@@ -167,6 +167,7 @@
             <groupId>org.apache.rocketmq</groupId>
             <artifactId>rocketmq-namesrv</artifactId>
             <version>${rocketmq.version}</version>
+            <scope>test</scope>
             <exclusions>
                 <exclusion>
                     <groupId>org.slf4j</groupId>
