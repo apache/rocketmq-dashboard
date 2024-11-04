@@ -186,6 +186,7 @@
             <groupId>org.apache.rocketmq</groupId>
             <artifactId>rocketmq-broker</artifactId>
             <version>${rocketmq.version}</version>
+            <scope>test</scope>
             <exclusions>
                 <exclusion>
                     <groupId>org.slf4j</groupId>
