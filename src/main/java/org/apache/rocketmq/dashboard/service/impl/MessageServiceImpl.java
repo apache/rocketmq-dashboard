@@ -276,7 +276,7 @@ public class MessageServiceImpl implements MessageService {
             int idx = 0;
             for (MessageQueue messageQueue : messageQueues) {
                 Long minOffset = consumer.searchOffset(messageQueue, query.getBegin());
-                Long maxOffset = consumer.searchOffset(messageQueue, query.getEnd()) + 1;
+                Long maxOffset = consumer.searchOffset(messageQueue, query.getEnd());
                 queueOffsetInfos.add(new QueueOffsetInfo(idx++, minOffset, maxOffset, minOffset, minOffset, messageQueue));
             }
 
