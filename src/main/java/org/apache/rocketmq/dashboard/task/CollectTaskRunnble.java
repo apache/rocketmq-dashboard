@@ -24,12 +24,12 @@ import java.util.List;
 import java.util.concurrent.ExecutionException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.common.stats.Stats;
 import org.apache.rocketmq.remoting.protocol.body.BrokerStatsData;
 import org.apache.rocketmq.remoting.protocol.body.GroupList;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.dashboard.service.DashboardCollectService;
-import org.apache.rocketmq.store.stats.BrokerStatsManager;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.apache.rocketmq.tools.command.stats.StatsAllSubCommand;
 
@@ -63,7 +63,7 @@ public class CollectTaskRunnble implements Runnable {
                 String masterAddr = bd.getBrokerAddrs().get(MixAll.MASTER_ID);
                 if (masterAddr != null) {
                     try {
-                        BrokerStatsData bsd = mqAdminExt.viewBrokerStatsData(masterAddr, BrokerStatsManager.TOPIC_PUT_NUMS, topic);
+                        BrokerStatsData bsd = mqAdminExt.viewBrokerStatsData(masterAddr, Stats.TOPIC_PUT_NUMS, topic);
                         inTPS += bsd.getStatsMinute().getTps();
                         inMsgCntToday += StatsAllSubCommand.compute24HourSum(bsd);
                     } catch (Exception e) {
@@ -78,7 +78,7 @@ public class CollectTaskRunnble implements Runnable {
                         if (masterAddr != null) {
                             try {
                                 String statsKey = String.format("%s@%s", topic, group);
-                                BrokerStatsData bsd = mqAdminExt.viewBrokerStatsData(masterAddr, BrokerStatsManager.GROUP_GET_NUMS, statsKey);
+                                BrokerStatsData bsd = mqAdminExt.viewBrokerStatsData(masterAddr, Stats.GROUP_GET_NUMS, statsKey);
                                 outTPS += bsd.getStatsMinute().getTps();
                                 outMsgCntToday += StatsAllSubCommand.compute24HourSum(bsd);
                             } catch (Exception e) {
