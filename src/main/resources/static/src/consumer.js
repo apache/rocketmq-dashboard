@@ -79,7 +79,7 @@ module.controller('consumerController', ['$scope', 'ngDialog', '$http', 'Notific
             url: "consumer/groupList.query",
             params: {
                 skipSysGroup: false,
-                address: localStorage.getItem('isV5') ? localStorage.getItem('proxyAddr') : null
+                address: $scope.isRmqVersionV5() ? localStorage.getItem('proxyAddr') : null
             }
         }).success(function (resp) {
             if (resp.status == 0) {
