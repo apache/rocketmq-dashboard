@@ -117,4 +117,11 @@ public class ConsumerController {
         @RequestParam boolean jstack) {
         return consumerService.getConsumerRunningInfo(consumerGroup, clientId, jstack);
     }
+
+    @RequestMapping(value = "/consumerStack.query")
+    @ResponseBody
+    public Object getConsumerStack(@RequestParam String consumerGroup, @RequestParam String clientId,
+                                   @RequestParam boolean jstack) {
+        return consumerService.getConsumerStack(consumerGroup, clientId, jstack);
+    }
 }

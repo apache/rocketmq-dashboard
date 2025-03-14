@@ -18,11 +18,14 @@
 package org.apache.rocketmq.dashboard.service.impl;
 
 import com.google.common.base.Predicate;
+import com.google.common.base.Splitter;
 import com.google.common.base.Throwables;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
+import java.util.ArrayList;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -42,10 +45,16 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import javax.annotation.Resource;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.common.MQVersion;
 import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.dashboard.model.ConsumerGroupRollBackStat;
+import org.apache.rocketmq.dashboard.model.GroupConsumeInfo;
+import org.apache.rocketmq.dashboard.model.QueueStatInfo;
+import org.apache.rocketmq.dashboard.model.StackResult;
+import org.apache.rocketmq.dashboard.model.TopicConsumerInfo;
 import org.apache.rocketmq.dashboard.service.client.ProxyAdmin;
 import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
 import org.apache.rocketmq.remoting.protocol.admin.RollbackStats;
@@ -61,10 +70,6 @@ import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.common.utils.ThreadUtils;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
-import org.apache.rocketmq.dashboard.model.ConsumerGroupRollBackStat;
-import org.apache.rocketmq.dashboard.model.GroupConsumeInfo;
-import org.apache.rocketmq.dashboard.model.QueueStatInfo;
-import org.apache.rocketmq.dashboard.model.TopicConsumerInfo;
 import org.apache.rocketmq.dashboard.model.request.ConsumerConfigInfo;
 import org.apache.rocketmq.dashboard.model.request.DeleteSubGroupRequest;
 import org.apache.rocketmq.dashboard.model.request.ResetOffsetRequest;
@@ -482,4 +487,59 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
             throw new RuntimeException(e);
         }
     }
+    @Override
+    public StackResult getConsumerStack(String consumerGroup, String clientId, boolean jstack) {
+        ConsumerRunningInfo consumerRunningInfo = getConsumerRunningInfo(consumerGroup, clientId, jstack);
+        Map<String, String> stackMap = new HashMap<>();
+        Map<String, List<String>> map = formatThreadStack(consumerRunningInfo.getJstack());
+        if (MapUtils.isNotEmpty(map)) {
+            Set<String> threads = map.keySet();
+            for (String thread : threads) {
+                StringBuilder result = new StringBuilder();
+                map.get(thread).forEach(s -> result.append(s).append("\n"));
+                stackMap.put(thread, result.toString());
+            }
+        }
+        return new StackResult(stackMap);
+    }
+
+    private Map<String, List<String>> formatThreadStack(String stack) {
+        Map<String, List<String>> threadStackMap = new HashMap<>();
+        List<String> stackList = Splitter.on("\n\n").splitToList(stack);
+        for (String threadStack : stackList) {
+            List<String> stacks = Splitter.on("\n").splitToList(threadStack);
+            if (CollectionUtils.isNotEmpty(stacks)) {
+                List<String> elements = new ArrayList<>();
+                String threadName = null;
+                for (String s : stacks) {
+                    List<String> stackItem = Splitter.on("  ")
+                            .omitEmptyStrings()
+                            .trimResults()
+                            .splitToList(s);
+                    if (stackItem.size() == 1) {
+                        String stackStr = stackItem.get(0);
+                        if (threadName == null) {
+                            int index = stackStr.indexOf("TID");
+                            if (index != -1) {
+                                threadName = stackStr.substring(0, index);
+                            }
+                        } else {
+                            elements.add(stackStr.substring(threadName.length(), stackStr.length()));
+                        }
+                    }
+                    if (stackItem.size() == 2) {
+                        if (threadName == null) {
+                            threadName = stackItem.get(0);
+                        }
+                        elements.add(stackItem.get(stackItem.size() - 1));
+                    }
+                }
+                if (threadName != null) {
+                    threadStackMap.put(threadName, elements);
+                }
+            }
+        }
+        return threadStackMap;
+    }
+
 }
