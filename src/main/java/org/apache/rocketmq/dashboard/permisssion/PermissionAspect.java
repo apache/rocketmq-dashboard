@@ -18,6 +18,8 @@ package org.apache.rocketmq.dashboard.permisssion;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
+
+import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.exception.ServiceException;
 import org.apache.rocketmq.dashboard.model.UserInfo;
@@ -27,6 +29,7 @@ import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Pointcut;
+import org.springframework.boot.autoconfigure.web.ServerProperties;
 import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
@@ -37,6 +40,9 @@ public class PermissionAspect {
 
     @Resource
     private RMQConfigure configure;
+
+    @Resource
+    private ServerProperties serverProperties;
 
     @Resource
     private PermissionService permissionService;
@@ -55,6 +61,7 @@ public class PermissionAspect {
         if (configure.isLoginRequired()) {
             HttpServletRequest request = ((ServletRequestAttributes) RequestContextHolder.getRequestAttributes()).getRequest();
             String url = request.getRequestURI();
+            url = StringUtils.removeStart(url, serverProperties.getServlet().getContextPath());
             UserInfo userInfo = (UserInfo) request.getSession().getAttribute(WebUtil.USER_INFO);
             if (userInfo == null || userInfo.getUser() == null) {
                 throw new ServiceException(-1, "user not login");
