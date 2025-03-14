@@ -27,6 +27,15 @@ app.controller('AppCtrl', ['$scope','$window','$translate','$http','Notification
         localStorage.setItem("isV5", v);
     }
 
+    $scope.isRmqVersionV5 = function(){
+        var v=localStorage.getItem('isV5');
+        //for js !! 'false' is true!
+        if( /false/i.test(v) ){
+            return false;
+        }
+        return !! v;
+    }
+
     $scope.logout = function(){
         $http({
                     method: "POST",

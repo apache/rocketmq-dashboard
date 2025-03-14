@@ -141,7 +141,7 @@ module.controller('topicController', ['$scope', 'ngDialog', '$http', 'Notificati
                 return true
             }
         }
-        if (localStorage.getItem('isV5') && $scope.filterUnspecified) {
+        if ($scope.isRmqVersionV5() && $scope.filterUnspecified) {
             if (type.includes("UNSPECIFIED")) {
                 return true
             }
@@ -150,21 +150,21 @@ module.controller('topicController', ['$scope', 'ngDialog', '$http', 'Notificati
             if (type.includes("NORMAL")) {
                 return true
             }
-            if (!localStorage.getItem('isV5') && type.includes("UNSPECIFIED")) {
+            if (!$scope.isRmqVersionV5() && type.includes("UNSPECIFIED")) {
                 return true
             }
         }
-        if (localStorage.getItem('isV5') && $scope.filterDelay) {
+        if ($scope.isRmqVersionV5() && $scope.filterDelay) {
             if (type.includes("DELAY")) {
                 return true
             }
         }
-        if (localStorage.getItem('isV5') && $scope.filterFifo) {
+        if ($scope.isRmqVersionV5() && $scope.filterFifo) {
             if (type.includes("FIFO")) {
                 return true
             }
         }
-        if (localStorage.getItem('isV5') && $scope.filterTransaction) {
+        if ($scope.isRmqVersionV5() && $scope.filterTransaction) {
             if (type.includes("TRANSACTION")) {
                 return true
             }
