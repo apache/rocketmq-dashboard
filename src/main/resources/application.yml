@@ -41,7 +41,7 @@ rocketmq:
     # if this value is empty,use env value rocketmq.config.namesrvAddr  NAMESRV_ADDR | now, default localhost:9876
     # configure multiple namesrv addresses to manage multiple different clusters
     namesrvAddrs:
-      - 127.0.0.1:9876
+#      - 127.0.0.1:9876
     #      - 127.0.0.2:9876
     #      - 10.151.47.32:9876;10.151.47.33:9876;10.151.47.34:9876
     #      - 10.151.47.30:9876
