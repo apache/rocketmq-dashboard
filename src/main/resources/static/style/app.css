@@ -301,3 +301,6 @@
     cursor: text !important;
     width: 60%;
 }
+.navbar .navbar-nav .dropdown-menu li {
+    margin: 0 !important;
+}
