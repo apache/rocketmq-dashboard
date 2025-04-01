@@ -27,6 +27,9 @@
         </div>
         <div class="navbar-collapse collapse navbar-warning-collapse">
             <ul class="nav navbar-nav">
+                <li class="nav-divider disabled">
+                    <span class="divider-bar"></span>
+                </li>
                 <li ng-class="path =='ops' ? 'active':''"><a ng-href="#/ops">{{'OPS' | translate}}</a></li>
                 <li ng-show="rmqVersion" ng-class="path =='proxy' ? 'active':''"><a ng-href="#/proxy">{{'PROXY' | translate}}</a></li>
                 <li ng-class="path =='dashboard' || path ==''? 'active':''"><a ng-href="#/">{{'DASHBOARD' | translate}}</a></li>
@@ -40,6 +43,9 @@
                 <li ng-show="{{ show }}" ng-class="path =='acl' ? 'active':''"><a ng-href="#/acl">Acl</a></li>
             </ul>
             <ul class="nav navbar-nav navbar-right">
+                <li class="nav-divider disabled">
+                    <span class="divider-bar"></span>
+                </li>
                 <li class="dropdown">
                     <a href="bootstrap-elements.html" data-target="#" class="dropdown-toggle" data-toggle="dropdown">{{'CHANGE_LANG' | translate}}
                         <b class="caret"></b></a>
