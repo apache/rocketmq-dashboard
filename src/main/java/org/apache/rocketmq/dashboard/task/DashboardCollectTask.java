@@ -34,6 +34,7 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import javax.annotation.Resource;
 import org.apache.rocketmq.common.MixAll;
+import org.apache.rocketmq.dashboard.service.ConsumerService;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.KVTable;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
@@ -58,6 +59,9 @@ public class DashboardCollectTask {
 
     @Resource
     private DashboardCollectService dashboardCollectService;
+
+    @Resource
+    private ConsumerService consumerService;
 
     private final static Logger log = LoggerFactory.getLogger(DashboardCollectTask.class);
 
@@ -88,6 +92,13 @@ public class DashboardCollectTask {
             throw new RuntimeException(err);
         }
     }
+
+    @Scheduled(cron = "0 0 2 * * ?")
+    public void collectConsumer() {
+        consumerService.queryGroupList(false, null);
+    }
+
+
 
     @Scheduled(cron = "0 0/1 * * * ?")
     public void collectBroker() {
