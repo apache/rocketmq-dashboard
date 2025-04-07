@@ -486,14 +486,14 @@ public class MQAdminExtImpl implements MQAdminExt {
         Set<String> clusterList = MQAdminInstance.threadLocalMQAdminExt().getTopicClusterList(topic);
         if (clusterList == null || clusterList.isEmpty()) {
             QueryResult qr = Reflect.on(mqAdminImpl).call("queryMessage", "", topic, msgId, 32,
-                    MessageClientIDSetter.getNearlyTimeFromID(msgId).getTime(), Long.MAX_VALUE, true).get();
+                    0L, Long.MAX_VALUE, true).get();
             if (qr != null && qr.getMessageList() != null && !qr.getMessageList().isEmpty()) {
                 return qr.getMessageList().get(0);
             }
         } else {
             for (String name : clusterList) {
                 QueryResult qr = Reflect.on(mqAdminImpl).call("queryMessage", name, topic, msgId, 32,
-                        MessageClientIDSetter.getNearlyTimeFromID(msgId).getTime(), Long.MAX_VALUE, true).get();
+                        0L, Long.MAX_VALUE, true).get();
                 if (qr != null && qr.getMessageList() != null && !qr.getMessageList().isEmpty()) {
                     return qr.getMessageList().get(0);
                 }
