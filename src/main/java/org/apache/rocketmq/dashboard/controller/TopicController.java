@@ -56,6 +56,12 @@ public class TopicController {
         return topicService.fetchAllTopicList(skipSysProcess, skipRetryAndDlq);
     }
 
+    @RequestMapping(value = "/refresh", method = {RequestMethod.POST})
+    @ResponseBody
+    public Object refresh() {
+        return topicService.refreshTopicList();
+    }
+
     @RequestMapping(value = "/list.queryTopicType", method = RequestMethod.GET)
     @ResponseBody
     public Object listTopicType() {

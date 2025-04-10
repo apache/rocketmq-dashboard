@@ -59,7 +59,7 @@ module.controller('topicController', ['$scope', 'ngDialog', '$http', 'Notificati
     $scope.userRole = $window.sessionStorage.getItem("userrole");
     $scope.writeOperationEnabled = $scope.userRole == null ? true : ($scope.userRole == 1 ? true : false);
 
-    $scope.refreshTopicList = function () {
+    $scope.getTopicList = function () {
         $http({
             method: "GET",
             url: "topic/list.queryTopicType"
@@ -77,7 +77,34 @@ module.controller('topicController', ['$scope', 'ngDialog', '$http', 'Notificati
         });
     };
 
-    $scope.refreshTopicList();
+    $scope.refreshTopicList = function () {
+        $http({
+            method: "POST",
+            url: "topic/refresh"
+        }).success(function (resp) {
+            if (resp.status == 0 && resp.data == true) {
+                $http({
+                    method: "GET",
+                    url: "topic/list.queryTopicType"
+                }).success(function (resp1) {
+                    if (resp1.status == 0) {
+                        $scope.allTopicNameList = resp1.data.topicNameList;
+                        $scope.allMessageTypeList = resp1.data.messageTypeList;
+                        console.log($scope.allTopicNameList);
+                        console.log(JSON.stringify(resp1));
+                        $scope.showTopicList(1, $scope.allTopicNameList.length);
+                    } else {
+                        Notification.error({message: resp1.errMsg, delay: 5000});
+                    }
+                });
+
+            } else {
+                Notification.error({message: resp.errMsg, delay: 5000});
+            }
+        });
+    };
+
+    $scope.getTopicList();
 
     $scope.filterStr = "";
     $scope.$watch('filterStr', function () {
@@ -127,17 +154,17 @@ module.controller('topicController', ['$scope', 'ngDialog', '$http', 'Notificati
 
     $scope.filterByType = function (str, type) {
         if ($scope.filterRetry) {
-            if (str.startsWith("%R")) {
+            if (type.includes("RETRY")) {
                 return true
             }
         }
         if ($scope.filterDLQ) {
-            if (str.startsWith("%D")) {
+            if (type.includes("DLQ")) {
                 return true
             }
         }
         if ($scope.filterSystem) {
-            if (str.startsWith("%S")) {
+            if (type.includes("SYSTEM")) {
                 return true
             }
         }
@@ -386,10 +413,6 @@ module.controller('topicController', ['$scope', 'ngDialog', '$http', 'Notificati
             if (resp.status == 0) {
                 console.log(resp);
                 ngDialog.open({
-                    preCloseCallback: function (value) {
-                        // Refresh topic list
-                        $scope.refreshTopicList();
-                    },
                     template: 'topicModifyDialog',
                     controller: 'topicModifyDialogController',
                     data: {

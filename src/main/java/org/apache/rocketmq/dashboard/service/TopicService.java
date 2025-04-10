@@ -54,4 +54,5 @@ public interface TopicService {
 
     SendResult sendTopicMessageRequest(SendTopicMessageRequest sendTopicMessageRequest);
 
+    boolean refreshTopicList();
 }

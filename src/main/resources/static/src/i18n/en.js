@@ -135,4 +135,5 @@ var en = {
     "MESSAGE_TYPE_FIFO": "FIFO",
     "MESSAGE_TYPE_DELAY": "DELAY",
     "MESSAGE_TYPE_TRANSACTION": "TRANSACTION",
+    "UPDATE_TIME": "Update Time",
 }

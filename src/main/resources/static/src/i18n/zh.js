@@ -136,4 +136,5 @@ var zh = {
     "MESSAGE_TYPE_FIFO": "顺序消息",
     "MESSAGE_TYPE_DELAY": "定时/延时消息",
     "MESSAGE_TYPE_TRANSACTION": "事务消息",
+    "UPDATE_TIME": "更新时间",
 }

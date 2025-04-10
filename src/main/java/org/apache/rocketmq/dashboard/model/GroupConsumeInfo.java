@@ -19,6 +19,7 @@ package org.apache.rocketmq.dashboard.model;
 import org.apache.rocketmq.remoting.protocol.heartbeat.ConsumeType;
 import org.apache.rocketmq.remoting.protocol.heartbeat.MessageModel;
 
+import java.util.Date;
 import java.util.List;
 
 public class GroupConsumeInfo implements Comparable<GroupConsumeInfo> {
@@ -31,6 +32,7 @@ public class GroupConsumeInfo implements Comparable<GroupConsumeInfo> {
     private int consumeTps;
     private long diffTotal = -1;
     private String subGroupType = "NORMAL";
+    private Date updateTime;
 
 
     public String getGroup() {
@@ -111,5 +113,13 @@ public class GroupConsumeInfo implements Comparable<GroupConsumeInfo> {
 
     public void setVersion(String version) {
         this.version = version;
+    }
+
+    public Date getUpdateTime() {
+        return updateTime;
+    }
+
+    public void setUpdateTime(Date updateTime) {
+        this.updateTime = updateTime;
     }
 }
