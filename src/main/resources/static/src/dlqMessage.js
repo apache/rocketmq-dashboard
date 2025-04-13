@@ -82,6 +82,9 @@ module.controller('dlqMessageController', ['$scope', 'ngDialog', '$http', 'Notif
                 if ($scope.messageShowList.length == 0){
                     $("#noMsgTip").removeAttr("style");
                 }
+                for (const message of $scope.messageShowList) {
+                    message.checked = false;
+                }
                 console.log($scope.messageShowList);
                 if (resp.data.page.first) {
                     $scope.paginationConf.currentPage = 1;
@@ -180,5 +183,115 @@ module.controller('dlqMessageController', ['$scope', 'ngDialog', '$http', 'Notif
 
     $scope.exportDlqMessage = function (msgId, consumerGroup) {
         window.location.href = "dlqMessage/exportDlqMessage.do?msgId=" + msgId + "&consumerGroup=" + consumerGroup;
+    };
+
+    $scope.selectedDlqMessage = [];
+    $scope.batchResendDlqMessage = function (consumerGroup) {
+        if ($("#batchResendBtn").hasClass("disabled")) {
+            return;
+        }
+        for (const message of $scope.messageCheckedList) {
+            const dlqMessage = {};
+            dlqMessage.topic = message.properties.RETRY_TOPIC;
+            dlqMessage.msgId = message.properties.ORIGIN_MESSAGE_ID;
+            dlqMessage.consumerGroup = consumerGroup;
+            $scope.selectedDlqMessage.push(dlqMessage);
+        }
+        $http({
+            method: "POST",
+            url: "dlqMessage/batchResendDlqMessage.do",
+            data: $scope.selectedDlqMessage
+        }).success(function (resp) {
+            $scope.selectedDlqMessage = [];
+            if (resp.status == 0) {
+                ngDialog.open({
+                    template: 'operationResultDialog',
+                    data: {
+                        result: resp.data
+                    }
+                });
+            } else {
+                ngDialog.open({
+                    template: 'operationResultDialog',
+                    data: {
+                        result: resp.errMsg
+                    }
+                });
+            }
+        });
+    };
+
+    $scope.batchExportDlqMessage = function (consumerGroup) {
+        if ($("#batchExportBtn").hasClass("disabled")) {
+            return;
+        }
+        for (const message of $scope.messageCheckedList) {
+            const dlqMessage = {};
+            dlqMessage.msgId = message.msgId;
+            dlqMessage.consumerGroup = consumerGroup;
+            $scope.selectedDlqMessage.push(dlqMessage);
+        }
+        $http({
+            method: "POST",
+            url: "dlqMessage/batchExportDlqMessage.do",
+            data: $scope.selectedDlqMessage,
+            headers: {
+                'Content-type': 'application/json'
+            },
+            responseType: "arraybuffer"
+        }).success(function (resp) {
+            $scope.selectedDlqMessage = [];
+            const blob = new Blob([resp], {type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+            const objectUrl = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.download = 'dlqs.xlsx';
+            a.href = objectUrl;
+            a.click();
+            document.body.removeChild(a)
+        });
+    };
+
+    $scope.checkedAll = false;
+    $scope.messageCheckedList = [];
+    $scope.selectAll = function () {
+        $scope.messageCheckedList = [];
+        if ($scope.checkedAll == true) {
+            angular.forEach($scope.messageShowList, function (item, index) {
+                item.checked = true;
+                $scope.messageCheckedList.push(item);
+            });
+        } else {
+            angular.forEach($scope.messageShowList, function (item, index) {
+                item.checked = false;
+            });
+        }
+        checkBtn($scope.messageCheckedList)
+        console.log($scope.messageCheckedList)
+    }
+
+    $scope.selectItem = function () {
+        var flag = true;
+        $scope.messageCheckedList = [];
+        angular.forEach($scope.messageShowList, function (item, index) {
+            if (item.checked) {
+                $scope.messageCheckedList.push(item);
+            } else {
+                flag = false;
+            }
+        })
+        $scope.checkedAll = flag;
+        checkBtn($scope.messageCheckedList)
+        console.log($scope.messageCheckedList);
+    }
+
+    function checkBtn(messageCheckList) {
+        if (messageCheckList.length == 0) {
+            $("#batchResendBtn").addClass("disabled");
+            $("#batchExportBtn").addClass("disabled");
+        } else {
+            $("#batchResendBtn").removeClass("disabled");
+            $("#batchExportBtn").removeClass("disabled");
+        }
     }
 }]);

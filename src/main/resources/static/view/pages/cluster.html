@@ -50,7 +50,14 @@
                 <td class="text-center">{{instance.address}}</td>
                 <td class="text-center">{{instance.brokerVersionDesc}}</td>
                 <td class="text-center">{{instance.putTps.split(' ')[0]| number:2}}</td>
-                <td class="text-center">{{instance.getTransferedTps.split(' ')[0]| number:2}}</td>
+                <td class="text-center">
+                    <span ng-if="!instance.getTransferedTps || !instance.getTransferedTps.trim()">
+                        {{instance.getTransferredTps.split(' ')[0] | number:2}}
+                    </span>
+                    <span ng-if="instance.getTransferedTps && instance.getTransferedTps.trim()">
+                        {{instance.getTransferedTps.split(' ')[0] | number:2}}
+                    </span>
+                </td>
                 <td class="text-center">{{instance.msgPutTotalTodayMorning -
                     instance.msgPutTotalYesterdayMorning}}
                 </td>

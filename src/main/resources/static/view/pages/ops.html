@@ -17,15 +17,26 @@
 <div class="container-fluid" id="deployHistoryList">
     <div class="page-content">
         <h2 class="md-title">NameServerAddressList</h2>
-        <div class="pull-left">
-            <md-chips ng-model="namesvrAddrList" md-on-add="eleChange(namesvrAddrList)"
-                      md-on-remove="eleChange(namesvrAddrList)" readonly="inputReadonly" md-removable="ctrl.removable"></md-chips>
+        <div class="pull-left" style="min-width: 400px; max-width: 500px; padding: 10px 10px 10px 0">
+            <select ng-model="selectedNamesrv" chosen
+                    ng-options="x for x in namesvrAddrList"
+                    ng-change="updateNameSvrAddr()"
+                    required></select>
         </div>
         <div class="pull-left">
             <button class="btn btn-raised btn-sm btn-primary" type="button" ng-show="{{writeOperationEnabled}}"
                     ng-click="updateNameSvrAddr()">{{'UPDATE' | translate}}
             </button>
         </div>
+        <form class="form-inline pull-left" style="margin-left: 20px" ng-show="{{writeOperationEnabled}}">
+            <div class="form-group" style="margin: 0">
+                <label for="namesrvAddr">NamesrvAddr:</label>
+                <input id="namesrvAddr" class="form-control" style="width: 300px; margin: 0 10px 0 10px" type="text" ng-model="newNamesrvAddr" required/>
+                <button class="btn btn-raised btn-sm btn-primary" type="button"
+                        ng-click="addNameSvrAddr()"> {{ 'ADD' | translate}}
+                </button>
+            </div>
+        </form>
         <br/>
         <br/>
         <h2 class="md-title">IsUseVIPChannel</h2>

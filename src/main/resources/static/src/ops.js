@@ -22,6 +22,7 @@ app.controller('opsController', ['$scope', '$location', '$http', 'Notification',
     $scope.userRole = $window.sessionStorage.getItem("userrole");
     $scope.writeOperationEnabled =  $scope.userRole == null ? true : ($scope.userRole == 1 ? true : false);
     $scope.inputReadonly = !$scope.writeOperationEnabled;
+    $scope.newNamesrvAddr = "";
     $http({
         method: "GET",
         url: "ops/homePage.query"
@@ -30,6 +31,7 @@ app.controller('opsController', ['$scope', '$location', '$http', 'Notification',
             $scope.namesvrAddrList = resp.data.namesvrAddrList;
             $scope.useVIPChannel = resp.data.useVIPChannel;
             $scope.useTLS = resp.data.useTLS;
+            $scope.selectedNamesrv = resp.data.currentNamesrv;
         } else {
             Notification.error({message: resp.errMsg, delay: 2000});
         }
@@ -43,7 +45,7 @@ app.controller('opsController', ['$scope', '$location', '$http', 'Notification',
         $http({
             method: "POST",
             url: "ops/updateNameSvrAddr.do",
-            params: {nameSvrAddrList: $scope.namesvrAddrList.join(";")}
+            params: {nameSvrAddrList: $scope.selectedNamesrv}
         }).success(function (resp) {
             if (resp.status == 0) {
                 Notification.info({message: "SUCCESS", delay: 2000});
@@ -52,6 +54,26 @@ app.controller('opsController', ['$scope', '$location', '$http', 'Notification',
             }
         });
     };
+
+    $scope.addNameSvrAddr = function () {
+        $http({
+            method: "POST",
+            url: "ops/addNameSvrAddr.do",
+            params: {newNamesrvAddr: $scope.newNamesrvAddr}
+        }).success(function (resp) {
+            if (resp.status == 0) {
+                if ($scope.namesvrAddrList.indexOf($scope.newNamesrvAddr) == -1) {
+                    $scope.namesvrAddrList.push($scope.newNamesrvAddr);
+                }
+                $("#namesrvAddr").val("");
+                $scope.newNamesrvAddr = "";
+                Notification.info({message: "SUCCESS", delay: 2000});
+            } else {
+                Notification.error({message: resp.errMsg, delay: 2000});
+            }
+        });
+    };
+
     $scope.updateIsVIPChannel = function () {
         $http({
             method: "POST",

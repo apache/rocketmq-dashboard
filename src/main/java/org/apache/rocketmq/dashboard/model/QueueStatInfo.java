@@ -16,7 +16,7 @@
  */
 package org.apache.rocketmq.dashboard.model;
 
-import org.apache.rocketmq.common.admin.OffsetWrapper;
+import org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.springframework.beans.BeanUtils;
 

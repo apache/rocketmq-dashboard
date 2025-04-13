@@ -29,7 +29,7 @@ import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.common.consumer.ConsumeFromWhere;
 import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.common.message.MessageExt;
-import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
+import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.dashboard.model.request.ConsumerConfigInfo;
 import org.apache.rocketmq.dashboard.model.request.TopicConfigInfo;
 import org.apache.rocketmq.dashboard.service.ConsumerService;
@@ -78,7 +78,8 @@ public abstract class RocketMQConsoleTestBase {
                     }
                 }
             }
-            throw Throwables.propagate(exception);
+            Throwables.throwIfUnchecked(exception);
+            throw new RuntimeException(exception);
         }
     }
 
@@ -91,7 +92,8 @@ public abstract class RocketMQConsoleTestBase {
             producer.start();
         }
         catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
     }
 
@@ -137,7 +139,8 @@ public abstract class RocketMQConsoleTestBase {
             consumer.start();
         }
         catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
     }
 

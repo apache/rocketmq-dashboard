@@ -73,6 +73,9 @@
                                         <th class="text-center">StoreTime</th>
                                         <th class="text-center">Operation</th>
                                     </tr>
+                                    <tr style="display: none" id="noMsgTip">
+                                        <td colspan="5" style="text-align: center">{{'NO_MATCH_RESULT' | translate}}</td>
+                                    </tr>
                                     <tr ng-repeat="item in messageShowList">
                                         <td class="text-center">{{item.msgId}}</td>
                                         <td class="text-center">{{item.properties.TAGS}}</td>
@@ -227,7 +230,13 @@
                 </div>
             </form>
         </div>
-        <p>messageTrackList:</p>
+        <div style="font-weight:700; color:#000">messageTrackList:</div>
+        <form class="form-inline">
+            <div class="form-group">
+                <label>consumerGroup:</label>
+                <input type="text" class="form-control" ng-model="filterConsumerGroup">
+            </div>
+        </form>
         <table class="table-bordered table text-middle">
             <tr>
                 <th class="text-center">consumerGroup</th>
@@ -235,7 +244,7 @@
                 <!--<th class="text-center">exceptionDesc</th>-->
                 <th class="text-center">Operation</th>
             </tr>
-            <tr ng-repeat="item in ngDialogData.messageTrackList">
+            <tr ng-repeat="item in messageTrackShowList">
                 <td class="text-center">{{item.consumerGroup}}</td>
                 <td class="text-center">{{item.trackType}}</td>
                 <td class="text-center">

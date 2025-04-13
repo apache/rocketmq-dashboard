@@ -9,3 +9,5 @@
 /frontend/src/.umi-production
 /frontend/src/node_modules
 /frontend/dist
+=======
+.vscode

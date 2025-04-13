@@ -20,7 +20,7 @@ import com.google.common.collect.Sets;
 import java.util.Collection;
 import java.util.HashSet;
 import org.apache.rocketmq.common.MQVersion;
-import org.apache.rocketmq.common.protocol.body.Connection;
+import org.apache.rocketmq.remoting.protocol.body.Connection;
 
 public class ConnectionInfo extends Connection {
     private String versionDesc;

@@ -23,13 +23,18 @@
 
 rolePerms:
   ordinary:
-    - /rocketmq/nsaddr
-    - /ops/*
-    - /dashboard/**
+    - /rocketmq/*.query
+    - /ops/*.query
+    - /dashboard/*.query
     - /topic/*.query
     - /topic/sendTopicMessage.do
     - /producer/*.query
-    - /message/*
-    - /messageTrace/*
-    - /monitor/*
-
+    - /message/*.query
+    - /messageTrace/*.query
+    - /monitor/*.query
+    - /consumer/*.query
+    - /cluster/*.query
+    - /dlqMessage/*.query
+    - /dlqMessage/exportDlqMessage.do
+    - /dlqMessage/batchResendDlqMessage.do
+    - /acl/*.query

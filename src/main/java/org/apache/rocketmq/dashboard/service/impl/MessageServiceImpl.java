@@ -31,14 +31,15 @@ import org.apache.rocketmq.acl.common.SessionCredentials;
 import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
 import org.apache.rocketmq.client.consumer.PullResult;
 import org.apache.rocketmq.client.consumer.PullStatus;
+import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.Pair;
 import org.apache.rocketmq.common.message.MessageClientIDSetter;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageQueue;
-import org.apache.rocketmq.common.protocol.body.Connection;
-import org.apache.rocketmq.common.protocol.body.ConsumeMessageDirectlyResult;
-import org.apache.rocketmq.common.protocol.body.ConsumerConnection;
+import org.apache.rocketmq.remoting.protocol.body.Connection;
+import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
+import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.exception.ServiceException;
 import org.apache.rocketmq.dashboard.model.QueueOffsetInfo;
@@ -111,7 +112,11 @@ public class MessageServiceImpl implements MessageService {
                 }
             });
         } catch (Exception err) {
-            throw Throwables.propagate(err);
+            if (err instanceof MQClientException) {
+                throw new ServiceException(-1, ((MQClientException) err).getErrorMessage());
+            }
+            Throwables.throwIfUnchecked(err);
+            throw new RuntimeException(err);
         }
     }
 
@@ -181,7 +186,8 @@ public class MessageServiceImpl implements MessageService {
             });
             return messageViewList;
         } catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         } finally {
             consumer.shutdown();
         }
@@ -205,7 +211,8 @@ public class MessageServiceImpl implements MessageService {
             try {
                 return mqAdminExt.consumeMessageDirectly(consumerGroup, clientId, topic, msgId);
             } catch (Exception e) {
-                throw Throwables.propagate(e);
+                Throwables.throwIfUnchecked(e);
+                throw new RuntimeException(e);
             }
         }
 
@@ -219,7 +226,8 @@ public class MessageServiceImpl implements MessageService {
                 return mqAdminExt.consumeMessageDirectly(consumerGroup, connection.getClientId(), topic, msgId);
             }
         } catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
         throw new IllegalStateException("NO CONSUMER");
 
@@ -268,7 +276,7 @@ public class MessageServiceImpl implements MessageService {
             int idx = 0;
             for (MessageQueue messageQueue : messageQueues) {
                 Long minOffset = consumer.searchOffset(messageQueue, query.getBegin());
-                Long maxOffset = consumer.searchOffset(messageQueue, query.getEnd()) + 1;
+                Long maxOffset = consumer.searchOffset(messageQueue, query.getEnd());
                 queueOffsetInfos.add(new QueueOffsetInfo(idx++, minOffset, maxOffset, minOffset, minOffset, messageQueue));
             }
 
@@ -325,7 +333,7 @@ public class MessageServiceImpl implements MessageService {
                         List<MessageExt> msgFoundList = pullResult.getMsgFoundList();
                         for (int i = msgFoundList.size() - 1; i >= 0; i--) {
                             MessageExt messageExt = msgFoundList.get(i);
-                            if (messageExt.getStoreTimestamp() < query.getBegin()) {
+                            if (messageExt.getStoreTimestamp() > query.getEnd()) {
                                 end--;
                             } else {
                                 hasIllegalOffset = false;
@@ -384,7 +392,8 @@ public class MessageServiceImpl implements MessageService {
             PageImpl<MessageView> page = new PageImpl<>(messageViews, query.page(), total);
             return new MessagePageTask(page, queueOffsetInfos);
         } catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         } finally {
             consumer.shutdown();
         }
@@ -451,7 +460,8 @@ public class MessageServiceImpl implements MessageService {
             }
             return new PageImpl<>(messageViews, query.page(), total);
         } catch (Exception e) {
-            throw Throwables.propagate(e);
+            Throwables.throwIfUnchecked(e);
+            throw new RuntimeException(e);
         } finally {
             consumer.shutdown();
         }

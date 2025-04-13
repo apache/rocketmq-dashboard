@@ -17,10 +17,15 @@
 
 package org.apache.rocketmq.dashboard.service;
 
+import java.util.List;
+import org.apache.rocketmq.dashboard.model.DlqMessageResendResult;
+import org.apache.rocketmq.dashboard.model.DlqMessageRequest;
 import org.apache.rocketmq.dashboard.model.MessagePage;
 import org.apache.rocketmq.dashboard.model.request.MessageQuery;
 
 public interface DlqMessageService {
 
     MessagePage queryDlqMessageByPage(MessageQuery query);
+
+    List<DlqMessageResendResult> batchResendDlqMessage(List<DlqMessageRequest> dlqMessages);
 }

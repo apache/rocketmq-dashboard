@@ -45,24 +45,31 @@ module.controller('topicController', ['$scope', 'ngDialog', '$http', 'Notificati
         }
     };
     $scope.filterNormal = true
+    $scope.filterDelay = false
+    $scope.filterFifo = false
+    $scope.filterTransaction = false
+    $scope.filterUnspecified = false
     $scope.filterRetry = false
     $scope.filterDLQ = false
     $scope.filterSystem = false
     $scope.allTopicList = [];
+    $scope.allTopicNameList = [];
+    $scope.allMessageTypeList = [];
     $scope.topicShowList = [];
     $scope.userRole = $window.sessionStorage.getItem("userrole");
-    $scope.writeOperationEnabled =  $scope.userRole == null ? true : ($scope.userRole == 1 ? true : false);
+    $scope.writeOperationEnabled = $scope.userRole == null ? true : ($scope.userRole == 1 ? true : false);
 
     $scope.refreshTopicList = function () {
         $http({
             method: "GET",
-            url: "topic/list.query"
+            url: "topic/list.queryTopicType"
         }).success(function (resp) {
             if (resp.status == 0) {
-                $scope.allTopicList = resp.data.topicList.sort();
-                console.log($scope.allTopicList);
+                $scope.allTopicNameList = resp.data.topicNameList;
+                $scope.allMessageTypeList = resp.data.messageTypeList;
+                console.log($scope.allTopicNameList);
                 console.log(JSON.stringify(resp));
-                $scope.showTopicList(1, $scope.allTopicList.length);
+                $scope.showTopicList(1, $scope.allTopicNameList.length);
 
             } else {
                 Notification.error({message: resp.errMsg, delay: 5000});
@@ -79,6 +86,18 @@ module.controller('topicController', ['$scope', 'ngDialog', '$http', 'Notificati
     $scope.$watch('filterNormal', function () {
         $scope.filterList(1);
     });
+    $scope.$watch('filterFifo', function () {
+        $scope.filterList(1);
+    });
+    $scope.$watch('filterTransaction', function () {
+        $scope.filterList(1);
+    });
+    $scope.$watch('filterUnspecified', function () {
+        $scope.filterList(1);
+    });
+    $scope.$watch('filterDelay', function () {
+        $scope.filterList(1);
+    });
     $scope.$watch('filterRetry', function () {
         $scope.filterList(1);
     });
@@ -92,13 +111,13 @@ module.controller('topicController', ['$scope', 'ngDialog', '$http', 'Notificati
         var lowExceptStr = $scope.filterStr.toLowerCase();
         var canShowList = [];
 
-        $scope.allTopicList.forEach(function (element) {
-            if ($scope.filterByType(element)) {
-                if (element.toLowerCase().indexOf(lowExceptStr) != -1) {
-                    canShowList.push(element);
+        for (let i = 0; i < $scope.allTopicNameList.length; ++i) {
+            if ($scope.filterByType($scope.allTopicNameList[i], $scope.allMessageTypeList[i])) {
+                if ($scope.allTopicNameList[i].toLowerCase().indexOf(lowExceptStr) != -1) {
+                    canShowList.push($scope.allTopicNameList[i]);
                 }
             }
-        });
+        }
         $scope.paginationConf.totalItems = canShowList.length;
         var perPage = $scope.paginationConf.itemsPerPage;
         var from = (currentPage - 1) * perPage;
@@ -106,7 +125,7 @@ module.controller('topicController', ['$scope', 'ngDialog', '$http', 'Notificati
         $scope.topicShowList = canShowList.slice(from, to);
     };
 
-    $scope.filterByType = function (str) {
+    $scope.filterByType = function (str, type) {
         if ($scope.filterRetry) {
             if (str.startsWith("%R")) {
                 return true
@@ -122,8 +141,31 @@ module.controller('topicController', ['$scope', 'ngDialog', '$http', 'Notificati
                 return true
             }
         }
+        if ($scope.isRmqVersionV5() && $scope.filterUnspecified) {
+            if (type.includes("UNSPECIFIED")) {
+                return true
+            }
+        }
         if ($scope.filterNormal) {
-            if (str.startsWith("%") == false) {
+            if (type.includes("NORMAL")) {
+                return true
+            }
+            if (!$scope.isRmqVersionV5() && type.includes("UNSPECIFIED")) {
+                return true
+            }
+        }
+        if ($scope.isRmqVersionV5() && $scope.filterDelay) {
+            if (type.includes("DELAY")) {
+                return true
+            }
+        }
+        if ($scope.isRmqVersionV5() && $scope.filterFifo) {
+            if (type.includes("FIFO")) {
+                return true
+            }
+        }
+        if ($scope.isRmqVersionV5() && $scope.filterTransaction) {
+            if (type.includes("TRANSACTION")) {
                 return true
             }
         }
@@ -138,10 +180,10 @@ module.controller('topicController', ['$scope', 'ngDialog', '$http', 'Notificati
         var perPage = $scope.paginationConf.itemsPerPage;
         var from = (currentPage - 1) * perPage;
         var to = (from + perPage) > totalItem ? totalItem : from + perPage;
-        console.log($scope.allTopicList);
+        console.log($scope.allTopicNameList);
         console.log(from)
         console.log(to)
-        $scope.topicShowList = $scope.allTopicList.slice(from, to);
+        $scope.topicShowList = $scope.allTopicNameList.slice(from, to);
         $scope.paginationConf.totalItems = totalItem;
         console.log($scope.topicShowList)
         console.log($scope.paginationConf.totalItems)
@@ -328,8 +370,8 @@ module.controller('topicController', ['$scope', 'ngDialog', '$http', 'Notificati
         var bIsUpdate = true;
         if (request == null) {
             request = [{
-                writeQueueNums: 16,
-                readQueueNums: 16,
+                writeQueueNums: 8,
+                readQueueNums: 8,
                 perm: 6,
                 order: false,
                 topicName: "",
@@ -355,6 +397,7 @@ module.controller('topicController', ['$scope', 'ngDialog', '$http', 'Notificati
                         topicRequestList: request,
                         allClusterNameList: Object.keys(resp.data.clusterInfo.clusterAddrTable),
                         allBrokerNameList: Object.keys(resp.data.brokerServer),
+                        allMessageTypeList: resp.data.messageTypes,
                         bIsUpdate: bIsUpdate,
                         writeOperationEnabled: $scope.writeOperationEnabled
                     }

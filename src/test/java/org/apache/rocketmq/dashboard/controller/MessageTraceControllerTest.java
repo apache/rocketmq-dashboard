@@ -62,6 +62,7 @@ public class MessageTraceControllerTest extends BaseControllerTest {
         messageList.add(messageExt);
         QueryResult queryResult = new QueryResult(System.currentTimeMillis(), messageList);
         when(mqAdminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
+            .thenThrow(new RuntimeException())
             .thenReturn(queryResult);
     }
 
@@ -100,6 +101,11 @@ public class MessageTraceControllerTest extends BaseControllerTest {
         final String url = "/messageTrace/viewMessageTraceDetail.query";
         requestBuilder = MockMvcRequestBuilders.get(url);
         requestBuilder.param("msgId", "0A9A003F00002A9F0000000000000319");
+        // query message trace exception
+        perform = mockMvc.perform(requestBuilder);
+        performErrorExpect(perform);
+
+        // query message trace success
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
             .andExpect(jsonPath("$.data", hasSize(4)))
@@ -114,6 +120,11 @@ public class MessageTraceControllerTest extends BaseControllerTest {
         final String url = "/messageTrace/viewMessageTraceGraph.query";
         requestBuilder = MockMvcRequestBuilders.get(url);
         requestBuilder.param("msgId", "0A9A003F00002A9F0000000000000319");
+        // query message trace exception
+        perform = mockMvc.perform(requestBuilder);
+        performErrorExpect(perform);
+
+        // query message trace success
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
             .andExpect(jsonPath("$.data").isMap())

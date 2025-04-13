@@ -50,17 +50,19 @@ public class AuthWebMVCConfigurerAdapter extends WebMvcConfigurerAdapter {
     public void addInterceptors(InterceptorRegistry registry) {
         if (configure.isLoginRequired()) {
             registry.addInterceptor(authInterceptor).addPathPatterns(
-                    "/cluster/**",
-                    "/consumer/**",
-                    "/dashboard/**",
-                    "/message/**",
-                    "/messageTrace/**",
-                    "/monitor/**",
-                    "/rocketmq/**",
-                    "/ops/**",
-                    "/producer/**",
-                    "/test/**",
-                    "/topic/**");
+                "/cluster/**",
+                "/consumer/**",
+                "/dashboard/**",
+                "/dlqMessage/**",
+                "/message/**",
+                "/messageTrace/**",
+                "/monitor/**",
+                "/rocketmq/**",
+                "/ops/**",
+                "/producer/**",
+                "/test/**",
+                "/topic/**",
+                "/acl/**");
         }
     }
 
@@ -75,9 +77,9 @@ public class AuthWebMVCConfigurerAdapter extends WebMvcConfigurerAdapter {
 
             @Override
             public Object resolveArgument(MethodParameter methodParameter, ModelAndViewContainer modelAndViewContainer,
-                                          NativeWebRequest nativeWebRequest, WebDataBinderFactory webDataBinderFactory) throws Exception {
+                NativeWebRequest nativeWebRequest, WebDataBinderFactory webDataBinderFactory) throws Exception {
                 UserInfo userInfo = (UserInfo) WebUtil.getValueFromSession((HttpServletRequest) nativeWebRequest.getNativeRequest(),
-                        UserInfo.USER_INFO);
+                    UserInfo.USER_INFO);
                 if (userInfo != null) {
                     return userInfo;
                 }
