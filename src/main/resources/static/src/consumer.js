@@ -70,6 +70,34 @@ module.controller('consumerController', ['$scope', 'ngDialog', '$http', 'Notific
         }
         $scope.filterList($scope.paginationConf.currentPage)
     };
+    $scope.refreshConsumerGroup = function (groupName) {
+        //Show loader
+        $('#loaderConsumer').removeClass("hide-myloader");
+
+        $http({
+            method: "GET",
+            url: "/consumer/group.refresh",
+            params: {
+                address: $scope.isRmqVersionV5() ? localStorage.getItem('proxyAddr') : null,
+                consumerGroup: groupName
+            }
+        }).success(function (resp) {
+            if (resp.status == 0) {
+                for (var i = 0; i < $scope.allConsumerGrouopList.length; i++) {
+                    if ($scope.allConsumerGrouopList[i].group === groupName) {
+                        $scope.allConsumerGrouopList[i] = resp.data;
+                        break;
+                    }
+                }
+                $scope.showConsumerGroupList($scope.paginationConf.currentPage, $scope.allConsumerGrouopList.length);
+                //Hide loader
+                $('#loaderConsumer').addClass("hide-myloader");
+            } else {
+                Notification.error({message: resp.errMsg, delay: 2000});
+            }
+        });
+    }
+
     $scope.refreshConsumerData = function () {
         //Show loader
         $('#loaderConsumer').removeClass("hide-myloader");

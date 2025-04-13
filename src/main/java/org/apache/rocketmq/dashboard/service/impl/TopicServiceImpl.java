@@ -43,28 +43,35 @@ import org.apache.rocketmq.dashboard.model.request.TopicConfigInfo;
 import org.apache.rocketmq.dashboard.model.request.TopicTypeList;
 import org.apache.rocketmq.dashboard.model.request.TopicTypeMeta;
 import org.apache.rocketmq.dashboard.service.AbstractCommonService;
+import org.apache.rocketmq.dashboard.service.ClusterInfoService;
 import org.apache.rocketmq.dashboard.service.TopicService;
+import org.apache.rocketmq.dashboard.service.client.MQAdminExtImpl;
+import org.apache.rocketmq.dashboard.support.GlobalExceptionHandler;
 import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.GroupList;
+import org.apache.rocketmq.remoting.protocol.body.TopicConfigSerializeWrapper;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.tools.command.CommandUtil;
 import org.joor.Reflect;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.util.CollectionUtils;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -73,8 +80,18 @@ import static org.apache.rocketmq.common.TopicAttributes.TOPIC_MESSAGE_TYPE_ATTR
 @Service
 public class TopicServiceImpl extends AbstractCommonService implements TopicService {
 
+    private Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    @Autowired
+    private ClusterInfoService clusterInfoService;
+
+    private final ConcurrentMap<String, TopicRouteData> routeCache = new ConcurrentHashMap<>();
+    private final Object cacheLock = new Object();
+
     @Autowired
     private RMQConfigure configure;
+
+    private final ConcurrentMap<String, TopicConfig> topicConfigCache = new ConcurrentHashMap<>();
 
     @Override
     public TopicList fetchAllTopicList(boolean skipSysProcess, boolean skipRetryAndDlq) {
@@ -105,37 +122,63 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
 
     @Override
     public TopicTypeList examineAllTopicType() {
-        ArrayList<TopicTypeMeta> topicTypes = new ArrayList<>();
-        ArrayList<String> names = new ArrayList<>();
-        ArrayList<String> messageTypes = new ArrayList<>();
-        TopicList topicList = fetchAllTopicList(false, false);
-        checkTopicType(topicList, topicTypes);
-        topicTypes.sort((t1, t2) -> t1.getTopicName().compareTo(t2.getTopicName()));
-        for (TopicTypeMeta topicTypeMeta : topicTypes) {
-            names.add(topicTypeMeta.getTopicName());
-            messageTypes.add(topicTypeMeta.getMessageType());
-        }
+        List<String> messageTypes = new ArrayList<>();
+        List<String> names = new ArrayList<>();
+        ClusterInfo clusterInfo = clusterInfoService.get();
+        TopicList sysTopics = getSystemTopicList();
+        clusterInfo.getBrokerAddrTable().values().forEach(brokerAddr -> {
+            try {
+                TopicConfigSerializeWrapper topicConfigSerializeWrapper = mqAdminExt.getAllTopicConfig(brokerAddr.getBrokerAddrs().get(0L), 10000L);
+                for (TopicConfig topicConfig : topicConfigSerializeWrapper.getTopicConfigTable().values()) {
+                    TopicTypeMeta topicType = classifyTopicType(topicConfig.getTopicName(), topicConfigSerializeWrapper.getTopicConfigTable().get(topicConfig.getTopicName()).getAttributes(),sysTopics.getTopicList());
+                    if (names.contains(topicType.getTopicName())) {
+                        continue;
+                    }
+                    names.add(topicType.getTopicName());
+                    messageTypes.add(topicType.getMessageType());
+                }
+            } catch (Exception e) {
+                logger.warn("Failed to classify topic type for broker: " + brokerAddr, e);
+            }
+        });
+        sysTopics.getTopicList().forEach(topicName -> {
+            String sysTopicName = String.format("%s%s", "%SYS%", topicName);
+            if (!names.contains(sysTopicName)) {
+                names.add(sysTopicName);
+                messageTypes.add("SYSTEM");
+            }
+        });
+
         return new TopicTypeList(names, messageTypes);
     }
 
-    private void checkTopicType(TopicList topicList, ArrayList<TopicTypeMeta> topicTypes) {
-        for (String topicName : topicList.getTopicList()) {
-            TopicTypeMeta topicType = new TopicTypeMeta();
-            topicType.setTopicName(topicName);
-            if (topicName.startsWith("%R")) {
-                topicType.setMessageType("RETRY");
-            } else if (topicName.startsWith("%D")) {
-                topicType.setMessageType("DELAY");
-            } else if (topicName.startsWith("%S")) {
-                topicType.setMessageType("SYSTEM");
-            } else {
-                List<TopicConfigInfo> topicConfigInfos = examineTopicConfig(topicName);
-                if (!CollectionUtils.isEmpty(topicConfigInfos)) {
-                    topicType.setMessageType(topicConfigInfos.get(0).getMessageType());
-                }
-            }
-            topicTypes.add(topicType);
+    private TopicTypeMeta classifyTopicType(String topicName, Map<String,String> attributes, Set<String> sysTopics) {
+        TopicTypeMeta topicType = new TopicTypeMeta();
+        topicType.setTopicName(topicName);
+
+        if (topicName.startsWith("%R")) {
+            topicType.setMessageType("RETRY");
+            return topicType;
+        } else if (topicName.startsWith("%D")) {
+            topicType.setMessageType("DLQ");
+            return topicType;
+        } else if (sysTopics.contains(topicName) || topicName.startsWith("rmq_sys") || topicName.equals("DefaultHeartBeatSyncerTopic")) {
+            topicType.setMessageType("SYSTEM");
+            topicType.setTopicName(String.format("%s%s", "%SYS%", topicName));
+            return topicType;
         }
+        if (attributes == null || attributes.isEmpty()) {
+            topicType.setMessageType("UNSPECIFIED");
+            return topicType;
+        }
+
+        String messageType = attributes.get(TOPIC_MESSAGE_TYPE_ATTRIBUTE.getName());
+        if (StringUtils.isBlank(messageType)) {
+            messageType = TopicMessageType.UNSPECIFIED.name();
+        }
+        topicType.setMessageType(messageType);
+
+        return topicType;
     }
 
     @Override
@@ -150,11 +193,24 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
 
     @Override
     public TopicRouteData route(String topic) {
-        try {
-            return mqAdminExt.examineTopicRouteInfo(topic);
-        } catch (Exception ex) {
-            Throwables.throwIfUnchecked(ex);
-            throw new RuntimeException(ex);
+        TopicRouteData cachedData = routeCache.get(topic);
+        if (cachedData != null) {
+            return cachedData;
+        }
+
+        synchronized (cacheLock) {
+            cachedData = routeCache.get(topic);
+            if (cachedData != null) {
+                return cachedData;
+            }
+            try {
+                TopicRouteData freshData = mqAdminExt.examineTopicRouteInfo(topic);
+                routeCache.put(topic, freshData);
+                return freshData;
+            } catch (Exception ex) {
+                Throwables.throwIfUnchecked(ex);
+                throw new RuntimeException(ex);
+            }
         }
     }
 
@@ -170,6 +226,7 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
 
     @Override
     public void createOrUpdate(TopicConfigInfo topicCreateOrUpdateRequest) {
+        MQAdminExtImpl.clearTopicConfigCache();
         TopicConfig topicConfig = new TopicConfig();
         BeanUtils.copyProperties(topicCreateOrUpdateRequest, topicConfig);
         String messageType = topicCreateOrUpdateRequest.getMessageType();
@@ -189,12 +246,15 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
         }
     }
 
-    @Override
     public TopicConfig examineTopicConfig(String topic, String brokerName) {
-        ClusterInfo clusterInfo = null;
         try {
-            clusterInfo = mqAdminExt.examineBrokerClusterInfo();
-            return mqAdminExt.examineTopicConfig(clusterInfo.getBrokerAddrTable().get(brokerName).selectBrokerAddr(), topic);
+            ClusterInfo clusterInfo = clusterInfoService.get();
+
+            BrokerData brokerData = clusterInfo.getBrokerAddrTable().get(brokerName);
+            if (brokerData == null) {
+                throw new RuntimeException("Broker not found: " + brokerName);
+            }
+            return mqAdminExt.examineTopicConfig(brokerData.selectBrokerAddr(), topic);
         } catch (Exception e) {
             Throwables.throwIfUnchecked(e);
             throw new RuntimeException(e);
@@ -369,6 +429,14 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
             }
         }
 
+    }
+
+    @Override
+    public boolean refreshTopicList() {
+        routeCache.clear();
+        clusterInfoService.refresh();
+        MQAdminExtImpl.clearTopicConfigCache();
+        return true;
     }
 
     private void waitSendTraceFinish(DefaultMQProducer producer, boolean traceEnabled) {
