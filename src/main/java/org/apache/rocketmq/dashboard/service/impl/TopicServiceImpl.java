@@ -65,7 +65,6 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -123,8 +122,8 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
 
     @Override
     public TopicTypeList examineAllTopicType() {
-        List<String> messageTypes = Collections.synchronizedList(new ArrayList<>());
-        List<String> names = Collections.synchronizedList(new ArrayList<>());
+        List<String> messageTypes = new ArrayList<>();
+        List<String> names = new ArrayList<>();
         ClusterInfo clusterInfo = clusterInfoService.get();
         TopicList sysTopics = getSystemTopicList();
         clusterInfo.getBrokerAddrTable().values().forEach(brokerAddr -> {
@@ -132,6 +131,9 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
                 TopicConfigSerializeWrapper topicConfigSerializeWrapper = mqAdminExt.getAllTopicConfig(brokerAddr.getBrokerAddrs().get(0L), 10000L);
                 for (TopicConfig topicConfig : topicConfigSerializeWrapper.getTopicConfigTable().values()) {
                     TopicTypeMeta topicType = classifyTopicType(topicConfig.getTopicName(), topicConfigSerializeWrapper.getTopicConfigTable().get(topicConfig.getTopicName()).getAttributes(),sysTopics.getTopicList());
+                    if (names.contains(topicType.getTopicName())) {
+                        continue;
+                    }
                     names.add(topicType.getTopicName());
                     messageTypes.add(topicType.getMessageType());
                 }
@@ -139,6 +141,14 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
                 logger.warn("Failed to classify topic type for broker: " + brokerAddr, e);
             }
         });
+        sysTopics.getTopicList().forEach(topicName -> {
+            String sysTopicName = String.format("%s%s", "%SYS%", topicName);
+            if (!names.contains(sysTopicName)) {
+                names.add(sysTopicName);
+                messageTypes.add("SYSTEM");
+            }
+        });
+
         return new TopicTypeList(names, messageTypes);
     }
 
@@ -152,7 +162,7 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
         } else if (topicName.startsWith("%D")) {
             topicType.setMessageType("DLQ");
             return topicType;
-        } else if (sysTopics.contains(topicName)) {
+        } else if (sysTopics.contains(topicName) || topicName.startsWith("rmq_sys") || topicName.equals("DefaultHeartBeatSyncerTopic")) {
             topicType.setMessageType("SYSTEM");
             topicType.setTopicName(String.format("%s%s", "%SYS%", topicName));
             return topicType;
