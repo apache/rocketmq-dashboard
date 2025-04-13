@@ -24,11 +24,11 @@ body:
     attributes:
       label: Search before creation
       description: >
-        Please make sure to search in the [issues](https://github.com/apache/rocketmq/issues)
+        Please make sure to search in the [issues](https://github.com/apache/rocketmq/issues) and [GitHub Issues](https://github.com/apache/rocketmq-dashboard/issues)
         first to see whether the same issue was reported already.
       options:
         - label: >
-            I had searched in the [issues](https://github.com/apache/rocketmq/issues) and found
+            I had searched in the [issues](https://github.com/apache/rocketmq/issues) and [GitHub Issues](https://github.com/apache/rocketmq-dashboard/issues) and found
             no similar issues.
           required: true
 
