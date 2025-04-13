@@ -33,9 +33,6 @@
                 <button class="btn btn-raised btn-sm btn-primary" type="button" ng-show="{{writeOperationEnabled}}"
                         ng-click="openAddDialog()">{{'ADD' | translate}}/ {{'UPDATE' | translate}}
                 </button>
-                <button class="btn btn-raised btn-sm btn-primary" type="button" ng-click="refreshConsumerData()">
-                    {{'REFRESH' | translate}}
-                </button>
                 <md-switch class="md-primary" md-no-ink aria-label="Switch No Ink" ng-model="intervalProcessSwitch">
                     {{'AUTO_REFRESH' | translate}}
                 </md-switch>
@@ -53,6 +50,7 @@
                         <th class="text-center">{{ 'MODE' | translate}}</th>
                         <th class="text-center"><a ng-click="sortByKey('consumeTps')">TPS</a></th>
                         <th class="text-center"><a ng-click="sortByKey('diffTotal')">{{ 'DELAY' | translate}}</a></th>
+                        <th class="text-center">{{ 'UPDATE_TIME' | translate}}</th>
                         <th class="text-center">{{ 'OPERATION' | translate}}</th>
                     </tr>
                     <tr ng-repeat="consumerGroup in consumerGroupShowList"
@@ -65,6 +63,7 @@
                         <td class="text-center">{{consumerGroup.messageModel}}</td>
                         <td class="text-center">{{consumerGroup.consumeTps}}</td>
                         <td class="text-center">{{consumerGroup.diffTotal}}</td>
+                        <td class="text-center">{{consumerGroup.updateTime}}</td>
                         <td class="text-left">
                             <button name="client" ng-click="client(consumerGroup.group, consumerGroup.address)"
                                     class="btn btn-raised btn-sm btn-primary"
@@ -84,6 +83,9 @@
                                     class="btn btn-raised btn-sm btn-danger"
                                     ng-show="{{!sysFlag && writeOperationEnabled}}"
                                     type="button">{{'DELETE' | translate}}
+                            </button>
+                            <button class="btn btn-raised btn-sm btn-primary" type="button" ng-click="refreshConsumerGroup(consumerGroup.group)">
+                                {{'REFRESH' | translate}}
                             </button>
 
                         </td>

@@ -17,11 +17,15 @@
 package org.apache.rocketmq.dashboard.service.client;
 
 import com.google.common.base.Throwables;
+
 import java.io.UnsupportedEncodingException;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+
 import org.apache.rocketmq.client.QueryResult;
 import org.apache.rocketmq.client.exception.MQBrokerException;
 import org.apache.rocketmq.client.exception.MQClientException;
@@ -87,8 +91,14 @@ import static org.apache.rocketmq.remoting.protocol.RemotingSerializable.decode;
 public class MQAdminExtImpl implements MQAdminExt {
     private Logger logger = LoggerFactory.getLogger(MQAdminExtImpl.class);
 
-    public MQAdminExtImpl() {
+    private static final ConcurrentMap<String, TopicConfigSerializeWrapper> TOPIC_CONFIG_CACHE = new ConcurrentHashMap<>();
+
+    public MQAdminExtImpl() {}
+
+    public static void clearTopicConfigCache() {
+        TOPIC_CONFIG_CACHE.clear();
     }
+
 
     @Override
     public void updateBrokerConfig(String brokerAddr, Properties properties)
@@ -145,7 +155,7 @@ public class MQAdminExtImpl implements MQAdminExt {
         RemotingCommand request = RemotingCommand.createRequestCommand(RequestCode.GET_ALL_SUBSCRIPTIONGROUP_CONFIG, null);
         RemotingCommand response = null;
         try {
-            response = remotingClient.invokeSync(addr, request, 3000);
+            response = remotingClient.invokeSync(addr, request, 8000);
         }
         catch (Exception err) {
             Throwables.throwIfUnchecked(err);
@@ -164,19 +174,27 @@ public class MQAdminExtImpl implements MQAdminExt {
 
     @Override
     public TopicConfig examineTopicConfig(String addr, String topic) throws MQBrokerException {
+        TopicConfigSerializeWrapper cachedWrapper = TOPIC_CONFIG_CACHE.get(addr);
+
+        if (cachedWrapper != null && cachedWrapper.getTopicConfigTable().containsKey(topic)) {
+            return cachedWrapper.getTopicConfigTable().get(topic);
+        }
+
         RemotingClient remotingClient = MQAdminInstance.threadLocalRemotingClient();
         RemotingCommand request = RemotingCommand.createRequestCommand(RequestCode.GET_ALL_TOPIC_CONFIG, null);
         RemotingCommand response = null;
         try {
             response = remotingClient.invokeSync(addr, request, 3000);
-        }
-        catch (Exception err) {
+        } catch (Exception err) {
             Throwables.throwIfUnchecked(err);
             throw new RuntimeException(err);
         }
         switch (response.getCode()) {
             case ResponseCode.SUCCESS: {
-                TopicConfigSerializeWrapper topicConfigSerializeWrapper = decode(response.getBody(), TopicConfigSerializeWrapper.class);
+                TopicConfigSerializeWrapper topicConfigSerializeWrapper =
+                        decode(response.getBody(), TopicConfigSerializeWrapper.class);
+
+                TOPIC_CONFIG_CACHE.put(addr, topicConfigSerializeWrapper);
                 return topicConfigSerializeWrapper.getTopicConfigTable().get(topic);
             }
             default:
@@ -468,14 +486,14 @@ public class MQAdminExtImpl implements MQAdminExt {
         Set<String> clusterList = MQAdminInstance.threadLocalMQAdminExt().getTopicClusterList(topic);
         if (clusterList == null || clusterList.isEmpty()) {
             QueryResult qr = Reflect.on(mqAdminImpl).call("queryMessage", "", topic, msgId, 32,
-                    MessageClientIDSetter.getNearlyTimeFromID(msgId).getTime(), Long.MAX_VALUE, true).get();
+                    0L, Long.MAX_VALUE, true).get();
             if (qr != null && qr.getMessageList() != null && !qr.getMessageList().isEmpty()) {
                 return qr.getMessageList().get(0);
             }
         } else {
             for (String name : clusterList) {
                 QueryResult qr = Reflect.on(mqAdminImpl).call("queryMessage", name, topic, msgId, 32,
-                        MessageClientIDSetter.getNearlyTimeFromID(msgId).getTime(), Long.MAX_VALUE, true).get();
+                        0L, Long.MAX_VALUE, true).get();
                 if (qr != null && qr.getMessageList() != null && !qr.getMessageList().isEmpty()) {
                     return qr.getMessageList().get(0);
                 }
