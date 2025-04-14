@@ -33,6 +33,9 @@
                 <button class="btn btn-raised btn-sm btn-primary" type="button" ng-show="{{writeOperationEnabled}}"
                         ng-click="openAddDialog()">{{'ADD' | translate}}/ {{'UPDATE' | translate}}
                 </button>
+                <button class="btn btn-raised btn-sm btn-primary" type="button" ng-click="refreshConsumerData()">
+                    {{'REFRESH' | translate}}
+                </button>
                 <md-switch class="md-primary" md-no-ink aria-label="Switch No Ink" ng-model="intervalProcessSwitch">
                     {{'AUTO_REFRESH' | translate}}
                 </md-switch>
