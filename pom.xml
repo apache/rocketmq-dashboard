@@ -261,6 +261,12 @@
             <version>${easyexcel.version}</version>
         </dependency>
         <dependency>
+    <groupId>io.grpc</groupId>
+    <artifactId>grpc-core</artifactId>
+    <version>1.50.0</version>
+</dependency>
+
+        <dependency>
             <groupId>org.ow2.asm</groupId>
             <artifactId>asm</artifactId>
             <version>${asm.version}</version>
