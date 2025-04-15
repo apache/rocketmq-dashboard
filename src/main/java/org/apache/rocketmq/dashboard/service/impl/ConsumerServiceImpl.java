@@ -529,11 +529,18 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
                 if (groupConsumeInfo.getGroup().equals(consumerGroup)) {
                     GroupConsumeInfo updatedInfo = queryGroup(consumerGroup, "");
                     updatedInfo.setUpdateTime(new Date());
+                    updatedInfo.setGroup(consumerGroup);
                     cacheConsumeInfoList.set(i, updatedInfo);
                     return updatedInfo;
                 }
             }
         }
         throw new RuntimeException("No consumer group information available");
+    }
+
+    @Override
+    public List<GroupConsumeInfo> refreshAllGroup(String address) {
+        cacheConsumeInfoList.clear();
+        return queryGroupList(false, address);
     }
 }

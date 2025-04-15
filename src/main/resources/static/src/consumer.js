@@ -98,7 +98,7 @@ module.controller('consumerController', ['$scope', 'ngDialog', '$http', 'Notific
         });
     }
 
-    $scope.refreshConsumerData = function () {
+    $scope.queryConsumerData = function () {
         //Show loader
         $('#loaderConsumer').removeClass("hide-myloader");
 
@@ -108,6 +108,30 @@ module.controller('consumerController', ['$scope', 'ngDialog', '$http', 'Notific
             params: {
                 skipSysGroup: false,
                 address: $scope.isRmqVersionV5() ? localStorage.getItem('proxyAddr') : null
+            }
+        }).success(function (resp) {
+            if (resp.status == 0) {
+                $scope.allConsumerGrouopList = resp.data;
+                console.log($scope.allConsumerGrouopList);
+                console.log(JSON.stringify(resp));
+                $scope.showConsumerGroupList($scope.paginationConf.currentPage, $scope.allConsumerGrouopList.length);
+
+                //Hide loader
+                $('#loaderConsumer').addClass("hide-myloader");
+            } else {
+                Notification.error({message: resp.errMsg, delay: 2000});
+            }
+        });
+    };
+    $scope.refreshConsumerData = function () {
+        //Show loader
+        $('#loaderConsumer').removeClass("hide-myloader");
+
+        $http({
+            method: "GET",
+            url: "consumer/group.refresh.all",
+            params: {
+                skipSysGroup: false
             }
         }).success(function (resp) {
             if (resp.status == 0) {
@@ -148,12 +172,12 @@ module.controller('consumerController', ['$scope', 'ngDialog', '$http', 'Notific
             $scope.intervalProcess = null;
         }
         if ($scope.intervalProcessSwitch) {
-            $scope.intervalProcess = setInterval($scope.refreshConsumerData, 10000);
+            $scope.intervalProcess = setInterval($scope.queryConsumerData, 10000);
         }
     });
 
 
-    $scope.refreshConsumerData();
+    $scope.queryConsumerData();
     $scope.filterStr = "";
     $scope.$watch('filterStr', function () {
         $scope.paginationConf.currentPage = 1;
@@ -255,7 +279,7 @@ module.controller('consumerController', ['$scope', 'ngDialog', '$http', 'Notific
                 ngDialog.open({
                     preCloseCallback: function (value) {
                         // Refresh topic list
-                        $scope.refreshConsumerData();
+                        $scope.queryConsumerData();
                     },
                     template: $scope.rmqVersion ? 'consumerModifyDialogForV5' : 'consumerModifyDialog',
                     controller: 'consumerModifyDialogController',
@@ -339,7 +363,7 @@ module.controller('consumerController', ['$scope', 'ngDialog', '$http', 'Notific
                 ngDialog.open({
                     preCloseCallback: function (value) {
                         // Refresh topic list
-                        $scope.refreshConsumerData();
+                        $scope.queryConsumerData();
                     },
                     template: 'deleteConsumerDialog',
                     controller: 'deleteConsumerDialogController',
