@@ -57,4 +57,6 @@ public interface ConsumerService {
     ConsumerRunningInfo getConsumerRunningInfo(String consumerGroup, String clientId, boolean jstack);
 
     Object refreshGroup(String address, String consumerGroup);
+
+    Object refreshAllGroup(String address);
 }

@@ -58,6 +58,12 @@ public class ConsumerController {
         return consumerService.refreshGroup(address, consumerGroup);
     }
 
+    @RequestMapping(value = "group.refresh.all")
+    @ResponseBody
+    public Object refreshAll(String address) {
+        return consumerService.refreshAllGroup(address);
+    }
+
     @RequestMapping(value = "/group.query")
     @ResponseBody
     public Object groupQuery(@RequestParam String consumerGroup, String address) {
