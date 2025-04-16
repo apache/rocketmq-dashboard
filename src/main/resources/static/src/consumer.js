@@ -319,7 +319,7 @@ module.controller('consumerController', ['$scope', 'ngDialog', '$http', 'Notific
         $http({
             method: "GET",
             url: "consumer/consumerConnection.query",
-            params: {consumerGroup: consumerGroupName, address: address}
+            params: {consumerGroup: consumerGroupName, address: localStorage.getItem('isV5') ? localStorage.getItem('proxyAddr') : address}
         }).success(function (resp) {
             if (resp.status == 0) {
                 console.log(resp);
