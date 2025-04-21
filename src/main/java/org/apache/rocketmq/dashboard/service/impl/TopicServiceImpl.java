@@ -91,8 +91,6 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
     @Autowired
     private RMQConfigure configure;
 
-    private final ConcurrentMap<String, TopicConfig> topicConfigCache = new ConcurrentHashMap<>();
-
     @Override
     public TopicList fetchAllTopicList(boolean skipSysProcess, boolean skipRetryAndDlq) {
         try {
