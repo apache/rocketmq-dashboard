@@ -389,6 +389,7 @@ public class MessageServiceImpl implements MessageService {
 
                 }
             }
+            messageViewsSort(messageViews);
             PageImpl<MessageView> page = new PageImpl<>(messageViews, query.page(), total);
             return new MessagePageTask(page, queueOffsetInfos);
         } catch (Exception e) {
@@ -458,6 +459,7 @@ public class MessageServiceImpl implements MessageService {
 
                 }
             }
+            messageViewsSort(messageViews);
             return new PageImpl<>(messageViews, query.page(), total);
         } catch (Exception e) {
             Throwables.throwIfUnchecked(e);
@@ -550,5 +552,12 @@ public class MessageServiceImpl implements MessageService {
         DefaultMQPullConsumer consumer = new DefaultMQPullConsumer(MixAll.TOOLS_CONSUMER_GROUP, rpcHook);
         consumer.setUseTLS(useTLS);
         return consumer;
+    }
+    private static void messageViewsSort(List<MessageView> messageViews) {
+        messageViews.sort((o1, o2) -> {
+            long time1 = o1.getStoreTimestamp();
+            long time2 = o2.getStoreTimestamp();
+            return Long.compare(time2, time1); // desc
+        });
     }
 }
