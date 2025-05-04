@@ -50,7 +50,7 @@ var en = {
     "ROUTER": "Router",
     "MANAGE": "Manage",
     "CONFIG": "Config",
-    "SEND_MSG": "Send Massage",
+    "SEND_MSG": "Send Message",
     "RESET_CUS_OFFSET": "Reset Consumer Offset",
     "DELETE": "Delete",
     "CHANGE_LANG": "ChangeLanguage",
