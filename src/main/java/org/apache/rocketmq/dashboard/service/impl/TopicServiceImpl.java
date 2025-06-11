@@ -20,7 +20,6 @@ package org.apache.rocketmq.dashboard.service.impl;
 import com.google.common.base.Throwables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
-import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.acl.common.AclClientRPCHook;
 import org.apache.rocketmq.acl.common.SessionCredentials;
@@ -55,6 +54,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.stream.Collectors;
 
 @Service
 public class TopicServiceImpl extends AbstractCommonService implements TopicService {
@@ -68,18 +68,18 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
             TopicList allTopics = mqAdminExt.fetchAllTopicList();
             TopicList sysTopics = getSystemTopicList();
             Set<String> topics =
-                allTopics.getTopicList().stream().map(topic -> {
-                    if (!skipSysProcess && sysTopics.getTopicList().contains(topic)) {
-                        topic = String.format("%s%s", "%SYS%", topic);
-                    }
-                    return topic;
-                }).filter(topic -> {
-                    if (skipRetryAndDlq) {
-                        return !(topic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)
-                            || topic.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX));
-                    }
-                    return true;
-                }).collect(Collectors.toSet());
+                    allTopics.getTopicList().stream().map(topic -> {
+                        if (!skipSysProcess && sysTopics.getTopicList().contains(topic)) {
+                            topic = String.format("%s%s", "%SYS%", topic);
+                        }
+                        return topic;
+                    }).filter(topic -> {
+                        if (skipRetryAndDlq) {
+                            return !(topic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)
+                                    || topic.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX));
+                        }
+                        return true;
+                    }).collect(Collectors.toSet());
             allTopics.getTopicList().clear();
             allTopics.getTopicList().addAll(topics);
             return allTopics;
@@ -122,7 +122,7 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
         try {
             ClusterInfo clusterInfo = mqAdminExt.examineBrokerClusterInfo();
             for (String brokerName : changeToBrokerNameSet(clusterInfo.getClusterAddrTable(),
-                topicCreateOrUpdateRequest.getClusterNameList(), topicCreateOrUpdateRequest.getBrokerNameList())) {
+                    topicCreateOrUpdateRequest.getClusterNameList(), topicCreateOrUpdateRequest.getBrokerNameList())) {
                 mqAdminExt.createAndUpdateTopicConfig(clusterInfo.getBrokerAddrTable().get(brokerName).selectBrokerAddr(), topicConfig);
             }
         } catch (Exception err) {
@@ -166,7 +166,7 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
             Set<String> nameServerSet = null;
             if (StringUtils.isNotBlank(configure.getNamesrvAddr())) {
                 String[] ns = configure.getNamesrvAddr().split(";");
-                nameServerSet = new HashSet<String>(Arrays.asList(ns));
+                nameServerSet = new HashSet<>(Arrays.asList(ns));
             }
             mqAdminExt.deleteTopicInNameServer(nameServerSet, topic);
         } catch (Exception err) {
@@ -242,8 +242,8 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
         AclClientRPCHook rpcHook = null;
         if (configure.isACLEnabled()) {
             rpcHook = new AclClientRPCHook(new SessionCredentials(
-                configure.getAccessKey(),
-                configure.getSecretKey()
+                    configure.getAccessKey(),
+                    configure.getSecretKey()
             ));
         }
         producer = buildDefaultMQProducer(MixAll.SELF_TEST_PRODUCER_GROUP, rpcHook, sendTopicMessageRequest.isTraceEnabled());
@@ -252,9 +252,9 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
         try {
             producer.start();
             Message msg = new Message(sendTopicMessageRequest.getTopic(),
-                sendTopicMessageRequest.getTag(),
-                sendTopicMessageRequest.getKey(),
-                sendTopicMessageRequest.getMessageBody().getBytes()
+                    sendTopicMessageRequest.getTag(),
+                    sendTopicMessageRequest.getKey(),
+                    sendTopicMessageRequest.getMessageBody().getBytes()
             );
             return producer.send(msg);
         } catch (Exception e) {

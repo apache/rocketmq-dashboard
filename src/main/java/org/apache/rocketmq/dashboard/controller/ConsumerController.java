@@ -17,104 +17,96 @@
 package org.apache.rocketmq.dashboard.controller;
 
 import com.google.common.base.Preconditions;
-import javax.annotation.Resource;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.rocketmq.common.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.dashboard.model.ConnectionInfo;
+import org.apache.rocketmq.dashboard.model.ConsumerGroupRollBackStat;
 import org.apache.rocketmq.dashboard.model.request.ConsumerConfigInfo;
 import org.apache.rocketmq.dashboard.model.request.DeleteSubGroupRequest;
 import org.apache.rocketmq.dashboard.model.request.ResetOffsetRequest;
 import org.apache.rocketmq.dashboard.permisssion.Permission;
 import org.apache.rocketmq.dashboard.service.ConsumerService;
 import org.apache.rocketmq.dashboard.util.JsonUtil;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
-@Controller
+import java.util.Map;
+import java.util.Optional;
+
+@RestController
 @RequestMapping("/consumer")
 @Permission
+@RequiredArgsConstructor
+@Slf4j
 public class ConsumerController {
-    private Logger logger = LoggerFactory.getLogger(ConsumerController.class);
 
-    @Resource
-    private ConsumerService consumerService;
+    private final ConsumerService consumerService;
 
-    @RequestMapping(value = "/groupList.query")
-    @ResponseBody
-    public Object list(@RequestParam(value = "skipSysGroup", required = false) boolean skipSysGroup) {
-        return consumerService.queryGroupList(skipSysGroup);
+    @GetMapping(value = "/groupList.query")
+    public ResponseEntity<Object> list(@RequestParam(value = "skipSysGroup", required = false) Boolean skipSysGroup) {
+        boolean skipSysGroupFound = Optional.ofNullable(skipSysGroup).orElse(false);
+        return ResponseEntity.ok(consumerService.queryGroupList(skipSysGroupFound));
     }
 
-    @RequestMapping(value = "/group.query")
-    @ResponseBody
-    public Object groupQuery(@RequestParam String consumerGroup) {
-        return consumerService.queryGroup(consumerGroup);
+    @GetMapping(value = "/group.query")
+    public ResponseEntity<Object> groupQuery(@RequestParam String consumerGroup) {
+        return ResponseEntity.ok(consumerService.queryGroup(consumerGroup));
     }
 
-    @RequestMapping(value = "/resetOffset.do", method = {RequestMethod.POST})
-    @ResponseBody
-    public Object resetOffset(@RequestBody ResetOffsetRequest resetOffsetRequest) {
-        logger.info("op=look resetOffsetRequest={}", JsonUtil.obj2String(resetOffsetRequest));
-        return consumerService.resetOffset(resetOffsetRequest);
+    @PostMapping(value = "/resetOffset.do")
+    public ResponseEntity<Object> resetOffset(@RequestBody ResetOffsetRequest resetOffsetRequest) {
+        return ResponseEntity.ok(callResetOffset(resetOffsetRequest));
     }
 
-    @RequestMapping(value = "/skipAccumulate.do", method = {RequestMethod.POST})
-    @ResponseBody
-    public Object skipAccumulate(@RequestBody ResetOffsetRequest resetOffsetRequest) {
-        logger.info("op=look resetOffsetRequest={}", JsonUtil.obj2String(resetOffsetRequest));
-        return consumerService.resetOffset(resetOffsetRequest);
+    @PostMapping(value = "/skipAccumulate.do")
+    public ResponseEntity<Object> skipAccumulate(@RequestBody ResetOffsetRequest resetOffsetRequest) {
+        return ResponseEntity.ok(callResetOffset(resetOffsetRequest));
     }
 
-    @RequestMapping(value = "/examineSubscriptionGroupConfig.query")
-    @ResponseBody
-    public Object examineSubscriptionGroupConfig(@RequestParam String consumerGroup) {
-        return consumerService.examineSubscriptionGroupConfig(consumerGroup);
+    @PostMapping(value = "/examineSubscriptionGroupConfig.query")
+    public ResponseEntity<Object> examineSubscriptionGroupConfig(@RequestParam String consumerGroup) {
+        return ResponseEntity.ok(consumerService.examineSubscriptionGroupConfig(consumerGroup));
     }
 
-    @RequestMapping(value = "/deleteSubGroup.do", method = {RequestMethod.POST})
-    @ResponseBody
-    public Object deleteSubGroup(@RequestBody DeleteSubGroupRequest deleteSubGroupRequest) {
-        return consumerService.deleteSubGroup(deleteSubGroupRequest);
+    @PostMapping(value = "/deleteSubGroup.do")
+    public ResponseEntity<Object> deleteSubGroup(@RequestBody DeleteSubGroupRequest deleteSubGroupRequest) {
+        return ResponseEntity.ok(consumerService.deleteSubGroup(deleteSubGroupRequest));
     }
 
-    @RequestMapping(value = "/createOrUpdate.do", method = {RequestMethod.POST})
-    @ResponseBody
-    public Object consumerCreateOrUpdateRequest(@RequestBody ConsumerConfigInfo consumerConfigInfo) {
+    @PostMapping(value = "/createOrUpdate.do")
+    public ResponseEntity<Object> consumerCreateOrUpdateRequest(@RequestBody ConsumerConfigInfo consumerConfigInfo) {
         Preconditions.checkArgument(CollectionUtils.isNotEmpty(consumerConfigInfo.getBrokerNameList()) || CollectionUtils.isNotEmpty(consumerConfigInfo.getClusterNameList()),
-            "clusterName or brokerName can not be all blank");
-        return consumerService.createAndUpdateSubscriptionGroupConfig(consumerConfigInfo);
+                "clusterName or brokerName can not be all blank");
+        return ResponseEntity.ok(consumerService.createAndUpdateSubscriptionGroupConfig(consumerConfigInfo));
     }
 
-    @RequestMapping(value = "/fetchBrokerNameList.query", method = {RequestMethod.GET})
-    @ResponseBody
-    public Object fetchBrokerNameList(@RequestParam String consumerGroup) {
-        return consumerService.fetchBrokerNameSetBySubscriptionGroup(consumerGroup);
+    @GetMapping(value = "/fetchBrokerNameList.query")
+    public ResponseEntity<Object> fetchBrokerNameList(@RequestParam String consumerGroup) {
+        return ResponseEntity.ok(consumerService.fetchBrokerNameSetBySubscriptionGroup(consumerGroup));
     }
 
-    @RequestMapping(value = "/queryTopicByConsumer.query")
-    @ResponseBody
-    public Object queryConsumerByTopic(@RequestParam String consumerGroup) {
-        return consumerService.queryConsumeStatsListByGroupName(consumerGroup);
+    @GetMapping(value = "/queryTopicByConsumer.query")
+    public ResponseEntity<Object> queryConsumerByTopic(@RequestParam String consumerGroup) {
+        return ResponseEntity.ok(consumerService.queryConsumeStatsListByGroupName(consumerGroup));
     }
 
-    @RequestMapping(value = "/consumerConnection.query")
-    @ResponseBody
-    public Object consumerConnection(@RequestParam(required = false) String consumerGroup) {
+    @GetMapping(value = "/consumerConnection.query")
+    public ResponseEntity<Object> consumerConnection(@RequestParam(required = false) String consumerGroup) {
         ConsumerConnection consumerConnection = consumerService.getConsumerConnection(consumerGroup);
         consumerConnection.setConnectionSet(ConnectionInfo.buildConnectionInfoHashSet(consumerConnection.getConnectionSet()));
-        return consumerConnection;
+        return ResponseEntity.ok(consumerConnection);
     }
 
-    @RequestMapping(value = "/consumerRunningInfo.query")
-    @ResponseBody
-    public Object getConsumerRunningInfo(@RequestParam String consumerGroup, @RequestParam String clientId,
-        @RequestParam boolean jstack) {
-        return consumerService.getConsumerRunningInfo(consumerGroup, clientId, jstack);
+    @GetMapping(value = "/consumerRunningInfo.query")
+    public ResponseEntity<Object> getConsumerRunningInfo(@RequestParam String consumerGroup, @RequestParam String clientId,
+                                         @RequestParam boolean jStack) {
+        return ResponseEntity.ok(consumerService.getConsumerRunningInfo(consumerGroup, clientId, jStack));
+    }
+
+    private Map<String, ConsumerGroupRollBackStat> callResetOffset(ResetOffsetRequest resetOffsetRequest) {
+        log.info("op=look resetOffsetRequest={}", JsonUtil.objectToString(resetOffsetRequest));
+        return consumerService.resetOffset(resetOffsetRequest);
     }
 }

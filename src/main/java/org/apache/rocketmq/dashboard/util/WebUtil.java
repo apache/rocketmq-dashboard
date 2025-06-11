@@ -33,6 +33,11 @@ public class WebUtil {
     public static final String USER_NAME = "username";
     public static final String NEED_LOGIN = "needLogin";
 
+
+    private WebUtil() {
+        // Prevent instantiation
+    }
+
     /**
      * Obtain ServletRequest header value
      *
@@ -107,7 +112,7 @@ public class WebUtil {
         HttpSession session = request.getSession(false);
 
         if (session != null) {
-            return  session.getAttribute(key);
+            return session.getAttribute(key);
         }
 
         return null;

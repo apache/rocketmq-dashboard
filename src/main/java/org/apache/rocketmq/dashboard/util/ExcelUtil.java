@@ -21,19 +21,21 @@ import com.alibaba.excel.support.ExcelTypeEnum;
 import com.alibaba.excel.write.metadata.style.WriteCellStyle;
 import com.alibaba.excel.write.metadata.style.WriteFont;
 import com.alibaba.excel.write.style.HorizontalCellStyleStrategy;
+import org.apache.poi.ss.usermodel.HorizontalAlignment;
+
+import javax.servlet.http.HttpServletResponse;
 import java.io.OutputStream;
 import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
-import javax.servlet.http.HttpServletResponse;
-import org.apache.poi.ss.usermodel.HorizontalAlignment;
 
 public class ExcelUtil {
 
     public static void writeExcel(HttpServletResponse response, List<? extends Object> data, String fileName,
-        String sheetName, Class clazz) throws Exception {
+                                  String sheetName, Class clazz) throws Exception {
         WriteCellStyle headWriteCellStyle = new WriteCellStyle();
         WriteFont writeFont = new WriteFont();
-        writeFont.setFontHeightInPoints((short)12);
+        writeFont.setFontHeightInPoints((short) 12);
         writeFont.setFontName("Microsoft YaHei UI");
         headWriteCellStyle.setWriteFont(writeFont);
         headWriteCellStyle.setHorizontalAlignment(HorizontalAlignment.CENTER);
@@ -43,11 +45,11 @@ public class ExcelUtil {
         contentWriteCellStyle.setHorizontalAlignment(HorizontalAlignment.CENTER);
         HorizontalCellStyleStrategy horizontalCellStyleStrategy = new HorizontalCellStyleStrategy(headWriteCellStyle, contentWriteCellStyle);
         EasyExcel.write(getOutputStream(fileName, response), clazz)
-            .excelType(ExcelTypeEnum.XLSX).sheet(sheetName).registerWriteHandler(horizontalCellStyleStrategy).doWrite(data);
+                .excelType(ExcelTypeEnum.XLSX).sheet(sheetName).registerWriteHandler(horizontalCellStyleStrategy).doWrite(data);
     }
 
     private static OutputStream getOutputStream(String fileName, HttpServletResponse response) throws Exception {
-        fileName = URLEncoder.encode(fileName, "UTF-8");
+        fileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8);
         response.setContentType("application/vnd.ms-excel");
         response.setCharacterEncoding("utf8");
         response.setHeader("Content-Disposition", "attachment;filename=" + fileName + ".xlsx");

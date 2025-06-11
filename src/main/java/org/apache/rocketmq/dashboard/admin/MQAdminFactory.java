@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.dashboard.admin;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.acl.common.AclClientRPCHook;
@@ -25,13 +26,13 @@ import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 
+import java.util.Objects;
+
+@RequiredArgsConstructor
 @Slf4j
 public class MQAdminFactory {
-    private RMQConfigure rmqConfigure;
 
-    public MQAdminFactory(RMQConfigure rmqConfigure) {
-        this.rmqConfigure = rmqConfigure;
-    }
+    private final RMQConfigure rmqConfigure;
 
     public MQAdminExt getInstance() throws Exception {
         RPCHook rpcHook = null;
@@ -41,8 +42,8 @@ public class MQAdminFactory {
         if (isEnableAcl) {
             rpcHook = new AclClientRPCHook(new SessionCredentials(accessKey, secretKey));
         }
-        DefaultMQAdminExt mqAdminExt = null;
-        if (rmqConfigure.getTimeoutMillis() == null) {
+        DefaultMQAdminExt mqAdminExt;
+        if (Objects.isNull(rmqConfigure.getTimeoutMillis())) {
             mqAdminExt = new DefaultMQAdminExt(rpcHook);
         } else {
             mqAdminExt = new DefaultMQAdminExt(rpcHook, rmqConfigure.getTimeoutMillis());
@@ -52,6 +53,7 @@ public class MQAdminFactory {
         mqAdminExt.setInstanceName(Long.toString(System.currentTimeMillis()));
         mqAdminExt.start();
         log.info("create MQAdmin instance {} success.", mqAdminExt);
+
         return mqAdminExt;
     }
 }

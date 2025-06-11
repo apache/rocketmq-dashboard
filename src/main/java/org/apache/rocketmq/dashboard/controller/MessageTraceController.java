@@ -18,11 +18,8 @@
 package org.apache.rocketmq.dashboard.controller;
 
 import com.google.common.collect.Maps;
-
-import java.util.List;
-import java.util.Map;
-import javax.annotation.Resource;
-
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.common.Pair;
 import org.apache.rocketmq.dashboard.model.MessageView;
 import org.apache.rocketmq.dashboard.model.trace.MessageTraceGraph;
@@ -30,42 +27,38 @@ import org.apache.rocketmq.dashboard.permisssion.Permission;
 import org.apache.rocketmq.dashboard.service.MessageService;
 import org.apache.rocketmq.dashboard.service.MessageTraceService;
 import org.apache.rocketmq.tools.admin.api.MessageTrack;
-import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
-@Controller
+import java.util.List;
+import java.util.Map;
+
+@RestController
 @RequestMapping("/messageTrace")
 @Permission
+@RequiredArgsConstructor
+@Slf4j
 public class MessageTraceController {
 
-    @Resource
-    private MessageService messageService;
+    private final MessageService messageService;
+    private final MessageTraceService messageTraceService;
 
-    @Resource
-    private MessageTraceService messageTraceService;
-
-    @RequestMapping(value = "/viewMessage.query", method = RequestMethod.GET)
-    @ResponseBody
-    public Object viewMessage(@RequestParam(required = false) String topic, @RequestParam String msgId) {
+    @GetMapping(value = "/viewMessage.query")
+    public ResponseEntity<Object> viewMessage(@RequestParam(required = false) String topic, @RequestParam String msgId) {
         Map<String, Object> messageViewMap = Maps.newHashMap();
         Pair<MessageView, List<MessageTrack>> messageViewListPair = messageService.viewMessage(topic, msgId);
         messageViewMap.put("messageView", messageViewListPair.getObject1());
-        return messageViewMap;
+        return ResponseEntity.ok(messageViewMap);
     }
 
-    @RequestMapping(value = "/viewMessageTraceDetail.query", method = RequestMethod.GET)
-    @ResponseBody
-    public Object viewTraceMessages(@RequestParam String msgId) {
-        return messageTraceService.queryMessageTraceKey(msgId);
+    @GetMapping(value = "/viewMessageTraceDetail.query")
+    public ResponseEntity<Object> viewTraceMessages(@RequestParam String msgId) {
+        return ResponseEntity.ok(messageTraceService.queryMessageTraceKey(msgId));
     }
 
-    @RequestMapping(value = "/viewMessageTraceGraph.query", method = RequestMethod.GET)
-    @ResponseBody
-    public MessageTraceGraph viewMessageTraceGraph(@RequestParam String msgId,
-        @RequestParam(required = false) String traceTopic) {
-        return messageTraceService.queryMessageTraceGraph(msgId, traceTopic);
+    @GetMapping(value = "/viewMessageTraceGraph.query")
+    public ResponseEntity<MessageTraceGraph> viewMessageTraceGraph(@RequestParam String msgId,
+                                                   @RequestParam(required = false) String traceTopic) {
+        return ResponseEntity.ok(messageTraceService.queryMessageTraceGraph(msgId, traceTopic));
     }
 }

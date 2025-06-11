@@ -17,8 +17,8 @@
 package org.apache.rocketmq.dashboard.service.checker;
 
 public interface RocketMqChecker {
-    public Object doCheck();
+    Object doCheck();
 
-    public CheckerType checkerType();
+    CheckerType checkerType();
 
 }

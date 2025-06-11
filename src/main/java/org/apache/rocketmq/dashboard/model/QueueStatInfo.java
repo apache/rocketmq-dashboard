@@ -16,10 +16,14 @@
  */
 package org.apache.rocketmq.dashboard.model;
 
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.rocketmq.common.admin.OffsetWrapper;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.springframework.beans.BeanUtils;
 
+@Setter
+@Getter
 public class QueueStatInfo {
     private String brokerName;
     private int queueId;
@@ -35,51 +39,4 @@ public class QueueStatInfo {
         return queueStatInfo;
     }
 
-    public String getClientInfo() {
-        return clientInfo;
-    }
-
-    public void setClientInfo(String clientInfo) {
-        this.clientInfo = clientInfo;
-    }
-
-    public String getBrokerName() {
-        return brokerName;
-    }
-
-    public void setBrokerName(String brokerName) {
-        this.brokerName = brokerName;
-    }
-
-    public int getQueueId() {
-        return queueId;
-    }
-
-    public void setQueueId(int queueId) {
-        this.queueId = queueId;
-    }
-
-    public long getBrokerOffset() {
-        return brokerOffset;
-    }
-
-    public void setBrokerOffset(long brokerOffset) {
-        this.brokerOffset = brokerOffset;
-    }
-
-    public long getConsumerOffset() {
-        return consumerOffset;
-    }
-
-    public void setConsumerOffset(long consumerOffset) {
-        this.consumerOffset = consumerOffset;
-    }
-
-    public long getLastTimestamp() {
-        return lastTimestamp;
-    }
-
-    public void setLastTimestamp(long lastTimestamp) {
-        this.lastTimestamp = lastTimestamp;
-    }
 }

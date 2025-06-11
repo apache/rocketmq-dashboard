@@ -170,7 +170,7 @@ public class ConsumerControllerTest extends BaseControllerTest {
     @Test
     public void testExamineSubscriptionGroupConfig() throws Exception {
         final String url = "/consumer/examineSubscriptionGroupConfig.query";
-        requestBuilder = MockMvcRequestBuilders.get(url);
+        requestBuilder = MockMvcRequestBuilders.post(url);
         requestBuilder.param("consumerGroup", "group_test");
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
@@ -251,7 +251,7 @@ public class ConsumerControllerTest extends BaseControllerTest {
         requestBuilder = MockMvcRequestBuilders.get(url);
         requestBuilder.param("consumerGroup", "group_test");
         requestBuilder.param("clientId", "group_test");
-        requestBuilder.param("jstack", "true");
+        requestBuilder.param("jStack", "true");
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
             .andExpect(jsonPath("$.data.jstack").value("test"));

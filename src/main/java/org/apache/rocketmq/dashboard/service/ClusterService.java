@@ -21,7 +21,7 @@ import java.util.Map;
 import java.util.Properties;
 
 public interface ClusterService {
-    Map<String, Object> list();
+    Map<String, Object> queryClusterList();
 
     Properties getBrokerConfig(String brokerAddr);
 }

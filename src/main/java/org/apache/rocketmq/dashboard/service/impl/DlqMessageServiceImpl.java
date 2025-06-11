@@ -18,9 +18,6 @@
 package org.apache.rocketmq.dashboard.service.impl;
 
 import com.google.common.base.Throwables;
-import java.util.ArrayList;
-import java.util.List;
-import javax.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.common.MixAll;
@@ -34,6 +31,10 @@ import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+
+import javax.annotation.Resource;
+import java.util.ArrayList;
+import java.util.List;
 
 @Service
 @Slf4j
@@ -55,7 +56,7 @@ public class DlqMessageServiceImpl implements DlqMessageService {
         } catch (MQClientException e) {
             // If the %DLQ%Group does not exist, the message returns null
             if (topic.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX)
-                && e.getResponseCode() == ResponseCode.TOPIC_NOT_EXIST) {
+                    && e.getResponseCode() == ResponseCode.TOPIC_NOT_EXIST) {
                 return new MessagePage(new PageImpl<>(messageViews, page, 0), query.getTaskId());
             } else {
                 throw Throwables.propagate(e);

@@ -16,6 +16,8 @@
  */
 package org.apache.rocketmq.dashboard.admin;
 
+import lombok.RequiredArgsConstructor;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.pool2.PooledObject;
@@ -24,6 +26,8 @@ import org.apache.commons.pool2.impl.DefaultPooledObject;
 import org.apache.rocketmq.common.protocol.body.ClusterInfo;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 
+@Setter
+@RequiredArgsConstructor
 @Slf4j
 public class MQAdminPooledObjectFactory implements PooledObjectFactory<MQAdminExt> {
 
@@ -31,9 +35,8 @@ public class MQAdminPooledObjectFactory implements PooledObjectFactory<MQAdminEx
 
     @Override
     public PooledObject<MQAdminExt> makeObject() throws Exception {
-        DefaultPooledObject<MQAdminExt> pooledObject = new DefaultPooledObject<>(
-            mqAdminFactory.getInstance());
-        return pooledObject;
+        return new DefaultPooledObject<>(
+                mqAdminFactory.getInstance());
     }
 
     @Override
@@ -67,13 +70,11 @@ public class MQAdminPooledObjectFactory implements PooledObjectFactory<MQAdminEx
 
     @Override
     public void activateObject(PooledObject<MQAdminExt> p) {
+        // Intentionally left blank
     }
 
     @Override
     public void passivateObject(PooledObject<MQAdminExt> p) {
-    }
-
-    public void setMqAdminFactory(MQAdminFactory mqAdminFactory) {
-        this.mqAdminFactory = mqAdminFactory;
+        // Intentionally left blank
     }
 }

@@ -22,11 +22,14 @@ import com.alibaba.excel.annotation.write.style.ColumnWidth;
 import com.alibaba.excel.metadata.BaseRowModel;
 import com.alibaba.excel.util.DateUtils;
 import com.google.common.base.Charsets;
-import java.io.Serializable;
-import java.util.Date;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import org.apache.rocketmq.common.message.MessageExt;
 
+import java.io.Serializable;
+import java.util.Date;
+
+@EqualsAndHashCode(callSuper = true)
 @Data
 public class DlqMessageExcelModel extends BaseRowModel implements Serializable {
 

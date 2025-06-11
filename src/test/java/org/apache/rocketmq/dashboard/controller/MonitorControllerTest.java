@@ -73,7 +73,7 @@ public class MonitorControllerTest extends BaseControllerTest {
         perform = mockMvc.perform(requestBuilder);
 
         Map<String, ConsumerMonitorConfig> map =
-            JsonUtil.string2Obj(MixAll.file2String(filePath),
+            JsonUtil.stringToObject(MixAll.file2String(filePath),
                 new TypeReference<Map<String, ConsumerMonitorConfig>>() {
                 });
         Assert.assertEquals(map.size(), 2);
@@ -113,7 +113,7 @@ public class MonitorControllerTest extends BaseControllerTest {
         perform = mockMvc.perform(requestBuilder);
 
         Map<String, ConsumerMonitorConfig> map =
-            JsonUtil.string2Obj(MixAll.file2String(filePath),
+            JsonUtil.stringToObject(MixAll.file2String(filePath),
                 new TypeReference<Map<String, ConsumerMonitorConfig>>() {
                 });
         Assert.assertEquals(map.size(), 1);

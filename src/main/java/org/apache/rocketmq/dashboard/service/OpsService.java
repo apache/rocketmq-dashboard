@@ -16,8 +16,9 @@
  */
 package org.apache.rocketmq.dashboard.service;
 
-import java.util.Map;
 import org.apache.rocketmq.dashboard.service.checker.CheckerType;
+
+import java.util.Map;
 
 public interface OpsService {
     Map<String, Object> homePageInfo();
@@ -26,7 +27,7 @@ public interface OpsService {
 
     String getNameSvrList();
 
-    Map<CheckerType,Object> rocketMqStatusCheck();
+    Map<CheckerType, Object> rocketMqStatusCheck();
 
     boolean updateIsVIPChannel(String useVIPChannel);
 

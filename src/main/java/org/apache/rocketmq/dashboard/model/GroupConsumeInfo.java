@@ -16,9 +16,13 @@
  */
 package org.apache.rocketmq.dashboard.model;
 
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.rocketmq.common.protocol.heartbeat.ConsumeType;
 import org.apache.rocketmq.common.protocol.heartbeat.MessageModel;
 
+@Setter
+@Getter
 public class GroupConsumeInfo implements Comparable<GroupConsumeInfo> {
     private String group;
     private String version;
@@ -28,46 +32,6 @@ public class GroupConsumeInfo implements Comparable<GroupConsumeInfo> {
     private int consumeTps;
     private long diffTotal = -1;
 
-    public String getGroup() {
-        return group;
-    }
-
-    public void setGroup(String group) {
-        this.group = group;
-    }
-
-    public int getCount() {
-        return count;
-    }
-
-    public void setCount(int count) {
-        this.count = count;
-    }
-
-    public ConsumeType getConsumeType() {
-        return consumeType;
-    }
-
-    public void setConsumeType(ConsumeType consumeType) {
-        this.consumeType = consumeType;
-    }
-
-    public MessageModel getMessageModel() {
-        return messageModel;
-    }
-
-    public void setMessageModel(MessageModel messageModel) {
-        this.messageModel = messageModel;
-    }
-
-    public long getDiffTotal() {
-        return diffTotal;
-    }
-
-    public void setDiffTotal(long diffTotal) {
-        this.diffTotal = diffTotal;
-    }
-
     @Override
     public int compareTo(GroupConsumeInfo o) {
         if (this.count != o.count) {
@@ -76,19 +40,4 @@ public class GroupConsumeInfo implements Comparable<GroupConsumeInfo> {
         return Long.compare(o.diffTotal, this.diffTotal);
     }
 
-    public int getConsumeTps() {
-        return consumeTps;
-    }
-
-    public void setConsumeTps(int consumeTps) {
-        this.consumeTps = consumeTps;
-    }
-
-    public String getVersion() {
-        return version;
-    }
-
-    public void setVersion(String version) {
-        this.version = version;
-    }
 }

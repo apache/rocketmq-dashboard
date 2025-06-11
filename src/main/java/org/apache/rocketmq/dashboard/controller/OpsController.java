@@ -16,55 +16,45 @@
  */
 package org.apache.rocketmq.dashboard.controller;
 
-import javax.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import org.apache.rocketmq.dashboard.permisssion.Permission;
 import org.apache.rocketmq.dashboard.service.OpsService;
-import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
-@Controller
+@RestController
 @RequestMapping("/ops")
 @Permission
+@RequiredArgsConstructor
 public class OpsController {
 
-    @Resource
-    private OpsService opsService;
+    private final OpsService opsService;
 
-    @RequestMapping(value = "/homePage.query", method = RequestMethod.GET)
-    @ResponseBody
-    public Object homePage() {
-        return opsService.homePageInfo();
+    @GetMapping(value = "/homePage.query")
+    public ResponseEntity<Object> homePage() {
+        return ResponseEntity.ok(opsService.homePageInfo());
     }
 
-    @RequestMapping(value = "/updateNameSvrAddr.do", method = RequestMethod.POST)
-    @ResponseBody
-    public Object updateNameSvrAddr(@RequestParam String nameSvrAddrList) {
+    @PostMapping(value = "/updateNameSvrAddr.do")
+    public ResponseEntity<Object> updateNameSvrAddr(@RequestParam String nameSvrAddrList) {
         opsService.updateNameSvrAddrList(nameSvrAddrList);
-        return true;
+        return ResponseEntity.ok(true);
     }
 
-    @RequestMapping(value = "/updateIsVIPChannel.do", method = RequestMethod.POST)
-    @ResponseBody
-    public Object updateIsVIPChannel(@RequestParam String useVIPChannel) {
+    @PostMapping(value = "/updateIsVIPChannel.do")
+    public ResponseEntity<Object> updateIsVIPChannel(@RequestParam String useVIPChannel) {
         opsService.updateIsVIPChannel(useVIPChannel);
-        return true;
+        return ResponseEntity.ok(true);
     }
 
-
-    @RequestMapping(value = "/rocketMqStatus.query", method = RequestMethod.GET)
-    @ResponseBody
-    public Object clusterStatus() {
-        return opsService.rocketMqStatusCheck();
+    @GetMapping(value = "/rocketMqStatus.query")
+    public ResponseEntity<Object> clusterStatus() {
+        return ResponseEntity.ok(opsService.rocketMqStatusCheck());
     }
 
-
-    @RequestMapping(value = "/updateUseTLS.do", method = RequestMethod.POST)
-    @ResponseBody
-    public Object updateUseTLS(@RequestParam String useTLS) {
+    @PostMapping(value = "/updateUseTLS.do")
+    public ResponseEntity<Object> updateUseTLS(@RequestParam String useTLS) {
         opsService.updateUseTLS(Boolean.parseBoolean(useTLS));
-        return true;
+        return ResponseEntity.ok(true);
     }
 }

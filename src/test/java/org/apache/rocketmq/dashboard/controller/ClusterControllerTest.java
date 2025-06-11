@@ -70,7 +70,7 @@ public class ClusterControllerTest extends BaseControllerTest {
             when(mqAdminExt.getBrokerConfig(anyString())).thenReturn(properties);
         }
         requestBuilder = MockMvcRequestBuilders.get(url);
-        requestBuilder.param("brokerAddr", "127.0.0.1:10911");
+        requestBuilder.param("brokerAddress", "127.0.0.1:10911");
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
             .andExpect(jsonPath("$.data.brokerName").value("broker-a"))

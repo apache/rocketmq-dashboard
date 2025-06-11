@@ -16,32 +16,20 @@
  */
 package org.apache.rocketmq.dashboard.model;
 
+import lombok.Getter;
+import lombok.Setter;
 import org.springframework.data.domain.Page;
 
 import java.util.List;
 
+@Setter
+@Getter
 public class MessagePageTask {
     private Page<MessageView> page;
     private List<QueueOffsetInfo> queueOffsetInfos;
 
     public MessagePageTask(Page<MessageView> page, List<QueueOffsetInfo> queueOffsetInfos) {
         this.page = page;
-        this.queueOffsetInfos = queueOffsetInfos;
-    }
-
-    public Page<MessageView> getPage() {
-        return page;
-    }
-
-    public void setPage(Page<MessageView> page) {
-        this.page = page;
-    }
-
-    public List<QueueOffsetInfo> getQueueOffsetInfos() {
-        return queueOffsetInfos;
-    }
-
-    public void setQueueOffsetInfos(List<QueueOffsetInfo> queueOffsetInfos) {
         this.queueOffsetInfos = queueOffsetInfos;
     }
 

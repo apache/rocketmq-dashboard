@@ -17,55 +17,58 @@
 package org.apache.rocketmq.dashboard.task;
 
 import com.google.common.base.Stopwatch;
-import org.apache.rocketmq.common.protocol.body.ClusterInfo;
-import org.apache.rocketmq.common.protocol.body.GroupList;
-import org.apache.rocketmq.common.protocol.body.KVTable;
-import org.apache.rocketmq.common.protocol.body.TopicList;
-import org.apache.rocketmq.common.protocol.route.BrokerData;
-import org.apache.rocketmq.common.protocol.route.TopicRouteData;
-import org.apache.rocketmq.common.topic.TopicValidator;
-import org.apache.rocketmq.store.stats.BrokerStatsManager;
-import org.apache.rocketmq.tools.admin.MQAdminExt;
-import org.apache.rocketmq.tools.command.stats.StatsAllSubCommand;
 import com.google.common.base.Throwables;
 import com.google.common.cache.LoadingCache;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.io.Files;
-import java.io.File;
-import java.io.IOException;
-import java.math.BigDecimal;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ExecutionException;
-import javax.annotation.Resource;
+import lombok.NoArgsConstructor;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.common.MixAll;
-import org.apache.rocketmq.common.protocol.body.BrokerStatsData;
+import org.apache.rocketmq.common.protocol.body.*;
+import org.apache.rocketmq.common.protocol.route.BrokerData;
+import org.apache.rocketmq.common.protocol.route.TopicRouteData;
+import org.apache.rocketmq.common.topic.TopicValidator;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.service.DashboardCollectService;
 import org.apache.rocketmq.dashboard.util.JsonUtil;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.rocketmq.store.stats.BrokerStatsManager;
+import org.apache.rocketmq.tools.admin.MQAdminExt;
+import org.apache.rocketmq.tools.command.stats.StatsAllSubCommand;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.io.File;
+import java.io.IOException;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.*;
+import java.util.concurrent.ExecutionException;
+
 @Component
+@Slf4j
 public class DashboardCollectTask {
+
     private Date currentDate = new Date();
-    @Resource
+
     private MQAdminExt mqAdminExt;
-    @Resource
+
     private RMQConfigure rmqConfigure;
 
-    @Resource
     private DashboardCollectService dashboardCollectService;
 
-    private final static Logger log = LoggerFactory.getLogger(DashboardCollectTask.class);
+    public DashboardCollectTask() {}
+
+    @Autowired
+    public DashboardCollectTask(MQAdminExt mqAdminExt, RMQConfigure rmqConfigure, DashboardCollectService dashboardCollectService) {
+        this.mqAdminExt = mqAdminExt;
+        this.rmqConfigure = rmqConfigure;
+        this.dashboardCollectService = dashboardCollectService;
+    }
 
     @Scheduled(cron = "30 0/1 * * * ?")
     public void collectTopic() {
@@ -81,8 +84,8 @@ public class DashboardCollectTask {
             this.addSystemTopic();
             for (String topic : topicSet) {
                 if (topic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)
-                    || topic.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX)
-                    || TopicValidator.isSystemTopic(topic)) {
+                        || topic.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX)
+                        || TopicValidator.isSystemTopic(topic)) {
                     continue;
                 }
                 TopicRouteData topicRouteData = mqAdminExt.examineTopicRouteInfo(topic);
@@ -102,15 +105,14 @@ public class DashboardCollectTask {
                     if (masterAddr != null) {
                         try {
                             stopwatch.start();
-                            log.info("start time: {}", stopwatch.toString());
+                            log.info("start time: {}", stopwatch);
                             BrokerStatsData bsd = mqAdminExt.viewBrokerStatsData(masterAddr, BrokerStatsManager.TOPIC_PUT_NUMS, topic);
                             stopwatch.stop();
-                            log.info("stop time : {}", stopwatch.toString());
+                            log.info("stop time : {}", stopwatch);
 
                             inTPS += bsd.getStatsMinute().getTps();
                             inMsgCntToday += StatsAllSubCommand.compute24HourSum(bsd);
-                        }
-                        catch (Exception e) {
+                        } catch (Exception e) {
                             stopwatch.reset();
                             log.warn("Exception caught: mqAdminExt get broker stats data TOPIC_PUT_NUMS failed");
                             log.warn("Response [{}] ", e.getMessage());
@@ -129,8 +131,7 @@ public class DashboardCollectTask {
                                     BrokerStatsData bsd = mqAdminExt.viewBrokerStatsData(masterAddr, BrokerStatsManager.GROUP_GET_NUMS, statsKey);
                                     outTPS += bsd.getStatsMinute().getTps();
                                     outMsgCntToday += StatsAllSubCommand.compute24HourSum(bsd);
-                                }
-                                catch (Exception e) {
+                                } catch (Exception e) {
                                     log.warn("Exception caught: mqAdminExt get broker stats data GROUP_GET_NUMS failed");
                                     log.warn("Response [{}] ", e.getMessage());
                                 }
@@ -142,22 +143,20 @@ public class DashboardCollectTask {
                 List<String> list;
                 try {
                     list = dashboardCollectService.getTopicMap().get(topic);
-                }
-                catch (ExecutionException e) {
+                } catch (ExecutionException e) {
                     throw Throwables.propagate(e);
                 }
                 if (null == list) {
                     list = Lists.newArrayList();
                 }
 
-                list.add(date.getTime() + "," + new BigDecimal(inTPS).setScale(5, BigDecimal.ROUND_HALF_UP) + "," + inMsgCntToday + "," + new BigDecimal(outTPS).setScale(5, BigDecimal.ROUND_HALF_UP) + "," + outMsgCntToday);
+                list.add(date.getTime() + "," + new BigDecimal(inTPS).setScale(5, RoundingMode.HALF_UP) + "," + inMsgCntToday + "," + new BigDecimal(outTPS).setScale(5, RoundingMode.HALF_UP) + "," + outMsgCntToday);
                 dashboardCollectService.getTopicMap().put(topic, list);
 
             }
 
-            log.debug("Topic Collected Data in memory = {}" + JsonUtil.obj2String(dashboardCollectService.getTopicMap().asMap()));
-        }
-        catch (Exception err) {
+            log.debug("Topic Collected Data in memory = {}" + JsonUtil.objectToString(dashboardCollectService.getTopicMap().asMap()));
+        } catch (Exception err) {
             throw Throwables.propagate(err);
         }
     }
@@ -170,17 +169,7 @@ public class DashboardCollectTask {
         try {
             Date date = new Date();
             ClusterInfo clusterInfo = mqAdminExt.examineBrokerClusterInfo();
-            Set<Map.Entry<String, BrokerData>> clusterEntries = clusterInfo.getBrokerAddrTable().entrySet();
-
-            Map<String, String> addresses = Maps.newHashMap();
-            for (Map.Entry<String, BrokerData> clusterEntry : clusterEntries) {
-                HashMap<Long, String> addrs = clusterEntry.getValue().getBrokerAddrs();
-                Set<Map.Entry<Long, String>> addrsEntries = addrs.entrySet();
-                for (Map.Entry<Long, String> addrEntry : addrsEntries) {
-                    addresses.put(addrEntry.getValue(), clusterEntry.getKey() + ":" + addrEntry.getKey());
-                }
-            }
-            Set<Map.Entry<String, String>> entries = addresses.entrySet();
+            Set<Map.Entry<String, String>> entries = getEntries(clusterInfo);
             for (Map.Entry<String, String> entry : entries) {
                 List<String> list = dashboardCollectService.getBrokerMap().get(entry.getValue());
                 if (null == list) {
@@ -195,15 +184,29 @@ public class DashboardCollectTask {
                 for (String tps : tpsArray) {
                     totalTps = totalTps.add(new BigDecimal(tps));
                 }
-                BigDecimal averageTps = totalTps.divide(new BigDecimal(tpsArray.length), 5, BigDecimal.ROUND_HALF_UP);
+                BigDecimal averageTps = totalTps.divide(new BigDecimal(tpsArray.length), 5, RoundingMode.HALF_UP);
                 list.add(date.getTime() + "," + averageTps.toString());
                 dashboardCollectService.getBrokerMap().put(entry.getValue(), list);
             }
-            log.debug("Broker Collected Data in memory = {}" + JsonUtil.obj2String(dashboardCollectService.getBrokerMap().asMap()));
-        }
-        catch (Exception e) {
+            log.debug("Broker Collected Data in memory = {}" + JsonUtil.objectToString(dashboardCollectService.getBrokerMap().asMap()));
+        } catch (Exception e) {
             throw Throwables.propagate(e);
         }
+    }
+
+    private static Set<Map.Entry<String, String>> getEntries(ClusterInfo clusterInfo) {
+        Set<Map.Entry<String, BrokerData>> clusterEntries = clusterInfo.getBrokerAddrTable().entrySet();
+
+        Map<String, String> addresses = Maps.newHashMap();
+        for (Map.Entry<String, BrokerData> clusterEntry : clusterEntries) {
+            HashMap<Long, String> addrs = clusterEntry.getValue().getBrokerAddrs();
+            Set<Map.Entry<Long, String>> addrsEntries = addrs.entrySet();
+            for (Map.Entry<Long, String> addrEntry : addrsEntries) {
+                addresses.put(addrEntry.getValue(), clusterEntry.getKey() + ":" + addrEntry.getKey());
+            }
+        }
+        Set<Map.Entry<String, String>> entries = addresses.entrySet();
+        return entries;
     }
 
     private KVTable fetchBrokerRuntimeStats(String brokerAddr, Integer retryTime) {
@@ -212,12 +215,10 @@ public class DashboardCollectTask {
         }
         try {
             return mqAdminExt.fetchBrokerRuntimeStats(brokerAddr);
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             try {
                 Thread.sleep(1000);
-            }
-            catch (InterruptedException e1) {
+            } catch (InterruptedException e1) {
                 throw Throwables.propagate(e1);
             }
             fetchBrokerRuntimeStats(brokerAddr, retryTime - 1);
@@ -247,16 +248,14 @@ public class DashboardCollectTask {
             Map<String, List<String>> topicFileMap;
             if (brokerFile.exists()) {
                 brokerFileMap = dashboardCollectService.jsonDataFile2map(brokerFile);
-            }
-            else {
+            } else {
                 brokerFileMap = Maps.newHashMap();
                 Files.createParentDirs(brokerFile);
             }
 
             if (topicFile.exists()) {
                 topicFileMap = dashboardCollectService.jsonDataFile2map(topicFile);
-            }
-            else {
+            } else {
                 topicFileMap = Maps.newHashMap();
                 Files.createParentDirs(topicFile);
             }
@@ -266,23 +265,21 @@ public class DashboardCollectTask {
 
             writeFile(dashboardCollectService.getBrokerMap(), brokerFileMap, brokerFile);
             writeFile(dashboardCollectService.getTopicMap(), topicFileMap, topicFile);
-            log.debug("Broker Collected Data in memory = {}" + JsonUtil.obj2String(dashboardCollectService.getBrokerMap().asMap()));
-            log.debug("Topic Collected Data in memory = {}" + JsonUtil.obj2String(dashboardCollectService.getTopicMap().asMap()));
+            log.debug("Broker Collected Data in memory = {}" + JsonUtil.objectToString(dashboardCollectService.getBrokerMap().asMap()));
+            log.debug("Topic Collected Data in memory = {}" + JsonUtil.objectToString(dashboardCollectService.getTopicMap().asMap()));
 
-        }
-        catch (IOException e) {
+        } catch (IOException e) {
             throw Throwables.propagate(e);
         }
     }
 
     private void writeFile(LoadingCache<String, List<String>> map, Map<String, List<String>> fileMap,
-        File file) throws IOException {
+                           File file) throws IOException {
         Map<String, List<String>> newMap = map.asMap();
         Map<String, List<String>> resultMap = Maps.newHashMap();
         if (fileMap.size() == 0) {
             resultMap = newMap;
-        }
-        else {
+        } else {
             for (Map.Entry<String, List<String>> entry : fileMap.entrySet()) {
                 List<String> oldList = entry.getValue();
                 List<String> newList = newMap.get(entry.getKey());
@@ -299,7 +296,7 @@ public class DashboardCollectTask {
                 }
             }
         }
-        Files.write(JsonUtil.obj2String(resultMap).getBytes(), file);
+        Files.write(JsonUtil.objectToString(resultMap).getBytes(), file);
     }
 
     private List<String> appendData(List<String> newTpsList, List<String> oldTpsList) {

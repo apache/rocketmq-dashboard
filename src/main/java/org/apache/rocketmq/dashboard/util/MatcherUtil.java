@@ -21,11 +21,11 @@ import java.util.regex.Pattern;
 public class MatcherUtil {
 
     public static boolean match(String accessUrl, String reqPath) {
-        String regPath = getRegPath(accessUrl);
+        String regPath = getRegexPath(accessUrl);
         return Pattern.compile(regPath).matcher(reqPath).matches();
     }
 
-    private static String getRegPath(String path) {
+    private static String getRegexPath(String path) {
         char[] chars = path.toCharArray();
         int len = chars.length;
         StringBuilder sb = new StringBuilder();

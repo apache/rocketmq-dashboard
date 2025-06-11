@@ -17,44 +17,37 @@
 
 package org.apache.rocketmq.dashboard.controller;
 
-import javax.annotation.Resource;
-
 import com.google.common.base.Strings;
+import lombok.RequiredArgsConstructor;
 import org.apache.rocketmq.dashboard.permisssion.Permission;
 import org.apache.rocketmq.dashboard.service.DashboardService;
-import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
-@Controller
+@RestController
 @RequestMapping("/dashboard")
 @Permission
+@RequiredArgsConstructor
 public class DashboardController {
 
-    @Resource
-    DashboardService dashboardService;
+    private final DashboardService dashboardService;
 
-    @RequestMapping(value = "/broker.query", method = RequestMethod.GET)
-    @ResponseBody
-    public Object broker(@RequestParam String date) {
-        return dashboardService.queryBrokerData(date);
+    @GetMapping(value = "/broker.query")
+    public ResponseEntity<Object> broker(@RequestParam String date) {
+        return ResponseEntity.ok(dashboardService.queryBrokerData(date));
     }
 
-    @RequestMapping(value = "/topic.query", method = RequestMethod.GET)
-    @ResponseBody
-    public Object topic(@RequestParam String date, String topicName) {
+    @GetMapping(value = "/topic.query")
+    public ResponseEntity<Object> topic(@RequestParam String date, String topicName) {
         if (Strings.isNullOrEmpty(topicName)) {
-            return dashboardService.queryTopicData(date);
+            return ResponseEntity.ok(dashboardService.queryTopicData(date));
         }
-        return dashboardService.queryTopicData(date,topicName);
+        return ResponseEntity.ok(dashboardService.queryTopicData(date, topicName));
     }
 
-    @RequestMapping(value = "/topicCurrent", method = RequestMethod.GET)
-    @ResponseBody
-    public Object topicCurrent() {
-        return dashboardService.queryTopicCurrentData();
+    @GetMapping(value = "/topicCurrent")
+    public ResponseEntity<Object> topicCurrent() {
+        return ResponseEntity.ok(dashboardService.queryTopicCurrentData());
     }
 
 }

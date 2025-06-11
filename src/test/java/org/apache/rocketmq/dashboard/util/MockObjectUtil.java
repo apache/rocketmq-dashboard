@@ -171,13 +171,12 @@ public class MockObjectUtil {
         SubscriptionData subscriptionData = new SubscriptionData();
         subscriptionTable.put("topic_test", subscriptionData);
 
-        ConsumeType consumeType = ConsumeType.CONSUME_ACTIVELY;
         MessageModel messageModel = MessageModel.CLUSTERING;
         ConsumeFromWhere consumeFromWhere = ConsumeFromWhere.CONSUME_FROM_FIRST_OFFSET;
 
         consumerConnection.setConnectionSet(connections);
         consumerConnection.setSubscriptionTable(subscriptionTable);
-        consumerConnection.setConsumeType(consumeType);
+        consumerConnection.setConsumeType(ConsumeType.CONSUME_ACTIVELY);
         consumerConnection.setMessageModel(messageModel);
         consumerConnection.setConsumeFromWhere(consumeFromWhere);
         return consumerConnection;

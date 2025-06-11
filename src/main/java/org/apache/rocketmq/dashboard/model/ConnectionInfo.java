@@ -17,11 +17,16 @@
 package org.apache.rocketmq.dashboard.model;
 
 import com.google.common.collect.Sets;
-import java.util.Collection;
-import java.util.HashSet;
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.rocketmq.common.MQVersion;
 import org.apache.rocketmq.common.protocol.body.Connection;
 
+import java.util.Collection;
+import java.util.HashSet;
+
+@Setter
+@Getter
 public class ConnectionInfo extends Connection {
     private String versionDesc;
 
@@ -43,11 +48,4 @@ public class ConnectionInfo extends Connection {
         return connectionHashSet;
     }
 
-    public String getVersionDesc() {
-        return versionDesc;
-    }
-
-    public void setVersionDesc(String versionDesc) {
-        this.versionDesc = versionDesc;
-    }
 }

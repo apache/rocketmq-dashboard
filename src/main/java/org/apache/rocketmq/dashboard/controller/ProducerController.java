@@ -16,30 +16,26 @@
  */
 package org.apache.rocketmq.dashboard.controller;
 
-import javax.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import org.apache.rocketmq.common.protocol.body.ProducerConnection;
 import org.apache.rocketmq.dashboard.model.ConnectionInfo;
 import org.apache.rocketmq.dashboard.permisssion.Permission;
 import org.apache.rocketmq.dashboard.service.ProducerService;
-import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
-@Controller
+@RestController
 @RequestMapping("/producer")
 @Permission
+@RequiredArgsConstructor
 public class ProducerController {
 
-    @Resource
-    private ProducerService producerService;
+    private final ProducerService producerService;
 
-    @RequestMapping(value = "/producerConnection.query", method = {RequestMethod.GET})
-    @ResponseBody
-    public Object producerConnection(@RequestParam String producerGroup, @RequestParam String topic) {
+    @GetMapping(value = "/producerConnection.query")
+    public ResponseEntity<Object> producerConnection(@RequestParam String producerGroup, @RequestParam String topic) {
         ProducerConnection producerConnection = producerService.getProducerConnection(producerGroup, topic);
         producerConnection.setConnectionSet(ConnectionInfo.buildConnectionInfoHashSet(producerConnection.getConnectionSet()));
-        return producerConnection;
+        return ResponseEntity.ok(producerConnection);
     }
 }

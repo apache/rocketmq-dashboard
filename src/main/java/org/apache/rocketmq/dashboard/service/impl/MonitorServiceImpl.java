@@ -18,18 +18,19 @@ package org.apache.rocketmq.dashboard.service.impl;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.google.common.base.Throwables;
-import java.io.File;
-import java.io.IOException;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import javax.annotation.PostConstruct;
-import javax.annotation.Resource;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.model.ConsumerMonitorConfig;
 import org.apache.rocketmq.dashboard.service.MonitorService;
 import org.apache.rocketmq.dashboard.util.JsonUtil;
 import org.springframework.stereotype.Service;
+
+import javax.annotation.PostConstruct;
+import javax.annotation.Resource;
+import java.io.File;
+import java.io.IOException;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class MonitorServiceImpl implements MonitorService {
@@ -74,14 +75,13 @@ public class MonitorServiceImpl implements MonitorService {
     }
 
     private void writeToFile(String path, Object data) {
-        writeDataJsonToFile(path, JsonUtil.obj2String(data));
+        writeDataJsonToFile(path, JsonUtil.objectToString(data));
     }
 
     private void writeDataJsonToFile(String path, String dataStr) {
         try {
             MixAll.string2File(dataStr, path);
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             throw Throwables.propagate(e);
         }
     }
@@ -95,7 +95,7 @@ public class MonitorServiceImpl implements MonitorService {
         if (content == null) {
             return;
         }
-        configMap = JsonUtil.string2Obj(content, new TypeReference<ConcurrentHashMap<String, ConsumerMonitorConfig>>() {
+        configMap = JsonUtil.stringToObject(content, new TypeReference<ConcurrentHashMap<String, ConsumerMonitorConfig>>() {
         });
     }
 }

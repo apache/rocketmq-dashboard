@@ -119,18 +119,18 @@ public class DashboardCollectTaskTest extends BaseTest {
         try {
             dashboardCollectTask.collectTopic();
         } catch (Exception e) {
-            Assert.assertEquals(e.getMessage(), "fetchAllTopicList exception");
+            Assert.assertEquals("fetchAllTopicList exception", e.getMessage());
         }
         for (int i = 0; i < taskExecuteNum; i++) {
             dashboardCollectTask.collectTopic();
         }
         LoadingCache<String, List<String>> map = dashboardCollectService.getTopicMap();
-        Assert.assertEquals(map.size(), 1);
+        Assert.assertEquals(1, map.size());
         Assert.assertEquals(map.get("topic_test").size(), taskExecuteNum);
         dashboardCollectTask.saveData();
-        Assert.assertEquals(topicFile.exists(), true);
+        Assert.assertTrue(topicFile.exists());
         Map<String, List<String>> topicData =
-            JsonUtil.string2Obj(MixAll.file2String(topicFile),
+            JsonUtil.stringToObject(MixAll.file2String(topicFile),
                 new TypeReference<Map<String, List<String>>>() {
                 });
         Assert.assertEquals(topicData.get("topic_test").size(), taskExecuteNum);
@@ -156,20 +156,20 @@ public class DashboardCollectTaskTest extends BaseTest {
         try {
             dashboardCollectTask.collectBroker();
         } catch (Exception e) {
-            Assert.assertEquals(e.getMessage(), "fetchBrokerRuntimeStats exception");
+            Assert.assertEquals("fetchBrokerRuntimeStats exception", e.getMessage());
         }
 
         for (int i = 0; i < taskExecuteNum; i++) {
             dashboardCollectTask.collectBroker();
         }
         LoadingCache<String, List<String>> map = dashboardCollectService.getBrokerMap();
-        Assert.assertEquals(map.size(), 1);
+        Assert.assertEquals(1, map.size());
         Assert.assertEquals(map.get("broker-a" + ":" + MixAll.MASTER_ID).size(), taskExecuteNum);
         mockBrokerFileExistBeforeSaveData();
         dashboardCollectTask.saveData();
-        Assert.assertEquals(brokerFile.exists(), true);
+        Assert.assertTrue(brokerFile.exists());
         Map<String, List<String>> brokerData =
-            JsonUtil.string2Obj(MixAll.file2String(brokerFile),
+            JsonUtil.stringToObject(MixAll.file2String(brokerFile),
                 new TypeReference<Map<String, List<String>>>() {
                 });
         Assert.assertEquals(brokerData.get("broker-a" + ":" + MixAll.MASTER_ID).size(), taskExecuteNum + 2);
@@ -189,6 +189,6 @@ public class DashboardCollectTaskTest extends BaseTest {
         Map<String, List<String>> map = new HashMap<>();
         map.put("broker-a" + ":" + MixAll.MASTER_ID,  Lists.asList("1000", new String[] {"1000"}));
         map.put("broker-b" + ":" + MixAll.MASTER_ID,  Lists.asList("1000", new String[] {"1000"}));
-        MixAll.string2File(JsonUtil.obj2String(map), brokerFile.getAbsolutePath());
+        MixAll.string2File(JsonUtil.objectToString(map), brokerFile.getAbsolutePath());
     }
 }

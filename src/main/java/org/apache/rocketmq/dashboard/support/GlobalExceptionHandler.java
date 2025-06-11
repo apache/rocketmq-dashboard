@@ -17,7 +17,7 @@
 
 package org.apache.rocketmq.dashboard.support;
 
-import javax.servlet.http.HttpServletRequest;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.dashboard.exception.ServiceException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,9 +25,11 @@ import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseBody;
 
+import javax.servlet.http.HttpServletRequest;
+
 @ControllerAdvice(basePackages = "org.apache.rocketmq.dashboard")
+@Slf4j
 public class GlobalExceptionHandler {
-    private Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(value = Exception.class)
     @ResponseBody
@@ -35,12 +37,11 @@ public class GlobalExceptionHandler {
         JsonResult<Object> value = null;
         if (ex != null) {
             if (ex instanceof ServiceException) {
-                logger.error("Occur service exception: {}", ex.getMessage());
-                value = new JsonResult<Object>(((ServiceException) ex).getCode(), ex.getMessage());
-            }
-            else {
-                logger.error("op=global_exception_handler_print_error", ex);
-                value = new JsonResult<Object>(-1, ex.getMessage() == null ? ex.toString() : ex.getMessage());
+                log.error("Occur service exception: {}", ex.getMessage());
+                value = new JsonResult<>(((ServiceException) ex).getCode(), ex.getMessage());
+            } else {
+                log.error("op=global_exception_handler_print_error", ex);
+                value = new JsonResult<>(-1, ex.getMessage() == null ? ex.toString() : ex.getMessage());
             }
         }
         return value;

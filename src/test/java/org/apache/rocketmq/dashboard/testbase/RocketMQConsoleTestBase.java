@@ -130,7 +130,7 @@ public abstract class RocketMQConsoleTestBase {
                 @Override
                 public ConsumeConcurrentlyStatus consumeMessage(List<MessageExt> msgs,
                     ConsumeConcurrentlyContext context) {
-                    consoleTestBaseLog.info("op=consumeMessage message={}", JsonUtil.obj2String(msgs));
+                    consoleTestBaseLog.info("op=consumeMessage message={}", JsonUtil.objectToString(msgs));
                     return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
                 }
             });

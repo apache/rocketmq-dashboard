@@ -16,33 +16,32 @@
  */
 package org.apache.rocketmq.dashboard.task;
 
-import java.util.Map;
-import javax.annotation.Resource;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.dashboard.model.ConsumerMonitorConfig;
 import org.apache.rocketmq.dashboard.model.GroupConsumeInfo;
 import org.apache.rocketmq.dashboard.service.ConsumerService;
 import org.apache.rocketmq.dashboard.service.MonitorService;
 import org.apache.rocketmq.dashboard.util.JsonUtil;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.util.Map;
+
 @Component
+@RequiredArgsConstructor
+@Slf4j
 public class MonitorTask {
-    private Logger logger = LoggerFactory.getLogger(MonitorTask.class);
 
-    @Resource
-    private MonitorService monitorService;
+    private final MonitorService monitorService;
 
-    @Resource
-    private ConsumerService consumerService;
+    private final ConsumerService consumerService;
 
-//    @Scheduled(cron = "* * * * * ?")
+    //    @Scheduled(cron = "* * * * * ?")
     public void scanProblemConsumeGroup() {
         for (Map.Entry<String, ConsumerMonitorConfig> configEntry : monitorService.queryConsumerMonitorConfig().entrySet()) {
             GroupConsumeInfo consumeInfo = consumerService.queryGroup(configEntry.getKey());
             if (consumeInfo.getCount() < configEntry.getValue().getMinCount() || consumeInfo.getDiffTotal() > configEntry.getValue().getMaxDiffTotal()) {
-                logger.info("op=look consumeInfo {}", JsonUtil.obj2String(consumeInfo)); // notify the alert system
+                log.info("op=look consumeInfo {}", JsonUtil.objectToString(consumeInfo)); // notify the alert system
             }
         }
     }

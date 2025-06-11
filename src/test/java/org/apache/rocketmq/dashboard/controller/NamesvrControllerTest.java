@@ -41,7 +41,7 @@ public class NamesvrControllerTest extends BaseControllerTest {
         requestBuilder = MockMvcRequestBuilders.get(url);
         perform = mockMvc.perform(requestBuilder);
         String namesrvAddr = perform.andReturn().getResponse().getContentAsString();
-        Assert.assertEquals(namesrvAddr, "127.0.0.1:9876");
+        Assert.assertEquals("127.0.0.1:9876", namesrvAddr);
     }
 
     @Override protected Object getTestController() {

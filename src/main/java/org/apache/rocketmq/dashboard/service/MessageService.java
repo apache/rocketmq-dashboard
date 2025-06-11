@@ -21,9 +21,9 @@ import org.apache.rocketmq.common.Pair;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.protocol.body.ConsumeMessageDirectlyResult;
 import org.apache.rocketmq.dashboard.model.MessagePage;
+import org.apache.rocketmq.dashboard.model.MessageView;
 import org.apache.rocketmq.dashboard.model.request.MessageQuery;
 import org.apache.rocketmq.tools.admin.api.MessageTrack;
-import org.apache.rocketmq.dashboard.model.MessageView;
 
 import java.util.List;
 
@@ -39,21 +39,16 @@ public interface MessageService {
     /**
      * @param topic
      * @param begin
-     * @param end
-     * org.apache.rocketmq.tools.command.message.PrintMessageSubCommand
+     * @param end   org.apache.rocketmq.tools.command.message.PrintMessageSubCommand
      */
     List<MessageView> queryMessageByTopic(final String topic, final long begin,
-        final long end);
+                                          final long end);
 
     List<MessageTrack> messageTrackDetail(MessageExt msg);
 
     ConsumeMessageDirectlyResult consumeMessageDirectly(String topic, String msgId, String consumerGroup,
-        String clientId);
+                                                        String clientId);
 
 
     MessagePage queryMessageByPage(MessageQuery query);
-
-
-
-
 }

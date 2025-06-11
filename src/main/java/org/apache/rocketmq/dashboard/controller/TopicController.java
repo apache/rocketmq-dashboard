@@ -16,105 +16,87 @@
  */
 package org.apache.rocketmq.dashboard.controller;
 
-import org.apache.rocketmq.client.exception.MQClientException;
-import org.apache.rocketmq.dashboard.permisssion.Permission;
-import org.apache.rocketmq.remoting.exception.RemotingException;
+import com.google.common.base.Preconditions;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.rocketmq.dashboard.model.request.SendTopicMessageRequest;
 import org.apache.rocketmq.dashboard.model.request.TopicConfigInfo;
+import org.apache.rocketmq.dashboard.permisssion.Permission;
 import org.apache.rocketmq.dashboard.service.ConsumerService;
 import org.apache.rocketmq.dashboard.service.TopicService;
 import org.apache.rocketmq.dashboard.util.JsonUtil;
-import com.google.common.base.Preconditions;
-import org.apache.commons.collections.CollectionUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
-import javax.annotation.Resource;
-import org.springframework.web.bind.annotation.ResponseBody;
+import java.util.Optional;
 
-@Controller
+@RestController
 @RequestMapping("/topic")
 @Permission
+@RequiredArgsConstructor
+@Slf4j
 public class TopicController {
-    private Logger logger = LoggerFactory.getLogger(TopicController.class);
 
-    @Resource
-    private TopicService topicService;
+    private final TopicService topicService;
+    private final ConsumerService consumerService;
 
-    @Resource
-    private ConsumerService consumerService;
-
-    @RequestMapping(value = "/list.query", method = RequestMethod.GET)
-    @ResponseBody
-    public Object list(@RequestParam(value = "skipSysProcess", required = false) boolean skipSysProcess,
-        @RequestParam(value = "skipRetryAndDlq", required = false) boolean skipRetryAndDlq) {
-        return topicService.fetchAllTopicList(skipSysProcess, skipRetryAndDlq);
+    @GetMapping(value = "/list.query")
+    public ResponseEntity<Object> list(@RequestParam(value = "skipSysProcess", required = false) Boolean skipSysProcess,
+                                      @RequestParam(value = "skipRetryAndDlq", required = false) Boolean skipRetryAndDlq) {
+        boolean skipSysProcessFound = Optional.ofNullable(skipSysProcess).orElse(false);
+        boolean skipRetryAndDlqFound = Optional.ofNullable(skipRetryAndDlq).orElse(false);
+        return ResponseEntity.ok(topicService.fetchAllTopicList(skipSysProcessFound, skipRetryAndDlqFound));
     }
 
-    @RequestMapping(value = "/stats.query", method = RequestMethod.GET)
-    @ResponseBody
-    public Object stats(@RequestParam String topic) {
-        return topicService.stats(topic);
+    @GetMapping(value = "/stats.query")
+    public ResponseEntity<Object> stats(@RequestParam String topic) {
+        return ResponseEntity.ok(topicService.stats(topic));
     }
 
-    @RequestMapping(value = "/route.query", method = RequestMethod.GET)
-    @ResponseBody
-    public Object route(@RequestParam String topic) {
-        return topicService.route(topic);
+    @GetMapping(value = "/route.query")
+    public ResponseEntity<Object> route(@RequestParam String topic) {
+        return ResponseEntity.ok(topicService.route(topic));
     }
 
 
-    @RequestMapping(value = "/createOrUpdate.do", method = { RequestMethod.POST})
-    @ResponseBody
-    public Object topicCreateOrUpdateRequest(@RequestBody TopicConfigInfo topicCreateOrUpdateRequest) {
+    @PostMapping(value = "/createOrUpdate.do")
+    public ResponseEntity<Object> topicCreateOrUpdateRequest(@RequestBody TopicConfigInfo topicCreateOrUpdateRequest) {
         Preconditions.checkArgument(CollectionUtils.isNotEmpty(topicCreateOrUpdateRequest.getBrokerNameList()) || CollectionUtils.isNotEmpty(topicCreateOrUpdateRequest.getClusterNameList()),
-            "clusterName or brokerName can not be all blank");
-        logger.info("op=look topicCreateOrUpdateRequest={}", JsonUtil.obj2String(topicCreateOrUpdateRequest));
+                "clusterName or brokerName can not be all blank");
+        log.info("op=look topicCreateOrUpdateRequest={}", JsonUtil.objectToString(topicCreateOrUpdateRequest));
         topicService.createOrUpdate(topicCreateOrUpdateRequest);
-        return true;
+        return ResponseEntity.ok(true);
     }
 
-    @RequestMapping(value = "/queryConsumerByTopic.query")
-    @ResponseBody
-    public Object queryConsumerByTopic(@RequestParam String topic) {
-        return consumerService.queryConsumeStatsListByTopicName(topic);
+    @GetMapping(value = "/queryConsumerByTopic.query")
+    public ResponseEntity<Object> queryConsumerByTopic(@RequestParam String topic) {
+        return ResponseEntity.ok(consumerService.queryConsumeStatsListByTopicName(topic));
     }
 
-    @RequestMapping(value = "/queryTopicConsumerInfo.query")
-    @ResponseBody
-    public Object queryTopicConsumerInfo(@RequestParam String topic) {
-        return topicService.queryTopicConsumerInfo(topic);
+    @GetMapping(value = "/queryTopicConsumerInfo.query")
+    public ResponseEntity<Object> queryTopicConsumerInfo(@RequestParam String topic) {
+        return ResponseEntity.ok(topicService.queryTopicConsumerInfo(topic));
     }
 
-    @RequestMapping(value = "/examineTopicConfig.query")
-    @ResponseBody
-    public Object examineTopicConfig(@RequestParam String topic,
-        @RequestParam(required = false) String brokerName) throws RemotingException, MQClientException, InterruptedException {
-        return topicService.examineTopicConfig(topic);
+    @GetMapping(value = "/examineTopicConfig.query")
+    public ResponseEntity<Object> examineTopicConfig(@RequestParam String topic) {
+        return ResponseEntity.ok(topicService.examineTopicConfig(topic));
     }
 
-    @RequestMapping(value = "/sendTopicMessage.do", method = {RequestMethod.POST})
-    @ResponseBody
-    public Object sendTopicMessage(
-        @RequestBody SendTopicMessageRequest sendTopicMessageRequest) throws RemotingException, MQClientException, InterruptedException {
-        return topicService.sendTopicMessageRequest(sendTopicMessageRequest);
+    @PostMapping(value = "/sendTopicMessage.do")
+    public ResponseEntity<Object> sendTopicMessage(
+            @RequestBody SendTopicMessageRequest sendTopicMessageRequest) {
+        return ResponseEntity.ok(topicService.sendTopicMessageRequest(sendTopicMessageRequest));
     }
 
-    @RequestMapping(value = "/deleteTopic.do", method = {RequestMethod.POST})
-    @ResponseBody
-    public Object delete(@RequestParam(required = false) String clusterName, @RequestParam String topic) {
-        return topicService.deleteTopic(topic, clusterName);
+    @PostMapping(value = "/deleteTopic.do")
+    public ResponseEntity<Object> delete(@RequestParam String topic, @RequestParam(required = false) String clusterName) {
+        return ResponseEntity.ok(topicService.deleteTopic(topic, clusterName));
     }
 
-    @RequestMapping(value = "/deleteTopicByBroker.do", method = {RequestMethod.POST})
-    @ResponseBody
-    public Object deleteTopicByBroker(@RequestParam String brokerName, @RequestParam String topic) {
-        return topicService.deleteTopicInBroker(brokerName, topic);
+    @PostMapping(value = "/deleteTopicByBroker.do")
+    public ResponseEntity<Object> deleteTopicByBroker(@RequestParam String brokerName, @RequestParam String topic) {
+        return ResponseEntity.ok(topicService.deleteTopicInBroker(brokerName, topic));
     }
-
 }

@@ -18,9 +18,6 @@ package org.apache.rocketmq.dashboard.service.impl;
 
 import com.google.common.base.Splitter;
 import com.google.common.collect.Maps;
-import java.util.List;
-import java.util.Map;
-import javax.annotation.Resource;
 import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.service.AbstractCommonService;
@@ -30,6 +27,10 @@ import org.apache.rocketmq.dashboard.service.checker.RocketMqChecker;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+
+import javax.annotation.Resource;
+import java.util.List;
+import java.util.Map;
 
 @Service
 public class OpsServiceImpl extends AbstractCommonService implements OpsService {
@@ -73,7 +74,8 @@ public class OpsServiceImpl extends AbstractCommonService implements OpsService 
         return checkResultMap;
     }
 
-    @Override public boolean updateIsVIPChannel(String useVIPChannel) {
+    @Override
+    public boolean updateIsVIPChannel(String useVIPChannel) {
         configure.setIsVIPChannel(useVIPChannel);
         mqAdminExtPool.clear();
         return true;
