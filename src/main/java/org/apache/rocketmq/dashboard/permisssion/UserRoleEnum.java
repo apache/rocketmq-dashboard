@@ -20,8 +20,8 @@ public enum UserRoleEnum {
     ADMIN(1, "admin"),
     ORDINARY(0, "ordinary");
 
-    private int roleType;
-    private String roleName;
+    private final int roleType;
+    private final String roleName;
 
     UserRoleEnum(int roleType, String roleName) {
         this.roleType = roleType;

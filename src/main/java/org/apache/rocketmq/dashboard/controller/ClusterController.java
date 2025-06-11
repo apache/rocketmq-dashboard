@@ -16,33 +16,27 @@
  */
 package org.apache.rocketmq.dashboard.controller;
 
+import lombok.RequiredArgsConstructor;
 import org.apache.rocketmq.dashboard.permisssion.Permission;
 import org.apache.rocketmq.dashboard.service.ClusterService;
-import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
-import javax.annotation.Resource;
-import org.springframework.web.bind.annotation.ResponseBody;
-
-@Controller
+@RestController
 @RequestMapping("/cluster")
 @Permission
+@RequiredArgsConstructor
 public class ClusterController {
 
-    @Resource
-    private ClusterService clusterService;
+    private final ClusterService clusterService;
 
-    @RequestMapping(value = "/list.query", method = RequestMethod.GET)
-    @ResponseBody
-    public Object list() {
-        return clusterService.list();
+    @GetMapping(value = "/list.query")
+    public ResponseEntity<Object> list() {
+        return ResponseEntity.ok(clusterService.queryClusterList());
     }
 
-    @RequestMapping(value = "/brokerConfig.query", method = RequestMethod.GET)
-    @ResponseBody
-    public Object brokerConfig(@RequestParam String brokerAddr) {
-        return clusterService.getBrokerConfig(brokerAddr);
+    @GetMapping(value = "/brokerConfig.query")
+    public ResponseEntity<Object> brokerConfig(@RequestParam String brokerAddress) {
+        return ResponseEntity.ok(clusterService.getBrokerConfig(brokerAddress));
     }
 }

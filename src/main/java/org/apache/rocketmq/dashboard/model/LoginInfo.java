@@ -17,23 +17,13 @@
 
 package org.apache.rocketmq.dashboard.model;
 
+import lombok.Getter;
+import lombok.Setter;
+
+@Setter
+@Getter
 public class LoginInfo {
     private boolean loginRequired;
     private boolean logined;
 
-    public boolean isLoginRequired() {
-        return loginRequired;
-    }
-
-    public void setLoginRequired(boolean loginRequired) {
-        this.loginRequired = loginRequired;
-    }
-
-    public boolean isLogined() {
-        return logined;
-    }
-
-    public void setLogined(boolean logined) {
-        this.logined = logined;
-    }
 }

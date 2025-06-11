@@ -16,8 +16,12 @@
  */
 package org.apache.rocketmq.dashboard.model;
 
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.rocketmq.common.message.MessageQueue;
 
+@Setter
+@Getter
 public class QueueOffsetInfo {
     private Integer idx;
 
@@ -37,54 +41,6 @@ public class QueueOffsetInfo {
         this.end = end;
         this.startOffset = startOffset;
         this.endOffset = endOffset;
-        this.messageQueues = messageQueues;
-    }
-
-    public Integer getIdx() {
-        return idx;
-    }
-
-    public void setIdx(Integer idx) {
-        this.idx = idx;
-    }
-
-    public Long getStart() {
-        return start;
-    }
-
-    public void setStart(Long start) {
-        this.start = start;
-    }
-
-    public Long getEnd() {
-        return end;
-    }
-
-    public void setEnd(Long end) {
-        this.end = end;
-    }
-
-    public Long getStartOffset() {
-        return startOffset;
-    }
-
-    public void setStartOffset(Long startOffset) {
-        this.startOffset = startOffset;
-    }
-
-    public Long getEndOffset() {
-        return endOffset;
-    }
-
-    public void setEndOffset(Long endOffset) {
-        this.endOffset = endOffset;
-    }
-
-    public MessageQueue getMessageQueues() {
-        return messageQueues;
-    }
-
-    public void setMessageQueues(MessageQueue messageQueues) {
         this.messageQueues = messageQueues;
     }
 

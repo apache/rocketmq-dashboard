@@ -16,25 +16,12 @@
  */
 package org.apache.rocketmq.dashboard.model.request;
 
+import lombok.Data;
 import java.util.List;
 
+@Data
 public class DeleteSubGroupRequest {
     private String groupName;
     private List<String> brokerNameList;
 
-    public String getGroupName() {
-        return groupName;
-    }
-
-    public void setGroupName(String groupName) {
-        this.groupName = groupName;
-    }
-
-    public List<String> getBrokerNameList() {
-        return brokerNameList;
-    }
-
-    public void setBrokerNameList(List<String> brokerNameList) {
-        this.brokerNameList = brokerNameList;
-    }
 }

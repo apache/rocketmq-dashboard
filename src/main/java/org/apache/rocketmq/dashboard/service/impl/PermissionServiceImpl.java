@@ -17,12 +17,7 @@
 package org.apache.rocketmq.dashboard.service.impl;
 
 import com.alibaba.fastjson.JSONObject;
-import java.io.FileReader;
-import java.io.InputStream;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import javax.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.exception.ServiceException;
 import org.apache.rocketmq.dashboard.model.UserInfo;
@@ -32,10 +27,18 @@ import org.springframework.beans.factory.InitializingBean;
 import org.springframework.stereotype.Service;
 import org.yaml.snakeyaml.Yaml;
 
+import javax.annotation.Resource;
+import java.io.FileReader;
+import java.io.InputStream;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 import static org.apache.rocketmq.dashboard.permisssion.UserRoleEnum.ADMIN;
 import static org.apache.rocketmq.dashboard.permisssion.UserRoleEnum.ORDINARY;
 
 @Service
+@Slf4j
 public class PermissionServiceImpl implements PermissionService, InitializingBean {
 
     @Resource
@@ -71,7 +74,7 @@ public class PermissionServiceImpl implements PermissionService, InitializingBea
     public static class PermissionFileStore extends AbstractFileStore {
         private static final String FILE_NAME = "role-permission.yml";
 
-        private static Map<String/**role**/, List<String>/**accessUrls**/> rolePerms = new ConcurrentHashMap<>();
+        private static final Map<String/**role**/, List<String>/**accessUrls**/> rolePerms = new ConcurrentHashMap<>();
 
         public PermissionFileStore(RMQConfigure configure) {
             super(configure, FILE_NAME);

@@ -26,24 +26,35 @@ import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.reflect.MethodSignature;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnitRunner;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+@RunWith(MockitoJUnitRunner.class)
 public class MQAdminAspectTest {
+
+    @Mock
+    private GenericObjectPool<MQAdminExt> mqAdminExtPool;
+
+    @Mock
+    private ProceedingJoinPoint joinPoint;
+
+    @Mock
+    private MethodSignature signature;
+
+    @Mock
+    private Method method;
 
     @Test
     public void testAroundMQAdminMethod() throws Throwable {
-        MQAdminAspect mqAdminAspect = new MQAdminAspect();
-        ProceedingJoinPoint joinPoint = mock(ProceedingJoinPoint.class);
-        MethodSignature signature = mock(MethodSignature.class);
-        Method method = mock(Method.class);
-        when(signature.getMethod()).thenReturn(method);
+
+        MQAdminAspect mqAdminAspect = new MQAdminAspect(mqAdminExtPool);
         when(joinPoint.getSignature()).thenReturn(signature);
 
-        GenericObjectPool<MQAdminExt> mqAdminExtPool = mock(GenericObjectPool.class);
         when(mqAdminExtPool.borrowObject())
             .thenThrow(new RuntimeException("borrowObject exception"))
             .thenReturn(new DefaultMQAdminExt());

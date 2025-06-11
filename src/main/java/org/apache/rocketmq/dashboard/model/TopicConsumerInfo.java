@@ -17,41 +17,22 @@
 package org.apache.rocketmq.dashboard.model;
 
 import com.google.common.collect.Lists;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.util.List;
 
+@Getter
+@Setter
 public class TopicConsumerInfo {
+
     private String topic;
     private long diffTotal;
     private long lastTimestamp;
-    private List<QueueStatInfo> queueStatInfoList = Lists.newArrayList();
+    private final List<QueueStatInfo> queueStatInfoList = Lists.newArrayList();
 
     public TopicConsumerInfo(String topic) {
         this.topic = topic;
-    }
-
-    public String getTopic() {
-        return topic;
-    }
-
-    public void setTopic(String topic) {
-        this.topic = topic;
-    }
-
-    public long getDiffTotal() {
-        return diffTotal;
-    }
-
-    public void setDiffTotal(long diffTotal) {
-        this.diffTotal = diffTotal;
-    }
-
-    public List<QueueStatInfo> getQueueStatInfoList() {
-        return queueStatInfoList;
-    }
-
-    public long getLastTimestamp() {
-        return lastTimestamp;
     }
 
     public void appendQueueStatInfo(QueueStatInfo queueStatInfo) {

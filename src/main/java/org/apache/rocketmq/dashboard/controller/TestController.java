@@ -16,8 +16,9 @@
  */
 package org.apache.rocketmq.dashboard.controller;
 
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
-import org.apache.rocketmq.client.consumer.listener.ConsumeConcurrentlyContext;
 import org.apache.rocketmq.client.consumer.listener.ConsumeConcurrentlyStatus;
 import org.apache.rocketmq.client.consumer.listener.MessageListenerConcurrently;
 import org.apache.rocketmq.client.exception.MQClientException;
@@ -25,77 +26,63 @@ import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.common.consumer.ConsumeFromWhere;
 import org.apache.rocketmq.common.message.Message;
-import org.apache.rocketmq.common.message.MessageExt;
-import org.apache.rocketmq.remoting.exception.RemotingException;
-import java.util.List;
-import javax.annotation.Resource;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.util.JsonUtil;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.bind.annotation.*;
 
-@Controller
+@RestController
 @RequestMapping("/test")
+@RequiredArgsConstructor
+@Slf4j
 public class TestController {
-    private Logger logger = LoggerFactory.getLogger(TestController.class);
-    private String testTopic = "TestTopic";
 
-    @Resource
-    private RMQConfigure rMQConfigure;
+    private static final String TEST_TOPIC = "TestTopic";
 
-    @RequestMapping(value = "/runTask.do", method = RequestMethod.GET)
-    @ResponseBody
-    public Object list() throws MQClientException, RemotingException, InterruptedException {
-        DefaultMQPushConsumer consumer = new DefaultMQPushConsumer(testTopic + "Group");
-        consumer.setNamesrvAddr(rMQConfigure.getNamesrvAddr());
-        consumer.setConsumeFromWhere(ConsumeFromWhere.CONSUME_FROM_FIRST_OFFSET);
-        consumer.subscribe(testTopic, "*");
-        consumer.registerMessageListener(new MessageListenerConcurrently() {
+    private final RMQConfigure rMQConfigure;
 
-            @Override
-            public ConsumeConcurrentlyStatus consumeMessage(List<MessageExt> msgs,
-                ConsumeConcurrentlyContext context) {
-                logger.info("receiveMessage msgSize={}", msgs.size());
-                return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
-            }
-        });
+    @GetMapping(value = "/runTask.do")
+    public Object list() throws MQClientException {
+        DefaultMQPushConsumer consumer = getDefaultMQPushConsumer();
         consumer.start();
-        final DefaultMQProducer producer = new DefaultMQProducer(testTopic + "Group");
+        final DefaultMQProducer producer = new DefaultMQProducer(TEST_TOPIC + "Group");
         producer.setInstanceName(String.valueOf(System.currentTimeMillis()));
         producer.setNamesrvAddr(rMQConfigure.getNamesrvAddr());
         producer.start();
 
-        new Thread(new Runnable() {
+        new Thread(() -> {
 
-            @Override public void run() {
-
-                int i = 0;
-                while (true) {
-                    try {
-                        Message msg = new Message(testTopic,
+            int i = 0;
+            while (true) {
+                try {
+                    Message msg = new Message(TEST_TOPIC,
                             "TagA" + i,
                             "KEYS" + i,
                             ("Hello RocketMQ " + i).getBytes()
-                        );
-                        Thread.sleep(1000L);
-                        SendResult sendResult = producer.send(msg);
-                        logger.info("sendMessage={}", JsonUtil.obj2String(sendResult));
-                    }
-                    catch (Exception e) {
-                        e.printStackTrace();
-                        try {
-                            Thread.sleep(1000);
-                        }
-                        catch (Exception ignore) {
-                        }
+                    );
+                    Thread.sleep(1000L);
+                    SendResult sendResult = producer.send(msg);
+                    log.info("sendMessage={}", JsonUtil.objectToString(sendResult));
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    try {
+                        Thread.sleep(1000);
+                    } catch (Exception ignore) {
                     }
                 }
             }
         }).start();
         return true;
+    }
+
+    private DefaultMQPushConsumer getDefaultMQPushConsumer() throws MQClientException {
+        DefaultMQPushConsumer consumer = new DefaultMQPushConsumer(TEST_TOPIC + "Group");
+        consumer.setNamesrvAddr(rMQConfigure.getNamesrvAddr());
+        consumer.setConsumeFromWhere(ConsumeFromWhere.CONSUME_FROM_FIRST_OFFSET);
+        consumer.subscribe(TEST_TOPIC, "*");
+        consumer.registerMessageListener((MessageListenerConcurrently) (msgs, context) -> {
+            log.info("receiveMessage msgSize={}", msgs.size());
+            return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
+        });
+        return consumer;
     }
 }

@@ -17,6 +17,8 @@
 
 package org.apache.rocketmq.dashboard.controller;
 
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.model.LoginInfo;
 import org.apache.rocketmq.dashboard.model.LoginResult;
@@ -25,55 +27,44 @@ import org.apache.rocketmq.dashboard.model.UserInfo;
 import org.apache.rocketmq.dashboard.service.UserService;
 import org.apache.rocketmq.dashboard.support.JsonResult;
 import org.apache.rocketmq.dashboard.util.WebUtil;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
-import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import java.util.Objects;
 
-@Controller
+@RestController
 @RequestMapping("/login")
+@RequiredArgsConstructor
+@Slf4j
 public class LoginController {
-    private Logger logger = LoggerFactory.getLogger(this.getClass());
 
-    @Resource
-    private RMQConfigure configure;
-
-    @Autowired
-    private UserService userService;
+    private final RMQConfigure configure;
+    private final UserService userService;
 
     @Value("${server.servlet.context-path:/}")
     private String contextPath;
 
-    @RequestMapping(value = "/check.query", method = RequestMethod.GET)
-    @ResponseBody
-    public Object check(HttpServletRequest request) {
+    @GetMapping(value = "/check.query")
+    public ResponseEntity<Object> check(HttpServletRequest request) {
         LoginInfo loginInfo = new LoginInfo();
-
         loginInfo.setLogined(WebUtil.getValueFromSession(request, WebUtil.USER_NAME) != null);
         loginInfo.setLoginRequired(configure.isLoginRequired());
 
-        return loginInfo;
+        return ResponseEntity.ok(loginInfo);
     }
 
-    @RequestMapping(value = "/login.do", method = RequestMethod.POST)
-    @ResponseBody
-    public Object login(@RequestParam("username") String username,
-        @RequestParam(value = "password") String password,
-        HttpServletRequest request,
-        HttpServletResponse response) throws Exception {
-        logger.info("user:{} login", username);
+    @PostMapping(value = "/login.do")
+    public ResponseEntity<Object> login(@RequestParam("username") String username,
+                        @RequestParam(value = "password") String password,
+                        HttpServletRequest request,
+                        HttpServletResponse response) throws Exception {
+        log.info("user:{} login", username);
         User user = userService.queryByUsernameAndPassword(username, password);
 
-        if (user == null) {
+        if (Objects.isNull(user)) {
             throw new IllegalArgumentException("Bad username or password!");
         } else {
             user.setPassword(null);
@@ -81,13 +72,11 @@ public class LoginController {
             WebUtil.setSessionValue(request, WebUtil.USER_INFO, userInfo);
             WebUtil.setSessionValue(request, WebUtil.USER_NAME, username);
             userInfo.setSessionId(WebUtil.getSessionId(request));
-            LoginResult result = new LoginResult(username, user.getType(), contextPath);
-            return result;
+            return ResponseEntity.ok(new LoginResult(username, user.getType(), contextPath));
         }
     }
 
-    @RequestMapping(value = "/logout.do", method = RequestMethod.POST)
-    @ResponseBody
+    @PostMapping(value = "/logout.do")
     public JsonResult<String> logout(HttpServletRequest request) {
         WebUtil.removeSession(request);
         return new JsonResult<>(contextPath);

@@ -174,7 +174,7 @@ public class DashboardControllerTest extends BaseControllerTest {
             brokerData.add((new Date().getTime() + i * 60 * 1000) + "," + tps.toString());
         }
         resultMap.put("broker-a:0", brokerData);
-        Files.write(JsonUtil.obj2String(resultMap).getBytes(), brokerFile);
+        Files.write(JsonUtil.objectToString(resultMap).getBytes(), brokerFile);
         return brokerFile;
     }
 
@@ -195,7 +195,7 @@ public class DashboardControllerTest extends BaseControllerTest {
             topicData.add(sb.toString());
         }
         resultMap.put("topic_test", topicData);
-        Files.write(JsonUtil.obj2String(resultMap).getBytes(), topicFile);
+        Files.write(JsonUtil.objectToString(resultMap).getBytes(), topicFile);
         return topicFile;
     }
 }

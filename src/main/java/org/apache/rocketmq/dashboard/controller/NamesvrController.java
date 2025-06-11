@@ -16,26 +16,24 @@
  */
 package org.apache.rocketmq.dashboard.controller;
 
-import javax.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import org.apache.rocketmq.dashboard.aspect.admin.annotation.OriginalControllerReturnValue;
 import org.apache.rocketmq.dashboard.permisssion.Permission;
 import org.apache.rocketmq.dashboard.service.OpsService;
-import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
-@Controller
+@RestController
 @RequestMapping("/rocketmq")
 @Permission
+@RequiredArgsConstructor
 public class NamesvrController {
-    @Resource
-    private OpsService opsService;
 
-    @RequestMapping(value = "/nsaddr", method = RequestMethod.GET)
-    @ResponseBody
+    private final OpsService opsService;
+
+    @GetMapping(value = "/nsaddr")
     @OriginalControllerReturnValue
-    public Object nsaddr() {
-        return opsService.getNameSvrList();
+    public ResponseEntity<Object> nsaddr() {
+        return ResponseEntity.ok(opsService.getNameSvrList());
     }
 }

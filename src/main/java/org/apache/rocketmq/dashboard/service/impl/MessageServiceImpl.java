@@ -41,11 +41,7 @@ import org.apache.rocketmq.common.protocol.body.ConsumeMessageDirectlyResult;
 import org.apache.rocketmq.common.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.exception.ServiceException;
-import org.apache.rocketmq.dashboard.model.QueueOffsetInfo;
-import org.apache.rocketmq.dashboard.model.MessageView;
-import org.apache.rocketmq.dashboard.model.MessagePage;
-import org.apache.rocketmq.dashboard.model.MessagePageTask;
-import org.apache.rocketmq.dashboard.model.MessageQueryByPage;
+import org.apache.rocketmq.dashboard.model.*;
 import org.apache.rocketmq.dashboard.model.request.MessageQuery;
 import org.apache.rocketmq.dashboard.service.MessageService;
 import org.apache.rocketmq.remoting.RPCHook;
@@ -59,33 +55,25 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
-import java.util.Collections;
-import java.util.List;
-import java.util.Comparator;
-import java.util.ArrayList;
-import java.util.Set;
-import java.util.Collection;
-import java.util.Date;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Service
 public class MessageServiceImpl implements MessageService {
 
-    private Logger logger = LoggerFactory.getLogger(MessageServiceImpl.class);
-
     private static final Cache<String, List<QueueOffsetInfo>> CACHE = CacheBuilder.newBuilder()
             .maximumSize(10000)
             .expireAfterWrite(60, TimeUnit.MINUTES)
             .build();
-
-    @Autowired
-    private RMQConfigure configure;
     /**
      * @see org.apache.rocketmq.store.config.MessageStoreConfig maxMsgsNumBatch = 64;
      * @see org.apache.rocketmq.store.index.IndexService maxNum = Math.min(maxNum, this.defaultMessageStore.getMessageStoreConfig().getMaxMsgsNumBatch());
      */
     private final static int QUERY_MESSAGE_MAX_NUM = 64;
+    private final Logger logger = LoggerFactory.getLogger(MessageServiceImpl.class);
+    @Autowired
+    private RMQConfigure configure;
     @Resource
     private MQAdminExt mqAdminExt;
 
@@ -153,7 +141,7 @@ public class MessageServiceImpl implements MessageService {
                                     @Override
                                     public boolean apply(MessageView messageView) {
                                         if (messageView.getStoreTimestamp() < begin || messageView.getStoreTimestamp() > end) {
-                                            logger.info("begin={} end={} time not in range {} {}", begin, end, messageView.getStoreTimestamp(), new Date(messageView.getStoreTimestamp()).toString());
+                                            logger.info("begin={} end={} time not in range {} {}", begin, end, messageView.getStoreTimestamp(), new Date(messageView.getStoreTimestamp()));
                                         }
                                         return messageView.getStoreTimestamp() >= begin && messageView.getStoreTimestamp() <= end;
                                     }
@@ -399,7 +387,7 @@ public class MessageServiceImpl implements MessageService {
         DefaultMQPullConsumer consumer = buildDefaultMQPullConsumer(rpcHook, configure.isUseTLS());
         List<MessageView> messageViews = new ArrayList<>();
 
-        long offset = query.getPageNum() * query.getPageSize();
+        long offset = (long) query.getPageNum() * query.getPageSize();
 
         long total = 0;
         try {
@@ -460,7 +448,7 @@ public class MessageServiceImpl implements MessageService {
     private int moveStartOffset(List<QueueOffsetInfo> queueOffsets, MessageQueryByPage query) {
         int size = queueOffsets.size();
         int next = 0;
-        long offset = query.getPageNum() * query.getPageSize();
+        long offset = (long) query.getPageNum() * query.getPageSize();
         if (offset == 0) {
             return next;
         }

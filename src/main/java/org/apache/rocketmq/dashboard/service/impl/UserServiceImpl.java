@@ -17,6 +17,7 @@
 
 package org.apache.rocketmq.dashboard.service.impl;
 
+import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.exception.ServiceException;
 import org.apache.rocketmq.dashboard.model.User;
@@ -34,6 +35,7 @@ import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
+@Slf4j
 public class UserServiceImpl implements UserService, InitializingBean {
     @Resource
     private RMQConfigure configure;
@@ -60,7 +62,7 @@ public class UserServiceImpl implements UserService, InitializingBean {
     public static class FileBasedUserInfoStore extends AbstractFileStore {
         private static final String FILE_NAME = "users.properties";
 
-        private static Map<String, User> userMap = new ConcurrentHashMap<>();
+        private static final Map<String, User> userMap = new ConcurrentHashMap<>();
 
         public FileBasedUserInfoStore(RMQConfigure configure) {
             super(configure, FILE_NAME);

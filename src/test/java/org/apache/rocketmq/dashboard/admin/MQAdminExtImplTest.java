@@ -78,6 +78,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -108,7 +109,7 @@ public class MQAdminExtImplTest {
     @Mock
     private RemotingClient remotingClient;
 
-    private String brokerAddr = "127.0.0.1:10911";
+    private final String brokerAddr = "127.0.0.1:10911";
 
     @Before
     public void init() throws Exception {
@@ -139,7 +140,7 @@ public class MQAdminExtImplTest {
         } catch (Exception e) {
             hasException = true;
             assertThat(e).isInstanceOf(MQBrokerException.class);
-            assertThat(((MQBrokerException) e).getResponseCode()).isEqualTo(0);
+            assertThat(((MQBrokerException) e).getResponseCode()).isZero();
         }
         assertTrue(hasException);
     }
@@ -181,7 +182,7 @@ public class MQAdminExtImplTest {
     }
 
     @Test
-    public void testQueryConsumerStatus() throws Exception {
+    public void testQueryConsumerStatus() {
         assertNotNull(mqAdminExtImpl);
     }
 
@@ -207,7 +208,7 @@ public class MQAdminExtImplTest {
         try {
             mqAdminExtImpl.examineSubscriptionGroupConfig(brokerAddr, "topic_test");
         } catch (Exception e) {
-            Assert.assertEquals(e.getMessage(), "invokeSync exception");
+            Assert.assertEquals("invokeSync exception", e.getMessage());
         }
 
         // responseCode is not success
@@ -219,7 +220,7 @@ public class MQAdminExtImplTest {
         }
         // GET_ALL_SUBSCRIPTIONGROUP_CONFIG success
         SubscriptionGroupConfig subscriptionGroupConfig = mqAdminExtImpl.examineSubscriptionGroupConfig(brokerAddr, "group_test");
-        Assert.assertEquals(subscriptionGroupConfig.getGroupName(), "group_test");
+        Assert.assertEquals("group_test", subscriptionGroupConfig.getGroupName());
     }
 
     @Test
@@ -238,7 +239,7 @@ public class MQAdminExtImplTest {
         try {
             mqAdminExtImpl.examineTopicConfig(brokerAddr, "topic_test");
         } catch (Exception e) {
-            Assert.assertEquals(e.getMessage(), "invokeSync exception");
+            Assert.assertEquals("invokeSync exception", e.getMessage());
         }
         // responseCode is not success
         try {
@@ -271,274 +272,220 @@ public class MQAdminExtImplTest {
 
     @Test
     public void testFetchAllTopicList() throws Exception {
+        when(defaultMQAdminExt.fetchAllTopicList()).thenReturn(new TopicList());
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.fetchAllTopicList()).thenReturn(new TopicList());
-        }
         TopicList topicList = mqAdminExtImpl.fetchAllTopicList();
-        Assert.assertNotNull(topicList);
+        assertNotNull(topicList);
     }
 
     @Test
     public void testFetchBrokerRuntimeStats() throws Exception {
+        when(defaultMQAdminExt.fetchBrokerRuntimeStats(anyString())).thenReturn(new KVTable());
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.fetchBrokerRuntimeStats(anyString())).thenReturn(new KVTable());
-        }
         KVTable kvTable = mqAdminExtImpl.fetchBrokerRuntimeStats(brokerAddr);
         Assert.assertNotNull(kvTable);
     }
 
     @Test
     public void testExamineConsumeStats() throws Exception {
+        when(defaultMQAdminExt.examineConsumeStats(anyString())).thenReturn(MockObjectUtil.createConsumeStats());
+        when(defaultMQAdminExt.examineConsumeStats(anyString(), anyString())).thenReturn(MockObjectUtil.createConsumeStats());
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.examineConsumeStats(anyString())).thenReturn(MockObjectUtil.createConsumeStats());
-            when(defaultMQAdminExt.examineConsumeStats(anyString(), anyString())).thenReturn(MockObjectUtil.createConsumeStats());
-        }
         ConsumeStats consumeStats = mqAdminExtImpl.examineConsumeStats("group_test");
         ConsumeStats consumeStatsWithTopic = mqAdminExtImpl.examineConsumeStats("group_test", "topic_test");
-        Assert.assertNotNull(consumeStats);
-        Assert.assertEquals(consumeStats.getOffsetTable().size(), 2);
-        Assert.assertNotNull(consumeStatsWithTopic);
-        Assert.assertEquals(consumeStatsWithTopic.getOffsetTable().size(), 2);
+        assertNotNull(consumeStats);
+        assertEquals(2, consumeStats.getOffsetTable().size());
+        assertNotNull(consumeStatsWithTopic);
+        assertEquals(2, consumeStatsWithTopic.getOffsetTable().size());
     }
 
     @Test
     public void testExamineBrokerClusterInfo() throws Exception {
+        when(defaultMQAdminExt.examineBrokerClusterInfo()).thenReturn(MockObjectUtil.createClusterInfo());
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.examineBrokerClusterInfo()).thenReturn(MockObjectUtil.createClusterInfo());
-        }
         ClusterInfo clusterInfo = mqAdminExtImpl.examineBrokerClusterInfo();
-        Assert.assertNotNull(clusterInfo);
-        Assert.assertEquals(clusterInfo.getBrokerAddrTable().size(), 1);
-        Assert.assertEquals(clusterInfo.getClusterAddrTable().size(), 1);
+        assertNotNull(clusterInfo);
+        assertEquals(1, clusterInfo.getBrokerAddrTable().size());
+        assertEquals(1, clusterInfo.getClusterAddrTable().size());
     }
 
     @Test
     public void testExamineTopicRouteInfo() throws Exception {
+        when(defaultMQAdminExt.examineTopicRouteInfo(anyString())).thenReturn(MockObjectUtil.createTopicRouteData());
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.examineTopicRouteInfo(anyString())).thenReturn(MockObjectUtil.createTopicRouteData());
-        }
         TopicRouteData topicRouteData = mqAdminExtImpl.examineTopicRouteInfo("topic_test");
         Assert.assertNotNull(topicRouteData);
     }
 
     @Test
     public void testExamineConsumerConnectionInfo() throws Exception {
+        when(defaultMQAdminExt.examineConsumerConnectionInfo(anyString())).thenReturn(new ConsumerConnection());
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.examineConsumerConnectionInfo(anyString())).thenReturn(new ConsumerConnection());
-        }
         ConsumerConnection consumerConnection = mqAdminExtImpl.examineConsumerConnectionInfo("group_test");
-        Assert.assertNotNull(consumerConnection);
+        assertNotNull(consumerConnection);
     }
 
     @Test
     public void testExamineProducerConnectionInfo() throws Exception {
+        when(defaultMQAdminExt.examineProducerConnectionInfo(anyString(), anyString())).thenReturn(new ProducerConnection());
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.examineProducerConnectionInfo(anyString(), anyString())).thenReturn(new ProducerConnection());
-        }
         ProducerConnection producerConnection = mqAdminExtImpl.examineProducerConnectionInfo("group_test", "topic_test");
-        Assert.assertNotNull(producerConnection);
+        assertNotNull(producerConnection);
     }
 
     @Test
     public void testGetNameServerAddressList() {
+        when(defaultMQAdminExt.getNameServerAddressList()).thenReturn(Lists.asList("127.0.0.1:9876", new String[] {"127.0.0.2:9876"}));
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.getNameServerAddressList()).thenReturn(Lists.asList("127.0.0.1:9876", new String[] {"127.0.0.2:9876"}));
-        }
         List<String> list = mqAdminExtImpl.getNameServerAddressList();
-        Assert.assertEquals(list.size(), 2);
+        assertEquals(2, list.size());
     }
 
     @Test
     public void testWipeWritePermOfBroker() throws Exception {
+        when(defaultMQAdminExt.wipeWritePermOfBroker(anyString(), anyString())).thenReturn(6);
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.wipeWritePermOfBroker(anyString(), anyString())).thenReturn(6);
-        }
         int result = mqAdminExtImpl.wipeWritePermOfBroker("127.0.0.1:9876", "broker-a");
-        Assert.assertEquals(result, 6);
+        assertEquals(6, result);
     }
 
     @Test
-    public void testPutKVConfig() throws Exception {
+    public void testPutKVConfig() {
+        doNothing().when(defaultMQAdminExt).putKVConfig(anyString(), anyString(), anyString());
         assertNotNull(mqAdminExtImpl);
-        {
-            doNothing().when(defaultMQAdminExt).putKVConfig(anyString(), anyString(), anyString());
-        }
         mqAdminExtImpl.putKVConfig("namespace", "key", "value");
     }
 
     @Test
     public void testGetKVConfig() throws Exception {
+        when(defaultMQAdminExt.getKVConfig(anyString(), anyString())).thenReturn("value");
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.getKVConfig(anyString(), anyString())).thenReturn("value");
-        }
         String value = mqAdminExtImpl.getKVConfig("namespace", "key");
-        Assert.assertEquals(value, "value");
+        assertEquals("value", value);
     }
 
     @Test
     public void testGetKVListByNamespace() throws Exception {
+        when(defaultMQAdminExt.getKVListByNamespace(anyString())).thenReturn(new KVTable());
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.getKVListByNamespace(anyString())).thenReturn(new KVTable());
-        }
         KVTable kvTable = mqAdminExtImpl.getKVListByNamespace("namespace");
-        Assert.assertNotNull(kvTable);
+        assertNotNull(kvTable);
     }
 
     @Test
     public void testDeleteTopicInBroker() throws Exception {
+        doNothing().when(defaultMQAdminExt).deleteTopicInBroker(any(), anyString());
         assertNotNull(mqAdminExtImpl);
-        {
-            doNothing().when(defaultMQAdminExt).deleteTopicInBroker(any(), anyString());
-        }
         mqAdminExtImpl.deleteTopicInBroker(Sets.newHashSet("127.0.0.1:10911"), "topic_test");
     }
 
     @Test
     public void testDeleteTopicInNameServer() throws Exception {
+        doNothing().when(defaultMQAdminExt).deleteTopicInNameServer(any(), anyString());
         assertNotNull(mqAdminExtImpl);
-        {
-            doNothing().when(defaultMQAdminExt).deleteTopicInNameServer(any(), anyString());
-        }
         mqAdminExtImpl.deleteTopicInNameServer(Sets.newHashSet("127.0.0.1:9876", "127.0.0.2:9876"), "topic_test");
     }
 
     @Test
     public void testDeleteSubscriptionGroup() throws Exception {
+        doNothing().when(defaultMQAdminExt).deleteSubscriptionGroup(anyString(), anyString());
         assertNotNull(mqAdminExtImpl);
-        {
-            doNothing().when(defaultMQAdminExt).deleteSubscriptionGroup(anyString(), anyString());
-        }
         mqAdminExtImpl.deleteSubscriptionGroup(brokerAddr, "group_test");
     }
 
     @Test
     public void testCreateAndUpdateKvConfig() throws Exception {
+        doNothing().when(defaultMQAdminExt).createAndUpdateKvConfig(anyString(), anyString(), anyString());
         assertNotNull(mqAdminExtImpl);
-        {
-            doNothing().when(defaultMQAdminExt).createAndUpdateKvConfig(anyString(), anyString(), anyString());
-        }
         mqAdminExtImpl.createAndUpdateKvConfig("namespace", "key", "value");
     }
 
     @Test
     public void testDeleteKvConfig() throws Exception {
+        doNothing().when(defaultMQAdminExt).deleteKvConfig(anyString(), anyString());
         assertNotNull(mqAdminExtImpl);
-        {
-            doNothing().when(defaultMQAdminExt).deleteKvConfig(anyString(), anyString());
-        }
         mqAdminExtImpl.deleteKvConfig("namespace", "key");
     }
 
     @Test
-    public void testDeleteConsumerOffset() throws Exception {
+    public void testDeleteConsumerOffset() {
         assertNotNull(mqAdminExtImpl);
     }
 
     @Test
     public void testResetOffsetByTimestampOld() throws Exception {
+        when(defaultMQAdminExt.resetOffsetByTimestampOld(anyString(), anyString(), anyLong(), anyBoolean())).thenReturn(new ArrayList<>());
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.resetOffsetByTimestampOld(anyString(), anyString(), anyLong(), anyBoolean())).thenReturn(new ArrayList<RollbackStats>());
-        }
         List<RollbackStats> stats = mqAdminExtImpl.resetOffsetByTimestampOld("group_test", "topic_test", 1628495765398L, false);
         Assert.assertNotNull(stats);
     }
 
     @Test
     public void testResetOffsetByTimestamp() throws Exception {
+        when(defaultMQAdminExt.resetOffsetByTimestamp(anyString(), anyString(), anyLong(), anyBoolean())).thenReturn(new HashMap<>());
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.resetOffsetByTimestamp(anyString(), anyString(), anyLong(), anyBoolean())).thenReturn(new HashMap<MessageQueue, Long>());
-        }
         Map<MessageQueue, Long> map = mqAdminExtImpl.resetOffsetByTimestamp("group_test", "topic_test", 1628495765398L, false);
         Assert.assertNotNull(map);
     }
 
     @Test
     public void testResetOffsetNew() throws Exception {
+        doNothing().when(defaultMQAdminExt).resetOffsetNew(anyString(), anyString(), anyLong());
         assertNotNull(mqAdminExtImpl);
-        {
-            doNothing().when(defaultMQAdminExt).resetOffsetNew(anyString(), anyString(), anyLong());
-        }
         mqAdminExtImpl.resetOffsetNew("group_test", "topic_test", 1628495765398L);
     }
 
     @Test
     public void testGetConsumeStatus() throws Exception {
+        when(defaultMQAdminExt.getConsumeStatus(anyString(), anyString(), anyString())).thenReturn(new HashMap<>());
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.getConsumeStatus(anyString(), anyString(), anyString())).thenReturn(new HashMap<String, Map<MessageQueue, Long>>());
-        }
         mqAdminExtImpl.getConsumeStatus("topic_test", "group_test", "");
     }
 
     @Test
     public void testCreateOrUpdateOrderConf() throws Exception {
+        doNothing().when(defaultMQAdminExt).createOrUpdateOrderConf(anyString(), anyString(), anyBoolean());
         assertNotNull(mqAdminExtImpl);
-        {
-            doNothing().when(defaultMQAdminExt).createOrUpdateOrderConf(anyString(), anyString(), anyBoolean());
-        }
         mqAdminExtImpl.createOrUpdateOrderConf("key", "value", false);
     }
 
     @Test
     public void testQueryTopicConsumeByWho() throws Exception {
+        when(defaultMQAdminExt.queryTopicConsumeByWho(anyString())).thenReturn(new GroupList());
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.queryTopicConsumeByWho(anyString())).thenReturn(new GroupList());
-        }
         GroupList groupList = mqAdminExtImpl.queryTopicConsumeByWho("topic_test");
         Assert.assertNotNull(groupList);
     }
 
     @Test
     public void testCleanExpiredConsumerQueue() throws Exception {
+        when(defaultMQAdminExt.cleanExpiredConsumerQueue(anyString())).thenReturn(true);
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.cleanExpiredConsumerQueue(anyString())).thenReturn(true);
-        }
         boolean result = mqAdminExtImpl.cleanExpiredConsumerQueue("DefaultCluster");
-        Assert.assertEquals(result, true);
+        assertTrue(result);
     }
 
     @Test
     public void testCleanExpiredConsumerQueueByAddr() throws Exception {
+        when(defaultMQAdminExt.cleanExpiredConsumerQueueByAddr(anyString())).thenReturn(true);
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.cleanExpiredConsumerQueueByAddr(anyString())).thenReturn(true);
-        }
         boolean result = mqAdminExtImpl.cleanExpiredConsumerQueueByAddr("DefaultCluster");
-        Assert.assertEquals(result, true);
+        assertTrue(result);
     }
 
     @Test
     public void testGetConsumerRunningInfo() throws Exception {
+        when(defaultMQAdminExt.getConsumerRunningInfo(anyString(), anyString(), anyBoolean())).thenReturn(new ConsumerRunningInfo());
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.getConsumerRunningInfo(anyString(), anyString(), anyBoolean())).thenReturn(new ConsumerRunningInfo());
-        }
         ConsumerRunningInfo consumerRunningInfo = mqAdminExtImpl.getConsumerRunningInfo("group_test", "", true);
         Assert.assertNotNull(consumerRunningInfo);
     }
 
     @Test
     public void testConsumeMessageDirectly() throws Exception {
+        when(defaultMQAdminExt.consumeMessageDirectly(anyString(), anyString(), anyString())).thenReturn(new ConsumeMessageDirectlyResult());
+        when(defaultMQAdminExt.consumeMessageDirectly(anyString(), anyString(), anyString(), anyString())).thenReturn(new ConsumeMessageDirectlyResult());
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.consumeMessageDirectly(anyString(), anyString(), anyString())).thenReturn(new ConsumeMessageDirectlyResult());
-            when(defaultMQAdminExt.consumeMessageDirectly(anyString(), anyString(), anyString(), anyString())).thenReturn(new ConsumeMessageDirectlyResult());
-        }
         ConsumeMessageDirectlyResult result1 = mqAdminExtImpl.consumeMessageDirectly("group_test", "", "7F000001ACC018B4AAC2116AF6500000");
         ConsumeMessageDirectlyResult result2 = mqAdminExtImpl.consumeMessageDirectly("group_test", "", "topic_test", "7F000001ACC018B4AAC2116AF6500000");
         Assert.assertNotNull(result1);
@@ -547,90 +494,72 @@ public class MQAdminExtImplTest {
 
     @Test
     public void testMessageTrackDetail() throws Exception {
+        when(defaultMQAdminExt.messageTrackDetail(any())).thenReturn(new ArrayList<>());
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.messageTrackDetail(any())).thenReturn(new ArrayList<MessageTrack>());
-        }
         List<MessageTrack> tracks = mqAdminExtImpl.messageTrackDetail(new MessageExt());
         Assert.assertNotNull(tracks);
     }
 
     @Test
     public void testCloneGroupOffset() throws Exception {
+        doNothing().when(defaultMQAdminExt).cloneGroupOffset(anyString(), anyString(), anyString(), anyBoolean());
         assertNotNull(mqAdminExtImpl);
-        {
-            doNothing().when(defaultMQAdminExt).cloneGroupOffset(anyString(), anyString(), anyString(), anyBoolean());
-        }
         mqAdminExtImpl.cloneGroupOffset("group_test", "group_test1", "topic_test", false);
     }
 
     @Test
     public void testCreateTopic() throws Exception {
+        doNothing().when(defaultMQAdminExt).createTopic(anyString(), anyString(), anyInt());
+        doNothing().when(defaultMQAdminExt).createTopic(anyString(), anyString(), anyInt(), anyInt());
         assertNotNull(mqAdminExtImpl);
-        {
-            doNothing().when(defaultMQAdminExt).createTopic(anyString(), anyString(), anyInt());
-            doNothing().when(defaultMQAdminExt).createTopic(anyString(), anyString(), anyInt(), anyInt());
-        }
         mqAdminExtImpl.createTopic("key", "topic_test", 8);
         mqAdminExtImpl.createTopic("key", "topic_test", 8, 1);
     }
 
     @Test
     public void testSearchOffset() throws Exception {
+        when(defaultMQAdminExt.searchOffset(any(), anyLong())).thenReturn(Long.MAX_VALUE);
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.searchOffset(any(), anyLong())).thenReturn(Long.MAX_VALUE);
-        }
         long offset = mqAdminExtImpl.searchOffset(new MessageQueue(), 1628495765398L);
-        Assert.assertEquals(offset, Long.MAX_VALUE);
+        Assert.assertEquals(Long.MAX_VALUE, offset);
     }
 
     @Test
     public void testMaxOffset() throws Exception {
+        when(defaultMQAdminExt.maxOffset(any())).thenReturn(Long.MAX_VALUE);
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.maxOffset(any())).thenReturn(Long.MAX_VALUE);
-        }
         long offset = mqAdminExtImpl.maxOffset(new MessageQueue());
-        Assert.assertEquals(offset, Long.MAX_VALUE);
+        Assert.assertEquals(Long.MAX_VALUE, offset);
     }
 
     @Test
     public void testMinOffset() throws Exception {
+        when(defaultMQAdminExt.minOffset(any())).thenReturn(Long.MIN_VALUE);
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.minOffset(any())).thenReturn(Long.MIN_VALUE);
-        }
         long offset = mqAdminExtImpl.minOffset(new MessageQueue());
-        Assert.assertEquals(offset, Long.MIN_VALUE);
+        Assert.assertEquals(Long.MIN_VALUE, offset);
     }
 
     @Test
     public void testEarliestMsgStoreTime() throws Exception {
+        when(defaultMQAdminExt.earliestMsgStoreTime(any())).thenReturn(1628495765398L);
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.earliestMsgStoreTime(any())).thenReturn(1628495765398L);
-        }
         long storeTime = mqAdminExtImpl.earliestMsgStoreTime(new MessageQueue());
-        Assert.assertEquals(storeTime, 1628495765398L);
+        Assert.assertEquals(1628495765398L, storeTime);
     }
 
     @Test
     public void testViewMessage() throws Exception {
+        when(defaultMQAdminExt.viewMessage(anyString())).thenReturn(new MessageExt());
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.viewMessage(anyString())).thenReturn(new MessageExt());
-        }
         MessageExt messageExt = mqAdminExtImpl.viewMessage("7F000001ACC018B4AAC2116AF6500000");
         Assert.assertNotNull(messageExt);
     }
 
     @Test
     public void testQueryMessage() throws Exception {
+        when(defaultMQAdminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong())).thenReturn(mock(QueryResult.class));
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong())).thenReturn(mock(QueryResult.class));
-        }
         QueryResult result = mqAdminExtImpl.queryMessage("topic_test", "key", 32, 1627804565000L, System.currentTimeMillis());
         Assert.assertNotNull(result);
     }
@@ -657,123 +586,99 @@ public class MQAdminExtImplTest {
 
     @Test
     public void testQueryConsumeTimeSpan() throws Exception {
+        when(defaultMQAdminExt.queryConsumeTimeSpan(anyString(), anyString())).thenReturn(new ArrayList<>());
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.queryConsumeTimeSpan(anyString(), anyString())).thenReturn(new ArrayList<QueueTimeSpan>());
-        }
         List<QueueTimeSpan> timeSpans = mqAdminExtImpl.queryConsumeTimeSpan("topic_test", "group_test");
         Assert.assertNotNull(timeSpans);
     }
 
     @Test
     public void testViewMessage2() throws Exception {
+        when(MQAdminInstance.threadLocalMqClientInstance().getMQAdminImpl()).thenReturn(mock(MQAdminImpl.class));
+        when(defaultMQAdminExt.viewMessage(anyString())).thenThrow(new RuntimeException("viewMessage exception"));
         assertNotNull(mqAdminExtImpl);
-        {
-            when(MQAdminInstance.threadLocalMqClientInstance().getMQAdminImpl()).thenReturn(mock(MQAdminImpl.class));
-            when(defaultMQAdminExt.viewMessage(anyString())).thenThrow(new RuntimeException("viewMessage exception"));
-        }
         mqAdminExtImpl.viewMessage("topic_test", "7F000001ACC018B4AAC2116AF6500000");
     }
 
     @Test
     public void testGetBrokerConfig() throws Exception {
+        when(defaultMQAdminExt.getBrokerConfig(anyString())).thenReturn(new Properties());
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.getBrokerConfig(anyString())).thenReturn(new Properties());
-        }
         Properties brokerConfig = mqAdminExtImpl.getBrokerConfig(brokerAddr);
         Assert.assertNotNull(brokerConfig);
     }
 
     @Test
     public void testFetchTopicsByCLuster() throws Exception {
+        when(defaultMQAdminExt.fetchTopicsByCLuster(anyString())).thenReturn(new TopicList());
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.fetchTopicsByCLuster(anyString())).thenReturn(new TopicList());
-        }
         TopicList topicList = mqAdminExtImpl.fetchTopicsByCLuster("DefaultCluster");
         Assert.assertNotNull(topicList);
     }
 
     @Test
     public void testCleanUnusedTopic() throws Exception {
+        when(defaultMQAdminExt.cleanUnusedTopic(anyString())).thenReturn(true);
+        when(defaultMQAdminExt.cleanUnusedTopicByAddr(anyString())).thenReturn(true);
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.cleanUnusedTopic(anyString())).thenReturn(true);
-            when(defaultMQAdminExt.cleanUnusedTopicByAddr(anyString())).thenReturn(true);
-        }
         Boolean result1 = mqAdminExtImpl.cleanUnusedTopic("DefaultCluster");
         Boolean result2 = mqAdminExtImpl.cleanUnusedTopic(brokerAddr);
-        Assert.assertEquals(result1, true);
-        Assert.assertEquals(result2, true);
+        Assert.assertEquals(true, result1);
+        Assert.assertEquals(true, result2);
     }
 
     @Test
     public void testViewBrokerStatsData() throws Exception {
+        when(defaultMQAdminExt.viewBrokerStatsData(anyString(), anyString(), anyString())).thenReturn(new BrokerStatsData());
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.viewBrokerStatsData(anyString(), anyString(), anyString())).thenReturn(new BrokerStatsData());
-        }
         BrokerStatsData brokerStatsData = mqAdminExtImpl.viewBrokerStatsData(brokerAddr, BrokerStatsManager.TOPIC_PUT_NUMS, "topic_test");
         Assert.assertNotNull(brokerStatsData);
     }
 
     @Test
     public void testGetClusterList() throws Exception {
+        when(defaultMQAdminExt.getClusterList(anyString())).thenReturn(new HashSet<>());
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.getClusterList(anyString())).thenReturn(new HashSet<>());
-        }
         Set<String> clusterList = mqAdminExtImpl.getClusterList("topic_test");
         Assert.assertNotNull(clusterList);
     }
 
     @Test
     public void testFetchConsumeStatsInBroker() throws Exception {
+        when(defaultMQAdminExt.fetchConsumeStatsInBroker(anyString(), anyBoolean(), anyLong())).thenReturn(new ConsumeStatsList());
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.fetchConsumeStatsInBroker(anyString(), anyBoolean(), anyLong())).thenReturn(new ConsumeStatsList());
-        }
         ConsumeStatsList consumeStatsList = mqAdminExtImpl.fetchConsumeStatsInBroker(brokerAddr, false, System.currentTimeMillis());
         Assert.assertNotNull(consumeStatsList);
     }
 
     @Test
     public void testGetTopicClusterList() throws Exception {
+        when(defaultMQAdminExt.fetchTopicsByCLuster(anyString())).thenReturn(new TopicList());
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.fetchTopicsByCLuster(anyString())).thenReturn(new TopicList());
-        }
         TopicList topicList = mqAdminExtImpl.fetchTopicsByCLuster("DefaultCluster");
         Assert.assertNotNull(topicList);
     }
 
     @Test
     public void testGetAllSubscriptionGroup() throws Exception {
+        when(defaultMQAdminExt.getAllSubscriptionGroup(anyString(), anyLong())).thenReturn(new SubscriptionGroupWrapper());
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.getAllSubscriptionGroup(anyString(), anyLong())).thenReturn(new SubscriptionGroupWrapper());
-        }
         SubscriptionGroupWrapper wrapper = mqAdminExtImpl.getAllSubscriptionGroup(brokerAddr, 5000L);
         Assert.assertNotNull(wrapper);
     }
 
     @Test
     public void testGetAllTopicGroup() throws Exception {
+        when(defaultMQAdminExt.getAllTopicGroup(anyString(), anyLong())).thenReturn(new TopicConfigSerializeWrapper());
         assertNotNull(mqAdminExtImpl);
-        {
-            when(defaultMQAdminExt.getAllTopicGroup(anyString(), anyLong())).thenReturn(new TopicConfigSerializeWrapper());
-        }
         TopicConfigSerializeWrapper wrapper = mqAdminExtImpl.getAllTopicGroup(brokerAddr, 5000L);
         Assert.assertNotNull(wrapper);
     }
 
     @Test
     public void testUpdateConsumeOffset() throws Exception {
+        doNothing().when(defaultMQAdminExt).updateConsumeOffset(anyString(), anyString(), any(), anyLong());
         assertNotNull(mqAdminExtImpl);
-        {
-            doNothing().when(defaultMQAdminExt).updateConsumeOffset(anyString(), anyString(), any(), anyLong());
-        }
         mqAdminExtImpl.updateConsumeOffset(brokerAddr, "group_test", new MessageQueue(), 10000L);
     }
 

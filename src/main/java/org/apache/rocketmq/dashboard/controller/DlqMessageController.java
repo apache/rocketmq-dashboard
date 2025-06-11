@@ -17,8 +17,7 @@
 package org.apache.rocketmq.dashboard.controller;
 
 import com.google.common.collect.Lists;
-import javax.annotation.Resource;
-import javax.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.dashboard.exception.ServiceException;
@@ -28,35 +27,29 @@ import org.apache.rocketmq.dashboard.permisssion.Permission;
 import org.apache.rocketmq.dashboard.service.DlqMessageService;
 import org.apache.rocketmq.dashboard.util.ExcelUtil;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
-import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
-@Controller
+import javax.servlet.http.HttpServletResponse;
+
+@RestController
 @RequestMapping("/dlqMessage")
 @Permission
+@RequiredArgsConstructor
 public class DlqMessageController {
 
-    @Resource
-    private DlqMessageService dlqMessageService;
+    private final DlqMessageService dlqMessageService;
+    private final MQAdminExt mqAdminExt;
 
-    @Resource
-    private MQAdminExt mqAdminExt;
-
-    @RequestMapping(value = "/queryDlqMessageByConsumerGroup.query", method = RequestMethod.POST)
-    @ResponseBody
-    public Object queryDlqMessageByConsumerGroup(@RequestBody MessageQuery query) {
-        return dlqMessageService.queryDlqMessageByPage(query);
+    @PostMapping(value = "/queryDlqMessageByConsumerGroup.query")
+    public ResponseEntity<Object> queryDlqMessageByConsumerGroup(@RequestBody MessageQuery query) {
+        return ResponseEntity.ok(dlqMessageService.queryDlqMessageByPage(query));
     }
 
     @GetMapping(value = "/exportDlqMessage.do")
     public void exportDlqMessage(HttpServletResponse response, @RequestParam String consumerGroup,
-        @RequestParam String msgId) {
-        MessageExt messageExt = null;
+                                 @RequestParam String msgId) {
+        MessageExt messageExt;
         try {
             String topic = MixAll.DLQ_GROUP_TOPIC_PREFIX + consumerGroup;
             messageExt = mqAdminExt.viewMessage(topic, msgId);
@@ -67,7 +60,7 @@ public class DlqMessageController {
         try {
             ExcelUtil.writeExcel(response, Lists.newArrayList(excelModel), "dlq", "dlq", DlqMessageExcelModel.class);
         } catch (Exception e) {
-            throw new ServiceException(-1, String.format("export dlq message failed!"));
+            throw new ServiceException(-1, "export dlq message failed!");
         }
     }
 }

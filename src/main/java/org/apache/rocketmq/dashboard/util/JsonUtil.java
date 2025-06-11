@@ -25,21 +25,19 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.ser.impl.SimpleFilterProvider;
 import com.google.common.base.Strings;
 import com.google.common.base.Throwables;
+import lombok.extern.slf4j.Slf4j;
+
 import java.io.IOException;
 import java.io.Writer;
 import java.text.SimpleDateFormat;
 import java.util.Map;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 @SuppressWarnings("unchecked")
+@Slf4j
 public class JsonUtil {
 
-    private static Logger logger = LoggerFactory.getLogger(JsonUtil.class);
-    private static ObjectMapper objectMapper = new ObjectMapper();
-
-    private JsonUtil() {
-    }
+    private static final ObjectMapper objectMapper = new ObjectMapper();
+    public static final String PARSE_STRING_ERROR_MESSAGE = "Parse String to Object error\nString: {}\nClass<T>: {}\nError: {}";
 
     static {
         objectMapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
@@ -51,103 +49,99 @@ public class JsonUtil {
         objectMapper.setDateFormat(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss"));
     }
 
-    public static void writeValue(Writer writer, Object obj) {
+    private JsonUtil() {
+        // Prevent instantiation
+    }
+
+    public static void writeValue(Writer writer, Object object) {
         try {
-            objectMapper.writeValue(writer, obj);
-        }
-        catch (IOException e) {
+            objectMapper.writeValue(writer, object);
+        } catch (IOException e) {
             Throwables.propagateIfPossible(e);
         }
     }
 
-    public static <T> String obj2String(T src) {
-        if (src == null) {
+    public static <T> String objectToString(T source) {
+        if (source == null) {
             return null;
         }
 
         try {
-            return src instanceof String ? (String)src : objectMapper.writeValueAsString(src);
-        }
-        catch (Exception e) {
-            logger.error("Parse Object to String error src=" + src, e);
+            return source instanceof String ? (String) source : objectMapper.writeValueAsString(source);
+        } catch (Exception e) {
+            log.error("Parse Object to String error src={}", source, e);
             return null;
         }
     }
 
-    public static <T> byte[] obj2Byte(T src) {
-        if (src == null) {
+    public static <T> byte[] objectToByte(T source) {
+        if (source == null) {
             return null;
         }
 
         try {
-            return src instanceof byte[] ? (byte[])src : objectMapper.writeValueAsBytes(src);
-        }
-        catch (Exception e) {
-            logger.error("Parse Object to byte[] error", e);
+            return source instanceof byte[] ? (byte[]) source : objectMapper.writeValueAsBytes(source);
+        } catch (Exception e) {
+            log.error("Parse Object to byte[] error", e);
             return null;
         }
     }
 
-    public static <T> T string2Obj(String str, Class<T> clazz) {
+    public static <T> T stringToObject(String str, Class<T> clazz) {
         if (Strings.isNullOrEmpty(str) || clazz == null) {
             return null;
         }
         str = escapesSpecialChar(str);
         try {
-            return clazz.equals(String.class) ? (T)str : objectMapper.readValue(str, clazz);
-        }
-        catch (Exception e) {
-            logger.error("Parse String to Object error\nString: {}\nClass<T>: {}\nError: {}", str, clazz.getName(), e);
+            return clazz.equals(String.class) ? (T) str : objectMapper.readValue(str, clazz);
+        } catch (Exception e) {
+            log.error(PARSE_STRING_ERROR_MESSAGE, str, clazz.getName(), e.getMessage());
             return null;
         }
     }
 
-    public static <T> T byte2Obj(byte[] bytes, Class<T> clazz) {
+    public static <T> T byteToObject(byte[] bytes, Class<T> clazz) {
         if (bytes == null || clazz == null) {
             return null;
         }
         try {
-            return clazz.equals(byte[].class) ? (T)bytes : objectMapper.readValue(bytes, clazz);
-        }
-        catch (Exception e) {
-            logger.error("Parse byte[] to Object error\nbyte[]: {}\nClass<T>: {}\nError: {}", bytes, clazz.getName(), e);
+            return clazz.equals(byte[].class) ? (T) bytes : objectMapper.readValue(bytes, clazz);
+        } catch (Exception e) {
+            log.error(PARSE_STRING_ERROR_MESSAGE, bytes, clazz.getName(), e.getMessage());
             return null;
         }
     }
 
-    public static <T> T string2Obj(String str, TypeReference<T> typeReference) {
+    public static <T> T stringToObject(String str, TypeReference<T> typeReference) {
         if (Strings.isNullOrEmpty(str) || typeReference == null) {
             return null;
         }
         str = escapesSpecialChar(str);
         try {
-            return (T)(typeReference.getType().equals(String.class) ? str : objectMapper.readValue(str, typeReference));
-        }
-        catch (Exception e) {
-            logger.error("Parse String to Object error\nString: {}\nTypeReference<T>: {}\nError: {}", str,
-                typeReference.getType(), e);
+            return (T) (typeReference.getType().equals(String.class) ? str : objectMapper.readValue(str, typeReference));
+        } catch (Exception e) {
+            log.error(PARSE_STRING_ERROR_MESSAGE, str, typeReference.getType(), e.getMessage());
             return null;
         }
     }
 
-    public static <T> T byte2Obj(byte[] bytes, TypeReference<T> typeReference) {
+    public static <T> T byteToObject(byte[] bytes, TypeReference<T> typeReference) {
         if (bytes == null || typeReference == null) {
             return null;
         }
         try {
-            return (T)(typeReference.getType().equals(byte[].class) ? bytes : objectMapper.readValue(bytes,
-                typeReference));
-        }
-        catch (Exception e) {
-            logger.error("Parse byte[] to Object error\nbyte[]: {}\nTypeReference<T>: {}\nError: {}", bytes,
-                typeReference.getType(), e);
+            return (T) (typeReference.getType().equals(byte[].class) ? bytes : objectMapper.readValue(bytes,
+                    typeReference));
+        } catch (Exception e) {
+            log.error(PARSE_STRING_ERROR_MESSAGE, bytes,
+                    typeReference.getType(), e.getMessage());
             return null;
         }
     }
 
-    public static <T> T map2Obj(Map<String, String> map, Class<T> clazz) {
-        String str = obj2String(map);
-        return string2Obj(str, clazz);
+    public static <T> T mapToObj(Map<String, String> map, Class<T> clazz) {
+        String str = objectToString(map);
+        return stringToObject(str, clazz);
     }
 
     private static String escapesSpecialChar(String str) {

@@ -24,7 +24,6 @@ import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Pointcut;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Aspect
@@ -32,10 +31,10 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class MQAdminAspect {
 
-    @Autowired
-    private GenericObjectPool<MQAdminExt> mqAdminExtPool;
+    private final GenericObjectPool<MQAdminExt> mqAdminExtPool;
 
-    public MQAdminAspect() {
+    public MQAdminAspect(GenericObjectPool<MQAdminExt> mqAdminExtPool) {
+        this.mqAdminExtPool = mqAdminExtPool;
     }
 
     @Pointcut("execution(* org.apache.rocketmq.dashboard.service.client.MQAdminExtImpl..*(..))")
@@ -46,14 +45,14 @@ public class MQAdminAspect {
     @Around(value = "mQAdminMethodPointCut()")
     public Object aroundMQAdminMethod(ProceedingJoinPoint joinPoint) throws Throwable {
         long start = System.currentTimeMillis();
-        Object obj = null;
+        Object obj;
         try {
             MQAdminInstance.createMQAdmin(mqAdminExtPool);
             obj = joinPoint.proceed();
+            return obj;
         } finally {
             MQAdminInstance.returnMQAdmin(mqAdminExtPool);
             log.debug("op=look method={} cost={}", joinPoint.getSignature().getName(), System.currentTimeMillis() - start);
         }
-        return obj;
     }
 }

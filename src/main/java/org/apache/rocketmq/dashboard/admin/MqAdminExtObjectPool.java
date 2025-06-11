@@ -16,32 +16,35 @@
  */
 package org.apache.rocketmq.dashboard.admin;
 
+import lombok.RequiredArgsConstructor;
 import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
 public class MqAdminExtObjectPool {
 
-    @Autowired
+    public static final int DEFAULT_MAX_WAIT_MILLIS = 10000;
+    public static final int DEFAULT_TIME_BETWEEN_EVICTION_RUNS_MILLIS = 20000;
+
     private RMQConfigure rmqConfigure;
 
     @Bean
     public GenericObjectPool<MQAdminExt> mqAdminExtPool() {
         GenericObjectPoolConfig genericObjectPoolConfig = new GenericObjectPoolConfig();
         genericObjectPoolConfig.setTestWhileIdle(true);
-        genericObjectPoolConfig.setMaxWaitMillis(10000);
-        genericObjectPoolConfig.setTimeBetweenEvictionRunsMillis(20000);
+        genericObjectPoolConfig.setMaxWaitMillis(DEFAULT_MAX_WAIT_MILLIS);
+        genericObjectPoolConfig.setTimeBetweenEvictionRunsMillis(DEFAULT_TIME_BETWEEN_EVICTION_RUNS_MILLIS);
+
         MQAdminPooledObjectFactory mqAdminPooledObjectFactory = new MQAdminPooledObjectFactory();
         MQAdminFactory mqAdminFactory = new MQAdminFactory(rmqConfigure);
         mqAdminPooledObjectFactory.setMqAdminFactory(mqAdminFactory);
-        GenericObjectPool<MQAdminExt> genericObjectPool = new GenericObjectPool<MQAdminExt>(
-            mqAdminPooledObjectFactory,
-            genericObjectPoolConfig);
-        return genericObjectPool;
+
+        return new GenericObjectPool<>(
+                mqAdminPooledObjectFactory,
+                genericObjectPoolConfig);
     }
 }

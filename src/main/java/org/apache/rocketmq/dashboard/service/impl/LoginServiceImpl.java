@@ -32,6 +32,7 @@ import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 
 @Service
 public class LoginServiceImpl implements LoginService {
@@ -57,11 +58,7 @@ public class LoginServiceImpl implements LoginService {
     protected void auth(HttpServletRequest request, HttpServletResponse response) {
         try {
             String url = WebUtil.getUrl(request);
-            try {
-                url = URLEncoder.encode(url, "UTF-8");
-            } catch (UnsupportedEncodingException e) {
-                logger.error("url encode:{}", url, e);
-            }
+            url = URLEncoder.encode(url, StandardCharsets.UTF_8);
             logger.debug("redirect url : {}", url);
             WebUtil.redirect(response, request, "/#/login?redirect=" + url);
         } catch (IOException e) {

@@ -78,7 +78,7 @@ public class PermissionAspectTest extends BaseTest {
         try {
             permissionAspect.checkPermission(joinPoint);
         } catch (Throwable throwable) {
-            Assert.assertEquals(throwable.getMessage(), "user not login");
+            Assert.assertEquals("user not login", throwable.getMessage());
         }
         // userRole is admin
         UserInfo info = new UserInfo();
@@ -97,7 +97,7 @@ public class PermissionAspectTest extends BaseTest {
         try {
             permissionAspect.checkPermission(joinPoint);
         } catch (Throwable throwable) {
-            Assert.assertEquals(throwable.getMessage(), "no permission");
+            Assert.assertEquals("no permission", throwable.getMessage());
         }
 
         // no permission
@@ -119,7 +119,7 @@ public class PermissionAspectTest extends BaseTest {
         new PermissionServiceImpl.PermissionFileStore(configure);
         rolePerms.put("ordinary", accessUrls);
         // Update file and flush to yaml file
-        Files.write(JsonUtil.obj2String(rolePerms).getBytes(), file);
+        Files.write(JsonUtil.objectToString(rolePerms).getBytes(), file);
         Thread.sleep(1000);
         if (file != null && file.exists()) {
             file.delete();
@@ -131,7 +131,7 @@ public class PermissionAspectTest extends BaseTest {
         File file = new File(fileName);
         file.delete();
         file.createNewFile();
-        Files.write(JsonUtil.obj2String(map).getBytes(), file);
+        Files.write(JsonUtil.objectToString(map).getBytes(), file);
         return file;
     }
 }

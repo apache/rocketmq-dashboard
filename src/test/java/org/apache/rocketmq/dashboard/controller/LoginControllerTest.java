@@ -76,7 +76,7 @@ public class LoginControllerTest extends BaseControllerTest {
                 = new UserServiceImpl.FileBasedUserInfoStore(configure);
             User user = store.queryByName(username);
             Assert.assertNotNull(user);
-            Assert.assertEquals(user.getPassword(), rightPwd);
+            Assert.assertEquals(rightPwd, user.getPassword());
             ReflectionTestUtils.setField(userService, "fileBasedUserInfoStore", store);
         }
 

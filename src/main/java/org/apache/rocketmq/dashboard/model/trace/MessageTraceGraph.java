@@ -27,5 +27,4 @@ public class MessageTraceGraph {
     private ProducerNode producerNode;
     private List<SubscriptionNode> subscriptionNodeList;
     private List<MessageTraceView> messageTraceViews;
-
 }

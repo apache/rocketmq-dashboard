@@ -23,12 +23,12 @@ public class MatcherUtilTest {
 
     @Test
     public void testMatch() {
-        boolean b = MatcherUtil.match("/topic/*.query", "/topic/route.query");
-        boolean b1 = MatcherUtil.match("/**/**.do", "/consumer/route.do");
-        boolean b2 = MatcherUtil.match("/*", "/topic/qqq/route.do");
-        Assert.assertTrue(b);
-        Assert.assertTrue(b1);
-        Assert.assertFalse(b2);
+        boolean result1 = MatcherUtil.match("/topic/*.query", "/topic/route.query");
+        boolean result2 = MatcherUtil.match("/**/**.do", "/consumer/route.do");
+        boolean result3 = MatcherUtil.match("/*", "/topic/qqq/route.do");
+        Assert.assertTrue(result1);
+        Assert.assertTrue(result2);
+        Assert.assertFalse(result3);
     }
 }
 

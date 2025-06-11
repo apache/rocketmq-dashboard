@@ -80,7 +80,7 @@ public class OpsControllerTest extends BaseControllerTest {
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
             .andExpect(jsonPath("$.data").value(true));
-        Assert.assertEquals(configure.getNamesrvAddr(), "127.0.0.1:9876");
+        Assert.assertEquals("127.0.0.1:9876", configure.getNamesrvAddr());
     }
 
     @Test

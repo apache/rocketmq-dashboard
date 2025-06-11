@@ -16,26 +16,30 @@
  */
 package org.apache.rocketmq.dashboard.service.impl;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.srvutil.FileWatchService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+
+@Slf4j
+@RequiredArgsConstructor
 public abstract class AbstractFileStore {
-    public final Logger log = LoggerFactory.getLogger(this.getClass());
 
-    public String filePath;
+    public final String filePath;
 
-    public AbstractFileStore(RMQConfigure configure, String fileName) {
+    protected AbstractFileStore(RMQConfigure configure, String fileName) {
         filePath = configure.getRocketMqDashboardDataPath() + File.separator + fileName;
         if (!new File(filePath).exists()) {
             // Use the default path
             InputStream inputStream = getClass().getResourceAsStream("/" + fileName);
             if (inputStream == null) {
-                log.error(String.format("Can not found the file %s in Spring Boot jar", fileName));
+                log.error(String.format("can not found the file %s in Spring Boot jar", fileName));
                 System.exit(1);
             } else {
                 try {
@@ -65,7 +69,7 @@ public abstract class AbstractFileStore {
 
     private boolean watch() {
         try {
-            FileWatchService fileWatchService = new FileWatchService(new String[] {filePath}, new FileWatchService.Listener() {
+            FileWatchService fileWatchService = new FileWatchService(new String[]{filePath}, new FileWatchService.Listener() {
                 @Override
                 public void onChanged(String path) {
                     log.info("The file changed, reload the context");

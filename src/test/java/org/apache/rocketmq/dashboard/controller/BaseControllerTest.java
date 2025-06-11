@@ -52,7 +52,7 @@ public abstract class BaseControllerTest extends BaseTest {
     protected abstract Object getTestController();
 
     @Before
-    public void beforeInit() throws Exception {
+    public void beforeInit() {
         MockitoAnnotations.initMocks(this);
         autoInjection();
         createMockMvc();

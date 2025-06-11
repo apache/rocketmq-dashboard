@@ -17,10 +17,8 @@
 
 package org.apache.rocketmq.dashboard.support;
 
-import java.lang.annotation.Annotation;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.dashboard.aspect.admin.annotation.OriginalControllerReturnValue;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.HttpMessageConverter;
@@ -29,25 +27,25 @@ import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
 
-@ControllerAdvice(basePackages = "org.apache.rocketmq.dashboard")
-public class GlobalRestfulResponseBodyAdvice implements ResponseBodyAdvice<Object> {
+import java.lang.annotation.Annotation;
 
-    private Logger logger = LoggerFactory.getLogger(GlobalRestfulResponseBodyAdvice.class);
+@ControllerAdvice(basePackages = "org.apache.rocketmq.dashboard")
+@Slf4j
+public class GlobalRestfulResponseBodyAdvice implements ResponseBodyAdvice<Object> {
 
     @Override
     public Object beforeBodyWrite(
-        Object obj, MethodParameter methodParameter, MediaType mediaType,
-        Class<? extends HttpMessageConverter<?>> converterType,
-        ServerHttpRequest serverHttpRequest, ServerHttpResponse serverHttpResponse) {
+            Object obj, MethodParameter methodParameter, MediaType mediaType,
+            Class<? extends HttpMessageConverter<?>> converterType,
+            ServerHttpRequest serverHttpRequest, ServerHttpResponse serverHttpResponse) {
         Annotation originalControllerReturnValue = methodParameter.getMethodAnnotation(OriginalControllerReturnValue.class);
         if (originalControllerReturnValue != null) {
             return obj;
         }
         JsonResult value;
         if (obj instanceof JsonResult) {
-            value = (JsonResult)obj;
-        }
-        else {
+            value = (JsonResult) obj;
+        } else {
             value = new JsonResult(obj);
         }
         return value;
@@ -55,7 +53,6 @@ public class GlobalRestfulResponseBodyAdvice implements ResponseBodyAdvice<Objec
 
     @Override
     public boolean supports(MethodParameter returnType, Class<? extends HttpMessageConverter<?>> converterType) {
-
         return true;
     }
 

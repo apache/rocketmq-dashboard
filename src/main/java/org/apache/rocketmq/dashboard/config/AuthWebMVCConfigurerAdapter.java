@@ -17,11 +17,10 @@
 
 package org.apache.rocketmq.dashboard.config;
 
+import lombok.RequiredArgsConstructor;
 import org.apache.rocketmq.dashboard.interceptor.AuthInterceptor;
 import org.apache.rocketmq.dashboard.model.UserInfo;
 import org.apache.rocketmq.dashboard.util.WebUtil;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.MethodParameter;
 import org.springframework.web.bind.support.WebDataBinderFactory;
@@ -33,18 +32,16 @@ import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.ViewControllerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurerAdapter;
 
-import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import java.util.List;
 
 @Configuration
+@RequiredArgsConstructor
 public class AuthWebMVCConfigurerAdapter extends WebMvcConfigurerAdapter {
-    @Autowired
-    @Qualifier("authInterceptor")
-    private AuthInterceptor authInterceptor;
 
-    @Resource
-    RMQConfigure configure;
+    private final RMQConfigure configure;
+
+    private final AuthInterceptor authInterceptor;
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {

@@ -18,6 +18,9 @@
 package org.apache.rocketmq.dashboard.model;
 
 import com.google.common.base.Charsets;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.apache.rocketmq.client.trace.TraceBean;
 import org.apache.rocketmq.client.trace.TraceContext;
 import org.apache.rocketmq.common.message.MessageExt;
@@ -27,6 +30,9 @@ import org.apache.rocketmq.dashboard.util.MsgTraceDecodeUtil;
 import java.util.ArrayList;
 import java.util.List;
 
+@Setter
+@Getter
+@NoArgsConstructor
 public class MessageTraceView {
     private String requestId;
     private String msgId;
@@ -47,13 +53,11 @@ public class MessageTraceView {
     private boolean fromTransactionCheck;
     private String traceType;
 
-    public MessageTraceView() {
-    }
 
     public static List<MessageTraceView> decodeFromTraceTransData(String key, MessageExt messageExt) {
-        List<MessageTraceView> messageTraceViewList = new ArrayList<MessageTraceView>();
+        List<MessageTraceView> messageTraceViewList = new ArrayList<>();
         String messageBody = new String(messageExt.getBody(), Charsets.UTF_8);
-        if (messageBody == null || messageBody.length() <= 0) {
+        if (messageBody.isEmpty()) {
             return messageTraceViewList;
         }
 
@@ -89,149 +93,5 @@ public class MessageTraceView {
             messageTraceViewList.add(messageTraceView);
         }
         return messageTraceViewList;
-    }
-
-    public String getMsgId() {
-        return msgId;
-    }
-
-    public void setMsgId(String msgId) {
-        this.msgId = msgId;
-    }
-
-    public String getTags() {
-        return tags;
-    }
-
-    public void setTags(String tags) {
-        this.tags = tags;
-    }
-
-    public String getKeys() {
-        return keys;
-    }
-
-    public void setKeys(String keys) {
-        this.keys = keys;
-    }
-
-    public String getStoreHost() {
-        return storeHost;
-    }
-
-    public void setStoreHost(String storeHost) {
-        this.storeHost = storeHost;
-    }
-
-    public int getCostTime() {
-        return costTime;
-    }
-
-    public void setCostTime(int costTime) {
-        this.costTime = costTime;
-    }
-
-    public String getMsgType() {
-        return msgType;
-    }
-
-    public void setMsgType(String msgType) {
-        this.msgType = msgType;
-    }
-
-    public String getOffSetMsgId() {
-        return offSetMsgId;
-    }
-
-    public void setOffSetMsgId(String offSetMsgId) {
-        this.offSetMsgId = offSetMsgId;
-    }
-
-    public long getTimeStamp() {
-        return timeStamp;
-    }
-
-    public void setTimeStamp(long timeStamp) {
-        this.timeStamp = timeStamp;
-    }
-
-    public String getGroupName() {
-        return groupName;
-    }
-
-    public void setGroupName(String groupName) {
-        this.groupName = groupName;
-    }
-
-    public String getTopic() {
-        return topic;
-    }
-
-    public void setTopic(String topic) {
-        this.topic = topic;
-    }
-
-    public String getStatus() {
-        return status;
-    }
-
-    public void setStatus(String status) {
-        this.status = status;
-    }
-
-    public String getClientHost() {
-        return clientHost;
-    }
-
-    public void setClientHost(String clientHost) {
-        this.clientHost = clientHost;
-    }
-
-    public String getRequestId() {
-        return requestId;
-    }
-
-    public void setRequestId(String requestId) {
-        this.requestId = requestId;
-    }
-
-    public int getRetryTimes() {
-        return retryTimes;
-    }
-
-    public void setRetryTimes(int retryTimes) {
-        this.retryTimes = retryTimes;
-    }
-
-    public String getTransactionState() {
-        return transactionState;
-    }
-
-    public void setTransactionState(String transactionState) {
-        this.transactionState = transactionState;
-    }
-
-    public String getTransactionId() {
-        return transactionId;
-    }
-
-    public void setTransactionId(String transactionId) {
-        this.transactionId = transactionId;
-    }
-
-    public boolean isFromTransactionCheck() {
-        return fromTransactionCheck;
-    }
-
-    public void setFromTransactionCheck(boolean fromTransactionCheck) {
-        this.fromTransactionCheck = fromTransactionCheck;
-    }
-
-    public String getTraceType() {
-        return traceType;
-    }
-
-    public void setTraceType(String traceType) {
-        this.traceType = traceType;
     }
 }

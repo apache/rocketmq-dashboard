@@ -16,49 +16,41 @@
  */
 package org.apache.rocketmq.dashboard.controller;
 
-import javax.annotation.Resource;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.dashboard.model.ConsumerMonitorConfig;
 import org.apache.rocketmq.dashboard.permisssion.Permission;
 import org.apache.rocketmq.dashboard.service.MonitorService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
-@Controller
+@RestController
 @RequestMapping("/monitor")
 @Permission
+@RequiredArgsConstructor
+@Slf4j
 public class MonitorController {
 
-    private Logger logger = LoggerFactory.getLogger(MonitorController.class);
-    @Resource
-    private MonitorService monitorService;
+    private final MonitorService monitorService;
 
-    @RequestMapping(value = "/createOrUpdateConsumerMonitor.do", method = {RequestMethod.POST})
-    @ResponseBody
-    public Object createOrUpdateConsumerMonitor(@RequestParam String consumeGroupName, @RequestParam int minCount,
-        @RequestParam int maxDiffTotal) {
-        return monitorService.createOrUpdateConsumerMonitor(consumeGroupName, new ConsumerMonitorConfig(minCount, maxDiffTotal));
+    @PostMapping(value = "/createOrUpdateConsumerMonitor.do")
+    public ResponseEntity<Object> createOrUpdateConsumerMonitor(@RequestParam String consumeGroupName, @RequestParam int minCount,
+                                                               @RequestParam int maxDiffTotal) {
+        return ResponseEntity.ok(monitorService.createOrUpdateConsumerMonitor(consumeGroupName, new ConsumerMonitorConfig(minCount, maxDiffTotal)));
     }
 
-    @RequestMapping(value = "/consumerMonitorConfig.query", method = {RequestMethod.GET})
-    @ResponseBody
-    public Object consumerMonitorConfig() {
-        return monitorService.queryConsumerMonitorConfig();
+    @GetMapping(value = "/consumerMonitorConfig.query")
+    public ResponseEntity<Object> consumerMonitorConfig() {
+        return ResponseEntity.ok(monitorService.queryConsumerMonitorConfig());
     }
 
-    @RequestMapping(value = "/consumerMonitorConfigByGroupName.query", method = {RequestMethod.GET})
-    @ResponseBody
-    public Object consumerMonitorConfigByGroupName(@RequestParam String consumeGroupName) {
-        return monitorService.queryConsumerMonitorConfigByGroupName(consumeGroupName);
+    @GetMapping(value = "/consumerMonitorConfigByGroupName.query")
+    public ResponseEntity<Object> consumerMonitorConfigByGroupName(@RequestParam String consumeGroupName) {
+        return ResponseEntity.ok(monitorService.queryConsumerMonitorConfigByGroupName(consumeGroupName));
     }
 
-    @RequestMapping(value = "/deleteConsumerMonitor.do", method = {RequestMethod.POST})
-    @ResponseBody
-    public Object deleteConsumerMonitor(@RequestParam String consumeGroupName) {
-        return monitorService.deleteConsumerMonitor(consumeGroupName);
+    @PostMapping(value = "/deleteConsumerMonitor.do")
+    public ResponseEntity<Object> deleteConsumerMonitor(@RequestParam String consumeGroupName) {
+        return ResponseEntity.ok(monitorService.deleteConsumerMonitor(consumeGroupName));
     }
 }

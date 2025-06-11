@@ -20,9 +20,7 @@ package org.apache.rocketmq.dashboard.config;
 import java.io.File;
 import org.junit.Assert;
 import org.junit.Test;
-import org.springframework.boot.web.server.ErrorPage;
 import org.springframework.boot.web.server.ErrorPageRegistrar;
-import org.springframework.boot.web.server.ErrorPageRegistry;
 
 public class RMQConfigureTest {
 
@@ -44,23 +42,20 @@ public class RMQConfigureTest {
     @Test
     public void testGet() {
         testSet();
-        Assert.assertEquals(rmqConfigure.getAccessKey(), "rocketmq");
-        Assert.assertEquals(rmqConfigure.getSecretKey(), "12345678");
+        Assert.assertEquals("rocketmq", rmqConfigure.getAccessKey());
+        Assert.assertEquals("12345678", rmqConfigure.getSecretKey());
         Assert.assertTrue(rmqConfigure.isACLEnabled());
         Assert.assertTrue(rmqConfigure.isUseTLS());
-        Assert.assertEquals(rmqConfigure.getDashboardCollectData(), "/tmp/rocketmq-console/data/test" + File.separator + "dashboard");
-        Assert.assertEquals(rmqConfigure.getRocketMqDashboardDataPath(), "/tmp/rocketmq-console/data/test");
-        Assert.assertEquals(rmqConfigure.getIsVIPChannel(), "true");
+        Assert.assertEquals("/tmp/rocketmq-console/data/test" + File.separator + "dashboard", rmqConfigure.getDashboardCollectData());
+        Assert.assertEquals("/tmp/rocketmq-console/data/test", rmqConfigure.getRocketMqDashboardDataPath());
+        Assert.assertEquals("true", rmqConfigure.getIsVIPChannel());
         Assert.assertTrue(rmqConfigure.isEnableDashBoardCollect());
         Assert.assertTrue(rmqConfigure.isLoginRequired());
-        Assert.assertEquals(rmqConfigure.getNamesrvAddr(), "127.0.0.1:9876");
-        Assert.assertEquals(rmqConfigure.getTimeoutMillis().longValue(), 3000L);
+        Assert.assertEquals("127.0.0.1:9876", rmqConfigure.getNamesrvAddr());
+        Assert.assertEquals(3000L, rmqConfigure.getTimeoutMillis().longValue());
         ErrorPageRegistrar registrar = rmqConfigure.errorPageRegistrar();
-        registrar.registerErrorPages(new ErrorPageRegistry() {
-            @Override
-            public void addErrorPages(ErrorPage... errorPages) {
+        registrar.registerErrorPages(errorPages -> {
 
-            }
         });
     }
 }

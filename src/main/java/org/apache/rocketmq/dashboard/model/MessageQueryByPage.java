@@ -17,8 +17,11 @@
 package org.apache.rocketmq.dashboard.model;
 
 
+import lombok.Getter;
+import lombok.Setter;
 import org.springframework.data.domain.PageRequest;
 
+@Setter
 public class MessageQueryByPage {
     public static final int DEFAULT_PAGE = 0;
 
@@ -30,11 +33,12 @@ public class MessageQueryByPage {
      * current page num
      */
     private int pageNum;
-
     private int pageSize;
-
+    @Getter
     private String topic;
+    @Getter
     private long begin;
+    @Getter
     private long end;
 
     public MessageQueryByPage(int pageNum, int pageSize, String topic, long begin, long end) {
@@ -42,38 +46,6 @@ public class MessageQueryByPage {
         this.pageSize = pageSize;
         this.topic = topic;
         this.begin = begin;
-        this.end = end;
-    }
-
-    public void setPageNum(int pageNum) {
-        this.pageNum = pageNum;
-    }
-
-    public void setPageSize(int pageSize) {
-        this.pageSize = pageSize;
-    }
-
-    public String getTopic() {
-        return topic;
-    }
-
-    public void setTopic(String topic) {
-        this.topic = topic;
-    }
-
-    public long getBegin() {
-        return begin;
-    }
-
-    public void setBegin(long begin) {
-        this.begin = begin;
-    }
-
-    public long getEnd() {
-        return end;
-    }
-
-    public void setEnd(long end) {
         this.end = end;
     }
 

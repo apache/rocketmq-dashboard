@@ -17,6 +17,8 @@
 package org.apache.rocketmq.dashboard.controller;
 
 import com.google.common.collect.Maps;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.common.Pair;
 import org.apache.rocketmq.common.protocol.body.ConsumeMessageDirectlyResult;
 import org.apache.rocketmq.dashboard.model.MessagePage;
@@ -26,65 +28,53 @@ import org.apache.rocketmq.dashboard.permisssion.Permission;
 import org.apache.rocketmq.dashboard.service.MessageService;
 import org.apache.rocketmq.dashboard.util.JsonUtil;
 import org.apache.rocketmq.tools.admin.api.MessageTrack;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.ResponseBody;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
-import javax.annotation.Resource;
 import java.util.List;
 import java.util.Map;
 
-@Controller
+@RestController
 @RequestMapping("/message")
 @Permission
-public class MessageController {
-    private Logger logger = LoggerFactory.getLogger(MessageController.class);
-    @Resource
-    private MessageService messageService;
+@RequiredArgsConstructor
+@Slf4j
+public class  MessageController {
 
-    @RequestMapping(value = "/viewMessage.query", method = RequestMethod.GET)
-    @ResponseBody
-    public Object viewMessage(@RequestParam(required = false) String topic, @RequestParam String msgId) {
+    private final MessageService messageService;
+
+    @GetMapping(value = "/viewMessage.query")
+    public ResponseEntity<Object> viewMessage(@RequestParam(required = false) String topic, @RequestParam String msgId) {
         Map<String, Object> messageViewMap = Maps.newHashMap();
         Pair<MessageView, List<MessageTrack>> messageViewListPair = messageService.viewMessage(topic, msgId);
         messageViewMap.put("messageView", messageViewListPair.getObject1());
         messageViewMap.put("messageTrackList", messageViewListPair.getObject2());
-        return messageViewMap;
+        return ResponseEntity.ok(messageViewMap);
     }
 
     @PostMapping("/queryMessagePageByTopic.query")
-    @ResponseBody
-    public MessagePage queryMessagePageByTopic(@RequestBody MessageQuery query) {
-        return messageService.queryMessageByPage(query);
+    public ResponseEntity<MessagePage> queryMessagePageByTopic(@RequestBody MessageQuery query) {
+        return ResponseEntity.ok(messageService.queryMessageByPage(query));
     }
 
-    @RequestMapping(value = "/queryMessageByTopicAndKey.query", method = RequestMethod.GET)
-    @ResponseBody
-    public Object queryMessageByTopicAndKey(@RequestParam String topic, @RequestParam String key) {
-        return messageService.queryMessageByTopicAndKey(topic, key);
+    @GetMapping(value = "/queryMessageByTopicAndKey.query")
+    public ResponseEntity<Object> queryMessageByTopicAndKey(@RequestParam String topic, @RequestParam String key) {
+        return ResponseEntity.ok(messageService.queryMessageByTopicAndKey(topic, key));
     }
 
-    @RequestMapping(value = "/queryMessageByTopic.query", method = RequestMethod.GET)
-    @ResponseBody
-    public Object queryMessageByTopic(@RequestParam String topic, @RequestParam long begin,
+    @GetMapping(value = "/queryMessageByTopic.query")
+    public ResponseEntity<Object> queryMessageByTopic(@RequestParam String topic, @RequestParam long begin,
                                       @RequestParam long end) {
-        return messageService.queryMessageByTopic(topic, begin, end);
+        return ResponseEntity.ok(messageService.queryMessageByTopic(topic, begin, end));
     }
 
-    @RequestMapping(value = "/consumeMessageDirectly.do", method = RequestMethod.POST)
-    @ResponseBody
-    public Object consumeMessageDirectly(@RequestParam String topic, @RequestParam String consumerGroup,
+    @PostMapping(value = "/consumeMessageDirectly.do")
+    public ResponseEntity<Object> consumeMessageDirectly(@RequestParam String topic, @RequestParam String consumerGroup,
                                          @RequestParam String msgId,
                                          @RequestParam(required = false) String clientId) {
-        logger.info("msgId={} consumerGroup={} clientId={}", msgId, consumerGroup, clientId);
+        log.info("msgId={} consumerGroup={} clientId={}", msgId, consumerGroup, clientId);
         ConsumeMessageDirectlyResult consumeMessageDirectlyResult = messageService.consumeMessageDirectly(topic, msgId, consumerGroup, clientId);
-        logger.info("consumeMessageDirectlyResult={}", JsonUtil.obj2String(consumeMessageDirectlyResult));
-        return consumeMessageDirectlyResult;
+        log.info("consumeMessageDirectlyResult={}", JsonUtil.objectToString(consumeMessageDirectlyResult));
+        return ResponseEntity.ok(consumeMessageDirectlyResult);
     }
 }
