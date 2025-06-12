@@ -17,8 +17,9 @@
 
 package org.apache.rocketmq.dashboard.service;
 
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 public interface LoginService {
     boolean login(HttpServletRequest request, HttpServletResponse response);

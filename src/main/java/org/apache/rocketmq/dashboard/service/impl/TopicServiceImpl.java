@@ -25,10 +25,10 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.acl.common.AclClientRPCHook;
 import org.apache.rocketmq.acl.common.SessionCredentials;
 import org.apache.rocketmq.client.producer.DefaultMQProducer;
+import org.apache.rocketmq.client.producer.LocalTransactionState;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.client.producer.TransactionListener;
 import org.apache.rocketmq.client.producer.TransactionMQProducer;
-import org.apache.rocketmq.client.producer.LocalTransactionState;
 import org.apache.rocketmq.client.trace.TraceContext;
 import org.apache.rocketmq.client.trace.TraceDispatcher;
 import org.apache.rocketmq.common.MixAll;
@@ -80,10 +80,6 @@ import static org.apache.rocketmq.common.TopicAttributes.TOPIC_MESSAGE_TYPE_ATTR
 @Service
 public class TopicServiceImpl extends AbstractCommonService implements TopicService {
 
-    private transient DefaultMQProducer systemTopicProducer;
-
-    private final Object producerLock = new Object();
-
     private Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @Autowired
@@ -91,6 +87,10 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
 
     private final ConcurrentMap<String, TopicRouteData> routeCache = new ConcurrentHashMap<>();
     private final Object cacheLock = new Object();
+
+    private transient DefaultMQProducer systemTopicProducer;
+
+    private final Object producerLock = new Object();
 
     @Autowired
     private RMQConfigure configure;

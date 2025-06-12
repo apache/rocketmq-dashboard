@@ -22,4 +22,5 @@ public interface UserService {
     User queryByName(String name);
 
     User queryByUsernameAndPassword(String username, String password);
+
 }

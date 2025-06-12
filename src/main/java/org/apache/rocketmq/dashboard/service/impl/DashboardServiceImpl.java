@@ -18,15 +18,16 @@
 package org.apache.rocketmq.dashboard.service.impl;
 
 import com.google.common.collect.Lists;
+import jakarta.annotation.Resource;
+import org.apache.rocketmq.dashboard.service.DashboardCollectService;
+import org.apache.rocketmq.dashboard.service.DashboardService;
+import org.springframework.stereotype.Service;
+
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
-import javax.annotation.Resource;
-import org.apache.rocketmq.dashboard.service.DashboardCollectService;
-import org.apache.rocketmq.dashboard.service.DashboardService;
-import org.springframework.stereotype.Service;
 
 @Service
 public class DashboardServiceImpl implements DashboardService {

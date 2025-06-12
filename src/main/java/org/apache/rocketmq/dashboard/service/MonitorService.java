@@ -16,8 +16,9 @@
  */
 package org.apache.rocketmq.dashboard.service;
 
-import java.util.Map;
 import org.apache.rocketmq.dashboard.model.ConsumerMonitorConfig;
+
+import java.util.Map;
 
 public interface MonitorService {
     boolean createOrUpdateConsumerMonitor(String name, ConsumerMonitorConfig config);

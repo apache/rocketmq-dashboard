@@ -16,11 +16,12 @@
  */
 package org.apache.rocketmq.dashboard.controller;
 
-import javax.annotation.Resource;
-import org.apache.rocketmq.remoting.protocol.body.ProducerConnection;
+
+import jakarta.annotation.Resource;
 import org.apache.rocketmq.dashboard.model.ConnectionInfo;
 import org.apache.rocketmq.dashboard.permisssion.Permission;
 import org.apache.rocketmq.dashboard.service.ProducerService;
+import org.apache.rocketmq.remoting.protocol.body.ProducerConnection;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;

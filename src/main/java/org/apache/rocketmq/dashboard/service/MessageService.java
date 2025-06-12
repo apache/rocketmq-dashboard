@@ -19,11 +19,11 @@ package org.apache.rocketmq.dashboard.service;
 
 import org.apache.rocketmq.common.Pair;
 import org.apache.rocketmq.common.message.MessageExt;
-import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
 import org.apache.rocketmq.dashboard.model.MessagePage;
-import org.apache.rocketmq.dashboard.model.request.MessageQuery;
-import org.apache.rocketmq.tools.admin.api.MessageTrack;
 import org.apache.rocketmq.dashboard.model.MessageView;
+import org.apache.rocketmq.dashboard.model.request.MessageQuery;
+import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
+import org.apache.rocketmq.tools.admin.api.MessageTrack;
 
 import java.util.List;
 

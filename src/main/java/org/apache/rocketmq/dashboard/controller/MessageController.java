@@ -17,26 +17,26 @@
 package org.apache.rocketmq.dashboard.controller;
 
 import com.google.common.collect.Maps;
+import jakarta.annotation.Resource;
 import org.apache.rocketmq.common.Pair;
-import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
 import org.apache.rocketmq.dashboard.model.MessagePage;
 import org.apache.rocketmq.dashboard.model.MessageView;
 import org.apache.rocketmq.dashboard.model.request.MessageQuery;
 import org.apache.rocketmq.dashboard.permisssion.Permission;
 import org.apache.rocketmq.dashboard.service.MessageService;
 import org.apache.rocketmq.dashboard.util.JsonUtil;
+import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
 import org.apache.rocketmq.tools.admin.api.MessageTrack;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.ResponseBody;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseBody;
 
-import javax.annotation.Resource;
 import java.util.List;
 import java.util.Map;
 

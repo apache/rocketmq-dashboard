@@ -14,18 +14,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.dashboard.model.request;
 
-import lombok.Data;
-import org.apache.rocketmq.auth.migration.v1.PlainAccessConfig;
+package org.apache.rocketmq.dashboard.model;
 
+import lombok.Getter;
+import lombok.Setter;
 
-@Data
-public class AclRequest {
+import java.util.List;
 
-    private PlainAccessConfig config;
-
-    private String topicPerm;
-
-    private String groupPerm;
+@Getter
+@Setter
+public class PolicyRequest {
+    private String brokerAddress;
+    private String subject;
+    private List<Policy> policies;
 }

@@ -17,22 +17,24 @@
 
 package org.apache.rocketmq.dashboard.interceptor;
 
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.apache.rocketmq.dashboard.service.LoginService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-import org.springframework.web.servlet.handler.HandlerInterceptorAdapter;
+import org.springframework.web.servlet.HandlerInterceptor;
 
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
 
 @Component
-public class AuthInterceptor extends HandlerInterceptorAdapter {
+public class AuthInterceptor implements HandlerInterceptor {
+
     @Autowired
     private LoginService loginService;
 
     @Override
-    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
-            throws Exception {
+    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
         return loginService.login(request, response);
     }
+
+
 }

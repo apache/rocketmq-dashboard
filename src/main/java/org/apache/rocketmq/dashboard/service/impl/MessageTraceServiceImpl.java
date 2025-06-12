@@ -19,14 +19,8 @@ package org.apache.rocketmq.dashboard.service.impl;
 
 import com.google.common.base.Function;
 import com.google.common.collect.Lists;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
-import javax.annotation.Resource;
-
 import com.google.common.collect.Maps;
+import jakarta.annotation.Resource;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.client.trace.TraceType;
 import org.apache.rocketmq.common.Pair;
@@ -35,11 +29,11 @@ import org.apache.rocketmq.common.topic.TopicValidator;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.exception.ServiceException;
 import org.apache.rocketmq.dashboard.model.MessageTraceView;
-import org.apache.rocketmq.dashboard.model.trace.ProducerNode;
 import org.apache.rocketmq.dashboard.model.trace.MessageTraceGraph;
+import org.apache.rocketmq.dashboard.model.trace.MessageTraceStatusEnum;
+import org.apache.rocketmq.dashboard.model.trace.ProducerNode;
 import org.apache.rocketmq.dashboard.model.trace.SubscriptionNode;
 import org.apache.rocketmq.dashboard.model.trace.TraceNode;
-import org.apache.rocketmq.dashboard.model.trace.MessageTraceStatusEnum;
 import org.apache.rocketmq.dashboard.service.MessageTraceService;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.slf4j.Logger;
@@ -47,6 +41,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class MessageTraceServiceImpl implements MessageTraceService {

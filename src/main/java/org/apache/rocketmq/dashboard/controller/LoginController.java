@@ -17,6 +17,9 @@
 
 package org.apache.rocketmq.dashboard.controller;
 
+import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.model.LoginInfo;
 import org.apache.rocketmq.dashboard.model.LoginResult;
@@ -32,12 +35,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 
-import javax.annotation.Resource;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
 
 @Controller
 @RequestMapping("/login")
@@ -66,12 +65,11 @@ public class LoginController {
 
     @RequestMapping(value = "/login.do", method = RequestMethod.POST)
     @ResponseBody
-    public Object login(@RequestParam("username") String username,
-        @RequestParam(value = "password") String password,
-        HttpServletRequest request,
-        HttpServletResponse response) throws Exception {
-        logger.info("user:{} login", username);
-        User user = userService.queryByUsernameAndPassword(username, password);
+    public Object login(org.apache.rocketmq.remoting.protocol.body.UserInfo userInfoRequest,
+                        HttpServletRequest request,
+                        HttpServletResponse response) throws Exception {
+        logger.info("user:{} login", userInfoRequest.getUsername());
+        User user = userService.queryByUsernameAndPassword(userInfoRequest.getUsername(), userInfoRequest.getPassword());
 
         if (user == null) {
             throw new IllegalArgumentException("Bad username or password!");
@@ -79,9 +77,9 @@ public class LoginController {
             user.setPassword(null);
             UserInfo userInfo = WebUtil.setLoginInfo(request, response, user);
             WebUtil.setSessionValue(request, WebUtil.USER_INFO, userInfo);
-            WebUtil.setSessionValue(request, WebUtil.USER_NAME, username);
+            WebUtil.setSessionValue(request, WebUtil.USER_NAME, userInfoRequest.getUsername());
             userInfo.setSessionId(WebUtil.getSessionId(request));
-            LoginResult result = new LoginResult(username, user.getType(), contextPath);
+            LoginResult result = new LoginResult(userInfoRequest.getUsername(), user.getType(), contextPath);
             return result;
         }
     }

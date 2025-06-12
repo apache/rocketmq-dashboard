@@ -17,9 +17,6 @@
 
 package org.apache.rocketmq.dashboard.util;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import org.apache.rocketmq.client.producer.LocalTransactionState;
 import org.apache.rocketmq.client.trace.TraceBean;
 import org.apache.rocketmq.client.trace.TraceConstants;
@@ -28,6 +25,9 @@ import org.apache.rocketmq.client.trace.TraceType;
 import org.apache.rocketmq.common.message.MessageType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.apache.rocketmq.client.trace.TraceType.Pub;
 
