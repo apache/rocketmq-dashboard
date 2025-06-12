@@ -103,6 +103,8 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
 
     private final List<GroupConsumeInfo> cacheConsumeInfoList = Collections.synchronizedList(new ArrayList<>());
 
+    private final HashMap<String, List<String>> consumerGroupMap = Maps.newHashMap();
+
     @Override
     public void afterPropertiesSet() {
         Runtime runtime = Runtime.getRuntime();
@@ -174,7 +176,6 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
 
 
     public void makeGroupListCache() {
-        HashMap<String, List<String>> consumerGroupMap = Maps.newHashMap();
         SubscriptionGroupWrapper subscriptionGroupWrapper = null;
         try {
             ClusterInfo clusterInfo = clusterInfoService.get();
@@ -530,6 +531,7 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
                     GroupConsumeInfo updatedInfo = queryGroup(consumerGroup, "");
                     updatedInfo.setUpdateTime(new Date());
                     updatedInfo.setGroup(consumerGroup);
+                    updatedInfo.setAddress(consumerGroupMap.get(consumerGroup));
                     cacheConsumeInfoList.set(i, updatedInfo);
                     return updatedInfo;
                 }
@@ -541,6 +543,7 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
     @Override
     public List<GroupConsumeInfo> refreshAllGroup(String address) {
         cacheConsumeInfoList.clear();
+        consumerGroupMap.clear();
         return queryGroupList(false, address);
     }
 }
