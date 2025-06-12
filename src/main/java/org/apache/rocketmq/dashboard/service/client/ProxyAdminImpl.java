@@ -17,7 +17,6 @@
 package org.apache.rocketmq.dashboard.service.client;
 
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.apache.rocketmq.client.exception.MQBrokerException;
 import org.apache.rocketmq.remoting.RemotingClient;
 import org.apache.rocketmq.remoting.exception.RemotingConnectException;
@@ -26,8 +25,6 @@ import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.remoting.protocol.header.GetConsumerConnectionListRequestHeader;
-import org.apache.rocketmq.tools.admin.MQAdminExt;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import static org.apache.rocketmq.remoting.protocol.RequestCode.GET_CONSUMER_CONNECTION_LIST;
@@ -35,13 +32,10 @@ import static org.apache.rocketmq.remoting.protocol.RequestCode.GET_CONSUMER_CON
 @Slf4j
 @Service
 public class ProxyAdminImpl implements ProxyAdmin {
-    @Autowired
-    private GenericObjectPool<MQAdminExt> mqAdminExtPool;
 
     @Override
     public ConsumerConnection examineConsumerConnectionInfo(String addr, String consumerGroup) throws RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException, InterruptedException, MQBrokerException {
         try {
-            MQAdminInstance.createMQAdmin(mqAdminExtPool);
             RemotingClient remotingClient = MQAdminInstance.threadLocalRemotingClient();
             GetConsumerConnectionListRequestHeader requestHeader = new GetConsumerConnectionListRequestHeader();
             requestHeader.setConsumerGroup(consumerGroup);
@@ -53,8 +47,9 @@ public class ProxyAdminImpl implements ProxyAdmin {
                 default:
                     throw new MQBrokerException(response.getCode(), response.getRemark(), addr);
             }
-        } finally {
-            MQAdminInstance.returnMQAdmin(mqAdminExtPool);
+        } catch (Exception e) {
+            log.error("examineConsumerConnectionInfo error", e);
+            throw e;
         }
     }
 }

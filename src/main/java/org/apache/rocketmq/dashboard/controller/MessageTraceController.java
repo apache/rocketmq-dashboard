@@ -18,11 +18,7 @@
 package org.apache.rocketmq.dashboard.controller;
 
 import com.google.common.collect.Maps;
-
-import java.util.List;
-import java.util.Map;
-import javax.annotation.Resource;
-
+import jakarta.annotation.Resource;
 import org.apache.rocketmq.common.Pair;
 import org.apache.rocketmq.dashboard.model.MessageView;
 import org.apache.rocketmq.dashboard.model.trace.MessageTraceGraph;
@@ -35,6 +31,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
+
+import java.util.List;
+import java.util.Map;
 
 @Controller
 @RequestMapping("/messageTrace")

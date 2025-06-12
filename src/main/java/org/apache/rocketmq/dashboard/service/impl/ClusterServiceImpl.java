@@ -17,20 +17,20 @@
 
 package org.apache.rocketmq.dashboard.service.impl;
 
+import com.google.common.base.Throwables;
+import com.google.common.collect.Maps;
+import jakarta.annotation.Resource;
 import org.apache.rocketmq.common.attribute.TopicMessageType;
+import org.apache.rocketmq.dashboard.service.ClusterService;
+import org.apache.rocketmq.dashboard.util.JsonUtil;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.KVTable;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
-import org.apache.rocketmq.dashboard.service.ClusterService;
-import org.apache.rocketmq.dashboard.util.JsonUtil;
-import com.google.common.base.Throwables;
-import com.google.common.collect.Maps;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import javax.annotation.Resource;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Properties;
@@ -61,10 +61,9 @@ public class ClusterServiceImpl implements ClusterService {
             resultMap.put("brokerServer", brokerServer);
             // add messageType
             resultMap.put("messageTypes", Arrays.stream(TopicMessageType.values()).sorted()
-                    .collect(Collectors.toMap(TopicMessageType::getValue, messageType ->String.format("MESSAGE_TYPE_%s",messageType.getValue()))));
+                    .collect(Collectors.toMap(TopicMessageType::getValue, messageType -> String.format("MESSAGE_TYPE_%s", messageType.getValue()))));
             return resultMap;
-        }
-        catch (Exception err) {
+        } catch (Exception err) {
             Throwables.throwIfUnchecked(err);
             throw new RuntimeException(err);
         }
@@ -73,12 +72,16 @@ public class ClusterServiceImpl implements ClusterService {
 
     @Override
     public Properties getBrokerConfig(String brokerAddr) {
+        Properties properties = null;
         try {
-            return mqAdminExt.getBrokerConfig(brokerAddr);
-        }
-        catch (Exception e) {
+            properties = mqAdminExt.getBrokerConfig(brokerAddr);
+            if (properties == null) {
+                throw new RuntimeException("get broker config failed, brokerAddr:" + brokerAddr);
+            }
+        } catch (Exception e) {
             Throwables.throwIfUnchecked(e);
             throw new RuntimeException(e);
         }
+        return properties;
     }
 }
