@@ -14,36 +14,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import React, {useState, useEffect} from 'react';
-import logo from './logo.svg';
-import './App.css';
 
-function App() {
-    const [message, setMessage] = useState("");
+const reportWebVitals = onPerfEntry => {
+  if (onPerfEntry && onPerfEntry instanceof Function) {
+    import('web-vitals').then(({ getCLS, getFID, getFCP, getLCP, getTTFB }) => {
+      getCLS(onPerfEntry);
+      getFID(onPerfEntry);
+      getFCP(onPerfEntry);
+      getLCP(onPerfEntry);
+      getTTFB(onPerfEntry);
+    });
+  }
+};
 
-    useEffect(() => {
-        fetch('cluster/list.query')
-            .then(response => response.text())
-            .then(message => {
-                setMessage(message);
-            });
-    }, [])
-
-
-    return (
-        <div className="App">
-            <header className="App-header">
-                <img src={logo} className="App-logo" alt="logo" height="60"/>
-                <p>
-                    Edit <code>src/App.js</code> and save to reload.
-                </p>
-            </header>
-            <h1>ClusterInfo</h1>
-            <p>
-                {message}
-            </p>
-        </div>
-    );
-}
-
-export default App;
+export default reportWebVitals;

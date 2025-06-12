@@ -14,11 +14,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { render, screen } from '@testing-library/react';
-import App from './App';
 
-test('renders learn react link', () => {
-  render(<App />);
-  const linkElement = screen.getByText(/learn react/i);
-  expect(linkElement).toBeInTheDocument();
+import React, { createContext, useState, useContext } from 'react';
+import { translations } from '../i18n';
+
+const LanguageContext = createContext({
+    lang: 'en',
+    setLang: () => {},
+    t: translations['en'], // 当前语言的文本资源
 });
+
+export const LanguageProvider = ({ children }) => {
+    const [lang, setLang] = useState('en');
+    const t = translations[lang] || translations['en'];
+    return (
+        <LanguageContext.Provider value={{ lang, setLang, t }}>
+            {children}
+        </LanguageContext.Provider>
+    );
+};
+
+export const useLanguage = () => useContext(LanguageContext);

@@ -418,7 +418,7 @@
                 <artifactId>frontend-maven-plugin</artifactId>
                 <version>1.11.3</version>
                 <configuration>
-                    <workingDirectory>frontend</workingDirectory>
+                    <workingDirectory>frontend-new</workingDirectory>
                     <installDirectory>target</installDirectory>
                 </configuration>
                 <executions>
