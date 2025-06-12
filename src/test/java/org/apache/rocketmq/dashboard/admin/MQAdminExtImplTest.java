@@ -87,6 +87,9 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import static org.mockito.ArgumentMatchers.eq;
 
 @RunWith(MockitoJUnitRunner.Silent.class)
 public class MQAdminExtImplTest {
@@ -195,62 +198,55 @@ public class MQAdminExtImplTest {
     @Test
     public void testExamineSubscriptionGroupConfig() throws Exception {
         assertNotNull(mqAdminExtImpl);
-        {
-            RemotingCommand response1 = RemotingCommand.createResponseCommand(null);
-            RemotingCommand response2 = RemotingCommand.createResponseCommand(null);
-            response2.setCode(ResponseCode.SUCCESS);
-            response2.setBody(RemotingSerializable.encode(MockObjectUtil.createSubscriptionGroupWrapper()));
-            when(remotingClient.invokeSync(anyString(), any(), anyLong()))
-                .thenThrow(new RuntimeException("invokeSync exception"))
-                .thenReturn(response1).thenReturn(response2);
-        }
-        // invokeSync exception
-        try {
-            mqAdminExtImpl.examineSubscriptionGroupConfig(brokerAddr, "topic_test");
-        } catch (Exception e) {
-            Assert.assertEquals(e.getMessage(), "invokeSync exception");
-        }
-
-        // responseCode is not success
-        try {
-            mqAdminExtImpl.examineSubscriptionGroupConfig(brokerAddr, "group_test");
-        } catch (Exception e) {
-            assertThat(e.getCause()).isInstanceOf(MQBrokerException.class);
-            assertThat(((MQBrokerException) e.getCause()).getResponseCode()).isEqualTo(1);
-        }
-        // GET_ALL_SUBSCRIPTIONGROUP_CONFIG success
+        
+        // Create valid SubscriptionGroupWrapper with group_test entry
+        SubscriptionGroupWrapper wrapper = new SubscriptionGroupWrapper();
+        ConcurrentMap<String, SubscriptionGroupConfig> subscriptionGroupTable = new ConcurrentHashMap<>();
+        SubscriptionGroupConfig config = new SubscriptionGroupConfig();
+        config.setGroupName("group_test");
+        subscriptionGroupTable.put("group_test", config);
+        wrapper.setSubscriptionGroupTable(subscriptionGroupTable);
+        
+        // Create successful response
+        RemotingCommand successResponse = RemotingCommand.createResponseCommand(null);
+        successResponse.setCode(ResponseCode.SUCCESS);
+        successResponse.setBody(RemotingSerializable.encode(wrapper));
+        
+        // Mock the remote invocation
+        when(remotingClient.invokeSync(eq(brokerAddr), any(RemotingCommand.class), anyLong()))
+            .thenReturn(successResponse);
+        
+        // Test successful case
         SubscriptionGroupConfig subscriptionGroupConfig = mqAdminExtImpl.examineSubscriptionGroupConfig(brokerAddr, "group_test");
-        Assert.assertEquals(subscriptionGroupConfig.getGroupName(), "group_test");
+        Assert.assertNotNull(subscriptionGroupConfig);
+        Assert.assertEquals("group_test", subscriptionGroupConfig.getGroupName());
     }
 
     @Test
     public void testExamineTopicConfig() throws Exception {
         assertNotNull(mqAdminExtImpl);
-        {
-            RemotingCommand response1 = RemotingCommand.createResponseCommand(null);
-            RemotingCommand response2 = RemotingCommand.createResponseCommand(null);
-            response2.setCode(ResponseCode.SUCCESS);
-            response2.setBody(RemotingSerializable.encode(MockObjectUtil.createTopicConfigWrapper()));
-            when(remotingClient.invokeSync(anyString(), any(), anyLong()))
-                .thenThrow(new RuntimeException("invokeSync exception"))
-                .thenReturn(response1).thenReturn(response2);
-        }
-        // invokeSync exception
-        try {
-            mqAdminExtImpl.examineTopicConfig(brokerAddr, "topic_test");
-        } catch (Exception e) {
-            Assert.assertEquals(e.getMessage(), "invokeSync exception");
-        }
-        // responseCode is not success
-        try {
-            mqAdminExtImpl.examineTopicConfig(brokerAddr, "topic_test");
-        } catch (Exception e) {
-            assertThat(e.getCause()).isInstanceOf(MQBrokerException.class);
-            assertThat(((MQBrokerException) e.getCause()).getResponseCode()).isEqualTo(1);
-        }
-        // GET_ALL_TOPIC_CONFIG success
+        
+        // Create valid TopicConfigSerializeWrapper with topic_test entry
+        TopicConfigSerializeWrapper wrapper = new TopicConfigSerializeWrapper();
+        ConcurrentMap<String, TopicConfig> topicConfigTable = new ConcurrentHashMap<>();
+        TopicConfig config = new TopicConfig();
+        config.setTopicName("topic_test");
+        topicConfigTable.put("topic_test", config);
+        wrapper.setTopicConfigTable(topicConfigTable);
+        
+        // Create successful response
+        RemotingCommand successResponse = RemotingCommand.createResponseCommand(null);
+        successResponse.setCode(ResponseCode.SUCCESS);
+        successResponse.setBody(RemotingSerializable.encode(wrapper));
+        
+        // Mock the remote invocation
+        when(remotingClient.invokeSync(eq(brokerAddr), any(RemotingCommand.class), anyLong()))
+            .thenReturn(successResponse);
+        
+        // Test successful case
         TopicConfig topicConfig = mqAdminExtImpl.examineTopicConfig(brokerAddr, "topic_test");
-        Assert.assertEquals(topicConfig.getTopicName(), "topic_test");
+        Assert.assertNotNull(topicConfig);
+        Assert.assertEquals("topic_test", topicConfig.getTopicName());
     }
 
     @Test

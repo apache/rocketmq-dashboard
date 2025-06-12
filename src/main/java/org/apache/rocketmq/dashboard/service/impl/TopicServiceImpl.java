@@ -80,6 +80,10 @@ import static org.apache.rocketmq.common.TopicAttributes.TOPIC_MESSAGE_TYPE_ATTR
 @Service
 public class TopicServiceImpl extends AbstractCommonService implements TopicService {
 
+    private transient DefaultMQProducer systemTopicProducer;
+
+    private final Object producerLock = new Object();
+
     private Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @Autowired
@@ -355,18 +359,40 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
         if (isEnableAcl) {
             rpcHook = new AclClientRPCHook(new SessionCredentials(configure.getAccessKey(), configure.getSecretKey()));
         }
-        DefaultMQProducer producer = buildDefaultMQProducer(MixAll.SELF_TEST_PRODUCER_GROUP, rpcHook);
-        producer.setInstanceName(String.valueOf(System.currentTimeMillis()));
-        producer.setNamesrvAddr(configure.getNamesrvAddr());
+
+        // ensures thread safety
+        if (systemTopicProducer == null) {
+            synchronized (producerLock) {
+                if (systemTopicProducer == null) {
+                    systemTopicProducer = buildDefaultMQProducer(MixAll.SELF_TEST_PRODUCER_GROUP, rpcHook);
+                    systemTopicProducer.setInstanceName("SystemTopicProducer-" + System.currentTimeMillis());
+                    systemTopicProducer.setNamesrvAddr(configure.getNamesrvAddr());
+                    try {
+                        systemTopicProducer.start();
+                    } catch (Exception e) {
+                        systemTopicProducer = null;
+                        Throwables.throwIfUnchecked(e);
+                        throw new RuntimeException(e);
+                    }
+                }
+            }
+        }
 
         try {
-            producer.start();
-            return producer.getDefaultMQProducerImpl().getmQClientFactory().getMQClientAPIImpl().getSystemTopicList(20000L);
+            return systemTopicProducer.getDefaultMQProducerImpl()
+                    .getmQClientFactory()
+                    .getMQClientAPIImpl()
+                    .getSystemTopicList(20000L);
         } catch (Exception e) {
+            // If the call fails, close and clean up the producer, and it will be re-created next time.
+            synchronized (producerLock) {
+                if (systemTopicProducer != null) {
+                    systemTopicProducer.shutdown();
+                    systemTopicProducer = null;
+                }
+            }
             Throwables.throwIfUnchecked(e);
             throw new RuntimeException(e);
-        } finally {
-            producer.shutdown();
         }
     }
 

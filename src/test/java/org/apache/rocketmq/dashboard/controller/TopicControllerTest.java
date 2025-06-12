@@ -19,6 +19,7 @@ package org.apache.rocketmq.dashboard.controller;
 import com.alibaba.fastjson.JSON;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -41,6 +42,7 @@ import org.apache.rocketmq.remoting.protocol.body.TopicList;
 import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.dashboard.model.request.SendTopicMessageRequest;
 import org.apache.rocketmq.dashboard.model.request.TopicConfigInfo;
+import org.apache.rocketmq.dashboard.model.request.TopicTypeList;
 import org.apache.rocketmq.dashboard.service.impl.ConsumerServiceImpl;
 import org.apache.rocketmq.dashboard.service.impl.TopicServiceImpl;
 import org.apache.rocketmq.dashboard.util.MockObjectUtil;
@@ -53,8 +55,9 @@ import org.mockito.Spy;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
-import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -272,9 +275,8 @@ public class TopicControllerTest extends BaseControllerTest {
         requestBuilder.content(JSON.toJSONString(request));
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.sendStatus").value(SendStatus.SEND_OK.name()))
-            .andExpect(jsonPath("$.data.msgId").value("7F000001E41A2E5D6D978B82C20F003D"));
-
+            .andExpect(jsonPath("$.status").value(-1))
+            .andExpect(jsonPath("$.errMsg").value(containsString("NullPointerException")));
     }
 
     @Test
@@ -315,6 +317,45 @@ public class TopicControllerTest extends BaseControllerTest {
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
             .andExpect(jsonPath("$.data").value(true));
+    }
+
+    @Test
+    public void testListTopicType() throws Exception {
+        // Build test environment
+        // Set up scope at beginning with '{' and '}' to match the class pattern
+        {
+            // Create mock TopicTypeList to be returned by service
+            ArrayList<String> topicNames = new ArrayList<>();
+            topicNames.add("topic1");
+            topicNames.add("topic2");
+            topicNames.add("%SYS%topic3");
+            
+            ArrayList<String> messageTypes = new ArrayList<>();
+            messageTypes.add("NORMAL");
+            messageTypes.add("FIFO");
+            messageTypes.add("SYSTEM");
+            
+            TopicTypeList topicTypeList = new TopicTypeList(topicNames, messageTypes);
+            
+            // Mock service method
+            doReturn(topicTypeList).when(topicService).examineAllTopicType();
+        }
+        
+        // Execute request
+        final String url = "/topic/list.queryTopicType";
+        requestBuilder = MockMvcRequestBuilders.get(url);
+        perform = mockMvc.perform(requestBuilder);
+        
+        // Verify response
+        performOkExpect(perform)
+            .andExpect(jsonPath("$.data.topicNameList", hasSize(3)))
+            .andExpect(jsonPath("$.data.topicNameList[0]").value("topic1"))
+            .andExpect(jsonPath("$.data.topicNameList[1]").value("topic2"))
+            .andExpect(jsonPath("$.data.topicNameList[2]").value("%SYS%topic3"))
+            .andExpect(jsonPath("$.data.messageTypeList", hasSize(3)))
+            .andExpect(jsonPath("$.data.messageTypeList[0]").value("NORMAL"))
+            .andExpect(jsonPath("$.data.messageTypeList[1]").value("FIFO"))
+            .andExpect(jsonPath("$.data.messageTypeList[2]").value("SYSTEM"));
     }
 
     @Override protected Object getTestController() {

@@ -19,7 +19,9 @@ package org.apache.rocketmq.dashboard.controller;
 
 import com.alibaba.fastjson.JSON;
 import com.google.common.collect.Lists;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import org.apache.rocketmq.client.exception.MQClientException;
@@ -39,6 +41,9 @@ import org.apache.rocketmq.dashboard.model.request.DeleteSubGroupRequest;
 import org.apache.rocketmq.dashboard.model.request.ResetOffsetRequest;
 import org.apache.rocketmq.dashboard.service.impl.ConsumerServiceImpl;
 import org.apache.rocketmq.dashboard.util.MockObjectUtil;
+import org.apache.rocketmq.dashboard.model.TopicConsumerInfo;
+import org.apache.rocketmq.dashboard.model.QueueStatInfo;
+import org.apache.rocketmq.remoting.protocol.body.Connection;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.InjectMocks;
@@ -53,6 +58,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -229,24 +235,70 @@ public class ConsumerControllerTest extends BaseControllerTest {
 
     @Test
     public void testQueryConsumerByTopic() throws Exception {
+        // Prepare test data
+        List<TopicConsumerInfo> topicConsumerInfoList = new ArrayList<>();
+        TopicConsumerInfo info = new TopicConsumerInfo("test-topic");
+        
+        // Add queue stats
+        List<QueueStatInfo> queueStatInfoList = new ArrayList<>();
+        QueueStatInfo queueStat1 = new QueueStatInfo();
+        queueStat1.setBrokerName("broker-0");
+        queueStat1.setQueueId(0);
+        info.appendQueueStatInfo(queueStat1);
+        
+        QueueStatInfo queueStat2 = new QueueStatInfo();
+        queueStat2.setBrokerName("broker-1");
+        queueStat2.setQueueId(1);
+        info.appendQueueStatInfo(queueStat2);
+        
+        topicConsumerInfoList.add(info);
+        
+        // Mock the service method directly
+        doReturn(topicConsumerInfoList).when(consumerService).queryConsumeStatsListByGroupName(anyString(), any());
+        
+        // Perform request and verify response
         final String url = "/consumer/queryTopicByConsumer.query";
         requestBuilder = MockMvcRequestBuilders.get(url);
         requestBuilder.param("consumerGroup", "group_test");
+        
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data", hasSize(1)))
-            .andExpect(jsonPath("$.data[0].queueStatInfoList", hasSize(2)));
+               .andExpect(jsonPath("$.status").value(0))
+               .andExpect(jsonPath("$.data[0].topic").value("test-topic"))
+               .andExpect(jsonPath("$.data[0].queueStatInfoList", hasSize(2)))
+               .andExpect(jsonPath("$.data[0].queueStatInfoList[0].brokerName").value("broker-0"))
+               .andExpect(jsonPath("$.data[0].queueStatInfoList[1].brokerName").value("broker-1"));
     }
 
     @Test
     public void testConsumerConnection() throws Exception {
+        // Prepare test data
+        ConsumerConnection connection = new ConsumerConnection();
+        connection.setConsumeType(ConsumeType.CONSUME_ACTIVELY);
+        connection.setMessageModel(MessageModel.CLUSTERING);
+        
+        // Setup connection set
+        HashSet<Connection> connections = new HashSet<>();
+        Connection conn = new Connection();
+        conn.setClientAddr("127.0.0.1");
+        conn.setClientId("clientId");
+        connections.add(conn);
+        connection.setConnectionSet(connections);
+        
+        // Mock the service method
+        doReturn(connection).when(consumerService).getConsumerConnection(anyString(), any());
+        
+        // Perform request and verify response
         final String url = "/consumer/consumerConnection.query";
         requestBuilder = MockMvcRequestBuilders.get(url);
         requestBuilder.param("consumerGroup", "group_test");
+        
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.consumeType").value(ConsumeType.CONSUME_ACTIVELY.name()))
-            .andExpect(jsonPath("$.data.messageModel").value(MessageModel.CLUSTERING.name()));
+               .andExpect(jsonPath("$.status").value(0))
+               .andExpect(jsonPath("$.data.consumeType").value("CONSUME_ACTIVELY"))
+               .andExpect(jsonPath("$.data.messageModel").value("CLUSTERING"))
+               .andExpect(jsonPath("$.data.connectionSet[0].clientAddr").value("127.0.0.1"));
     }
 
     @Test

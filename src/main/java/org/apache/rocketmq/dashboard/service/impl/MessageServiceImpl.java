@@ -37,6 +37,7 @@ import org.apache.rocketmq.common.Pair;
 import org.apache.rocketmq.common.message.MessageClientIDSetter;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.dashboard.support.AutoCloseConsumerWrapper;
 import org.apache.rocketmq.remoting.protocol.body.Connection;
 import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
@@ -127,11 +128,11 @@ public class MessageServiceImpl implements MessageService {
         if (isEnableAcl) {
             rpcHook = new AclClientRPCHook(new SessionCredentials(configure.getAccessKey(), configure.getSecretKey()));
         }
-        DefaultMQPullConsumer consumer = buildDefaultMQPullConsumer(rpcHook, configure.isUseTLS());
+        AutoCloseConsumerWrapper consumerWrapper = new AutoCloseConsumerWrapper();
+        DefaultMQPullConsumer consumer = consumerWrapper.getConsumer(rpcHook, configure.isUseTLS());
         List<MessageView> messageViewList = Lists.newArrayList();
         try {
             String subExpression = "*";
-            consumer.start();
             Set<MessageQueue> mqs = consumer.fetchSubscribeMessageQueues(topic);
             for (MessageQueue mq : mqs) {
                 long minOffset = consumer.searchOffset(mq, begin);
@@ -188,8 +189,6 @@ public class MessageServiceImpl implements MessageService {
         } catch (Exception e) {
             Throwables.throwIfUnchecked(e);
             throw new RuntimeException(e);
-        } finally {
-            consumer.shutdown();
         }
     }
 
@@ -263,7 +262,8 @@ public class MessageServiceImpl implements MessageService {
         if (isEnableAcl) {
             rpcHook = new AclClientRPCHook(new SessionCredentials(configure.getAccessKey(), configure.getSecretKey()));
         }
-        DefaultMQPullConsumer consumer = buildDefaultMQPullConsumer(rpcHook, configure.isUseTLS());
+        AutoCloseConsumerWrapper consumerWrapper = new AutoCloseConsumerWrapper();
+        DefaultMQPullConsumer consumer = consumerWrapper.getConsumer(rpcHook, configure.isUseTLS());
 
         long total = 0;
         List<QueueOffsetInfo> queueOffsetInfos = new ArrayList<>();
@@ -271,7 +271,6 @@ public class MessageServiceImpl implements MessageService {
         List<MessageView> messageViews = new ArrayList<>();
 
         try {
-            consumer.start();
             Collection<MessageQueue> messageQueues = consumer.fetchSubscribeMessageQueues(query.getTopic());
             int idx = 0;
             for (MessageQueue messageQueue : messageQueues) {
@@ -394,8 +393,6 @@ public class MessageServiceImpl implements MessageService {
         } catch (Exception e) {
             Throwables.throwIfUnchecked(e);
             throw new RuntimeException(e);
-        } finally {
-            consumer.shutdown();
         }
     }
 
@@ -405,14 +402,14 @@ public class MessageServiceImpl implements MessageService {
         if (isEnableAcl) {
             rpcHook = new AclClientRPCHook(new SessionCredentials(configure.getAccessKey(), configure.getSecretKey()));
         }
-        DefaultMQPullConsumer consumer = buildDefaultMQPullConsumer(rpcHook, configure.isUseTLS());
+        AutoCloseConsumerWrapper consumerWrapper = new AutoCloseConsumerWrapper();
+        DefaultMQPullConsumer consumer = consumerWrapper.getConsumer(rpcHook, configure.isUseTLS());
         List<MessageView> messageViews = new ArrayList<>();
 
         long offset = query.getPageNum() * query.getPageSize();
 
         long total = 0;
         try {
-            consumer.start();
             for (QueueOffsetInfo queueOffsetInfo : queueOffsetInfos) {
                 long start = queueOffsetInfo.getStart();
                 long end = queueOffsetInfo.getEnd();
@@ -462,8 +459,6 @@ public class MessageServiceImpl implements MessageService {
         } catch (Exception e) {
             Throwables.throwIfUnchecked(e);
             throw new RuntimeException(e);
-        } finally {
-            consumer.shutdown();
         }
     }
 
