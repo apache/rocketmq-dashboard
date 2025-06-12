@@ -75,9 +75,8 @@ public class AutoCloseConsumerWrapper {
 
 
     protected DefaultMQPullConsumer createNewConsumer(RPCHook rpcHook, Boolean useTLS) {
-        return new DefaultMQPullConsumer(MixAll.TOOLS_CONSUMER_GROUP, rpcHook) {{
-            setUseTLS(useTLS);
-        }};
+        return new DefaultMQPullConsumer(MixAll.TOOLS_CONSUMER_GROUP, rpcHook) {
+            { setUseTLS(useTLS); } };
     }
 
     private void startIdleCheckTask() {
