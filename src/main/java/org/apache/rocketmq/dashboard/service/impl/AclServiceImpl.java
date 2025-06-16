@@ -18,13 +18,11 @@
 package org.apache.rocketmq.dashboard.service.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.model.Entry;
 import org.apache.rocketmq.dashboard.model.Policy;
 import org.apache.rocketmq.dashboard.model.PolicyRequest;
 import org.apache.rocketmq.dashboard.model.request.UserInfoParam;
 import org.apache.rocketmq.dashboard.service.AclService;
-import org.apache.rocketmq.dashboard.service.ClusterInfoService;
 import org.apache.rocketmq.remoting.protocol.body.AclInfo;
 import org.apache.rocketmq.remoting.protocol.body.UserInfo;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
@@ -47,20 +45,12 @@ public class AclServiceImpl implements AclService {
     @Autowired
     private MQAdminExt mqAdminExt;
 
-    @Autowired
-    private RMQConfigure rmqConfigure;
-
-    @Autowired
-    private ClusterInfoService clusterInfoService;
-
-    private static final String DEFAULT_BROKER_ADDRESS = "localhost:10911";
 
     @Override
     public List<UserInfo> listUsers(String brokerAddress) {
         List<UserInfo> userList;
         try {
-            String address = brokerAddress != null && !brokerAddress.isEmpty() ? brokerAddress : DEFAULT_BROKER_ADDRESS;
-            userList = mqAdminExt.listUser(address, "");
+            userList = mqAdminExt.listUser(brokerAddress, "");
         } catch (Exception ex) {
             logger.error("Failed to list users from broker: {}", brokerAddress, ex);
             throw new RuntimeException("Failed to list users", ex);
@@ -76,14 +66,13 @@ public class AclServiceImpl implements AclService {
     public Object listAcls(String brokerAddress, String searchParam) {
         List<AclInfo> aclList;
         try {
-            String address = brokerAddress != null && !brokerAddress.isEmpty() ? brokerAddress : DEFAULT_BROKER_ADDRESS;
             String user = searchParam != null ? searchParam : "";
             String res = searchParam != null ? searchParam : "";
-            aclList = mqAdminExt.listAcl(address, user, "");
+            aclList = mqAdminExt.listAcl(brokerAddress, user, "");
             if (aclList == null) {
                 aclList = new ArrayList<>();
             }
-            List<AclInfo> resAclList = mqAdminExt.listAcl(address, "", res);
+            List<AclInfo> resAclList = mqAdminExt.listAcl(brokerAddress, "", res);
             if (resAclList != null) {
                 aclList.addAll(resAclList);
             }
@@ -117,8 +106,6 @@ public class AclServiceImpl implements AclService {
             return successfulResources;
         }
 
-        String brokerAddress = policyRequest.getBrokerAddress() != null && !policyRequest.getBrokerAddress().isEmpty() ?
-                policyRequest.getBrokerAddress() : DEFAULT_BROKER_ADDRESS;
         String subject = policyRequest.getSubject();
 
         if (subject == null || subject.isEmpty()) {
@@ -150,12 +137,12 @@ public class AclServiceImpl implements AclService {
                             aclInfo.setSubject(subject);
 
                             try {
-                                logger.info("Attempting to create ACL for subject: {}, resource: {} on broker: {}", subject, resource, brokerAddress);
-                                mqAdminExt.createAcl(brokerAddress, aclInfo);
+                                logger.info("Attempting to create ACL for subject: {}, resource: {} on broker: {}", subject, resource, policyRequest.getBrokerAddress());
+                                mqAdminExt.createAcl(policyRequest.getBrokerAddress(), aclInfo);
                                 successfulResources.add(resource);
                                 logger.info("Successfully created ACL for subject: {}, resource: {}", subject, resource);
                             } catch (Exception ex) {
-                                logger.error("Failed to create ACL for subject: {}, resource: {} on broker: {}", subject, resource, brokerAddress, ex);
+                                logger.error("Failed to create ACL for subject: {}, resource: {} on broker: {}", subject, resource, policyRequest.getBrokerAddress(), ex);
                                 throw new RuntimeException("Failed to create ACL", ex);
                             }
                         }
@@ -169,8 +156,7 @@ public class AclServiceImpl implements AclService {
     @Override
     public void deleteUser(String brokerAddress, String username) {
         try {
-            String address = brokerAddress != null && !brokerAddress.isEmpty() ? brokerAddress : DEFAULT_BROKER_ADDRESS;
-            mqAdminExt.deleteUser(address, username);
+            mqAdminExt.deleteUser(brokerAddress, username);
         } catch (Exception ex) {
             logger.error("Failed to delete user: {} from broker: {}", username, brokerAddress, ex);
             throw new RuntimeException("Failed to delete user", ex);
@@ -186,8 +172,7 @@ public class AclServiceImpl implements AclService {
         user.setUserType(userParam.getUserType());
 
         try {
-            String address = brokerAddress != null && !brokerAddress.isEmpty() ? brokerAddress : DEFAULT_BROKER_ADDRESS;
-            mqAdminExt.updateUser(address, user);
+            mqAdminExt.updateUser(brokerAddress, user);
         } catch (Exception ex) {
             logger.error("Failed to update user: {} on broker: {}", userParam.getUsername(), brokerAddress, ex);
             throw new RuntimeException("Failed to update user", ex);
@@ -202,8 +187,7 @@ public class AclServiceImpl implements AclService {
         user.setUserStatus(userParam.getUserStatus());
         user.setUserType(userParam.getUserType());
         try {
-            String address = brokerAddress != null && !brokerAddress.isEmpty() ? brokerAddress : DEFAULT_BROKER_ADDRESS;
-            mqAdminExt.createUser(address, user);
+            mqAdminExt.createUser(brokerAddress, user);
         } catch (Exception ex) {
             logger.error("Failed to create user: {} on broker: {}", userParam.getUsername(), brokerAddress, ex);
             throw new RuntimeException("Failed to create user", ex);
@@ -213,9 +197,8 @@ public class AclServiceImpl implements AclService {
     @Override
     public void deleteAcl(String brokerAddress, String subject, String resource) {
         try {
-            String address = brokerAddress != null && !brokerAddress.isEmpty() ? brokerAddress : DEFAULT_BROKER_ADDRESS;
             String res = resource != null ? resource : "";
-            mqAdminExt.deleteAcl(address, subject, res);
+            mqAdminExt.deleteAcl(brokerAddress, subject, res);
         } catch (Exception ex) {
             logger.error("Failed to delete ACL for subject: {} and resource: {} on broker: {}", subject, resource, brokerAddress, ex);
             throw new RuntimeException("Failed to delete ACL", ex);
@@ -229,8 +212,8 @@ public class AclServiceImpl implements AclService {
             logger.warn("Policy request is null or policies list is empty. No ACLs to update.");
         }
 
-        String brokerAddress = policyRequest.getBrokerAddress() != null && !policyRequest.getBrokerAddress().isEmpty() ?
-                policyRequest.getBrokerAddress() : DEFAULT_BROKER_ADDRESS;
+        assert policyRequest != null;
+        String brokerAddress = policyRequest.getBrokerAddress();
         String subject = policyRequest.getSubject();
 
         if (subject == null || subject.isEmpty()) {
@@ -262,8 +245,7 @@ public class AclServiceImpl implements AclService {
                             aclInfo.setSubject(subject);
 
                             try {
-                                String address = brokerAddress != null && !brokerAddress.isEmpty() ? brokerAddress : DEFAULT_BROKER_ADDRESS;
-                                mqAdminExt.updateAcl(address, aclInfo);
+                                mqAdminExt.updateAcl(brokerAddress, aclInfo);
                             } catch (Exception ex) {
                                 logger.error("Failed to update ACL for subject: {} on broker: {}", subject, brokerAddress, ex);
                                 throw new RuntimeException("Failed to update ACL", ex);
