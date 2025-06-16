@@ -17,10 +17,11 @@
 package org.apache.rocketmq.dashboard.model;
 
 import com.google.common.collect.Sets;
-import java.util.Collection;
-import java.util.HashSet;
 import org.apache.rocketmq.common.MQVersion;
 import org.apache.rocketmq.remoting.protocol.body.Connection;
+
+import java.util.Collection;
+import java.util.HashSet;
 
 public class ConnectionInfo extends Connection {
     private String versionDesc;

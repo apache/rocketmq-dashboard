@@ -17,13 +17,13 @@
 package org.apache.rocketmq.dashboard.service.impl;
 
 import com.google.common.collect.Maps;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.service.ProxyService;
 import org.apache.rocketmq.dashboard.service.client.ProxyAdmin;
 import org.springframework.stereotype.Service;
 
-import javax.annotation.Resource;
 import java.util.List;
 import java.util.Map;
 

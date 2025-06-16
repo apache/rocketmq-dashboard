@@ -16,8 +16,9 @@
  */
 package org.apache.rocketmq.dashboard.service;
 
-import java.util.Map;
 import org.apache.rocketmq.dashboard.service.checker.CheckerType;
+
+import java.util.Map;
 
 public interface OpsService {
     Map<String, Object> homePageInfo();

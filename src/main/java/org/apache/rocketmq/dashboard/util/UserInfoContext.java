@@ -14,18 +14,34 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.dashboard.model.request;
 
-import lombok.Data;
-import org.apache.rocketmq.auth.migration.v1.PlainAccessConfig;
+package org.apache.rocketmq.dashboard.util;
+
+import java.util.HashMap;
+import java.util.Map;
+
+public class UserInfoContext {
+
+    private static final ThreadLocal<Map<String, Object>> USER_THREAD_LOCAL = ThreadLocal.withInitial(HashMap::new);
 
 
-@Data
-public class AclRequest {
+    public static void set(String key, Object value) {
+        USER_THREAD_LOCAL.get().put(key, value);
+    }
 
-    private PlainAccessConfig config;
 
-    private String topicPerm;
+    public static Object get(String key) {
+        return USER_THREAD_LOCAL.get().get(key);
+    }
 
-    private String groupPerm;
+
+    public static Map<String, Object> getAll() {
+        return new HashMap<>(USER_THREAD_LOCAL.get());
+    }
+
+
+    public static void clear() {
+        USER_THREAD_LOCAL.remove();
+    }
+
 }

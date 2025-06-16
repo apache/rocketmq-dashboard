@@ -16,8 +16,8 @@
  */
 package org.apache.rocketmq.dashboard.model;
 
-import org.apache.rocketmq.remoting.protocol.admin.RollbackStats;
 import com.google.common.collect.Lists;
+import org.apache.rocketmq.remoting.protocol.admin.RollbackStats;
 
 import java.util.List;
 
