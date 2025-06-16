@@ -1,0 +1,25 @@
+# 🚀 Fix: Dependency & Yarn Issues in RocketMQ Dashboard
+
+## **Issue Description**
+1. **Maven Build Failure**  
+   - The build failed due to a missing dependency:  
+     ```
+     Could not find artifact io.grpc:grpc-core:jar:1.50.0
+     ```
+   - This caused Maven to be unable to resolve dependencies correctly.
+
+2. **Yarn Build Failure**  
+   - Error: `'yarn' is not recognized as an internal or external command`
+   - Error: `Couldn't find a package.json file`
+   - This happened because the `frontend` folder had `package-lock.json` but not `package.json`, causing Yarn to fail.
+   after adding
+### **1️⃣ Maven Dependency Fix**  
+- Added the missing `grpc-core` dependency in `pom.xml`:  
+  ```xml
+  <dependency>
+      <groupId>io.grpc</groupId>
+      <artifactId>grpc-core</artifactId>
+      <version>1.50.0</version>
+  </dependency>
+  After  mvn clean  it build sucess 
+
