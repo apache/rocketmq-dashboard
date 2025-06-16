@@ -16,8 +16,8 @@
  */
 package org.apache.rocketmq.dashboard.model;
 
-import org.apache.rocketmq.common.message.MessageExt;
 import com.google.common.base.Charsets;
+import org.apache.rocketmq.common.message.MessageExt;
 import org.springframework.beans.BeanUtils;
 
 import java.net.SocketAddress;

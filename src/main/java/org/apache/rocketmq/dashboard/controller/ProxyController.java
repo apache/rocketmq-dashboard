@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.dashboard.controller;
 
+import jakarta.annotation.Resource;
 import org.apache.rocketmq.dashboard.permisssion.Permission;
 import org.apache.rocketmq.dashboard.service.ProxyService;
 import org.springframework.stereotype.Controller;
@@ -23,8 +24,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
-
-import javax.annotation.Resource;
 
 @Controller
 @RequestMapping("/proxy")
@@ -37,6 +36,7 @@ public class ProxyController {
     public Object homePage() {
         return proxyService.getProxyHomePage();
     }
+
 
     @RequestMapping(value = "/addProxyAddr.do", method = RequestMethod.POST)
     @ResponseBody

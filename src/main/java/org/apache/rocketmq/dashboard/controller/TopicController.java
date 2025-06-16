@@ -16,16 +16,17 @@
  */
 package org.apache.rocketmq.dashboard.controller;
 
+import com.google.common.base.Preconditions;
+import jakarta.annotation.Resource;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.rocketmq.client.exception.MQClientException;
-import org.apache.rocketmq.dashboard.permisssion.Permission;
-import org.apache.rocketmq.remoting.exception.RemotingException;
 import org.apache.rocketmq.dashboard.model.request.SendTopicMessageRequest;
 import org.apache.rocketmq.dashboard.model.request.TopicConfigInfo;
+import org.apache.rocketmq.dashboard.permisssion.Permission;
 import org.apache.rocketmq.dashboard.service.ConsumerService;
 import org.apache.rocketmq.dashboard.service.TopicService;
 import org.apache.rocketmq.dashboard.util.JsonUtil;
-import com.google.common.base.Preconditions;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.rocketmq.remoting.exception.RemotingException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Controller;
@@ -33,8 +34,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
-
-import javax.annotation.Resource;
 import org.springframework.web.bind.annotation.ResponseBody;
 
 @Controller

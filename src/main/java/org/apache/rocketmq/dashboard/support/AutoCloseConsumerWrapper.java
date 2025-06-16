@@ -23,6 +23,7 @@ import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.remoting.RPCHook;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import java.time.Duration;
 import java.time.Instant;
 import java.util.concurrent.Executors;
@@ -49,7 +50,7 @@ public class AutoCloseConsumerWrapper {
     }
 
 
-    public DefaultMQPullConsumer getConsumer(RPCHook rpcHook,Boolean useTLS)  {
+    public DefaultMQPullConsumer getConsumer(RPCHook rpcHook, Boolean useTLS) {
         lastUsedTime = Instant.now();
 
         DefaultMQPullConsumer consumer = CONSUMER_REF.get();
@@ -57,7 +58,7 @@ public class AutoCloseConsumerWrapper {
             synchronized (this) {
                 consumer = CONSUMER_REF.get();
                 if (consumer == null) {
-                    consumer = createNewConsumer(rpcHook,useTLS);
+                    consumer = createNewConsumer(rpcHook, useTLS);
                     CONSUMER_REF.set(consumer);
                 }
                 try {

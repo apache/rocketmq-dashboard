@@ -16,7 +16,8 @@
  */
 package org.apache.rocketmq.dashboard.config;
 
-import java.util.ArrayList;
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.common.MixAll;
@@ -31,82 +32,70 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.apache.rocketmq.client.ClientConfig.SEND_MESSAGE_WITH_VIP_CHANNEL_PROPERTY;
 
+@Setter
+@Getter
 @Configuration
 @ConfigurationProperties(prefix = "rocketmq.config")
 public class RMQConfigure {
 
     private Logger logger = LoggerFactory.getLogger(RMQConfigure.class);
     //use rocketmq.namesrv.addr first,if it is empty,than use system proerty or system env
+    @Getter
     private volatile String namesrvAddr = System.getProperty(MixAll.NAMESRV_ADDR_PROPERTY, System.getenv(MixAll.NAMESRV_ADDR_ENV));
 
+    @Setter
+    @Getter
     private volatile String proxyAddr;
 
+    @Getter
     private volatile String isVIPChannel = System.getProperty(SEND_MESSAGE_WITH_VIP_CHANNEL_PROPERTY, "true");
 
 
+    @Setter
     private String dataPath = "/tmp/rocketmq-console/data";
 
+    @Getter
     private boolean enableDashBoardCollect;
 
+    @Setter
+    @Getter
     private boolean loginRequired = false;
+
 
     private String accessKey;
 
+    @Setter
+    @Getter
     private String secretKey;
 
+    @Setter
+    @Getter
     private boolean useTLS = false;
 
+    @Setter
+    @Getter
     private Long timeoutMillis;
 
+    @Getter
     private List<String> namesrvAddrs = new ArrayList<>();
 
+    @Getter
     private List<String> proxyAddrs = new ArrayList<>();
 
-    public String getAccessKey() {
-        return accessKey;
-    }
-
-    public void setAccessKey(String accessKey) {
-        this.accessKey = accessKey;
-    }
-
-    public String getSecretKey() {
-        return secretKey;
-    }
-
-    public void setSecretKey(String secretKey) {
-        this.secretKey = secretKey;
-    }
-
-    public String getNamesrvAddr() {
-        return namesrvAddr;
-    }
-
-    public List<String> getNamesrvAddrs() {
-        return namesrvAddrs;
-    }
-
-    public List<String> getProxyAddrs() {
-        return this.proxyAddrs;
-    }
+    @Setter
+    @Getter
+    private Integer clientCallbackExecutorThreads = 4;
 
     public void setProxyAddrs(List<String> proxyAddrs) {
         this.proxyAddrs = proxyAddrs;
         if (CollectionUtils.isNotEmpty(proxyAddrs)) {
             this.setProxyAddr(proxyAddrs.get(0));
         }
-    }
-
-    public String getProxyAddr() {
-        return proxyAddr;
-    }
-
-    public void setProxyAddr(String proxyAddr) {
-        this.proxyAddr = proxyAddr;
     }
 
     public void setNamesrvAddrs(List<String> namesrvAddrs) {
@@ -135,14 +124,6 @@ public class RMQConfigure {
         return dataPath + File.separator + "dashboard";
     }
 
-    public void setDataPath(String dataPath) {
-        this.dataPath = dataPath;
-    }
-
-    public String getIsVIPChannel() {
-        return isVIPChannel;
-    }
-
     public void setIsVIPChannel(String isVIPChannel) {
         if (StringUtils.isNotBlank(isVIPChannel)) {
             this.isVIPChannel = isVIPChannel;
@@ -151,36 +132,8 @@ public class RMQConfigure {
         }
     }
 
-    public boolean isEnableDashBoardCollect() {
-        return enableDashBoardCollect;
-    }
-
     public void setEnableDashBoardCollect(String enableDashBoardCollect) {
         this.enableDashBoardCollect = Boolean.valueOf(enableDashBoardCollect);
-    }
-
-    public boolean isLoginRequired() {
-        return loginRequired;
-    }
-
-    public void setLoginRequired(boolean loginRequired) {
-        this.loginRequired = loginRequired;
-    }
-
-    public boolean isUseTLS() {
-        return useTLS;
-    }
-
-    public void setUseTLS(boolean useTLS) {
-        this.useTLS = useTLS;
-    }
-
-    public Long getTimeoutMillis() {
-        return timeoutMillis;
-    }
-
-    public void setTimeoutMillis(Long timeoutMillis) {
-        this.timeoutMillis = timeoutMillis;
     }
 
     // Error Page process logic, move to a central configure later

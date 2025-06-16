@@ -14,133 +14,90 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.apache.rocketmq.dashboard.controller;
 
-import com.google.common.base.Preconditions;
-import java.util.List;
-import javax.annotation.Resource;
-import javax.servlet.http.HttpServletRequest;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.rocketmq.common.AclConfig;
-import org.apache.rocketmq.common.PlainAccessConfig;
-import org.apache.rocketmq.dashboard.config.RMQConfigure;
-import org.apache.rocketmq.dashboard.model.User;
-import org.apache.rocketmq.dashboard.model.UserInfo;
-import org.apache.rocketmq.dashboard.model.request.AclRequest;
-import org.apache.rocketmq.dashboard.permisssion.Permission;
-import org.apache.rocketmq.dashboard.service.AclService;
-import org.apache.rocketmq.dashboard.support.JsonResult;
-import org.apache.rocketmq.dashboard.util.WebUtil;
+import org.apache.rocketmq.dashboard.model.PolicyRequest;
+import org.apache.rocketmq.dashboard.model.request.UserCreateRequest;
+import org.apache.rocketmq.dashboard.model.request.UserUpdateRequest;
+import org.apache.rocketmq.dashboard.service.impl.AclServiceImpl;
+import org.apache.rocketmq.remoting.protocol.body.UserInfo;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/acl")
-@Permission
 public class AclController {
 
-    @Resource
-    private AclService aclService;
+    @Autowired
+    private AclServiceImpl aclService;
 
-    @Resource
-    private RMQConfigure configure;
-
-    @GetMapping("/enable.query")
-    public Object isEnableAcl() {
-        return new JsonResult<>(configure.isACLEnabled());
+    @GetMapping("/listUsers")
+    @ResponseBody
+    public List<UserInfo> listUsers(@RequestParam(required = false) String brokerAddress) {
+        return aclService.listUsers(brokerAddress);
     }
 
-    @GetMapping("/config.query")
-    public AclConfig getAclConfig(HttpServletRequest request) {
-        if (!configure.isLoginRequired()) {
-            return aclService.getAclConfig(false);
-        }
-        UserInfo userInfo = (UserInfo) WebUtil.getValueFromSession(request, WebUtil.USER_INFO);
-        // if user info is null but reach here, must exclude secret key for safety.
-        return aclService.getAclConfig(userInfo == null || userInfo.getUser().getType() != User.ADMIN);
+    @GetMapping("/listAcls")
+    @ResponseBody
+    public Object listAcls(
+            @RequestParam(required = false) String brokerAddress,
+            @RequestParam(required = false) String searchParam) {
+        return aclService.listAcls(brokerAddress, searchParam);
     }
 
-    @PostMapping("/add.do")
-    public Object addAclConfig(@RequestBody PlainAccessConfig config) {
-        Preconditions.checkArgument(StringUtils.isNotEmpty(config.getAccessKey()), "accessKey is null");
-        Preconditions.checkArgument(StringUtils.isNotEmpty(config.getSecretKey()), "secretKey is null");
-        aclService.addAclConfig(config);
+    @PostMapping("/createAcl")
+    @ResponseBody
+    public Object createAcl(@RequestBody PolicyRequest request) {
+        aclService.createAcl(request);
         return true;
     }
 
-    @PostMapping("/delete.do")
-    public Object deleteAclConfig(@RequestBody PlainAccessConfig config) {
-        Preconditions.checkArgument(StringUtils.isNotEmpty(config.getAccessKey()), "accessKey is null");
-        aclService.deleteAclConfig(config);
+    @DeleteMapping("/deleteUser")
+    @ResponseBody
+    public Object deleteUser(@RequestParam(required = false) String brokerAddress, @RequestParam String username) {
+        aclService.deleteUser(brokerAddress, username);
         return true;
     }
 
-    @PostMapping("/update.do")
-    public Object updateAclConfig(@RequestBody PlainAccessConfig config) {
-        Preconditions.checkArgument(StringUtils.isNotEmpty(config.getSecretKey()), "secretKey is null");
-        aclService.updateAclConfig(config);
+    @RequestMapping(value = "/updateUser", method = RequestMethod.POST, produces = "application/json;charset=UTF-8")
+    @ResponseBody
+    public Object updateUser(@RequestBody UserUpdateRequest request) {
+        aclService.updateUser(request.getBrokerAddress(), request.getUserInfo());
         return true;
     }
 
-    @PostMapping("/topic/add.do")
-    public Object addAclTopicConfig(@RequestBody AclRequest request) {
-        Preconditions.checkArgument(StringUtils.isNotEmpty(request.getConfig().getAccessKey()), "accessKey is null");
-        Preconditions.checkArgument(StringUtils.isNotEmpty(request.getConfig().getSecretKey()), "secretKey is null");
-        Preconditions.checkArgument(CollectionUtils.isNotEmpty(request.getConfig().getTopicPerms()), "topic perms is null");
-        Preconditions.checkArgument(StringUtils.isNotEmpty(request.getTopicPerm()), "topic perm is null");
-        aclService.addOrUpdateAclTopicConfig(request);
+    @PostMapping("/createUser")
+    public Object createUser(@RequestBody UserCreateRequest request) {
+        aclService.createUser(request.getBrokerAddress(), request.getUserInfo());
         return true;
     }
 
-    @PostMapping("/group/add.do")
-    public Object addAclGroupConfig(@RequestBody AclRequest request) {
-        Preconditions.checkArgument(StringUtils.isNotEmpty(request.getConfig().getAccessKey()), "accessKey is null");
-        Preconditions.checkArgument(StringUtils.isNotEmpty(request.getConfig().getSecretKey()), "secretKey is null");
-        Preconditions.checkArgument(CollectionUtils.isNotEmpty(request.getConfig().getGroupPerms()), "group perms is null");
-        Preconditions.checkArgument(StringUtils.isNotEmpty(request.getGroupPerm()), "group perm is null");
-        aclService.addOrUpdateAclGroupConfig(request);
+    @DeleteMapping("/deleteAcl")
+    public Object deleteAcl(
+            @RequestParam(required = false) String brokerAddress,
+            @RequestParam String subject,
+            @RequestParam(required = false) String resource) {
+        aclService.deleteAcl(brokerAddress, subject, resource);
         return true;
     }
 
-    @PostMapping("/perm/delete.do")
-    public Object deletePermConfig(@RequestBody AclRequest request) {
-        Preconditions.checkArgument(StringUtils.isNotEmpty(request.getConfig().getAccessKey()), "accessKey is null");
-        Preconditions.checkArgument(StringUtils.isNotEmpty(request.getConfig().getSecretKey()), "secretKey is null");
-        aclService.deletePermConfig(request);
+    @RequestMapping(value = "/updateAcl", method = RequestMethod.POST, produces = "application/json;charset=UTF-8")
+    @ResponseBody
+    public Object updateAcl(@RequestBody PolicyRequest request) {
+        aclService.updateAcl(request);
         return true;
     }
 
-    @PostMapping("/sync.do")
-    public Object syncConfig(@RequestBody PlainAccessConfig config) {
-        Preconditions.checkArgument(StringUtils.isNotEmpty(config.getAccessKey()), "accessKey is null");
-        Preconditions.checkArgument(StringUtils.isNotEmpty(config.getSecretKey()), "secretKey is null");
-        aclService.syncData(config);
-        return true;
-    }
 
-    @PostMapping("/white/list/add.do")
-    public Object addWhiteList(@RequestBody List<String> whiteList) {
-        Preconditions.checkArgument(CollectionUtils.isNotEmpty(whiteList), "white list is null");
-        aclService.addWhiteList(whiteList);
-        return true;
-    }
-
-    @DeleteMapping("/white/list/delete.do")
-    public Object deleteWhiteAddr(@RequestParam String request) {
-        aclService.deleteWhiteAddr(request);
-        return true;
-    }
-
-    @PostMapping("/white/list/sync.do")
-    public Object synchronizeWhiteList(@RequestBody List<String> whiteList) {
-        Preconditions.checkArgument(CollectionUtils.isNotEmpty(whiteList), "white list is null");
-        aclService.synchronizeWhiteList(whiteList);
-        return true;
-    }
 }

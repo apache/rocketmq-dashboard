@@ -16,8 +16,7 @@
  */
 package org.apache.rocketmq.dashboard.task;
 
-import java.util.Map;
-import javax.annotation.Resource;
+import jakarta.annotation.Resource;
 import org.apache.rocketmq.dashboard.model.ConsumerMonitorConfig;
 import org.apache.rocketmq.dashboard.model.GroupConsumeInfo;
 import org.apache.rocketmq.dashboard.service.ConsumerService;
@@ -26,6 +25,8 @@ import org.apache.rocketmq.dashboard.util.JsonUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+
+import java.util.Map;
 
 @Component
 public class MonitorTask {

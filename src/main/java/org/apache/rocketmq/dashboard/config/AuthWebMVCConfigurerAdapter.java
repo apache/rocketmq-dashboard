@@ -17,6 +17,8 @@
 
 package org.apache.rocketmq.dashboard.config;
 
+import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpServletRequest;
 import org.apache.rocketmq.dashboard.interceptor.AuthInterceptor;
 import org.apache.rocketmq.dashboard.model.UserInfo;
 import org.apache.rocketmq.dashboard.util.WebUtil;
@@ -29,16 +31,16 @@ import org.springframework.web.context.request.NativeWebRequest;
 import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.method.support.ModelAndViewContainer;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
+import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.ViewControllerRegistry;
-import org.springframework.web.servlet.config.annotation.WebMvcConfigurerAdapter;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
-import javax.annotation.Resource;
-import javax.servlet.http.HttpServletRequest;
 import java.util.List;
 
 @Configuration
-public class AuthWebMVCConfigurerAdapter extends WebMvcConfigurerAdapter {
+public class AuthWebMVCConfigurerAdapter implements WebMvcConfigurer {
+
     @Autowired
     @Qualifier("authInterceptor")
     private AuthInterceptor authInterceptor;
@@ -50,19 +52,19 @@ public class AuthWebMVCConfigurerAdapter extends WebMvcConfigurerAdapter {
     public void addInterceptors(InterceptorRegistry registry) {
         if (configure.isLoginRequired()) {
             registry.addInterceptor(authInterceptor).addPathPatterns(
-                "/cluster/**",
-                "/consumer/**",
-                "/dashboard/**",
-                "/dlqMessage/**",
-                "/message/**",
-                "/messageTrace/**",
-                "/monitor/**",
-                "/rocketmq/**",
-                "/ops/**",
-                "/producer/**",
-                "/test/**",
-                "/topic/**",
-                "/acl/**");
+                    "/cluster/**",
+                    "/consumer/**",
+                    "/dashboard/**",
+                    "/dlqMessage/**",
+                    "/message/**",
+                    "/messageTrace/**",
+                    "/monitor/**",
+                    "/rocketmq/**",
+                    "/ops/**",
+                    "/producer/**",
+                    "/test/**",
+                    "/topic/**",
+                    "/acl/**");
         }
     }
 
@@ -77,18 +79,29 @@ public class AuthWebMVCConfigurerAdapter extends WebMvcConfigurerAdapter {
 
             @Override
             public Object resolveArgument(MethodParameter methodParameter, ModelAndViewContainer modelAndViewContainer,
-                NativeWebRequest nativeWebRequest, WebDataBinderFactory webDataBinderFactory) throws Exception {
+                                          NativeWebRequest nativeWebRequest, WebDataBinderFactory webDataBinderFactory) throws Exception {
                 UserInfo userInfo = (UserInfo) WebUtil.getValueFromSession((HttpServletRequest) nativeWebRequest.getNativeRequest(),
-                    UserInfo.USER_INFO);
+                        UserInfo.USER_INFO);
                 if (userInfo != null) {
                     return userInfo;
                 }
                 throw new MissingServletRequestPartException(UserInfo.USER_INFO);
             }
         });
-
-        super.addArgumentResolvers(argumentResolvers);  //REVIEW ME
     }
+
+    @Override
+    public void addCorsMappings(CorsRegistry registry) {
+
+        registry.addMapping("/**")
+                .allowedOriginPatterns("http://localhost:3003")
+                .allowedMethods("GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS")
+                .maxAge(3600)
+                .allowCredentials(true)
+                .allowedHeaders("content-type", "Authorization", "X-Requested-With", "Origin", "Accept")
+                .exposedHeaders("authorization");
+    }
+
 
     @Override
     public void addViewControllers(ViewControllerRegistry registry) {

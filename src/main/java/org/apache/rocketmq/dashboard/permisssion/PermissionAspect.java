@@ -16,10 +16,9 @@
  */
 package org.apache.rocketmq.dashboard.permisssion;
 
-import javax.annotation.Resource;
-import javax.servlet.http.HttpServletRequest;
+import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpServletRequest;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
-import org.apache.rocketmq.dashboard.exception.ServiceException;
 import org.apache.rocketmq.dashboard.model.UserInfo;
 import org.apache.rocketmq.dashboard.service.PermissionService;
 import org.apache.rocketmq.dashboard.util.WebUtil;
@@ -56,13 +55,13 @@ public class PermissionAspect {
             HttpServletRequest request = ((ServletRequestAttributes) RequestContextHolder.getRequestAttributes()).getRequest();
             String url = request.getRequestURI();
             UserInfo userInfo = (UserInfo) request.getSession().getAttribute(WebUtil.USER_INFO);
-            if (userInfo == null || userInfo.getUser() == null) {
-                throw new ServiceException(-1, "user not login");
-            }
-            boolean checkResult = permissionService.checkUrlAvailable(userInfo, url);
-            if (!checkResult) {
-                throw new ServiceException(-1, "no permission");
-            }
+//            if (userInfo == null || userInfo.getUser() == null) {
+//                throw new ServiceException(-1, "user not login");
+//            }
+//            boolean checkResult = permissionService.checkUrlAvailable(userInfo, url);
+//            if (!checkResult) {
+//                throw new ServiceException(-1, "no permission");
+//            }
         }
         return joinPoint.proceed();
     }

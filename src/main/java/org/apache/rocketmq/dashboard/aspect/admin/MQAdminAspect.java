@@ -18,42 +18,114 @@ package org.apache.rocketmq.dashboard.aspect.admin;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.pool2.impl.GenericObjectPool;
+import org.apache.rocketmq.dashboard.admin.UserMQAdminPoolManager;
+import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.service.client.MQAdminInstance;
+import org.apache.rocketmq.dashboard.util.UserInfoContext;
+import org.apache.rocketmq.dashboard.util.WebUtil;
+import org.apache.rocketmq.remoting.protocol.body.UserInfo;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Pointcut;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
+
+import java.util.HashSet;
+import java.util.Set;
 
 @Aspect
-@Service
+@Component
 @Slf4j
 public class MQAdminAspect {
 
     @Autowired
+    private UserMQAdminPoolManager userMQAdminPoolManager;
+
+    @Autowired
     private GenericObjectPool<MQAdminExt> mqAdminExtPool;
 
-    public MQAdminAspect() {
+    @Autowired
+    private RMQConfigure rmqConfigure;
+
+    private static final Set<String> METHODS_TO_CHECK = new HashSet<>();
+
+    static {
+        METHODS_TO_CHECK.add("getUser");
+        METHODS_TO_CHECK.add("examineBrokerClusterInfo");
+        METHODS_TO_CHECK.add("examineConsumerConnectionInfo");
+        METHODS_TO_CHECK.add("examineConsumeStats");
+        METHODS_TO_CHECK.add("examineProducerConnectionInfo");
     }
 
+    // Pointcut remains the same, targeting methods in MQAdminExtImpl
     @Pointcut("execution(* org.apache.rocketmq.dashboard.service.client.MQAdminExtImpl..*(..))")
     public void mQAdminMethodPointCut() {
-
     }
 
-    @Around(value = "mQAdminMethodPointCut()")
+    @Pointcut("execution(* org.apache.rocketmq.dashboard.service.client.ProxyAdminImpl..*(..))")
+    public void proxyAdminMethodPointCut() {
+    }
+
+    @Around(value = "mQAdminMethodPointCut()||proxyAdminMethodPointCut()")
     public Object aroundMQAdminMethod(ProceedingJoinPoint joinPoint) throws Throwable {
         long start = System.currentTimeMillis();
-        Object obj = null;
+        MQAdminExt mqAdminExt = null; // The MQAdminExt instance borrowed from the pool
+        UserInfo currentUserInfo = null;     // The user initiating the operation
+        String methodName = joinPoint.getSignature().getName();
+
         try {
-            MQAdminInstance.createMQAdmin(mqAdminExtPool);
-            obj = joinPoint.proceed();
+            if (isPoolConfigIsolatedByUser(rmqConfigure.isLoginRequired(), methodName)) {
+                currentUserInfo = (UserInfo) UserInfoContext.get(WebUtil.USER_NAME);
+                // 2. Borrow the user-specific MQAdminExt instance.
+                //    currentUser.getName() is assumed to be the AccessKey, and currentUser.getPassword() is SecretKey.
+                mqAdminExt = userMQAdminPoolManager.borrowMQAdminExt(currentUserInfo.getUsername(), currentUserInfo.getPassword());
+
+                // 3. Set the borrowed MQAdminExt instance into the ThreadLocal for MQAdminInstance.
+                //    This makes it available to MQAdminExtImpl methods.
+                MQAdminInstance.setCurrentMQAdminExt(mqAdminExt);
+                log.debug("MQAdminExt borrowed for user {} and set in ThreadLocal.", currentUserInfo.getUsername());
+            } else {
+                mqAdminExt = mqAdminExtPool.borrowObject(); // Fallback to a default MQAdminExt if no user is provided
+                MQAdminInstance.setCurrentMQAdminExt(mqAdminExt);
+            }
+            // 4. Proceed with the original method execution.
+            return joinPoint.proceed();
+
         } finally {
-            MQAdminInstance.returnMQAdmin(mqAdminExtPool);
-            log.debug("op=look method={} cost={}", joinPoint.getSignature().getName(), System.currentTimeMillis() - start);
+
+            if (currentUserInfo != null) {
+                if (mqAdminExt != null) {
+                    userMQAdminPoolManager.returnMQAdminExt(currentUserInfo.getUsername(), mqAdminExt);
+                    MQAdminInstance.clearCurrentMQAdminExt();
+                    log.debug("MQAdminExt returned for user {} and cleared from ThreadLocal.", currentUserInfo.getUsername());
+                }
+                log.debug("Operation {} for user {} cost {}ms",
+                        methodName,
+                        currentUserInfo.getUsername(),
+                        System.currentTimeMillis() - start);
+            } else {
+                if (mqAdminExt != null) {
+                    mqAdminExtPool.returnObject(mqAdminExt);
+                    MQAdminInstance.clearCurrentMQAdminExt();
+                    log.debug("MQAdminExt returned to default pool and cleared from ThreadLocal.");
+                }
+                log.debug("Operation {} cost {}ms",
+                        methodName,
+                        System.currentTimeMillis() - start);
+            }
+
         }
-        return obj;
     }
+
+    private boolean isPoolConfigIsolatedByUser(boolean loginRequired, String methodName) {
+        if (!loginRequired) {
+            return false;
+        } else {
+            return !METHODS_TO_CHECK.contains(methodName);
+        }
+    }
+
+
 }

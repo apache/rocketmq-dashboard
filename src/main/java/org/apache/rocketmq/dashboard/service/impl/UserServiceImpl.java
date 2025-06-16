@@ -17,102 +17,74 @@
 
 package org.apache.rocketmq.dashboard.service.impl;
 
+import jakarta.annotation.Resource;
+import org.apache.rocketmq.auth.authentication.enums.UserType;
+import org.apache.rocketmq.dashboard.admin.UserMQAdminPoolManager;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
-import org.apache.rocketmq.dashboard.exception.ServiceException;
 import org.apache.rocketmq.dashboard.model.User;
 import org.apache.rocketmq.dashboard.service.UserService;
-import org.springframework.beans.factory.InitializingBean;
+import org.apache.rocketmq.dashboard.service.provider.UserInfoProvider;
+import org.apache.rocketmq.logging.org.slf4j.Logger;
+import org.apache.rocketmq.logging.org.slf4j.LoggerFactory;
+import org.apache.rocketmq.remoting.protocol.body.UserInfo;
+import org.apache.rocketmq.tools.admin.MQAdminExt;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import javax.annotation.Resource;
-import javax.validation.constraints.NotNull;
-import java.io.FileReader;
-import java.io.InputStream;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Properties;
-import java.util.concurrent.ConcurrentHashMap;
-
 @Service
-public class UserServiceImpl implements UserService, InitializingBean {
+public class UserServiceImpl implements UserService {
+
+    private static final Logger log = LoggerFactory.getLogger(UserServiceImpl.class);
+
     @Resource
     private RMQConfigure configure;
 
-    private FileBasedUserInfoStore fileBasedUserInfoStore;
+    @Autowired
+    private UserInfoProvider userInfoProvider;
+
+    @Autowired
+    private UserMQAdminPoolManager userMQAdminPoolManager;
+
 
     @Override
     public User queryByName(String name) {
-        return fileBasedUserInfoStore.queryByName(name);
+        UserInfo userInfo = userInfoProvider.getUserInfoByUsername(name);
+        if (userInfo == null) {
+            return null;
+        }
+        return new User(userInfo.getUsername(), userInfo.getPassword(), UserType.getByName(userInfo.getUserType()).getCode());
     }
 
     @Override
     public User queryByUsernameAndPassword(String username, String password) {
-        return fileBasedUserInfoStore.queryByUsernameAndPassword(username, password);
-    }
-
-    @Override
-    public void afterPropertiesSet() throws Exception {
-        if (configure.isLoginRequired()) {
-            fileBasedUserInfoStore = new FileBasedUserInfoStore(configure);
-        }
-    }
-
-    public static class FileBasedUserInfoStore extends AbstractFileStore {
-        private static final String FILE_NAME = "users.properties";
-
-        private static Map<String, User> userMap = new ConcurrentHashMap<>();
-
-        public FileBasedUserInfoStore(RMQConfigure configure) {
-            super(configure, FILE_NAME);
-        }
-
-        @Override
-        public void load(InputStream inputStream) {
-            Properties prop = new Properties();
-            try {
-                if (inputStream == null) {
-                    prop.load(new FileReader(filePath));
-                } else {
-                    prop.load(inputStream);
-                }
-            } catch (Exception e) {
-                log.error("load user.properties failed", e);
-                throw new ServiceException(0, String.format("Failed to load loginUserInfo property file: %s", filePath));
-            }
-
-            Map<String, User> loadUserMap = new HashMap<>();
-            String[] arrs;
-            int role;
-            for (String key : prop.stringPropertyNames()) {
-                String v = prop.getProperty(key);
-                if (v == null)
-                    continue;
-                arrs = v.split(",", 2);
-                if (arrs.length == 0) {
-                    continue;
-                } else if (arrs.length == 1) {
-                    role = 0;
-                } else {
-                    role = Integer.parseInt(arrs[1].trim());
-                }
-
-                loadUserMap.put(key, new User(key, arrs[0].trim(), role));
-            }
-
-            userMap.clear();
-            userMap.putAll(loadUserMap);
-        }
-
-        public User queryByName(String name) {
-            return userMap.get(name);
-        }
-
-        public User queryByUsernameAndPassword(@NotNull String username, @NotNull String password) {
-            User user = queryByName(username);
-            if (user != null && password.equals(user.getPassword())) {
-                return user.cloneOne();
-            }
+        User user = queryByName(username);
+        if (user != null && !user.getPassword().equals(password)) {
             return null;
         }
+
+        return user;
     }
+
+    public MQAdminExt getMQAdminExtForUser(User user) throws Exception {
+        if (user == null) {
+            throw new IllegalArgumentException("User object cannot be null when requesting MQAdminExt.");
+        }
+        return userMQAdminPoolManager.borrowMQAdminExt(user.getName(), user.getPassword());
+    }
+
+    public void returnMQAdminExtForUser(User user, MQAdminExt mqAdminExt) {
+        if (user == null || mqAdminExt == null) {
+            log.warn("Attempted to return MQAdminExt with null user or mqAdminExt object.");
+            return;
+        }
+        userMQAdminPoolManager.returnMQAdminExt(user.getName(), mqAdminExt);
+    }
+
+    public void onUserLogout(User user) {
+        if (user != null) {
+            userMQAdminPoolManager.shutdownUserPool(user.getName());
+            log.info("User {} logged out, their MQAdminExt pool has been shut down.", user.getName());
+        }
+    }
+
 }

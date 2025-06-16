@@ -14,18 +14,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.dashboard.model.request;
 
-import lombok.Data;
-import org.apache.rocketmq.auth.migration.v1.PlainAccessConfig;
+package org.apache.rocketmq.dashboard.admin;
 
+import org.apache.rocketmq.tools.admin.MQAdminExt;
 
-@Data
-public class AclRequest {
-
-    private PlainAccessConfig config;
-
-    private String topicPerm;
-
-    private String groupPerm;
+@FunctionalInterface
+public interface MQAdminExtCallback<T> {
+    T doInMQAdminExt(MQAdminExt mqAdminExt) throws Exception;
 }
