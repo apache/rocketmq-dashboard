@@ -17,8 +17,8 @@
 package org.apache.rocketmq.dashboard.permisssion;
 
 public enum UserRoleEnum {
-    ADMIN(1, "admin"),
-    ORDINARY(0, "ordinary");
+    SUPER(1, "Super"),
+    NORMAL(2, "Normal");
 
     private int roleType;
     private String roleName;
