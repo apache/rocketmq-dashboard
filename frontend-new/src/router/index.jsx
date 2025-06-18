@@ -71,7 +71,7 @@ const AppRouter = () => {
     return (
         <Layout style={{minHeight: '100vh'}}>
             <Header style={{padding: 0, height: 'auto', lineHeight: 'normal'}}>
-                <Navbar username={window.sessionStorage.getItem("username")}/>
+                <Navbar/>
             </Header>
 
             <Content style={{padding: '24px'}}>
