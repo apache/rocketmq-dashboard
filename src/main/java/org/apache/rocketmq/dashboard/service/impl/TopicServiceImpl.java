@@ -45,7 +45,6 @@ import org.apache.rocketmq.dashboard.model.request.TopicTypeMeta;
 import org.apache.rocketmq.dashboard.service.AbstractCommonService;
 import org.apache.rocketmq.dashboard.service.ClusterInfoService;
 import org.apache.rocketmq.dashboard.service.TopicService;
-import org.apache.rocketmq.dashboard.service.client.MQAdminExtImpl;
 import org.apache.rocketmq.dashboard.support.GlobalExceptionHandler;
 import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
@@ -71,7 +70,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -84,9 +82,6 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
 
     @Autowired
     private ClusterInfoService clusterInfoService;
-
-    private final ConcurrentMap<String, TopicRouteData> routeCache = new ConcurrentHashMap<>();
-    private final Object cacheLock = new Object();
 
     private transient DefaultMQProducer systemTopicProducer;
 
@@ -195,24 +190,11 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
 
     @Override
     public TopicRouteData route(String topic) {
-        TopicRouteData cachedData = routeCache.get(topic);
-        if (cachedData != null) {
-            return cachedData;
-        }
-
-        synchronized (cacheLock) {
-            cachedData = routeCache.get(topic);
-            if (cachedData != null) {
-                return cachedData;
-            }
-            try {
-                TopicRouteData freshData = mqAdminExt.examineTopicRouteInfo(topic);
-                routeCache.put(topic, freshData);
-                return freshData;
-            } catch (Exception ex) {
-                Throwables.throwIfUnchecked(ex);
-                throw new RuntimeException(ex);
-            }
+        try {
+            return mqAdminExt.examineTopicRouteInfo(topic);
+        } catch (Exception ex) {
+            Throwables.throwIfUnchecked(ex);
+            throw new RuntimeException(ex);
         }
     }
 
@@ -228,7 +210,6 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
 
     @Override
     public void createOrUpdate(TopicConfigInfo topicCreateOrUpdateRequest) {
-        MQAdminExtImpl.clearTopicConfigCache();
         TopicConfig topicConfig = new TopicConfig();
         BeanUtils.copyProperties(topicCreateOrUpdateRequest, topicConfig);
         String messageType = topicCreateOrUpdateRequest.getMessageType();
@@ -455,13 +436,6 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
 
     }
 
-    @Override
-    public boolean refreshTopicList() {
-        routeCache.clear();
-        clusterInfoService.refresh();
-        MQAdminExtImpl.clearTopicConfigCache();
-        return true;
-    }
 
     private void waitSendTraceFinish(DefaultMQProducer producer, boolean traceEnabled) {
         if (!traceEnabled) {

@@ -172,28 +172,7 @@ const DeployHistoryList = () => {
         }
     };
 
-    const refreshTopicList = async () => {
-        setLoading(true);
-        try {
-            const result = await remoteApi.refreshTopicList();
-            if (result.status === 0) {
-                setAllTopicList(result.data.topicNameList);
-                setAllMessageTypeList(result.data.messageTypeList);
-                setPaginationConf(prev => ({
-                    ...prev,
-                    total: result.data.topicNameList.length
-                }));
-                messageApi.success(t.REFRESHING_TOPIC_LIST);
-            } else {
-                messageApi.error(result.errMsg);
-            }
-        } catch (error) {
-            console.error("Error refreshing topic list:", error);
-            messageApi.error("Failed to refresh topic list");
-        } finally {
-            setLoading(false);
-        }
-    };
+
 
     const filterList = (currentPage) => {
         const lowExceptStr = filterStr.toLowerCase();
@@ -298,7 +277,7 @@ const DeployHistoryList = () => {
                 messageApi.success(t.TOPIC_OPERATION_SUCCESS);
                 closeAddUpdateDialog();
                 if(!isUpdateMode) {
-                    refreshTopicList();
+                    await getTopicList()
                 }
             } else {
                 messageApi.error(result.errMsg);
@@ -316,7 +295,7 @@ const DeployHistoryList = () => {
             if (result.status === 0) {
                 messageApi.success(`${t.TOPIC} [${topicToDelete}] ${t.DELETED_SUCCESSFULLY}`);
                 setAllTopicList(allTopicList.filter(topic => topic !== topicToDelete));
-                await refreshTopicList()
+                await getTopicList()
             } else {
                 messageApi.error(result.errMsg);
             }
@@ -614,7 +593,7 @@ const DeployHistoryList = () => {
                                 </Form.Item>
                             )}
                             <Form.Item>
-                                <Button type="primary" onClick={refreshTopicList}>
+                                <Button type="primary" onClick={getTopicList}>
                                     {t.REFRESH}
                                 </Button>
                             </Form.Item>
@@ -714,6 +693,7 @@ const DeployHistoryList = () => {
                     setIsSendResultModalVisible={setIsSendResultModalVisible}
                     setIsSendTopicMessageModalVisible={setIsSendTopicMessageModalVisible}
                     sendTopicMessageData={sendTopicMessageData}
+                    message={messageApi}
                     t={t}
                 />
             </div>

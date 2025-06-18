@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import {Button, Checkbox, Form, Input, message, Modal} from "antd";
+import {Button, Checkbox, Form, Input, Modal} from "antd";
 import React, {useEffect} from "react";
 import {remoteApi} from "../../api/remoteApi/remoteApi";
 
@@ -26,6 +26,7 @@ const SendTopicMessageDialog = ({
                                     setSendResultData,
                                     setIsSendResultModalVisible,
                                     setIsSendTopicMessageModalVisible,
+                                    message,
                                     t,
                                 }) => {
     const [form] = Form.useForm();
@@ -46,8 +47,8 @@ const SendTopicMessageDialog = ({
 
     const handleSendTopicMessage = async () => {
         try {
-            const values = await form.validateFields(); // 👈 从表单获取最新值
-            const result = await remoteApi.sendTopicMessage(values); // 👈 用表单数据发送
+            const values = await form.validateFields();
+            const result = await remoteApi.sendTopicMessage(values);
             if (result.status === 0) {
                 setSendResultData(result.data);
                 setIsSendResultModalVisible(true);

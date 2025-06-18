@@ -63,10 +63,12 @@ import org.apache.rocketmq.remoting.protocol.body.TopicConfigSerializeWrapper;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
 import org.apache.rocketmq.remoting.protocol.body.UserInfo;
 import org.apache.rocketmq.remoting.protocol.header.ExportRocksDBConfigToJsonRequestHeader;
+import org.apache.rocketmq.remoting.protocol.header.GetTopicConfigRequestHeader;
 import org.apache.rocketmq.remoting.protocol.header.controller.ElectMasterResponseHeader;
 import org.apache.rocketmq.remoting.protocol.header.controller.GetMetaDataResponseHeader;
 import org.apache.rocketmq.remoting.protocol.heartbeat.SubscriptionData;
 import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
+import org.apache.rocketmq.remoting.protocol.statictopic.TopicConfigAndQueueMapping;
 import org.apache.rocketmq.remoting.protocol.statictopic.TopicQueueMappingDetail;
 import org.apache.rocketmq.remoting.protocol.subscription.GroupForbidden;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
@@ -84,8 +86,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
 import static org.apache.rocketmq.remoting.protocol.RemotingSerializable.decode;
 
@@ -93,13 +93,8 @@ import static org.apache.rocketmq.remoting.protocol.RemotingSerializable.decode;
 public class MQAdminExtImpl implements MQAdminExt {
     private Logger logger = LoggerFactory.getLogger(MQAdminExtImpl.class);
 
-    private static final ConcurrentMap<String, TopicConfigSerializeWrapper> TOPIC_CONFIG_CACHE = new ConcurrentHashMap<>();
 
     public MQAdminExtImpl() {}
-
-    public static void clearTopicConfigCache() {
-        TOPIC_CONFIG_CACHE.clear();
-    }
 
 
     @Override
@@ -157,15 +152,11 @@ public class MQAdminExtImpl implements MQAdminExt {
 
     @Override
     public TopicConfig examineTopicConfig(String addr, String topic) throws MQBrokerException {
-        TopicConfigSerializeWrapper cachedWrapper = TOPIC_CONFIG_CACHE.get(addr);
-
-        if (cachedWrapper != null && cachedWrapper.getTopicConfigTable().containsKey(topic)) {
-            return cachedWrapper.getTopicConfigTable().get(topic);
-        }
-
         RemotingClient remotingClient = MQAdminInstance.threadLocalRemotingClient();
-        RemotingCommand request = RemotingCommand.createRequestCommand(RequestCode.GET_ALL_TOPIC_CONFIG, null);
-        RemotingCommand response = null;
+        GetTopicConfigRequestHeader header = new GetTopicConfigRequestHeader();
+        header.setTopic(topic);
+        RemotingCommand request = RemotingCommand.createRequestCommand(RequestCode.GET_TOPIC_CONFIG, header);
+        RemotingCommand response;
         try {
             response = remotingClient.invokeSync(addr, request, 3000);
         } catch (Exception err) {
@@ -174,11 +165,11 @@ public class MQAdminExtImpl implements MQAdminExt {
         }
         switch (response.getCode()) {
             case ResponseCode.SUCCESS: {
-                TopicConfigSerializeWrapper topicConfigSerializeWrapper =
-                        decode(response.getBody(), TopicConfigSerializeWrapper.class);
-
-                TOPIC_CONFIG_CACHE.put(addr, topicConfigSerializeWrapper);
-                return topicConfigSerializeWrapper.getTopicConfigTable().get(topic);
+                TopicConfigAndQueueMapping topicConfigAndQueueMapping = decode(response.getBody(), TopicConfigAndQueueMapping.class);
+                if (topicConfigAndQueueMapping == null) {
+                    throw new MQBrokerException(ResponseCode.TOPIC_NOT_EXIST, "Topic not exist: " + topic);
+                }
+                return topicConfigAndQueueMapping;
             }
             default:
                 throw new MQBrokerException(response.getCode(), response.getRemark());
