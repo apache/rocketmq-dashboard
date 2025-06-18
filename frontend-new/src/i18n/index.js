@@ -278,7 +278,7 @@ export const translations = {
         "PLEASE_ADD_RESOURCE": "请添加资源!",
         "ENTER_IP_HINT": "请输入 IP 地址，按回车键添加，支持 IPv4、IPv6 和 CIDR",
         "PLEASE_ENTER_DECISION": "请输入决策!",
-
+        "MENU": "菜单",
     },
     en: {
         "DEFAULT": "Default",
@@ -535,6 +535,8 @@ export const translations = {
         "PLEASE_ADD_RESOURCE": "Please add resource!",
         "ENTER_IP_HINT": "Please enter IP address, press Enter to add. Supports IPv4, IPv6, and CIDR.",
         "PLEASE_ENTER_DECISION": "Please enter decision!",
+        "MENU": "Menu",
+
     }
 
 };
