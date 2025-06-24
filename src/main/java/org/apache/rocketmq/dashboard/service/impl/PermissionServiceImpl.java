@@ -33,8 +33,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-import static org.apache.rocketmq.dashboard.permisssion.UserRoleEnum.ADMIN;
-import static org.apache.rocketmq.dashboard.permisssion.UserRoleEnum.ORDINARY;
+import static org.apache.rocketmq.dashboard.permisssion.UserRoleEnum.NORMAL;
+import static org.apache.rocketmq.dashboard.permisssion.UserRoleEnum.SUPER;
+
 
 @Service
 public class PermissionServiceImpl implements PermissionService, InitializingBean {
@@ -55,10 +56,10 @@ public class PermissionServiceImpl implements PermissionService, InitializingBea
     public boolean checkUrlAvailable(UserInfo userInfo, String url) {
         int type = userInfo.getUser().getType();
         // if it is admin, it could access all resources
-        if (type == ADMIN.getRoleType()) {
+        if (type == SUPER.getRoleType()) {
             return true;
         }
-        String loginUserRole = ORDINARY.getRoleName();
+        String loginUserRole = NORMAL.getRoleName();
         Map<String, List<String>> rolePerms = PermissionFileStore.rolePerms;
         List<String> perms = rolePerms.get(loginUserRole);
         for (String perm : perms) {
