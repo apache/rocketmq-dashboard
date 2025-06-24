@@ -56,6 +56,7 @@ public class LoginServiceImpl implements LoginService {
         if (username != null) {
             UserInfo userInfo = userInfoProvider.getUserInfoByUsername(username);
             if (userInfo == null) {
+                auth(request, response);
                 return false;
             }
             UserInfoContext.set(WebUtil.USER_NAME, userInfo);

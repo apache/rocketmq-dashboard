@@ -536,22 +536,6 @@ const remoteApi = {
         }
     },
 
-    refreshTopicList: async () => {
-        try {
-            const response = await remoteApi._fetch(remoteApi.buildUrl("/topic/refresh"), {
-                method: 'POST'
-            });
-            const result = await response.json();
-            if (result.status === 0 && result.data === true) {
-                return remoteApi.queryTopicList();
-            }
-            return result;
-        } catch (error) {
-            console.error("Error refreshing topic list:", error);
-            return { status: 1, errMsg: "Failed to refresh topic list" };
-        }
-    },
-
     deleteTopic: async (topic) => {
         try {
             const url = remoteApi.buildUrl(`/topic/deleteTopic.do?topic=${encodeURIComponent(topic)}`);

@@ -24,13 +24,12 @@ import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.model.User;
 import org.apache.rocketmq.dashboard.service.UserService;
 import org.apache.rocketmq.dashboard.service.provider.UserInfoProvider;
-import org.apache.rocketmq.logging.org.slf4j.Logger;
-import org.apache.rocketmq.logging.org.slf4j.LoggerFactory;
 import org.apache.rocketmq.remoting.protocol.body.UserInfo;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 @Service
 public class UserServiceImpl implements UserService {
 
