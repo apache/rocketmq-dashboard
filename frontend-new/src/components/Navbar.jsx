@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import React, { useState } from 'react';
+import React, {useEffect, useState} from 'react';
 import { Layout, Menu, Dropdown, Button, Drawer, Grid, Space } from 'antd';
 import {GlobalOutlined, DownOutlined, UserOutlined, MenuOutlined, BgColorsOutlined} from '@ant-design/icons';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -26,13 +26,13 @@ import {remoteApi} from "../api/remoteApi/remoteApi";
 const { Header } = Layout;
 const { useBreakpoint } = Grid; // Used to determine screen breakpoints
 
-const Navbar = ({ username, rmqVersion = true, showAcl = true}) => {
+const Navbar = ({ rmqVersion = true, showAcl = true}) => {
     const location = useLocation();
     const navigate = useNavigate();
     const { lang, setLang, t } = useLanguage();
     const screens = useBreakpoint(); // Get current screen size breakpoints
     const { currentThemeName, setCurrentThemeName } = useTheme();
-
+    const [userName, setUserName] = useState(null);
     const [drawerVisible, setDrawerVisible] = useState(false); // Controls drawer visibility
 
     // Get selected menu item key based on current route path
@@ -46,10 +46,10 @@ const Navbar = ({ username, rmqVersion = true, showAcl = true}) => {
     const onLogout = () => {
         remoteApi.logout().then(res => {
             if (res.status === 0) {
-                window.sessionStorage.removeItem("username");
-                window.sessionStorage.removeItem("userRole");
-                window.sessionStorage.removeItem("token");
-                window.sessionStorage.removeItem("rmqVersion");
+                window.localStorage.removeItem("username");
+                window.localStorage.removeItem("userRole");
+                window.localStorage.removeItem("token");
+                window.localStorage.removeItem("rmqVersion");
                 navigate('/login');
             } else {
                 console.error('Logout failed:', res.message)
@@ -59,17 +59,19 @@ const Navbar = ({ username, rmqVersion = true, showAcl = true}) => {
 
     };
 
+    useEffect(() => {
+        const storedUsername = window.localStorage.getItem("username");
+        if (storedUsername) {
+            setUserName(storedUsername);
+        }else {
+            setUserName(null);
+        }
+    }, []);
+
     const langMenu = (
         <Menu onClick={({ key }) => setLang(key)}>
             <Menu.Item key="en">{t.ENGLISH}</Menu.Item>
             <Menu.Item key="zh">{t.CHINESE}</Menu.Item>
-        </Menu>
-    );
-
-    const versionMenu = (
-        <Menu onClick={({ key }) => alert(t.version.switchVersion + ': ' + key)}>
-            <Menu.Item key="5">RocketMQ v5</Menu.Item>
-            <Menu.Item key="4">RocketMQ v4</Menu.Item>
         </Menu>
     );
 
@@ -159,12 +161,12 @@ const Navbar = ({ username, rmqVersion = true, showAcl = true}) => {
                     </Button>
                 </Dropdown>
 
-                {username && (
+                {userName && (
                     <Dropdown overlay={userMenu}>
                         {/* 使用一个可点击的元素作为 Dropdown 的唯一子元素 */}
                         <a onClick={e => e.preventDefault()} style={{ display: 'flex', alignItems: 'center' }}>
                             <UserOutlined style={{ marginRight: 8 }} /> {/* 添加一些间距 */}
-                            {username}
+                            {userName}
                             <DownOutlined style={{ marginLeft: 8 }} />
                         </a>
                     </Dropdown>

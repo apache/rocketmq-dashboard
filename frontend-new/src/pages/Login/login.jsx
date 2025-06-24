@@ -30,8 +30,8 @@ const Login = () => {
         remoteApi.login(username, password).then((res) => {
             if (res.status === 0) {
                 messageApi.success('登录成功');
-                window.sessionStorage.setItem("username", res.data.loginUserName);
-                window.sessionStorage.setItem("userrole", res.data.loginUserRole);
+                window.localStorage.setItem("username", res.data.loginUserName);
+                window.localStorage.setItem("userrole", res.data.loginUserRole);
                 window.location.href = '/';
             } else {
                 messageApi.error(res.message || '登录失败，请检查用户名和密码');
