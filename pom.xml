@@ -84,6 +84,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
+        <maven.test.skip>false</maven.test.skip>
         <guava.version>29.0-jre</guava.version>
         <commons-digester.version>2.1</commons-digester.version>
         <commons-lang.version>2.6</commons-lang.version>
@@ -310,13 +311,13 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <version>${spring.boot.version}</version>
-<!--                <executions>-->
-<!--                    <execution>-->
-<!--                        <goals>-->
-<!--                            <goal>repackage</goal>-->
-<!--                        </goals>-->
-<!--                    </execution>-->
-<!--                </executions>-->
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
             <!-- Use dockerfile-maven instead, https://github.com/spotify/dockerfile-maven -->
             <plugin>
@@ -412,11 +413,11 @@
                         <exclude>docs/**</exclude>
                         <exclude>src/main/resources/static/vendor/**</exclude>
                         <exclude>src/main/resources/static/src/data/**</exclude>
-                        <exclude>frontend/node_modules/**</exclude>
-                        <exclude>frontend/build/**</exclude>
-                        <exclude>frontend/**.json</exclude>
-                        <exclude>frontend/**.lock</exclude>
-                        <exclude>frontend/public/manifest.json</exclude>
+                        <exclude>frontend-new/node_modules/**</exclude>
+                        <exclude>frontend-new/build/**</exclude>
+                        <exclude>frontend-new/**.json</exclude>
+                        <exclude>frontend-new/**.lock</exclude>
+                        <exclude>frontend-new/public/manifest.json</exclude>
                         <exclude>package-lock.json</exclude>
                     </excludes>
                 </configuration>
@@ -431,32 +432,31 @@
                 </configuration>
                 <executions>
                     <execution>
-                        <id>install node and yarn</id>
+                        <id>install node </id>
                         <goals>
-                            <goal>install-node-and-yarn</goal>
+                            <goal>install-node-and-npm</goal>
                         </goals>
                         <configuration>
-                            <nodeVersion>v16.2.0</nodeVersion>
-                            <yarnVersion>v1.22.10</yarnVersion>
+                            <nodeVersion>v18.2.0</nodeVersion>
                         </configuration>
                     </execution>
 
                     <execution>
-                        <id>yarn install</id>
+                        <id>npm install</id>
                         <goals>
-                            <goal>yarn</goal>
+                            <goal>npm</goal>
                         </goals>
                         <configuration>
-                            <arguments>install</arguments>
+                            <arguments>install --legacy-peer-deps</arguments>
                         </configuration>
                     </execution>
                     <execution>
-                        <id>yarn build</id>
+                        <id>npm build</id>
                         <goals>
-                            <goal>yarn</goal>
+                            <goal>npm</goal>
                         </goals>
                         <configuration>
-                            <arguments>build</arguments>
+                            <arguments>run build</arguments>
                         </configuration>
                     </execution>
                 </executions>
@@ -469,7 +469,7 @@
                         <configuration>
                             <target>
                                 <copy todir="${project.build.directory}/classes/public">
-                                    <fileset dir="${project.basedir}/frontend/build" />
+                                    <fileset dir="${project.basedir}/frontend-new/build" />
                                 </copy>
                             </target>
                         </configuration>
