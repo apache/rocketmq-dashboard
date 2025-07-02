@@ -325,7 +325,7 @@ export const translations = {
         "ADDRESS": "Address",
         "VERSION": "Version",
         "PRO_MSG_TPS": "Produce Message TPS",
-        "CUS_MSG_TPS": "Consumer Message TPS",
+        "CUS_MSG_TPS": "Consume Message TPS",
         "YESTERDAY_PRO_COUNT": "Yesterday Produce Count",
         "YESTERDAY_CUS_COUNT": "Yesterday Consume Count",
         "TODAY_PRO_COUNT": "Today Produce Count",
