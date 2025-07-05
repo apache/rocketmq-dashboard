@@ -146,7 +146,6 @@ const MessageQueryPage = () => {
                 message: t.ERROR,
                 description: t.QUERY_FAILED,
             });
-            console.error("查询失败:", error);
         } finally {
             setLoading(false);
         }
@@ -182,7 +181,6 @@ const MessageQueryPage = () => {
                 message: t.ERROR,
                 description: t.QUERY_FAILED,
             });
-            console.error("查询失败:", error);
         } finally {
             setLoading(false);
         }
@@ -241,7 +239,6 @@ const MessageQueryPage = () => {
                 message: t.ERROR,
                 description: t.RESEND_FAILED,
             });
-            console.error("重发失败:", error);
         } finally {
             setLoading(false);
             // Optionally, you might want to refresh the message detail after resend
@@ -455,7 +452,6 @@ const MessageQueryPage = () => {
                                         </Button>
                                     </Form.Item>
                                 </Form>
-                                {/* Message ID 查询结果通常直接弹窗显示，这里不需要表格 */}
                             </div>
                         </TabPane>
                     </Tabs>

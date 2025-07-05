@@ -16,7 +16,7 @@
  */
 
 import React, {useCallback, useEffect, useState} from 'react';
-import {Button, Checkbox, Input, message, notification, Spin, Table} from 'antd';
+import {Button, Checkbox, Input, message, notification, Select, Spin, Switch, Table} from 'antd';
 import {useLanguage} from '../../i18n/LanguageContext';
 import {remoteApi} from '../../api/remoteApi/remoteApi';
 import ClientInfoModal from "../../components/consumer/ClientInfoModal";
@@ -44,8 +44,28 @@ const ConsumerGroupList = () => {
     const [isAddConfig, setIsAddConfig] = useState(false);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [messageApi, msgContextHolder] = message.useMessage();
-    const [notificationApi,notificationContextHolder] = notification.useNotification();
+    const [notificationApi, notificationContextHolder] = notification.useNotification();
+    const [proxyEnabled, setProxyEnabled] = useState(() => {
+        try {
+            const storedValue = localStorage.getItem('proxyEnabled');
+            return storedValue ? JSON.parse(storedValue) : false;
+        } catch (error) {
+            console.error("Failed to read proxyEnabled from localStorage:", error);
+            return false;
+        }
+    });
 
+    const [selectedProxy, setSelectedProxy] = useState(() => {
+        try {
+            const storedValue = localStorage.getItem('selectedProxy');
+            return storedValue || undefined;
+        } catch (error) {
+            console.error("Failed to read selectedProxy from localStorage:", error);
+            return undefined;
+        }
+    });
+
+    const [proxyOptions ,setProxyOptions]= useState([]);
     const [paginationConf, setPaginationConf] = useState({
         current: 1,
         pageSize: 10,
@@ -60,12 +80,17 @@ const ConsumerGroupList = () => {
     const loadConsumerGroups = useCallback(async (currentPage) => {
         setLoading(true);
         try {
-            const response = await remoteApi.queryConsumerGroupList(false);
+            var response;
+            if(!proxyEnabled){
+                response = await remoteApi.queryConsumerGroupList(false);
+            }else{
+                response = await remoteApi.queryConsumerGroupList(false, selectedProxy);
+            }
             if (response.status === 0) {
                 setAllConsumerGroupList(response.data);
-                if(currentPage!=null){
+                if (currentPage != null) {
                     filterList(currentPage, response.data);
-                }else{
+                } else {
                     filterList(1, response.data);
                 }
             } else {
@@ -87,7 +112,6 @@ const ConsumerGroupList = () => {
     };
 
     const filterList = useCallback((currentPage, data) => {
-        // 排序处理
         let sortedData = [...data];
         if (sortConfig.sortKey) {
             sortedData.sort((a, b) => {
@@ -152,6 +176,48 @@ const ConsumerGroupList = () => {
         setAllConsumerGroupList(sortedList);
         filterList(paginationConf.current, sortedList);
     }, [sortConfig, allConsumerGroupList, paginationConf.current]);
+
+    const fetchProxyList = useCallback(async () => {
+        remoteApi.queryProxyHomePage((resp) => {
+            setLoading(false);
+            if (resp.status === 0) {
+                const {proxyAddrList, currentProxyAddr} = resp.data;
+                const options = proxyAddrList.map(proxyAddress => ({
+                    label: proxyAddress,
+                    value: proxyAddress,
+                }));
+                setProxyOptions(options || []);
+                setSelectedProxy(prevSelectedProxy => {
+                    if (prevSelectedProxy) {
+                        return prevSelectedProxy;
+                    }
+                    if (options.length > 0) {
+                        return options[0].value;
+                    }
+                    return undefined;
+                });
+            } else {
+                notificationApi.error({message: resp.errMsg || t.FETCH_PROXY_LIST_FAILED, duration: 2});
+            }
+        });
+    }, [t]);
+
+    useEffect(() => {
+        localStorage.setItem('proxyEnabled', JSON.stringify(proxyEnabled));
+    }, [proxyEnabled]);
+
+    useEffect(() => {
+        if (selectedProxy) {
+            localStorage.setItem('selectedProxy', selectedProxy);
+        } else {
+            localStorage.removeItem('selectedProxy');
+        }
+    }, [selectedProxy]);
+
+
+    useEffect(() => {
+        fetchProxyList();
+    }, []);
 
     useEffect(() => {
         loadConsumerGroups();
@@ -380,7 +446,7 @@ const ConsumerGroupList = () => {
         filterList(pagination.current, allConsumerGroupList);
     };
 
-    const closeConfigModal = () =>{
+    const closeConfigModal = () => {
         setShowConfig(false);
         setIsAddConfig(false);
     }
@@ -389,16 +455,18 @@ const ConsumerGroupList = () => {
         <>
             {msgContextHolder}
             {notificationContextHolder}
-            <div style={{padding: '20px'}}>
+            <div style={{ padding: '20px' }}>
                 <Spin spinning={loading} tip={t.LOADING}>
-                    <div style={{marginBottom: '20px'}}>
-                        <div style={{display: 'flex', alignItems: 'center', gap: '15px'}}>
-                            <div style={{display: 'flex', alignItems: 'center'}}>
-                                <label style={{marginRight: '8px'}}>{t.SUBSCRIPTION_GROUP}:</label>
+                    <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        {/* 左侧：筛选和操作按钮 */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '15px', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center' }}>
+                                <label style={{ marginRight: '8px', whiteSpace: 'nowrap' }}>{t.SUBSCRIPTION_GROUP}:</label>
                                 <Input
-                                    style={{width: '200px'}}
+                                    style={{ width: '200px' }}
                                     value={filterStr}
                                     onChange={(e) => handleFilterInputChange(e.target.value)}
+                                    placeholder="输入订阅组名称"
                                 />
                             </div>
                             <Checkbox checked={filterNormal}
@@ -423,12 +491,35 @@ const ConsumerGroupList = () => {
                             <Button type="primary" onClick={handleRefreshConsumerData}>
                                 {t.REFRESH}
                             </Button>
-                            {/*<Switch*/}
-                            {/*    checked={intervalProcessSwitch}*/}
-                            {/*    onChange={(checked) => setIntervalProcessSwitch(checked)}*/}
-                            {/*    checkedChildren={t.AUTO_REFRESH}*/}
-                            {/*    unCheckedChildren={t.AUTO_REFRESH}*/}
-                            {/*/>*/}
+                        </div>
+
+                        {/* 右侧：代理选项 */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                            <label style={{ marginRight: '8px', whiteSpace: 'nowrap' }}>{t.SELECT_PROXY}:</label>
+                            <Select
+                                style={{ width: '220px' }}
+                                placeholder={t.SELECT_PROXY}
+                                onChange={(value) => setSelectedProxy(value)}
+                                value={selectedProxy}
+                                options={proxyOptions}
+                                disabled={!proxyEnabled}
+                                allowClear
+                            />
+                            <label style={{ marginRight: '8px', whiteSpace: 'nowrap' }}>{t.ENABLE_PROXY}:</label>
+                            <Switch
+                                checked={proxyEnabled}
+                                onChange={(checked) => {
+                                    setProxyEnabled(checked);
+                                    if (!checked) {
+                                        setSelectedProxy(undefined);
+                                        messageApi.info(t.PROXY_DISABLED);
+                                    } else {
+                                        messageApi.info(t.PROXY_ENABLED);
+                                    }
+                                }}
+                                checkedChildren={t.ENABLED}
+                                unCheckedChildren={t.DISABLED}
+                            />
                         </div>
                     </div>
 
@@ -443,6 +534,7 @@ const ConsumerGroupList = () => {
                     />
                 </Spin>
 
+                {/* 模态框组件保持不变 */}
                 <ClientInfoModal
                     visible={showClientInfo}
                     group={selectedGroup}
