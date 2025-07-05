@@ -17,11 +17,19 @@
 
 package org.apache.rocketmq.dashboard;
 
-import java.lang.reflect.Field;
-import java.util.ArrayList;
-import java.util.List;
+import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
+import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.mockito.internal.util.MockUtil;
 import org.springframework.util.ReflectionUtils;
+
+import java.lang.reflect.Field;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 public class BaseTest {
     /**
@@ -43,7 +51,7 @@ public class BaseTest {
         for (Field localField : localFields) {
             for (Field field : fields) {
                 if (field.getName()
-                    .equals(localField.getName())) {
+                        .equals(localField.getName())) {
                     Object obj = ReflectionUtils.getField(field, target);
                     if (obj == null) {
                         Object destObj = ReflectionUtils.getField(localField, localDest);
@@ -68,5 +76,21 @@ public class BaseTest {
         };
         ReflectionUtils.doWithFields(leafClass, fc);
         return fields;
+    }
+
+    protected ClusterInfo getClusterInfo() {
+        ClusterInfo clusterInfo = new ClusterInfo();
+        Map<String, Set<String>> clusterAddrTable = new HashMap<>();
+        clusterAddrTable.put("DefaultCluster", new HashSet<>(Arrays.asList("broker-a")));
+        Map<String, BrokerData> brokerAddrTable = new HashMap<>();
+        BrokerData brokerData = new BrokerData();
+        brokerData.setBrokerName("broker-a");
+        HashMap<Long, String> brokerNameTable = new HashMap<>();
+        brokerNameTable.put(0L, "localhost:10911");
+        brokerData.setBrokerAddrs(brokerNameTable);
+        brokerAddrTable.put("broker-a", brokerData);
+        clusterInfo.setBrokerAddrTable(brokerAddrTable);
+        clusterInfo.setClusterAddrTable(clusterAddrTable);
+        return clusterInfo;
     }
 }

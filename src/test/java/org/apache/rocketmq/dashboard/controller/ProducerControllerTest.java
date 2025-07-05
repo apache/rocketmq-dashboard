@@ -17,28 +17,33 @@
 
 package org.apache.rocketmq.dashboard.controller;
 
-import java.util.HashSet;
 import org.apache.rocketmq.client.exception.MQClientException;
-import org.apache.rocketmq.remoting.protocol.body.Connection;
-import org.apache.rocketmq.remoting.protocol.body.ProducerConnection;
 import org.apache.rocketmq.dashboard.interceptor.AuthInterceptor;
 import org.apache.rocketmq.dashboard.service.impl.LoginServiceImpl;
 import org.apache.rocketmq.dashboard.service.impl.ProducerServiceImpl;
+import org.apache.rocketmq.dashboard.service.strategy.UserContext;
 import org.apache.rocketmq.dashboard.support.GlobalExceptionHandler;
 import org.apache.rocketmq.dashboard.support.GlobalRestfulResponseBodyAdvice;
 import org.apache.rocketmq.dashboard.util.MyPrintingResultHandler;
 import org.apache.rocketmq.dashboard.util.WebUtil;
 import org.apache.rocketmq.remoting.protocol.LanguageCode;
+import org.apache.rocketmq.remoting.protocol.body.Connection;
+import org.apache.rocketmq.remoting.protocol.body.ProducerConnection;
+import org.apache.rocketmq.remoting.protocol.body.UserInfo;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.InjectMocks;
+import org.mockito.Mock;
 import org.mockito.Spy;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.util.HashSet;
+
 import static org.hamcrest.Matchers.hasSize;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -52,20 +57,28 @@ public class ProducerControllerTest extends BaseControllerTest {
     @Spy
     private ProducerServiceImpl producerService;
 
-    @Override protected MockMvc createMockMvc() {
+    @Spy
+    private LoginServiceImpl loginService;
+
+    @Mock
+    private UserContext userContext;
+
+    @Override
+    protected MockMvc createMockMvc() {
         AuthInterceptor authInterceptor = new AuthInterceptor();
-        ReflectionTestUtils.setField(authInterceptor, "loginService", new LoginServiceImpl());
+        ReflectionTestUtils.setField(authInterceptor, "loginService", loginService);
+        ReflectionTestUtils.setField(loginService, "userContext", userContext);
         MockMvc innerMockMvc = MockMvcBuilders.standaloneSetup(getTestController())
             .addInterceptors(authInterceptor)
-            .alwaysDo(MyPrintingResultHandler.me())
-            .setControllerAdvice(new GlobalExceptionHandler(), new GlobalRestfulResponseBodyAdvice())
-            .build();
+                .alwaysDo(MyPrintingResultHandler.me())
+                .setControllerAdvice(new GlobalExceptionHandler(), new GlobalRestfulResponseBodyAdvice())
+                .build();
         this.mockMvc = innerMockMvc;
         return innerMockMvc;
     }
 
     @Before
-    public void init(){
+    public void init() {
         createMockMvc();
     }
 
@@ -75,7 +88,7 @@ public class ProducerControllerTest extends BaseControllerTest {
         // user not login， request will redirect
         requestBuilder = MockMvcRequestBuilders.get(url);
         requestBuilder.param("producerGroup", "producer_test")
-            .param("topic", "topic_test");
+                .param("topic", "topic_test");
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().is3xxRedirection());
         // user login
@@ -88,27 +101,28 @@ public class ProducerControllerTest extends BaseControllerTest {
             conn.setVersion(LanguageCode.JAVA.getCode());
             connections.add(conn);
             producerConnection.setConnectionSet(connections);
+            when(userContext.queryByUsername(any(String.class))).thenReturn(UserInfo.of("admin", "admin", "super"));
             when(mqAdminExt.examineProducerConnectionInfo(anyString(), anyString()))
-                .thenThrow(new MQClientException("Not found the producer group connection", null))
-                .thenReturn(producerConnection);
+                    .thenThrow(new MQClientException("Not found the producer group connection", null))
+                    .thenReturn(producerConnection);
         }
         // 1、no producer connection
         requestBuilder.sessionAttr(WebUtil.USER_NAME, "admin");
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$").exists())
-            .andExpect(jsonPath("$.data").doesNotExist())
-            .andExpect(jsonPath("$.status").value(-1))
-            .andExpect(jsonPath("$.errMsg").isNotEmpty());
+                .andExpect(jsonPath("$").exists())
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.status").value(-1))
+                .andExpect(jsonPath("$.errMsg").isNotEmpty());
 
         // 2、producer connection exist
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data").isMap())
-            .andExpect(jsonPath("$.data.connectionSet").isArray())
-            .andExpect(jsonPath("$.data.connectionSet", hasSize(1)))
-            .andExpect(jsonPath("$.data.connectionSet[0].clientAddr").value("127.0.0.1"))
-            .andExpect(jsonPath("$.data.connectionSet[0].clientId").value("clientId"));
+                .andExpect(jsonPath("$.data").isMap())
+                .andExpect(jsonPath("$.data.connectionSet").isArray())
+                .andExpect(jsonPath("$.data.connectionSet", hasSize(1)))
+                .andExpect(jsonPath("$.data.connectionSet[0].clientAddr").value("127.0.0.1"))
+                .andExpect(jsonPath("$.data.connectionSet[0].clientId").value("clientId"));
     }
 
     @Override

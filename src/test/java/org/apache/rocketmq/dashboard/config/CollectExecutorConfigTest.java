@@ -16,11 +16,12 @@
  */
 package org.apache.rocketmq.dashboard.config;
 
+import org.junit.Assert;
+import org.junit.Test;
+
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.junit.Assert;
-import org.junit.Test;
 
 public class CollectExecutorConfigTest {
 

@@ -18,13 +18,8 @@ package org.apache.rocketmq.dashboard.controller;
 
 import com.alibaba.fastjson.JSON;
 import com.google.common.collect.Lists;
-import java.util.List;
 import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.common.MixAll;
-import org.apache.rocketmq.remoting.protocol.ResponseCode;
-import org.apache.rocketmq.remoting.protocol.body.CMResult;
-import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
-import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.dashboard.model.DlqMessageRequest;
 import org.apache.rocketmq.dashboard.model.MessagePage;
 import org.apache.rocketmq.dashboard.model.MessageView;
@@ -32,6 +27,10 @@ import org.apache.rocketmq.dashboard.model.request.MessageQuery;
 import org.apache.rocketmq.dashboard.service.impl.DlqMessageServiceImpl;
 import org.apache.rocketmq.dashboard.service.impl.MessageServiceImpl;
 import org.apache.rocketmq.dashboard.util.MockObjectUtil;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
+import org.apache.rocketmq.remoting.protocol.body.CMResult;
+import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
+import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.junit.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -40,6 +39,8 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
+
+import java.util.List;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.any;
@@ -72,14 +73,14 @@ public class DlqMessageControllerTest extends BaseControllerTest {
         {
             TopicRouteData topicRouteData = MockObjectUtil.createTopicRouteData();
             when(mqAdminExt.examineTopicRouteInfo(any()))
-                .thenThrow(new MQClientException(ResponseCode.TOPIC_NOT_EXIST, "topic not exist"))
-                .thenThrow(new MQClientException(ResponseCode.NO_MESSAGE, "query no message"))
-                .thenThrow(new RuntimeException())
-                .thenReturn(topicRouteData);
+                    .thenThrow(new MQClientException(ResponseCode.TOPIC_NOT_EXIST, "topic not exist"))
+                    .thenThrow(new MQClientException(ResponseCode.NO_MESSAGE, "query no message"))
+                    .thenThrow(new RuntimeException())
+                    .thenReturn(topicRouteData);
             MessageView messageView = MessageView.fromMessageExt(MockObjectUtil.createMessageExt());
             PageRequest page = PageRequest.of(query.getPageNum(), query.getPageSize());
             MessagePage messagePage = new MessagePage
-                (new PageImpl<>(Lists.newArrayList(messageView), page, 0), query.getTaskId());
+                    (new PageImpl<>(Lists.newArrayList(messageView), page, 0), query.getTaskId());
             when(messageService.queryMessageByPage(any())).thenReturn(messagePage);
         }
         requestBuilder = MockMvcRequestBuilders.post(url);
@@ -88,27 +89,27 @@ public class DlqMessageControllerTest extends BaseControllerTest {
         // 1、%DLQ%group_test is not exist
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.page.content", hasSize(0)));
+                .andExpect(jsonPath("$.data.page.content", hasSize(0)));
 
         // 2、Other MQClientException occur
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data").doesNotExist())
-            .andExpect(jsonPath("$.status").value(-1))
-            .andExpect(jsonPath("$.errMsg").isNotEmpty());
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.status").value(-1))
+                .andExpect(jsonPath("$.errMsg").isNotEmpty());
 
         // 3、Other Exception occur
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data").doesNotExist())
-            .andExpect(jsonPath("$.status").value(-1))
-            .andExpect(jsonPath("$.errMsg").isNotEmpty());
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.status").value(-1))
+                .andExpect(jsonPath("$.errMsg").isNotEmpty());
 
         // 4、query dlq message success
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.page.content", hasSize(1)))
-            .andExpect(jsonPath("$.data.page.content[0].msgId").value("0A9A003F00002A9F0000000000000319"));
+                .andExpect(jsonPath("$.data.page.content", hasSize(1)))
+                .andExpect(jsonPath("$.data.page.content[0].msgId").value("0A9A003F00002A9F0000000000000319"));
     }
 
     @Test
@@ -116,8 +117,8 @@ public class DlqMessageControllerTest extends BaseControllerTest {
         final String url = "/dlqMessage/exportDlqMessage.do";
         {
             when(mqAdminExt.viewMessage(any(), any()))
-                .thenThrow(new RuntimeException())
-                .thenReturn(MockObjectUtil.createMessageExt());
+                    .thenThrow(new RuntimeException())
+                    .thenReturn(MockObjectUtil.createMessageExt());
         }
         requestBuilder = MockMvcRequestBuilders.get(url);
         requestBuilder.param("consumerGroup", "group_test");
@@ -125,14 +126,14 @@ public class DlqMessageControllerTest extends BaseControllerTest {
         // 1、viewMessage exception
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data").doesNotExist())
-            .andExpect(jsonPath("$.status").value(-1))
-            .andExpect(jsonPath("$.errMsg").isNotEmpty());
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.status").value(-1))
+                .andExpect(jsonPath("$.errMsg").isNotEmpty());
 
         // 2、export dlqMessage success
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().is(200))
-            .andExpect(content().contentType("application/vnd.ms-excel;charset=utf-8"));
+                .andExpect(content().contentType("application/vnd.ms-excel;charset=utf-8"));
 
     }
 
@@ -150,8 +151,8 @@ public class DlqMessageControllerTest extends BaseControllerTest {
         requestBuilder.content(JSON.toJSONString(dlqMessages));
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data", hasSize(2)))
-            .andExpect(jsonPath("$.data[0].consumeResult").value("CR_SUCCESS"));
+                .andExpect(jsonPath("$.data", hasSize(2)))
+                .andExpect(jsonPath("$.data[0].consumeResult").value("CR_SUCCESS"));
     }
 
     @Test
@@ -159,9 +160,9 @@ public class DlqMessageControllerTest extends BaseControllerTest {
         final String url = "/dlqMessage/batchExportDlqMessage.do";
         {
             when(mqAdminExt.viewMessage("%DLQ%group_test", "0A9A003F00002A9F0000000000000310"))
-                .thenThrow(new RuntimeException());
+                    .thenThrow(new RuntimeException());
             when(mqAdminExt.viewMessage("%DLQ%group_test", "0A9A003F00002A9F0000000000000311"))
-                .thenReturn(MockObjectUtil.createMessageExt());
+                    .thenReturn(MockObjectUtil.createMessageExt());
         }
         List<DlqMessageRequest> dlqMessages = MockObjectUtil.createDlqMessageRequest();
         requestBuilder = MockMvcRequestBuilders.post(url);
@@ -169,10 +170,11 @@ public class DlqMessageControllerTest extends BaseControllerTest {
         requestBuilder.content(JSON.toJSONString(dlqMessages));
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().is(200))
-            .andExpect(content().contentType("application/vnd.ms-excel;charset=utf-8"));
+                .andExpect(content().contentType("application/vnd.ms-excel;charset=utf-8"));
     }
 
-    @Override protected Object getTestController() {
+    @Override
+    protected Object getTestController() {
         return dlqMessageController;
     }
 }
