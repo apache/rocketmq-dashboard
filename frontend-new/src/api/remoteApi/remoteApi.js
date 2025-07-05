@@ -376,9 +376,9 @@ const remoteApi = {
         }
     },
 
-    queryConsumerGroupList: async (skipSysGroup = false) => {
+    queryConsumerGroupList: async (skipSysGroup, address) => {
         try {
-            const response = await remoteApi._fetch(remoteApi.buildUrl(`/consumer/groupList.query?skipSysGroup=${skipSysGroup}`));
+            const response = await remoteApi._fetch(remoteApi.buildUrl(`/consumer/groupList.query?skipSysGroup=${skipSysGroup}&address=${address}`));
             const data = await response.json();
             return data;
         } catch (error) {
