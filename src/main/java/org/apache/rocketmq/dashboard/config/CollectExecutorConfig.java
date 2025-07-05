@@ -41,20 +41,20 @@ public class CollectExecutorConfig {
     @Bean(name = "collectExecutor")
     public ExecutorService collectExecutor(CollectExecutorConfig collectExecutorConfig) {
         ExecutorService collectExecutor = new ThreadPoolExecutor(
-            collectExecutorConfig.getCoreSize(),
-            collectExecutorConfig.getMaxSize(),
-            collectExecutorConfig.getKeepAliveTime(),
-            TimeUnit.MILLISECONDS,
-            new LinkedBlockingDeque<>(collectExecutorConfig.getQueueSize()),
-            new ThreadFactory() {
-                private final AtomicLong threadIndex = new AtomicLong(0);
+                collectExecutorConfig.getCoreSize(),
+                collectExecutorConfig.getMaxSize(),
+                collectExecutorConfig.getKeepAliveTime(),
+                TimeUnit.MILLISECONDS,
+                new LinkedBlockingDeque<>(collectExecutorConfig.getQueueSize()),
+                new ThreadFactory() {
+                    private final AtomicLong threadIndex = new AtomicLong(0);
 
-                @Override
-                public Thread newThread(Runnable r) {
-                    return new Thread(r, "collectTopicThread_" + this.threadIndex.incrementAndGet());
-                }
-            },
-            new ThreadPoolExecutor.DiscardOldestPolicy()
+                    @Override
+                    public Thread newThread(Runnable r) {
+                        return new Thread(r, "collectTopicThread_" + this.threadIndex.incrementAndGet());
+                    }
+                },
+                new ThreadPoolExecutor.DiscardOldestPolicy()
         );
         return collectExecutor;
     }

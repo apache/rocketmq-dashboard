@@ -17,19 +17,19 @@
 
 import React from 'react';
 import AppRouter from './router'; // 你 router/index.jsx 导出的组件
-import { ToastContainer } from 'react-toastify';
+import {ToastContainer} from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import {ConfigProvider} from "antd";
 import {useTheme} from "./store/context/ThemeContext";
 
 function App() {
-    const {currentTheme}  = useTheme();
+    const {currentTheme} = useTheme();
 
     return (
         <>
             <ConfigProvider theme={currentTheme}>
-            <ToastContainer />
-            <AppRouter />
+                <ToastContainer/>
+                <AppRouter/>
             </ConfigProvider>
         </>
     );

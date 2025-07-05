@@ -31,10 +31,10 @@ import java.util.List;
 public class ExcelUtil {
 
     public static void writeExcel(HttpServletResponse response, List<? extends Object> data, String fileName,
-        String sheetName, Class clazz) throws Exception {
+                                  String sheetName, Class clazz) throws Exception {
         WriteCellStyle headWriteCellStyle = new WriteCellStyle();
         WriteFont writeFont = new WriteFont();
-        writeFont.setFontHeightInPoints((short)12);
+        writeFont.setFontHeightInPoints((short) 12);
         writeFont.setFontName("Microsoft YaHei UI");
         headWriteCellStyle.setWriteFont(writeFont);
         headWriteCellStyle.setHorizontalAlignment(HorizontalAlignment.CENTER);
@@ -44,7 +44,7 @@ public class ExcelUtil {
         contentWriteCellStyle.setHorizontalAlignment(HorizontalAlignment.CENTER);
         HorizontalCellStyleStrategy horizontalCellStyleStrategy = new HorizontalCellStyleStrategy(headWriteCellStyle, contentWriteCellStyle);
         EasyExcel.write(getOutputStream(fileName, response), clazz)
-            .excelType(ExcelTypeEnum.XLSX).sheet(sheetName).registerWriteHandler(horizontalCellStyleStrategy).doWrite(data);
+                .excelType(ExcelTypeEnum.XLSX).sheet(sheetName).registerWriteHandler(horizontalCellStyleStrategy).doWrite(data);
     }
 
     private static OutputStream getOutputStream(String fileName, HttpServletResponse response) throws Exception {

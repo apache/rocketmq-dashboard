@@ -37,18 +37,17 @@ public class GlobalRestfulResponseBodyAdvice implements ResponseBodyAdvice<Objec
 
     @Override
     public Object beforeBodyWrite(
-        Object obj, MethodParameter methodParameter, MediaType mediaType,
-        Class<? extends HttpMessageConverter<?>> converterType,
-        ServerHttpRequest serverHttpRequest, ServerHttpResponse serverHttpResponse) {
+            Object obj, MethodParameter methodParameter, MediaType mediaType,
+            Class<? extends HttpMessageConverter<?>> converterType,
+            ServerHttpRequest serverHttpRequest, ServerHttpResponse serverHttpResponse) {
         Annotation originalControllerReturnValue = methodParameter.getMethodAnnotation(OriginalControllerReturnValue.class);
         if (originalControllerReturnValue != null) {
             return obj;
         }
         JsonResult value;
         if (obj instanceof JsonResult) {
-            value = (JsonResult)obj;
-        }
-        else {
+            value = (JsonResult) obj;
+        } else {
             value = new JsonResult(obj);
         }
         return value;

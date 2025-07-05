@@ -127,7 +127,7 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
             try {
                 TopicConfigSerializeWrapper topicConfigSerializeWrapper = mqAdminExt.getAllTopicConfig(brokerAddr.getBrokerAddrs().get(0L), 10000L);
                 for (TopicConfig topicConfig : topicConfigSerializeWrapper.getTopicConfigTable().values()) {
-                    TopicTypeMeta topicType = classifyTopicType(topicConfig.getTopicName(), topicConfigSerializeWrapper.getTopicConfigTable().get(topicConfig.getTopicName()).getAttributes(),sysTopics.getTopicList());
+                    TopicTypeMeta topicType = classifyTopicType(topicConfig.getTopicName(), topicConfigSerializeWrapper.getTopicConfigTable().get(topicConfig.getTopicName()).getAttributes(), sysTopics.getTopicList());
                     if (names.contains(topicType.getTopicName())) {
                         continue;
                     }
@@ -149,7 +149,7 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
         return new TopicTypeList(names, messageTypes);
     }
 
-    private TopicTypeMeta classifyTopicType(String topicName, Map<String,String> attributes, Set<String> sysTopics) {
+    private TopicTypeMeta classifyTopicType(String topicName, Map<String, String> attributes, Set<String> sysTopics) {
         TopicTypeMeta topicType = new TopicTypeMeta();
         topicType.setTopicName(topicName);
 

@@ -17,29 +17,26 @@
 
 package org.apache.rocketmq.dashboard.service.impl;
 
-import jakarta.annotation.Resource;
 import org.apache.rocketmq.auth.authentication.enums.UserType;
 import org.apache.rocketmq.dashboard.admin.UserMQAdminPoolManager;
-import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.model.User;
 import org.apache.rocketmq.dashboard.service.UserService;
-import org.apache.rocketmq.dashboard.service.provider.UserInfoProvider;
+import org.apache.rocketmq.dashboard.service.strategy.UserContext;
 import org.apache.rocketmq.remoting.protocol.body.UserInfo;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
 @Service
 public class UserServiceImpl implements UserService {
 
     private static final Logger log = LoggerFactory.getLogger(UserServiceImpl.class);
 
-    @Resource
-    private RMQConfigure configure;
 
     @Autowired
-    private UserInfoProvider userInfoProvider;
+    private UserContext userContext;
 
     @Autowired
     private UserMQAdminPoolManager userMQAdminPoolManager;
@@ -47,7 +44,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public User queryByName(String name) {
-        UserInfo userInfo = userInfoProvider.getUserInfoByUsername(name);
+        UserInfo userInfo = userContext.queryByUsername(name);
         if (userInfo == null) {
             return null;
         }

@@ -25,7 +25,9 @@ import java.util.Map;
 
 public class MessageView {
 
-    /** from MessageExt **/
+    /**
+     * from MessageExt
+     **/
     private int queueId;
     private int storeSize;
     private long queueOffset;
@@ -41,13 +43,17 @@ public class MessageView {
     private long preparedTransactionOffset;
     /**from MessageExt**/
 
-    /** from Message **/
+    /**
+     * from Message
+     **/
     private String topic;
     private int flag;
     private Map<String, String> properties;
     private String messageBody; // body
 
-    /** from Message **/
+    /**
+     * from Message
+     **/
 
     public static MessageView fromMessageExt(MessageExt messageExt) {
         MessageView messageView = new MessageView();

@@ -212,7 +212,6 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
                     } else {
                         consumeInfo.setSubGroupType(subscriptionGroupTable.get(consumerGroup).isConsumeMessageOrderly() ? "FIFO" : "NORMAL");
                     }
-                    consumeInfo.setGroup(consumerGroup);
                     consumeInfo.setUpdateTime(new Date());
                     groupConsumeInfoList.add(consumeInfo);
                 } catch (Exception e) {
@@ -270,6 +269,7 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
             logger.warn("examineConsumeStats or examineConsumerConnectionInfo exception, "
                     + consumerGroup, e);
         }
+        groupConsumeInfo.setGroup(consumerGroup);
         return groupConsumeInfo;
     }
 

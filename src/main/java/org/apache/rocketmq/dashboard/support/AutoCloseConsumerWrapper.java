@@ -23,6 +23,7 @@ import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.remoting.RPCHook;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -32,9 +33,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
+@Component
 public class AutoCloseConsumerWrapper {
 
-    private final Logger logger = LoggerFactory.getLogger(GlobalRestfulResponseBodyAdvice.class);
+    private final Logger logger = LoggerFactory.getLogger(AutoCloseConsumerWrapper.class);
 
     private static final AtomicReference<DefaultMQPullConsumer> CONSUMER_REF = new AtomicReference<>();
     private final AtomicBoolean isTaskScheduled = new AtomicBoolean(false);
@@ -77,7 +79,10 @@ public class AutoCloseConsumerWrapper {
 
     protected DefaultMQPullConsumer createNewConsumer(RPCHook rpcHook, Boolean useTLS) {
         return new DefaultMQPullConsumer(MixAll.TOOLS_CONSUMER_GROUP, rpcHook) {
-            { setUseTLS(useTLS); } };
+            {
+                setUseTLS(useTLS);
+            }
+        };
     }
 
     private void startIdleCheckTask() {
