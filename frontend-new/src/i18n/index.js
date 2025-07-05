@@ -278,6 +278,12 @@ export const translations = {
         "ENTER_IP_HINT": "请输入 IP 地址，按回车键添加，支持 IPv4、IPv6 和 CIDR",
         "PLEASE_ENTER_DECISION": "请输入决策!",
         "MENU": "菜单",
+        "SELECT_PROXY": "选择代理",
+        "ENABLE_PROXY": "启用代理",
+        "PROXY_DISABLED": "代理禁用",
+        "PROXY_ENABLED": "代理启用",
+        "BROKER_OVERVIEW": "Broker概览",
+        "TOTAL_MSG_RECEIVED_TODAY": "今天接收的总消息数",
     },
     en: {
         "DEFAULT": "Default",
@@ -534,6 +540,13 @@ export const translations = {
         "ENTER_IP_HINT": "Please enter IP address, press Enter to add. Supports IPv4, IPv6, and CIDR.",
         "PLEASE_ENTER_DECISION": "Please enter decision!",
         "MENU": "Menu",
+        "SELECT_PROXY": "Select Proxy",
+        "ENABLE_PROXY": "Enable Proxy",
+        "PROXY_DISABLED": "Proxy Disabled",
+        "PROXY_ENABLED": "Proxy Enabled",
+        "BROKER_OVERVIEW": "Broker Overview",
+        "TOTAL_MSG_RECEIVED_TODAY": "Total messages received today",
+
 
     }
 

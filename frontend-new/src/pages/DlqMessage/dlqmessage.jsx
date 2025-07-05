@@ -179,7 +179,6 @@ const DlqMessageQueryPage = () => {
             return;
         }
         setLoading(true);
-        // console.log("根据Message ID查询DLQ消息:", { msgId: messageId, consumerGroup: selectedConsumerGroup });
         try {
             const resp = await remoteApi.viewMessage(messageId, DLQ_GROUP_TOPIC_PREFIX + selectedConsumerGroup);
             if (resp.status === 0) {
@@ -323,7 +322,6 @@ const DlqMessageQueryPage = () => {
             msgId: message.properties.ORIGIN_MESSAGE_ID,
             consumerGroup: selectedConsumerGroup,
         }));
-        // console.log(`批量重发DLQ消息到 ${selectedConsumerGroup}:`, messagesToResend);
         try {
             const resp = await remoteApi.batchResendDlqMessage(messagesToResend);
             if (resp.status === 0) {
@@ -355,7 +353,6 @@ const DlqMessageQueryPage = () => {
                 message: t.ERROR,
                 description: t.BATCH_RESEND_FAILED,
             });
-            console.error("批量重发失败:", error);
         } finally {
             setLoading(false);
         }
