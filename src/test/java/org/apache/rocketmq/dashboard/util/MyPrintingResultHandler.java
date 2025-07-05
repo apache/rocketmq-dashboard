@@ -17,12 +17,13 @@
 
 package org.apache.rocketmq.dashboard.util;
 
-import java.lang.reflect.Method;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.web.servlet.result.PrintingResultHandler;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.ReflectionUtils;
+
+import java.lang.reflect.Method;
 
 public class MyPrintingResultHandler extends PrintingResultHandler {
     public static MyPrintingResultHandler me() {

@@ -16,353 +16,228 @@
  */
 package org.apache.rocketmq.dashboard.controller;
 
-import com.alibaba.fastjson.JSON;
-import com.google.common.collect.Lists;
-import java.util.List;
-import org.apache.rocketmq.common.AclConfig;
-import org.apache.rocketmq.common.PlainAccessConfig;
-import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
-import org.apache.rocketmq.dashboard.model.request.AclRequest;
+
+import org.apache.rocketmq.auth.authentication.enums.UserStatus;
+import org.apache.rocketmq.auth.authentication.enums.UserType;
+import org.apache.rocketmq.auth.authorization.enums.Decision;
+import org.apache.rocketmq.dashboard.model.Policy;
+import org.apache.rocketmq.dashboard.model.PolicyRequest;
+import org.apache.rocketmq.dashboard.model.request.UserCreateRequest;
+import org.apache.rocketmq.dashboard.model.request.UserInfoParam;
+import org.apache.rocketmq.dashboard.model.request.UserUpdateRequest;
 import org.apache.rocketmq.dashboard.service.impl.AclServiceImpl;
-import org.apache.rocketmq.dashboard.util.MockObjectUtil;
+import org.apache.rocketmq.dashboard.support.GlobalExceptionHandler;
+import org.apache.rocketmq.remoting.protocol.body.AclInfo;
+import org.apache.rocketmq.remoting.protocol.body.UserInfo;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.InjectMocks;
-import org.mockito.Spy;
-import org.springframework.http.MediaType;
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doNothing;
+import java.util.Arrays;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 public class AclControllerTest extends BaseControllerTest {
+
+    @Mock
+    private AclServiceImpl aclService;
 
     @InjectMocks
     private AclController aclController;
 
-    @Spy
-    private AclServiceImpl aclService;
-
     @Before
-    public void init() throws Exception {
-        AclConfig aclConfig = MockObjectUtil.createAclConfig();
-        when(mqAdminExt.examineBrokerClusterAclConfig(anyString())).thenReturn(aclConfig);
-        ClusterInfo clusterInfo = MockObjectUtil.createClusterInfo();
-        when(mqAdminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo);
-        doNothing().when(mqAdminExt).createAndUpdatePlainAccessConfig(anyString(), any(PlainAccessConfig.class));
-        doNothing().when(mqAdminExt).deletePlainAccessConfig(anyString(), anyString());
-        doNothing().when(mqAdminExt).updateGlobalWhiteAddrConfig(anyString(), anyString());
+    public void init() {
+        MockitoAnnotations.initMocks(this);
+        mockMvc = MockMvcBuilders.standaloneSetup(aclController).setControllerAdvice(GlobalExceptionHandler.class).build();
+    }
+
+
+    @Test
+    public void testListUsers() {
+        // Prepare test data
+        String brokerAddress = "localhost:10911";
+        List<UserInfo> expectedUsers = Arrays.asList(
+                UserInfo.of("user1", "password1", "super"),
+                UserInfo.of("user2", "password2", "super")
+        );
+
+        // Mock service behavior
+        when(aclService.listUsers(brokerAddress)).thenReturn(expectedUsers);
+
+        // Call controller method
+        List<UserInfo> result = aclController.listUsers(brokerAddress);
+
+        // Verify
+        assertEquals(expectedUsers, result);
+        verify(aclService, times(1)).listUsers(brokerAddress);
     }
 
     @Test
-    public void testIsEnableAcl() throws Exception {
-        final String url = "/acl/enable.query";
-        // 1. disable acl.
-        requestBuilder = MockMvcRequestBuilders.get(url);
-        perform = mockMvc.perform(requestBuilder);
-        perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data").value(false));
+    public void testListUsersWithoutBrokerAddress() {
+        // Prepare test data
+        List<UserInfo> expectedUsers = Arrays.asList(
+                UserInfo.of("user1", "password1", "super")
+        );
 
-        // 2.enable acl.
-        super.mockRmqConfigure();
-        perform = mockMvc.perform(requestBuilder);
-        perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data").value(true));
+        // Mock service behavior
+        when(aclService.listUsers(null)).thenReturn(expectedUsers);
+        // Call controller method
+        List<UserInfo> result = aclController.listUsers(null);
+        // Verify
+        assertEquals(expectedUsers, result);
+        verify(aclService, times(1)).listUsers(null);
     }
 
     @Test
-    public void testGetAclConfig() throws Exception {
-        final String url = "/acl/config.query";
+    public void testListAcls() {
+        // Prepare test data
+        String brokerAddress = "localhost:9092";
+        String searchParam = "user1";
+        Object expectedAcls = Arrays.asList(
+                AclInfo.of("user1", List.of("READ", "test"), List.of("TOPIC:test"), List.of("localhost:10911"), Decision.ALLOW.getName())
+        );
 
-        // 1. broker addr table is not empty.
-        ClusterInfo clusterInfo = MockObjectUtil.createClusterInfo();
-        when(mqAdminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo);
-        requestBuilder = MockMvcRequestBuilders.get(url);
-        perform = mockMvc.perform(requestBuilder);
-        perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data").isMap())
-            .andExpect(jsonPath("$.data.globalWhiteAddrs").isNotEmpty())
-            .andExpect(jsonPath("$.data.plainAccessConfigs").isNotEmpty())
-            .andExpect(jsonPath("$.data.plainAccessConfigs[0].secretKey").isNotEmpty());
+        // Mock service behavior
+        when(aclService.listAcls(brokerAddress, searchParam)).thenReturn(expectedAcls);
 
-        // 2. broker addr table is empty.
-        clusterInfo.getBrokerAddrTable().clear();
-        perform = mockMvc.perform(requestBuilder);
-        perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data").isMap())
-            .andExpect(jsonPath("$.data.globalWhiteAddrs").isEmpty())
-            .andExpect(jsonPath("$.data.plainAccessConfigs").isEmpty());
+        // Call controller method
+        Object result = aclController.listAcls(brokerAddress, searchParam);
 
-        // 3. login required and user info is null.
-        when(configure.isLoginRequired()).thenReturn(true);
-        when(mqAdminExt.examineBrokerClusterInfo()).thenReturn(MockObjectUtil.createClusterInfo());
-        perform = mockMvc.perform(requestBuilder);
-        perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data").isMap())
-            .andExpect(jsonPath("$.data.globalWhiteAddrs").isNotEmpty())
-            .andExpect(jsonPath("$.data.plainAccessConfigs").isNotEmpty())
-            .andExpect(jsonPath("$.data.plainAccessConfigs[0].secretKey").isEmpty());
-        // 4. login required, but user is not admin. emmmm, Mockito may can not mock static method.
+        // Verify
+        assertEquals(expectedAcls, result);
+        verify(aclService, times(1)).listAcls(brokerAddress, searchParam);
     }
 
     @Test
-    public void testAddAclConfig() throws Exception {
-        final String url = "/acl/add.do";
-        PlainAccessConfig accessConfig = new PlainAccessConfig();
-        requestBuilder = MockMvcRequestBuilders.post(url);
-        requestBuilder.contentType(MediaType.APPLICATION_JSON_UTF8);
+    public void testCreateAcl() {
+        // Prepare test data
+        PolicyRequest request = new PolicyRequest();
+        request.setBrokerAddress("localhost:9092");
+        request.setSubject("user1");
+        request.setPolicies(List.of(
+                new Policy()
+        ));
 
-        // 1. access key is null.
-        requestBuilder.content(JSON.toJSONString(accessConfig));
-        perform = mockMvc.perform(requestBuilder);
-        perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value(-1))
-            .andExpect(jsonPath("$.errMsg").exists());
+        // Call controller method
+        Object result = aclController.createAcl(request);
 
-        // 2. secret key is null.
-        accessConfig.setAccessKey("test-access-key");
-        requestBuilder.content(JSON.toJSONString(accessConfig));
-        perform = mockMvc.perform(requestBuilder);
-        perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value(-1))
-            .andExpect(jsonPath("$.errMsg").exists());
-
-        ClusterInfo clusterInfo = MockObjectUtil.createClusterInfo();
-        when(mqAdminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo);
-
-        // 3. add if the access key not exist.
-        accessConfig.setSecretKey("12345678");
-        requestBuilder.content(JSON.toJSONString(accessConfig));
-        perform = mockMvc.perform(requestBuilder);
-        perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value(0));
-
-        // 4. add failed if the access key is existed.
-        accessConfig.setAccessKey("rocketmq2");
-        requestBuilder.content(JSON.toJSONString(accessConfig));
-        perform = mockMvc.perform(requestBuilder);
-        perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value(-1))
-            .andExpect(jsonPath("$.errMsg").exists());
-
-        // 5.  add failed if there is no alive broker.
-        clusterInfo.getBrokerAddrTable().clear();
-        accessConfig.setAccessKey("test-access-key");
-        requestBuilder.content(JSON.toJSONString(accessConfig));
-        perform = mockMvc.perform(requestBuilder);
-        perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value(-1))
-            .andExpect(jsonPath("$.errMsg").exists());
+        // Verify
+        assertEquals(true, result);
+        verify(aclService, times(1)).createAcl(request);
     }
 
     @Test
-    public void testDeleteAclConfig() throws Exception {
-        final String url = "/acl/delete.do";
-        PlainAccessConfig accessConfig = new PlainAccessConfig();
-        requestBuilder = MockMvcRequestBuilders.post(url);
-        requestBuilder.contentType(MediaType.APPLICATION_JSON_UTF8);
+    public void testDeleteUser() {
+        // Prepare test data
+        String brokerAddress = "localhost:9092";
+        String username = "user1";
 
-        // 1. access key is null.
-        requestBuilder.content(JSON.toJSONString(accessConfig));
-        perform = mockMvc.perform(requestBuilder);
-        perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value(-1))
-            .andExpect(jsonPath("$.errMsg").exists());
+        // Call controller method
+        Object result = aclController.deleteUser(brokerAddress, username);
 
-        // 2. access key is not null.
-        accessConfig.setAccessKey("rocketmq");
-        requestBuilder.content(JSON.toJSONString(accessConfig));
-        perform = mockMvc.perform(requestBuilder);
-        perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value(0));
+        // Verify
+        assertEquals(true, result);
+        verify(aclService, times(1)).deleteUser(brokerAddress, username);
     }
 
     @Test
-    public void testUpdateAclConfig() throws Exception {
-        final String url = "/acl/update.do";
-        PlainAccessConfig accessConfig = new PlainAccessConfig();
-        requestBuilder = MockMvcRequestBuilders.post(url);
-        requestBuilder.contentType(MediaType.APPLICATION_JSON_UTF8);
+    public void testDeleteUserWithoutBrokerAddress() {
+        // Prepare test data
+        String username = "user1";
 
-        // 1. secret key is null.
-        accessConfig.setAccessKey("rocketmq");
-        requestBuilder.content(JSON.toJSONString(accessConfig));
-        perform = mockMvc.perform(requestBuilder);
-        perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value(-1))
-            .andExpect(jsonPath("$.errMsg").exists());
+        // Call controller method
+        Object result = aclController.deleteUser(null, username);
 
-        // 2. update.
-        accessConfig.setSecretKey("abcdefghjkl");
-        requestBuilder.content(JSON.toJSONString(accessConfig));
-        perform = mockMvc.perform(requestBuilder);
-        perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value(0));
+        // Verify
+        assertEquals(true, result);
+        verify(aclService, times(1)).deleteUser(null, username);
     }
 
     @Test
-    public void testAddAclTopicConfig() throws Exception {
-        final String url = "/acl/topic/add.do";
-        AclRequest request = new AclRequest();
-        request.setConfig(createDefaultPlainAccessConfig());
+    public void testUpdateUser() {
+        // Prepare test data
+        UserUpdateRequest request = new UserUpdateRequest();
+        request.setBrokerAddress("localhost:9092");
+        request.setUserInfo(new UserInfoParam("user1", "newPassword", UserStatus.ENABLE.getName(), UserType.SUPER.getName()));
 
-        // 1. if not exist.
-        request.setTopicPerm("test_topic=PUB");
-        requestBuilder = MockMvcRequestBuilders.post(url);
-        requestBuilder.contentType(MediaType.APPLICATION_JSON_UTF8);
-        requestBuilder.content(JSON.toJSONString(request));
-        perform = mockMvc.perform(requestBuilder);
-        perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value(0));
+        // Call controller method
+        Object result = aclController.updateUser(request);
 
-        // 2. if exist.
-        request.setTopicPerm("topicA=PUB");
-        requestBuilder.content(JSON.toJSONString(request));
-        perform = mockMvc.perform(requestBuilder);
-        perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value(0));
-
-        // 3. if access key not exist.
-        request.getConfig().setAccessKey("test_access_key123");
-        requestBuilder.content(JSON.toJSONString(request));
-        perform = mockMvc.perform(requestBuilder);
-        perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value(0));
+        // Verify
+        assertEquals(true, result);
+        verify(aclService, times(1)).updateUser(request.getBrokerAddress(), request.getUserInfo());
     }
 
     @Test
-    public void testAddAclGroupConfig() throws Exception {
-        final String url = "/acl/group/add.do";
-        AclRequest request = new AclRequest();
-        request.setConfig(createDefaultPlainAccessConfig());
+    public void testCreateUser() {
+        // Prepare test data
+        UserCreateRequest request = new UserCreateRequest();
+        request.setBrokerAddress("localhost:9092");
+        request.setUserInfo(new UserInfoParam("user1", "newPassword", UserStatus.ENABLE.getName(), UserType.SUPER.getName()));
 
-        // 1. if not exist.
-        request.setGroupPerm("test_consumer=PUB|SUB");
-        requestBuilder = MockMvcRequestBuilders.post(url);
-        requestBuilder.contentType(MediaType.APPLICATION_JSON_UTF8);
-        requestBuilder.content(JSON.toJSONString(request));
-        perform = mockMvc.perform(requestBuilder);
-        perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value(0));
+        // Call controller method
+        Object result = aclController.createUser(request);
 
-        // 2. if exist.
-        request.setGroupPerm("groupA=PUB|SUB");
-        requestBuilder.content(JSON.toJSONString(request));
-        perform = mockMvc.perform(requestBuilder);
-        perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value(0));
-
-        // 3. if access key not exist.
-        request.getConfig().setAccessKey("test_access_key123");
-        requestBuilder.content(JSON.toJSONString(request));
-        perform = mockMvc.perform(requestBuilder);
-        perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value(0));
+        // Verify
+        assertEquals(true, result);
+        verify(aclService, times(1)).createUser(request.getBrokerAddress(), request.getUserInfo());
     }
 
     @Test
-    public void testDeletePermConfig() throws Exception {
-        final String url = "/acl/perm/delete.do";
-        AclRequest request = new AclRequest();
-        request.setConfig(createDefaultPlainAccessConfig());
-        requestBuilder = MockMvcRequestBuilders.post(url);
-        requestBuilder.contentType(MediaType.APPLICATION_JSON_UTF8);
-        requestBuilder.content(JSON.toJSONString(request));
-        perform = mockMvc.perform(requestBuilder);
-        perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value(0));
+    public void testDeleteAcl() {
+        // Prepare test data
+        String brokerAddress = "localhost:9092";
+        String subject = "user1";
+        String resource = "TOPIC:test";
 
-        // if access key not exist.
-        request.getConfig().setAccessKey("test_access_key123");
-        requestBuilder.content(JSON.toJSONString(request));
-        perform = mockMvc.perform(requestBuilder);
-        perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value(0));
+        // Call controller method
+        Object result = aclController.deleteAcl(brokerAddress, subject, resource);
+
+        // Verify
+        assertEquals(true, result);
+        verify(aclService, times(1)).deleteAcl(brokerAddress, subject, resource);
     }
 
     @Test
-    public void testSyncConfig() throws Exception {
-        final String url = "/acl/sync.do";
-        requestBuilder = MockMvcRequestBuilders.post(url);
-        requestBuilder.contentType(MediaType.APPLICATION_JSON_UTF8);
-        requestBuilder.content(JSON.toJSONString(createDefaultPlainAccessConfig()));
-        perform = mockMvc.perform(requestBuilder);
-        perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value(0));
+    public void testDeleteAclWithoutBrokerAddressAndResource() {
+        // Prepare test data
+        String subject = "user1";
+
+        // Call controller method
+        Object result = aclController.deleteAcl(null, subject, null);
+
+        // Verify
+        assertEquals(true, result);
+        verify(aclService, times(1)).deleteAcl(null, subject, null);
     }
 
     @Test
-    public void testAddWhiteList() throws Exception {
-        final String url = "/acl/white/list/add.do";
-        List<String> whiteList = Lists.newArrayList("192.168.0.1");
+    public void testUpdateAcl() {
+        // Prepare test data
+        PolicyRequest request = new PolicyRequest();
+        request.setBrokerAddress("localhost:9092");
+        request.setSubject("user1");
+        request.setPolicies(List.of(
+                new Policy()
+        ));
 
-        // 1. if global white list is not null.
-        requestBuilder = MockMvcRequestBuilders.post(url);
-        requestBuilder.contentType(MediaType.APPLICATION_JSON_UTF8);
-        requestBuilder.content(JSON.toJSONString(whiteList));
-        perform = mockMvc.perform(requestBuilder);
-        perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value(0));
+        // Call controller method
+        Object result = aclController.updateAcl(request);
 
-        // 2. if global white list is null.
-        AclConfig aclConfig = MockObjectUtil.createAclConfig();
-        aclConfig.setGlobalWhiteAddrs(null);
-        when(mqAdminExt.examineBrokerClusterAclConfig(anyString())).thenReturn(aclConfig);
-        perform = mockMvc.perform(requestBuilder);
-        perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value(0));
+        // Verify
+        assertEquals(true, result);
+        verify(aclService, times(1)).updateAcl(request);
     }
 
-    @Test
-    public void testDeleteWhiteAddr() throws Exception {
-        final String url = "/acl/white/list/delete.do";
-        requestBuilder = MockMvcRequestBuilders.delete(url);
-        requestBuilder.param("request", "localhost");
-        perform = mockMvc.perform(requestBuilder);
-        perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value(0));
-    }
-
-    @Test
-    public void testSynchronizeWhiteList() throws Exception {
-        final String url = "/acl/white/list/sync.do";
-        List<String> whiteList = Lists.newArrayList();
-
-        // 1. if white list for syncing is empty.
-        requestBuilder = MockMvcRequestBuilders.post(url);
-        requestBuilder.contentType(MediaType.APPLICATION_JSON_UTF8);
-        requestBuilder.content(JSON.toJSONString(whiteList));
-        perform = mockMvc.perform(requestBuilder);
-        perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value(-1))
-            .andExpect(jsonPath("$.errMsg").exists());
-
-        // 2. if white list for syncing is not empty.
-        whiteList.add("localhost");
-        requestBuilder.content(JSON.toJSONString(whiteList));
-        perform = mockMvc.perform(requestBuilder);
-        perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value(0));
-    }
-
-    @Override protected Object getTestController() {
+    @Override
+    protected Object getTestController() {
         return aclController;
-    }
-
-    private PlainAccessConfig createDefaultPlainAccessConfig() {
-        PlainAccessConfig config = new PlainAccessConfig();
-        config.setAdmin(false);
-        config.setAccessKey("rocketmq");
-        config.setSecretKey("123456789");
-        config.setDefaultGroupPerm("SUB");
-        config.setDefaultTopicPerm("DENY");
-        config.setTopicPerms(Lists.newArrayList("topicA=DENY", "topicB=PUB|SUB"));
-        config.setGroupPerms(Lists.newArrayList("groupA=DENY", "groupB=PUB|SUB"));
-
-        return config;
     }
 }

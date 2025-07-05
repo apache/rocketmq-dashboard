@@ -18,17 +18,22 @@
 package org.apache.rocketmq.dashboard.util;
 
 import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
+import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.dashboard.support.AutoCloseConsumerWrapper;
 import org.apache.rocketmq.remoting.RPCHook;
-import java.lang.reflect.Field;
-import static org.mockito.Mockito.mock;
-import org.apache.rocketmq.client.exception.MQClientException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.lang.reflect.Field;
 import java.time.Instant;
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class AutoCloseConsumerWrapperTests {
@@ -64,7 +69,6 @@ class AutoCloseConsumerWrapperTests {
 
         verify(wrapper.mockConsumer).shutdown();
     }
-
 
 
     @Test

@@ -18,10 +18,8 @@
 package org.apache.rocketmq.dashboard.web;
 
 import com.google.common.collect.Maps;
-import java.util.Map;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
@@ -32,6 +30,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.junit4.SpringRunner;
 
+import java.util.Map;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 @RunWith(SpringRunner.class)
@@ -39,46 +39,46 @@ import static org.assertj.core.api.Assertions.assertThat;
 @DirtiesContext
 public class WebStaticApplicationTests {
 
-	@Autowired
-	private TestRestTemplate restTemplate;
+    @Autowired
+    private TestRestTemplate restTemplate;
 
-	@Test
-	public void testHome() throws Exception {
-		ResponseEntity<String> entity = this.restTemplate.getForEntity("/", String.class);
-		assertThat(entity.getStatusCode()).isEqualTo(HttpStatus.OK);
-		assertThat(entity.getBody()).contains("<body ng-controller");
-	}
+    @Test
+    public void testHome() throws Exception {
+        ResponseEntity<String> entity = this.restTemplate.getForEntity("/", String.class);
+        assertThat(entity.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(entity.getBody()).contains("<body ng-controller");
+    }
 
-	//@Test
-	public void testCss() throws Exception {
-		ResponseEntity<String> entity = this.restTemplate.getForEntity(
-				"/vendor/bootstrap/css/bootstrap.css", String.class);
-		assertThat(entity.getStatusCode()).isEqualTo(HttpStatus.OK);
-		assertThat(entity.getBody()).contains("body");
-		assertThat(entity.getHeaders().getContentType())
-				.isEqualTo(MediaType.valueOf("text/css;charset=UTF-8"));
-	}
+    //@Test
+    public void testCss() throws Exception {
+        ResponseEntity<String> entity = this.restTemplate.getForEntity(
+                "/vendor/bootstrap/css/bootstrap.css", String.class);
+        assertThat(entity.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(entity.getBody()).contains("body");
+        assertThat(entity.getHeaders().getContentType())
+                .isEqualTo(MediaType.valueOf("text/css;charset=UTF-8"));
+    }
 
-	@Test
-	public void testResources() throws Exception {
-		for(Map.Entry<String,String> entry : resourcesMap().entrySet()){
-			resources(entry.getValue(),entry.getKey());
-		}
-	}
+    @Test
+    public void testResources() throws Exception {
+        for (Map.Entry<String, String> entry : resourcesMap().entrySet()) {
+            resources(entry.getValue(), entry.getKey());
+        }
+    }
 
-	private Map<String,String> resourcesMap(){
-		Map<String,String> map = Maps.newHashMap();
-		map.put("text/css;charset=UTF-8","/vendor/bootstrap/css/bootstrap.css");
-		map.put("text/css;charset=UTF-8","/vendor/bootstrap/css/bootstrap-theme.css");
-		map.put("text/css;charset=UTF-8","/vendor/bootstrap-material-design/css/bootstrap-material-design.css");
-		map.put("text/css;charset=UTF-8","/vendor/bootstrap-material-design/css/ripples.css");
-		return map;
-	}
+    private Map<String, String> resourcesMap() {
+        Map<String, String> map = Maps.newHashMap();
+        map.put("text/css;charset=UTF-8", "/vendor/bootstrap/css/bootstrap.css");
+        map.put("text/css;charset=UTF-8", "/vendor/bootstrap/css/bootstrap-theme.css");
+        map.put("text/css;charset=UTF-8", "/vendor/bootstrap-material-design/css/bootstrap-material-design.css");
+        map.put("text/css;charset=UTF-8", "/vendor/bootstrap-material-design/css/ripples.css");
+        return map;
+    }
 
-	private void resources(String path,String type){
-		ResponseEntity<String> entity = this.restTemplate.getForEntity(path, String.class);
-		assertThat(entity.getHeaders().getContentType())
-			.isEqualTo(MediaType.valueOf(type));
-	}
+    private void resources(String path, String type) {
+        ResponseEntity<String> entity = this.restTemplate.getForEntity(path, String.class);
+        assertThat(entity.getHeaders().getContentType())
+                .isEqualTo(MediaType.valueOf(type));
+    }
 
 }
