@@ -15,13 +15,23 @@
  * limitations under the License.
  */
 
-import React, { useEffect, useState } from 'react';
-import { Button, Descriptions, Form, Input, Select, Switch, message } from 'antd';
-import { remoteApi } from '../../api/remoteApi/remoteApi'; // 确保路径正确
+import React, {useEffect, useState} from 'react';
+import {Button, Descriptions, Form, Input, message, Select, Switch} from 'antd';
+import {remoteApi} from '../../api/remoteApi/remoteApi'; // 确保路径正确
 
-const { Option } = Select;
+const {Option} = Select;
 
-const ConsumerConfigItem = ({ initialConfig, isAddConfig, group, brokerName, allBrokerList, allClusterNames,onCancel, onSuccess, t }) => {
+const ConsumerConfigItem = ({
+                                initialConfig,
+                                isAddConfig,
+                                group,
+                                brokerName,
+                                allBrokerList,
+                                allClusterNames,
+                                onCancel,
+                                onSuccess,
+                                t
+                            }) => {
     const [form] = Form.useForm();
     const [currentBrokerName, setCurrentBrokerName] = useState(brokerName);
 

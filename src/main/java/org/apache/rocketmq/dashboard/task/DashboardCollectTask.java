@@ -80,15 +80,14 @@ public class DashboardCollectTask {
             this.addSystemTopic();
             for (String topic : topicSet) {
                 if (topic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)
-                    || topic.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX)
-                    || TopicValidator.isSystemTopic(topic)) {
+                        || topic.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX)
+                        || TopicValidator.isSystemTopic(topic)) {
                     continue;
                 }
                 CollectTaskRunnble collectTask = new CollectTaskRunnble(topic, mqAdminExt, dashboardCollectService);
                 collectExecutor.submit(collectTask);
             }
-        }
-        catch (Exception err) {
+        } catch (Exception err) {
             Throwables.throwIfUnchecked(err);
             throw new RuntimeException(err);
         }
@@ -98,7 +97,6 @@ public class DashboardCollectTask {
     public void collectConsumer() {
         consumerService.queryGroupList(false, null);
     }
-
 
 
     @Scheduled(cron = "0 0/1 * * * ?")
@@ -139,8 +137,7 @@ public class DashboardCollectTask {
                 dashboardCollectService.getBrokerMap().put(entry.getValue(), list);
             }
             log.debug("Broker Collected Data in memory = {}" + JsonUtil.obj2String(dashboardCollectService.getBrokerMap().asMap()));
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             Throwables.throwIfUnchecked(e);
             throw new RuntimeException(e);
         }
@@ -152,12 +149,10 @@ public class DashboardCollectTask {
         }
         try {
             return mqAdminExt.fetchBrokerRuntimeStats(brokerAddr);
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             try {
                 Thread.sleep(1000);
-            }
-            catch (InterruptedException e1) {
+            } catch (InterruptedException e1) {
                 Throwables.throwIfUnchecked(e1);
                 throw new RuntimeException(e1);
             }
@@ -189,16 +184,14 @@ public class DashboardCollectTask {
             Map<String, List<String>> topicFileMap;
             if (brokerFile.exists()) {
                 brokerFileMap = dashboardCollectService.jsonDataFile2map(brokerFile);
-            }
-            else {
+            } else {
                 brokerFileMap = Maps.newHashMap();
                 Files.createParentDirs(brokerFile);
             }
 
             if (topicFile.exists()) {
                 topicFileMap = dashboardCollectService.jsonDataFile2map(topicFile);
-            }
-            else {
+            } else {
                 topicFileMap = Maps.newHashMap();
                 Files.createParentDirs(topicFile);
             }
@@ -211,21 +204,19 @@ public class DashboardCollectTask {
             log.debug("Broker Collected Data in memory = {}" + JsonUtil.obj2String(dashboardCollectService.getBrokerMap().asMap()));
             log.debug("Topic Collected Data in memory = {}" + JsonUtil.obj2String(dashboardCollectService.getTopicMap().asMap()));
 
-        }
-        catch (IOException e) {
+        } catch (IOException e) {
             Throwables.throwIfUnchecked(e);
             throw new RuntimeException(e);
         }
     }
 
     private void writeFile(LoadingCache<String, List<String>> map, Map<String, List<String>> fileMap,
-        File file) throws IOException {
+                           File file) throws IOException {
         Map<String, List<String>> newMap = map.asMap();
         Map<String, List<String>> resultMap = Maps.newHashMap();
         if (fileMap.size() == 0) {
             resultMap = newMap;
-        }
-        else {
+        } else {
             for (Map.Entry<String, List<String>> entry : fileMap.entrySet()) {
                 List<String> oldList = entry.getValue();
                 List<String> newList = newMap.get(entry.getKey());

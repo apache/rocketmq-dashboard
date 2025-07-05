@@ -15,13 +15,13 @@
  * limitations under the License.
  */
 
-import React, { useState, useEffect } from 'react';
-import { Modal, Table, Spin } from 'antd';
-import { remoteApi } from '../../api/remoteApi/remoteApi';
-import { useLanguage } from '../../i18n/LanguageContext';
+import React, {useEffect, useState} from 'react';
+import {Modal, Spin, Table} from 'antd';
+import {remoteApi} from '../../api/remoteApi/remoteApi';
+import {useLanguage} from '../../i18n/LanguageContext';
 
-const ClientInfoModal = ({ visible, group, address, onCancel }) => {
-    const { t } = useLanguage();
+const ClientInfoModal = ({visible, group, address, onCancel}) => {
+    const {t} = useLanguage();
     const [loading, setLoading] = useState(false);
     const [connectionData, setConnectionData] = useState(null);
     const [subscriptionData, setSubscriptionData] = useState(null);
@@ -46,15 +46,15 @@ const ClientInfoModal = ({ visible, group, address, onCancel }) => {
     }, [visible, group, address]);
 
     const connectionColumns = [
-        { title: 'ClientId', dataIndex: 'clientId' },
-        { title: 'ClientAddr', dataIndex: 'clientAddr' },
-        { title: 'Language', dataIndex: 'language' },
-        { title: 'Version', dataIndex: 'versionDesc' },
+        {title: 'ClientId', dataIndex: 'clientId'},
+        {title: 'ClientAddr', dataIndex: 'clientAddr'},
+        {title: 'Language', dataIndex: 'language'},
+        {title: 'Version', dataIndex: 'versionDesc'},
     ];
 
     const subscriptionColumns = [
-        { title: 'Topic', dataIndex: 'topic' },
-        { title: 'SubExpression', dataIndex: 'subString' },
+        {title: 'Topic', dataIndex: 'topic'},
+        {title: 'SubExpression', dataIndex: 'subString'},
     ];
 
     return (
@@ -88,7 +88,7 @@ const ClientInfoModal = ({ visible, group, address, onCancel }) => {
                             rowKey="topic"
                             pagination={false}
                             locale={{
-                                emptyText: loading ? <Spin size="small" /> : t.NO_DATA
+                                emptyText: loading ? <Spin size="small"/> : t.NO_DATA
                             }}
                         />
                         <p>ConsumeType: {connectionData.consumeType}</p>

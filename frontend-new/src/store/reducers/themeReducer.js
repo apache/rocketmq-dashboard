@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { SET_THEME } from '../actions/themeActions';
+import {SET_THEME} from '../actions/themeActions';
 
 const getInitialTheme = () => {
     return localStorage.getItem('appTheme') || 'default';

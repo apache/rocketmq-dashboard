@@ -47,7 +47,7 @@ public class DashboardController {
         if (Strings.isNullOrEmpty(topicName)) {
             return dashboardService.queryTopicData(date);
         }
-        return dashboardService.queryTopicData(date,topicName);
+        return dashboardService.queryTopicData(date, topicName);
     }
 
     @RequestMapping(value = "/topicCurrent.query", method = RequestMethod.GET)

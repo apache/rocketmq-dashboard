@@ -15,15 +15,15 @@
  * limitations under the License.
  */
 
-import React, { useEffect, useRef } from 'react';
-import { Form, Input, Typography, Collapse, Table, Tag } from 'antd';
+import React, {useEffect, useRef} from 'react';
+import {Collapse, Form, Input, Table, Tag, Typography} from 'antd';
 import moment from 'moment';
-import { useLanguage } from '../i18n/LanguageContext';
+import {useLanguage} from '../i18n/LanguageContext';
 import Paragraph from "antd/es/skeleton/Paragraph";
 import * as echarts from 'echarts'; // Import ECharts
 
-const { Text } = Typography;
-const { Panel } = Collapse;
+const {Text} = Typography;
+const {Panel} = Collapse;
 
 // Constants for styling and formatting, derived from the example
 const SUCCESS_COLOR = '#75d874';
@@ -36,8 +36,8 @@ const TIME_FORMAT_PATTERN = "YYYY-MM-DD HH:mm:ss.SSS";
 const DEFAULT_DISPLAY_DURATION = 10 * 1000;
 const TRANSACTION_CHECK_COST_TIME = 50; // transactionTraceNode do not have costTime, assume it cost 50ms
 
-const MessageTraceDetailViewDialog = ({ ngDialogData }) => {
-    const { t } = useLanguage();
+const MessageTraceDetailViewDialog = ({ngDialogData}) => {
+    const {t} = useLanguage();
     const messageTraceGraphRef = useRef(null);
 
     const producerNode = ngDialogData?.producerNode;
@@ -125,6 +125,7 @@ const MessageTraceDetailViewDialog = ({ ngDialogData }) => {
                 }
                 return `Cost Time: ${formatCostTimeStr(costTime)}<br/>`
             }
+
             function buildTimeStamp(timestamp) {
                 if (timestamp < 0) {
                     return 'N/A';
@@ -323,94 +324,181 @@ const MessageTraceDetailViewDialog = ({ ngDialogData }) => {
 
     // ... (rest of your existing component code)
     const transactionColumns = [
-        { title: t.TIMESTAMP, dataIndex: 'beginTimestamp', key: 'beginTimestamp', align: 'center', render: (text) => moment(text).format('YYYY-MM-DD HH:mm:ss.SSS') },
-        { title: t.TRANSACTION_STATE, dataIndex: 'transactionState', key: 'transactionState', align: 'center', render: (text) => <Tag color={text === 'COMMIT_MESSAGE' ? 'green' : (text === 'ROLLBACK_MESSAGE' ? 'red' : 'default')}>{text}</Tag> },
-        { title: t.FROM_TRANSACTION_CHECK, dataIndex: 'fromTransactionCheck', key: 'fromTransactionCheck', align: 'center', render: (text) => (text ? <Tag color="blue">{t.YES}</Tag> : <Tag color="purple">{t.NO}</Tag>) },
-        { title: t.CLIENT_HOST, dataIndex: 'clientHost', key: 'clientHost', align: 'center' },
-        { title: t.STORE_HOST, dataIndex: 'storeHost', key: 'storeHost', align: 'center' },
+        {
+            title: t.TIMESTAMP,
+            dataIndex: 'beginTimestamp',
+            key: 'beginTimestamp',
+            align: 'center',
+            render: (text) => moment(text).format('YYYY-MM-DD HH:mm:ss.SSS')
+        },
+        {
+            title: t.TRANSACTION_STATE,
+            dataIndex: 'transactionState',
+            key: 'transactionState',
+            align: 'center',
+            render: (text) => <Tag
+                color={text === 'COMMIT_MESSAGE' ? 'green' : (text === 'ROLLBACK_MESSAGE' ? 'red' : 'default')}>{text}</Tag>
+        },
+        {
+            title: t.FROM_TRANSACTION_CHECK,
+            dataIndex: 'fromTransactionCheck',
+            key: 'fromTransactionCheck',
+            align: 'center',
+            render: (text) => (text ? <Tag color="blue">{t.YES}</Tag> : <Tag color="purple">{t.NO}</Tag>)
+        },
+        {title: t.CLIENT_HOST, dataIndex: 'clientHost', key: 'clientHost', align: 'center'},
+        {title: t.STORE_HOST, dataIndex: 'storeHost', key: 'storeHost', align: 'center'},
     ];
 
     const consumeColumns = [
-        { title: t.BEGIN_TIMESTAMP, dataIndex: 'beginTimestamp', key: 'beginTimestamp', align: 'center', render: (text) => text < 0 ? 'N/A' : moment(text).format('YYYY-MM-DD HH:mm:ss.SSS') },
-        { title: t.END_TIMESTAMP, dataIndex: 'endTimestamp', key: 'endTimestamp', align: 'center', render: (text) => text < 0 ? 'N/A' : moment(text).format('YYYY-MM-DD HH:mm:ss.SSS') },
-        { title: t.COST_TIME, dataIndex: 'costTime', key: 'costTime', align: 'center', render: (text) => text < 0 ? 'N/A' : `${text === 0 ? '<1' : text}ms` },
-        { title: t.STATUS, dataIndex: 'status', key: 'status', align: 'center', render: (text) => <Tag color={text === 'SUCCESS' ? 'green' : (text === 'FAILED' ? 'red' : 'default')}>{text}</Tag> },
-        { title: t.RETRY_TIMES, dataIndex: 'retryTimes', key: 'retryTimes', align: 'center', render: (text) => text < 0 ? 'N/A' : text },
-        { title: t.CLIENT_HOST, dataIndex: 'clientHost', key: 'clientHost', align: 'center' },
-        { title: t.STORE_HOST, dataIndex: 'storeHost', key: 'storeHost', align: 'center' },
+        {
+            title: t.BEGIN_TIMESTAMP,
+            dataIndex: 'beginTimestamp',
+            key: 'beginTimestamp',
+            align: 'center',
+            render: (text) => text < 0 ? 'N/A' : moment(text).format('YYYY-MM-DD HH:mm:ss.SSS')
+        },
+        {
+            title: t.END_TIMESTAMP,
+            dataIndex: 'endTimestamp',
+            key: 'endTimestamp',
+            align: 'center',
+            render: (text) => text < 0 ? 'N/A' : moment(text).format('YYYY-MM-DD HH:mm:ss.SSS')
+        },
+        {
+            title: t.COST_TIME,
+            dataIndex: 'costTime',
+            key: 'costTime',
+            align: 'center',
+            render: (text) => text < 0 ? 'N/A' : `${text === 0 ? '<1' : text}ms`
+        },
+        {
+            title: t.STATUS,
+            dataIndex: 'status',
+            key: 'status',
+            align: 'center',
+            render: (text) => <Tag
+                color={text === 'SUCCESS' ? 'green' : (text === 'FAILED' ? 'red' : 'default')}>{text}</Tag>
+        },
+        {
+            title: t.RETRY_TIMES,
+            dataIndex: 'retryTimes',
+            key: 'retryTimes',
+            align: 'center',
+            render: (text) => text < 0 ? 'N/A' : text
+        },
+        {title: t.CLIENT_HOST, dataIndex: 'clientHost', key: 'clientHost', align: 'center'},
+        {title: t.STORE_HOST, dataIndex: 'storeHost', key: 'storeHost', align: 'center'},
     ];
 
     return (
-        <div style={{ padding: '20px', backgroundColor: '#f0f2f5' }}>
-            <div style={{ marginBottom: '20px', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)' }}>
+        <div style={{padding: '20px', backgroundColor: '#f0f2f5'}}>
+            <div style={{
+                marginBottom: '20px',
+                borderRadius: '8px',
+                overflow: 'hidden',
+                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)'
+            }}>
                 <Collapse defaultActiveKey={['messageTraceGraph']} expandIconPosition="right">
-                    <Panel header={<Typography.Title level={3} style={{ margin: 0, color: '#333' }}>{t.MESSAGE_TRACE_GRAPH}</Typography.Title>} key="messageTraceGraph">
-                        <div ref={messageTraceGraphRef} style={{ height: 500, width: '100%', backgroundColor: '#fff', padding: '10px' }}>
+                    <Panel header={<Typography.Title level={3} style={{
+                        margin: 0,
+                        color: '#333'
+                    }}>{t.MESSAGE_TRACE_GRAPH}</Typography.Title>} key="messageTraceGraph">
+                        <div ref={messageTraceGraphRef}
+                             style={{height: 500, width: '100%', backgroundColor: '#fff', padding: '10px'}}>
                             {/* ECharts message trace graph will be rendered here */}
                             {(!producerNode && subscriptionNodeList.length === 0) && (
-                                <Text type="secondary" style={{ display: 'block', textAlign: 'center', marginTop: '150px' }}>{t.TRACE_GRAPH_PLACEHOLDER}</Text>
+                                <Text type="secondary" style={{
+                                    display: 'block',
+                                    textAlign: 'center',
+                                    marginTop: '150px'
+                                }}>{t.TRACE_GRAPH_PLACEHOLDER}</Text>
                             )}
                         </div>
                     </Panel>
                 </Collapse>
             </div>
 
-            <div style={{ marginBottom: '20px', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)' }}>
+            <div style={{
+                marginBottom: '20px',
+                borderRadius: '8px',
+                overflow: 'hidden',
+                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)'
+            }}>
                 <Collapse defaultActiveKey={['sendMessageTrace']} expandIconPosition="right">
-                    <Panel header={<Typography.Title level={3} style={{ margin: 0, color: '#333' }}>{t.SEND_MESSAGE_TRACE}</Typography.Title>} key="sendMessageTrace">
+                    <Panel header={<Typography.Title level={3} style={{
+                        margin: 0,
+                        color: '#333'
+                    }}>{t.SEND_MESSAGE_TRACE}</Typography.Title>} key="sendMessageTrace">
                         {!producerNode ? (
-                            <Paragraph style={{ padding: '16px', textAlign: 'center', color: '#666' }}>{t.NO_PRODUCER_TRACE_DATA}</Paragraph>
+                            <Paragraph style={{
+                                padding: '16px',
+                                textAlign: 'center',
+                                color: '#666'
+                            }}>{t.NO_PRODUCER_TRACE_DATA}</Paragraph>
                         ) : (
-                            <div style={{ padding: '16px', backgroundColor: '#fff' }}>
-                                <Typography.Title level={4} style={{ marginBottom: '20px' }}>
-                                    {t.SEND_MESSAGE_INFO} : ( {t.MESSAGE_ID} <Text strong copyable>{producerNode.msgId}</Text> )
+                            <div style={{padding: '16px', backgroundColor: '#fff'}}>
+                                <Typography.Title level={4} style={{marginBottom: '20px'}}>
+                                    {t.SEND_MESSAGE_INFO} : ( {t.MESSAGE_ID} <Text strong
+                                                                                   copyable>{producerNode.msgId}</Text> )
                                 </Typography.Title>
                                 <Form layout="vertical" colon={false}>
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
+                                    <div style={{
+                                        display: 'grid',
+                                        gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                                        gap: '16px'
+                                    }}>
                                         <Form.Item label={<Text strong>{t.TOPIC}</Text>}>
-                                            <Input value={producerNode.topic} readOnly />
+                                            <Input value={producerNode.topic} readOnly/>
                                         </Form.Item>
                                         <Form.Item label={<Text strong>{t.PRODUCER_GROUP}</Text>}>
-                                            <Input value={producerNode.groupName} readOnly />
+                                            <Input value={producerNode.groupName} readOnly/>
                                         </Form.Item>
                                         <Form.Item label={<Text strong>{t.MESSAGE_KEY}</Text>}>
-                                            <Input value={producerNode.keys} readOnly />
+                                            <Input value={producerNode.keys} readOnly/>
                                         </Form.Item>
                                         <Form.Item label={<Text strong>{t.TAG}</Text>}>
-                                            <Input value={producerNode.tags} readOnly />
+                                            <Input value={producerNode.tags} readOnly/>
                                         </Form.Item>
 
                                         <Form.Item label={<Text strong>{t.BEGIN_TIMESTAMP}</Text>}>
-                                            <Input value={moment(producerNode.traceNode.beginTimestamp).format('YYYY-MM-DD HH:mm:ss.SSS')} readOnly />
+                                            <Input
+                                                value={moment(producerNode.traceNode.beginTimestamp).format('YYYY-MM-DD HH:mm:ss.SSS')}
+                                                readOnly/>
                                         </Form.Item>
                                         <Form.Item label={<Text strong>{t.END_TIMESTAMP}</Text>}>
-                                            <Input value={moment(producerNode.traceNode.endTimestamp).format('YYYY-MM-DD HH:mm:ss.SSS')} readOnly />
+                                            <Input
+                                                value={moment(producerNode.traceNode.endTimestamp).format('YYYY-MM-DD HH:mm:ss.SSS')}
+                                                readOnly/>
                                         </Form.Item>
                                         <Form.Item label={<Text strong>{t.COST_TIME}</Text>}>
-                                            <Input value={`${producerNode.traceNode.costTime === 0 ? '<1' : producerNode.traceNode.costTime}ms`} readOnly />
+                                            <Input
+                                                value={`${producerNode.traceNode.costTime === 0 ? '<1' : producerNode.traceNode.costTime}ms`}
+                                                readOnly/>
                                         </Form.Item>
                                         <Form.Item label={<Text strong>{t.MSG_TYPE}</Text>}>
-                                            <Input value={producerNode.traceNode.msgType} readOnly />
+                                            <Input value={producerNode.traceNode.msgType} readOnly/>
                                         </Form.Item>
 
                                         <Form.Item label={<Text strong>{t.CLIENT_HOST}</Text>}>
-                                            <Input value={producerNode.traceNode.clientHost} readOnly />
+                                            <Input value={producerNode.traceNode.clientHost} readOnly/>
                                         </Form.Item>
                                         <Form.Item label={<Text strong>{t.STORE_HOST}</Text>}>
-                                            <Input value={producerNode.traceNode.storeHost} readOnly />
+                                            <Input value={producerNode.traceNode.storeHost} readOnly/>
                                         </Form.Item>
                                         <Form.Item label={<Text strong>{t.RETRY_TIMES}</Text>}>
-                                            <Input value={producerNode.traceNode.retryTimes} readOnly />
+                                            <Input value={producerNode.traceNode.retryTimes} readOnly/>
                                         </Form.Item>
                                         <Form.Item label={<Text strong>{t.OFFSET_MSG_ID}</Text>}>
-                                            <Input value={producerNode.offSetMsgId} readOnly />
+                                            <Input value={producerNode.offSetMsgId} readOnly/>
                                         </Form.Item>
                                     </div>
                                 </Form>
 
                                 {producerNode.transactionNodeList && producerNode.transactionNodeList.length > 0 && (
-                                    <div style={{ marginTop: '30px' }}>
-                                        <Typography.Title level={4} style={{ marginBottom: '15px' }}>{t.CHECK_TRANSACTION_INFO}:</Typography.Title>
+                                    <div style={{marginTop: '30px'}}>
+                                        <Typography.Title level={4}
+                                                          style={{marginBottom: '15px'}}>{t.CHECK_TRANSACTION_INFO}:</Typography.Title>
                                         <Table
                                             columns={transactionColumns}
                                             dataSource={producerNode.transactionNodeList}
@@ -418,7 +506,7 @@ const MessageTraceDetailViewDialog = ({ ngDialogData }) => {
                                             bordered
                                             pagination={false}
                                             size="middle"
-                                            scroll={{ x: 'max-content' }}
+                                            scroll={{x: 'max-content'}}
                                         />
                                     </div>
                                 )}
@@ -428,22 +516,31 @@ const MessageTraceDetailViewDialog = ({ ngDialogData }) => {
                 </Collapse>
             </div>
 
-            <div style={{ borderRadius: '8px', overflow: 'hidden', boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)' }}>
+            <div style={{borderRadius: '8px', overflow: 'hidden', boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)'}}>
                 <Collapse defaultActiveKey={['consumeMessageTrace']} expandIconPosition="right">
-                    <Panel header={<Typography.Title level={3} style={{ margin: 0, color: '#333' }}>{t.CONSUME_MESSAGE_TRACE}</Typography.Title>} key="consumeMessageTrace">
+                    <Panel header={<Typography.Title level={3} style={{
+                        margin: 0,
+                        color: '#333'
+                    }}>{t.CONSUME_MESSAGE_TRACE}</Typography.Title>} key="consumeMessageTrace">
                         {subscriptionNodeList.length === 0 ? (
-                            <Paragraph style={{ padding: '16px', textAlign: 'center', color: '#666' }}>{t.NO_CONSUMER_TRACE_DATA}</Paragraph>
+                            <Paragraph style={{
+                                padding: '16px',
+                                textAlign: 'center',
+                                color: '#666'
+                            }}>{t.NO_CONSUMER_TRACE_DATA}</Paragraph>
                         ) : (
-                            <div style={{ padding: '16px', backgroundColor: '#fff' }}>
+                            <div style={{padding: '16px', backgroundColor: '#fff'}}>
                                 {subscriptionNodeList.map(subscriptionNode => (
                                     <Collapse
                                         key={subscriptionNode.subscriptionGroup}
-                                        style={{ marginBottom: '10px', border: '1px solid #e0e0e0', borderRadius: '4px' }}
+                                        style={{marginBottom: '10px', border: '1px solid #e0e0e0', borderRadius: '4px'}}
                                         defaultActiveKey={[subscriptionNode.subscriptionGroup]}
                                         ghost
                                     >
                                         <Panel
-                                            header={<Typography.Title level={4} style={{ margin: 0 }}>{t.SUBSCRIPTION_GROUP}: <Text strong>{subscriptionNode.subscriptionGroup}</Text></Typography.Title>}
+                                            header={<Typography.Title level={4}
+                                                                      style={{margin: 0}}>{t.SUBSCRIPTION_GROUP}: <Text
+                                                strong>{subscriptionNode.subscriptionGroup}</Text></Typography.Title>}
                                             key={subscriptionNode.subscriptionGroup}
                                         >
                                             <Table
@@ -453,7 +550,7 @@ const MessageTraceDetailViewDialog = ({ ngDialogData }) => {
                                                 bordered
                                                 pagination={false}
                                                 size="middle"
-                                                scroll={{ x: 'max-content' }}
+                                                scroll={{x: 'max-content'}}
                                             />
                                         </Panel>
                                     </Collapse>

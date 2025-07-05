@@ -60,7 +60,7 @@ public class DlqMessageServiceImpl implements DlqMessageService {
         } catch (MQClientException e) {
             // If the %DLQ%Group does not exist, the message returns null
             if (topic.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX)
-                && e.getResponseCode() == ResponseCode.TOPIC_NOT_EXIST) {
+                    && e.getResponseCode() == ResponseCode.TOPIC_NOT_EXIST) {
                 return new MessagePage(new PageImpl<>(messageViews, page, 0), query.getTaskId());
             } else {
                 Throwables.throwIfUnchecked(e);
@@ -78,8 +78,8 @@ public class DlqMessageServiceImpl implements DlqMessageService {
         List<DlqMessageResendResult> batchResendResults = new LinkedList<>();
         for (DlqMessageRequest dlqMessage : dlqMessages) {
             ConsumeMessageDirectlyResult result = messageService.consumeMessageDirectly(dlqMessage.getTopicName(),
-                dlqMessage.getMsgId(), dlqMessage.getConsumerGroup(),
-                dlqMessage.getClientId());
+                    dlqMessage.getMsgId(), dlqMessage.getConsumerGroup(),
+                    dlqMessage.getClientId());
             DlqMessageResendResult resendResult = new DlqMessageResendResult(result, dlqMessage.getMsgId());
             batchResendResults.add(resendResult);
         }

@@ -19,11 +19,11 @@ import moment from "moment/moment";
 import {Button, Modal, Table} from "antd";
 import React from "react";
 
-const StatsViewDialog = ({ visible, onClose, topic, statsData, t }) => {
+const StatsViewDialog = ({visible, onClose, topic, statsData, t}) => {
     const columns = [
-        { title: t.QUEUE, dataIndex: 'queue', key: 'queue', align: 'center' },
-        { title: t.MIN_OFFSET, dataIndex: 'minOffset', key: 'minOffset', align: 'center' },
-        { title: t.MAX_OFFSET, dataIndex: 'maxOffset', key: 'maxOffset', align: 'center' },
+        {title: t.QUEUE, dataIndex: 'queue', key: 'queue', align: 'center'},
+        {title: t.MIN_OFFSET, dataIndex: 'minOffset', key: 'minOffset', align: 'center'},
+        {title: t.MAX_OFFSET, dataIndex: 'maxOffset', key: 'maxOffset', align: 'center'},
         {
             title: t.LAST_UPDATE_TIME_STAMP,
             dataIndex: 'lastUpdateTimestamp',

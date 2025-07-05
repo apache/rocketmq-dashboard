@@ -15,13 +15,13 @@
  * limitations under the License.
  */
 
-import React, { useState, useEffect } from 'react';
-import { Modal, Table, Spin } from 'antd';
-import { remoteApi } from '../../api/remoteApi/remoteApi';
-import { useLanguage } from '../../i18n/LanguageContext';
+import React, {useEffect, useState} from 'react';
+import {Modal, Spin, Table} from 'antd';
+import {remoteApi} from '../../api/remoteApi/remoteApi';
+import {useLanguage} from '../../i18n/LanguageContext';
 
-const ConsumerDetailModal = ({ visible, group, address, onCancel }) => {
-    const { t } = useLanguage();
+const ConsumerDetailModal = ({visible, group, address, onCancel}) => {
+    const {t} = useLanguage();
     const [loading, setLoading] = useState(false);
     const [details, setDetails] = useState([]);
 
@@ -44,12 +44,12 @@ const ConsumerDetailModal = ({ visible, group, address, onCancel }) => {
     }, [visible, group, address]);
 
     const queueColumns = [
-        { title: 'Broker', dataIndex: 'brokerName' },
-        { title: 'Queue', dataIndex: 'queueId' },
-        { title: 'BrokerOffset', dataIndex: 'brokerOffset' },
-        { title: 'ConsumerOffset', dataIndex: 'consumerOffset' },
-        { title: 'DiffTotal', dataIndex: 'diffTotal' },
-        { title: 'LastTimestamp', dataIndex: 'lastTimestamp' },
+        {title: 'Broker', dataIndex: 'brokerName'},
+        {title: 'Queue', dataIndex: 'queueId'},
+        {title: 'BrokerOffset', dataIndex: 'brokerOffset'},
+        {title: 'ConsumerOffset', dataIndex: 'consumerOffset'},
+        {title: 'DiffTotal', dataIndex: 'diffTotal'},
+        {title: 'LastTimestamp', dataIndex: 'lastTimestamp'},
     ];
 
     return (

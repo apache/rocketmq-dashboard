@@ -15,10 +15,17 @@
  * limitations under the License.
  */
 
-import { Button, Form, message, Modal, Select } from "antd";
-import React, { useEffect, useState } from "react";
+import {Button, Form, message, Modal, Select} from "antd";
+import React, {useEffect, useState} from "react";
 
-const SkipMessageAccumulateDialog = ({ visible, onClose, topic, allConsumerGroupList, handleSkipMessageAccumulate, t }) => {
+const SkipMessageAccumulateDialog = ({
+                                         visible,
+                                         onClose,
+                                         topic,
+                                         allConsumerGroupList,
+                                         handleSkipMessageAccumulate,
+                                         t
+                                     }) => {
     const [form] = Form.useForm();
     const [selectedConsumerGroup, setSelectedConsumerGroup] = useState([]);
 
@@ -52,14 +59,14 @@ const SkipMessageAccumulateDialog = ({ visible, onClose, topic, allConsumerGroup
                 </Button>,
             ]}
         >
-            <Form form={form} layout="horizontal" labelCol={{ span: 6 }} wrapperCol={{ span: 18 }}>
+            <Form form={form} layout="horizontal" labelCol={{span: 6}} wrapperCol={{span: 18}}>
                 <Form.Item label={t.SUBSCRIPTION_GROUP} required>
                     <Select
                         mode="multiple"
                         placeholder={t.SELECT_CONSUMER_GROUP}
                         value={selectedConsumerGroup}
                         onChange={setSelectedConsumerGroup}
-                        options={allConsumerGroupList.map(group => ({ value: group, label: group }))}
+                        options={allConsumerGroupList.map(group => ({value: group, label: group}))}
                     />
                 </Form.Item>
             </Form>

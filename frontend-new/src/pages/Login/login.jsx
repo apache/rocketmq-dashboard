@@ -16,17 +16,17 @@
  */
 
 import React from 'react';
-import { Form, Input, Button, message, Typography } from 'antd';
+import {Button, Form, Input, message, Typography} from 'antd';
 import {remoteApi} from "../../api/remoteApi/remoteApi";
 
-const { Title } = Typography;
+const {Title} = Typography;
 
 const Login = () => {
     const [form] = Form.useForm();
     const [messageApi, msgContextHolder] = message.useMessage();
 
     const onFinish = async (values) => {
-        const { username, password } = values;
+        const {username, password} = values;
         remoteApi.login(username, password).then((res) => {
             if (res.status === 0) {
                 messageApi.success('登录成功');

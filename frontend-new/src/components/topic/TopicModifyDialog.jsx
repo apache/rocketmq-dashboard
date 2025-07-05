@@ -16,7 +16,7 @@
  */
 
 // TopicModifyDialog.js
-import { Button, Modal } from "antd";
+import {Button, Modal} from "antd";
 import React from "react";
 import TopicSingleModifyForm from './TopicSingleModifyForm';
 
@@ -43,7 +43,7 @@ const TopicModifyDialog = ({
                     {t.CLOSE}
                 </Button>,
             ]}
-            Style={{ maxHeight: '70vh', overflowY: 'auto' }}
+            Style={{maxHeight: '70vh', overflowY: 'auto'}}
         >
             {initialData.map((data, index) => (
                 <TopicSingleModifyForm

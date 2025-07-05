@@ -31,7 +31,7 @@ import java.util.Map;
 import java.util.Set;
 
 public interface ConsumerService {
-    List<GroupConsumeInfo> queryGroupList(boolean skipSysGroup,String address);
+    List<GroupConsumeInfo> queryGroupList(boolean skipSysGroup, String address);
 
     GroupConsumeInfo queryGroup(String consumerGroup, String address);
 

@@ -15,12 +15,12 @@
  * limitations under the License.
  */
 
-import React, { useState, useEffect } from 'react';
-import { Select, Button, Switch, Input, Typography, Space, message } from 'antd';
+import React, {useEffect, useState} from 'react';
+import {Button, Input, message, Select, Space, Switch, Typography} from 'antd';
 import {remoteApi} from '../../api/remoteApi/remoteApi';
 
-const { Title } = Typography;
-const { Option } = Select;
+const {Title} = Typography;
+const {Option} = Select;
 
 const Ops = () => {
     const [namesrvAddrList, setNamesrvAddrList] = useState([]);

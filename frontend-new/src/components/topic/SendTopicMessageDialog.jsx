@@ -76,24 +76,24 @@ const SendTopicMessageDialog = ({
                 </Button>,
             ]}
         >
-            <Form form={form} layout="horizontal" labelCol={{ span: 6 }} wrapperCol={{ span: 18 }}>
+            <Form form={form} layout="horizontal" labelCol={{span: 6}} wrapperCol={{span: 18}}>
                 <Form.Item label={t.TOPIC} name="topic">
-                    <Input disabled />
+                    <Input disabled/>
                 </Form.Item>
                 <Form.Item label={t.TAG} name="tag">
-                    <Input />
+                    <Input/>
                 </Form.Item>
                 <Form.Item label={t.KEY} name="key">
-                    <Input />
+                    <Input/>
                 </Form.Item>
-                <Form.Item label={t.MESSAGE_BODY} name="messageBody" rules={[{ required: true, message: t.REQUIRED }]}>
+                <Form.Item label={t.MESSAGE_BODY} name="messageBody" rules={[{required: true, message: t.REQUIRED}]}>
                     <Input.TextArea
-                        style={{ maxHeight: '200px', minHeight: '200px', resize: 'none' }}
+                        style={{maxHeight: '200px', minHeight: '200px', resize: 'none'}}
                         rows={8}
                     />
                 </Form.Item>
                 <Form.Item label={t.ENABLE_MESSAGE_TRACE} name="traceEnabled" valuePropName="checked">
-                    <Checkbox />
+                    <Checkbox/>
                 </Form.Item>
             </Form>
         </Modal>

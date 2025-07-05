@@ -81,8 +81,7 @@ public class MonitorServiceImpl implements MonitorService {
     private void writeDataJsonToFile(String path, String dataStr) {
         try {
             MixAll.string2File(dataStr, path);
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             Throwables.throwIfUnchecked(e);
             throw new RuntimeException(e);
         }

@@ -15,27 +15,27 @@
  * limitations under the License.
  */
 
-import { Input, Select } from 'antd';
-import React, { useState, useEffect } from 'react';
+import {Input, Select} from 'antd';
+import React, {useEffect, useState} from 'react';
 
-const { Option } = Select;
+const {Option} = Select;
 
 // Subject 类型枚举
 const subjectTypes = [
-    { value: 'User', label: 'User' },
+    {value: 'User', label: 'User'},
 ];
 
-const SubjectInput = ({ value, onChange, disabled }) => {
+const SubjectInput = ({value, onChange, disabled}) => {
     // 解析传入的 value，将其拆分为 type 和 name
     const parseValue = (val) => {
         if (!val || typeof val !== 'string') {
-            return { type: subjectTypes[0].value, name: '' }; // 默认值
+            return {type: subjectTypes[0].value, name: ''}; // 默认值
         }
         const parts = val.split(':');
         if (parts.length === 2 && subjectTypes.some(t => t.value === parts[0])) {
-            return { type: parts[0], name: parts[1] };
+            return {type: parts[0], name: parts[1]};
         }
-        return { type: subjectTypes[0].value, name: val }; // 如果格式不匹配，将整个值作为 name，类型设为默认
+        return {type: subjectTypes[0].value, name: val}; // 如果格式不匹配，将整个值作为 name，类型设为默认
     };
 
     const [currentType, setCurrentType] = useState(() => parseValue(value).type);
@@ -76,7 +76,7 @@ const SubjectInput = ({ value, onChange, disabled }) => {
     return (
         <Input.Group compact>
             <Select
-                style={{ width: '30%' }}
+                style={{width: '30%'}}
                 value={currentType}
                 onChange={onTypeChange}
                 disabled={disabled}
@@ -88,7 +88,7 @@ const SubjectInput = ({ value, onChange, disabled }) => {
                 ))}
             </Select>
             <Input
-                style={{ width: '70%' }}
+                style={{width: '70%'}}
                 value={currentName}
                 onChange={onNameChange}
                 placeholder="请输入名称 (例如: yourUsername)"

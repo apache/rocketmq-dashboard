@@ -19,13 +19,13 @@ import moment from "moment/moment";
 import {Button, Modal, Table} from "antd";
 import React from "react";
 
-const ConsumerViewDialog = ({ visible, onClose, topic, consumerData, consumerGroupCount, t }) => {
+const ConsumerViewDialog = ({visible, onClose, topic, consumerData, consumerGroupCount, t}) => {
     const columns = [
-        { title: t.BROKER, dataIndex: 'brokerName', key: 'brokerName', align: 'center' },
-        { title: t.QUEUE, dataIndex: 'queueId', key: 'queueId', align: 'center' },
-        { title: t.CONSUMER_CLIENT, dataIndex: 'clientInfo', key: 'clientInfo', align: 'center' },
-        { title: t.BROKER_OFFSET, dataIndex: 'brokerOffset', key: 'brokerOffset', align: 'center' },
-        { title: t.CONSUMER_OFFSET, dataIndex: 'consumerOffset', key: 'consumerOffset', align: 'center' },
+        {title: t.BROKER, dataIndex: 'brokerName', key: 'brokerName', align: 'center'},
+        {title: t.QUEUE, dataIndex: 'queueId', key: 'queueId', align: 'center'},
+        {title: t.CONSUMER_CLIENT, dataIndex: 'clientInfo', key: 'clientInfo', align: 'center'},
+        {title: t.BROKER_OFFSET, dataIndex: 'brokerOffset', key: 'brokerOffset', align: 'center'},
+        {title: t.CONSUMER_OFFSET, dataIndex: 'consumerOffset', key: 'consumerOffset', align: 'center'},
         {
             title: t.DIFF_TOTAL,
             dataIndex: 'diffTotal',
@@ -58,15 +58,19 @@ const ConsumerViewDialog = ({ visible, onClose, topic, consumerData, consumerGro
                 <div>{t.NO_DATA} {t.SUBSCRIPTION_GROUP}</div>
             ) : (
                 consumerData && Object.entries(consumerData).map(([consumerGroup, consumeDetail]) => (
-                    <div key={consumerGroup} style={{ marginBottom: '24px' }}>
+                    <div key={consumerGroup} style={{marginBottom: '24px'}}>
                         <Table
                             bordered
                             pagination={false}
                             showHeader={false}
-                            dataSource={[{ consumerGroup, diffTotal: consumeDetail.diffTotal, lastTimestamp: consumeDetail.lastTimestamp }]}
+                            dataSource={[{
+                                consumerGroup,
+                                diffTotal: consumeDetail.diffTotal,
+                                lastTimestamp: consumeDetail.lastTimestamp
+                            }]}
                             columns={[
-                                { title: t.SUBSCRIPTION_GROUP, dataIndex: 'consumerGroup', key: 'consumerGroup' },
-                                { title: t.DELAY, dataIndex: 'diffTotal', key: 'diffTotal' },
+                                {title: t.SUBSCRIPTION_GROUP, dataIndex: 'consumerGroup', key: 'consumerGroup'},
+                                {title: t.DELAY, dataIndex: 'diffTotal', key: 'diffTotal'},
                                 {
                                     title: t.LAST_CONSUME_TIME,
                                     dataIndex: 'lastTimestamp',
@@ -76,7 +80,7 @@ const ConsumerViewDialog = ({ visible, onClose, topic, consumerData, consumerGro
                             ]}
                             rowKey="consumerGroup"
                             size="small"
-                            style={{ marginBottom: '12px' }}
+                            style={{marginBottom: '12px'}}
                         />
                         <Table
                             bordered

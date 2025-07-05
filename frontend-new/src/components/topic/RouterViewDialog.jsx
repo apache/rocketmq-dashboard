@@ -15,10 +15,10 @@
  * limitations under the License.
  */
 
-import { Button, Modal, Table } from "antd";
+import {Button, Modal, Table} from "antd";
 import React from "react";
 
-const RouterViewDialog = ({ visible, onClose, topic, routeData, t }) => {
+const RouterViewDialog = ({visible, onClose, topic, routeData, t}) => {
     const brokerColumns = [
         {
             title: 'Broker',
@@ -30,10 +30,14 @@ const RouterViewDialog = ({ visible, onClose, topic, routeData, t }) => {
             key: 'brokerAddrs',
             render: (_, record) => (
                 <Table
-                    dataSource={Object.entries(record.brokerAddrs || []).map(([key, value]) => ({ key, idx: key, address: value }))}
+                    dataSource={Object.entries(record.brokerAddrs || []).map(([key, value]) => ({
+                        key,
+                        idx: key,
+                        address: value
+                    }))}
                     columns={[
-                        { title: 'Index', dataIndex: 'idx', key: 'idx' },
-                        { title: 'Address', dataIndex: 'address', key: 'address' },
+                        {title: 'Index', dataIndex: 'idx', key: 'idx'},
+                        {title: 'Address', dataIndex: 'address', key: 'address'},
                     ]}
                     pagination={false}
                     bordered
@@ -82,7 +86,7 @@ const RouterViewDialog = ({ visible, onClose, topic, routeData, t }) => {
                 <div>
                     <h3>Broker Datas:</h3>
                     {routeData?.brokerDatas?.map((item, index) => (
-                        <div key={index} style={{ marginBottom: '15px', border: '1px solid #d9d9d9', padding: '10px' }}>
+                        <div key={index} style={{marginBottom: '15px', border: '1px solid #d9d9d9', padding: '10px'}}>
                             <Table
                                 dataSource={[item]}
                                 columns={brokerColumns}
@@ -93,7 +97,7 @@ const RouterViewDialog = ({ visible, onClose, topic, routeData, t }) => {
                         </div>
                     ))}
                 </div>
-                <div style={{ marginTop: '20px' }}>
+                <div style={{marginTop: '20px'}}>
                     <h3>{t.QUEUE_DATAS}:</h3>
                     <Table
                         dataSource={routeData?.queueDatas || []}

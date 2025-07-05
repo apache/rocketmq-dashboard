@@ -91,6 +91,10 @@ public class RMQConfigure {
     @Getter
     private Integer clientCallbackExecutorThreads = 4;
 
+    @Setter
+    @Getter
+    private String authMode = "file";
+
     public void setProxyAddrs(List<String> proxyAddrs) {
         this.proxyAddrs = proxyAddrs;
         if (CollectionUtils.isNotEmpty(proxyAddrs)) {
@@ -112,10 +116,12 @@ public class RMQConfigure {
             logger.info("setNameSrvAddrByProperty nameSrvAddr={}", namesrvAddr);
         }
     }
+
     public boolean isACLEnabled() {
         return !(StringUtils.isAnyBlank(this.accessKey, this.secretKey) ||
-                 StringUtils.isAnyEmpty(this.accessKey, this.secretKey));
+                StringUtils.isAnyEmpty(this.accessKey, this.secretKey));
     }
+
     public String getRocketMqDashboardDataPath() {
         return dataPath;
     }

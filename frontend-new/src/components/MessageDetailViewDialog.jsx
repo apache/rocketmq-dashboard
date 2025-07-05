@@ -16,16 +16,16 @@
  */
 
 import React from 'react';
-import { Modal, Button, Typography, Descriptions, Tag, Spin, notification } from 'antd';
+import {Button, Descriptions, Modal, notification, Spin, Tag, Typography} from 'antd';
 import moment from 'moment';
-import { ExclamationCircleOutlined, SyncOutlined } from '@ant-design/icons';
-import { useLanguage } from '../i18n/LanguageContext';
-import { remoteApi } from '../api/remoteApi/remoteApi'; // 确保这个路径正确
+import {SyncOutlined} from '@ant-design/icons';
+import {useLanguage} from '../i18n/LanguageContext';
+import {remoteApi} from '../api/remoteApi/remoteApi'; // 确保这个路径正确
 
-const { Text, Paragraph } = Typography;
+const {Text, Paragraph} = Typography;
 
-const MessageDetailViewDialog = ({ visible, onCancel, messageId, topic, onResendMessage }) => {
-    const { t } = useLanguage();
+const MessageDetailViewDialog = ({visible, onCancel, messageId, topic, onResendMessage}) => {
+    const {t} = useLanguage();
     const [loading, setLoading] = React.useState(true);
     const [messageDetail, setMessageDetail] = React.useState(null);
     const [error, setError] = React.useState(null);
@@ -89,17 +89,21 @@ const MessageDetailViewDialog = ({ visible, onCancel, messageId, topic, onResend
         >
             <Spin spinning={loading} tip={t.LOADING}>
                 {error && (
-                    <Paragraph type="danger" style={{ textAlign: 'center' }}>
+                    <Paragraph type="danger" style={{textAlign: 'center'}}>
                         {error}
                     </Paragraph>
                 )}
                 {messageDetail ? ( // 确保 messageDetail 存在时才渲染内容
                     <>
                         {/* 消息信息部分 */}
-                        <Descriptions title={<Text strong>{t.MESSAGE_INFO}</Text>} bordered column={2} size="small" style={{ marginBottom: 20 }}>
-                            <Descriptions.Item label="Topic" span={2}><Text copyable>{messageDetail.messageView.topic}</Text></Descriptions.Item>
-                            <Descriptions.Item label="Message ID" span={2}><Text copyable>{messageDetail.messageView.msgId}</Text></Descriptions.Item>
-                            <Descriptions.Item label="StoreHost">{messageDetail.messageView.storeHost}</Descriptions.Item>
+                        <Descriptions title={<Text strong>{t.MESSAGE_INFO}</Text>} bordered column={2} size="small"
+                                      style={{marginBottom: 20}}>
+                            <Descriptions.Item label="Topic" span={2}><Text
+                                copyable>{messageDetail.messageView.topic}</Text></Descriptions.Item>
+                            <Descriptions.Item label="Message ID" span={2}><Text
+                                copyable>{messageDetail.messageView.msgId}</Text></Descriptions.Item>
+                            <Descriptions.Item
+                                label="StoreHost">{messageDetail.messageView.storeHost}</Descriptions.Item>
                             <Descriptions.Item label="BornHost">{messageDetail.messageView.bornHost}</Descriptions.Item>
                             <Descriptions.Item label="StoreTime">
                                 {moment(messageDetail.messageView.storeTimestamp).format("YYYY-MM-DD HH:mm:ss")}
@@ -108,26 +112,33 @@ const MessageDetailViewDialog = ({ visible, onCancel, messageId, topic, onResend
                                 {moment(messageDetail.messageView.bornTimestamp).format("YYYY-MM-DD HH:mm:ss")}
                             </Descriptions.Item>
                             <Descriptions.Item label="Queue ID">{messageDetail.messageView.queueId}</Descriptions.Item>
-                            <Descriptions.Item label="Queue Offset">{messageDetail.messageView.queueOffset}</Descriptions.Item>
-                            <Descriptions.Item label="StoreSize">{messageDetail.messageView.storeSize} bytes</Descriptions.Item>
-                            <Descriptions.Item label="ReconsumeTimes">{messageDetail.messageView.reconsumeTimes}</Descriptions.Item>
+                            <Descriptions.Item
+                                label="Queue Offset">{messageDetail.messageView.queueOffset}</Descriptions.Item>
+                            <Descriptions.Item
+                                label="StoreSize">{messageDetail.messageView.storeSize} bytes</Descriptions.Item>
+                            <Descriptions.Item
+                                label="ReconsumeTimes">{messageDetail.messageView.reconsumeTimes}</Descriptions.Item>
                             <Descriptions.Item label="BodyCRC">{messageDetail.messageView.bodyCRC}</Descriptions.Item>
                             <Descriptions.Item label="SysFlag">{messageDetail.messageView.sysFlag}</Descriptions.Item>
                             <Descriptions.Item label="Flag">{messageDetail.messageView.flag}</Descriptions.Item>
-                            <Descriptions.Item label="PreparedTransactionOffset">{messageDetail.messageView.preparedTransactionOffset}</Descriptions.Item>
+                            <Descriptions.Item
+                                label="PreparedTransactionOffset">{messageDetail.messageView.preparedTransactionOffset}</Descriptions.Item>
                         </Descriptions>
 
                         {/* 消息属性部分 */}
                         {Object.keys(messageDetail.messageView.properties).length > 0 && (
-                            <Descriptions title={<Text strong>{t.MESSAGE_PROPERTIES}</Text>} bordered column={1} size="small" style={{ marginBottom: 20 }}>
+                            <Descriptions title={<Text strong>{t.MESSAGE_PROPERTIES}</Text>} bordered column={1}
+                                          size="small" style={{marginBottom: 20}}>
                                 {Object.entries(messageDetail.messageView.properties).map(([key, value]) => (
-                                    <Descriptions.Item label={key} key={key}><Text copyable>{value}</Text></Descriptions.Item>
+                                    <Descriptions.Item label={key} key={key}><Text
+                                        copyable>{value}</Text></Descriptions.Item>
                                 ))}
                             </Descriptions>
                         )}
 
                         {/* 消息体部分 */}
-                        <Descriptions title={<Text strong>{t.MESSAGE_BODY}</Text>} bordered column={1} size="small" style={{ marginBottom: 20 }}>
+                        <Descriptions title={<Text strong>{t.MESSAGE_BODY}</Text>} bordered column={1} size="small"
+                                      style={{marginBottom: 20}}>
                             <Descriptions.Item>
                                 <Paragraph
                                     copyable
@@ -146,9 +157,10 @@ const MessageDetailViewDialog = ({ visible, onCancel, messageId, topic, onResend
                         {messageDetail.messageTrackList && messageDetail.messageTrackList.length > 0 ? (
                             <>
                                 <Text strong>{t.MESSAGE_TRACKING}</Text>
-                                <div style={{ marginTop: 10 }}>
+                                <div style={{marginTop: 10}}>
                                     {messageDetail.messageTrackList.map((track, index) => (
-                                        <Descriptions bordered column={1} size="small" key={index} style={{ marginBottom: 15 }}>
+                                        <Descriptions bordered column={1} size="small" key={index}
+                                                      style={{marginBottom: 15}}>
                                             <Descriptions.Item label={t.CONSUMER_GROUP}>
                                                 {track.consumerGroup}
                                             </Descriptions.Item>
@@ -165,10 +177,10 @@ const MessageDetailViewDialog = ({ visible, onCancel, messageId, topic, onResend
                                             </Descriptions.Item>
                                             <Descriptions.Item label={t.OPERATION}>
                                                 <Button
-                                                    icon={<SyncOutlined />}
+                                                    icon={<SyncOutlined/>}
                                                     onClick={() => onResendMessage(messageDetail.messageView, track.consumerGroup)}
                                                     size="small"
-                                                    style={{ marginRight: 8 }}
+                                                    style={{marginRight: 8}}
                                                 >
                                                     {t.RESEND_MESSAGE}
                                                 </Button>
@@ -181,7 +193,10 @@ const MessageDetailViewDialog = ({ visible, onCancel, messageId, topic, onResend
                                                         ellipsis={{
                                                             rows: 2, // 默认显示2行
                                                             expandable: true,
-                                                            symbol: <Text style={{ color: '#1890ff', cursor: 'pointer' }}>{t.READ_MORE}</Text>, // 蓝色展开文本
+                                                            symbol: <Text style={{
+                                                                color: '#1890ff',
+                                                                cursor: 'pointer'
+                                                            }}>{t.READ_MORE}</Text>, // 蓝色展开文本
                                                         }}
                                                     >
                                                         {track.exceptionDesc}
@@ -198,7 +213,8 @@ const MessageDetailViewDialog = ({ visible, onCancel, messageId, topic, onResend
                     </>
                 ) : (
                     // 当 messageDetail 为 null 时，可以显示一个占位符或者不显示内容
-                    !loading && !error && <Paragraph style={{ textAlign: 'center' }}>{t.NO_MESSAGE_DETAIL_AVAILABLE}</Paragraph>
+                    !loading && !error &&
+                    <Paragraph style={{textAlign: 'center'}}>{t.NO_MESSAGE_DETAIL_AVAILABLE}</Paragraph>
                 )}
             </Spin>
         </Modal>

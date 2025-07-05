@@ -37,8 +37,7 @@ public class GlobalExceptionHandler {
             if (ex instanceof ServiceException) {
                 logger.error("Occur service exception: {}", ex.getMessage());
                 value = new JsonResult<Object>(((ServiceException) ex).getCode(), ex.getMessage());
-            }
-            else {
+            } else {
                 logger.error("op=global_exception_handler_print_error", ex);
                 value = new JsonResult<Object>(-1, ex.getMessage() == null ? ex.toString() : ex.getMessage());
             }

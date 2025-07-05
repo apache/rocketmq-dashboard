@@ -29,16 +29,16 @@ import java.util.Set;
 public abstract class AbstractCommonService {
     @Resource
     protected MQAdminExt mqAdminExt;
+
     protected final Set<String> changeToBrokerNameSet(Map<String, Set<String>> clusterAddrTable,
-        List<String> clusterNameList, List<String> brokerNameList) {
+                                                      List<String> clusterNameList, List<String> brokerNameList) {
         Set<String> finalBrokerNameList = Sets.newHashSet();
         if (CollectionUtils.isNotEmpty(clusterNameList)) {
             try {
                 for (String clusterName : clusterNameList) {
                     finalBrokerNameList.addAll(clusterAddrTable.get(clusterName));
                 }
-            }
-            catch (Exception e) {
+            } catch (Exception e) {
                 Throwables.throwIfUnchecked(e);
                 throw new RuntimeException(e);
             }

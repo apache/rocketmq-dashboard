@@ -39,5 +39,5 @@ public interface AclService {
 
     void deleteAcl(String brokerAddress, String subject, String resource);
 
-    void  updateAcl(PolicyRequest policyRequest);
+    void updateAcl(PolicyRequest policyRequest);
 }

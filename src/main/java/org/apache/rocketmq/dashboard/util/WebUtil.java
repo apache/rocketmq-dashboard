@@ -107,7 +107,7 @@ public class WebUtil {
         HttpSession session = request.getSession(false);
 
         if (session != null) {
-            return  session.getAttribute(key);
+            return session.getAttribute(key);
         }
 
         return null;

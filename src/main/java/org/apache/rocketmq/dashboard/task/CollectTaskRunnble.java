@@ -44,7 +44,7 @@ public class CollectTaskRunnble implements Runnable {
     private DashboardCollectService dashboardCollectService;
 
     public CollectTaskRunnble(String topic, MQAdminExt mqAdminExt,
-        DashboardCollectService dashboardCollectService) {
+                              DashboardCollectService dashboardCollectService) {
         this.topic = topic;
         this.mqAdminExt = mqAdminExt;
         this.dashboardCollectService = dashboardCollectService;

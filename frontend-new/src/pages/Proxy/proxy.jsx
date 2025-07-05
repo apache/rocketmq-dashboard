@@ -15,16 +15,16 @@
  * limitations under the License.
  */
 
-import React, { useState, useEffect } from 'react';
-import { Modal, Button, Select, Input, Card, Row, Col, notification, Spin } from 'antd';
-import { useLanguage } from '../../i18n/LanguageContext';
-import { remoteApi } from "../../api/remoteApi/remoteApi";
+import React, {useEffect, useState} from 'react';
+import {Button, Card, Col, Input, Modal, notification, Row, Select, Spin} from 'antd';
+import {useLanguage} from '../../i18n/LanguageContext';
+import {remoteApi} from "../../api/remoteApi/remoteApi";
 
 
-const { Option } = Select;
+const {Option} = Select;
 
 const ProxyManager = () => {
-    const { t } = useLanguage();
+    const {t} = useLanguage();
 
     const [loading, setLoading] = useState(false);
     const [proxyAddrList, setProxyAddrList] = useState([]);
@@ -47,7 +47,7 @@ const ProxyManager = () => {
         remoteApi.queryProxyHomePage((resp) => {
             setLoading(false);
             if (resp.status === 0) {
-                const { proxyAddrList, currentProxyAddr } = resp.data;
+                const {proxyAddrList, currentProxyAddr} = resp.data;
                 setProxyAddrList(proxyAddrList || []);
                 setSelectedProxy(currentProxyAddr || (proxyAddrList && proxyAddrList.length > 0 ? proxyAddrList[0] : ''));
 
@@ -58,7 +58,7 @@ const ProxyManager = () => {
                 }
 
             } else {
-                notificationApi.error({ message: resp.errMsg || t.FETCH_PROXY_LIST_FAILED, duration: 2 });
+                notificationApi.error({message: resp.errMsg || t.FETCH_PROXY_LIST_FAILED, duration: 2});
             }
         });
     }, [t]);
@@ -71,7 +71,10 @@ const ProxyManager = () => {
 
     const handleAddProxyAddr = () => {
         if (!newProxyAddr.trim()) {
-            notificationApi.warning({ message: t.INPUT_PROXY_ADDR_REQUIRED || "Please input a new proxy address.", duration: 2 });
+            notificationApi.warning({
+                message: t.INPUT_PROXY_ADDR_REQUIRED || "Please input a new proxy address.",
+                duration: 2
+            });
             return;
         }
         setLoading(true);
@@ -82,28 +85,28 @@ const ProxyManager = () => {
                     setProxyAddrList(prevList => [...prevList, newProxyAddr.trim()]);
                 }
                 setNewProxyAddr('');
-                notificationApi.info({ message: t.SUCCESS || "SUCCESS", duration: 2 });
+                notificationApi.info({message: t.SUCCESS || "SUCCESS", duration: 2});
             } else {
-                notificationApi.error({ message: resp.errMsg || t.ADD_PROXY_FAILED, duration: 2 });
+                notificationApi.error({message: resp.errMsg || t.ADD_PROXY_FAILED, duration: 2});
             }
         });
     };
 
     return (
         <Spin spinning={loading} tip={t.LOADING}>
-            <div className="container-fluid" style={{ padding: '24px' }} id="deployHistoryList">
+            <div className="container-fluid" style={{padding: '24px'}} id="deployHistoryList">
                 <Card
                     title={
-                        <div style={{ fontSize: '20px', fontWeight: 'bold' }}>
+                        <div style={{fontSize: '20px', fontWeight: 'bold'}}>
                             ProxyServerAddressList
                         </div>
                     }
                     bordered={false}
                 >
                     <Row gutter={[16, 16]} align="middle">
-                        <Col flex="auto" style={{ minWidth: 300, maxWidth: 500 }}>
+                        <Col flex="auto" style={{minWidth: 300, maxWidth: 500}}>
                             <Select
-                                style={{ width: '100%' }}
+                                style={{width: '100%'}}
                                 value={selectedProxy}
                                 onChange={handleSelectChange}
                                 placeholder={t.SELECT}
@@ -122,14 +125,14 @@ const ProxyManager = () => {
                     </Row>
 
                     {writeOperationEnabled && (
-                        <Row gutter={[16, 16]} align="middle" style={{ marginTop: 16 }}>
+                        <Row gutter={[16, 16]} align="middle" style={{marginTop: 16}}>
                             <Col>
                                 <label htmlFor="newProxyAddrInput">ProxyAddr:</label>
                             </Col>
                             <Col>
                                 <Input
                                     id="newProxyAddrInput"
-                                    style={{ width: 300 }}
+                                    style={{width: 300}}
                                     value={newProxyAddr}
                                     onChange={(e) => setNewProxyAddr(e.target.value)}
                                     placeholder={t.INPUT_PROXY_ADDR}
@@ -149,25 +152,26 @@ const ProxyManager = () => {
                     onCancel={() => setShowModal(false)}
                     title={`${t.PROXY_CONFIG} [${selectedProxy}]`}
                     footer={
-                        <div style={{ textAlign: 'center' }}>
+                        <div style={{textAlign: 'center'}}>
                             <Button onClick={() => setShowModal(false)}>{t.CLOSE}</Button>
                         </div>
                     }
                     width={800}
-                    bodyStyle={{ maxHeight: '60vh', overflowY: 'auto' }}
+                    bodyStyle={{maxHeight: '60vh', overflowY: 'auto'}}
                 >
-                    <table className="table table-bordered" style={{ width: '100%' }}>
+                    <table className="table table-bordered" style={{width: '100%'}}>
                         <tbody>
                         {Object.entries(allProxyConfig).length > 0 ? (
                             Object.entries(allProxyConfig).map(([key, value]) => (
                                 <tr key={key}>
-                                    <td style={{ fontWeight: 500, width: '30%' }}>{key}</td>
+                                    <td style={{fontWeight: 500, width: '30%'}}>{key}</td>
                                     <td>{value}</td>
                                 </tr>
                             ))
                         ) : (
                             <tr>
-                                <td colSpan="2" style={{ textAlign: 'center' }}>{t.NO_CONFIG_DATA || "No configuration data available."}</td>
+                                <td colSpan="2"
+                                    style={{textAlign: 'center'}}>{t.NO_CONFIG_DATA || "No configuration data available."}</td>
                             </tr>
                         )}
                         </tbody>

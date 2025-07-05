@@ -15,23 +15,23 @@
  * limitations under the License.
  */
 
-import { Input, Select, Tag, Space } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
-import React, { useState } from 'react';
+import {Input, Select, Space, Tag} from 'antd';
+import {PlusOutlined} from '@ant-design/icons';
+import React, {useState} from 'react';
 
-const { Option } = Select;
+const {Option} = Select;
 
 // 资源类型枚举
 const resourceTypes = [
-    { value: 0, label: 'Unknown', prefix: 'UNKNOWN' },
-    { value: 1, label: 'Any', prefix: 'ANY' },
-    { value: 2, label: 'Cluster', prefix: 'CLUSTER' },
-    { value: 3, label: 'Namespace', prefix: 'NAMESPACE' },
-    { value: 4, label: 'Topic', prefix: 'TOPIC' },
-    { value: 5, label: 'Group', prefix: 'GROUP' },
+    {value: 0, label: 'Unknown', prefix: 'UNKNOWN'},
+    {value: 1, label: 'Any', prefix: 'ANY'},
+    {value: 2, label: 'Cluster', prefix: 'CLUSTER'},
+    {value: 3, label: 'Namespace', prefix: 'NAMESPACE'},
+    {value: 4, label: 'Topic', prefix: 'TOPIC'},
+    {value: 5, label: 'Group', prefix: 'GROUP'},
 ];
 
-const ResourceInput = ({ value = [], onChange }) => {
+const ResourceInput = ({value = [], onChange}) => {
     // 确保 value 始终是数组
     const safeValue = Array.isArray(value) ? value : [];
 
@@ -96,7 +96,7 @@ const ResourceInput = ({ value = [], onChange }) => {
                 <Space>
                     <Select
                         value={selectedType}
-                        style={{ width: 120 }}
+                        style={{width: 120}}
                         onChange={handleTypeChange}
                     >
                         {resourceTypes.map(type => (
@@ -107,7 +107,7 @@ const ResourceInput = ({ value = [], onChange }) => {
                     </Select>
                     <Input
                         ref={inputRef}
-                        style={{ width: 180 }}
+                        style={{width: 180}}
                         value={resourceName}
                         onChange={handleNameChange}
                         onPressEnter={handleAddResource}
@@ -116,8 +116,8 @@ const ResourceInput = ({ value = [], onChange }) => {
                     />
                 </Space>
             ) : (
-                <Tag onClick={showInput} style={{ background: '#fff', borderStyle: 'dashed' }}>
-                    <PlusOutlined /> 添加资源
+                <Tag onClick={showInput} style={{background: '#fff', borderStyle: 'dashed'}}>
+                    <PlusOutlined/> 添加资源
                 </Tag>
             )}
         </Space>

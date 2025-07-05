@@ -16,20 +16,20 @@
  */
 
 import React from 'react';
-import { Form, Input, Typography, Modal } from 'antd';
+import {Form, Input, Typography} from 'antd';
 import moment from 'moment';
-import { useLanguage } from '../i18n/LanguageContext'; // 根据实际路径调整
+import {useLanguage} from '../i18n/LanguageContext'; // 根据实际路径调整
 
-const { Text } = Typography;
+const {Text} = Typography;
 
-const DlqMessageDetailViewDialog = ({ ngDialogData }) => {
-    const { t } = useLanguage();
+const DlqMessageDetailViewDialog = ({ngDialogData}) => {
+    const {t} = useLanguage();
 
     const messageView = ngDialogData?.messageView || {};
 
     return (
-        <div style={{ padding: '20px' }}>
-            <Form layout="horizontal" labelCol={{ span: 4 }} wrapperCol={{ span: 20 }}>
+        <div style={{padding: '20px'}}>
+            <Form layout="horizontal" labelCol={{span: 4}} wrapperCol={{span: 20}}>
                 <Form.Item label="Message ID:">
                     <Text strong>{messageView.msgId}</Text>
                 </Form.Item>
@@ -39,7 +39,7 @@ const DlqMessageDetailViewDialog = ({ ngDialogData }) => {
                 <Form.Item label="Properties:">
                     <Input.TextArea
                         value={typeof messageView.properties === 'object' ? JSON.stringify(messageView.properties, null, 2) : messageView.properties}
-                        style={{ minHeight: 100, resize: 'none' }}
+                        style={{minHeight: 100, resize: 'none'}}
                         readOnly
                     />
                 </Form.Item>
@@ -61,7 +61,7 @@ const DlqMessageDetailViewDialog = ({ ngDialogData }) => {
                 <Form.Item label="Message body:">
                     <Input.TextArea
                         value={messageView.messageBody}
-                        style={{ minHeight: 100, resize: 'none' }}
+                        style={{minHeight: 100, resize: 'none'}}
                         readOnly
                     />
                 </Form.Item>

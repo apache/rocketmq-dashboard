@@ -15,20 +15,21 @@
  * limitations under the License.
  */
 
-import React, { createContext, useState, useContext } from 'react';
-import { translations } from '../i18n';
+import React, {createContext, useContext, useState} from 'react';
+import {translations} from '../i18n';
 
 const LanguageContext = createContext({
     lang: 'en',
-    setLang: () => {},
+    setLang: () => {
+    },
     t: translations['en'], // 当前语言的文本资源
 });
 
-export const LanguageProvider = ({ children }) => {
+export const LanguageProvider = ({children}) => {
     const [lang, setLang] = useState('en');
     const t = translations[lang] || translations['en'];
     return (
-        <LanguageContext.Provider value={{ lang, setLang, t }}>
+        <LanguageContext.Provider value={{lang, setLang, t}}>
             {children}
         </LanguageContext.Provider>
     );

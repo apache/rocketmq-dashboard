@@ -31,6 +31,7 @@ import org.springframework.web.bind.annotation.ResponseBody;
 public class ProxyController {
     @Resource
     private ProxyService proxyService;
+
     @RequestMapping(value = "/homePage.query", method = RequestMethod.GET)
     @ResponseBody
     public Object homePage() {

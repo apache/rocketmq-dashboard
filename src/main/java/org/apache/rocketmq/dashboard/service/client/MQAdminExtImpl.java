@@ -94,19 +94,20 @@ public class MQAdminExtImpl implements MQAdminExt {
     private Logger logger = LoggerFactory.getLogger(MQAdminExtImpl.class);
 
 
-    public MQAdminExtImpl() {}
+    public MQAdminExtImpl() {
+    }
 
 
     @Override
     public void updateBrokerConfig(String brokerAddr, Properties properties)
-        throws RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException,
-        UnsupportedEncodingException, InterruptedException, MQBrokerException, MQClientException {
+            throws RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException,
+            UnsupportedEncodingException, InterruptedException, MQBrokerException, MQClientException {
         MQAdminInstance.threadLocalMQAdminExt().updateBrokerConfig(brokerAddr, properties);
     }
 
     @Override
     public void createAndUpdateTopicConfig(String addr, TopicConfig config)
-        throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+            throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
         MQAdminInstance.threadLocalMQAdminExt().createAndUpdateTopicConfig(addr, config);
     }
 
@@ -118,7 +119,7 @@ public class MQAdminExtImpl implements MQAdminExt {
 
     @Override
     public void createAndUpdateSubscriptionGroupConfig(String addr, SubscriptionGroupConfig config)
-        throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+            throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
         MQAdminInstance.threadLocalMQAdminExt().createAndUpdateSubscriptionGroupConfig(addr, config);
     }
 
@@ -134,8 +135,7 @@ public class MQAdminExtImpl implements MQAdminExt {
         RemotingCommand response = null;
         try {
             response = remotingClient.invokeSync(addr, request, 8000);
-        }
-        catch (Exception err) {
+        } catch (Exception err) {
             Throwables.throwIfUnchecked(err);
             throw new RuntimeException(err);
         }
@@ -178,7 +178,7 @@ public class MQAdminExtImpl implements MQAdminExt {
 
     @Override
     public TopicStatsTable examineTopicStats(String topic)
-        throws RemotingException, MQClientException, InterruptedException, MQBrokerException {
+            throws RemotingException, MQClientException, InterruptedException, MQBrokerException {
         return MQAdminInstance.threadLocalMQAdminExt().examineTopicStats(topic);
     }
 
@@ -191,14 +191,14 @@ public class MQAdminExtImpl implements MQAdminExt {
 
     @Override
     public KVTable fetchBrokerRuntimeStats(String brokerAddr)
-        throws RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException,
-        InterruptedException, MQBrokerException {
+            throws RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException,
+            InterruptedException, MQBrokerException {
         return MQAdminInstance.threadLocalMQAdminExt().fetchBrokerRuntimeStats(brokerAddr);
     }
 
     @Override
     public ConsumeStats examineConsumeStats(String consumerGroup)
-        throws RemotingException, MQClientException, InterruptedException, MQBrokerException {
+            throws RemotingException, MQClientException, InterruptedException, MQBrokerException {
         return MQAdminInstance.threadLocalMQAdminExt().examineConsumeStats(consumerGroup);
     }
 
@@ -209,7 +209,7 @@ public class MQAdminExtImpl implements MQAdminExt {
 
     @Override
     public ConsumeStats examineConsumeStats(String consumerGroup, String topic)
-        throws RemotingException, MQClientException, InterruptedException, MQBrokerException {
+            throws RemotingException, MQClientException, InterruptedException, MQBrokerException {
         return MQAdminInstance.threadLocalMQAdminExt().examineConsumeStats(consumerGroup, topic);
     }
 
@@ -220,27 +220,27 @@ public class MQAdminExtImpl implements MQAdminExt {
 
     @Override
     public ClusterInfo examineBrokerClusterInfo()
-        throws InterruptedException, MQBrokerException, RemotingTimeoutException, RemotingSendRequestException,
-        RemotingConnectException {
+            throws InterruptedException, MQBrokerException, RemotingTimeoutException, RemotingSendRequestException,
+            RemotingConnectException {
         return MQAdminInstance.threadLocalMQAdminExt().examineBrokerClusterInfo();
     }
 
     @Override
     public TopicRouteData examineTopicRouteInfo(String topic)
-        throws RemotingException, MQClientException, InterruptedException {
+            throws RemotingException, MQClientException, InterruptedException {
         return MQAdminInstance.threadLocalMQAdminExt().examineTopicRouteInfo(topic);
     }
 
     @Override
     public ConsumerConnection examineConsumerConnectionInfo(String consumerGroup)
-        throws RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException,
-        InterruptedException, MQBrokerException, RemotingException, MQClientException {
+            throws RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException,
+            InterruptedException, MQBrokerException, RemotingException, MQClientException {
         return MQAdminInstance.threadLocalMQAdminExt().examineConsumerConnectionInfo(consumerGroup);
     }
 
     @Override
     public ProducerConnection examineProducerConnectionInfo(String producerGroup, String topic)
-        throws RemotingException, MQClientException, InterruptedException, MQBrokerException {
+            throws RemotingException, MQClientException, InterruptedException, MQBrokerException {
         return MQAdminInstance.threadLocalMQAdminExt().examineProducerConnectionInfo(producerGroup, topic);
     }
 
@@ -251,14 +251,14 @@ public class MQAdminExtImpl implements MQAdminExt {
 
     @Override
     public int wipeWritePermOfBroker(String namesrvAddr, String brokerName)
-        throws RemotingCommandException, RemotingConnectException, RemotingSendRequestException,
-        RemotingTimeoutException, InterruptedException, MQClientException {
+            throws RemotingCommandException, RemotingConnectException, RemotingSendRequestException,
+            RemotingTimeoutException, InterruptedException, MQClientException {
         return MQAdminInstance.threadLocalMQAdminExt().wipeWritePermOfBroker(namesrvAddr, brokerName);
     }
 
     @Override
     public int addWritePermOfBroker(String namesrvAddr,
-        String brokerName) throws RemotingCommandException, RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException, InterruptedException, MQClientException {
+                                    String brokerName) throws RemotingCommandException, RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException, InterruptedException, MQClientException {
         return MQAdminInstance.threadLocalMQAdminExt().addWritePermOfBroker(namesrvAddr, brokerName);
     }
 
@@ -269,62 +269,62 @@ public class MQAdminExtImpl implements MQAdminExt {
 
     @Override
     public String getKVConfig(String namespace, String key)
-        throws RemotingException, MQClientException, InterruptedException {
+            throws RemotingException, MQClientException, InterruptedException {
         return MQAdminInstance.threadLocalMQAdminExt().getKVConfig(namespace, key);
     }
 
     @Override
     public KVTable getKVListByNamespace(String namespace)
-        throws RemotingException, MQClientException, InterruptedException {
+            throws RemotingException, MQClientException, InterruptedException {
         return MQAdminInstance.threadLocalMQAdminExt().getKVListByNamespace(namespace);
     }
 
     @Override
     public void deleteTopicInBroker(Set<String> addrs, String topic)
-        throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+            throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
         logger.info("addrs={} topic={}", JsonUtil.obj2String(addrs), topic);
         MQAdminInstance.threadLocalMQAdminExt().deleteTopicInBroker(addrs, topic);
     }
 
     @Override
     public void deleteTopicInNameServer(Set<String> addrs, String topic)
-        throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+            throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
         MQAdminInstance.threadLocalMQAdminExt().deleteTopicInNameServer(addrs, topic);
     }
 
     @Override
     public void deleteSubscriptionGroup(String addr, String groupName)
-        throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+            throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
         MQAdminInstance.threadLocalMQAdminExt().deleteSubscriptionGroup(addr, groupName);
     }
 
     @Override
     public void deleteSubscriptionGroup(String addr, String groupName, boolean removeOffset)
-        throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+            throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
         MQAdminInstance.threadLocalMQAdminExt().deleteSubscriptionGroup(addr, groupName, removeOffset);
     }
 
     @Override
     public void createAndUpdateKvConfig(String namespace, String key, String value)
-        throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+            throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
         MQAdminInstance.threadLocalMQAdminExt().createAndUpdateKvConfig(namespace, key, value);
     }
 
     @Override
     public void deleteKvConfig(String namespace, String key)
-        throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+            throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
         MQAdminInstance.threadLocalMQAdminExt().deleteKvConfig(namespace, key);
     }
 
     @Override
     public List<RollbackStats> resetOffsetByTimestampOld(String consumerGroup, String topic, long timestamp,
-        boolean force) throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+                                                         boolean force) throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
         return MQAdminInstance.threadLocalMQAdminExt().resetOffsetByTimestampOld(consumerGroup, topic, timestamp, force);
     }
 
     @Override
     public Map<MessageQueue, Long> resetOffsetByTimestamp(String topic, String group, long timestamp,
-        boolean isForce) throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+                                                          boolean isForce) throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
         return MQAdminInstance.threadLocalMQAdminExt().resetOffsetByTimestamp(topic, group, timestamp, isForce);
     }
 
@@ -335,59 +335,59 @@ public class MQAdminExtImpl implements MQAdminExt {
 
     @Override
     public void resetOffsetNew(String consumerGroup, String topic, long timestamp)
-        throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+            throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
         MQAdminInstance.threadLocalMQAdminExt().resetOffsetNew(consumerGroup, topic, timestamp);
     }
 
     @Override
     public Map<String, Map<MessageQueue, Long>> getConsumeStatus(String topic, String group,
-        String clientAddr) throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+                                                                 String clientAddr) throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
         return MQAdminInstance.threadLocalMQAdminExt().getConsumeStatus(topic, group, clientAddr);
     }
 
     @Override
     public void createOrUpdateOrderConf(String key, String value, boolean isCluster)
-        throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+            throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
         MQAdminInstance.threadLocalMQAdminExt().createOrUpdateOrderConf(key, value, isCluster);
     }
 
     @Override
     public GroupList queryTopicConsumeByWho(String topic)
-        throws RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException,
-        InterruptedException, MQBrokerException, RemotingException, MQClientException {
+            throws RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException,
+            InterruptedException, MQBrokerException, RemotingException, MQClientException {
         return MQAdminInstance.threadLocalMQAdminExt().queryTopicConsumeByWho(topic);
     }
 
     @Override
     public boolean cleanExpiredConsumerQueue(String cluster)
-        throws RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException, MQClientException,
-        InterruptedException {
+            throws RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException, MQClientException,
+            InterruptedException {
         return MQAdminInstance.threadLocalMQAdminExt().cleanExpiredConsumerQueue(cluster);
     }
 
     @Override
     public boolean cleanExpiredConsumerQueueByAddr(String addr)
-        throws RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException, MQClientException,
-        InterruptedException {
+            throws RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException, MQClientException,
+            InterruptedException {
         return MQAdminInstance.threadLocalMQAdminExt().cleanExpiredConsumerQueueByAddr(addr);
     }
 
     @Override
     public ConsumerRunningInfo getConsumerRunningInfo(String consumerGroup, String clientId, boolean jstack)
-        throws RemotingException, MQClientException, InterruptedException {
+            throws RemotingException, MQClientException, InterruptedException {
         return MQAdminInstance.threadLocalMQAdminExt().getConsumerRunningInfo(consumerGroup, clientId, jstack);
     }
 
 
     @Override
     public List<MessageTrack> messageTrackDetail(MessageExt msg)
-        throws RemotingException, MQClientException, InterruptedException, MQBrokerException {
+            throws RemotingException, MQClientException, InterruptedException, MQBrokerException {
         return MQAdminInstance.threadLocalMQAdminExt().messageTrackDetail(msg);
     }
 
     @Override
     public void cloneGroupOffset(String srcGroup, String destGroup, String topic, boolean isOffline)
-        throws RemotingException, MQClientException, InterruptedException, MQBrokerException {
+            throws RemotingException, MQClientException, InterruptedException, MQBrokerException {
         MQAdminInstance.threadLocalMQAdminExt().cloneGroupOffset(srcGroup, destGroup, topic, isOffline);
     }
 
@@ -398,7 +398,7 @@ public class MQAdminExtImpl implements MQAdminExt {
 
     @Override
     public void createTopic(String key, String newTopic, int queueNum, int topicSysFlag, Map<String, String> attributes)
-        throws MQClientException {
+            throws MQClientException {
         MQAdminInstance.threadLocalMQAdminExt().createTopic(key, newTopic, queueNum, topicSysFlag, attributes);
     }
 
@@ -424,7 +424,7 @@ public class MQAdminExtImpl implements MQAdminExt {
 
     @Override
     public QueryResult queryMessage(String topic, String key, int maxNum, long begin, long end)
-        throws MQClientException, InterruptedException {
+            throws MQClientException, InterruptedException {
         return MQAdminInstance.threadLocalMQAdminExt().queryMessage(topic, key, maxNum, begin, end);
     }
 
@@ -444,7 +444,7 @@ public class MQAdminExtImpl implements MQAdminExt {
 
     @Override
     public List<QueueTimeSpan> queryConsumeTimeSpan(String topic,
-        String group) throws InterruptedException, MQBrokerException, RemotingException, MQClientException {
+                                                    String group) throws InterruptedException, MQBrokerException, RemotingException, MQClientException {
         return MQAdminInstance.threadLocalMQAdminExt().queryConsumeTimeSpan(topic, group);
     }
 
@@ -454,7 +454,7 @@ public class MQAdminExtImpl implements MQAdminExt {
     //https://github.com/apache/incubator-rocketmq/pull/69
     @Override
     public MessageExt viewMessage(String topic,
-        String msgId) throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+                                  String msgId) throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
         logger.info("MessageClientIDSetter.getNearlyTimeFromID(msgId)={} msgId={}", MessageClientIDSetter.getNearlyTimeFromID(msgId), msgId);
         MQAdminImpl mqAdminImpl = MQAdminInstance.threadLocalMqClientInstance().getMQAdminImpl();
         Set<String> clusterList = MQAdminInstance.threadLocalMQAdminExt().getTopicClusterList(topic);
@@ -478,7 +478,7 @@ public class MQAdminExtImpl implements MQAdminExt {
 
     @Override
     public ConsumeMessageDirectlyResult consumeMessageDirectly(String consumerGroup, String clientId, String topic,
-        String msgId) throws RemotingException, MQClientException, InterruptedException, MQBrokerException {
+                                                               String msgId) throws RemotingException, MQClientException, InterruptedException, MQBrokerException {
         return MQAdminInstance.threadLocalMQAdminExt().consumeMessageDirectly(consumerGroup, clientId, topic, msgId);
     }
 
@@ -489,96 +489,99 @@ public class MQAdminExtImpl implements MQAdminExt {
 
     @Override
     public Properties getBrokerConfig(
-        String brokerAddr) throws RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException, UnsupportedEncodingException, InterruptedException, MQBrokerException {
+            String brokerAddr) throws RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException, UnsupportedEncodingException, InterruptedException, MQBrokerException {
         return MQAdminInstance.threadLocalMQAdminExt().getBrokerConfig(brokerAddr);
     }
 
     @Override
     public TopicList fetchTopicsByCLuster(
-        String clusterName) throws RemotingException, MQClientException, InterruptedException {
+            String clusterName) throws RemotingException, MQClientException, InterruptedException {
         return MQAdminInstance.threadLocalMQAdminExt().fetchTopicsByCLuster(clusterName);
     }
 
     @Override
     public boolean cleanUnusedTopic(
-        String cluster) throws RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException, MQClientException, InterruptedException {
+            String cluster) throws RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException, MQClientException, InterruptedException {
         return MQAdminInstance.threadLocalMQAdminExt().cleanUnusedTopic(cluster);
     }
 
     @Override
     public boolean cleanUnusedTopicByAddr(
-        String addr) throws RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException, MQClientException, InterruptedException {
+            String addr) throws RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException, MQClientException, InterruptedException {
         return MQAdminInstance.threadLocalMQAdminExt().cleanUnusedTopicByAddr(addr);
     }
 
     @Override
     public BrokerStatsData viewBrokerStatsData(String brokerAddr, String statsName,
-        String statsKey) throws RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException, MQClientException, InterruptedException {
+                                               String statsKey) throws RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException, MQClientException, InterruptedException {
         return MQAdminInstance.threadLocalMQAdminExt().viewBrokerStatsData(brokerAddr, statsName, statsKey);
     }
 
     @Override
     public Set<String> getClusterList(
-        String topic) throws RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException, MQClientException, InterruptedException {
+            String topic) throws RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException, MQClientException, InterruptedException {
         return MQAdminInstance.threadLocalMQAdminExt().getClusterList(topic);
     }
 
     @Override
     public ConsumeStatsList fetchConsumeStatsInBroker(String brokerAddr, boolean isOrder,
-        long timeoutMillis) throws RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException, MQClientException, InterruptedException {
+                                                      long timeoutMillis) throws RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException, MQClientException, InterruptedException {
         return MQAdminInstance.threadLocalMQAdminExt().fetchConsumeStatsInBroker(brokerAddr, isOrder, timeoutMillis);
     }
 
     @Override
     public Set<String> getTopicClusterList(
-        String topic) throws InterruptedException, MQBrokerException, MQClientException, RemotingException {
+            String topic) throws InterruptedException, MQBrokerException, MQClientException, RemotingException {
         return MQAdminInstance.threadLocalMQAdminExt().getTopicClusterList(topic);
     }
 
     @Override
     public SubscriptionGroupWrapper getAllSubscriptionGroup(String brokerAddr,
-        long timeoutMillis) throws InterruptedException, RemotingTimeoutException, RemotingSendRequestException, RemotingConnectException, MQBrokerException {
+                                                            long timeoutMillis) throws InterruptedException, RemotingTimeoutException, RemotingSendRequestException, RemotingConnectException, MQBrokerException {
         return MQAdminInstance.threadLocalMQAdminExt().getAllSubscriptionGroup(brokerAddr, timeoutMillis);
     }
 
     @Override
     public SubscriptionGroupWrapper getUserSubscriptionGroup(String brokerAddr,
-        long timeoutMillis) throws InterruptedException, RemotingTimeoutException, RemotingSendRequestException, RemotingConnectException, MQBrokerException {
+                                                             long timeoutMillis) throws InterruptedException, RemotingTimeoutException, RemotingSendRequestException, RemotingConnectException, MQBrokerException {
         return MQAdminInstance.threadLocalMQAdminExt().getUserSubscriptionGroup(brokerAddr, timeoutMillis);
     }
 
     @Override
     public TopicConfigSerializeWrapper getAllTopicConfig(String brokerAddr,
-        long timeoutMillis) throws InterruptedException, RemotingTimeoutException, RemotingSendRequestException, RemotingConnectException, MQBrokerException {
+                                                         long timeoutMillis) throws InterruptedException, RemotingTimeoutException, RemotingSendRequestException, RemotingConnectException, MQBrokerException {
         return MQAdminInstance.threadLocalMQAdminExt().getAllTopicConfig(brokerAddr, timeoutMillis);
     }
 
     @Override
     public TopicConfigSerializeWrapper getUserTopicConfig(String brokerAddr, boolean specialTopic,
-        long timeoutMillis) throws InterruptedException, RemotingException, MQBrokerException, MQClientException {
+                                                          long timeoutMillis) throws InterruptedException, RemotingException, MQBrokerException, MQClientException {
         return MQAdminInstance.threadLocalMQAdminExt().getUserTopicConfig(brokerAddr, specialTopic, timeoutMillis);
     }
 
     @Override
     public void updateConsumeOffset(String brokerAddr, String consumeGroup, MessageQueue mq,
-        long offset) throws RemotingException, InterruptedException, MQBrokerException {
+                                    long offset) throws RemotingException, InterruptedException, MQBrokerException {
         MQAdminInstance.threadLocalMQAdminExt().updateConsumeOffset(brokerAddr, consumeGroup, mq, offset);
     }
 
     // 4.0.0 added
-    @Override public void updateNameServerConfig(Properties properties,
-        List<String> list) throws InterruptedException, RemotingConnectException, UnsupportedEncodingException, RemotingSendRequestException, RemotingTimeoutException, MQClientException, MQBrokerException {
+    @Override
+    public void updateNameServerConfig(Properties properties,
+                                       List<String> list) throws InterruptedException, RemotingConnectException, UnsupportedEncodingException, RemotingSendRequestException, RemotingTimeoutException, MQClientException, MQBrokerException {
 
     }
 
-    @Override public Map<String, Properties> getNameServerConfig(
-        List<String> list) throws InterruptedException, RemotingTimeoutException, RemotingSendRequestException, RemotingConnectException, MQClientException, UnsupportedEncodingException {
+    @Override
+    public Map<String, Properties> getNameServerConfig(
+            List<String> list) throws InterruptedException, RemotingTimeoutException, RemotingSendRequestException, RemotingConnectException, MQClientException, UnsupportedEncodingException {
         return null;
     }
 
-    @Override public QueryConsumeQueueResponseBody queryConsumeQueue(String brokerAddr, String topic,
-        int queueId, long index, int count,
-        String consumerGroup) throws InterruptedException, RemotingTimeoutException, RemotingSendRequestException, RemotingConnectException, MQClientException {
+    @Override
+    public QueryConsumeQueueResponseBody queryConsumeQueue(String brokerAddr, String topic,
+                                                           int queueId, long index, int count,
+                                                           String consumerGroup) throws InterruptedException, RemotingTimeoutException, RemotingSendRequestException, RemotingConnectException, MQClientException {
         return null;
     }
 
@@ -588,8 +591,9 @@ public class MQAdminExtImpl implements MQAdminExt {
     }
 
 
-    @Override public boolean resumeCheckHalfMessage(String topic,
-        String msgId) throws RemotingException, MQClientException, InterruptedException, MQBrokerException {
+    @Override
+    public boolean resumeCheckHalfMessage(String topic,
+                                          String msgId) throws RemotingException, MQClientException, InterruptedException, MQBrokerException {
         return false;
     }
 
@@ -602,7 +606,7 @@ public class MQAdminExtImpl implements MQAdminExt {
 
     @Override
     public void removeBrokerFromContainer(String brokerContainerAddr, String clusterName, String brokerName,
-            long brokerId) throws InterruptedException, MQBrokerException, RemotingTimeoutException,
+                                          long brokerId) throws InterruptedException, MQBrokerException, RemotingTimeoutException,
             RemotingSendRequestException, RemotingConnectException {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'removeBrokerFromContainer'");
@@ -624,7 +628,7 @@ public class MQAdminExtImpl implements MQAdminExt {
 
     @Override
     public ConsumeStats examineConsumeStats(String brokerAddr, String consumerGroup, String topicName,
-            long timeoutMillis) throws InterruptedException, RemotingTimeoutException, RemotingSendRequestException,
+                                            long timeoutMillis) throws InterruptedException, RemotingTimeoutException, RemotingSendRequestException,
             RemotingConnectException, MQBrokerException {
         // TODO Auto-generated method stub
         return MQAdminInstance.threadLocalMQAdminExt().examineConsumeStats(brokerAddr, consumerGroup, topicName, timeoutMillis);
@@ -717,7 +721,7 @@ public class MQAdminExtImpl implements MQAdminExt {
 
     @Override
     public ConsumerRunningInfo getConsumerRunningInfo(String consumerGroup, String clientId, boolean jstack,
-            boolean metrics) throws RemotingException, MQClientException, InterruptedException {
+                                                      boolean metrics) throws RemotingException, MQClientException, InterruptedException {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'getConsumerRunningInfo'");
     }
@@ -731,7 +735,7 @@ public class MQAdminExtImpl implements MQAdminExt {
 
     @Override
     public void setMessageRequestMode(String brokerAddr, String topic, String consumerGroup, MessageRequestMode mode,
-            int popWorkGroupSize, long timeoutMillis) throws InterruptedException, RemotingTimeoutException,
+                                      int popWorkGroupSize, long timeoutMillis) throws InterruptedException, RemotingTimeoutException,
             RemotingSendRequestException, RemotingConnectException, MQClientException {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'setMessageRequestMode'");
@@ -746,14 +750,14 @@ public class MQAdminExtImpl implements MQAdminExt {
 
     @Override
     public void resetOffsetByQueueId(String brokerAddr, String consumerGroup, String topicName, int queueId,
-            long resetOffset) throws RemotingException, InterruptedException, MQBrokerException {
+                                     long resetOffset) throws RemotingException, InterruptedException, MQBrokerException {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'resetOffsetByQueueId'");
     }
 
     @Override
     public void createStaticTopic(String addr, String defaultTopic, TopicConfig topicConfig,
-            TopicQueueMappingDetail mappingDetail, boolean force)
+                                  TopicQueueMappingDetail mappingDetail, boolean force)
             throws RemotingException, InterruptedException, MQBrokerException {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'createStaticTopic'");
@@ -761,7 +765,7 @@ public class MQAdminExtImpl implements MQAdminExt {
 
     @Override
     public GroupForbidden updateAndGetGroupReadForbidden(String brokerAddr, String groupName, String topicName,
-            Boolean readable) throws RemotingException, InterruptedException, MQBrokerException {
+                                                         Boolean readable) throws RemotingException, InterruptedException, MQBrokerException {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'updateAndGetGroupReadForbidden'");
     }
@@ -831,7 +835,7 @@ public class MQAdminExtImpl implements MQAdminExt {
 
     @Override
     public void cleanControllerBrokerData(String controllerAddr, String clusterName, String brokerName,
-            String brokerAddr, boolean isCleanLivingBroker)
+                                          String brokerAddr, boolean isCleanLivingBroker)
             throws RemotingException, InterruptedException, MQBrokerException {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'cleanControllerBrokerData'");
