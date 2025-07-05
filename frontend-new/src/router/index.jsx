@@ -64,7 +64,7 @@ const AppRouter = () => {
 
     useEffect(() => {
         remoteApi.setRedirectHandler(() => {
-            navigate('/login', { replace: true });
+            navigate('/login', {replace: true});
         });
     }, [navigate]);
 

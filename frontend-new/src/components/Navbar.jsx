@@ -16,29 +16,29 @@
  */
 
 import React, {useEffect, useState} from 'react';
-import { Layout, Menu, Dropdown, Button, Drawer, Grid, Space } from 'antd';
-import {GlobalOutlined, DownOutlined, UserOutlined, MenuOutlined, BgColorsOutlined} from '@ant-design/icons';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { useLanguage } from '../i18n/LanguageContext';
+import {Button, Drawer, Dropdown, Grid, Layout, Menu, Space} from 'antd';
+import {BgColorsOutlined, DownOutlined, GlobalOutlined, MenuOutlined, UserOutlined} from '@ant-design/icons';
+import {useLocation, useNavigate} from 'react-router-dom';
+import {useLanguage} from '../i18n/LanguageContext';
 import {useTheme} from "../store/context/ThemeContext";
 import {remoteApi} from "../api/remoteApi/remoteApi";
 
-const { Header } = Layout;
-const { useBreakpoint } = Grid; // Used to determine screen breakpoints
+const {Header} = Layout;
+const {useBreakpoint} = Grid; // Used to determine screen breakpoints
 
-const Navbar = ({ rmqVersion = true, showAcl = true}) => {
+const Navbar = ({rmqVersion = true, showAcl = true}) => {
     const location = useLocation();
     const navigate = useNavigate();
-    const { lang, setLang, t } = useLanguage();
+    const {lang, setLang, t} = useLanguage();
     const screens = useBreakpoint(); // Get current screen size breakpoints
-    const { currentThemeName, setCurrentThemeName } = useTheme();
+    const {currentThemeName, setCurrentThemeName} = useTheme();
     const [userName, setUserName] = useState(null);
     const [drawerVisible, setDrawerVisible] = useState(false); // Controls drawer visibility
 
     // Get selected menu item key based on current route path
     const getPath = () => location.pathname.replace('/', '');
 
-    const handleMenuClick = ({ key }) => {
+    const handleMenuClick = ({key}) => {
         navigate(`/${key}`);
         setDrawerVisible(false); // Close drawer after clicking a menu item
     };
@@ -63,13 +63,13 @@ const Navbar = ({ rmqVersion = true, showAcl = true}) => {
         const storedUsername = window.localStorage.getItem("username");
         if (storedUsername) {
             setUserName(storedUsername);
-        }else {
+        } else {
             setUserName(null);
         }
     }, []);
 
     const langMenu = (
-        <Menu onClick={({ key }) => setLang(key)}>
+        <Menu onClick={({key}) => setLang(key)}>
             <Menu.Item key="en">{t.ENGLISH}</Menu.Item>
             <Menu.Item key="zh">{t.CHINESE}</Menu.Item>
         </Menu>
@@ -82,7 +82,7 @@ const Navbar = ({ rmqVersion = true, showAcl = true}) => {
     );
 
     const themeMenu = (
-        <Menu onClick={({ key }) => setCurrentThemeName(key)}>
+        <Menu onClick={({key}) => setCurrentThemeName(key)}>
             <Menu.Item key="default">{t.BLUE} ({t.DEFAULT})</Menu.Item>
             <Menu.Item key="pink">{t.PINK}</Menu.Item>
             <Menu.Item key="green">{t.GREEN}</Menu.Item>
@@ -92,17 +92,17 @@ const Navbar = ({ rmqVersion = true, showAcl = true}) => {
 
     // Menu item configuration
     const menuItems = [
-        { key: 'ops', label: t.OPS },
-        ...(rmqVersion ? [{ key: 'proxy', label: t.PROXY }] : []),
-        { key: '', label: t.DASHBOARD }, // Dashboard corresponds to root path
-        { key: 'cluster', label: t.CLUSTER },
-        { key: 'topic', label: t.TOPIC },
-        { key: 'consumer', label: t.CONSUMER },
-        { key: 'producer', label: t.PRODUCER },
-        { key: 'message', label: t.MESSAGE },
-        { key: 'dlqMessage', label: t.DLQ_MESSAGE },
-        { key: 'messageTrace', label: t.MESSAGETRACE },
-        ...(showAcl ? [{ key: 'acl', label: t.WHITE_LIST }] : []),
+        {key: 'ops', label: t.OPS},
+        ...(rmqVersion ? [{key: 'proxy', label: t.PROXY}] : []),
+        {key: '', label: t.DASHBOARD}, // Dashboard corresponds to root path
+        {key: 'cluster', label: t.CLUSTER},
+        {key: 'topic', label: t.TOPIC},
+        {key: 'consumer', label: t.CONSUMER},
+        {key: 'producer', label: t.PRODUCER},
+        {key: 'message', label: t.MESSAGE},
+        {key: 'dlqMessage', label: t.DLQ_MESSAGE},
+        {key: 'messageTrace', label: t.MESSAGETRACE},
+        ...(showAcl ? [{key: 'acl', label: t.ACL_MANAGEMENT}] : []),
     ];
 
     // Determine if it's a small screen (e.g., less than md)
@@ -120,7 +120,7 @@ const Navbar = ({ rmqVersion = true, showAcl = true}) => {
                 padding: isExtraSmallScreen ? '0 16px' : '0 24px', // Smaller padding on extra small screens
             }}
         >
-            <div className="navbar-left" style={{ display: 'flex', alignItems: 'center' }}>
+            <div className="navbar-left" style={{display: 'flex', alignItems: 'center'}}>
                 <div
                     style={{
                         fontWeight: 'bold',
@@ -141,33 +141,33 @@ const Navbar = ({ rmqVersion = true, showAcl = true}) => {
                         mode="horizontal"
                         items={menuItems}
                         theme="dark" // Use dark theme to match Header background
-                        style={{ flex: 1, minWidth: 0 }} // Allow menu items to adapt width
+                        style={{flex: 1, minWidth: 0}} // Allow menu items to adapt width
                     />
                 )}
             </div>
 
-            <Space size={isExtraSmallScreen ? 8 : 16} > {/* Adjust spacing for buttons */}
+            <Space size={isExtraSmallScreen ? 8 : 16}> {/* Adjust spacing for buttons */}
                 {/* Theme switch button */}
                 <Dropdown overlay={themeMenu}>
-                    <Button icon={<BgColorsOutlined />} size="small">
+                    <Button icon={<BgColorsOutlined/>} size="small">
                         {!isExtraSmallScreen && `${t.TOPIC}: ${currentThemeName}`}
-                        <DownOutlined />
+                        <DownOutlined/>
                     </Button>
                 </Dropdown>
                 <Dropdown overlay={langMenu}>
-                    <Button icon={<GlobalOutlined />} size="small">
+                    <Button icon={<GlobalOutlined/>} size="small">
                         {!isExtraSmallScreen && t.CHANGE_LANG} {/* Hide text on extra small screens */}
-                        <DownOutlined />
+                        <DownOutlined/>
                     </Button>
                 </Dropdown>
 
                 {userName && (
                     <Dropdown overlay={userMenu}>
                         {/* 使用一个可点击的元素作为 Dropdown 的唯一子元素 */}
-                        <a onClick={e => e.preventDefault()} style={{ display: 'flex', alignItems: 'center' }}>
-                            <UserOutlined style={{ marginRight: 8 }} /> {/* 添加一些间距 */}
+                        <a onClick={e => e.preventDefault()} style={{display: 'flex', alignItems: 'center'}}>
+                            <UserOutlined style={{marginRight: 8}}/> {/* 添加一些间距 */}
                             {userName}
-                            <DownOutlined style={{ marginLeft: 8 }} />
+                            <DownOutlined style={{marginLeft: 8}}/>
                         </a>
                     </Dropdown>
                 )}
@@ -175,9 +175,9 @@ const Navbar = ({ rmqVersion = true, showAcl = true}) => {
                 {isSmallScreen && ( // Display hamburger icon on small screens
                     <Button
                         type="primary"
-                        icon={<MenuOutlined />}
+                        icon={<MenuOutlined/>}
                         onClick={() => setDrawerVisible(true)}
-                        style={{ marginLeft: isExtraSmallScreen ? 8 : 16 }} // Adjust margin for hamburger icon
+                        style={{marginLeft: isExtraSmallScreen ? 8 : 16}} // Adjust margin for hamburger icon
                     />
                 )}
             </Space>
@@ -192,7 +192,7 @@ const Navbar = ({ rmqVersion = true, showAcl = true}) => {
                 open={drawerVisible}
                 // If you want the Drawer's background to match the Menu's background color, you can set bodyStyle like this
                 // or set components.Drawer.colorBgElevated in theme.js, etc.
-                bodyStyle={{ padding: 0, backgroundColor: '#1c324a' }} // Set Drawer body background to dark
+                bodyStyle={{padding: 0, backgroundColor: '#1c324a'}} // Set Drawer body background to dark
                 width={200} // Set drawer width
             >
                 <Menu
@@ -201,7 +201,7 @@ const Navbar = ({ rmqVersion = true, showAcl = true}) => {
                     mode="inline" // Use vertical menu in drawer
                     items={menuItems}
                     theme="dark"
-                    style={{ height: '100%', borderRight: 0 }} // Ensure menu fills the drawer
+                    style={{height: '100%', borderRight: 0}} // Ensure menu fills the drawer
                 />
             </Drawer>
         </Header>

@@ -32,7 +32,7 @@ public class MQAdminPooledObjectFactory implements PooledObjectFactory<MQAdminEx
     @Override
     public PooledObject<MQAdminExt> makeObject() throws Exception {
         DefaultPooledObject<MQAdminExt> pooledObject = new DefaultPooledObject<>(
-            mqAdminFactory.getInstance());
+                mqAdminFactory.getInstance());
         return pooledObject;
     }
 

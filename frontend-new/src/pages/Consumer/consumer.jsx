@@ -44,7 +44,7 @@ const ConsumerGroupList = () => {
     const [isAddConfig, setIsAddConfig] = useState(false);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [messageApi, msgContextHolder] = message.useMessage();
-    const [notificationApi,notificationContextHolder] = notification.useNotification();
+    const [notificationApi, notificationContextHolder] = notification.useNotification();
 
     const [paginationConf, setPaginationConf] = useState({
         current: 1,
@@ -63,9 +63,9 @@ const ConsumerGroupList = () => {
             const response = await remoteApi.queryConsumerGroupList(false);
             if (response.status === 0) {
                 setAllConsumerGroupList(response.data);
-                if(currentPage!=null){
+                if (currentPage != null) {
                     filterList(currentPage, response.data);
-                }else{
+                } else {
                     filterList(1, response.data);
                 }
             } else {
@@ -380,7 +380,7 @@ const ConsumerGroupList = () => {
         filterList(pagination.current, allConsumerGroupList);
     };
 
-    const closeConfigModal = () =>{
+    const closeConfigModal = () => {
         setShowConfig(false);
         setIsAddConfig(false);
     }

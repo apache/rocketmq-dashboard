@@ -51,51 +51,52 @@ public class DashboardCollectServiceImpl implements DashboardCollectService {
     private final static Logger log = LoggerFactory.getLogger(DashboardCollectServiceImpl.class);
 
     private LoadingCache<String, List<String>> brokerMap = CacheBuilder.newBuilder()
-        .maximumSize(1000)
-        .concurrencyLevel(10)
-        .recordStats()
-        .ticker(Ticker.systemTicker())
-        .removalListener(new RemovalListener<Object, Object>() {
-            @Override
-            public void onRemoval(RemovalNotification<Object, Object> notification) {
-                log.debug(notification.getKey() + " was removed, cause is " + notification.getCause());
-            }
-        })
-        .build(
-            new CacheLoader<String, List<String>>() {
+            .maximumSize(1000)
+            .concurrencyLevel(10)
+            .recordStats()
+            .ticker(Ticker.systemTicker())
+            .removalListener(new RemovalListener<Object, Object>() {
                 @Override
-                public List<String> load(String key) {
-                    List<String> list = Lists.newArrayList();
-                    return list;
+                public void onRemoval(RemovalNotification<Object, Object> notification) {
+                    log.debug(notification.getKey() + " was removed, cause is " + notification.getCause());
                 }
-            }
-        );
+            })
+            .build(
+                    new CacheLoader<String, List<String>>() {
+                        @Override
+                        public List<String> load(String key) {
+                            List<String> list = Lists.newArrayList();
+                            return list;
+                        }
+                    }
+            );
 
     private LoadingCache<String, List<String>> topicMap = CacheBuilder.newBuilder()
-        .maximumSize(1000)
-        .concurrencyLevel(10)
-        .recordStats()
-        .ticker(Ticker.systemTicker())
-        .removalListener(new RemovalListener<Object, Object>() {
-            @Override
-            public void onRemoval(RemovalNotification<Object, Object> notification) {
-                log.debug(notification.getKey() + " was removed, cause is " + notification.getCause());
-            }
-        })
-        .build(
-            new CacheLoader<String, List<String>>() {
+            .maximumSize(1000)
+            .concurrencyLevel(10)
+            .recordStats()
+            .ticker(Ticker.systemTicker())
+            .removalListener(new RemovalListener<Object, Object>() {
                 @Override
-                public List<String> load(String key) {
-                    List<String> list = Lists.newArrayList();
-                    return list;
+                public void onRemoval(RemovalNotification<Object, Object> notification) {
+                    log.debug(notification.getKey() + " was removed, cause is " + notification.getCause());
                 }
-            }
-        );
+            })
+            .build(
+                    new CacheLoader<String, List<String>>() {
+                        @Override
+                        public List<String> load(String key) {
+                            List<String> list = Lists.newArrayList();
+                            return list;
+                        }
+                    }
+            );
 
     @Override
     public LoadingCache<String, List<String>> getBrokerMap() {
         return brokerMap;
     }
+
     @Override
     public LoadingCache<String, List<String>> getTopicMap() {
         return topicMap;
@@ -106,8 +107,7 @@ public class DashboardCollectServiceImpl implements DashboardCollectService {
         List<String> strings;
         try {
             strings = Files.readLines(file, Charsets.UTF_8);
-        }
-        catch (IOException e) {
+        } catch (IOException e) {
             Throwables.throwIfUnchecked(e);
             throw new RuntimeException(e);
         }

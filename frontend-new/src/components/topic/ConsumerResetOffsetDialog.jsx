@@ -15,10 +15,10 @@
  * limitations under the License.
  */
 
-import { Button, DatePicker, Form, Modal, Select } from "antd";
-import React, { useEffect, useState } from "react";
+import {Button, DatePicker, Form, Modal, Select} from "antd";
+import React, {useEffect, useState} from "react";
 
-const ConsumerResetOffsetDialog = ({ visible, onClose, topic, allConsumerGroupList, handleResetOffset, t }) => {
+const ConsumerResetOffsetDialog = ({visible, onClose, topic, allConsumerGroupList, handleResetOffset, t}) => {
     const [form] = Form.useForm();
     const [selectedConsumerGroup, setSelectedConsumerGroup] = useState([]);
     const [selectedTime, setSelectedTime] = useState(null);
@@ -49,14 +49,14 @@ const ConsumerResetOffsetDialog = ({ visible, onClose, topic, allConsumerGroupLi
                 </Button>,
             ]}
         >
-            <Form form={form} layout="horizontal" labelCol={{ span: 6 }} wrapperCol={{ span: 18 }}>
+            <Form form={form} layout="horizontal" labelCol={{span: 6}} wrapperCol={{span: 18}}>
                 <Form.Item label={t.SUBSCRIPTION_GROUP} required>
                     <Select
                         mode="multiple"
                         placeholder={t.SELECT_CONSUMER_GROUP}
                         value={selectedConsumerGroup}
                         onChange={setSelectedConsumerGroup}
-                        options={allConsumerGroupList.map(group => ({ value: group, label: group }))}
+                        options={allConsumerGroupList.map(group => ({value: group, label: group}))}
                     />
                 </Form.Item>
                 <Form.Item label={t.TIME} required>
@@ -65,7 +65,7 @@ const ConsumerResetOffsetDialog = ({ visible, onClose, topic, allConsumerGroupLi
                         format="YYYY-MM-DD HH:mm:ss"
                         value={selectedTime}
                         onChange={setSelectedTime}
-                        style={{ width: '100%' }}
+                        style={{width: '100%'}}
                     />
                 </Form.Item>
             </Form>

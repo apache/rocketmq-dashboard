@@ -34,7 +34,7 @@ const ConsumerConfigModal = ({visible, isAddConfig, group, onCancel, setIsAddCon
                 setLoading(true);
                 try {
                     // Fetch cluster list for broker names and cluster names
-                    if(isAddConfig) {
+                    if (isAddConfig) {
                         const clusterResponse = await remoteApi.getClusterList();
                         if (clusterResponse.status === 0 && clusterResponse.data) {
                             const clusterInfo = clusterResponse.data.clusterInfo;

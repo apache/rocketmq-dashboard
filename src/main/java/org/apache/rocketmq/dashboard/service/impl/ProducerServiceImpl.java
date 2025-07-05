@@ -33,8 +33,7 @@ public class ProducerServiceImpl implements ProducerService {
     public ProducerConnection getProducerConnection(String producerGroup, String topic) {
         try {
             return mqAdminExt.examineProducerConnectionInfo(producerGroup, topic);
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             Throwables.throwIfUnchecked(e);
             throw new RuntimeException(e);
         }

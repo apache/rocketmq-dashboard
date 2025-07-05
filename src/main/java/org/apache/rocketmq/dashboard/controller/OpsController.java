@@ -52,7 +52,7 @@ public class OpsController {
     @ResponseBody
     public Object addNameSvrAddr(@RequestParam String newNamesrvAddr) {
         Preconditions.checkArgument(StringUtils.isNotEmpty(newNamesrvAddr),
-            "namesrvAddr can not be blank");
+                "namesrvAddr can not be blank");
         opsService.addNameSvrAddr(newNamesrvAddr);
         return true;
     }

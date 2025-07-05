@@ -24,5 +24,5 @@ public interface ProxyService {
 
     void updateProxyAddrList(String proxyAddr);
 
-    Map<String, Object>  getProxyHomePage();
+    Map<String, Object> getProxyHomePage();
 }
