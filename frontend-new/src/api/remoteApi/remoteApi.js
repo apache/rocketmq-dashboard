@@ -49,7 +49,7 @@ const remoteApi = {
                 if (_redirectHandler) {
                     _redirectHandler(); // 如果设置了重定向处理函数，则调用它
                 }
-                return { __isRedirectHandled: true };
+                return {__isRedirectHandled: true};
             }
 
             return response;
@@ -77,24 +77,24 @@ const remoteApi = {
     listUsers: async (brokerAddress) => {
         const params = new URLSearchParams();
         if (brokerAddress) params.append('brokerAddress', brokerAddress);
-        const response = await remoteApi._fetch(remoteApi.buildUrl(`/acl/listUsers?${params.toString()}`));
+        const response = await remoteApi._fetch(remoteApi.buildUrl(`/acl/acls.query?${params.toString()}`));
         return await response.json();
     },
 
     createUser: async (brokerAddress, userInfo) => {
-        const response = await remoteApi._fetch(remoteApi.buildUrl('/acl/createUser'), {
+        const response = await remoteApi._fetch(remoteApi.buildUrl('/acl/createUser.do'), {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ brokerAddress, userInfo })
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({brokerAddress, userInfo})
         });
         return await response.json(); // 返回字符串消息
     },
 
     updateUser: async (brokerAddress, userInfo) => {
-        const response = await remoteApi._fetch(remoteApi.buildUrl('/acl/updateUser'), {
+        const response = await remoteApi._fetch(remoteApi.buildUrl('/acl/updateUser.do'), {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ brokerAddress, userInfo })
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({brokerAddress, userInfo})
         });
         return await response.json();
     },
@@ -103,7 +103,7 @@ const remoteApi = {
         const params = new URLSearchParams();
         if (brokerAddress) params.append('brokerAddress', brokerAddress);
         params.append('username', username);
-        const response = await remoteApi._fetch(remoteApi.buildUrl(`/acl/deleteUser?${params.toString()}`), {
+        const response = await remoteApi._fetch(remoteApi.buildUrl(`/acl/deleteUser.do?${params.toString()}`), {
             method: 'DELETE'
         });
         return await response.json();
@@ -114,24 +114,24 @@ const remoteApi = {
         const params = new URLSearchParams();
         if (brokerAddress) params.append('brokerAddress', brokerAddress);
         if (searchParam) params.append('searchParam', searchParam);
-        const response = await remoteApi._fetch(remoteApi.buildUrl(`/acl/listAcls?${params.toString()}`));
+        const response = await remoteApi._fetch(remoteApi.buildUrl(`/acl/acls.query?${params.toString()}`));
         return await response.json();
     },
 
     createAcl: async (brokerAddress, subject, policies) => {
-        const response = await remoteApi._fetch(remoteApi.buildUrl('/acl/createAcl'), {
+        const response = await remoteApi._fetch(remoteApi.buildUrl('/acl/createAcl.do'), {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ brokerAddress, subject, policies })
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({brokerAddress, subject, policies})
         });
         return await response.json();
     },
 
     updateAcl: async (brokerAddress, subject, policies) => {
-        const response = await remoteApi._fetch(remoteApi.buildUrl('/acl/updateAcl'), {
+        const response = await remoteApi._fetch(remoteApi.buildUrl('/acl/updateAcl.do'), {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ brokerAddress, subject, policies })
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({brokerAddress, subject, policies})
         });
         return await response.json();
     },
@@ -141,7 +141,7 @@ const remoteApi = {
         if (brokerAddress) params.append('brokerAddress', brokerAddress);
         params.append('subject', subject);
         if (resource) params.append('resource', resource);
-        const response = await remoteApi._fetch(remoteApi.buildUrl(`/acl/deleteAcl?${params.toString()}`), {
+        const response = await remoteApi._fetch(remoteApi.buildUrl(`/acl/deleteAcl.do?${params.toString()}`), {
             method: 'DELETE'
         });
         return await response.json();
@@ -159,7 +159,7 @@ const remoteApi = {
             return data
         } catch (error) {
             console.error("Error querying message by ID:", error);
-            callback({ status: 1, errMsg: "Failed to query message by ID" });
+            callback({status: 1, errMsg: "Failed to query message by ID"});
         }
     },
 
@@ -197,7 +197,7 @@ const remoteApi = {
             return data;
         } catch (error) {
             console.error("Error querying DLQ messages by consumer group:", error);
-            return { status: 1, errMsg: "Failed to query DLQ messages by consumer group" };
+            return {status: 1, errMsg: "Failed to query DLQ messages by consumer group"};
         }
     },
     resendDlqMessage: async (msgId, consumerGroup, topic) => {
@@ -217,7 +217,7 @@ const remoteApi = {
             return data;
         } catch (error) {
             console.error("Error resending DLQ message:", error);
-            return { status: 1, errMsg: "Failed to resend DLQ message" };
+            return {status: 1, errMsg: "Failed to resend DLQ message"};
         }
     },
     exportDlqMessage: async (msgId, consumerGroup) => {
@@ -236,7 +236,7 @@ const remoteApi = {
 
             if (!newWindow) {
                 // 浏览器可能会阻止弹窗，需要用户允许
-                return { status: 1, errMsg: "Failed to open new window. Please allow pop-ups for this site." };
+                return {status: 1, errMsg: "Failed to open new window. Please allow pop-ups for this site."};
             }
 
             // 2. 将 JSON 数据格式化后写入新窗口
@@ -247,10 +247,10 @@ const remoteApi = {
             newWindow.document.write('</body></html>');
             newWindow.document.close(); // 关闭文档流，确保内容显示
 
-            return { status: 0, msg: "导出请求成功，内容已在新页面显示" };
+            return {status: 0, msg: "导出请求成功，内容已在新页面显示"};
         } catch (error) {
             console.error("Error exporting DLQ message:", error);
-            return { status: 1, errMsg: "Failed to export DLQ message: " + error.message };
+            return {status: 1, errMsg: "Failed to export DLQ message: " + error.message};
         }
     },
 
@@ -267,7 +267,7 @@ const remoteApi = {
             return data;
         } catch (error) {
             console.error("Error batch resending DLQ messages:", error);
-            return { status: 1, errMsg: "Failed to batch resend DLQ messages" };
+            return {status: 1, errMsg: "Failed to batch resend DLQ messages"};
         }
     },
 
@@ -372,7 +372,7 @@ const remoteApi = {
             callback(data);
         } catch (error) {
             console.error("Error fetching producer connection list:", error);
-            callback({ status: 1, errMsg: "Failed to fetch producer connection list" }); // Simulate error response
+            callback({status: 1, errMsg: "Failed to fetch producer connection list"}); // Simulate error response
         }
     },
 
@@ -383,7 +383,7 @@ const remoteApi = {
             return data;
         } catch (error) {
             console.error("Error fetching consumer group list:", error);
-            return { status: 1, errMsg: "Failed to fetch consumer group list" };
+            return {status: 1, errMsg: "Failed to fetch consumer group list"};
         }
     },
 
@@ -394,7 +394,7 @@ const remoteApi = {
             return data;
         } catch (error) {
             console.error(`Error refreshing consumer group ${consumerGroup}:`, error);
-            return { status: 1, errMsg: `Failed to refresh consumer group ${consumerGroup}` };
+            return {status: 1, errMsg: `Failed to refresh consumer group ${consumerGroup}`};
         }
     },
 
@@ -405,7 +405,7 @@ const remoteApi = {
             return data;
         } catch (error) {
             console.error("Error refreshing all consumer groups:", error);
-            return { status: 1, errMsg: "Failed to refresh all consumer groups" };
+            return {status: 1, errMsg: "Failed to refresh all consumer groups"};
         }
     },
 
@@ -416,7 +416,7 @@ const remoteApi = {
             return data;
         } catch (error) {
             console.error(`Error fetching monitor config for ${consumeGroupName}:`, error);
-            return { status: 1, errMsg: `Failed to fetch monitor config for ${consumeGroupName}` };
+            return {status: 1, errMsg: `Failed to fetch monitor config for ${consumeGroupName}`};
         }
     },
 
@@ -428,13 +428,13 @@ const remoteApi = {
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ consumeGroupName, minCount, maxDiffTotal })
+                body: JSON.stringify({consumeGroupName, minCount, maxDiffTotal})
             });
             const data = await response.json();
             return data;
         } catch (error) {
             console.error("Error creating or updating consumer monitor:", error);
-            return { status: 1, errMsg: "Failed to create or update consumer monitor" };
+            return {status: 1, errMsg: "Failed to create or update consumer monitor"};
         }
     },
 
@@ -445,7 +445,7 @@ const remoteApi = {
             return data;
         } catch (error) {
             console.error(`Error fetching broker name list for ${consumerGroup}:`, error);
-            return { status: 1, errMsg: `Failed to fetch broker name list for ${consumerGroup}` };
+            return {status: 1, errMsg: `Failed to fetch broker name list for ${consumerGroup}`};
         }
     },
 
@@ -456,13 +456,13 @@ const remoteApi = {
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ groupName, brokerNameList })
+                body: JSON.stringify({groupName, brokerNameList})
             });
             const data = await response.json();
             return data;
         } catch (error) {
             console.error(`Error deleting consumer group ${groupName}:`, error);
-            return { status: 1, errMsg: `Failed to delete consumer group ${groupName}` };
+            return {status: 1, errMsg: `Failed to delete consumer group ${groupName}`};
         }
     },
 
@@ -473,7 +473,7 @@ const remoteApi = {
             return data;
         } catch (error) {
             console.error(`Error fetching consumer config for ${consumerGroup}:`, error);
-            return { status: 1, errMsg: `Failed to fetch consumer config for ${consumerGroup}` };
+            return {status: 1, errMsg: `Failed to fetch consumer config for ${consumerGroup}`};
         }
     },
 
@@ -490,7 +490,7 @@ const remoteApi = {
             return data;
         } catch (error) {
             console.error("Error creating or updating consumer:", error);
-            return { status: 1, errMsg: "Failed to create or update consumer" };
+            return {status: 1, errMsg: "Failed to create or update consumer"};
         }
     },
 
@@ -501,7 +501,7 @@ const remoteApi = {
             return data;
         } catch (error) {
             console.error(`Error fetching topics for consumer group ${consumerGroup}:`, error);
-            return { status: 1, errMsg: `Failed to fetch topics for consumer group ${consumerGroup}` };
+            return {status: 1, errMsg: `Failed to fetch topics for consumer group ${consumerGroup}`};
         }
     },
 
@@ -512,7 +512,7 @@ const remoteApi = {
             return data;
         } catch (error) {
             console.error(`Error fetching consumer connections for ${consumerGroup}:`, error);
-            return { status: 1, errMsg: `Failed to fetch consumer connections for ${consumerGroup}` };
+            return {status: 1, errMsg: `Failed to fetch consumer connections for ${consumerGroup}`};
         }
     },
 
@@ -523,7 +523,7 @@ const remoteApi = {
             return data;
         } catch (error) {
             console.error(`Error fetching running info for client ${clientId} in group ${consumerGroup}:`, error);
-            return { status: 1, errMsg: `Failed to fetch running info for client ${clientId} in group ${consumerGroup}` };
+            return {status: 1, errMsg: `Failed to fetch running info for client ${clientId} in group ${consumerGroup}`};
         }
     },
     queryTopicList: async () => {
@@ -532,7 +532,7 @@ const remoteApi = {
             return await response.json();
         } catch (error) {
             console.error("Error fetching topic list:", error);
-            return { status: 1, errMsg: "Failed to fetch topic list" };
+            return {status: 1, errMsg: "Failed to fetch topic list"};
         }
     },
 
@@ -549,7 +549,7 @@ const remoteApi = {
             return await response.json();
         } catch (error) {
             console.error("Error deleting topic:", error);
-            return { status: 1, errMsg: "Failed to delete topic" };
+            return {status: 1, errMsg: "Failed to delete topic"};
         }
     },
 
@@ -559,7 +559,7 @@ const remoteApi = {
             return await response.json();
         } catch (error) {
             console.error("Error fetching topic stats:", error);
-            return { status: 1, errMsg: "Failed to fetch topic stats" };
+            return {status: 1, errMsg: "Failed to fetch topic stats"};
         }
     },
 
@@ -569,7 +569,7 @@ const remoteApi = {
             return await response.json();
         } catch (error) {
             console.error("Error fetching topic route:", error);
-            return { status: 1, errMsg: "Failed to fetch topic route" };
+            return {status: 1, errMsg: "Failed to fetch topic route"};
         }
     },
 
@@ -579,7 +579,7 @@ const remoteApi = {
             return await response.json();
         } catch (error) {
             console.error("Error fetching topic consumers:", error);
-            return { status: 1, errMsg: "Failed to fetch topic consumers" };
+            return {status: 1, errMsg: "Failed to fetch topic consumers"};
         }
     },
 
@@ -589,7 +589,7 @@ const remoteApi = {
             return await response.json();
         } catch (error) {
             console.error("Error fetching consumer groups:", error);
-            return { status: 1, errMsg: "Failed to fetch consumer groups" };
+            return {status: 1, errMsg: "Failed to fetch consumer groups"};
         }
     },
 
@@ -599,7 +599,7 @@ const remoteApi = {
             return await response.json();
         } catch (error) {
             console.error("Error fetching topic config:", error);
-            return { status: 1, errMsg: "Failed to fetch topic config" };
+            return {status: 1, errMsg: "Failed to fetch topic config"};
         }
     },
 
@@ -609,7 +609,7 @@ const remoteApi = {
             return await response.json();
         } catch (error) {
             console.error("Error fetching cluster list:", error);
-            return { status: 1, errMsg: "Failed to fetch cluster list" };
+            return {status: 1, errMsg: "Failed to fetch cluster list"};
         }
     },
 
@@ -625,7 +625,7 @@ const remoteApi = {
             return await response.json();
         } catch (error) {
             console.error("Error creating/updating topic:", error);
-            return { status: 1, errMsg: "Failed to create/update topic" };
+            return {status: 1, errMsg: "Failed to create/update topic"};
         }
     },
 
@@ -641,7 +641,7 @@ const remoteApi = {
             return await response.json();
         } catch (error) {
             console.error("Error resetting consumer offset:", error);
-            return { status: 1, errMsg: "Failed to reset consumer offset" };
+            return {status: 1, errMsg: "Failed to reset consumer offset"};
         }
     },
 
@@ -657,7 +657,7 @@ const remoteApi = {
             return await response.json();
         } catch (error) {
             console.error("Error skipping message accumulate:", error);
-            return { status: 1, errMsg: "Failed to skip message accumulate" };
+            return {status: 1, errMsg: "Failed to skip message accumulate"};
         }
     },
 
@@ -673,7 +673,7 @@ const remoteApi = {
             return await response.json();
         } catch (error) {
             console.error("Error sending topic message:", error);
-            return { status: 1, errMsg: "Failed to send topic message" };
+            return {status: 1, errMsg: "Failed to send topic message"};
         }
     },
 
@@ -684,12 +684,12 @@ const remoteApi = {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ brokerName, topic })
+                body: JSON.stringify({brokerName, topic})
             });
             return await response.json();
         } catch (error) {
             console.error("Error deleting topic by broker:", error);
-            return { status: 1, errMsg: "Failed to delete topic by broker" };
+            return {status: 1, errMsg: "Failed to delete topic by broker"};
         }
     },
 
@@ -700,7 +700,7 @@ const remoteApi = {
             return await response.json();
         } catch (error) {
             console.error("Error fetching ops home page data:", error);
-            return { status: 1, errMsg: "Failed to fetch ops home page data" };
+            return {status: 1, errMsg: "Failed to fetch ops home page data"};
         }
     },
 
@@ -712,7 +712,7 @@ const remoteApi = {
             return await response.json();
         } catch (error) {
             console.error("Error updating NameServer address:", error);
-            return { status: 1, errMsg: "Failed to update NameServer address" };
+            return {status: 1, errMsg: "Failed to update NameServer address"};
         }
     },
 
@@ -724,7 +724,7 @@ const remoteApi = {
             return await response.json();
         } catch (error) {
             console.error("Error adding NameServer address:", error);
-            return { status: 1, errMsg: "Failed to add NameServer address" };
+            return {status: 1, errMsg: "Failed to add NameServer address"};
         }
     },
 
@@ -736,7 +736,7 @@ const remoteApi = {
             return await response.json();
         } catch (error) {
             console.error("Error updating VIP Channel status:", error);
-            return { status: 1, errMsg: "Failed to update VIP Channel status" };
+            return {status: 1, errMsg: "Failed to update VIP Channel status"};
         }
     },
 
@@ -748,7 +748,7 @@ const remoteApi = {
             return await response.json();
         } catch (error) {
             console.error("Error updating TLS status:", error);
-            return { status: 1, errMsg: "Failed to update TLS status" };
+            return {status: 1, errMsg: "Failed to update TLS status"};
         }
     },
 
@@ -759,7 +759,7 @@ const remoteApi = {
             callback(data);
         } catch (error) {
             console.error("Error fetching cluster list:", error);
-            callback({ status: 1, errMsg: "Failed to fetch cluster list" });
+            callback({status: 1, errMsg: "Failed to fetch cluster list"});
         }
     },
 
@@ -767,16 +767,16 @@ const remoteApi = {
         try {
             const url = new URL(remoteApi.buildUrl('/dashboard/broker.query'));
             url.searchParams.append('date', date);
-            const response = await remoteApi._fetch(url.toString(), { signal: AbortSignal.timeout(15000) }); // 15s timeout
+            const response = await remoteApi._fetch(url.toString(), {signal: AbortSignal.timeout(15000)}); // 15s timeout
             const data = await response.json();
             callback(data);
         } catch (error) {
             if (error.name === 'TimeoutError') {
                 console.error("Broker history data request timed out:", error);
-                callback({ status: 1, errMsg: "Request timed out for broker history data" });
+                callback({status: 1, errMsg: "Request timed out for broker history data"});
             } else {
                 console.error("Error fetching broker history data:", error);
-                callback({ status: 1, errMsg: "Failed to fetch broker history data" });
+                callback({status: 1, errMsg: "Failed to fetch broker history data"});
             }
         }
     },
@@ -786,32 +786,32 @@ const remoteApi = {
             const url = new URL(remoteApi.buildUrl('/dashboard/topic.query'));
             url.searchParams.append('date', date);
             url.searchParams.append('topicName', topicName);
-            const response = await remoteApi._fetch(url.toString(), { signal: AbortSignal.timeout(15000) }); // 15s timeout
+            const response = await remoteApi._fetch(url.toString(), {signal: AbortSignal.timeout(15000)}); // 15s timeout
             const data = await response.json();
             callback(data);
         } catch (error) {
             if (error.name === 'TimeoutError') {
                 console.error("Topic history data request timed out:", error);
-                callback({ status: 1, errMsg: "Request timed out for topic history data" });
+                callback({status: 1, errMsg: "Request timed out for topic history data"});
             } else {
                 console.error("Error fetching topic history data:", error);
-                callback({ status: 1, errMsg: "Failed to fetch topic history data" });
+                callback({status: 1, errMsg: "Failed to fetch topic history data"});
             }
         }
     },
 
     queryTopicCurrentData: async (callback) => {
         try {
-            const response = await remoteApi._fetch(remoteApi.buildUrl('/dashboard/topicCurrent.query'), { signal: AbortSignal.timeout(15000) }); // 15s timeout
+            const response = await remoteApi._fetch(remoteApi.buildUrl('/dashboard/topicCurrent.query'), {signal: AbortSignal.timeout(15000)}); // 15s timeout
             const data = await response.json();
             callback(data);
         } catch (error) {
             if (error.name === 'TimeoutError') {
                 console.error("Topic current data request timed out:", error);
-                callback({ status: 1, errMsg: "Request timed out for topic current data" });
+                callback({status: 1, errMsg: "Request timed out for topic current data"});
             } else {
                 console.error("Error fetching topic current data:", error);
-                callback({ status: 1, errMsg: "Failed to fetch topic current data" });
+                callback({status: 1, errMsg: "Failed to fetch topic current data"});
             }
         }
     },
@@ -825,7 +825,7 @@ const remoteApi = {
             callback(data);
         } catch (error) {
             console.error("Error fetching broker config:", error);
-            callback({ status: 1, errMsg: "Failed to fetch broker config" });
+            callback({status: 1, errMsg: "Failed to fetch broker config"});
         }
     },
 
@@ -839,7 +839,7 @@ const remoteApi = {
             callback(data);
         } catch (error) {
             console.error("Error fetching proxy home page:", error);
-            callback({ status: 1, errMsg: "Failed to fetch proxy home page" });
+            callback({status: 1, errMsg: "Failed to fetch proxy home page"});
         }
     },
 
@@ -850,14 +850,14 @@ const remoteApi = {
         try {
             const response = await remoteApi._fetch(remoteApi.buildUrl("/proxy/addProxyAddr.do"), {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: new URLSearchParams({ newProxyAddr }).toString()
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                body: new URLSearchParams({newProxyAddr}).toString()
             });
             const data = await response.json();
             callback(data);
         } catch (error) {
             console.error("Error adding proxy address:", error);
-            callback({ status: 1, errMsg: "Failed to add proxy address" });
+            callback({status: 1, errMsg: "Failed to add proxy address"});
         }
     },
     login: async (username, password) => {
@@ -882,19 +882,19 @@ const remoteApi = {
             return data;
         } catch (error) {
             console.error("Error logging in:", error);
-            return { status: 1, errMsg: "Failed to log in" };
+            return {status: 1, errMsg: "Failed to log in"};
         }
     },
 
     logout: async () => {
         try {
-            const response = await remoteApi._fetch(remoteApi.buildUrl("/login/logout.do"),{
+            const response = await remoteApi._fetch(remoteApi.buildUrl("/login/logout.do"), {
                 method: 'POST'
             });
             return await response.json()
-        }catch (error) {
+        } catch (error) {
             console.error("Error logging out:", error);
-            return { status: 1, errMsg: "Failed to log out" };
+            return {status: 1, errMsg: "Failed to log out"};
         }
     }
 };
@@ -939,4 +939,4 @@ const tools = {
     }
 };
 
-export { remoteApi, tools };
+export {remoteApi, tools};
