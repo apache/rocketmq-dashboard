@@ -18,8 +18,7 @@ package org.apache.rocketmq.dashboard.testbase;
 
 import com.google.common.base.Throwables;
 import com.google.common.collect.Lists;
-import java.util.List;
-import javax.annotation.Resource;
+import jakarta.annotation.Resource;
 import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
 import org.apache.rocketmq.client.consumer.listener.ConsumeConcurrentlyContext;
 import org.apache.rocketmq.client.consumer.listener.ConsumeConcurrentlyStatus;
@@ -29,15 +28,17 @@ import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.common.consumer.ConsumeFromWhere;
 import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.common.message.MessageExt;
-import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.dashboard.model.request.ConsumerConfigInfo;
 import org.apache.rocketmq.dashboard.model.request.TopicConfigInfo;
 import org.apache.rocketmq.dashboard.service.ConsumerService;
 import org.apache.rocketmq.dashboard.service.TopicService;
 import org.apache.rocketmq.dashboard.util.JsonUtil;
+import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.ComponentScan;
+
+import java.util.List;
 
 @ComponentScan(basePackageClasses = {TestRocketMQServer.class})
 public abstract class RocketMQConsoleTestBase {
@@ -65,13 +66,13 @@ public abstract class RocketMQConsoleTestBase {
 
     public static abstract class RetryTempLate<T> {
         protected abstract T process() throws Exception;
+
         public T execute(int times, long waitTime) throws Exception {
             Exception exception = null;
             for (int i = 0; i < times; i++) {
                 try {
                     return process();
-                }
-                catch (Exception ignore) {
+                } catch (Exception ignore) {
                     exception = ignore;
                     if (waitTime > 0) {
                         Thread.sleep(waitTime);
@@ -84,14 +85,12 @@ public abstract class RocketMQConsoleTestBase {
     }
 
 
-
     protected void startTestMQProducer() {
         producer = new DefaultMQProducer(TEST_PRODUCER_GROUP);
         producer.setInstanceName(String.valueOf(System.currentTimeMillis()));
         try {
             producer.start();
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             Throwables.throwIfUnchecked(e);
             throw new RuntimeException(e);
         }
@@ -107,8 +106,7 @@ public abstract class RocketMQConsoleTestBase {
         for (int i = 0; i < 3; i++) {
             try {
                 return producer.send(message);
-            }
-            catch (Exception ignore) {
+            } catch (Exception ignore) {
                 Thread.sleep(500);
             }
         }
@@ -131,14 +129,13 @@ public abstract class RocketMQConsoleTestBase {
             consumer.registerMessageListener(new MessageListenerConcurrently() {
                 @Override
                 public ConsumeConcurrentlyStatus consumeMessage(List<MessageExt> msgs,
-                    ConsumeConcurrentlyContext context) {
+                                                                ConsumeConcurrentlyContext context) {
                     consoleTestBaseLog.info("op=consumeMessage message={}", JsonUtil.obj2String(msgs));
                     return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
                 }
             });
             consumer.start();
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             Throwables.throwIfUnchecked(e);
             throw new RuntimeException(e);
         }

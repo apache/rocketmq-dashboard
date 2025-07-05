@@ -45,6 +45,7 @@ const ConsumerGroupList = () => {
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [messageApi, msgContextHolder] = message.useMessage();
     const [notificationApi, notificationContextHolder] = notification.useNotification();
+
     const [proxyEnabled, setProxyEnabled] = useState(() => {
         try {
             const storedValue = localStorage.getItem('proxyEnabled');

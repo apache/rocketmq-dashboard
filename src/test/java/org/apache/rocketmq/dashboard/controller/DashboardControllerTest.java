@@ -18,14 +18,6 @@ package org.apache.rocketmq.dashboard.controller;
 
 import com.google.common.collect.Maps;
 import com.google.common.io.Files;
-import java.io.File;
-import java.math.BigDecimal;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
 import org.apache.rocketmq.dashboard.service.impl.DashboardCollectServiceImpl;
 import org.apache.rocketmq.dashboard.service.impl.DashboardServiceImpl;
 import org.apache.rocketmq.dashboard.util.JsonUtil;
@@ -35,6 +27,15 @@ import org.junit.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Spy;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
+
+import java.io.File;
+import java.math.BigDecimal;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
 
 import static org.hamcrest.Matchers.hasKey;
 import static org.hamcrest.Matchers.hasSize;
@@ -93,19 +94,19 @@ public class DashboardControllerTest extends BaseControllerTest {
         requestBuilder.param("date", yesterdayDateStr);
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data").isMap())
-            .andExpect(jsonPath("$.data").isEmpty());
+                .andExpect(jsonPath("$.data").isMap())
+                .andExpect(jsonPath("$.data").isEmpty());
 
         // 2、the broker's data is cached locally
         requestBuilder = MockMvcRequestBuilders.get(url);
         requestBuilder.param("date", nowDateStr);
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data").isMap())
-            .andExpect(jsonPath("$.data").isNotEmpty())
-            .andExpect(jsonPath("$.data", hasKey("broker-a:0")))
-            .andExpect(jsonPath("$.data.broker-a:0").isArray())
-            .andExpect(jsonPath("$.data.broker-a:0", hasSize(100)));
+                .andExpect(jsonPath("$.data").isMap())
+                .andExpect(jsonPath("$.data").isNotEmpty())
+                .andExpect(jsonPath("$.data", hasKey("broker-a:0")))
+                .andExpect(jsonPath("$.data.broker-a:0").isArray())
+                .andExpect(jsonPath("$.data.broker-a:0", hasSize(100)));
 
     }
 
@@ -118,19 +119,19 @@ public class DashboardControllerTest extends BaseControllerTest {
         requestBuilder.param("date", yesterdayDateStr);
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data").isMap())
-            .andExpect(jsonPath("$.data").isEmpty());
+                .andExpect(jsonPath("$.data").isMap())
+                .andExpect(jsonPath("$.data").isEmpty());
 
         // 1.2、the topic's data is cached locally
         requestBuilder = MockMvcRequestBuilders.get(url);
         requestBuilder.param("date", nowDateStr);
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data").isMap())
-            .andExpect(jsonPath("$.data").isNotEmpty())
-            .andExpect(jsonPath("$.data", hasKey("topic_test")))
-            .andExpect(jsonPath("$.data.topic_test").isArray())
-            .andExpect(jsonPath("$.data.topic_test", hasSize(100)));
+                .andExpect(jsonPath("$.data").isMap())
+                .andExpect(jsonPath("$.data").isNotEmpty())
+                .andExpect(jsonPath("$.data", hasKey("topic_test")))
+                .andExpect(jsonPath("$.data.topic_test").isArray())
+                .andExpect(jsonPath("$.data.topic_test", hasSize(100)));
 
         // 2、topicName is not empty
         requestBuilder = MockMvcRequestBuilders.get(url);
@@ -138,8 +139,8 @@ public class DashboardControllerTest extends BaseControllerTest {
         requestBuilder.param("topicName", "topic_test");
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data").isArray())
-            .andExpect(jsonPath("$.data", hasSize(100)));
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data", hasSize(100)));
 
         // 2、topicName is not empty but the no topic cache data
         requestBuilder = MockMvcRequestBuilders.get(url);
@@ -156,7 +157,7 @@ public class DashboardControllerTest extends BaseControllerTest {
         requestBuilder = MockMvcRequestBuilders.get(url);
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data").value("topic_test,100"));
+                .andExpect(jsonPath("$.data").value("topic_test,100"));
     }
 
     @Override
@@ -188,10 +189,10 @@ public class DashboardControllerTest extends BaseControllerTest {
             String outTps = inTps;
             StringBuilder sb = new StringBuilder();
             sb.append((new Date().getTime() + i * 60 * 1000))
-                .append(',').append(inTps)
-                .append(',').append(i)
-                .append(',').append(outTps)
-                .append(',').append(i);
+                    .append(',').append(inTps)
+                    .append(',').append(i)
+                    .append(',').append(outTps)
+                    .append(',').append(i);
             topicData.add(sb.toString());
         }
         resultMap.put("topic_test", topicData);

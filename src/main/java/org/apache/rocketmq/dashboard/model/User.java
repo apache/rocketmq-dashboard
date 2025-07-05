@@ -19,8 +19,8 @@ package org.apache.rocketmq.dashboard.model;
 import org.hibernate.validator.constraints.Range;
 
 public class User {
-    public static final int ORDINARY = 0;
-    public static final int ADMIN = 1;
+    public static final int SUPER = 0;
+    public static final int NORMAL = 1;
 
     private long id;
     private String name;

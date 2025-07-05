@@ -15,11 +15,10 @@
  * limitations under the License.
  */
 
-package org.apache.rocketmq.dashboard.admin;
+package org.apache.rocketmq.dashboard.service.strategy;
 
-import org.apache.rocketmq.tools.admin.MQAdminExt;
+import org.apache.rocketmq.remoting.protocol.body.UserInfo;
 
-@FunctionalInterface
-public interface MQAdminExtCallback<T> {
-    T doInMQAdminExt(MQAdminExt mqAdminExt) throws Exception;
+public interface UserStrategy {
+    UserInfo getUserInfoByUsername(String username);
 }

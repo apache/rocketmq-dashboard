@@ -51,7 +51,7 @@ public class TopicController {
     @RequestMapping(value = "/list.query", method = RequestMethod.GET)
     @ResponseBody
     public Object list(@RequestParam(value = "skipSysProcess", required = false) boolean skipSysProcess,
-        @RequestParam(value = "skipRetryAndDlq", required = false) boolean skipRetryAndDlq) {
+                       @RequestParam(value = "skipRetryAndDlq", required = false) boolean skipRetryAndDlq) {
         return topicService.fetchAllTopicList(skipSysProcess, skipRetryAndDlq);
     }
 
@@ -75,11 +75,11 @@ public class TopicController {
     }
 
 
-    @RequestMapping(value = "/createOrUpdate.do", method = { RequestMethod.POST})
+    @RequestMapping(value = "/createOrUpdate.do", method = {RequestMethod.POST})
     @ResponseBody
     public Object topicCreateOrUpdateRequest(@RequestBody TopicConfigInfo topicCreateOrUpdateRequest) {
         Preconditions.checkArgument(CollectionUtils.isNotEmpty(topicCreateOrUpdateRequest.getBrokerNameList()) || CollectionUtils.isNotEmpty(topicCreateOrUpdateRequest.getClusterNameList()),
-            "clusterName or brokerName can not be all blank");
+                "clusterName or brokerName can not be all blank");
         logger.info("op=look topicCreateOrUpdateRequest={}", JsonUtil.obj2String(topicCreateOrUpdateRequest));
         topicService.createOrUpdate(topicCreateOrUpdateRequest);
         return true;
@@ -100,14 +100,14 @@ public class TopicController {
     @RequestMapping(value = "/examineTopicConfig.query")
     @ResponseBody
     public Object examineTopicConfig(@RequestParam String topic,
-        @RequestParam(required = false) String brokerName) throws RemotingException, MQClientException, InterruptedException {
+                                     @RequestParam(required = false) String brokerName) throws RemotingException, MQClientException, InterruptedException {
         return topicService.examineTopicConfig(topic);
     }
 
     @RequestMapping(value = "/sendTopicMessage.do", method = {RequestMethod.POST})
     @ResponseBody
     public Object sendTopicMessage(
-        @RequestBody SendTopicMessageRequest sendTopicMessageRequest) throws RemotingException, MQClientException, InterruptedException {
+            @RequestBody SendTopicMessageRequest sendTopicMessageRequest) throws RemotingException, MQClientException, InterruptedException {
         return topicService.sendTopicMessageRequest(sendTopicMessageRequest);
     }
 

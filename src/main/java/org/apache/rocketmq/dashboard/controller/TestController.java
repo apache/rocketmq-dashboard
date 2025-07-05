@@ -59,7 +59,7 @@ public class TestController {
 
             @Override
             public ConsumeConcurrentlyStatus consumeMessage(List<MessageExt> msgs,
-                ConsumeConcurrentlyContext context) {
+                                                            ConsumeConcurrentlyContext context) {
                 logger.info("receiveMessage msgSize={}", msgs.size());
                 return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
             }
@@ -72,26 +72,25 @@ public class TestController {
 
         new Thread(new Runnable() {
 
-            @Override public void run() {
+            @Override
+            public void run() {
 
                 int i = 0;
                 while (true) {
                     try {
                         Message msg = new Message(testTopic,
-                            "TagA" + i,
-                            "KEYS" + i,
-                            ("Hello RocketMQ " + i).getBytes()
+                                "TagA" + i,
+                                "KEYS" + i,
+                                ("Hello RocketMQ " + i).getBytes()
                         );
                         Thread.sleep(1000L);
                         SendResult sendResult = producer.send(msg);
                         logger.info("sendMessage={}", JsonUtil.obj2String(sendResult));
-                    }
-                    catch (Exception e) {
+                    } catch (Exception e) {
                         e.printStackTrace();
                         try {
                             Thread.sleep(1000);
-                        }
-                        catch (Exception ignore) {
+                        } catch (Exception ignore) {
                         }
                     }
                 }

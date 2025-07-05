@@ -54,7 +54,7 @@ public class ConsumerController {
     @RequestMapping(value = "/group.refresh")
     @ResponseBody
     public Object refresh(String address,
-        String consumerGroup) {
+                          String consumerGroup) {
         return consumerService.refreshGroup(address, consumerGroup);
     }
 
@@ -100,7 +100,7 @@ public class ConsumerController {
     @ResponseBody
     public Object consumerCreateOrUpdateRequest(@RequestBody ConsumerConfigInfo consumerConfigInfo) {
         Preconditions.checkArgument(CollectionUtils.isNotEmpty(consumerConfigInfo.getBrokerNameList()) || CollectionUtils.isNotEmpty(consumerConfigInfo.getClusterNameList()),
-            "clusterName or brokerName can not be all blank");
+                "clusterName or brokerName can not be all blank");
         return consumerService.createAndUpdateSubscriptionGroupConfig(consumerConfigInfo);
     }
 
@@ -127,7 +127,7 @@ public class ConsumerController {
     @RequestMapping(value = "/consumerRunningInfo.query")
     @ResponseBody
     public Object getConsumerRunningInfo(@RequestParam String consumerGroup, @RequestParam String clientId,
-        @RequestParam boolean jstack) {
+                                         @RequestParam boolean jstack) {
         return consumerService.getConsumerRunningInfo(consumerGroup, clientId, jstack);
     }
 }

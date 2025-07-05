@@ -14,10 +14,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { useEffect } from 'react';
-import { useSelector, useDispatch } from 'react-redux';
-import { themes, defaultTheme } from '../../assets/styles/theme';
-import { setTheme } from '../actions/themeActions';
+import {useEffect} from 'react';
+import {useDispatch, useSelector} from 'react-redux';
+import {defaultTheme, themes} from '../../assets/styles/theme';
+import {setTheme} from '../actions/themeActions';
 
 export const useTheme = () => {
     // 从 Redux store 中取出 currentThemeName

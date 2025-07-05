@@ -58,6 +58,12 @@ rocketmq:
     ticketKey: ticket
     # must create userInfo file: ${rocketmq.config.dataPath}/users.properties if the login is required
     loginRequired: false
+    # Authentication mode for RocketMQ Dashboard
+    # Available options:
+    #   - 'file': Use username/password stored in a file (requires 'auth.file.path')
+    #   - 'acl':  Use credentials from ACL system (requires 'acl.access.key' and 'acl.secret.key')
+    # Default: file
+    authMode: file
     useTLS: false
     proxyAddr: 127.0.0.1:8080
     proxyAddrs:

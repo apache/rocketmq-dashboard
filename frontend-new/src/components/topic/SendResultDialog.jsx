@@ -18,7 +18,7 @@
 import {Button, Form, Modal, Table} from "antd";
 import React from "react";
 
-const SendResultDialog = ({ visible, onClose, result, t }) => {
+const SendResultDialog = ({visible, onClose, result, t}) => {
     return (
         <Modal
             title="SendResult"
@@ -43,11 +43,11 @@ const SendResultDialog = ({ visible, onClose, result, t }) => {
                             : []
                     }
                     columns={[
-                        { dataIndex: 'label', key: 'label' },
+                        {dataIndex: 'label', key: 'label'},
                         {
                             dataIndex: 'value',
                             key: 'value',
-                            render: (text) => <pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{text}</pre>,
+                            render: (text) => <pre style={{whiteSpace: 'pre-wrap', margin: 0}}>{text}</pre>,
                         },
                     ]}
                     pagination={false}
@@ -59,7 +59,6 @@ const SendResultDialog = ({ visible, onClose, result, t }) => {
         </Modal>
     );
 };
-
 
 
 export default SendResultDialog;

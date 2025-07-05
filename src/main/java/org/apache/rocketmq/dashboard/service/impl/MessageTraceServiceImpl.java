@@ -133,21 +133,21 @@ public class MessageTraceServiceImpl implements MessageTraceService {
     }
 
     private List<SubscriptionNode> buildSubscriptionNodeList(
-        Map<String, Pair<MessageTraceView, MessageTraceView>> requestIdTracePairMap) {
+            Map<String, Pair<MessageTraceView, MessageTraceView>> requestIdTracePairMap) {
         Map<String, List<TraceNode>> subscriptionTraceNodeMap = Maps.newHashMap();
         for (Pair<MessageTraceView, MessageTraceView> traceNodePair : requestIdTracePairMap.values()) {
             List<TraceNode> traceNodeList = subscriptionTraceNodeMap
-                .computeIfAbsent(buildGroupName(traceNodePair), (o) -> Lists.newArrayList());
+                    .computeIfAbsent(buildGroupName(traceNodePair), (o) -> Lists.newArrayList());
             traceNodeList.add(buildConsumeMessageTraceNode(traceNodePair));
         }
         return subscriptionTraceNodeMap.entrySet().stream()
-            .map((Function<Map.Entry<String, List<TraceNode>>, SubscriptionNode>) subscriptionEntry -> {
-                List<TraceNode> traceNodeList = subscriptionEntry.getValue();
-                SubscriptionNode subscriptionNode = new SubscriptionNode();
-                subscriptionNode.setSubscriptionGroup(subscriptionEntry.getKey());
-                subscriptionNode.setConsumeNodeList(sortTraceNodeListByBeginTimestamp(traceNodeList));
-                return subscriptionNode;
-            }).collect(Collectors.toList());
+                .map((Function<Map.Entry<String, List<TraceNode>>, SubscriptionNode>) subscriptionEntry -> {
+                    List<TraceNode> traceNodeList = subscriptionEntry.getValue();
+                    SubscriptionNode subscriptionNode = new SubscriptionNode();
+                    subscriptionNode.setSubscriptionGroup(subscriptionEntry.getKey());
+                    subscriptionNode.setConsumeNodeList(sortTraceNodeListByBeginTimestamp(traceNodeList));
+                    return subscriptionNode;
+                }).collect(Collectors.toList());
     }
 
     private <E> E getTraceValue(Pair<MessageTraceView, MessageTraceView> traceNodePair, Function<MessageTraceView, E> function) {
@@ -206,7 +206,7 @@ public class MessageTraceServiceImpl implements MessageTraceService {
     private void putIntoMessageTraceViewGroupMap(MessageTraceView messageTraceView,
                                                  Map<String, Pair<MessageTraceView, MessageTraceView>> messageTraceViewGroupMap) {
         Pair<MessageTraceView, MessageTraceView> messageTracePair = messageTraceViewGroupMap
-            .computeIfAbsent(messageTraceView.getRequestId(), (o) -> new Pair<>(null, null));
+                .computeIfAbsent(messageTraceView.getRequestId(), (o) -> new Pair<>(null, null));
         switch (TraceType.valueOf(messageTraceView.getTraceType())) {
             case SubBefore:
                 messageTracePair.setObject1(messageTraceView);

@@ -17,9 +17,11 @@
 
 package org.apache.rocketmq.dashboard.model.request;
 
+import lombok.AllArgsConstructor;
 import lombok.Data;
 
 @Data
+@AllArgsConstructor
 public class UserInfoParam {
     private String username;
     private String password;

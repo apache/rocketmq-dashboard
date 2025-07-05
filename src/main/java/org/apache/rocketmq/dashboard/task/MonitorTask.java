@@ -38,7 +38,7 @@ public class MonitorTask {
     @Resource
     private ConsumerService consumerService;
 
-//    @Scheduled(cron = "* * * * * ?")
+    //    @Scheduled(cron = "* * * * * ?")
     public void scanProblemConsumeGroup() {
         for (Map.Entry<String, ConsumerMonitorConfig> configEntry : monitorService.queryConsumerMonitorConfig().entrySet()) {
             GroupConsumeInfo consumeInfo = consumerService.queryGroup(configEntry.getKey(), null);
