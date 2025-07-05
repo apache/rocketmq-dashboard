@@ -16,20 +16,26 @@
  */
 package org.apache.rocketmq.dashboard.controller;
 
-import java.lang.reflect.Field;
 import org.apache.rocketmq.dashboard.model.User;
 import org.apache.rocketmq.dashboard.service.impl.UserServiceImpl;
+import org.apache.rocketmq.dashboard.service.strategy.UserContext;
+import org.apache.rocketmq.dashboard.service.strategy.UserStrategy;
+import org.apache.rocketmq.dashboard.support.GlobalExceptionHandler;
 import org.apache.rocketmq.dashboard.util.WebUtil;
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
 import org.mockito.Spy;
-import org.springframework.test.util.ReflectionTestUtils;
-import org.springframework.util.ReflectionUtils;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.util.ReflectionUtils;
+
+import java.lang.reflect.Field;
 
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -38,19 +44,27 @@ public class LoginControllerTest extends BaseControllerTest {
     @InjectMocks
     private LoginController loginController;
 
-    @Spy
+    @Mock
     private UserServiceImpl userService;
+
+    @Spy
+    private UserContext userContext;
+
+    @Spy
+    private UserStrategy userStrategy;
 
     private String contextPath = "/rocketmq-console";
 
     @Before
     public void init() {
+        MockitoAnnotations.initMocks(this);
         super.mockRmqConfigure();
         when(configure.isLoginRequired()).thenReturn(true);
         when(configure.getRocketMqDashboardDataPath()).thenReturn("");
         Field contextPathField = ReflectionUtils.findField(LoginController.class, "contextPath");
         ReflectionUtils.makeAccessible(contextPathField);
         ReflectionUtils.setField(contextPathField, loginController, contextPath);
+        mockMvc = MockMvcBuilders.standaloneSetup(loginController).setControllerAdvice(GlobalExceptionHandler.class).build();
     }
 
     @Test
@@ -60,10 +74,11 @@ public class LoginControllerTest extends BaseControllerTest {
         requestBuilder.sessionAttr(WebUtil.USER_NAME, "admin");
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.logined").value(true))
-            .andExpect(jsonPath("$.data.loginRequired").value(true));
+                .andExpect(jsonPath("$.logined").value(true))
+                .andExpect(jsonPath("$.loginRequired").value(true));
 
     }
+
 
     @Test
     public void testLogin() throws Exception {
@@ -71,46 +86,44 @@ public class LoginControllerTest extends BaseControllerTest {
         final String username = "admin";
         final String rightPwd = "admin";
         final String wrongPwd = "rocketmq";
-        {
-            UserServiceImpl.FileBasedUserInfoStore store
-                = new UserServiceImpl.FileBasedUserInfoStore(configure);
-            User user = store.queryByName(username);
-            Assert.assertNotNull(user);
-            Assert.assertEquals(user.getPassword(), rightPwd);
-            ReflectionTestUtils.setField(userService, "fileBasedUserInfoStore", store);
-        }
+
+        // 模拟 userService.queryByName 方法返回一个用户
+        User user = new User("admin", "admin", 1);
+        user.setPassword(rightPwd);
+
 
         // 1、login fail
-        requestBuilder = MockMvcRequestBuilders.post(url);
-        requestBuilder.param("username", username)
-            .param("password", wrongPwd);
-        perform = mockMvc.perform(requestBuilder);
+        perform = mockMvc.perform(post(url)
+                .param("username", username)
+                .param("password", wrongPwd));
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data").doesNotExist())
-            .andExpect(jsonPath("$.status").value(-1))
-            .andExpect(jsonPath("$.errMsg").value("Bad username or password!"));
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.status").value(-1))
+                .andExpect(jsonPath("$.errMsg").value("Bad username or password!"));
+
+        when(userService.queryByUsernameAndPassword(username, rightPwd)).thenReturn(user);
 
         // 2、login success
-        requestBuilder = MockMvcRequestBuilders.post(url);
-        requestBuilder.param("username", username)
-            .param("password", rightPwd);
-        perform = mockMvc.perform(requestBuilder);
+        perform = mockMvc.perform(post(url)
+                .param("username", username)
+                .param("password", rightPwd));
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.contextPath").value(contextPath));
+                .andExpect(jsonPath("$.contextPath").value(contextPath));
+    }
 
-}
 
     @Test
     public void testLogout() throws Exception {
         final String url = "/login/logout.do";
-        requestBuilder = MockMvcRequestBuilders.post(url);
+        requestBuilder = post(url);
         requestBuilder.sessionAttr(WebUtil.USER_NAME, "root");
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data").value(contextPath));
+                .andExpect(jsonPath("$.data").value(contextPath));
     }
 
-    @Override protected Object getTestController() {
+    @Override
+    protected Object getTestController() {
         return loginController;
     }
 }

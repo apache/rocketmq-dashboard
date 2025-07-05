@@ -17,8 +17,6 @@
 
 package org.apache.rocketmq.dashboard.controller;
 
-import java.util.ArrayList;
-import java.util.List;
 import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.apache.rocketmq.dashboard.service.checker.RocketMqChecker;
 import org.apache.rocketmq.dashboard.service.checker.impl.ClusterHealthCheckerImpl;
@@ -33,6 +31,9 @@ import org.mockito.Mock;
 import org.mockito.Spy;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
+
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.any;
@@ -62,11 +63,11 @@ public class OpsControllerTest extends BaseControllerTest {
         requestBuilder = MockMvcRequestBuilders.get(url);
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data").isMap())
-            .andExpect(jsonPath("$.data.useVIPChannel").value(false))
-            .andExpect(jsonPath("$.data.namesvrAddrList").isArray())
-            .andExpect(jsonPath("$.data.namesvrAddrList", hasSize(2)))
-            .andExpect(jsonPath("$.data.namesvrAddrList[0]").value("127.0.0.1:9876"));
+                .andExpect(jsonPath("$.data").isMap())
+                .andExpect(jsonPath("$.data.useVIPChannel").value(false))
+                .andExpect(jsonPath("$.data.namesvrAddrList").isArray())
+                .andExpect(jsonPath("$.data.namesvrAddrList", hasSize(2)))
+                .andExpect(jsonPath("$.data.namesvrAddrList[0]").value("127.0.0.1:9876"));
     }
 
     @Test
@@ -80,7 +81,7 @@ public class OpsControllerTest extends BaseControllerTest {
         requestBuilder.param("nameSvrAddrList", "127.0.0.1:9876");
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data").value(true));
+                .andExpect(jsonPath("$.data").value(true));
         Assert.assertEquals(configure.getNamesrvAddr(), "127.0.0.1:9876");
     }
 
@@ -94,7 +95,7 @@ public class OpsControllerTest extends BaseControllerTest {
         requestBuilder.param("newNamesrvAddr", "127.0.0.3:9876");
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data").value(true));
+                .andExpect(jsonPath("$.data").value(true));
         Assert.assertEquals(configure.getNamesrvAddrs().size(), 3);
     }
 
@@ -108,7 +109,7 @@ public class OpsControllerTest extends BaseControllerTest {
         requestBuilder.param("useVIPChannel", "true");
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data").value(true));
+                .andExpect(jsonPath("$.data").value(true));
     }
 
     @Test
@@ -121,7 +122,7 @@ public class OpsControllerTest extends BaseControllerTest {
         requestBuilder.param("useTLS", "true");
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data").value(true));
+                .andExpect(jsonPath("$.data").value(true));
     }
 
     @Test
@@ -136,9 +137,9 @@ public class OpsControllerTest extends BaseControllerTest {
         requestBuilder = MockMvcRequestBuilders.get(url);
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data").isMap())
-            .andExpect(jsonPath("$.data.CLUSTER_HEALTH_CHECK").isEmpty())
-            .andExpect(jsonPath("$.data.TOPIC_ONLY_ONE_BROKER_CHECK").isEmpty());
+                .andExpect(jsonPath("$.data").isMap())
+                .andExpect(jsonPath("$.data.CLUSTER_HEALTH_CHECK").isEmpty())
+                .andExpect(jsonPath("$.data.TOPIC_ONLY_ONE_BROKER_CHECK").isEmpty());
     }
 
     @Override

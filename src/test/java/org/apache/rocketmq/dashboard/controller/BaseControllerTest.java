@@ -23,6 +23,8 @@ import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.support.GlobalExceptionHandler;
 import org.apache.rocketmq.dashboard.support.GlobalRestfulResponseBodyAdvice;
 import org.apache.rocketmq.dashboard.util.MyPrintingResultHandler;
+import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
+import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.junit.Before;
 import org.mockito.Mock;
@@ -31,6 +33,12 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -70,26 +78,26 @@ public abstract class BaseControllerTest extends BaseTest {
 
     protected ResultActions performOkExpect(ResultActions perform) throws Exception {
         return perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$").exists())
-            .andExpect(jsonPath("$").isMap())
-            .andExpect(jsonPath("$.data").exists())
-            .andExpect(jsonPath("$.status").value(0))
-            .andExpect(jsonPath("$.errMsg").doesNotExist());
+                .andExpect(jsonPath("$").exists())
+                .andExpect(jsonPath("$").isMap())
+                .andExpect(jsonPath("$.data").exists())
+                .andExpect(jsonPath("$.status").value(0))
+                .andExpect(jsonPath("$.errMsg").doesNotExist());
     }
 
     protected ResultActions performErrorExpect(ResultActions perform) throws Exception {
         return perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$").exists())
-            .andExpect(jsonPath("$.data").doesNotExist())
-            .andExpect(jsonPath("$.status").value(-1))
-            .andExpect(jsonPath("$.errMsg").isNotEmpty());
+                .andExpect(jsonPath("$").exists())
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.status").value(-1))
+                .andExpect(jsonPath("$.errMsg").isNotEmpty());
     }
 
     protected MockMvc createMockMvc() {
         MockMvc innerMockMvc = MockMvcBuilders.standaloneSetup(getTestController())
-            .alwaysDo(MyPrintingResultHandler.me())
-            .setControllerAdvice(new GlobalExceptionHandler(), new GlobalRestfulResponseBodyAdvice())
-            .build();
+                .alwaysDo(MyPrintingResultHandler.me())
+                .setControllerAdvice(new GlobalExceptionHandler(), new GlobalRestfulResponseBodyAdvice())
+                .build();
         this.mockMvc = innerMockMvc;
         return innerMockMvc;
     }

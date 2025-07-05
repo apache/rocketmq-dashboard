@@ -18,12 +18,13 @@
 package org.apache.rocketmq.dashboard.config;
 
 import com.google.common.collect.Lists;
-import java.io.File;
 import org.junit.Assert;
 import org.junit.Test;
 import org.springframework.boot.web.server.ErrorPage;
 import org.springframework.boot.web.server.ErrorPageRegistrar;
 import org.springframework.boot.web.server.ErrorPageRegistry;
+
+import java.io.File;
 
 public class RMQConfigureTest {
 
@@ -40,7 +41,8 @@ public class RMQConfigureTest {
         rmqConfigure.setLoginRequired(true);
         rmqConfigure.setNamesrvAddr("127.0.0.1:9876");
         rmqConfigure.setTimeoutMillis(3000L);
-        rmqConfigure.setNamesrvAddrs(Lists.asList("127.0.0.1:9876", new String[] {"127.0.0.2:9876"}));
+        rmqConfigure.setNamesrvAddrs(Lists.asList("127.0.0.1:9876", new String[]{"127.0.0.2:9876"}));
+        rmqConfigure.setAuthMode("file");
     }
 
     @Test
@@ -58,6 +60,7 @@ public class RMQConfigureTest {
         Assert.assertEquals(rmqConfigure.getNamesrvAddr(), "127.0.0.1:9876");
         Assert.assertEquals(rmqConfigure.getNamesrvAddrs().size(), 2);
         Assert.assertEquals(rmqConfigure.getTimeoutMillis().longValue(), 3000L);
+        Assert.assertEquals(rmqConfigure.getAuthMode(), "file");
         ErrorPageRegistrar registrar = rmqConfigure.errorPageRegistrar();
         registrar.registerErrorPages(new ErrorPageRegistry() {
             @Override
