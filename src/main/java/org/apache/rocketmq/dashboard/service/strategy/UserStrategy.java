@@ -15,16 +15,10 @@
  * limitations under the License.
  */
 
-package org.apache.rocketmq.dashboard.model.request;
+package org.apache.rocketmq.dashboard.service.strategy;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
+import org.apache.rocketmq.remoting.protocol.body.UserInfo;
 
-@Data
-@AllArgsConstructor
-public class UserInfoParam {
-    private String username;
-    private String password;
-    private String userStatus;
-    private String userType;
+public interface UserStrategy {
+    UserInfo getUserInfoByUsername(String username);
 }
