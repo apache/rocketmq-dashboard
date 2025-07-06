@@ -55,6 +55,7 @@ const Acl = () => {
     const [showPassword, setShowPassword] = useState(false);
 
     const [isAclModalVisible, setIsAclModalVisible] = useState(false);
+    const [writeOperationEnabled, setWriteOperationEnabled] = useState(true);
     const [currentAcl, setCurrentAcl] = useState(null);
     const [aclForm] = Form.useForm();
     const [messageApi, msgContextHolder] = message.useMessage();
@@ -131,6 +132,16 @@ const Acl = () => {
         }
 
     }, [activeTab]); // Dependencies for useEffect
+
+    useEffect(() => {
+        const userPermission = localStorage.getItem('userrole');
+        console.log(userPermission);
+        if (userPermission == 2) {
+            setWriteOperationEnabled(false);
+        } else {
+            setWriteOperationEnabled(true);
+        }
+    }, []);
 
     // --- Helper function to update broker options based on selected cluster ---
     const updateBrokerOptions = (clusterName, info = clusterData) => {
@@ -488,24 +499,26 @@ const Acl = () => {
             dataIndex: 'userStatus',
             key: 'userStatus',
             render: (status) => (
-                <Tag color={status=== 'enable' ? 'green' : 'red'}>{status}</Tag>
+                <Tag color={status === 'Enabled' ? 'green' : 'red'}>{status}</Tag>
             ),
         },
         {
             title: t.OPERATION,
             key: 'action',
             render: (_, record) => (
-                <Space size="middle">
-                    <Button icon={<EditOutlined />} onClick={() => handleEditUser(record)}>{t.MODIFY}</Button>
-                    <Popconfirm
-                        title={t.CONFIRM_DELETE_USER}
-                        onConfirm={() => handleDeleteUser(record.username)}
-                        okText={t.YES}
-                        cancelText={t.NO}
-                    >
-                        <Button icon={<DeleteOutlined />} danger>{t.DELETE}</Button>
-                    </Popconfirm>
-                </Space>
+                writeOperationEnabled ? (
+                    <Space size="middle">
+                        <Button icon={<EditOutlined />} onClick={() => handleEditUser(record)}>{t.MODIFY}</Button>
+                        <Popconfirm
+                            title={t.CONFIRM_DELETE_USER}
+                            onConfirm={() => handleDeleteUser(record.username)}
+                            okText={t.YES}
+                            cancelText={t.NO}
+                        >
+                            <Button icon={<DeleteOutlined />} danger>{t.DELETE}</Button>
+                        </Popconfirm>
+                    </Space>
+                ) : null
             ),
         },
     ];
@@ -552,17 +565,19 @@ const Acl = () => {
             title: t.OPERATION,
             key: 'action',
             render: (_, record) => (
-                <Space size="middle">
-                    <Button icon={<EditOutlined />} onClick={() => handleEditAcl(record)}>{t.MODIFY}</Button>
-                    <Popconfirm
-                        title={t.CONFIRM_DELETE_ACL}
-                        onConfirm={() => handleDeleteAcl(record.subject, record.resource)}
-                        okText={t.YES}
-                        cancelText={t.NO}
-                    >
-                        <Button icon={<DeleteOutlined />} danger>{t.DELETE}</Button>
-                    </Popconfirm>
-                </Space>
+                writeOperationEnabled ? (
+                    <Space size="middle">
+                        <Button icon={<EditOutlined />} onClick={() => handleEditAcl(record)}>{t.MODIFY}</Button>
+                        <Popconfirm
+                            title={t.CONFIRM_DELETE_ACL}
+                            onConfirm={() => handleDeleteAcl(record.subject, record.resource)}
+                            okText={t.YES}
+                            cancelText={t.NO}
+                        >
+                            <Button icon={<DeleteOutlined />} danger>{t.DELETE}</Button>
+                        </Popconfirm>
+                    </Space>
+                ) : null
             ),
         },
     ];

@@ -75,7 +75,7 @@ const DlqMessageQueryPage = () => {
     useEffect(() => {
         const fetchConsumerGroups = async () => {
             setLoading(true);
-            const resp = await remoteApi.queryConsumerGroupList();
+            const resp = await remoteApi.queryConsumerGroupList(false);
             if (resp.status === 0) {
                 const filteredGroups = resp.data
                     .filter(consumerGroup => !consumerGroup.group.startsWith(SYS_GROUP_TOPIC_PREFIX))

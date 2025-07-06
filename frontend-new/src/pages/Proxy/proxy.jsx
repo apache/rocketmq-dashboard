@@ -37,9 +37,13 @@ const ProxyManager = () => {
     const [notificationApi, notificationContextHolder] = notification.useNotification();
 
     useEffect(() => {
-        const userRole = sessionStorage.getItem("userrole");
-        const isWriteEnabled = userRole === null || userRole === '1';
-        setWriteOperationEnabled(isWriteEnabled);
+        const userPermission = localStorage.getItem('userrole');
+        console.log(userPermission);
+        if (userPermission == 2) {
+            setWriteOperationEnabled(false);
+        } else {
+            setWriteOperationEnabled(true);
+        }
     }, []);
 
     useEffect(() => {

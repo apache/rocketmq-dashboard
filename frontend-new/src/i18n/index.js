@@ -147,7 +147,7 @@ export const translations = {
         "USER_NAME": "用户名",
         "PASSWORD": "密码",
         "SYSTEM": "系统",
-        "WELCOME": "您好，欢迎使用RocketMQ仪表盘",
+        "WELCOME": "欢迎使用RocketMQ仪表盘",
         "ENABLE_MESSAGE_TRACE": "开启消息轨迹",
         "MESSAGE_TRACE_DETAIL": "消息轨迹详情",
         "TRACE_TOPIC": "消息轨迹主题",
@@ -284,6 +284,12 @@ export const translations = {
         "PROXY_ENABLED": "代理启用",
         "BROKER_OVERVIEW": "Broker概览",
         "TOTAL_MSG_RECEIVED_TODAY": "今天接收的总消息数",
+        "LOGIN_SUCCESS": "登录成功",
+        "LOGIN_FAILED": "登录失败",
+        "USERNAME_REQUIRED": "用户名为必填项",
+        "USERNAME_PLACEHOLDER": "用户名",
+        "PASSWORD_REQUIRED": "密码为必填项",
+        "PASSWORD_PLACEHOLDER": "密码",
     },
     en: {
         "DEFAULT": "Default",
@@ -417,7 +423,7 @@ export const translations = {
         "USER_NAME": "Username",
         "PASSWORD": "Password",
         "SYSTEM": "SYSTEM",
-        "WELCOME": "Hi, welcome using RocketMQ Dashboard",
+        "WELCOME": "Welcome using RocketMQ Dashboard",
         "ENABLE_MESSAGE_TRACE": "Enable Message Trace",
         "MESSAGE_TRACE_DETAIL": "Message Trace Detail",
         "TRACE_TOPIC": "TraceTopic",
@@ -546,6 +552,12 @@ export const translations = {
         "PROXY_ENABLED": "Proxy Enabled",
         "BROKER_OVERVIEW": "Broker Overview",
         "TOTAL_MSG_RECEIVED_TODAY": "Total messages received today",
+        "LOGIN_SUCCESS": "Login successful",
+        "LOGIN_FAILED": "Login failed",
+        "USERNAME_REQUIRED": "Username is required",
+        "USERNAME_PLACEHOLDER": "Username placeholder",
+        "PASSWORD_REQUIRED": "Password is required",
+        "PASSWORD_PLACEHOLDER": "Password placeholder",
 
 
     }
