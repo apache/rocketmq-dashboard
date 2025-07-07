@@ -23,6 +23,7 @@ import lombok.Setter;
 @Setter
 @Getter
 public class UserCreateRequest {
-    private String brokerAddress;
+    private String clusterName;
+    private String brokerName;
     private UserInfoParam userInfo;
 }
