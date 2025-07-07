@@ -100,6 +100,16 @@ const DeployHistoryList = () => {
     }, [filterStr, filterNormal, filterDelay, filterFifo, filterTransaction,
         filterUnspecified, filterRetry, filterDLQ, filterSystem, allTopicList]);
 
+    useEffect(() => {
+        const userPermission = localStorage.getItem('userrole');
+        console.log(userPermission);
+        if (userPermission == 2) {
+            setWriteOperationEnabled(false);
+        } else {
+            setWriteOperationEnabled(true);
+        }
+    }, []);
+
     // Close functions for Modals
     const closeAddUpdateDialog = () => {
         setIsAddUpdateTopicModalVisible(false);

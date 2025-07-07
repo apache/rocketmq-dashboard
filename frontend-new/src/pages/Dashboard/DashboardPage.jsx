@@ -250,7 +250,6 @@ const DashboardPage = () => {
                 const brokerAddrTable = resp.data.clusterInfo.brokerAddrTable; // Corrected to brokerAddrTable
                 const brokerDetail = resp.data.brokerServer;
                 const clusterMap = tools.generateBrokerMap(brokerDetail, clusterAddrTable, brokerAddrTable);
-                console.log(brokerAddrTable)
                 let brokerArray = [];
                 Object.values(clusterMap).forEach(brokersInCluster => {
                     brokerArray = brokerArray.concat(brokersInCluster);
@@ -260,8 +259,7 @@ const DashboardPage = () => {
                     ...broker,
                     key: broker.brokerName,
                 }));
-                console.log("即将设置的数据:", newData); // 先打印
-                setBrokerTableData(newData); // 再设置状态
+                setBrokerTableData(newData);
 
                 brokerArray.sort((firstBroker, lastBroker) => {
                     const firstTotalMsg = parseFloat(firstBroker.msgGetTotalTodayNow || 0);

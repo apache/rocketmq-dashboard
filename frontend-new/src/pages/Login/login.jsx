@@ -18,23 +18,24 @@
 import React from 'react';
 import {Button, Form, Input, message, Typography} from 'antd';
 import {remoteApi} from "../../api/remoteApi/remoteApi";
+import {useLanguage} from "../../i18n/LanguageContext";
 
 const {Title} = Typography;
 
 const Login = () => {
     const [form] = Form.useForm();
     const [messageApi, msgContextHolder] = message.useMessage();
-
+    const {t} = useLanguage();
     const onFinish = async (values) => {
         const {username, password} = values;
         remoteApi.login(username, password).then((res) => {
             if (res.status === 0) {
-                messageApi.success('登录成功');
+                messageApi.success(t.LOGIN_SUCCESS);
                 window.localStorage.setItem("username", res.data.loginUserName);
                 window.localStorage.setItem("userrole", res.data.loginUserRole);
                 window.location.href = '/';
             } else {
-                messageApi.error(res.message || '登录失败，请检查用户名和密码');
+                messageApi.error(res.message || t.LOGIN_FAILED);
             }
         })
     };
@@ -50,7 +51,7 @@ const Login = () => {
                 borderRadius: 8
             }}>
                 <Title level={3} style={{textAlign: 'center', marginBottom: 24}}>
-                    WELCOME
+                    {t.WELCOME}
                 </Title>
                 <Form
                     form={form}
@@ -60,30 +61,27 @@ const Login = () => {
                     initialValues={{username: '', password: ''}}
                 >
                     <Form.Item
-                        label="用户名"
+                        label={t.USERNAME}
                         name="username"
-                        rules={[{required: true, message: '请输入用户名'}]}
-                    >
-                        <Input placeholder="请输入用户名"/>
+                        rules={[{required: true, message: t.USERNAME_REQUIRED}]}>
+                        <Input placeholder={t.USERNAME_PLACEHOLDER}/>
                     </Form.Item>
 
                     <Form.Item
-                        label="密码"
+                        label={t.PASSWORD}
                         name="password"
-                        rules={[{required: true, message: '请输入密码'}]}
-                    >
-                        <Input.Password placeholder="请输入密码"/>
+                        rules={[{required: true, message: t.PASSWORD_REQUIRED}]}>
+                        <Input.Password placeholder={t.PASSWORD_PLACEHOLDER}/>
                     </Form.Item>
 
                     <Form.Item>
                         <Button type="primary" htmlType="submit" block>
-                            登录
+                            {t.LOGIN}
                         </Button>
                     </Form.Item>
                 </Form>
             </div>
         </>
-
     );
 };
 

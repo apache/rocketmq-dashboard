@@ -77,7 +77,7 @@ const remoteApi = {
     listUsers: async (brokerAddress) => {
         const params = new URLSearchParams();
         if (brokerAddress) params.append('brokerAddress', brokerAddress);
-        const response = await remoteApi._fetch(remoteApi.buildUrl(`/acl/acls.query?${params.toString()}`));
+        const response = await remoteApi._fetch(remoteApi.buildUrl(`/acl/users.query?${params.toString()}`));
         return await response.json();
     },
 

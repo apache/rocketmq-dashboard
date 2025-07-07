@@ -232,6 +232,15 @@ const ConsumerGroupList = () => {
         return () => clearInterval(intervalId);
     }, [intervalProcessSwitch, loadConsumerGroups]);
 
+    useEffect(() => {
+        const userPermission = localStorage.getItem('userrole');
+        console.log(userPermission);
+        if (userPermission == 2) {
+            setWriteOperationEnabled(false);
+        } else {
+            setWriteOperationEnabled(true);
+        }
+    }, []);
 
     useEffect(() => {
         filterList(paginationConf.current, allConsumerGroupList);

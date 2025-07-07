@@ -2,11 +2,16 @@
 
 ## 运维页面
 * 你可以修改这个服务使用的namesrv的地址
+
 * 你可以修改这个服务是否使用VIPChannel(如果你的mq server版本小于3.5.8，请设置不使用)
+
+  ![image-20250706143719935](UserGuide_CN/image-20250706143719935.png)
 
 ## 驾驶舱
 * 查看broker的消息量（总量/5分钟图）
 * 查看单一主题的消息量（总量/趋势图）
+
+![image-20250706143801952](UserGuide_CN/image-20250706143801952.png)
 
 ## 集群页面
 * 查看集群的分布情况
@@ -15,9 +20,13 @@
 * 查看broker具体信息/运行信息
 * 查看broker配置信息
 
+![image-20250706143819962](UserGuide_CN/image-20250706143819962.png)
+
 ## 主题页面
 * 展示所有的主题，可以通过搜索框进行过滤
 * 筛选 普通/重试/死信 主题
+    * 支持延迟/顺序/事务消息的筛选
+    * 支持延迟/顺序/事物/普通等多种消息类型主题的新增与更新
 * 添加/更新主题
     * clusterName 创建在哪几个cluster上
     * brokerName 创建在哪几个broker上
@@ -33,9 +42,11 @@
 * 重置消费位点(分为在线和不在线两种情况，不过都需要检查重置是否成功)
 * 删除主题 （会删除掉所有broker以及namesrv上的主题配置和路由信息）
 
+![image-20250706143900173](UserGuide_CN/image-20250706143900173.png)
+
 ## 消费者页面
 * 展示所有的消费组，可以通过搜索框进行过滤
-* 刷新页面/每隔五秒定时刷新页面
+* 刷新页面
 * 按照订阅组/数量/TPS/延迟 进行排序
 * 添加/更新消费组
     * clusterName 创建在哪几个集群上
@@ -50,11 +61,20 @@
 * 消费详情 对应消费组的消费明细查看，这个消费组订阅的所有Topic的消费情况，每个queue对应的消费client查看（包括Retry消息）
 * 配置 查看变更消费组的配置
 * 删除 在指定的broker上删除消费组
+* 是否使用代理进行查询
+* 消费页面
+    * 支持顺序消费类型订阅组的过滤
+    * 提供顺序消费类型订阅组的新增与更新，如果需要开启顺序消费，FIFO类型的订阅组一定需要打开consumeOrderlyEnable选项
+
+![image-20250706143924854](UserGuide_CN/image-20250706143924854.png)
 
 ## 发布管理页面
 * 通过Topic和Group查询在线的消息生产者客户端
     * 信息包含客户端主机 版本
     
+
+![image-20250706144100067](UserGuide_CN/image-20250706144100067.png)
+
 ## 消息查询页面
 * 根据Topic和时间区间查询
     *由于数据量大 最多只会展示2000条，多的会被忽略 
@@ -63,20 +83,25 @@
 * 根据消息主题和消息Id进行消息的查询
 * 消息详情可以展示这条消息的详细信息，查看消息对应到具体消费组的消费情况（如果异常，可以查看具体的异常信息）。可以向指定的消费组重发消息。
 
-## RocketMQ-V5.0 仪表盘
-* 版本切换
-  * RocketMQ右上角可切换不同版本，用户可以自主选择 RocketMQ-5.x 或 RocketMQ-4.x 版本
-* 主题页面 
-  * 支持延迟/顺序/事务消息的筛选
-  * 支持延迟/顺序/事物/普通等多种消息类型主题的新增与更新
-* 消费页面
-  * 支持顺序消费类型订阅组的过滤
-  * 提供顺序消费类型订阅组的新增与更新，如果需要开启顺序消费，FIFO类型的订阅组一定需要打开consumeOrderlyEnable选项
+![image-20250706144145077](UserGuide_CN/image-20250706144145077.png)
+
+## 代理页面
 * 代理页面（RocketMQ 5.0新增） 
   * 支持代理节点的新增与查询
   * 支持代理节点地址配置：在application.yml中可对proxyAddr和proxyAddrs属性进行预配置
 
+![image-20250706144418694](UserGuide_CN/image-20250706144418694.png)
+
+## ACL2.0管理界面
+
+- 支持根据broker地址的acl规则的查询
+- acl规则的修改、新增、删除、查找
+- （不再支持acl1.0）
+
+![image-20250706145313629](UserGuide_CN/image-20250706145313629.png)
+
 ## HTTPS 方式访问Dashboard
+
 * HTTPS功能实际上是使用SpringBoot提供的配置功能即可完成，首先，需要有一个SSL KeyStore来存放服务端证书，可以使用本工程所提供的测试密钥库:
 resources/rmqcngkeystore.jks, 它可以通过如下keytool命令生成
 ```
@@ -111,7 +136,7 @@ rocketmq.config.loginRequired=true
 # Dashboard文件目录，登录用户配置文件所在目录
 rocketmq.config.dataPath=/tmp/rocketmq-console/data
 ```
-* 2.确保${rocketmq.config.dataPath}定义的目录存在，并且该目录下创建登录配置文件"users.properties", 如果该目录下不存在此文件，则默认使用resources/users.properties文件。
+* 2.确保${rocketmq.config.dataPath}定义的目录存在，并且该目录下创建登录配置文件"users.properties", 如果该目录下不存在此文件，则默认使用resources/users.properties文件。 ps: 如果rocketmq启用了acl，控制台必须配置ak和sk，同时application.yml中的rocketmq.config.authmode 需要为acl且登录功能需要打开才能正常使用，登录后将使用acl2.0中的用户名和密码构造rpchook与broker进行通信。
 users.properties文件格式为:
 ```$xslt
 # 该文件支持热修改，即添加和修改用户时，不需要重新启动console
@@ -125,6 +150,8 @@ user1=user1
 user2=user2
 ```
 * 3.启动控制台则开启了登录功能
+
+
 
 ## 权限检验
 如果用户访问console时开启了登录功能，会按照登录的角色对访问的接口进行权限控制。
@@ -149,7 +176,7 @@ role-permission.yml文件格式为:
 
 rolePerms:
   # 普通用户
-  ordinary:
+  Normal:
     - /rocketmq/nsaddr
     - /ops/*
     - /dashboard/**

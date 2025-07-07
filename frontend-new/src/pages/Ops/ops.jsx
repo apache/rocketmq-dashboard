@@ -48,6 +48,16 @@ const Ops = () => {
         fetchOpsData();
     }, []);
 
+    useEffect(() => {
+        const userPermission = localStorage.getItem('userrole');
+        console.log(userPermission);
+        if (userPermission == 2) {
+            setWriteOperationEnabled(false);
+        } else {
+            setWriteOperationEnabled(true);
+        }
+    }, []);
+
     const handleUpdateNameSvrAddr = async () => {
         if (!selectedNamesrv) {
             messageApi.warning('请选择一个 NameServer 地址');
