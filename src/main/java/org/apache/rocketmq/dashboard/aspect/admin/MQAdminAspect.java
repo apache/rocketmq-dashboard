@@ -57,6 +57,10 @@ public class MQAdminAspect {
         METHODS_TO_CHECK.add("examineConsumerConnectionInfo");
         METHODS_TO_CHECK.add("examineConsumeStats");
         METHODS_TO_CHECK.add("examineProducerConnectionInfo");
+        METHODS_TO_CHECK.add("fetchBrokerRuntimeStats");
+        METHODS_TO_CHECK.add("fetchAllTopicList");
+        METHODS_TO_CHECK.add("examineTopicRouteInfo");
+        METHODS_TO_CHECK.add("queryTopicConsumeByWho");
     }
 
     // Pointcut remains the same, targeting methods in MQAdminExtImpl

@@ -18,7 +18,7 @@ docker pull apacherocketmq/rocketmq-dashboard:latest
 #### Run it (use your own `rocketmq.namesrv.addr` and `port`)
 
 ```shell
-docker run -d --name rocketmq-dashboard -e "JAVA_OPTS=-Drocketmq.namesrv.addr=127.0.0.1:9876" -p 8080:8080 -t apacherocketmq/rocketmq-dashboard:latest
+docker run -d --name rocketmq-dashboard -e "JAVA_OPTS=-Drocketmq.namesrv.addr=127.0.0.1:9876" -p 8082:8082 -t apacherocketmq/rocketmq-dashboard:latest
 ```
 
 ### Run with source code
@@ -26,7 +26,7 @@ docker run -d --name rocketmq-dashboard -e "JAVA_OPTS=-Drocketmq.namesrv.addr=12
 
 #### Prerequisite
 1. 64bit OS, Linux/Unix/Mac is recommended;
-2. 64bit JDK 1.8+;
+2. 64bit JDK 17;
 3. Maven 3.2.x;
 
 #### Maven spring-boot run
