@@ -15,15 +15,31 @@
  * limitations under the License.
  */
 
-package org.apache.rocketmq.dashboard.model.request;
+package org.apache.rocketmq.dashboard.model;
 
-import lombok.Getter;
-import lombok.Setter;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import org.apache.rocketmq.remoting.protocol.body.UserInfo;
 
-@Getter
-@Setter
-public class UserUpdateRequest {
-    private String clusterName;
-    private String brokerName;
-    private UserInfoParam userInfo;
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class UserInfoDto {
+
+    private String username;
+
+    private String password;
+
+    private String userType;
+
+    private String userStatus;
+
+    public UserInfoDto setUserInfo(UserInfo userInfo) {
+        this.username = userInfo.getUsername();
+        this.password = userInfo.getPassword();
+        this.userType = userInfo.getUserType();
+        this.userStatus = userInfo.getUserStatus();
+        return this;
+    }
 }

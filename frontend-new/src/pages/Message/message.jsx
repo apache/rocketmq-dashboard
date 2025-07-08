@@ -33,10 +33,9 @@ const MessageQueryPage = () => {
     const [form] = Form.useForm();
     const [loading, setLoading] = useState(false);
 
-    // Topic 查询状态
     const [allTopicList, setAllTopicList] = useState([]);
     const [selectedTopic, setSelectedTopic] = useState(null);
-    const [timepickerBegin, setTimepickerBegin] = useState(moment().subtract(1, 'hour')); // 默认一小时前
+    const [timepickerBegin, setTimepickerBegin] = useState(moment().subtract(1, 'hour'));
     const [timepickerEnd, setTimepickerEnd] = useState(moment());
     const [messageShowList, setMessageShowList] = useState([]);
     const [paginationConf, setPaginationConf] = useState({

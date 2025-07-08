@@ -25,7 +25,8 @@ import java.util.List;
 @Getter
 @Setter
 public class PolicyRequest {
-    private String brokerAddress;
+    private String clusterName;
+    private String brokerName;
     private String subject;
     private List<Policy> policies;
 }

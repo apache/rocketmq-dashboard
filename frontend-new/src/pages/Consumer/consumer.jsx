@@ -66,7 +66,7 @@ const ConsumerGroupList = () => {
         }
     });
 
-    const [proxyOptions ,setProxyOptions]= useState([]);
+    const [proxyOptions, setProxyOptions] = useState([]);
     const [paginationConf, setPaginationConf] = useState({
         current: 1,
         pageSize: 10,
@@ -82,9 +82,9 @@ const ConsumerGroupList = () => {
         setLoading(true);
         try {
             var response;
-            if(!proxyEnabled){
+            if (!proxyEnabled) {
                 response = await remoteApi.queryConsumerGroupList(false);
-            }else{
+            } else {
                 response = await remoteApi.queryConsumerGroupList(false, selectedProxy);
             }
             if (response.status === 0) {
@@ -98,12 +98,12 @@ const ConsumerGroupList = () => {
                 messageApi.error({title: t.ERROR, content: response.errMsg});
             }
         } catch (error) {
-            messageApi.error({title: t.ERROR, content: t.FAILED_TO_FETCH_DATA});
             console.error("Error loading consumer groups:", error);
+            messageApi.error({title: t.ERROR, content: t.FAILED_TO_FETCH_DATA});
         } finally {
             setLoading(false);
         }
-    }, [t]);
+    }, [t, proxyEnabled, selectedProxy, messageApi, setAllConsumerGroupList, remoteApi, setLoading]);
 
     const filterByType = (str, type, version) => {
         if (filterSystem && type === "SYSTEM") return true;
@@ -465,15 +465,21 @@ const ConsumerGroupList = () => {
         <>
             {msgContextHolder}
             {notificationContextHolder}
-            <div style={{ padding: '20px' }}>
+            <div style={{padding: '20px'}}>
                 <Spin spinning={loading} tip={t.LOADING}>
-                    <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{
+                        marginBottom: '20px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                    }}>
                         {/* 左侧：筛选和操作按钮 */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '15px', flexWrap: 'wrap' }}>
-                            <div style={{ display: 'flex', alignItems: 'center' }}>
-                                <label style={{ marginRight: '8px', whiteSpace: 'nowrap' }}>{t.SUBSCRIPTION_GROUP}:</label>
+                        <div style={{display: 'flex', alignItems: 'center', gap: '15px', flexWrap: 'wrap'}}>
+                            <div style={{display: 'flex', alignItems: 'center'}}>
+                                <label
+                                    style={{marginRight: '8px', whiteSpace: 'nowrap'}}>{t.SUBSCRIPTION_GROUP}:</label>
                                 <Input
-                                    style={{ width: '200px' }}
+                                    style={{width: '200px'}}
                                     value={filterStr}
                                     onChange={(e) => handleFilterInputChange(e.target.value)}
                                     placeholder="输入订阅组名称"
@@ -504,10 +510,10 @@ const ConsumerGroupList = () => {
                         </div>
 
                         {/* 右侧：代理选项 */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                            <label style={{ marginRight: '8px', whiteSpace: 'nowrap' }}>{t.SELECT_PROXY}:</label>
+                        <div style={{display: 'flex', alignItems: 'center', gap: '15px'}}>
+                            <label style={{marginRight: '8px', whiteSpace: 'nowrap'}}>{t.SELECT_PROXY}:</label>
                             <Select
-                                style={{ width: '220px' }}
+                                style={{width: '220px'}}
                                 placeholder={t.SELECT_PROXY}
                                 onChange={(value) => setSelectedProxy(value)}
                                 value={selectedProxy}
@@ -515,7 +521,7 @@ const ConsumerGroupList = () => {
                                 disabled={!proxyEnabled}
                                 allowClear
                             />
-                            <label style={{ marginRight: '8px', whiteSpace: 'nowrap' }}>{t.ENABLE_PROXY}:</label>
+                            <label style={{marginRight: '8px', whiteSpace: 'nowrap'}}>{t.ENABLE_PROXY}:</label>
                             <Switch
                                 checked={proxyEnabled}
                                 onChange={(checked) => {

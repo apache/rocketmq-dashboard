@@ -43,32 +43,88 @@ const ConsumerDetailModal = ({visible, group, address, onCancel}) => {
         fetchData();
     }, [visible, group, address]);
 
+    // Format timestamp to readable date
+    const formatTimestamp = (timestamp) => {
+        if (!timestamp || timestamp === 0) return '-';
+        return new Date(timestamp).toLocaleString();
+    };
+
+    // Group data by topic for better organization
+    const groupByTopic = (data) => {
+        const grouped = {};
+        data.forEach(item => {
+            if (!grouped[item.topic]) {
+                grouped[item.topic] = [];
+            }
+            grouped[item.topic].push(item);
+        });
+        return grouped;
+    };
+
+    const groupedDetails = groupByTopic(details);
+
     const queueColumns = [
-        {title: 'Broker', dataIndex: 'brokerName'},
-        {title: 'Queue', dataIndex: 'queueId'},
-        {title: 'BrokerOffset', dataIndex: 'brokerOffset'},
-        {title: 'ConsumerOffset', dataIndex: 'consumerOffset'},
-        {title: 'DiffTotal', dataIndex: 'diffTotal'},
-        {title: 'LastTimestamp', dataIndex: 'lastTimestamp'},
+        {title: 'Broker', dataIndex: 'brokerName', width: 120},
+        {title: 'Queue ID', dataIndex: 'queueId', width: 100},
+        {title: 'Broker Offset', dataIndex: 'brokerOffset', width: 120},
+        {title: 'Consumer Offset', dataIndex: 'consumerOffset', width: 120},
+        {
+            title: 'Lag (Diff)', dataIndex: 'diffTotal', width: 100,
+            render: (diff) => (
+                <span style={{color: diff > 0 ? '#f5222d' : '#52c41a'}}>
+                    {diff}
+                </span>
+            )
+        },
+        {title: 'Client Info', dataIndex: 'clientInfo', width: 200},
+        {
+            title: 'Last Consume Time', dataIndex: 'lastTimestamp', width: 180,
+            render: (timestamp) => formatTimestamp(timestamp)
+        },
     ];
 
     return (
         <Modal
-            title={`[${group}]${t.CONSUME_DETAIL}`}
+            title={
+                <span>Consumer Details - Group: <strong>{group}</strong> | Address: <strong>{address}</strong></span>}
             visible={visible}
             onCancel={onCancel}
             footer={null}
-            width={1200}
+            width={1400}
+            style={{top: 20}}
         >
             <Spin spinning={loading}>
-                {details.map((consumeDetail, index) => (
-                    <div key={index}>
-                        <Table
-                            columns={queueColumns}
-                            dataSource={consumeDetail.queueStatInfoList}
-                            rowKey="queueId"
-                            pagination={false}
-                        />
+                {Object.entries(groupedDetails).map(([topic, topicDetails]) => (
+                    <div key={topic} style={{marginBottom: 24}}>
+                        <div style={{
+                            background: '#f0f0f0',
+                            padding: '8px 16px',
+                            marginBottom: 8,
+                            borderRadius: 4,
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center'
+                        }}>
+                            <h3 style={{margin: 0}}>Topic: <strong>{topic}</strong></h3>
+                            <div>
+                                <span style={{marginRight: 16}}>Total Lag: <strong>{topicDetails[0].diffTotal}</strong></span>
+                                <span>Last Consume Time: <strong>{formatTimestamp(topicDetails[0].lastTimestamp)}</strong></span>
+                            </div>
+                        </div>
+
+                        {topicDetails.map((detail, index) => (
+                            <div key={index} style={{marginBottom: 16}}>
+                                <Table
+                                    columns={queueColumns}
+                                    dataSource={detail.queueStatInfoList}
+                                    rowKey={(record) => `${record.brokerName}-${record.queueId}`}
+                                    pagination={false}
+                                    size="small"
+                                    bordered
+                                    scroll={{x: 'max-content'}}
+                                />
+                            </div>
+                        ))}
                     </div>
                 ))}
             </Spin>

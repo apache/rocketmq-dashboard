@@ -18,10 +18,10 @@
 package org.apache.rocketmq.dashboard.controller;
 
 import org.apache.rocketmq.dashboard.model.PolicyRequest;
+import org.apache.rocketmq.dashboard.model.UserInfoDto;
 import org.apache.rocketmq.dashboard.model.request.UserCreateRequest;
 import org.apache.rocketmq.dashboard.model.request.UserUpdateRequest;
 import org.apache.rocketmq.dashboard.service.impl.AclServiceImpl;
-import org.apache.rocketmq.remoting.protocol.body.UserInfo;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -44,16 +44,18 @@ public class AclController {
 
     @GetMapping("/users.query")
     @ResponseBody
-    public List<UserInfo> listUsers(@RequestParam(required = false) String brokerAddress) {
-        return aclService.listUsers(brokerAddress);
+    public List<UserInfoDto> listUsers(@RequestParam(required = false) String brokerName,
+                                       @RequestParam(required = false) String clusterName) {
+        return aclService.listUsers(clusterName, brokerName);
     }
 
     @GetMapping("/acls.query")
     @ResponseBody
     public Object listAcls(
-            @RequestParam(required = false) String brokerAddress,
-            @RequestParam(required = false) String searchParam) {
-        return aclService.listAcls(brokerAddress, searchParam);
+            @RequestParam(required = false) String brokerName,
+            @RequestParam(required = false) String searchParam,
+            @RequestParam(required = false) String clusterName) {
+        return aclService.listAcls(clusterName, brokerName, searchParam);
     }
 
     @PostMapping("/createAcl.do")
@@ -65,30 +67,35 @@ public class AclController {
 
     @DeleteMapping("/deleteUser.do")
     @ResponseBody
-    public Object deleteUser(@RequestParam(required = false) String brokerAddress, @RequestParam String username) {
-        aclService.deleteUser(brokerAddress, username);
+    public Object deleteUser(@RequestParam(required = false) String brokerName,
+                             @RequestParam String username,
+                             @RequestParam(required = false) String clusterName) {
+        aclService.deleteUser(clusterName, brokerName, username);
         return true;
     }
 
     @RequestMapping(value = "/updateUser.do", method = RequestMethod.POST, produces = "application/json;charset=UTF-8")
     @ResponseBody
     public Object updateUser(@RequestBody UserUpdateRequest request) {
-        aclService.updateUser(request.getBrokerAddress(), request.getUserInfo());
+        aclService.updateUser(request.getClusterName(), request.getBrokerName(), request.getUserInfo());
         return true;
     }
 
     @PostMapping("/createUser.do")
+    @ResponseBody
     public Object createUser(@RequestBody UserCreateRequest request) {
-        aclService.createUser(request.getBrokerAddress(), request.getUserInfo());
+        aclService.createUser(request.getClusterName(), request.getBrokerName(), request.getUserInfo());
         return true;
     }
 
     @DeleteMapping("/deleteAcl.do")
+    @ResponseBody
     public Object deleteAcl(
-            @RequestParam(required = false) String brokerAddress,
+            @RequestParam(required = false) String brokerName,
+            @RequestParam(required = false) String clusterName,
             @RequestParam String subject,
             @RequestParam(required = false) String resource) {
-        aclService.deleteAcl(brokerAddress, subject, resource);
+        aclService.deleteAcl(clusterName, brokerName, subject, resource);
         return true;
     }
 
