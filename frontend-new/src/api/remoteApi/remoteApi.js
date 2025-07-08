@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 const appConfig = {
-    apiBaseUrl: 'http://localhost:8082' // 请替换为你的实际 API Base URL
+    apiBaseUrl: 'http://localhost:8082'
 };
 
 let _redirectHandler = null;
@@ -74,34 +74,36 @@ const remoteApi = {
         }
     },
 
-    listUsers: async (brokerAddress) => {
+    listUsers: async (brokerName, clusterName) => {
         const params = new URLSearchParams();
-        if (brokerAddress) params.append('brokerAddress', brokerAddress);
+        if (brokerName) params.append('brokerName', brokerName);
+        if (clusterName) params.append('clusterName', clusterName);
         const response = await remoteApi._fetch(remoteApi.buildUrl(`/acl/users.query?${params.toString()}`));
         return await response.json();
     },
 
-    createUser: async (brokerAddress, userInfo) => {
+    createUser: async (brokerName, userInfo, clusterName) => {
         const response = await remoteApi._fetch(remoteApi.buildUrl('/acl/createUser.do'), {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({brokerAddress, userInfo})
-        });
-        return await response.json(); // 返回字符串消息
-    },
-
-    updateUser: async (brokerAddress, userInfo) => {
-        const response = await remoteApi._fetch(remoteApi.buildUrl('/acl/updateUser.do'), {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({brokerAddress, userInfo})
+            body: JSON.stringify({brokerName, userInfo, clusterName})
         });
         return await response.json();
     },
 
-    deleteUser: async (brokerAddress, username) => {
+    updateUser: async (brokerName, userInfo, clusterName) => {
+        const response = await remoteApi._fetch(remoteApi.buildUrl('/acl/updateUser.do'), {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({brokerName, userInfo, clusterName})
+        });
+        return await response.json();
+    },
+
+    deleteUser: async (brokerName, username, clusterName) => {
         const params = new URLSearchParams();
-        if (brokerAddress) params.append('brokerAddress', brokerAddress);
+        if (brokerName) params.append('brokerName', brokerName);
+        if (clusterName) params.append('clusterName', clusterName);
         params.append('username', username);
         const response = await remoteApi._fetch(remoteApi.buildUrl(`/acl/deleteUser.do?${params.toString()}`), {
             method: 'DELETE'
@@ -109,38 +111,40 @@ const remoteApi = {
         return await response.json();
     },
 
-    // --- ACL 权限相关 API ---
-    listAcls: async (brokerAddress, searchParam) => {
+    listAcls: async (brokerName, searchParam, clusterName) => {
         const params = new URLSearchParams();
-        if (brokerAddress) params.append('brokerAddress', brokerAddress);
+        if (brokerName) params.append('brokerName', brokerName);
+        if (clusterName) params.append('clusterName', clusterName);
         if (searchParam) params.append('searchParam', searchParam);
+        if (searchParam != null) console.log(1111)
         const response = await remoteApi._fetch(remoteApi.buildUrl(`/acl/acls.query?${params.toString()}`));
         return await response.json();
     },
 
-    createAcl: async (brokerAddress, subject, policies) => {
+    createAcl: async (brokerName, subject, policies, clusterName) => {
         const response = await remoteApi._fetch(remoteApi.buildUrl('/acl/createAcl.do'), {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({brokerAddress, subject, policies})
+            body: JSON.stringify({brokerName, subject, policies, clusterName})
         });
         return await response.json();
     },
 
-    updateAcl: async (brokerAddress, subject, policies) => {
+    updateAcl: async (brokerName, subject, policies, clusterName) => {
         const response = await remoteApi._fetch(remoteApi.buildUrl('/acl/updateAcl.do'), {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({brokerAddress, subject, policies})
+            body: JSON.stringify({brokerName, subject, policies, clusterName})
         });
         return await response.json();
     },
 
-    deleteAcl: async (brokerAddress, subject, resource) => {
+    deleteAcl: async (brokerName, subject, resource, clusterName) => {
         const params = new URLSearchParams();
-        if (brokerAddress) params.append('brokerAddress', brokerAddress);
+        if (brokerName) params.append('brokerAddress', brokerName);
         params.append('subject', subject);
         if (resource) params.append('resource', resource);
+        if (clusterName) params.append('clusterName', clusterName);
         const response = await remoteApi._fetch(remoteApi.buildUrl(`/acl/deleteAcl.do?${params.toString()}`), {
             method: 'DELETE'
         });

@@ -16,15 +16,15 @@
  */
 
 import React, {useEffect, useState} from 'react';
-import {Modal, Spin, Table} from 'antd';
+import {Descriptions, Modal, Spin, Table, Tag, Tooltip} from 'antd';
 import {remoteApi} from '../../api/remoteApi/remoteApi';
 import {useLanguage} from '../../i18n/LanguageContext';
+
 
 const ClientInfoModal = ({visible, group, address, onCancel}) => {
     const {t} = useLanguage();
     const [loading, setLoading] = useState(false);
     const [connectionData, setConnectionData] = useState(null);
-    const [subscriptionData, setSubscriptionData] = useState(null);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -33,10 +33,8 @@ const ClientInfoModal = ({visible, group, address, onCancel}) => {
             setLoading(true);
             try {
                 const connResponse = await remoteApi.queryConsumerConnection(group, address);
-                const topicResponse = await remoteApi.queryTopicByConsumer(group, address);
 
                 if (connResponse.status === 0) setConnectionData(connResponse.data);
-                if (topicResponse.status === 0) setSubscriptionData(topicResponse.data);
             } finally {
                 setLoading(false);
             }
@@ -46,53 +44,118 @@ const ClientInfoModal = ({visible, group, address, onCancel}) => {
     }, [visible, group, address]);
 
     const connectionColumns = [
-        {title: 'ClientId', dataIndex: 'clientId'},
-        {title: 'ClientAddr', dataIndex: 'clientAddr'},
-        {title: 'Language', dataIndex: 'language'},
-        {title: 'Version', dataIndex: 'versionDesc'},
+        {
+            title: t.CLIENTID, dataIndex: 'clientId', key: 'clientId', width: 220, ellipsis: true,
+            render: (text) => (
+                <Tooltip title={text}>
+                    {text}
+                </Tooltip>
+            )
+        },
+        {title: t.CLIENTADDR, dataIndex: 'clientAddr', key: 'clientAddr', width: 150, ellipsis: true},
+        {title: t.LANGUAGE, dataIndex: 'language', key: 'language', width: 100},
+        {title: t.VERSION, dataIndex: 'versionDesc', key: 'versionDesc', width: 100},
     ];
 
     const subscriptionColumns = [
-        {title: 'Topic', dataIndex: 'topic'},
-        {title: 'SubExpression', dataIndex: 'subString'},
+        {
+            title: t.TOPIC, dataIndex: 'topic', key: 'topic', width: 250, ellipsis: true,
+            render: (text) => (
+                <Tooltip title={text}>
+                    {text}
+                </Tooltip>
+            )
+        },
+        {title: t.SUBSCRIPTION_EXPRESSION, dataIndex: 'subString', key: 'subString', width: 150, ellipsis: true},
+        {
+            title: t.EXPRESSION_TYPE, dataIndex: 'expressionType', key: 'expressionType', width: 120,
+            render: (text) => <Tag color="blue">{text}</Tag>
+        },
+        // --- Added Columns for TagsSet and CodeSet ---
+        {
+            title: t.TAGS_SET, // Ensure t.TAGS_SET is defined in your language file
+            dataIndex: 'tagsSet',
+            key: 'tagsSet',
+            width: 150,
+            render: (tags) => (
+                tags && tags.length > 0 ? (
+                    <Tooltip title={tags.join(', ')}>
+                        {tags.map((tag, index) => (
+                            <Tag key={index} color="default">{tag}</Tag>
+                        ))}
+                    </Tooltip>
+                ) : 'N/A'
+            ),
+            ellipsis: true,
+        },
+        {
+            title: t.CODE_SET, // Ensure t.CODE_SET is defined in your language file
+            dataIndex: 'codeSet',
+            key: 'codeSet',
+            width: 150,
+            render: (codes) => (
+                codes && codes.length > 0 ? (
+                    <Tooltip title={codes.join(', ')}>
+                        {codes.map((code, index) => (
+                            <Tag key={index} color="default">{code}</Tag>
+                        ))}
+                    </Tooltip>
+                ) : 'N/A'
+            ),
+            ellipsis: true,
+        },
+        // --- End of Added Columns ---
+        {title: t.SUB_VERSION, dataIndex: 'subVersion', key: 'subVersion', width: 150},
     ];
+
+    const formattedSubscriptionData = connectionData?.subscriptionTable
+        ? Object.keys(connectionData.subscriptionTable).map(key => ({
+            ...connectionData.subscriptionTable[key],
+            key: key,
+        }))
+        : [];
 
     return (
         <Modal
-            title={`[${group}]${t.CLIENT}`}
+            title={`[${group}] ${t.CLIENT_INFORMATION}`}
             visible={visible}
             onCancel={onCancel}
             footer={null}
-            width={800}
+            width={1200} // Increased width to accommodate more columns
         >
             <Spin spinning={loading}>
                 {connectionData && (
                     <>
+                        <Descriptions bordered column={2} title={t.CONNECTION_OVERVIEW} style={{marginBottom: 20}}>
+                            <Descriptions.Item label={t.CONSUME_TYPE}>
+                                <Tag color="green">{connectionData.consumeType}</Tag>
+                            </Descriptions.Item>
+                            <Descriptions.Item label={t.MESSAGE_MODEL}>
+                                <Tag color="geekblue">{connectionData.messageModel}</Tag>
+                            </Descriptions.Item>
+                            <Descriptions.Item label={t.CONSUME_FROM_WHERE}>
+                                <Tag color="purple">{connectionData.consumeFromWhere}</Tag>
+                            </Descriptions.Item>
+                        </Descriptions>
+
+                        <h3>{t.CLIENT_CONNECTIONS}</h3>
                         <Table
                             columns={connectionColumns}
                             dataSource={connectionData.connectionSet}
                             rowKey="clientId"
                             pagination={false}
+                            scroll={{x: 'max-content'}}
+                            style={{marginBottom: 20}}
                         />
-                        <h4>{t.SUBSCRIPTION}</h4>
+
+                        <h3>{t.CLIENT_SUBSCRIPTIONS}</h3>
                         <Table
                             columns={subscriptionColumns}
-                            dataSource={
-                                subscriptionData?.subscriptionTable
-                                    ? Object.entries(subscriptionData.subscriptionTable).map(([topic, detail]) => ({
-                                        topic,
-                                        ...detail,
-                                    }))
-                                    : []
-                            }
-                            rowKey="topic"
+                            dataSource={formattedSubscriptionData}
+                            rowKey="key"
                             pagination={false}
-                            locale={{
-                                emptyText: loading ? <Spin size="small"/> : t.NO_DATA
-                            }}
+                            scroll={{x: 'max-content'}}
                         />
-                        <p>ConsumeType: {connectionData.consumeType}</p>
-                        <p>MessageModel: {connectionData.messageModel}</p>
                     </>
                 )}
             </Spin>

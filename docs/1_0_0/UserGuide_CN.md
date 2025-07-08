@@ -94,8 +94,9 @@
 
 ## ACL2.0管理界面
 
-- 支持根据broker地址的acl规则的查询
+- 支持根据集群名字或者broker地址的acl规则的查询
 - acl规则的修改、新增、删除、查找
+- 如果只是选取了集群名字，那么查询的acl列表将会取交集，如果选取了brokerName，就会返回该broker的acl列表。
 - （不再支持acl1.0）
 
 ![image-20250706145313629](UserGuide_CN/image-20250706145313629.png)
