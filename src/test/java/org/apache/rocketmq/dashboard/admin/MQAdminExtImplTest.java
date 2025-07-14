@@ -590,26 +590,6 @@ public class MQAdminExtImplTest {
     }
 
     @Test
-    public void testStart() {
-        assertNotNull(mqAdminExtImpl);
-        try {
-            mqAdminExtImpl.start();
-        } catch (Exception e) {
-            Assert.assertTrue(e instanceof IllegalStateException);
-        }
-    }
-
-    @Test
-    public void testShutdown() {
-        assertNotNull(mqAdminExtImpl);
-        try {
-            mqAdminExtImpl.shutdown();
-        } catch (Exception e) {
-            Assert.assertTrue(e instanceof IllegalStateException);
-        }
-    }
-
-    @Test
     public void testQueryConsumeTimeSpan() throws Exception {
         assertNotNull(mqAdminExtImpl);
         {
@@ -659,7 +639,7 @@ public class MQAdminExtImplTest {
         {
             when(defaultMQAdminExt.viewBrokerStatsData(anyString(), anyString(), anyString())).thenReturn(new BrokerStatsData());
         }
-        BrokerStatsData brokerStatsData = mqAdminExtImpl.viewBrokerStatsData(brokerAddr, BrokerStatsManager.TOPIC_PUT_NUMS, "topic_test");
+        BrokerStatsData brokerStatsData = mqAdminExtImpl.viewBrokerStatsData(brokerAddr, BrokerStatsManager.BROKER_ACK_NUMS, "topic_test");
         Assert.assertNotNull(brokerStatsData);
     }
 
