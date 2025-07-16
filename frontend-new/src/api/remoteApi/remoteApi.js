@@ -316,7 +316,7 @@ const remoteApi = {
      */
     queryMessageByTopicAndKey: async (topic, key) => {
         try {
-            const response = await remoteApi._fetch(remoteApi.buildUrl(`/message/queryMessageByTopicAndKey.query?topic=${topic}&key=${key}`));
+            const response = await remoteApi._fetch(remoteApi.buildUrl(`/message/queryMessageByTopicAndKey.query?topic=${encodeURIComponent(topic)}&key=${key}`));
             const data = await response.json();
             return data;
         } catch (error) {
@@ -559,7 +559,7 @@ const remoteApi = {
 
     getTopicStats: async (topic) => {
         try {
-            const response = await remoteApi._fetch(remoteApi.buildUrl(`/topic/stats.query?topic=${topic}`));
+            const response = await remoteApi._fetch(remoteApi.buildUrl(`/topic/stats.query?topic=${encodeURIComponent(topic)}`));
             return await response.json();
         } catch (error) {
             console.error("Error fetching topic stats:", error);
@@ -569,7 +569,7 @@ const remoteApi = {
 
     getTopicRoute: async (topic) => {
         try {
-            const response = await remoteApi._fetch(remoteApi.buildUrl(`/topic/route.query?topic=${topic}`));
+            const response = await remoteApi._fetch(remoteApi.buildUrl(`/topic/route.query?topic=${encodeURIComponent(topic)}`));
             return await response.json();
         } catch (error) {
             console.error("Error fetching topic route:", error);
@@ -579,7 +579,7 @@ const remoteApi = {
 
     getTopicConsumers: async (topic) => {
         try {
-            const response = await remoteApi._fetch(remoteApi.buildUrl(`/topic/queryConsumerByTopic.query?topic=${topic}`));
+            const response = await remoteApi._fetch(remoteApi.buildUrl(`/topic/queryConsumerByTopic.query?topic=${encodeURIComponent(topic)}`));
             return await response.json();
         } catch (error) {
             console.error("Error fetching topic consumers:", error);
@@ -589,7 +589,7 @@ const remoteApi = {
 
     getTopicConsumerGroups: async (topic) => {
         try {
-            const response = await remoteApi._fetch(remoteApi.buildUrl(`/topic/queryTopicConsumerInfo.query?topic=${topic}`));
+            const response = await remoteApi._fetch(remoteApi.buildUrl(`/topic/queryTopicConsumerInfo.query?topic=${encodeURIComponent(topic)}`));
             return await response.json();
         } catch (error) {
             console.error("Error fetching consumer groups:", error);
@@ -599,7 +599,7 @@ const remoteApi = {
 
     getTopicConfig: async (topic) => {
         try {
-            const response = await remoteApi._fetch(remoteApi.buildUrl(`/topic/examineTopicConfig.query?topic=${topic}`));
+            const response = await remoteApi._fetch(remoteApi.buildUrl(`/topic/examineTopicConfig.query?topic=${encodeURIComponent(topic)}`));
             return await response.json();
         } catch (error) {
             console.error("Error fetching topic config:", error);
