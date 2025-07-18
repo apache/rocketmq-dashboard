@@ -592,9 +592,10 @@ export const translations = {
         "EXPRESSION_TYPE": "Expression Type",
         "SUB_VERSION": "Sub Version",
         "CODE_SET": "Code Set",
-        "TAGS_SET": "Tags Set"
-
-
+        "TAGS_SET": "Tags Set",
+        "DELETE_CONSUMER_GROUP": "Delete Consumer Group",
+        "SELECT_DELETE_BROKERS": "Please select brokers to delete consumer group",
+        "CONFIRM_DELETE": "Confirm Delete",
     }
 
 };

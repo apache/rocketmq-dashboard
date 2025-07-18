@@ -21,7 +21,7 @@ import {remoteApi} from '../../api/remoteApi/remoteApi';
 import {useLanguage} from '../../i18n/LanguageContext';
 
 
-const ClientInfoModal = ({visible, group, address, onCancel}) => {
+const ClientInfoModal = ({visible, group, address, onCancel, messageApi}) => {
     const {t} = useLanguage();
     const [loading, setLoading] = useState(false);
     const [connectionData, setConnectionData] = useState(null);
@@ -34,7 +34,11 @@ const ClientInfoModal = ({visible, group, address, onCancel}) => {
             try {
                 const connResponse = await remoteApi.queryConsumerConnection(group, address);
 
-                if (connResponse.status === 0) setConnectionData(connResponse.data);
+                if (connResponse.status === 0) {
+                    setConnectionData(connResponse.data);
+                }else{
+                    messageApi.error(connResponse.errMsg);
+                }
             } finally {
                 setLoading(false);
             }
