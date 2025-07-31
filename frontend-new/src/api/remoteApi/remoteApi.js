@@ -355,6 +355,7 @@ const remoteApi = {
      */
     resendMessageDirectly: async (msgId, consumerGroup, topic) => {
         topic = encodeURIComponent(topic)
+        consumerGroup = encodeURIComponent(consumerGroup)
         try {
             const response = await remoteApi._fetch(remoteApi.buildUrl(`/message/consumeMessageDirectly.do?msgId=${msgId}&consumerGroup=${consumerGroup}&topic=${topic}`), {
                 method: 'POST',
@@ -392,6 +393,7 @@ const remoteApi = {
     },
 
     refreshConsumerGroup: async (consumerGroup) => {
+        consumerGroup = encodeURIComponent(consumerGroup)
         try {
             const response = await remoteApi._fetch(remoteApi.buildUrl(`/consumer/group.refresh?consumerGroup=${consumerGroup}`));
             const data = await response.json();
@@ -443,6 +445,7 @@ const remoteApi = {
     },
 
     fetchBrokerNameList: async (consumerGroup) => {
+        consumerGroup = encodeURIComponent(consumerGroup)
         try {
             const response = await remoteApi._fetch(remoteApi.buildUrl(`/consumer/fetchBrokerNameList.query?consumerGroup=${consumerGroup}`));
             const data = await response.json();
@@ -454,6 +457,7 @@ const remoteApi = {
     },
 
     deleteConsumerGroup: async (groupName, brokerNameList) => {
+        groupName = encodeURIComponent(groupName)
         try {
             const response = await remoteApi._fetch(remoteApi.buildUrl("/consumer/deleteSubGroup.do"), {
                 method: 'POST',
@@ -471,6 +475,7 @@ const remoteApi = {
     },
 
     queryConsumerConfig: async (consumerGroup) => {
+        consumerGroup = encodeURIComponent(consumerGroup)
         try {
             const response = await remoteApi._fetch(remoteApi.buildUrl(`/consumer/examineSubscriptionGroupConfig.query?consumerGroup=${consumerGroup}`));
             const data = await response.json();
@@ -499,6 +504,7 @@ const remoteApi = {
     },
 
     queryTopicByConsumer: async (consumerGroup, address) => {
+        consumerGroup = encodeURIComponent(consumerGroup)
         try {
             const response = await remoteApi._fetch(remoteApi.buildUrl(`/consumer/queryTopicByConsumer.query?consumerGroup=${consumerGroup}&address=${address}`));
             const data = await response.json();
@@ -510,6 +516,7 @@ const remoteApi = {
     },
 
     queryConsumerConnection: async (consumerGroup, address) => {
+        consumerGroup = encodeURIComponent(consumerGroup)
         try {
             const response = await remoteApi._fetch(remoteApi.buildUrl(`/consumer/consumerConnection.query?consumerGroup=${consumerGroup}&address=${address}`));
             const data = await response.json();
@@ -521,6 +528,7 @@ const remoteApi = {
     },
 
     queryConsumerRunningInfo: async (consumerGroup, clientId, jstack = false) => {
+        consumerGroup = encodeURIComponent(consumerGroup)
         try {
             const response = await remoteApi._fetch(remoteApi.buildUrl(`/consumer/consumerRunningInfo.query?consumerGroup=${consumerGroup}&clientId=${clientId}&jstack=${jstack}`));
             const data = await response.json();

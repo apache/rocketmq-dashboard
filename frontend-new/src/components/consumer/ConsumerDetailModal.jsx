@@ -20,7 +20,7 @@ import {Modal, Spin, Table} from 'antd';
 import {remoteApi} from '../../api/remoteApi/remoteApi';
 import {useLanguage} from '../../i18n/LanguageContext';
 
-const ConsumerDetailModal = ({visible, group, address, onCancel}) => {
+const ConsumerDetailModal = ({visible, group, address, onCancel ,messageApi}) => {
     const {t} = useLanguage();
     const [loading, setLoading] = useState(false);
     const [details, setDetails] = useState([]);
@@ -34,6 +34,10 @@ const ConsumerDetailModal = ({visible, group, address, onCancel}) => {
                 const response = await remoteApi.queryTopicByConsumer(group, address);
                 if (response.status === 0) {
                     setDetails(response.data);
+                }else {
+                    // Handle error case
+                    messageApi.error(response.errMsg);
+                    setDetails([]);
                 }
             } finally {
                 setLoading(false);
