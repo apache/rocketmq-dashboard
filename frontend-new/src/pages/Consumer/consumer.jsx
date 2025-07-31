@@ -288,7 +288,6 @@ const ConsumerGroupList = () => {
         setShowConfig(true);
     };
 
-    // 修改操作按钮的点击处理函数
     const handleClient = (group, address) => {
         setSelectedGroup(group);
         setSelectedAddress(address);
@@ -550,12 +549,12 @@ const ConsumerGroupList = () => {
                     />
                 </Spin>
 
-                {/* 模态框组件保持不变 */}
                 <ClientInfoModal
                     visible={showClientInfo}
                     group={selectedGroup}
                     address={selectedAddress}
                     onCancel={() => setShowClientInfo(false)}
+                    messageApi={messageApi}
                 />
 
                 <ConsumerDetailModal
@@ -563,6 +562,7 @@ const ConsumerGroupList = () => {
                     group={selectedGroup}
                     address={selectedAddress}
                     onCancel={() => setShowConsumeDetail(false)}
+                    messageApi={messageApi}
                 />
 
                 <ConsumerConfigModal
@@ -579,6 +579,7 @@ const ConsumerGroupList = () => {
                     group={selectedGroup}
                     onCancel={() => setShowDeleteModal(false)}
                     onSuccess={loadConsumerGroups}
+                    t={t}
                 />
             </div>
         </>

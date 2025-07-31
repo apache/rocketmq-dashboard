@@ -283,6 +283,7 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
 
     @Override
     public List<TopicConsumerInfo> queryConsumeStatsListByGroupName(String groupName, String address) {
+        groupName = getConsumerGroup(groupName);
         List<ConsumeStats> consumeStatses = new ArrayList<>();
         String topic = null;
         try {
@@ -295,9 +296,10 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
             throw new RuntimeException(e);
         }
         List<TopicConsumerInfo> res = new ArrayList<>();
+        String finalGroupName = groupName;
         consumeStatses.forEach(consumeStats -> {
             if (consumeStats != null && consumeStats.getOffsetTable() != null && !consumeStats.getOffsetTable().isEmpty()) {
-                res.addAll(toTopicConsumerInfoList(topic, consumeStats, groupName));
+                res.addAll(toTopicConsumerInfoList(topic, consumeStats, finalGroupName));
             }
         });
         return res;
@@ -305,6 +307,7 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
 
     @Override
     public List<TopicConsumerInfo> queryConsumeStatsList(final String topic, String groupName) {
+        groupName = getConsumerGroup(groupName);
         ConsumeStats consumeStats = null;
         try {
             consumeStats = mqAdminExt.examineConsumeStats(groupName, topic);
@@ -316,6 +319,7 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
     }
 
     private List<TopicConsumerInfo> toTopicConsumerInfoList(String topic, ConsumeStats consumeStats, String groupName) {
+        groupName = getConsumerGroup(groupName);
         List<MessageQueue> mqList = Lists.newArrayList(Iterables.filter(consumeStats.getOffsetTable().keySet(), new Predicate<MessageQueue>() {
             @Override
             public boolean apply(MessageQueue o) {
@@ -339,6 +343,7 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
     }
 
     private Map<MessageQueue, String> getClientConnection(String groupName) {
+        groupName = getConsumerGroup(groupName);
         Map<MessageQueue, String> results = Maps.newHashMap();
         try {
             ConsumerConnection consumerConnection = mqAdminExt.examineConsumerConnectionInfo(groupName);
@@ -417,7 +422,8 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
     }
 
     @Override
-    public List<ConsumerConfigInfo> examineSubscriptionGroupConfig(String group) {
+    public List<ConsumerConfigInfo> examineSubscriptionGroupConfig(String consumerGroup) {
+        consumerGroup = getConsumerGroup(consumerGroup);
         List<ConsumerConfigInfo> consumerConfigInfoList = Lists.newArrayList();
         try {
             ClusterInfo clusterInfo = clusterInfoService.get();
@@ -425,9 +431,9 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
                 String brokerAddress = clusterInfo.getBrokerAddrTable().get(brokerName).selectBrokerAddr();
                 SubscriptionGroupConfig subscriptionGroupConfig = null;
                 try {
-                    subscriptionGroupConfig = mqAdminExt.examineSubscriptionGroupConfig(brokerAddress, group);
+                    subscriptionGroupConfig = mqAdminExt.examineSubscriptionGroupConfig(brokerAddress, consumerGroup);
                 } catch (Exception e) {
-                    logger.warn("op=examineSubscriptionGroupConfig_error brokerName={} group={}", brokerName, group);
+                    logger.warn("op=examineSubscriptionGroupConfig_error brokerName={} group={}", brokerName, consumerGroup);
                 }
                 if (subscriptionGroupConfig == null) {
                     continue;
@@ -480,6 +486,7 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
 
     @Override
     public boolean createAndUpdateSubscriptionGroupConfig(ConsumerConfigInfo consumerConfigInfo) {
+        consumerConfigInfo.getSubscriptionGroupConfig().setGroupName(getConsumerGroup(consumerConfigInfo.getSubscriptionGroupConfig().getGroupName()));
         try {
             ClusterInfo clusterInfo = clusterInfoService.get();
             for (String brokerName : changeToBrokerNameSet(clusterInfo.getClusterAddrTable(),
@@ -495,6 +502,7 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
 
     @Override
     public Set<String> fetchBrokerNameSetBySubscriptionGroup(String group) {
+        group = getConsumerGroup(group);
         Set<String> brokerNameSet = Sets.newHashSet();
         try {
             List<ConsumerConfigInfo> consumerConfigInfoList = examineSubscriptionGroupConfig(group);
@@ -511,6 +519,7 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
 
     @Override
     public ConsumerConnection getConsumerConnection(String consumerGroup, String address) {
+        consumerGroup = getConsumerGroup(consumerGroup);
         try {
             String[] addresses = address.split(",");
             String addr = addresses[0];
@@ -523,6 +532,7 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
 
     @Override
     public ConsumerRunningInfo getConsumerRunningInfo(String consumerGroup, String clientId, boolean jstack) {
+        consumerGroup = getConsumerGroup(consumerGroup);
         try {
             return mqAdminExt.getConsumerRunningInfo(consumerGroup, clientId, jstack);
         } catch (Exception e) {
@@ -533,7 +543,6 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
 
     @Override
     public GroupConsumeInfo refreshGroup(String address, String consumerGroup) {
-
         if (isCacheBeingBuilt || cacheConsumeInfoList.isEmpty()) {
             throw new RuntimeException("Cache is being built or empty, please try again later");
         }
@@ -541,7 +550,7 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
             for (int i = 0; i < cacheConsumeInfoList.size(); i++) {
                 GroupConsumeInfo groupConsumeInfo = cacheConsumeInfoList.get(i);
                 if (groupConsumeInfo.getGroup().equals(consumerGroup)) {
-                    GroupConsumeInfo updatedInfo = queryGroup(consumerGroup, "");
+                    GroupConsumeInfo updatedInfo = queryGroup(consumerGroup, address);
                     updatedInfo.setUpdateTime(new Date());
                     updatedInfo.setGroup(consumerGroup);
                     updatedInfo.setAddress(consumerGroupMap.get(consumerGroup));
@@ -558,5 +567,12 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
         cacheConsumeInfoList.clear();
         consumerGroupMap.clear();
         return queryGroupList(false, address);
+    }
+
+    public String getConsumerGroup(String consumerGroup) {
+        if (consumerGroup != null && consumerGroup.startsWith("%SYS%")) {
+            return consumerGroup.substring(5); // Remove "%SYS%" prefix
+        }
+        return consumerGroup;
     }
 }

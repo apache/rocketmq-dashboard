@@ -18,15 +18,12 @@
 import React, {useEffect, useState} from 'react';
 import {Button, Checkbox, Modal, notification, Spin} from 'antd';
 import {remoteApi} from '../../api/remoteApi/remoteApi';
-import {useLanguage} from '../../i18n/LanguageContext';
 
-const DeleteConsumerModal = ({visible, group, onCancel, onSuccess}) => {
-    const {t} = useLanguage();
+const DeleteConsumerModal = ({visible, group, onCancel, onSuccess, t}) => {
     const [brokerList, setBrokerList] = useState([]);
     const [selectedBrokers, setSelectedBrokers] = useState([]);
     const [loading, setLoading] = useState(false);
 
-    // 获取Broker列表
     useEffect(() => {
         const fetchBrokers = async () => {
             if (!visible) return;
@@ -45,7 +42,6 @@ const DeleteConsumerModal = ({visible, group, onCancel, onSuccess}) => {
         fetchBrokers();
     }, [visible, group]);
 
-    // 处理删除提交
     const handleDelete = async () => {
         if (selectedBrokers.length === 0) {
             notification.warning({message: t.PLEASE_SELECT_BROKER});
