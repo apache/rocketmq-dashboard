@@ -16,8 +16,7 @@
   ~ limitations under the License.
   -->
 
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 
     <parent>
         <groupId>org.apache</groupId>
@@ -29,14 +28,14 @@
     <groupId>org.apache.rocketmq</groupId>
     <artifactId>rocketmq-dashboard</artifactId>
     <packaging>jar</packaging>
-    <version>2.0.1-SNAPSHOT</version>
+    <version>2.1.0</version>
     <name>rocketmq-dashboard</name>
 
     <scm>
         <url>git@github.com:apache/rocketmq-dashboard.git</url>
         <connection>scm:git:git@github.com:apache/rocketmq-dashboard.git</connection>
         <developerConnection>scm:git:git@github.com:apache/rocketmq-dashboard.git</developerConnection>
-        <tag>1.0.0</tag>
+        <tag>rocketmq-dashboard-2.1.0</tag>
     </scm>
 
     <mailingLists>
@@ -471,7 +470,7 @@
                         <configuration>
                             <target>
                                 <copy todir="${project.build.directory}/classes/public">
-                                    <fileset dir="${project.basedir}/frontend-new/build"/>
+                                    <fileset dir="${project.basedir}/frontend-new/build" />
                                 </copy>
                             </target>
                         </configuration>
