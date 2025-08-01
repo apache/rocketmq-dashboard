@@ -135,6 +135,7 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
         SYSTEM_GROUP_SET.add(MixAll.CID_ONSAPI_PERMISSION_GROUP);
         SYSTEM_GROUP_SET.add(MixAll.CID_ONSAPI_OWNER_GROUP);
         SYSTEM_GROUP_SET.add(MixAll.CID_SYS_RMQ_TRANS);
+        SYSTEM_GROUP_SET.add("CID_DefaultHeartBeatSyncerTopic");
     }
 
     @Override
@@ -147,7 +148,7 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
             if (cacheConsumeInfoList.isEmpty() && !isCacheBeingBuilt) {
                 isCacheBeingBuilt = true;
                 try {
-                    makeGroupListCache();
+                    makeGroupListCache(address);
                 } finally {
                     isCacheBeingBuilt = false;
                 }
@@ -173,7 +174,7 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
     }
 
 
-    public void makeGroupListCache() {
+    public void makeGroupListCache(String address) {
         SubscriptionGroupWrapper subscriptionGroupWrapper = null;
         try {
             ClusterInfo clusterInfo = clusterInfoService.get();
@@ -205,7 +206,7 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
             String consumerGroup = entry.getKey();
             executorService.submit(() -> {
                 try {
-                    GroupConsumeInfo consumeInfo = queryGroup(consumerGroup, "");
+                    GroupConsumeInfo consumeInfo = queryGroup(consumerGroup, address);
                     consumeInfo.setAddress(entry.getValue());
                     if (SYSTEM_GROUP_SET.contains(consumerGroup)) {
                         consumeInfo.setSubGroupType("SYSTEM");

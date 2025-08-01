@@ -270,7 +270,7 @@ const ConsumerGroupList = () => {
 
     const handleRefreshConsumerData = async () => {
         setLoading(true);
-        const refreshResult = await remoteApi.refreshAllConsumerGroup();
+        const refreshResult = await remoteApi.refreshAllConsumerGroup(selectedProxy);
         setLoading(false);
 
         if (refreshResult && refreshResult.status === 0) {

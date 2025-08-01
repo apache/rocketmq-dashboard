@@ -382,6 +382,9 @@ const remoteApi = {
     },
 
     queryConsumerGroupList: async (skipSysGroup, address) => {
+        if (address === undefined) {
+            address = ""
+        }
         try {
             const response = await remoteApi._fetch(remoteApi.buildUrl(`/consumer/groupList.query?skipSysGroup=${skipSysGroup}&address=${address}`));
             const data = await response.json();
@@ -404,9 +407,12 @@ const remoteApi = {
         }
     },
 
-    refreshAllConsumerGroup: async () => {
+    refreshAllConsumerGroup: async (address) => {
+        if (address === undefined) {
+            address = ""
+        }
         try {
-            const response = await remoteApi._fetch(remoteApi.buildUrl("/consumer/group.refresh.all"));
+            const response = await remoteApi._fetch(remoteApi.buildUrl(`/consumer/group.refresh.all?address=${address}`));
             const data = await response.json();
             return data;
         } catch (error) {
