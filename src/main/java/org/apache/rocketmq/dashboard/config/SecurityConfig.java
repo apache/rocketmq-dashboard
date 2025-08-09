@@ -61,7 +61,7 @@ public class SecurityConfig {
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("content-type", "Authorization", "X-Requested-With", "Origin", "Accept", "X-XSRF-TOKEN"));
         configuration.setAllowCredentials(true);
-        configuration.setMaxAge(0L);
+        configuration.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
