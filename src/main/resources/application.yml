@@ -33,6 +33,18 @@ spring:
   application:
     name: rocketmq-dashboard
 
+  security:
+    user:
+      name: rocketmq
+      password: 1234567
+      roles: ADMIN
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+
 logging:
   config: classpath:logback.xml
 
