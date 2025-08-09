@@ -31,7 +31,6 @@ import org.springframework.web.context.request.NativeWebRequest;
 import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.method.support.ModelAndViewContainer;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
-import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.ViewControllerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -90,17 +89,6 @@ public class AuthWebMVCConfigurerAdapter implements WebMvcConfigurer {
         });
     }
 
-    @Override
-    public void addCorsMappings(CorsRegistry registry) {
-
-        registry.addMapping("/**")
-                .allowedOriginPatterns("http://localhost:3003")
-                .allowedMethods("GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS")
-                .maxAge(3600)
-                .allowCredentials(true)
-                .allowedHeaders("content-type", "Authorization", "X-Requested-With", "Origin", "Accept")
-                .exposedHeaders("authorization");
-    }
 
 
     @Override
