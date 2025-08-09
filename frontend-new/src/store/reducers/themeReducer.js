@@ -28,7 +28,6 @@ const initialState = {
 const themeReducer = (state = initialState, action) => {
     switch (action.type) {
         case SET_THEME:
-            // 注意：reducer 应该返回新的状态对象，而不是直接修改旧状态
             return {
                 ...state,
                 currentThemeName: action.payload,

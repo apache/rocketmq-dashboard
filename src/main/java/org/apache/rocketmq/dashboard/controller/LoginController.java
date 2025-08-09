@@ -33,6 +33,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.ResponseBody;
@@ -65,7 +66,7 @@ public class LoginController {
 
     @RequestMapping(value = "/login.do", method = RequestMethod.POST)
     @ResponseBody
-    public Object login(org.apache.rocketmq.remoting.protocol.body.UserInfo userInfoRequest,
+    public Object login(@RequestBody org.apache.rocketmq.remoting.protocol.body.UserInfo userInfoRequest,
                         HttpServletRequest request,
                         HttpServletResponse response) throws Exception {
         logger.info("user:{} login", userInfoRequest.getUsername());

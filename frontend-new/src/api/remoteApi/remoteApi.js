@@ -14,6 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 const appConfig = {
     apiBaseUrl: 'http://localhost:8082'
 };
@@ -33,29 +34,73 @@ const remoteApi = {
         return `${appConfig.apiBaseUrl}/${endpoint}`;
     },
 
-    _fetch: async (url, options) => {
+
+    async getCsrfToken() {
+        const csrfToken = this.getCookie();
+
+        if (csrfToken) {
+            return csrfToken;
+        }
+
+        const response = await fetch(remoteApi.buildUrl("/rocketmq-dashboard/csrf-token"), {
+            method: 'GET',
+            credentials: 'include'
+        });
+
+        const newCsrfToken = this.getCookie();
+        if (!newCsrfToken) {
+            console.error("Failed to get CSRF Token");
+            throw new Error("CSRF Token not available");
+        }
+        return newCsrfToken;
+    },
+
+    getCookie() {
+        return document.cookie.replace(/(?:(?:^|.*;\s*)XSRF-TOKEN\s*\=\s*([^;]*).*$)|^.*$/, '$1')
+    },
+
+    _fetch: async (url, options = {}) => {
+        const headers = {
+            ...options.headers,
+            'Content-Type': 'application/json',
+        };
+
+
+        const csrfToken = await remoteApi.getCsrfToken();
+        console.log(csrfToken)
+        if (!csrfToken) {
+            console.warn('CSRF Token not found');
+        }else{
+            headers["X-XSRF-TOKEN"] = csrfToken;
+        }
+        console.log(csrfToken)
+
+
         try {
-            // 在 options 中添加 credentials: 'include'
             const response = await fetch(url, {
-                ...options, // 保留原有的 options
-                credentials: 'include' // 关键改动：允许发送 Cookie
+                ...options,
+                headers,
+                credentials: 'include',
             });
 
-
-            // 检查响应是否被重定向，并且最终的 URL 包含了登录页的路径。
-            // 这是会话过期或需要认证时后端重定向到登录页的常见模式。
-            // 注意：fetch 会自动跟随 GET 请求的 3xx 重定向，所以我们检查的是 response.redirected。
             if (response.redirected) {
                 if (_redirectHandler) {
-                    _redirectHandler(); // 如果设置了重定向处理函数，则调用它
+                    _redirectHandler();
                 }
                 return {__isRedirectHandled: true};
             }
 
+            if(response.status == 403){
+                window.localStorage.removeItem("csrfToken");
+                console.log(111)
+                await remoteApi.getCsrfToken()
+            }
             return response;
         } catch (error) {
-            console.error("Fetch 请求出错:", error);
-            throw error;
+            console.error('fetch error:', error);
+            window.localStorage.removeItem("csrfToken");
+            console.log(111)
+            await remoteApi.getCsrfToken()
         }
     },
 
@@ -232,24 +277,19 @@ const remoteApi = {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
 
-            // 假设服务器总是返回 JSON
             const data = await response.json();
 
-            // 1. 打开一个新的空白窗口
             const newWindow = window.open('', '_blank');
 
             if (!newWindow) {
-                // 浏览器可能会阻止弹窗，需要用户允许
                 return {status: 1, errMsg: "Failed to open new window. Please allow pop-ups for this site."};
             }
 
-            // 2. 将 JSON 数据格式化后写入新窗口
             newWindow.document.write('<html><head><title>DLQ 导出内容</title></head><body>');
             newWindow.document.write('<h1>DLQ 导出 JSON 内容</h1>');
-            // 使用 <pre> 标签保持格式，并使用 JSON.stringify 格式化 JSON 以便于阅读
             newWindow.document.write('<pre>' + JSON.stringify(data, null, 2) + '</pre>');
             newWindow.document.write('</body></html>');
-            newWindow.document.close(); // 关闭文档流，确保内容显示
+            newWindow.document.close();
 
             return {status: 0, msg: "导出请求成功，内容已在新页面显示"};
         } catch (error) {
@@ -382,6 +422,9 @@ const remoteApi = {
     },
 
     queryConsumerGroupList: async (skipSysGroup, address) => {
+        if (address === undefined) {
+            address = ""
+        }
         try {
             const response = await remoteApi._fetch(remoteApi.buildUrl(`/consumer/groupList.query?skipSysGroup=${skipSysGroup}&address=${address}`));
             const data = await response.json();
@@ -404,9 +447,12 @@ const remoteApi = {
         }
     },
 
-    refreshAllConsumerGroup: async () => {
+    refreshAllConsumerGroup: async (address) => {
+        if (address === undefined) {
+            address = ""
+        }
         try {
-            const response = await remoteApi._fetch(remoteApi.buildUrl("/consumer/group.refresh.all"));
+            const response = await remoteApi._fetch(remoteApi.buildUrl(`/consumer/group.refresh.all?address=${address}`));
             const data = await response.json();
             return data;
         } catch (error) {
@@ -875,21 +921,17 @@ const remoteApi = {
     login: async (username, password) => {
         try {
 
-
-            // 2. 发送请求，注意 body 可以是空字符串或 null，或者直接省略 body
-            // 这里使用 GET 方法，因为参数在 URL 上
             const response = await remoteApi._fetch(remoteApi.buildUrl("/login/login.do"), {
                 method: 'POST',
+                body: JSON.stringify({
+                    username: username,
+                    password: password
+                }),
                 headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded' // 这个 header 可能不再需要，或者需要调整
-                },
-                body: new URLSearchParams({
-                    username: username, // 假设 username 是变量名
-                    password: password  // 假设 password 是变量名
-                }).toString()
+                    'Content-Type': 'application/json'
+                }
             });
 
-            // 3. 处理响应
             const data = await response.json();
             return data;
         } catch (error) {

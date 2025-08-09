@@ -20,7 +20,6 @@ import {defaultTheme, themes} from '../../assets/styles/theme';
 import {setTheme} from '../actions/themeActions';
 
 export const useTheme = () => {
-    // 从 Redux store 中取出 currentThemeName
     const currentThemeName = useSelector(state => state.theme.currentThemeName);
     const dispatch = useDispatch();
 

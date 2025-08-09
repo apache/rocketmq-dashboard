@@ -15,32 +15,31 @@
  * limitations under the License.
  */
 
-package org.apache.rocketmq.dashboard.interceptor;
+package org.apache.rocketmq.dashboard.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.apache.rocketmq.dashboard.service.LoginService;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
-import org.springframework.web.servlet.HandlerInterceptor;
+import org.springframework.security.web.csrf.CsrfToken;
+import org.springframework.security.web.csrf.CsrfTokenRepository;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.bind.annotation.RestController;
 
-
-@Component
-public class AuthInterceptor implements HandlerInterceptor {
+@RestController
+@RequestMapping(value = "/rocketmq-dashboard")
+public class CsrfTokenController {
 
     @Autowired
-    private LoginService loginService;
+    private CsrfTokenRepository csrfTokenRepository;
 
-    @Override
-    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
-        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
-            return true;
-        }
-        if (request.getRequestURL().toString().contains("/rocketmq-dashboard/csrf-token")) {
-            return true;
-        }
-        return loginService.login(request, response);
+    @RequestMapping(value = "/csrf-token", method = RequestMethod.GET)
+    @ResponseBody
+    public Object getCsrfToken(HttpServletRequest request, HttpServletResponse response) {
+        CsrfToken token = csrfTokenRepository.generateToken(request);
+        csrfTokenRepository.saveToken(token, request, response);
+
+        return token;
     }
-
-
 }

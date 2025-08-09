@@ -38,6 +38,7 @@ const ClientInfoModal = ({visible, group, address, onCancel, messageApi}) => {
                     setConnectionData(connResponse.data);
                 }else{
                     messageApi.error(connResponse.errMsg);
+                    setConnectionData(null);
                 }
             } finally {
                 setLoading(false);
