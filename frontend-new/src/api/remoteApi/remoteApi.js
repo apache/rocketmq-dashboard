@@ -16,7 +16,7 @@
  */
 
 const appConfig = {
-    apiBaseUrl: 'http://localhost:8082'
+    apiBaseUrl: ''
 };
 
 let _redirectHandler = null;
@@ -70,7 +70,7 @@ const remoteApi = {
         console.log(csrfToken)
         if (!csrfToken) {
             console.warn('CSRF Token not found');
-        }else{
+        } else {
             headers["X-XSRF-TOKEN"] = csrfToken;
         }
         console.log(csrfToken)
@@ -90,7 +90,7 @@ const remoteApi = {
                 return {__isRedirectHandled: true};
             }
 
-            if(response.status == 403){
+            if (response.status == 403) {
                 window.localStorage.removeItem("csrfToken");
                 console.log(111)
                 await remoteApi.getCsrfToken()
@@ -823,9 +823,15 @@ const remoteApi = {
 
     queryBrokerHisData: async (date, callback) => {
         try {
-            const url = new URL(remoteApi.buildUrl('/dashboard/broker.query'));
-            url.searchParams.append('date', date);
-            const response = await remoteApi._fetch(url.toString(), {signal: AbortSignal.timeout(15000)}); // 15s timeout
+            let url = remoteApi.buildUrl('/dashboard/broker.query');
+            // 添加查询参数
+            if (url.includes('?')) {
+                url += '&date=' + date;
+            } else {
+                url += '?date=' + date;
+            }
+
+            const response = await remoteApi._fetch(url, {signal: AbortSignal.timeout(15000)});
             const data = await response.json();
             callback(data);
         } catch (error) {
@@ -839,11 +845,14 @@ const remoteApi = {
         }
     },
 
+
     queryTopicHisData: async (date, topicName, callback) => {
         try {
-            const url = new URL(remoteApi.buildUrl('/dashboard/topic.query'));
-            url.searchParams.append('date', date);
-            url.searchParams.append('topicName', topicName);
+            let url = remoteApi.buildUrl('/dashboard/topic.query');
+            // 添加查询参数
+            const separator = url.includes('?') ? '&' : '?';
+            url += `${separator}date=${encodeURIComponent(date)}&topicName=${encodeURIComponent(topicName)}`;
+
             const response = await remoteApi._fetch(url.toString(), {signal: AbortSignal.timeout(15000)}); // 15s timeout
             const data = await response.json();
             callback(data);
@@ -876,8 +885,11 @@ const remoteApi = {
 
     queryBrokerConfig: async (brokerAddr, callback) => {
         try {
-            const url = new URL(remoteApi.buildUrl('/cluster/brokerConfig.query'));
-            url.searchParams.append('brokerAddr', brokerAddr);
+            let url = remoteApi.buildUrl('/cluster/brokerConfig.query');
+            // 添加查询参数
+            const separator = url.includes('?') ? '&' : '?';
+            url += `${separator}brokerAddr=${encodeURIComponent(brokerAddr)}`;
+
             const response = await remoteApi._fetch(url.toString());
             const data = await response.json();
             callback(data);
