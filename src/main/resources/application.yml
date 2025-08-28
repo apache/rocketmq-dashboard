@@ -64,7 +64,7 @@ rocketmq:
     # rocketmq-console's data path:dashboard/monitor
     dataPath: /tmp/rocketmq-console/data
     # set it false if you don't want use dashboard.default true
-    enableDashBoardCollect: false
+    enableDashBoardCollect: true
     # set the message track trace topic if you don't want use the default one
     msgTrackTopicName:
     ticketKey: ticket
