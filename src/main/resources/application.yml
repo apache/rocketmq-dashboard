@@ -52,7 +52,7 @@ rocketmq:
     # rocketmq-console's data path:dashboard/monitor
     dataPath: /tmp/rocketmq-console/data
     # set it false if you don't want use dashboard.default true
-    enableDashBoardCollect: true
+    enableDashBoardCollect: false
     # set the message track trace topic if you don't want use the default one
     msgTrackTopicName:
     ticketKey: ticket
@@ -67,7 +67,7 @@ rocketmq:
     useTLS: false
     proxyAddr: 127.0.0.1:8080
     proxyAddrs:
-      - 127.0.0.1:8080
+#      - 127.0.0.1:8080
     # set the accessKey and secretKey if you used acl
 #    accessKey: rocketmq2
 #    secretKey: 12345678
