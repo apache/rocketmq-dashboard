@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 const appConfig = {
-    apiBaseUrl: 'http://localhost:8082'
+    apiBaseUrl: process.env.REACT_APP_API_BASE_URL || window.location.origin
 };
 
 let _redirectHandler = null;
