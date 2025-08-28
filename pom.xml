@@ -28,14 +28,14 @@
     <groupId>org.apache.rocketmq</groupId>
     <artifactId>rocketmq-dashboard</artifactId>
     <packaging>jar</packaging>
-    <version>2.1.0</version>
+    <version>2.1.1-SNAPSHOT</version>
     <name>rocketmq-dashboard</name>
 
     <scm>
         <url>git@github.com:apache/rocketmq-dashboard.git</url>
         <connection>scm:git:git@github.com:apache/rocketmq-dashboard.git</connection>
         <developerConnection>scm:git:git@github.com:apache/rocketmq-dashboard.git</developerConnection>
-        <tag>rocketmq-dashboard-2.1.0</tag>
+        <tag>1.0.0</tag>
     </scm>
 
     <mailingLists>
@@ -147,6 +147,11 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
+            <version>${spring.boot.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
             <version>${spring.boot.version}</version>
         </dependency>
         <dependency>

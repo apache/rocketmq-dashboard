@@ -14,6 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 const appConfig = {
     apiBaseUrl: process.env.REACT_APP_API_BASE_URL || window.location.origin
 };
