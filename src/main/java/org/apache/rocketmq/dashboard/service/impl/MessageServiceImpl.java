@@ -370,6 +370,7 @@ public class MessageServiceImpl implements MessageService {
 
                 while (size > 0) {
                     PullResult pullResult = consumer.pull(queueOffsetInfo.getMessageQueues(), "*", start, 32);
+                    start = pullResult.getNextBeginOffset();
                     if (pullResult.getPullStatus() == PullStatus.FOUND) {
                         List<MessageExt> poll = pullResult.getMsgFoundList();
                         if (poll.size() == 0) {
@@ -437,6 +438,7 @@ public class MessageServiceImpl implements MessageService {
 
                 while (size > 0) {
                     PullResult pullResult = consumer.pull(queueOffsetInfo.getMessageQueues(), "*", start, 32);
+                    start = pullResult.getNextBeginOffset();
                     if (pullResult.getPullStatus() == PullStatus.FOUND) {
                         List<MessageExt> poll = pullResult.getMsgFoundList();
                         if (poll.size() == 0) {
