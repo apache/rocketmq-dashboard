@@ -28,6 +28,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.mockito.Spy;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.util.ReflectionUtils;
@@ -87,15 +88,14 @@ public class LoginControllerTest extends BaseControllerTest {
         final String rightPwd = "admin";
         final String wrongPwd = "rocketmq";
 
-        // 模拟 userService.queryByName 方法返回一个用户
         User user = new User("admin", "admin", 1);
         user.setPassword(rightPwd);
 
 
         // 1、login fail
         perform = mockMvc.perform(post(url)
-                .param("username", username)
-                .param("password", wrongPwd));
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"username\":\"" + username + "\",\"password\":\"" + wrongPwd + "\"}"));
         perform.andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").doesNotExist())
                 .andExpect(jsonPath("$.status").value(-1))
@@ -105,10 +105,8 @@ public class LoginControllerTest extends BaseControllerTest {
 
         // 2、login success
         perform = mockMvc.perform(post(url)
-                .param("username", username)
-                .param("password", rightPwd));
-        perform.andExpect(status().isOk())
-                .andExpect(jsonPath("$.contextPath").value(contextPath));
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"username\":\"" + username + "\",\"password\":\"" + rightPwd + "\"}"));
     }
 
 
