@@ -16,7 +16,7 @@
  */
 
 const appConfig = {
-    apiBaseUrl: 'http://localhost:8082'
+    apiBaseUrl: process.env.REACT_APP_API_BASE_URL || window.location.origin
 };
 
 let _redirectHandler = null;
@@ -954,21 +954,18 @@ const remoteApi = {
 };
 
 const tools = {
-    // 适配新的数据结构
     dashboardRefreshTime: 5000,
     generateBrokerMap: (brokerServer, clusterAddrTable, brokerAddrTable) => {
-        const clusterMap = {}; // 最终存储 { clusterName: [brokerInstance1, brokerInstance2, ...] }
+        const clusterMap = {};
 
         Object.entries(clusterAddrTable).forEach(([clusterName, brokerNamesInCluster]) => {
-            clusterMap[clusterName] = []; // 初始化当前集群的 broker 列表
+            clusterMap[clusterName] = [];
 
             brokerNamesInCluster.forEach(brokerName => {
-                // 从 brokerAddrTable 获取当前 brokerName 下的所有 brokerId 及其地址
-                const brokerAddrs = brokerAddrTable[brokerName]?.brokerAddrs; // 确保 brokerAddrs 存在
+                const brokerAddrs = brokerAddrTable[brokerName]?.brokerAddrs;
                 if (brokerAddrs) {
                     Object.entries(brokerAddrs).forEach(([brokerIdStr, address]) => {
-                        const brokerId = parseInt(brokerIdStr); // brokerId 是字符串，转为数字
-                        // 从 brokerServer 获取当前 brokerName 和 brokerId 对应的详细信息
+                        const brokerId = parseInt(brokerIdStr);
                         const detail = brokerServer[brokerName]?.[brokerIdStr];
 
                         if (detail) {
