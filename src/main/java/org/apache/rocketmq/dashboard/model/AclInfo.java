@@ -17,6 +17,8 @@
 
 package org.apache.rocketmq.dashboard.model;
 
+import org.apache.commons.collections.CollectionUtils;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -191,8 +193,8 @@ public class AclInfo {
                     for (org.apache.rocketmq.remoting.protocol.body.AclInfo.PolicyEntryInfo entry : policy.getEntries()) {
                         PolicyEntryInfo copiedEntry = new PolicyEntryInfo();
                         copiedEntry.setResource(entry.getResource());
-                        copiedEntry.setActions(new ArrayList<>(entry.getActions()));
-                        copiedEntry.setSourceIps(new ArrayList<>(entry.getSourceIps()));
+                        copiedEntry.setActions(CollectionUtils.isEmpty(entry.getActions()) ? new ArrayList<>() : new ArrayList<>(entry.getActions()));
+                        copiedEntry.setSourceIps(CollectionUtils.isEmpty(entry.getSourceIps()) ? new ArrayList<>() : new ArrayList<>(entry.getSourceIps()));
                         copiedEntry.setDecision(entry.getDecision());
                         copiedEntries.add(copiedEntry);
                     }
