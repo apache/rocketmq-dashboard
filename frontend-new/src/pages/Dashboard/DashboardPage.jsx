@@ -270,7 +270,7 @@ const DashboardPage = () => {
                 const xAxisData = [];
                 const data = [];
                 brokerArray.slice(0, 10).forEach(broker => {
-                    xAxisData.push(`${broker.brokerName}:${broker.brokerId}`);
+                    xAxisData.push(`${broker.brokerName}:${broker.index}`);
                     data.push(parseFloat(broker.msgGetTotalTodayNow || 0));
                 });
                 barChartInstance.current?.setOption(getBrokerBarChartOp(xAxisData, data));
