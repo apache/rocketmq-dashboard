@@ -306,7 +306,9 @@ export const translations = {
         "EXPRESSION_TYPE": "表达式类型",
         "SUB_VERSION": "订阅版本",
         "CODE_SET": "代码集",
-        "TAGS_SET": "标签集"
+        "TAGS_SET": "标签集",
+        "MASTER": "Master",
+        "SLAVE": "Slave",
     },
     en: {
         "DEFAULT": "Default",
@@ -596,6 +598,8 @@ export const translations = {
         "DELETE_CONSUMER_GROUP": "Delete Consumer Group",
         "SELECT_DELETE_BROKERS": "Please select brokers to delete consumer group",
         "CONFIRM_DELETE": "Confirm Delete",
+        "MASTER": "Master",
+        "SLAVE": "Slave",
     }
 
 };
