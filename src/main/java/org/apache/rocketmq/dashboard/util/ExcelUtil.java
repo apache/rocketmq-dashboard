@@ -22,16 +22,22 @@ import com.alibaba.excel.write.metadata.style.WriteCellStyle;
 import com.alibaba.excel.write.metadata.style.WriteFont;
 import com.alibaba.excel.write.style.HorizontalCellStyleStrategy;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.HorizontalAlignment;
 
 import java.io.OutputStream;
 import java.net.URLEncoder;
 import java.util.List;
 
+@Slf4j
 public class ExcelUtil {
 
     public static void writeExcel(HttpServletResponse response, List<? extends Object> data, String fileName,
                                   String sheetName, Class clazz) throws Exception {
+        if (data == null || data.isEmpty()) {
+            throw new IllegalArgumentException("Data list cannot be null or empty");
+        }
+        
         WriteCellStyle headWriteCellStyle = new WriteCellStyle();
         WriteFont writeFont = new WriteFont();
         writeFont.setFontHeightInPoints((short) 12);
@@ -43,8 +49,23 @@ public class ExcelUtil {
         contentWriteCellStyle.setWriteFont(writeFont);
         contentWriteCellStyle.setHorizontalAlignment(HorizontalAlignment.CENTER);
         HorizontalCellStyleStrategy horizontalCellStyleStrategy = new HorizontalCellStyleStrategy(headWriteCellStyle, contentWriteCellStyle);
-        EasyExcel.write(getOutputStream(fileName, response), clazz)
-                .excelType(ExcelTypeEnum.XLSX).sheet(sheetName).registerWriteHandler(horizontalCellStyleStrategy).doWrite(data);
+        
+        OutputStream outputStream = getOutputStream(fileName, response);
+        try {
+            log.info("Writing Excel file: {} rows, fileName={}, sheetName={}", data.size(), fileName, sheetName);
+            EasyExcel.write(outputStream, clazz)
+                    .excelType(ExcelTypeEnum.XLSX)
+                    .sheet(sheetName)
+                    .registerWriteHandler(horizontalCellStyleStrategy)
+                    .doWrite(data);
+            outputStream.flush();
+            log.info("Excel file written successfully: {} rows written", data.size());
+        } catch (Exception e) {
+            log.error("Error writing Excel file: {} rows, error: {}", data.size(), e.getMessage(), e);
+            throw e;
+        } finally {
+            // Don't close the output stream - let the container handle it
+        }
     }
 
     private static OutputStream getOutputStream(String fileName, HttpServletResponse response) throws Exception {

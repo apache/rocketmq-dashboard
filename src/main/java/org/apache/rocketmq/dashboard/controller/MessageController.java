@@ -16,9 +16,9 @@
  */
 package org.apache.rocketmq.dashboard.controller;
 
-import com.google.common.collect.Maps;
 import jakarta.annotation.Resource;
 import org.apache.rocketmq.common.Pair;
+import org.apache.rocketmq.dashboard.exception.ServiceException;
 import org.apache.rocketmq.dashboard.model.MessagePage;
 import org.apache.rocketmq.dashboard.model.MessageView;
 import org.apache.rocketmq.dashboard.model.request.MessageQuery;
@@ -38,7 +38,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 
 import java.util.List;
-import java.util.Map;
 
 @Controller
 @RequestMapping("/message")
@@ -51,11 +50,23 @@ public class MessageController {
     @RequestMapping(value = "/viewMessage.query", method = RequestMethod.GET)
     @ResponseBody
     public Object viewMessage(@RequestParam(required = false) String topic, @RequestParam String msgId) {
-        Map<String, Object> messageViewMap = Maps.newHashMap();
+        try {
         Pair<MessageView, List<MessageTrack>> messageViewListPair = messageService.viewMessage(topic, msgId);
-        messageViewMap.put("messageView", messageViewListPair.getObject1());
-        messageViewMap.put("messageTrackList", messageViewListPair.getObject2());
-        return messageViewMap;
+            MessageView messageView = messageViewListPair.getObject1();
+            if (messageView == null) {
+                logger.error("viewMessage returned null MessageView for topic: {}, msgId: {}", topic, msgId);
+                throw new ServiceException(-1, "Message not found");
+            }
+            // Return MessageView directly for frontend compatibility
+            // Frontend expects resp.data to be the MessageView object
+            return messageView;
+        } catch (ServiceException e) {
+            logger.error("ServiceException in viewMessage: topic={}, msgId={}, error={}", topic, msgId, e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            logger.error("Exception in viewMessage: topic={}, msgId={}", topic, msgId, e);
+            throw new ServiceException(-1, String.format("Failed to query message by Id: %s", msgId));
+        }
     }
 
     @PostMapping("/queryMessagePageByTopic.query")
@@ -83,8 +94,35 @@ public class MessageController {
                                          @RequestParam String msgId,
                                          @RequestParam(required = false) String clientId) {
         logger.info("msgId={} consumerGroup={} clientId={}", msgId, consumerGroup, clientId);
+        try {
         ConsumeMessageDirectlyResult consumeMessageDirectlyResult = messageService.consumeMessageDirectly(topic, msgId, consumerGroup, clientId);
         logger.info("consumeMessageDirectlyResult={}", JsonUtil.obj2String(consumeMessageDirectlyResult));
         return consumeMessageDirectlyResult;
+        } catch (RuntimeException e) {
+            logger.error("RuntimeException in consumeMessageDirectly: msgId={}, consumerGroup={}, error={}", 
+                    msgId, consumerGroup, e.getMessage());
+            // Check if the cause is MQBrokerException with "not online" error
+            Throwable cause = e.getCause();
+            if (cause instanceof org.apache.rocketmq.client.exception.MQBrokerException) {
+                org.apache.rocketmq.client.exception.MQBrokerException mqEx = 
+                    (org.apache.rocketmq.client.exception.MQBrokerException) cause;
+                if (mqEx.getMessage() != null && mqEx.getMessage().contains("not online")) {
+                    throw new ServiceException(-1, 
+                        String.format("Cannot resend message: Consumer group '%s' is not online. " +
+                                "Please ensure the consumer is running before resending DLQ messages.", consumerGroup));
+                }
+                throw new ServiceException(-1, String.format("Failed to resend message: %s", mqEx.getMessage()));
+            }
+            // Check if the error message itself contains "not online"
+            if (e.getMessage() != null && e.getMessage().contains("not online")) {
+                throw new ServiceException(-1, 
+                    String.format("Cannot resend message: Consumer group '%s' is not online. " +
+                            "Please ensure the consumer is running before resending DLQ messages.", consumerGroup));
+            }
+            throw new ServiceException(-1, String.format("Failed to resend message: %s", e.getMessage()));
+        } catch (Exception e) {
+            logger.error("Exception in consumeMessageDirectly: msgId={}, consumerGroup={}", msgId, consumerGroup, e);
+            throw new ServiceException(-1, String.format("Failed to resend message: %s", e.getMessage()));
+        }
     }
 }

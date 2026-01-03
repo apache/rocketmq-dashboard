@@ -17,6 +17,7 @@
 
 import React, {useCallback, useEffect, useState} from 'react';
 import {
+    AutoComplete,
     Button,
     Checkbox,
     DatePicker,
@@ -42,6 +43,7 @@ const {Text, Paragraph} = Typography;
 
 const SYS_GROUP_TOPIC_PREFIX = "CID_RMQ_SYS_"; // Define this constant as in Angular
 const DLQ_GROUP_TOPIC_PREFIX = "%DLQ%"; // Define this constant
+const NOTIFICATION_DURATION_SECONDS = 10; // Duration for success notifications (in seconds)
 
 const DlqMessageQueryPage = () => {
     const {t} = useLanguage();
@@ -71,24 +73,42 @@ const DlqMessageQueryPage = () => {
     const [queryDlqMessageByMessageIdResult, setQueryDlqMessageByMessageIdResult] = useState([]);
     const [modalApi, modalContextHolder] = Modal.useModal();
     const [notificationApi, notificationContextHolder] = notification.useNotification();
+    
+    // Message Detail Modal state
+    const [messageDetailModalVisible, setMessageDetailModalVisible] = useState(false);
+    const [messageDetailData, setMessageDetailData] = useState(null);
     // Fetch consumer group list on component mount
     useEffect(() => {
         const fetchConsumerGroups = async () => {
             setLoading(true);
-            const resp = await remoteApi.queryConsumerGroupList(false);
-            if (resp.status === 0) {
-                const filteredGroups = resp.data
-                    .filter(consumerGroup => !consumerGroup.group.startsWith(SYS_GROUP_TOPIC_PREFIX))
-                    .map(consumerGroup => consumerGroup.group)
-                    .sort();
-                setAllConsumerGroupList(filteredGroups);
-            } else {
-                notificationApi.error({message: t.ERROR, description: resp.errMsg});
+            try {
+                const resp = await remoteApi.queryConsumerGroupList(false);
+                if (resp.status === 0) {
+                    // Handle both array and object with data property
+                    const data = Array.isArray(resp.data) ? resp.data : (resp.data || []);
+                    const filteredGroups = data
+                        .filter(consumerGroup => consumerGroup && consumerGroup.group && !consumerGroup.group.startsWith(SYS_GROUP_TOPIC_PREFIX))
+                        .map(consumerGroup => consumerGroup.group)
+                        .sort();
+                    setAllConsumerGroupList(filteredGroups);
+                    if (filteredGroups.length === 0) {
+                    }
+                } else {
+                    // Don't show error if it's just an empty list - this is valid when no brokers are running
+                    if (resp.errMsg && !resp.errMsg.includes("No consumer group") && !resp.errMsg.includes("Failed to fetch")) {
+                        // Only show warning for actual errors, not network/connection issues
+                        console.warn("Consumer group list fetch returned error:", resp.errMsg);
+                    }
+                }
+            } catch (error) {
+                console.error("Error fetching consumer groups:", error);
+                // Don't show error notification - allow manual input
+                // The Input field will work even without the consumer group list
             }
             setLoading(false);
         };
         fetchConsumerGroups();
-    }, [t]);
+    }, [t, notificationApi]);
 
     // Effect to manage batch buttons' disabled state
     useEffect(() => {
@@ -109,7 +129,7 @@ const DlqMessageQueryPage = () => {
         setPaginationConf(prev => ({...prev, currentPage: 1, totalItems: 0}));
     }, []);
 
-    const queryDlqMessageByConsumerGroup = useCallback(async (page = paginationConf.current, pageSize = paginationConf.pageSize) => {
+    const queryDlqMessageByConsumerGroup = useCallback(async (page = paginationConf.current, pageSize = paginationConf.pageSize, showNoResultToast = true) => {
         if (!selectedConsumerGroup) {
             notificationApi.warning({
                 message: t.WARNING,
@@ -123,12 +143,15 @@ const DlqMessageQueryPage = () => {
         }
 
         setLoading(true);
-        // console.log("根据消费者组查询DLQ消息:", { selectedConsumerGroup, timepickerBegin, timepickerEnd, page, pageSize, taskId });
+        // Get timestamps directly from moment objects (same as Message page)
+        const beginTimestamp = timepickerBegin ? timepickerBegin.valueOf() : moment().subtract(3, 'hour').valueOf();
+        const endTimestamp = timepickerEnd ? timepickerEnd.valueOf() : moment().valueOf();
+        
         try {
             const resp = await remoteApi.queryDlqMessageByConsumerGroup(
                 selectedConsumerGroup,
-                moment(timepickerBegin).valueOf(),
-                moment(timepickerEnd).valueOf(),
+                beginTimestamp,
+                endTimestamp,
                 page,
                 pageSize,
                 taskId
@@ -137,7 +160,8 @@ const DlqMessageQueryPage = () => {
             if (resp.status === 0) {
                 const fetchedMessages = resp.data.page.content.map(msg => ({...msg, checked: false}));
                 setMessageShowList(fetchedMessages);
-                if (fetchedMessages.length === 0) {
+                // Only show "No result" toast for user-initiated searches, not auto-refreshes
+                if (fetchedMessages.length === 0 && showNoResultToast) {
                     notificationApi.info({
                         message: t.NO_RESULT,
                         description: t.NO_MATCH_RESULT,
@@ -211,23 +235,13 @@ const DlqMessageQueryPage = () => {
         // console.log(`查询DLQ消息详情: ${msgId}, 消费者组: ${consumerGroup}`);
         try {
             const resp = await remoteApi.viewMessage(msgId, DLQ_GROUP_TOPIC_PREFIX + consumerGroup);
-            if (resp.status === 0) {
-                modalApi.info({
-                    title: t.MESSAGE_DETAIL,
-                    width: 800,
-                    content: (
-                        <DlqMessageDetailViewDialog
-                            ngDialogData={{messageView: resp.data}}
-                        />
-                    ),
-                    onOk: () => {
-                    },
-                    okText: t.CLOSE,
-                });
+            if (resp.status === 0 && resp.data) {
+                setMessageDetailData(resp.data);
+                setMessageDetailModalVisible(true);
             } else {
                 notificationApi.error({
                     message: t.ERROR,
-                    description: resp.errMsg,
+                    description: resp.errMsg || t.QUERY_FAILED,
                 });
             }
         } catch (error) {
@@ -239,26 +253,24 @@ const DlqMessageQueryPage = () => {
         } finally {
             setLoading(false);
         }
-    }, [t]);
+    }, [t, notificationApi]);
 
     const resendDlqMessage = useCallback(async (messageView, consumerGroup) => {
         setLoading(true);
         const topic = messageView.properties.RETRY_TOPIC;
-        const msgId = messageView.properties.ORIGIN_MESSAGE_ID;
-        // console.log(`重发DLQ消息: MsgId=${msgId}, Topic=${topic}, 消费者组=${consumerGroup}`);
+        // Use the DLQ message ID (not ORIGIN_MESSAGE_ID) to retrieve the message from DLQ
+        const dlqMsgId = messageView.msgId;
+        // console.log(`重发DLQ消息: DLQ MsgId=${dlqMsgId}, Topic=${topic}, 消费者组=${consumerGroup}`);
         try {
-            const resp = await remoteApi.resendDlqMessage(msgId, consumerGroup, topic);
+            const resp = await remoteApi.resendDlqMessage(dlqMsgId, consumerGroup, topic);
             if (resp.status === 0) {
+                // Use simple success message for security and consistency (don't expose message IDs)
                 notificationApi.success({
                     message: t.SUCCESS,
                     description: t.RESEND_SUCCESS,
                 });
-                modalApi.info({
-                    title: t.RESULT,
-                    content: resp.data,
-                });
-                // Refresh list
-                queryDlqMessageByConsumerGroup(paginationConf.current, paginationConf.pageSize);
+                // Refresh list without showing "No result" toast
+                queryDlqMessageByConsumerGroup(paginationConf.current, paginationConf.pageSize, false);
             } else {
                 notificationApi.error({
                     message: t.ERROR,
@@ -317,41 +329,119 @@ const DlqMessageQueryPage = () => {
             return;
         }
         setLoading(true);
-        const messagesToResend = messageCheckedList.map(message => ({
-            topic: message.properties.RETRY_TOPIC,
-            msgId: message.properties.ORIGIN_MESSAGE_ID,
-            consumerGroup: selectedConsumerGroup,
-        }));
+        
+        const messagesToResend = messageCheckedList.map((message) => {
+            const retryTopic = message.properties?.RETRY_TOPIC;
+            return {
+                topicName: retryTopic || message.properties?.REAL_TOPIC || '', // Changed from 'topic' to 'topicName' to match backend DlqMessageRequest
+                msgId: message.msgId, // Use DLQ message ID (same as single resend)
+                consumerGroup: selectedConsumerGroup,
+            };
+        }).filter(msg => msg.topicName && msg.topicName.trim() !== ''); // Filter out messages without topicName
+        
+        if (messagesToResend.length === 0) {
+            notificationApi.error({
+                message: t.ERROR,
+                description: "No messages can be resent: all selected messages are missing RETRY_TOPIC property",
+            });
+            setLoading(false);
+            return;
+        }
+        
+        if (messagesToResend.length < messageCheckedList.length) {
+            notificationApi.warning({
+                message: t.WARNING,
+                description: `${messagesToResend.length} of ${messageCheckedList.length} messages can be resent (some are missing RETRY_TOPIC)`,
+            });
+        }
+        
         try {
             const resp = await remoteApi.batchResendDlqMessage(messagesToResend);
-            if (resp.status === 0) {
+            
+            // Backend returns array wrapped in JsonResult {status: 0, data: Array, errMsg: null}
+            // Check if response is an array (success) or has status field (error)
+            if (Array.isArray(resp)) {
+                // Success - backend returned list of results
                 notificationApi.success({
                     message: t.SUCCESS,
                     description: t.BATCH_RESEND_SUCCESS,
                 });
-                modalApi.info({
-                    title: t.RESULT,
-                    content: resp.data,
+                // Show summary instead of full data to avoid exposing message IDs
+                if (resp.length > 0) {
+                    // Check for success (CMResult.CR_SUCCESS = 0)
+                    // consumeResult can be: 0 (CR_SUCCESS), enum name, or number
+                    const successCount = resp.filter(r => {
+                        const result = r.consumeResult;
+                        // CMResult.CR_SUCCESS = 0
+                        return result === 0 || result === 'CR_SUCCESS' || result === 'SUCCESS' || result === 'CR_SUCCESS';
+                    }).length;
+                    const totalCount = resp.length;
+                    modalApi.info({
+                        title: t.RESULT,
+                        content: `${successCount}/${totalCount} messages resent successfully`,
+                    });
+                } else {
+                    modalApi.info({
+                        title: t.RESULT,
+                        content: t.BATCH_RESEND_SUCCESS,
+                    });
+                }
+                // Refresh list and reset selected state (without showing "No result" toast)
+                queryDlqMessageByConsumerGroup(paginationConf.current, paginationConf.pageSize, false);
+                setSelectedMessageIds(new Set());
+                setCheckedAll(false);
+                setMessageCheckedList([]);
+            } else if (resp.status === 0) {
+                // Handle wrapped response (JsonResult from GlobalRestfulResponseBodyAdvice)
+                notificationApi.success({
+                    message: t.SUCCESS,
+                    description: t.BATCH_RESEND_SUCCESS,
                 });
-                // Refresh list and reset selected state
-                queryDlqMessageByConsumerGroup(paginationConf.current, paginationConf.pageSize);
+                if (Array.isArray(resp.data) && resp.data.length > 0) {
+                    // Check for success (CMResult.CR_SUCCESS = 0)
+                    // consumeResult can be: 0 (number), "CR_SUCCESS" (string), or enum object
+                    const successCount = resp.data.filter(r => {
+                        const result = r.consumeResult;
+                        // Handle different formats: number 0, string "CR_SUCCESS", or enum
+                        if (result === 0) return true;
+                        if (result === 'CR_SUCCESS') return true;
+                        if (result === 'SUCCESS') return true;
+                        // Handle enum object (if serialized as object)
+                        if (result && typeof result === 'object' && result.name === 'CR_SUCCESS') return true;
+                        return false;
+                    }).length;
+                    const totalCount = resp.data.length;
+                    modalApi.info({
+                        title: t.RESULT,
+                        content: `${successCount}/${totalCount} messages resent successfully`,
+                    });
+                } else {
+                    modalApi.info({
+                        title: t.RESULT,
+                        content: t.BATCH_RESEND_SUCCESS,
+                    });
+                }
+                // Refresh list and reset selected state (without showing "No result" toast)
+                queryDlqMessageByConsumerGroup(paginationConf.current, paginationConf.pageSize, false);
                 setSelectedMessageIds(new Set());
                 setCheckedAll(false);
                 setMessageCheckedList([]);
             } else {
+                // Error response
                 notificationApi.error({
                     message: t.ERROR,
-                    description: resp.errMsg,
+                    description: resp.errMsg || t.BATCH_RESEND_FAILED,
                 });
                 modalApi.error({
                     title: t.RESULT,
-                    content: resp.errMsg,
+                    content: resp.errMsg || t.BATCH_RESEND_FAILED,
                 });
             }
         } catch (error) {
+            console.error("Batch resend error:", error);
             notificationApi.error({
                 message: t.ERROR,
-                description: t.BATCH_RESEND_FAILED,
+                description: t.BATCH_RESEND_FAILED + (error.message ? ": " + error.message : ""),
             });
         } finally {
             setLoading(false);
@@ -367,11 +457,23 @@ const DlqMessageQueryPage = () => {
             return;
         }
         setLoading(true);
-        const messagesToExport = messageCheckedList.map(message => ({
-            msgId: message.msgId,
-            consumerGroup: selectedConsumerGroup,
-        }));
-        // console.log(`批量导出DLQ消息从 ${selectedConsumerGroup}:`, messagesToExport);
+        // Build export list from messageShowList filtered by selectedMessageIds
+        // This ensures we get all selected messages, not just what's in messageCheckedList
+        const messagesToExport = messageShowList
+            .filter(message => selectedMessageIds.has(message.msgId))
+            .map(message => ({
+                msgId: message.msgId,
+                consumerGroup: selectedConsumerGroup,
+                topicName: message.properties?.RETRY_TOPIC || message.topic || '',
+            }));
+        if (messagesToExport.length === 0) {
+            notificationApi.warning({
+                message: t.WARNING,
+                description: t.PLEASE_SELECT_MESSAGE_TO_EXPORT,
+            });
+            setLoading(false);
+            return;
+        }
         try {
             const resp = await remoteApi.batchExportDlqMessage(messagesToExport);
             if (resp.status === 0) {
@@ -380,8 +482,8 @@ const DlqMessageQueryPage = () => {
                     description: t.BATCH_EXPORT_SUCCESS,
                 });
                 // The actual file download is handled within remoteApi.js
-                // Refresh list and reset selected state
-                queryDlqMessageByConsumerGroup(paginationConf.current, paginationConf.pageSize);
+                // Refresh list and reset selected state (without showing "No result" toast)
+                queryDlqMessageByConsumerGroup(paginationConf.current, paginationConf.pageSize, false);
                 setSelectedMessageIds(new Set());
                 setCheckedAll(false);
                 setMessageCheckedList([]);
@@ -555,24 +657,55 @@ const DlqMessageQueryPage = () => {
                             <h5 style={{margin: '15px 0'}}>{t.TOTAL_MESSAGES}</h5>
                             <div style={{padding: '20px', minHeight: '600px'}}>
                                 <Form layout="inline" form={form} style={{marginBottom: '20px'}}>
-                                    <Form.Item label={t.CONSUMER}>
-                                        <Select
-                                            showSearch
-                                            style={{width: 300}}
-                                            placeholder={t.SELECT_CONSUMER_GROUP_PLACEHOLDER}
-                                            value={selectedConsumerGroup}
-                                            onChange={(value) => {
-                                                setSelectedConsumerGroup(value);
-                                                onChangeQueryCondition();
-                                            }}
-                                            filterOption={(input, option) =>
-                                                option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
-                                            }
-                                        >
-                                            {allConsumerGroupList.map(group => (
-                                                <Option key={group} value={group}>{group}</Option>
-                                            ))}
-                                        </Select>
+                                    <Form.Item 
+                                        label={t.CONSUMER}
+                                        required
+                                        validateStatus={!selectedConsumerGroup ? 'warning' : ''}
+                                        help={!selectedConsumerGroup && allConsumerGroupList.length === 0 ? "Type a consumer group name to search DLQ messages" : ""}
+                                    >
+                                        {allConsumerGroupList.length === 0 ? (
+                                            <Input
+                                                style={{width: 300}}
+                                                placeholder="Type consumer group name (e.g., my-consumer-group)"
+                                                value={selectedConsumerGroup || ''}
+                                                onChange={(e) => {
+                                                    const value = e.target.value.trim();
+                                                    setSelectedConsumerGroup(value || null);
+                                                    if (value) {
+                                                        onChangeQueryCondition();
+                                                    }
+                                                }}
+                                                onPressEnter={() => {
+                                                    if (selectedConsumerGroup) {
+                                                        queryDlqMessageByConsumerGroup(1, paginationConf.pageSize);
+                                                    }
+                                                }}
+                                                allowClear
+                                            />
+                                        ) : (
+                                            <AutoComplete
+                                                style={{width: 300}}
+                                                placeholder={t.SELECT_CONSUMER_GROUP_PLACEHOLDER + " or type a name"}
+                                                value={selectedConsumerGroup || ''}
+                                                onChange={(value) => {
+                                                    setSelectedConsumerGroup(value || null);
+                                                    onChangeQueryCondition();
+                                                }}
+                                                onSelect={(value) => {
+                                                    setSelectedConsumerGroup(value);
+                                                    onChangeQueryCondition();
+                                                }}
+                                                allowClear
+                                                options={allConsumerGroupList.map(group => ({
+                                                    value: group,
+                                                    label: group
+                                                }))}
+                                                filterOption={(inputValue, option) => {
+                                                    if (!option || !option.value) return true;
+                                                    return option.value.toLowerCase().includes(inputValue.toLowerCase());
+                                                }}
+                                            />
+                                        )}
                                     </Form.Item>
                                     <Form.Item label={t.BEGIN}>
                                         <DatePicker
@@ -634,8 +767,15 @@ const DlqMessageQueryPage = () => {
                                         current: paginationConf.current,
                                         pageSize: paginationConf.pageSize,
                                         total: paginationConf.total,
-                                        onChange: (page, pageSize) => queryDlqMessageByConsumerGroup(page, pageSize),
+                                        onChange: (page, pageSize) => {
+                                            queryDlqMessageByConsumerGroup(page, pageSize || paginationConf.pageSize);
+                                        },
+                                        onShowSizeChange: (current, size) => {
+                                            // When page size changes, reset to page 1
+                                            queryDlqMessageByConsumerGroup(1, size);
+                                        },
                                         showSizeChanger: true, // Allow changing page size
+                                        showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} messages`,
                                         pageSizeOptions: ['10', '20', '50', '100'], // Customizable page size options
                                     }}
                                     locale={{emptyText: t.NO_MATCH_RESULT}}
@@ -648,21 +788,46 @@ const DlqMessageQueryPage = () => {
                             </h5>
                             <div style={{padding: '20px', minHeight: '600px'}}>
                                 <Form layout="inline" style={{marginBottom: '20px'}}>
-                                    <Form.Item label={t.CONSUMER}>
-                                        <Select
-                                            showSearch
-                                            style={{width: 300}}
-                                            placeholder={t.SELECT_CONSUMER_GROUP_PLACEHOLDER}
-                                            value={selectedConsumerGroup}
-                                            onChange={setSelectedConsumerGroup}
-                                            filterOption={(input, option) =>
-                                                option.children.toLowerCase().indexOf(input.toLowerCase()) >= 0
-                                            }
-                                        >
-                                            {allConsumerGroupList.map(group => (
-                                                <Option key={group} value={group}>{group}</Option>
-                                            ))}
-                                        </Select>
+                                    <Form.Item 
+                                        label={t.CONSUMER}
+                                        required
+                                        validateStatus={!selectedConsumerGroup ? 'warning' : ''}
+                                        help={!selectedConsumerGroup && allConsumerGroupList.length === 0 ? "Type a consumer group name to search DLQ messages" : ""}
+                                    >
+                                        {allConsumerGroupList.length === 0 ? (
+                                            <Input
+                                                style={{width: 300}}
+                                                placeholder="Type consumer group name (e.g., my-consumer-group)"
+                                                value={selectedConsumerGroup || ''}
+                                                onChange={(e) => {
+                                                    const value = e.target.value.trim();
+                                                    setSelectedConsumerGroup(value || null);
+                                                }}
+                                                onPressEnter={() => {
+                                                    if (selectedConsumerGroup && messageId) {
+                                                        queryDlqMessageByMessageId();
+                                                    }
+                                                }}
+                                                allowClear
+                                            />
+                                        ) : (
+                                            <AutoComplete
+                                                style={{width: 300}}
+                                                placeholder={t.SELECT_CONSUMER_GROUP_PLACEHOLDER + " or type a name"}
+                                                value={selectedConsumerGroup || ''}
+                                                onChange={setSelectedConsumerGroup}
+                                                onSelect={setSelectedConsumerGroup}
+                                                allowClear
+                                                options={allConsumerGroupList.map(group => ({
+                                                    value: group,
+                                                    label: group
+                                                }))}
+                                                filterOption={(inputValue, option) => {
+                                                    if (!option || !option.value) return true;
+                                                    return option.value.toLowerCase().includes(inputValue.toLowerCase());
+                                                }}
+                                            />
+                                        )}
                                     </Form.Item>
                                     <Form.Item label="MessageId:">
                                         <Input
@@ -692,6 +857,25 @@ const DlqMessageQueryPage = () => {
                     </Tabs>
                 </Spin>
             </div>
+            <Modal
+                title={t.MESSAGE_DETAIL}
+                open={messageDetailModalVisible}
+                onCancel={() => setMessageDetailModalVisible(false)}
+                onOk={() => setMessageDetailModalVisible(false)}
+                okText={t.CLOSE}
+                width={800}
+                footer={[
+                    <Button key="close" type="primary" onClick={() => setMessageDetailModalVisible(false)}>
+                        {t.CLOSE}
+                    </Button>
+                ]}
+            >
+                {messageDetailData && (
+                    <DlqMessageDetailViewDialog
+                        ngDialogData={{messageView: messageDetailData}}
+                    />
+                )}
+            </Modal>
         </>
 
     );

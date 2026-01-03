@@ -7,3 +7,17 @@
 .settings/
 .vscode
 htmlReport/
+
+# Helper scripts and documentation (not part of codebase)
+commit-and-push.sh
+setup-pr.sh
+stage-pr-files.sh
+*_CHECKLIST.md
+PR_*.md
+CODE_REVIEW.md
+ISSUES_*.md
+MANUAL_TEST_*.md
+
+# Log files
+*.log
+dashboard.log

@@ -61,12 +61,20 @@ public class ClusterInfoService {
             cachedRef.set(fresh);
             return fresh;
         } catch (Exception e) {
-            log.warn("Refresh cluster info failed", e);
             ClusterInfo old = cachedRef.get();
             if (old != null) {
+                log.debug("Refresh cluster info failed, using cached data: {}", e.getMessage());
                 return old;
             }
-            throw new IllegalStateException("No cluster info available", e);
+            // Only log warning if we don't have cached data and it's a connection error
+            if (e.getMessage() != null && e.getMessage().contains("connect to null")) {
+                log.warn("Cannot connect to nameserver. Please ensure RocketMQ nameserver is running at the configured address.");
+            } else {
+                log.warn("Refresh cluster info failed", e);
+            }
+            // Return null instead of throwing exception to allow dashboard to start
+            // even when nameserver is not available
+            return null;
         }
     }
 }

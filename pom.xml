@@ -101,11 +101,10 @@
         <mockito-inline.version>3.3.3</mockito-inline.version>
         <jakarta.xml.bind-api.version>4.0.0</jakarta.xml.bind-api.version>
         <commons-pool2.version>2.4.3</commons-pool2.version>
-        <easyexcel.version>2.2.10</easyexcel.version>
-        <asm.version>4.2</asm.version>
+        <easyexcel.version>3.3.4</easyexcel.version>
         <junit.version>4.12</junit.version>
         <snakeyaml.version>2.0</snakeyaml.version>
-        <cglib.version>2.2.2</cglib.version>
+        <cglib.version>3.3.0</cglib.version>
         <joor.version>0.9.6</joor.version>
         <bcpkix-jdk15on.version>1.68</bcpkix-jdk15on.version>
     </properties>
@@ -271,11 +270,16 @@
             <groupId>com.alibaba</groupId>
             <artifactId>easyexcel</artifactId>
             <version>${easyexcel.version}</version>
-        </dependency>
-        <dependency>
+            <exclusions>
+                <exclusion>
+                    <groupId>cglib</groupId>
+                    <artifactId>cglib</artifactId>
+                </exclusion>
+                <exclusion>
             <groupId>org.ow2.asm</groupId>
             <artifactId>asm</artifactId>
-            <version>${asm.version}</version>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>junit</groupId>
@@ -425,6 +429,17 @@
                         <exclude>frontend-new/**.lock</exclude>
                         <exclude>frontend-new/public/manifest.json</exclude>
                         <exclude>package-lock.json</exclude>
+                        <exclude>frontend-new/README.md</exclude>
+                        <exclude>frontend-new/public/robots.txt</exclude>
+                        <exclude>frontend-new/.env.development</exclude>
+                        <exclude>frontend-new/.env.production</exclude>
+                        <exclude>*.log</exclude>
+                        <exclude>*.sh</exclude>
+                        <exclude>*_CHECKLIST.md</exclude>
+                        <exclude>PR_*.md</exclude>
+                        <exclude>CODE_REVIEW.md</exclude>
+                        <exclude>ISSUES_*.md</exclude>
+                        <exclude>MANUAL_TEST_*.md</exclude>
                     </excludes>
                 </configuration>
             </plugin>
