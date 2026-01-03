@@ -96,11 +96,18 @@ public class MessageServiceImpl implements MessageService {
     @Override
     public Pair<MessageView, List<MessageTrack>> viewMessage(String subject, final String msgId) {
         try {
-
+            if (StringUtils.isBlank(msgId)) {
+                logger.error("viewMessage called with blank msgId, subject: {}", subject);
+                throw new ServiceException(-1, "Message ID cannot be blank");
+            }
+            logger.info("viewMessage called with topic: {}, msgId: {}", subject, msgId);
             MessageExt messageExt = mqAdminExt.viewMessage(subject, msgId);
             List<MessageTrack> messageTrackList = messageTrackDetail(messageExt);
             return new Pair<>(MessageView.fromMessageExt(messageExt), messageTrackList);
+        } catch (ServiceException e) {
+            throw e;
         } catch (Exception e) {
+            logger.error("Failed to query message by Id: {}, topic: {}", msgId, subject, e);
             throw new ServiceException(-1, String.format("Failed to query message by Id: %s", msgId));
         }
     }

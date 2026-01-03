@@ -156,7 +156,9 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
         }
 
         if (cacheConsumeInfoList.isEmpty()) {
-            throw new RuntimeException("No consumer group information available");
+            logger.info("No consumer group information available - no brokers running or no consumer groups registered");
+            // Return empty list instead of throwing exception - this is a valid state
+            return new ArrayList<>();
         }
 
         List<GroupConsumeInfo> groupConsumeInfoList = new ArrayList<>(cacheConsumeInfoList);
@@ -178,8 +180,14 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
         SubscriptionGroupWrapper subscriptionGroupWrapper = null;
         try {
             ClusterInfo clusterInfo = clusterInfoService.get();
+            if (clusterInfo == null || clusterInfo.getBrokerAddrTable() == null || clusterInfo.getBrokerAddrTable().isEmpty()) {
+                logger.warn("No brokers available in cluster");
+                isCacheBeingBuilt = false;
+                return;
+            }
             for (BrokerData brokerData : clusterInfo.getBrokerAddrTable().values()) {
                 subscriptionGroupWrapper = mqAdminExt.getAllSubscriptionGroup(brokerData.selectBrokerAddr(), 30000L);
+                if (subscriptionGroupWrapper != null && subscriptionGroupWrapper.getSubscriptionGroupTable() != null) {
                 for (String groupName : subscriptionGroupWrapper.getSubscriptionGroupTable().keySet()) {
                     if (!consumerGroupMap.containsKey(groupName)) {
                         consumerGroupMap.putIfAbsent(groupName, new ArrayList<>());
@@ -187,14 +195,22 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
                     List<String> addresses = consumerGroupMap.get(groupName);
                     addresses.add(brokerData.selectBrokerAddr());
                     consumerGroupMap.put(groupName, addresses);
+                    }
                 }
             }
         } catch (Exception err) {
+            logger.warn("Failed to build consumer group cache: {}", err.getMessage());
             Throwables.throwIfUnchecked(err);
             throw new RuntimeException(err);
         }
 
-        if (subscriptionGroupWrapper != null && subscriptionGroupWrapper.getSubscriptionGroupTable().isEmpty()) {
+        if (subscriptionGroupWrapper == null) {
+            logger.warn("No subscription group information available - no brokers or subscription groups found");
+            isCacheBeingBuilt = false;
+            return;
+        }
+
+        if (subscriptionGroupWrapper.getSubscriptionGroupTable() == null || subscriptionGroupWrapper.getSubscriptionGroupTable().isEmpty()) {
             logger.warn("No subscription group information available");
             isCacheBeingBuilt = false;
             return;

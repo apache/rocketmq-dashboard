@@ -19,7 +19,6 @@ package org.apache.rocketmq.dashboard.model;
 
 import com.alibaba.excel.annotation.ExcelProperty;
 import com.alibaba.excel.annotation.write.style.ColumnWidth;
-import com.alibaba.excel.metadata.BaseRowModel;
 import com.alibaba.excel.util.DateUtils;
 import com.google.common.base.Charsets;
 import lombok.Data;
@@ -31,7 +30,7 @@ import java.util.Date;
 
 @Data
 @NoArgsConstructor
-public class DlqMessageExcelModel extends BaseRowModel implements Serializable {
+public class DlqMessageExcelModel implements Serializable {
 
     @ExcelProperty(value = "topic", index = 0)
     @ColumnWidth(value = 15)
@@ -80,8 +79,8 @@ public class DlqMessageExcelModel extends BaseRowModel implements Serializable {
         this.bornTimestamp = DateUtils.format(new Date(messageExt.getBornTimestamp()), DateUtils.DATE_FORMAT_19);
         this.storeTimestamp = DateUtils.format(new Date(messageExt.getStoreTimestamp()), DateUtils.DATE_FORMAT_19);
         this.reconsumeTimes = messageExt.getReconsumeTimes();
-        this.properties = messageExt.getProperties().toString();
-        this.messageBody = new String(messageExt.getBody(), Charsets.UTF_8);
+        this.properties = messageExt.getProperties() != null ? messageExt.getProperties().toString() : "";
+        this.messageBody = messageExt.getBody() != null ? new String(messageExt.getBody(), Charsets.UTF_8) : "";
         this.bodyCRC = messageExt.getBodyCRC();
     }
 

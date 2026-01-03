@@ -250,17 +250,12 @@ const remoteApi = {
         }
     },
     resendDlqMessage: async (msgId, consumerGroup, topic) => {
+        topic = encodeURIComponent(topic);
+        consumerGroup = encodeURIComponent(consumerGroup);
+        msgId = encodeURIComponent(msgId);
         try {
-            const response = await remoteApi._fetch(remoteApi.buildUrl("/message/consumeMessageDirectly.do"), {
+            const response = await remoteApi._fetch(remoteApi.buildUrl(`/dlqMessage/resendDlqMessage.do?msgId=${msgId}&consumerGroup=${consumerGroup}&topic=${topic}`), {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                params: {
-                    msgId: msgId,
-                    consumerGroup: consumerGroup,
-                    topic: topic
-                },
             });
             const data = await response.json();
             return data;
@@ -271,27 +266,29 @@ const remoteApi = {
     },
     exportDlqMessage: async (msgId, consumerGroup) => {
         try {
-            const response = await remoteApi._fetch(remoteApi.buildUrl(`/dlqMessage/exportDlqMessage.do?msgId=${msgId}&consumerGroup=${consumerGroup}`));
+            const response = await remoteApi._fetch(remoteApi.buildUrl(`/dlqMessage/exportDlqMessage.do?msgId=${encodeURIComponent(msgId)}&consumerGroup=${encodeURIComponent(consumerGroup)}`));
 
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
 
-            const data = await response.json();
+            // The backend returns an Excel file (binary), not JSON
+            const blob = await response.blob();
+            
+            // Create a download link
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `dlq_message_${msgId}_${Date.now()}.xlsx`;
+            document.body.appendChild(a);
+            a.click();
+            // Delay URL revocation to prevent race condition
+            setTimeout(() => {
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+            }, 100);
 
-            const newWindow = window.open('', '_blank');
-
-            if (!newWindow) {
-                return {status: 1, errMsg: "Failed to open new window. Please allow pop-ups for this site."};
-            }
-
-            newWindow.document.write('<html><head><title>DLQ 导出内容</title></head><body>');
-            newWindow.document.write('<h1>DLQ 导出 JSON 内容</h1>');
-            newWindow.document.write('<pre>' + JSON.stringify(data, null, 2) + '</pre>');
-            newWindow.document.write('</body></html>');
-            newWindow.document.close();
-
-            return {status: 0, msg: "导出请求成功，内容已在新页面显示"};
+            return {status: 0, msg: "Export successful"};
         } catch (error) {
             console.error("Error exporting DLQ message:", error);
             return {status: 1, errMsg: "Failed to export DLQ message: " + error.message};
@@ -307,11 +304,55 @@ const remoteApi = {
                 },
                 body: JSON.stringify(messages),
             });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error("Batch resend HTTP error:", response.status, errorText);
+                return {status: 1, errMsg: `HTTP error: ${response.status} - ${errorText}`};
+            }
+            
             const data = await response.json();
             return data;
         } catch (error) {
             console.error("Error batch resending DLQ messages:", error);
-            return {status: 1, errMsg: "Failed to batch resend DLQ messages"};
+            return {status: 1, errMsg: "Failed to batch resend DLQ messages: " + error.message};
+        }
+    },
+
+    batchExportDlqMessage: async (messages) => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl("/dlqMessage/batchExportDlqMessage.do"), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(messages),
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            // The backend returns an Excel file (binary), not JSON
+            const blob = await response.blob();
+            
+            // Create a download link
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `dlq_messages_${Date.now()}.xlsx`;
+            document.body.appendChild(a);
+            a.click();
+            // Delay URL revocation to prevent race condition
+            setTimeout(() => {
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+            }, 100);
+
+            return {status: 0, msg: "Batch export successful"};
+        } catch (error) {
+            console.error("Error batch exporting DLQ messages:", error);
+            return {status: 1, errMsg: "Failed to batch export DLQ messages: " + error.message};
         }
     },
 

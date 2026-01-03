@@ -50,13 +50,19 @@ const DlqMessageDetailViewDialog = ({ngDialogData}) => {
                     <Text strong>{messageView.properties?.TAGS}</Text>
                 </Form.Item>
                 <Form.Item label="Key:">
-                    <Text strong>{messageView.properties?.KEYS}</Text>
+                    <Text strong>{messageView.properties?.KEYS || '-'}</Text>
                 </Form.Item>
                 <Form.Item label="Storetime:">
                     <Text strong>{moment(messageView.storeTimestamp).format('YYYY-MM-DD HH:mm:ss')}</Text>
                 </Form.Item>
                 <Form.Item label="StoreHost:">
                     <Text strong>{messageView.storeHost}</Text>
+                </Form.Item>
+                <Form.Item label="BornHost:">
+                    <Text strong>{messageView.bornHost || '-'}</Text>
+                </Form.Item>
+                <Form.Item label="BornTimestamp:">
+                    <Text strong>{messageView.bornTimestamp ? moment(messageView.bornTimestamp).format('YYYY-MM-DD HH:mm:ss') : '-'}</Text>
                 </Form.Item>
                 <Form.Item label="Message body:">
                     <Input.TextArea
