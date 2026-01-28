@@ -596,6 +596,8 @@ export const translations = {
         "DELETE_CONSUMER_GROUP": "Delete Consumer Group",
         "SELECT_DELETE_BROKERS": "Please select brokers to delete consumer group",
         "CONFIRM_DELETE": "Confirm Delete",
+        "MASTER": "Master",
+        "SLAVE": "Slave",
     }
 
 };
