@@ -14,34 +14,27 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.apache.rocketmq.dashboard.service;
 
-import java.util.List;
-import org.apache.rocketmq.common.AclConfig;
-import org.apache.rocketmq.common.PlainAccessConfig;
-import org.apache.rocketmq.dashboard.model.request.AclRequest;
+
+import org.apache.rocketmq.dashboard.model.PolicyRequest;
+import org.apache.rocketmq.dashboard.model.request.UserInfoParam;
 
 public interface AclService {
+    Object listUsers(String clusterName, String brokerAddress);
 
-    AclConfig getAclConfig(boolean excludeSecretKey);
+    Object listAcls(String clusterName,String brokerAddress, String searchParam);
 
-    void addAclConfig(PlainAccessConfig config);
+    Object createAcl(PolicyRequest policyRequest);
 
-    void deleteAclConfig(PlainAccessConfig config);
+    void deleteUser(String clusterName,String brokerAddress, String username);
 
-    void updateAclConfig(PlainAccessConfig config);
+    void updateUser(String clusterName,String brokerAddress, UserInfoParam userParam);
 
-    void addOrUpdateAclTopicConfig(AclRequest request);
+    void createUser(String clusterName,String brokerAddress, UserInfoParam userParam);
 
-    void addOrUpdateAclGroupConfig(AclRequest request);
+    void deleteAcl(String clusterName,String brokerAddress, String subject, String resource);
 
-    void deletePermConfig(AclRequest request);
-
-    void syncData(PlainAccessConfig config);
-
-    void addWhiteList(List<String> whiteList);
-
-    void deleteWhiteAddr(String addr);
-
-    void synchronizeWhiteList(List<String> whiteList);
+    void updateAcl(PolicyRequest policyRequest);
 }

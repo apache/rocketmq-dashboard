@@ -40,8 +40,8 @@ public class MqAdminExtObjectPool {
         MQAdminFactory mqAdminFactory = new MQAdminFactory(rmqConfigure);
         mqAdminPooledObjectFactory.setMqAdminFactory(mqAdminFactory);
         GenericObjectPool<MQAdminExt> genericObjectPool = new GenericObjectPool<MQAdminExt>(
-            mqAdminPooledObjectFactory,
-            genericObjectPoolConfig);
+                mqAdminPooledObjectFactory,
+                genericObjectPoolConfig);
         return genericObjectPool;
     }
 }

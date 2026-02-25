@@ -22,12 +22,13 @@
 # **: Matches 0 or more characters.
 
 rolePerms:
-  ordinary:
+  Normal:
     - /rocketmq/*.query
     - /ops/*.query
     - /dashboard/*.query
     - /topic/*.query
     - /topic/sendTopicMessage.do
+    - /topic/list.queryTopicType
     - /producer/*.query
     - /message/*.query
     - /messageTrace/*.query

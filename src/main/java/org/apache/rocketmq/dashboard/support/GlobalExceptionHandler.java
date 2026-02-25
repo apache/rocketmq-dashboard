@@ -17,7 +17,7 @@
 
 package org.apache.rocketmq.dashboard.support;
 
-import javax.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequest;
 import org.apache.rocketmq.dashboard.exception.ServiceException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,8 +37,7 @@ public class GlobalExceptionHandler {
             if (ex instanceof ServiceException) {
                 logger.error("Occur service exception: {}", ex.getMessage());
                 value = new JsonResult<Object>(((ServiceException) ex).getCode(), ex.getMessage());
-            }
-            else {
+            } else {
                 logger.error("op=global_exception_handler_print_error", ex);
                 value = new JsonResult<Object>(-1, ex.getMessage() == null ? ex.toString() : ex.getMessage());
             }

@@ -17,7 +17,8 @@
 package org.apache.rocketmq.dashboard.model.request;
 
 import lombok.Data;
-import org.apache.rocketmq.common.PlainAccessConfig;
+import org.apache.rocketmq.auth.migration.v1.PlainAccessConfig;
+
 
 @Data
 public class AclRequest {

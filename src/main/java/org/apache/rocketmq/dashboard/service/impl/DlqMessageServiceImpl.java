@@ -18,26 +18,27 @@
 package org.apache.rocketmq.dashboard.service.impl;
 
 import com.google.common.base.Throwables;
-import java.util.ArrayList;
-import java.util.LinkedList;
-import java.util.List;
-import javax.annotation.Resource;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.common.MixAll;
-import org.apache.rocketmq.remoting.protocol.ResponseCode;
-import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
-import org.apache.rocketmq.dashboard.model.DlqMessageResendResult;
 import org.apache.rocketmq.dashboard.model.DlqMessageRequest;
+import org.apache.rocketmq.dashboard.model.DlqMessageResendResult;
 import org.apache.rocketmq.dashboard.model.MessagePage;
 import org.apache.rocketmq.dashboard.model.MessageView;
 import org.apache.rocketmq.dashboard.model.request.MessageQuery;
 import org.apache.rocketmq.dashboard.service.DlqMessageService;
 import org.apache.rocketmq.dashboard.service.MessageService;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
+import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.List;
 
 @Service
 @Slf4j
@@ -59,7 +60,7 @@ public class DlqMessageServiceImpl implements DlqMessageService {
         } catch (MQClientException e) {
             // If the %DLQ%Group does not exist, the message returns null
             if (topic.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX)
-                && e.getResponseCode() == ResponseCode.TOPIC_NOT_EXIST) {
+                    && e.getResponseCode() == ResponseCode.TOPIC_NOT_EXIST) {
                 return new MessagePage(new PageImpl<>(messageViews, page, 0), query.getTaskId());
             } else {
                 Throwables.throwIfUnchecked(e);
@@ -77,8 +78,8 @@ public class DlqMessageServiceImpl implements DlqMessageService {
         List<DlqMessageResendResult> batchResendResults = new LinkedList<>();
         for (DlqMessageRequest dlqMessage : dlqMessages) {
             ConsumeMessageDirectlyResult result = messageService.consumeMessageDirectly(dlqMessage.getTopicName(),
-                dlqMessage.getMsgId(), dlqMessage.getConsumerGroup(),
-                dlqMessage.getClientId());
+                    dlqMessage.getMsgId(), dlqMessage.getConsumerGroup(),
+                    dlqMessage.getClientId());
             DlqMessageResendResult resendResult = new DlqMessageResendResult(result, dlqMessage.getMsgId());
             batchResendResults.add(resendResult);
         }

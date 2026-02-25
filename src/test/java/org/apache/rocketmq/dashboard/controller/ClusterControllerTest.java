@@ -16,16 +16,17 @@
  */
 package org.apache.rocketmq.dashboard.controller;
 
-import java.util.HashMap;
-import java.util.Properties;
-import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
-import org.apache.rocketmq.remoting.protocol.body.KVTable;
 import org.apache.rocketmq.dashboard.service.impl.ClusterServiceImpl;
 import org.apache.rocketmq.dashboard.util.MockObjectUtil;
+import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
+import org.apache.rocketmq.remoting.protocol.body.KVTable;
 import org.junit.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Spy;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
+
+import java.util.HashMap;
+import java.util.Properties;
 
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
@@ -56,7 +57,7 @@ public class ClusterControllerTest extends BaseControllerTest {
         requestBuilder = MockMvcRequestBuilders.get(url);
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.brokerServer").isMap());
+                .andExpect(jsonPath("$.data.brokerServer").isMap());
     }
 
     @Test
@@ -73,8 +74,8 @@ public class ClusterControllerTest extends BaseControllerTest {
         requestBuilder.param("brokerAddr", "127.0.0.1:10911");
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.brokerName").value("broker-a"))
-            .andExpect(jsonPath("$.data.namesrvAddr").value("127.0.0.1:9876"));
+                .andExpect(jsonPath("$.data.brokerName").value("broker-a"))
+                .andExpect(jsonPath("$.data.namesrvAddr").value("127.0.0.1:9876"));
     }
 
     @Override

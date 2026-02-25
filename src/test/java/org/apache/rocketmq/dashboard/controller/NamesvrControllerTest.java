@@ -44,7 +44,8 @@ public class NamesvrControllerTest extends BaseControllerTest {
         Assert.assertEquals(namesrvAddr, "127.0.0.1:9876");
     }
 
-    @Override protected Object getTestController() {
+    @Override
+    protected Object getTestController() {
         return namesvrController;
     }
 }

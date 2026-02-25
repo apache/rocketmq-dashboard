@@ -18,10 +18,6 @@ package org.apache.rocketmq.dashboard.permission;
 
 import com.google.common.collect.Lists;
 import com.google.common.io.Files;
-import java.io.File;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 import org.apache.rocketmq.dashboard.BaseTest;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.model.User;
@@ -42,6 +38,11 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
+
+import java.io.File;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -112,7 +113,7 @@ public class PermissionAspectTest extends BaseTest {
         when(configure.getRocketMqDashboardDataPath()).thenReturn("/tmp/rocketmq-console/test/data");
         Map<String, Map<String, List<String>>> rolePermsMap = new HashMap<>();
         Map<String, List<String>> rolePerms = new HashMap<>();
-        List<String> accessUrls = Lists.asList("/topic/route.query", new String[] {"/topic/stats.query"});
+        List<String> accessUrls = Lists.asList("/topic/route.query", new String[]{"/topic/stats.query"});
         rolePerms.put("admin", accessUrls);
         rolePermsMap.put("rolePerms", rolePerms);
         File file = createTestFile(rolePermsMap);

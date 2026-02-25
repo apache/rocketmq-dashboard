@@ -25,6 +25,7 @@ import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
+import jakarta.annotation.Resource;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.acl.common.AclClientRPCHook;
 import org.apache.rocketmq.acl.common.SessionCredentials;
@@ -32,24 +33,24 @@ import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
 import org.apache.rocketmq.client.consumer.PullResult;
 import org.apache.rocketmq.client.consumer.PullStatus;
 import org.apache.rocketmq.client.exception.MQClientException;
-import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.Pair;
 import org.apache.rocketmq.common.message.MessageClientIDSetter;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageQueue;
-import org.apache.rocketmq.remoting.protocol.body.Connection;
-import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
-import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.exception.ServiceException;
-import org.apache.rocketmq.dashboard.model.QueueOffsetInfo;
-import org.apache.rocketmq.dashboard.model.MessageView;
 import org.apache.rocketmq.dashboard.model.MessagePage;
 import org.apache.rocketmq.dashboard.model.MessagePageTask;
 import org.apache.rocketmq.dashboard.model.MessageQueryByPage;
+import org.apache.rocketmq.dashboard.model.MessageView;
+import org.apache.rocketmq.dashboard.model.QueueOffsetInfo;
 import org.apache.rocketmq.dashboard.model.request.MessageQuery;
 import org.apache.rocketmq.dashboard.service.MessageService;
+import org.apache.rocketmq.dashboard.support.AutoCloseConsumerWrapper;
 import org.apache.rocketmq.remoting.RPCHook;
+import org.apache.rocketmq.remoting.protocol.body.Connection;
+import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
+import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.apache.rocketmq.tools.admin.api.MessageTrack;
 import org.slf4j.Logger;
@@ -59,19 +60,21 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.stereotype.Service;
 
-import javax.annotation.Resource;
-import java.util.Collections;
-import java.util.List;
-import java.util.Comparator;
 import java.util.ArrayList;
-import java.util.Set;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Service
 public class MessageServiceImpl implements MessageService {
+
+    @Resource
+    private AutoCloseConsumerWrapper autoCloseConsumerWrapper;
 
     private Logger logger = LoggerFactory.getLogger(MessageServiceImpl.class);
 
@@ -127,11 +130,11 @@ public class MessageServiceImpl implements MessageService {
         if (isEnableAcl) {
             rpcHook = new AclClientRPCHook(new SessionCredentials(configure.getAccessKey(), configure.getSecretKey()));
         }
-        DefaultMQPullConsumer consumer = buildDefaultMQPullConsumer(rpcHook, configure.isUseTLS());
+
+        DefaultMQPullConsumer consumer = autoCloseConsumerWrapper.getConsumer(rpcHook, configure.isUseTLS());
         List<MessageView> messageViewList = Lists.newArrayList();
         try {
             String subExpression = "*";
-            consumer.start();
             Set<MessageQueue> mqs = consumer.fetchSubscribeMessageQueues(topic);
             for (MessageQueue mq : mqs) {
                 long minOffset = consumer.searchOffset(mq, begin);
@@ -188,8 +191,6 @@ public class MessageServiceImpl implements MessageService {
         } catch (Exception e) {
             Throwables.throwIfUnchecked(e);
             throw new RuntimeException(e);
-        } finally {
-            consumer.shutdown();
         }
     }
 
@@ -263,7 +264,8 @@ public class MessageServiceImpl implements MessageService {
         if (isEnableAcl) {
             rpcHook = new AclClientRPCHook(new SessionCredentials(configure.getAccessKey(), configure.getSecretKey()));
         }
-        DefaultMQPullConsumer consumer = buildDefaultMQPullConsumer(rpcHook, configure.isUseTLS());
+
+        DefaultMQPullConsumer consumer = autoCloseConsumerWrapper.getConsumer(rpcHook, configure.isUseTLS());
 
         long total = 0;
         List<QueueOffsetInfo> queueOffsetInfos = new ArrayList<>();
@@ -271,12 +273,11 @@ public class MessageServiceImpl implements MessageService {
         List<MessageView> messageViews = new ArrayList<>();
 
         try {
-            consumer.start();
             Collection<MessageQueue> messageQueues = consumer.fetchSubscribeMessageQueues(query.getTopic());
             int idx = 0;
             for (MessageQueue messageQueue : messageQueues) {
                 Long minOffset = consumer.searchOffset(messageQueue, query.getBegin());
-                Long maxOffset = consumer.searchOffset(messageQueue, query.getEnd()) + 1;
+                Long maxOffset = consumer.searchOffset(messageQueue, query.getEnd());
                 queueOffsetInfos.add(new QueueOffsetInfo(idx++, minOffset, maxOffset, minOffset, minOffset, messageQueue));
             }
 
@@ -394,8 +395,6 @@ public class MessageServiceImpl implements MessageService {
         } catch (Exception e) {
             Throwables.throwIfUnchecked(e);
             throw new RuntimeException(e);
-        } finally {
-            consumer.shutdown();
         }
     }
 
@@ -405,14 +404,14 @@ public class MessageServiceImpl implements MessageService {
         if (isEnableAcl) {
             rpcHook = new AclClientRPCHook(new SessionCredentials(configure.getAccessKey(), configure.getSecretKey()));
         }
-        DefaultMQPullConsumer consumer = buildDefaultMQPullConsumer(rpcHook, configure.isUseTLS());
+
+        DefaultMQPullConsumer consumer = autoCloseConsumerWrapper.getConsumer(rpcHook, configure.isUseTLS());
         List<MessageView> messageViews = new ArrayList<>();
 
         long offset = query.getPageNum() * query.getPageSize();
 
         long total = 0;
         try {
-            consumer.start();
             for (QueueOffsetInfo queueOffsetInfo : queueOffsetInfos) {
                 long start = queueOffsetInfo.getStart();
                 long end = queueOffsetInfo.getEnd();
@@ -462,8 +461,6 @@ public class MessageServiceImpl implements MessageService {
         } catch (Exception e) {
             Throwables.throwIfUnchecked(e);
             throw new RuntimeException(e);
-        } finally {
-            consumer.shutdown();
         }
     }
 
@@ -546,9 +543,9 @@ public class MessageServiceImpl implements MessageService {
         }
     }
 
-    public DefaultMQPullConsumer buildDefaultMQPullConsumer(RPCHook rpcHook, boolean useTLS) {
-        DefaultMQPullConsumer consumer = new DefaultMQPullConsumer(MixAll.TOOLS_CONSUMER_GROUP, rpcHook);
-        consumer.setUseTLS(useTLS);
-        return consumer;
-    }
+//    public DefaultMQPullConsumer buildDefaultMQPullConsumer(RPCHook rpcHook, boolean useTLS) {
+//        DefaultMQPullConsumer consumer = new DefaultMQPullConsumer(MixAll.TOOLS_CONSUMER_GROUP, rpcHook);
+//        consumer.setUseTLS(useTLS);
+//        return consumer;
+//    }
 }

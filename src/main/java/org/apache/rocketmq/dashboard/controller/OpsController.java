@@ -17,7 +17,7 @@
 package org.apache.rocketmq.dashboard.controller;
 
 import com.google.common.base.Preconditions;
-import javax.annotation.Resource;
+import jakarta.annotation.Resource;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.dashboard.permisssion.Permission;
 import org.apache.rocketmq.dashboard.service.OpsService;
@@ -52,7 +52,7 @@ public class OpsController {
     @ResponseBody
     public Object addNameSvrAddr(@RequestParam String newNamesrvAddr) {
         Preconditions.checkArgument(StringUtils.isNotEmpty(newNamesrvAddr),
-            "namesrvAddr can not be blank");
+                "namesrvAddr can not be blank");
         opsService.addNameSvrAddr(newNamesrvAddr);
         return true;
     }

@@ -19,14 +19,21 @@ package org.apache.rocketmq.dashboard.model;
 import org.apache.rocketmq.remoting.protocol.heartbeat.ConsumeType;
 import org.apache.rocketmq.remoting.protocol.heartbeat.MessageModel;
 
+import java.util.Date;
+import java.util.List;
+
 public class GroupConsumeInfo implements Comparable<GroupConsumeInfo> {
     private String group;
     private String version;
     private int count;
     private ConsumeType consumeType;
     private MessageModel messageModel;
+    private List<String> address;
     private int consumeTps;
     private long diffTotal = -1;
+    private String subGroupType = "NORMAL";
+    private Date updateTime;
+
 
     public String getGroup() {
         return group;
@@ -68,6 +75,22 @@ public class GroupConsumeInfo implements Comparable<GroupConsumeInfo> {
         this.diffTotal = diffTotal;
     }
 
+    public List<String> getAddress() {
+        return address;
+    }
+
+    public void setAddress(List<String> address) {
+        this.address = address;
+    }
+
+    public String getSubGroupType() {
+        return subGroupType;
+    }
+
+    public void setSubGroupType(String subGroupType) {
+        this.subGroupType = subGroupType;
+    }
+
     @Override
     public int compareTo(GroupConsumeInfo o) {
         if (this.count != o.count) {
@@ -90,5 +113,13 @@ public class GroupConsumeInfo implements Comparable<GroupConsumeInfo> {
 
     public void setVersion(String version) {
         this.version = version;
+    }
+
+    public Date getUpdateTime() {
+        return updateTime;
+    }
+
+    public void setUpdateTime(Date updateTime) {
+        this.updateTime = updateTime;
     }
 }

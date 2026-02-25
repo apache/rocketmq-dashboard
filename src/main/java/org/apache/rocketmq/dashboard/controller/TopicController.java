@@ -16,16 +16,17 @@
  */
 package org.apache.rocketmq.dashboard.controller;
 
+import com.google.common.base.Preconditions;
+import jakarta.annotation.Resource;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.rocketmq.client.exception.MQClientException;
-import org.apache.rocketmq.dashboard.permisssion.Permission;
-import org.apache.rocketmq.remoting.exception.RemotingException;
 import org.apache.rocketmq.dashboard.model.request.SendTopicMessageRequest;
 import org.apache.rocketmq.dashboard.model.request.TopicConfigInfo;
+import org.apache.rocketmq.dashboard.permisssion.Permission;
 import org.apache.rocketmq.dashboard.service.ConsumerService;
 import org.apache.rocketmq.dashboard.service.TopicService;
 import org.apache.rocketmq.dashboard.util.JsonUtil;
-import com.google.common.base.Preconditions;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.rocketmq.remoting.exception.RemotingException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Controller;
@@ -33,8 +34,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
-
-import javax.annotation.Resource;
 import org.springframework.web.bind.annotation.ResponseBody;
 
 @Controller
@@ -52,8 +51,15 @@ public class TopicController {
     @RequestMapping(value = "/list.query", method = RequestMethod.GET)
     @ResponseBody
     public Object list(@RequestParam(value = "skipSysProcess", required = false) boolean skipSysProcess,
-        @RequestParam(value = "skipRetryAndDlq", required = false) boolean skipRetryAndDlq) {
+                       @RequestParam(value = "skipRetryAndDlq", required = false) boolean skipRetryAndDlq) {
         return topicService.fetchAllTopicList(skipSysProcess, skipRetryAndDlq);
+    }
+
+
+    @RequestMapping(value = "/list.queryTopicType", method = RequestMethod.GET)
+    @ResponseBody
+    public Object listTopicType() {
+        return topicService.examineAllTopicType();
     }
 
     @RequestMapping(value = "/stats.query", method = RequestMethod.GET)
@@ -69,11 +75,11 @@ public class TopicController {
     }
 
 
-    @RequestMapping(value = "/createOrUpdate.do", method = { RequestMethod.POST})
+    @RequestMapping(value = "/createOrUpdate.do", method = {RequestMethod.POST})
     @ResponseBody
     public Object topicCreateOrUpdateRequest(@RequestBody TopicConfigInfo topicCreateOrUpdateRequest) {
         Preconditions.checkArgument(CollectionUtils.isNotEmpty(topicCreateOrUpdateRequest.getBrokerNameList()) || CollectionUtils.isNotEmpty(topicCreateOrUpdateRequest.getClusterNameList()),
-            "clusterName or brokerName can not be all blank");
+                "clusterName or brokerName can not be all blank");
         logger.info("op=look topicCreateOrUpdateRequest={}", JsonUtil.obj2String(topicCreateOrUpdateRequest));
         topicService.createOrUpdate(topicCreateOrUpdateRequest);
         return true;
@@ -94,14 +100,14 @@ public class TopicController {
     @RequestMapping(value = "/examineTopicConfig.query")
     @ResponseBody
     public Object examineTopicConfig(@RequestParam String topic,
-        @RequestParam(required = false) String brokerName) throws RemotingException, MQClientException, InterruptedException {
+                                     @RequestParam(required = false) String brokerName) throws RemotingException, MQClientException, InterruptedException {
         return topicService.examineTopicConfig(topic);
     }
 
     @RequestMapping(value = "/sendTopicMessage.do", method = {RequestMethod.POST})
     @ResponseBody
     public Object sendTopicMessage(
-        @RequestBody SendTopicMessageRequest sendTopicMessageRequest) throws RemotingException, MQClientException, InterruptedException {
+            @RequestBody SendTopicMessageRequest sendTopicMessageRequest) throws RemotingException, MQClientException, InterruptedException {
         return topicService.sendTopicMessageRequest(sendTopicMessageRequest);
     }
 

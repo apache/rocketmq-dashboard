@@ -16,13 +16,14 @@
  */
 package org.apache.rocketmq.dashboard.service.impl;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.srvutil.FileWatchService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
 
 public abstract class AbstractFileStore {
     public final Logger log = LoggerFactory.getLogger(this.getClass());
@@ -57,7 +58,7 @@ public abstract class AbstractFileStore {
         }
     }
 
-    abstract void load(InputStream inputStream);
+    protected abstract void load(InputStream inputStream);
 
     private void load() {
         load(null);
@@ -65,7 +66,7 @@ public abstract class AbstractFileStore {
 
     private boolean watch() {
         try {
-            FileWatchService fileWatchService = new FileWatchService(new String[] {filePath}, new FileWatchService.Listener() {
+            FileWatchService fileWatchService = new FileWatchService(new String[]{filePath}, new FileWatchService.Listener() {
                 @Override
                 public void onChanged(String path) {
                     log.info("The file changed, reload the context");

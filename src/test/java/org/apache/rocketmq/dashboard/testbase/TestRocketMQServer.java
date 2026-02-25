@@ -17,11 +17,8 @@
 
 package org.apache.rocketmq.dashboard.testbase;
 
-import java.io.File;
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import javax.annotation.PostConstruct;
-import javax.annotation.PreDestroy;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import org.apache.rocketmq.broker.BrokerController;
 import org.apache.rocketmq.common.BrokerConfig;
 import org.apache.rocketmq.common.MixAll;
@@ -33,6 +30,10 @@ import org.apache.rocketmq.store.config.MessageStoreConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+
+import java.io.File;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
 import static java.io.File.separator;
 import static org.apache.rocketmq.dashboard.testbase.TestConstant.TEST_BROKER_NAME;
@@ -100,8 +101,7 @@ public class TestRocketMQServer {
             namesrvController.initialize();
             log.info("Success to start Name Server:{}", TestConstant.NAME_SERVER_ADDRESS);
             namesrvController.start();
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             log.error("Failed to start Name Server", e);
             System.exit(1);
         }
@@ -124,8 +124,7 @@ public class TestRocketMQServer {
             log.info("Broker Start name:{} address:{}", brokerConfig.getBrokerName(), brokerController.getBrokerAddr());
             brokerController.start();
 
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             log.error("Failed to start Broker", e);
             System.exit(1);
         }
@@ -144,8 +143,7 @@ public class TestRocketMQServer {
         }
         if (file.isFile()) {
             file.delete();
-        }
-        else if (file.isDirectory()) {
+        } else if (file.isDirectory()) {
             File[] files = file.listFiles();
             for (File file1 : files) {
                 deleteFile(file1);

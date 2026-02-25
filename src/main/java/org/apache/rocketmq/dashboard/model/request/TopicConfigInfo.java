@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 package org.apache.rocketmq.dashboard.model.request;
+
 import com.google.common.base.Objects;
 
 import java.util.List;
@@ -24,12 +25,16 @@ public class TopicConfigInfo {
     private List<String> clusterNameList;
     private List<String> brokerNameList;
 
-    /** topicConfig */
+    /**
+     * topicConfig
+     */
     private String topicName;
     private int writeQueueNums;
     private int readQueueNums;
     private int perm;
     private boolean order;
+
+    private String messageType;
 
     public List<String> getClusterNameList() {
         return clusterNameList;
@@ -39,8 +44,9 @@ public class TopicConfigInfo {
         this.clusterNameList = clusterNameList;
     }
 
-    /** topicConfig */
-
+    /**
+     * topicConfig
+     */
 
 
     public List<String> getBrokerNameList() {
@@ -91,6 +97,16 @@ public class TopicConfigInfo {
         this.order = order;
     }
 
+
+    public String getMessageType() {
+        return messageType;
+    }
+
+    public void setMessageType(String messageType) {
+        this.messageType = messageType;
+    }
+
+
     @Override
     public boolean equals(Object o) {
         if (this == o)
@@ -99,15 +115,16 @@ public class TopicConfigInfo {
             return false;
         TopicConfigInfo that = (TopicConfigInfo) o;
         return writeQueueNums == that.writeQueueNums &&
-            readQueueNums == that.readQueueNums &&
-            perm == that.perm &&
-            order == that.order &&
-            Objects.equal(topicName, that.topicName);
+                readQueueNums == that.readQueueNums &&
+                perm == that.perm &&
+                order == that.order &&
+                Objects.equal(topicName, that.topicName) &&
+                Objects.equal(messageType, that.messageType);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hashCode(topicName, writeQueueNums, readQueueNums, perm, order);
+        return Objects.hashCode(topicName, writeQueueNums, readQueueNums, perm, order, messageType);
     }
 
 }

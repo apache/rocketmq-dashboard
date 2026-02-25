@@ -17,39 +17,43 @@
 
 package org.apache.rocketmq.dashboard.service.impl;
 
-import org.apache.rocketmq.dashboard.config.RMQConfigure;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.apache.rocketmq.dashboard.service.LoginService;
-import org.apache.rocketmq.dashboard.service.UserService;
+import org.apache.rocketmq.dashboard.service.strategy.UserContext;
+import org.apache.rocketmq.dashboard.util.UserInfoContext;
 import org.apache.rocketmq.dashboard.util.WebUtil;
+import org.apache.rocketmq.remoting.protocol.body.UserInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import javax.annotation.Resource;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 
 @Service
 public class LoginServiceImpl implements LoginService {
     private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
-    @Resource
-    private RMQConfigure rmqConfigure;
-
     @Autowired
-    private UserService userService;
+    private UserContext userContext;
 
 
     @Override
     public boolean login(HttpServletRequest request, HttpServletResponse response) {
-        if (WebUtil.getValueFromSession(request, WebUtil.USER_NAME) != null) {
+        String username = (String) WebUtil.getValueFromSession(request, WebUtil.USER_NAME);
+        if (username != null) {
+            UserInfo userInfo = userContext.queryByUsername(username);
+            if (userInfo == null) {
+                auth(request, response);
+                return false;
+            }
+            UserInfoContext.set(WebUtil.USER_NAME, userInfo);
             return true;
-        }
 
+        }
         auth(request, response);
         return false;
     }
@@ -57,11 +61,7 @@ public class LoginServiceImpl implements LoginService {
     protected void auth(HttpServletRequest request, HttpServletResponse response) {
         try {
             String url = WebUtil.getUrl(request);
-            try {
-                url = URLEncoder.encode(url, "UTF-8");
-            } catch (UnsupportedEncodingException e) {
-                logger.error("url encode:{}", url, e);
-            }
+            url = URLEncoder.encode(url, StandardCharsets.UTF_8);
             logger.debug("redirect url : {}", url);
             WebUtil.redirect(response, request, "/#/login?redirect=" + url);
         } catch (IOException e) {

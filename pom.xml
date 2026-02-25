@@ -28,7 +28,7 @@
     <groupId>org.apache.rocketmq</groupId>
     <artifactId>rocketmq-dashboard</artifactId>
     <packaging>jar</packaging>
-    <version>1.0.1-SNAPSHOT</version>
+    <version>2.1.1-SNAPSHOT</version>
     <name>rocketmq-dashboard</name>
 
     <scm>
@@ -82,29 +82,29 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.source>1.8</maven.compiler.source>
-        <maven.compiler.target>1.8</maven.compiler.target>
-
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <maven.test.skip>false</maven.test.skip>
         <guava.version>29.0-jre</guava.version>
         <commons-digester.version>2.1</commons-digester.version>
         <commons-lang.version>2.6</commons-lang.version>
         <commons-io.version>2.4</commons-io.version>
         <commons-cli.version>1.2</commons-cli.version>
         <commons-collections.version>3.2.2</commons-collections.version>
-        <rocketmq.version>5.1.0</rocketmq.version>
+        <rocketmq.version>5.3.3</rocketmq.version>
         <surefire.version>2.19.1</surefire.version>
         <aspectj.version>1.9.6</aspectj.version>
         <lombok.version>1.18.22</lombok.version>
         <main.basedir>${basedir}/../..</main.basedir>
         <docker.image.prefix>apacherocketmq</docker.image.prefix>
-        <spring.boot.version>2.6.0</spring.boot.version>
+        <spring.boot.version>3.4.5</spring.boot.version>
         <mockito-inline.version>3.3.3</mockito-inline.version>
-        <jaxb-api.version>2.3.1</jaxb-api.version>
+        <jakarta.xml.bind-api.version>4.0.0</jakarta.xml.bind-api.version>
         <commons-pool2.version>2.4.3</commons-pool2.version>
         <easyexcel.version>2.2.10</easyexcel.version>
         <asm.version>4.2</asm.version>
         <junit.version>4.12</junit.version>
-        <snakeyaml.version>1.30</snakeyaml.version>
+        <snakeyaml.version>2.0</snakeyaml.version>
         <cglib.version>2.2.2</cglib.version>
         <joor.version>0.9.6</joor.version>
         <bcpkix-jdk15on.version>1.68</bcpkix-jdk15on.version>
@@ -115,6 +115,12 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
             <version>${spring.boot.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>javax.annotation</groupId>
+                    <artifactId>javax.annotation-api</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -144,6 +150,11 @@
             <version>${spring.boot.version}</version>
         </dependency>
         <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+            <version>${spring.boot.version}</version>
+        </dependency>
+        <dependency>
             <groupId>commons-collections</groupId>
             <artifactId>commons-collections</artifactId>
             <version>${commons-collections.version}</version>
@@ -167,6 +178,7 @@
             <groupId>org.apache.rocketmq</groupId>
             <artifactId>rocketmq-namesrv</artifactId>
             <version>${rocketmq.version}</version>
+            <scope>test</scope>
             <exclusions>
                 <exclusion>
                     <groupId>org.slf4j</groupId>
@@ -186,6 +198,7 @@
             <groupId>org.apache.rocketmq</groupId>
             <artifactId>rocketmq-broker</artifactId>
             <version>${rocketmq.version}</version>
+            <scope>test</scope>
             <exclusions>
                 <exclusion>
                     <groupId>org.slf4j</groupId>
@@ -233,14 +246,15 @@
             <version>${bcpkix-jdk15on.version}</version>
         </dependency>
         <dependency>
-            <groupId>javax.xml.bind</groupId>
-            <artifactId>jaxb-api</artifactId>
-            <version>${jaxb-api.version}</version>
+            <groupId>jakarta.xml.bind</groupId>
+            <artifactId>jakarta.xml.bind-api</artifactId>
+            <version>${jakarta.xml.bind-api.version}</version>
         </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <version>${lombok.version}</version>
+            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>org.mockito</groupId>
@@ -280,7 +294,7 @@
         <plugins>
             <plugin>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.5.1</version>
+                <version>3.11.0</version>
                 <configuration>
                     <source>${maven.compiler.source}</source>
                     <target>${maven.compiler.target}</target>
@@ -294,6 +308,9 @@
                             <version>${lombok.version}</version>
                         </path>
                     </annotationProcessorPaths>
+                    <compilerArgs>
+                        <arg>-parameters</arg>
+                    </compilerArgs>
                 </configuration>
             </plugin>
             <plugin>
@@ -382,9 +399,9 @@
                 <version>4.3.0</version>
                 <dependencies>
                     <dependency>
-                        <groupId>javax.xml.bind</groupId>
-                        <artifactId>jaxb-api</artifactId>
-                        <version>${jaxb-api.version}</version>
+                        <groupId>jakarta.xml.bind</groupId>
+                        <artifactId>jakarta.xml.bind-api</artifactId>
+                        <version>${jakarta.xml.bind-api.version}</version>
                     </dependency>
                 </dependencies>
             </plugin>
@@ -402,11 +419,11 @@
                         <exclude>docs/**</exclude>
                         <exclude>src/main/resources/static/vendor/**</exclude>
                         <exclude>src/main/resources/static/src/data/**</exclude>
-                        <exclude>frontend/node_modules/**</exclude>
-                        <exclude>frontend/build/**</exclude>
-                        <exclude>frontend/**.json</exclude>
-                        <exclude>frontend/**.lock</exclude>
-                        <exclude>frontend/public/manifest.json</exclude>
+                        <exclude>frontend-new/node_modules/**</exclude>
+                        <exclude>frontend-new/build/**</exclude>
+                        <exclude>frontend-new/**.json</exclude>
+                        <exclude>frontend-new/**.lock</exclude>
+                        <exclude>frontend-new/public/manifest.json</exclude>
                         <exclude>package-lock.json</exclude>
                     </excludes>
                 </configuration>
@@ -416,37 +433,36 @@
                 <artifactId>frontend-maven-plugin</artifactId>
                 <version>1.11.3</version>
                 <configuration>
-                    <workingDirectory>frontend</workingDirectory>
+                    <workingDirectory>frontend-new</workingDirectory>
                     <installDirectory>target</installDirectory>
                 </configuration>
                 <executions>
                     <execution>
-                        <id>install node and yarn</id>
+                        <id>install node</id>
                         <goals>
-                            <goal>install-node-and-yarn</goal>
+                            <goal>install-node-and-npm</goal>
                         </goals>
                         <configuration>
-                            <nodeVersion>v16.2.0</nodeVersion>
-                            <yarnVersion>v1.22.10</yarnVersion>
+                            <nodeVersion>v18.2.0</nodeVersion>
                         </configuration>
                     </execution>
 
                     <execution>
-                        <id>yarn install</id>
+                        <id>npm install</id>
                         <goals>
-                            <goal>yarn</goal>
+                            <goal>npm</goal>
                         </goals>
                         <configuration>
                             <arguments>install</arguments>
                         </configuration>
                     </execution>
                     <execution>
-                        <id>yarn build</id>
+                        <id>npm build</id>
                         <goals>
-                            <goal>yarn</goal>
+                            <goal>npm</goal>
                         </goals>
                         <configuration>
-                            <arguments>build</arguments>
+                            <arguments>run build</arguments>
                         </configuration>
                     </execution>
                 </executions>
@@ -459,7 +475,7 @@
                         <configuration>
                             <target>
                                 <copy todir="${project.build.directory}/classes/public">
-                                    <fileset dir="${project.basedir}/frontend/build"/>
+                                    <fileset dir="${project.basedir}/frontend-new/build" />
                                 </copy>
                             </target>
                         </configuration>

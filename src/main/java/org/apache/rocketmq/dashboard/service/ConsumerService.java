@@ -17,26 +17,26 @@
 
 package org.apache.rocketmq.dashboard.service;
 
-import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
-import org.apache.rocketmq.remoting.protocol.body.ConsumerRunningInfo;
 import org.apache.rocketmq.dashboard.model.ConsumerGroupRollBackStat;
 import org.apache.rocketmq.dashboard.model.GroupConsumeInfo;
 import org.apache.rocketmq.dashboard.model.TopicConsumerInfo;
 import org.apache.rocketmq.dashboard.model.request.ConsumerConfigInfo;
 import org.apache.rocketmq.dashboard.model.request.DeleteSubGroupRequest;
 import org.apache.rocketmq.dashboard.model.request.ResetOffsetRequest;
+import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
+import org.apache.rocketmq.remoting.protocol.body.ConsumerRunningInfo;
 
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 public interface ConsumerService {
-    List<GroupConsumeInfo> queryGroupList(boolean skipSysGroup);
+    List<GroupConsumeInfo> queryGroupList(boolean skipSysGroup, String address);
 
-    GroupConsumeInfo queryGroup(String consumerGroup);
+    GroupConsumeInfo queryGroup(String consumerGroup, String address);
 
 
-    List<TopicConsumerInfo> queryConsumeStatsListByGroupName(String groupName);
+    List<TopicConsumerInfo> queryConsumeStatsListByGroupName(String groupName, String address);
 
     List<TopicConsumerInfo> queryConsumeStatsList(String topic, String groupName);
 
@@ -52,7 +52,11 @@ public interface ConsumerService {
 
     Set<String> fetchBrokerNameSetBySubscriptionGroup(String group);
 
-    ConsumerConnection getConsumerConnection(String consumerGroup);
+    ConsumerConnection getConsumerConnection(String consumerGroup, String address);
 
     ConsumerRunningInfo getConsumerRunningInfo(String consumerGroup, String clientId, boolean jstack);
+
+    Object refreshGroup(String address, String consumerGroup);
+
+    Object refreshAllGroup(String address);
 }

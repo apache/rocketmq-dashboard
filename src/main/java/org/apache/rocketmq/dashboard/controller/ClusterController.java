@@ -16,14 +16,13 @@
  */
 package org.apache.rocketmq.dashboard.controller;
 
+import jakarta.annotation.Resource;
 import org.apache.rocketmq.dashboard.permisssion.Permission;
 import org.apache.rocketmq.dashboard.service.ClusterService;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
-
-import javax.annotation.Resource;
 import org.springframework.web.bind.annotation.ResponseBody;
 
 @Controller

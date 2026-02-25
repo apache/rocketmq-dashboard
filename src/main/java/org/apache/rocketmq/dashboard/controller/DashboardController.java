@@ -17,9 +17,8 @@
 
 package org.apache.rocketmq.dashboard.controller;
 
-import javax.annotation.Resource;
-
 import com.google.common.base.Strings;
+import jakarta.annotation.Resource;
 import org.apache.rocketmq.dashboard.permisssion.Permission;
 import org.apache.rocketmq.dashboard.service.DashboardService;
 import org.springframework.stereotype.Controller;
@@ -48,7 +47,7 @@ public class DashboardController {
         if (Strings.isNullOrEmpty(topicName)) {
             return dashboardService.queryTopicData(date);
         }
-        return dashboardService.queryTopicData(date,topicName);
+        return dashboardService.queryTopicData(date, topicName);
     }
 
     @RequestMapping(value = "/topicCurrent.query", method = RequestMethod.GET)

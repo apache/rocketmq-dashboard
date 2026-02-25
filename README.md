@@ -1,5 +1,4 @@
 ## [Apache RocketMQ](https://github.com/apache/rocketmq) Dashboard 
-[![Build Status](https://api.travis-ci.com/apache/rocketmq-dashboard.svg?branch=master)](https://travis-ci.com/github/apache/rocketmq-dashboard) [![Coverage Status](https://coveralls.io/repos/github/apache/rocketmq-dashboard/badge.svg?branch=master)](https://coveralls.io/github/apache/rocketmq-dashboard?branch=master)
 [![License](https://img.shields.io/badge/license-Apache%202-4EB1BA.svg)](https://www.apache.org/licenses/LICENSE-2.0.html)
 [![CodeCov](https://codecov.io/gh/apache/rocketmq-dashboard/branch/master/graph/badge.svg)](https://codecov.io/gh/apache/rocketmq-dashboard)
 [![Average time to resolve an issue](http://isitmaintained.com/badge/resolution/apache/rocketmq-dashboard.svg)](http://isitmaintained.com/project/apache/rocketmq-dashboard "Average time to resolve an issue")
@@ -18,7 +17,7 @@ docker pull apacherocketmq/rocketmq-dashboard:latest
 #### Run it (use your own `rocketmq.namesrv.addr` and `port`)
 
 ```shell
-docker run -d --name rocketmq-dashboard -e "JAVA_OPTS=-Drocketmq.namesrv.addr=127.0.0.1:9876" -p 8080:8080 -t apacherocketmq/rocketmq-dashboard:latest
+docker run -d --name rocketmq-dashboard -e "JAVA_OPTS=-Drocketmq.namesrv.addr=127.0.0.1:9876" -p 8082:8082 -t apacherocketmq/rocketmq-dashboard:latest
 ```
 
 ### Run with source code
@@ -26,7 +25,7 @@ docker run -d --name rocketmq-dashboard -e "JAVA_OPTS=-Drocketmq.namesrv.addr=12
 
 #### Prerequisite
 1. 64bit OS, Linux/Unix/Mac is recommended;
-2. 64bit JDK 1.8+;
+2. 64bit JDK 17;
 3. Maven 3.2.x;
 
 #### Maven spring-boot run

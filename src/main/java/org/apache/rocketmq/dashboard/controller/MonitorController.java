@@ -16,7 +16,7 @@
  */
 package org.apache.rocketmq.dashboard.controller;
 
-import javax.annotation.Resource;
+import jakarta.annotation.Resource;
 import org.apache.rocketmq.dashboard.model.ConsumerMonitorConfig;
 import org.apache.rocketmq.dashboard.permisssion.Permission;
 import org.apache.rocketmq.dashboard.service.MonitorService;
@@ -40,7 +40,7 @@ public class MonitorController {
     @RequestMapping(value = "/createOrUpdateConsumerMonitor.do", method = {RequestMethod.POST})
     @ResponseBody
     public Object createOrUpdateConsumerMonitor(@RequestParam String consumeGroupName, @RequestParam int minCount,
-        @RequestParam int maxDiffTotal) {
+                                                @RequestParam int maxDiffTotal) {
         return monitorService.createOrUpdateConsumerMonitor(consumeGroupName, new ConsumerMonitorConfig(minCount, maxDiffTotal));
     }
 

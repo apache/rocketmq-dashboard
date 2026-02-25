@@ -17,10 +17,8 @@
 package org.apache.rocketmq.dashboard.controller;
 
 import com.google.common.collect.Lists;
-import java.util.ArrayList;
-import java.util.List;
-import javax.annotation.Resource;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.message.MessageExt;
@@ -40,6 +38,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
+
+import java.util.ArrayList;
+import java.util.List;
 
 @Controller
 @RequestMapping("/dlqMessage")
@@ -61,7 +62,7 @@ public class DlqMessageController {
 
     @GetMapping(value = "/exportDlqMessage.do")
     public void exportDlqMessage(HttpServletResponse response, @RequestParam String consumerGroup,
-        @RequestParam String msgId) {
+                                 @RequestParam String msgId) {
         MessageExt messageExt = null;
         try {
             String topic = MixAll.DLQ_GROUP_TOPIC_PREFIX + consumerGroup;

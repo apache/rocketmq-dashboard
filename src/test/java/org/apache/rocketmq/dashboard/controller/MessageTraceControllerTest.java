@@ -16,8 +16,6 @@
  */
 package org.apache.rocketmq.dashboard.controller;
 
-import java.util.ArrayList;
-import java.util.List;
 import org.apache.rocketmq.client.QueryResult;
 import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.client.trace.TraceType;
@@ -32,6 +30,9 @@ import org.junit.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Spy;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
+
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.any;
@@ -62,8 +63,8 @@ public class MessageTraceControllerTest extends BaseControllerTest {
         messageList.add(messageExt);
         QueryResult queryResult = new QueryResult(System.currentTimeMillis(), messageList);
         when(mqAdminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
-            .thenThrow(new RuntimeException())
-            .thenReturn(queryResult);
+                .thenThrow(new RuntimeException())
+                .thenReturn(queryResult);
     }
 
     @Test
@@ -72,15 +73,15 @@ public class MessageTraceControllerTest extends BaseControllerTest {
         {
             MessageExt messageExt = MockObjectUtil.createMessageExt();
             when(mqAdminExt.viewMessage(anyString(), anyString()))
-                .thenThrow(new MQClientException(208, "no message"))
-                .thenReturn(messageExt);
+                    .thenThrow(new MQClientException(208, "no message"))
+                    .thenReturn(messageExt);
             MessageTrack track = new MessageTrack();
             track.setConsumerGroup("group_test");
             track.setTrackType(TrackType.CONSUMED);
             List<MessageTrack> tracks = new ArrayList<>();
             tracks.add(track);
             when(mqAdminExt.messageTrackDetail(any()))
-                .thenReturn(tracks);
+                    .thenReturn(tracks);
         }
         // no message
         requestBuilder = MockMvcRequestBuilders.get(url);
@@ -92,8 +93,8 @@ public class MessageTraceControllerTest extends BaseControllerTest {
         // query message success
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.messageView.topic").value("topic_test"))
-            .andExpect(jsonPath("$.data.messageView.msgId").value("0A9A003F00002A9F0000000000000319"));
+                .andExpect(jsonPath("$.data.messageView.topic").value("topic_test"))
+                .andExpect(jsonPath("$.data.messageView.msgId").value("0A9A003F00002A9F0000000000000319"));
     }
 
     @Test
@@ -108,11 +109,11 @@ public class MessageTraceControllerTest extends BaseControllerTest {
         // query message trace success
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data", hasSize(4)))
-            .andExpect(jsonPath("$.data[0].traceType").value(TraceType.Pub.name()))
-            .andExpect(jsonPath("$.data[1].traceType").value(TraceType.SubBefore.name()))
-            .andExpect(jsonPath("$.data[2].traceType").value(TraceType.SubAfter.name()))
-            .andExpect(jsonPath("$.data[3].traceType").value(TraceType.EndTransaction.name()));
+                .andExpect(jsonPath("$.data", hasSize(4)))
+                .andExpect(jsonPath("$.data[0].traceType").value(TraceType.Pub.name()))
+                .andExpect(jsonPath("$.data[1].traceType").value(TraceType.SubBefore.name()))
+                .andExpect(jsonPath("$.data[2].traceType").value(TraceType.SubAfter.name()))
+                .andExpect(jsonPath("$.data[3].traceType").value(TraceType.EndTransaction.name()));
     }
 
     @Test
@@ -127,15 +128,16 @@ public class MessageTraceControllerTest extends BaseControllerTest {
         // query message trace success
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-            .andExpect(jsonPath("$.data").isMap())
-            .andExpect(jsonPath("$.data.producerNode.groupName").value("PID_test"))
-            .andExpect(jsonPath("$.data.subscriptionNodeList", hasSize(1)))
-            .andExpect(jsonPath("$.data.subscriptionNodeList[0].subscriptionGroup").value("group_test"))
-            .andExpect(jsonPath("$.data.messageTraceViews").isArray())
-            .andExpect(jsonPath("$.data.messageTraceViews", hasSize(4)));
+                .andExpect(jsonPath("$.data").isMap())
+                .andExpect(jsonPath("$.data.producerNode.groupName").value("PID_test"))
+                .andExpect(jsonPath("$.data.subscriptionNodeList", hasSize(1)))
+                .andExpect(jsonPath("$.data.subscriptionNodeList[0].subscriptionGroup").value("group_test"))
+                .andExpect(jsonPath("$.data.messageTraceViews").isArray())
+                .andExpect(jsonPath("$.data.messageTraceViews", hasSize(4)));
     }
 
-    @Override protected Object getTestController() {
+    @Override
+    protected Object getTestController() {
         return messageTraceController;
     }
 }

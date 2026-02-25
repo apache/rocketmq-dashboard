@@ -17,7 +17,6 @@
 
 package org.apache.rocketmq.dashboard.support;
 
-import java.lang.annotation.Annotation;
 import org.apache.rocketmq.dashboard.aspect.admin.annotation.OriginalControllerReturnValue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,6 +28,8 @@ import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
 
+import java.lang.annotation.Annotation;
+
 @ControllerAdvice(basePackages = "org.apache.rocketmq.dashboard")
 public class GlobalRestfulResponseBodyAdvice implements ResponseBodyAdvice<Object> {
 
@@ -36,18 +37,17 @@ public class GlobalRestfulResponseBodyAdvice implements ResponseBodyAdvice<Objec
 
     @Override
     public Object beforeBodyWrite(
-        Object obj, MethodParameter methodParameter, MediaType mediaType,
-        Class<? extends HttpMessageConverter<?>> converterType,
-        ServerHttpRequest serverHttpRequest, ServerHttpResponse serverHttpResponse) {
+            Object obj, MethodParameter methodParameter, MediaType mediaType,
+            Class<? extends HttpMessageConverter<?>> converterType,
+            ServerHttpRequest serverHttpRequest, ServerHttpResponse serverHttpResponse) {
         Annotation originalControllerReturnValue = methodParameter.getMethodAnnotation(OriginalControllerReturnValue.class);
         if (originalControllerReturnValue != null) {
             return obj;
         }
         JsonResult value;
         if (obj instanceof JsonResult) {
-            value = (JsonResult)obj;
-        }
-        else {
+            value = (JsonResult) obj;
+        } else {
             value = new JsonResult(obj);
         }
         return value;
