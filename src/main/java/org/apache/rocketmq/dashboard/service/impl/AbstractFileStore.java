@@ -34,7 +34,7 @@ public abstract class AbstractFileStore {
         filePath = configure.getRocketMqDashboardDataPath() + File.separator + fileName;
         if (!new File(filePath).exists()) {
             // Use the default path
-            InputStream inputStream = getClass().getResourceAsStream("/" + fileName);
+            InputStream inputStream = AbstractFileStore.class.getResourceAsStream("/" + fileName);
             if (inputStream == null) {
                 log.error(String.format("Can not found the file %s in Spring Boot jar", fileName));
                 System.exit(1);
