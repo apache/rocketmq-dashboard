@@ -1,0 +1,24 @@
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+target/
+
+# Dependencies
+node_modules/
+
+# Generated docs
+docs/*.html
+
+# Husky internal files (auto-generated scaffolds)
+.husky/_/
+
+# Deploy environment (local only)
+deploy/.env
