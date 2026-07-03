@@ -14,30 +14,78 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.dashboard.exception;
+package org.apache.rocketmq.dashboard.model;
+
+import lombok.Data;
+import java.util.Map;
 
 /**
- * Custom exception for service layer operations.
+ *
  */
-public class ServiceException extends RuntimeException {
-    private static final long serialVersionUID = 9213584003139969215L;
-    private int code;
+@Data
+public class SubscriptionInfo {
 
     /**
-     * Constructs a ServiceException with code and message.
-     * @param code the error code
-     * @param message the error message
+ *
      */
-    public ServiceException(final int code, final String message) {
-        super(message);
-        this.code = code;
+    private String topic;
+
+    /**
+ *
+     */
+    private String consumerGroup;
+
+    /**
+ *
+     */
+    private String subExpression;
+
+    /**
+ *
+     */
+    private String subscriptionType;
+
+    /**
+ *
+     */
+    private Long version;
+
+    /**
+ *
+     */
+    private Boolean broadcast;
+
+    /**
+ *
+     */
+    private String consumeFromWhere;
+
+    /**
+ *
+     */
+    private Long consumeProgress;
+
+    /**
+ *
+     */
+    private Long backlogCount;
+
+    /**
+ *
+     */
+    private Map<String, Object> attributes;
+
+    /**
+ *
+     */
+    public boolean isTagSubscription() {
+        return "TAG".equals(subscriptionType);
     }
 
     /**
-     * Gets the error code.
-     * @return the error code
+ *
      */
-    public int getCode() {
-        return code;
+    public boolean isSQL92Subscription() {
+        return "SQL92".equals(subscriptionType);
     }
 }

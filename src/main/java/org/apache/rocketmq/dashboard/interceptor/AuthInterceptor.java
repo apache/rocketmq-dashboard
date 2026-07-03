@@ -25,14 +25,28 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 
+/**
+ * Authentication interceptor for HTTP requests.
+ * Handles login verification and CSRF token bypass.
+ */
 @Component
 public class AuthInterceptor implements HandlerInterceptor {
 
     @Autowired
     private LoginService loginService;
 
+    /**
+     * Pre-handle HTTP requests for authentication.
+     * @param request the HTTP request
+     * @param response the HTTP response
+     * @param handler the handler object
+     * @return true if request should continue, false otherwise
+     * @throws Exception if authentication fails
+     */
     @Override
-    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+    public boolean preHandle(final HttpServletRequest request,
+                           final HttpServletResponse response,
+                           final Object handler) throws Exception {
         if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
             return true;
         }

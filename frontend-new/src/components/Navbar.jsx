@@ -21,6 +21,7 @@ import {BgColorsOutlined, DownOutlined, GlobalOutlined, MenuOutlined, UserOutlin
 import {useLocation, useNavigate} from 'react-router-dom';
 import {useLanguage} from '../i18n/LanguageContext';
 import {useTheme} from "../store/context/ThemeContext";
+import {useClusterCapabilities} from '../store/context/ClusterCapabilitiesContext';
 import {remoteApi} from "../api/remoteApi/remoteApi";
 
 const {Header} = Layout;
@@ -32,6 +33,7 @@ const Navbar = ({rmqVersion = true, showAcl = true}) => {
     const {lang, setLang, t} = useLanguage();
     const screens = useBreakpoint(); // Get current screen size breakpoints
     const {currentThemeName, setCurrentThemeName} = useTheme();
+    const {capabilities, loading} = useClusterCapabilities();
     const [userName, setUserName] = useState(null);
     const [drawerVisible, setDrawerVisible] = useState(false); // Controls drawer visibility
 
@@ -90,19 +92,21 @@ const Navbar = ({rmqVersion = true, showAcl = true}) => {
     );
 
 
-    // Menu item configuration
+    // Menu item configuration - dynamically based on cluster capabilities
     const menuItems = [
         {key: 'ops', label: t.OPS},
-        ...(rmqVersion ? [{key: 'proxy', label: t.PROXY}] : []),
+        ...(capabilities.isV5Architecture ? [{key: 'proxy', label: t.PROXY}] : []),
         {key: '', label: t.DASHBOARD}, // Dashboard corresponds to root path
         {key: 'cluster', label: t.CLUSTER},
         {key: 'topic', label: t.TOPIC},
+        ...(capabilities.supportsLiteTopic ? [{key: 'lite-topic', label: t.LITE_TOPIC}] : []),
         {key: 'consumer', label: t.CONSUMER},
+        ...(capabilities.supportsPopConsumption ? [{key: 'pop-consumer', label: t.POP_CONSUMER}] : []),
         {key: 'producer', label: t.PRODUCER},
         {key: 'message', label: t.MESSAGE},
         {key: 'dlqMessage', label: t.DLQ_MESSAGE},
         {key: 'messageTrace', label: t.MESSAGETRACE},
-        ...(showAcl ? [{key: 'acl', label: t.ACL_MANAGEMENT}] : []),
+        ...(capabilities.supportsAcl2 && showAcl ? [{key: 'acl', label: t.ACL_MANAGEMENT}] : []),
     ];
 
     // Determine if it's a small screen (e.g., less than md)

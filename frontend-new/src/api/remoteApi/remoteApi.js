@@ -950,6 +950,21 @@ const remoteApi = {
             console.error("Error logging out:", error);
             return {status: 1, errMsg: "Failed to log out"};
         }
+    },
+
+    /**
+     * Get cluster capabilities based on the cluster name
+     * @param {string} clusterName - The name of the cluster
+     * @returns {Promise<Object>} - Cluster capabilities response
+     */
+    getClusterCapabilities: async (clusterName) => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl(`/cluster/capabilities.query?clusterName=${encodeURIComponent(clusterName)}`));
+            return await response.json();
+        } catch (error) {
+            console.error("Error fetching cluster capabilities:", error);
+            return {status: 1, errMsg: "Failed to fetch cluster capabilities"};
+        }
     }
 };
 

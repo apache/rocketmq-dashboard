@@ -1,57 +1,58 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package org.apache.rocketmq.dashboard.service;
 
-import org.apache.rocketmq.client.producer.SendResult;
-import org.apache.rocketmq.common.TopicConfig;
-import org.apache.rocketmq.dashboard.model.request.SendTopicMessageRequest;
-import org.apache.rocketmq.dashboard.model.request.TopicConfigInfo;
-import org.apache.rocketmq.dashboard.model.request.TopicTypeList;
-import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
-import org.apache.rocketmq.remoting.protocol.body.GroupList;
-import org.apache.rocketmq.remoting.protocol.body.TopicList;
-import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
+import org.apache.rocketmq.dashboard.model.ClusterCapability;
+import org.apache.rocketmq.dashboard.model.TopicInfo;
+import org.apache.rocketmq.dashboard.model.TopicType;
 
 import java.util.List;
 
+/**
+ * Topic management service interface
+ */
 public interface TopicService {
-    TopicList fetchAllTopicList(boolean skipSysProcess, boolean skipRetryAndDlq);
 
-    TopicTypeList examineAllTopicType();
+    /**
+     * List all topics
+     */
+    List<TopicInfo> listTopics();
 
-    TopicStatsTable stats(String topic);
+    /**
+     * Get topics by cluster name
+     */
+    List<TopicInfo> getTopicsByCluster(String clusterName);
 
-    TopicRouteData route(String topic);
+    /**
+     * Get topic by name
+     */
+    TopicInfo getTopic(String topic);
 
-    GroupList queryTopicConsumerInfo(String topic);
+    /**
+     * Create topic
+     */
+    boolean createTopic(String topic, int readQueueNums, int writeQueueNums, int perm);
 
-    void createOrUpdate(TopicConfigInfo topicCreateOrUpdateRequest);
+    /**
+     * Create topic with type
+     */
+    boolean createTopicWithType(String topic, int readQueueNums, int writeQueueNums, int perm, TopicType topicType);
 
-    TopicConfig examineTopicConfig(String topic, String brokerName);
+    /**
+     * Update topic
+     */
+    boolean updateTopic(String topic, int readQueueNums, int writeQueueNums, int perm);
 
-    List<TopicConfigInfo> examineTopicConfig(String topic);
-
-    boolean deleteTopic(String topic, String clusterName);
-
+    /**
+     * Delete topic
+     */
     boolean deleteTopic(String topic);
 
-    boolean deleteTopicInBroker(String brokerName, String topic);
+    /**
+     * Get topic stats
+     */
+    boolean getTopicStats(String topic);
 
-    SendResult sendTopicMessageRequest(SendTopicMessageRequest sendTopicMessageRequest);
-
+    /**
+     * Get cluster capability
+     */
+    ClusterCapability getClusterCapability();
 }
