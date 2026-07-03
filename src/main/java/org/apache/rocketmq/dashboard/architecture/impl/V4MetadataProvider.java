@@ -16,17 +16,34 @@
  */
 package org.apache.rocketmq.dashboard.architecture.impl;
 
-import org.apache.rocketmq.common.admin.TopicConfig;
+import org.apache.rocketmq.common.TopicConfig;
+import org.apache.rocketmq.common.MQVersion;
 import org.apache.rocketmq.dashboard.architecture.MetadataProvider;
+import org.apache.rocketmq.dashboard.model.ACLPolicy;
+import org.apache.rocketmq.dashboard.model.ACLUser;
+import org.apache.rocketmq.dashboard.model.ClientInstance;
+import org.apache.rocketmq.dashboard.model.ConsumerGroupInfo;
+import org.apache.rocketmq.dashboard.model.LiteTopicQuota;
+import org.apache.rocketmq.dashboard.model.LiteTopicSession;
+import org.apache.rocketmq.dashboard.model.LiteTopicSummary;
+import org.apache.rocketmq.dashboard.model.MessageInfo;
 import org.apache.rocketmq.dashboard.model.NamespaceInfo;
+import org.apache.rocketmq.dashboard.model.SubscriptionInfo;
 import org.apache.rocketmq.dashboard.model.TopicInfo;
 import org.apache.rocketmq.dashboard.model.TopicType;
+import org.apache.rocketmq.remoting.protocol.LanguageCode;
+import org.apache.rocketmq.remoting.protocol.body.ProducerConnection;
+import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -102,7 +119,7 @@ public class V4MetadataProvider implements MetadataProvider {
             return Collections.emptyList();
         }
 
-        List<String> topicNames = mqAdminExt.fetchTopicListFromNameServer().getTopicList();
+        List<String> topicNames = new ArrayList<>(mqAdminExt.fetchAllTopicList().getTopicList());
         List<TopicInfo> topicInfos = new ArrayList<>();
 
         for (String topicName : topicNames) {
@@ -200,7 +217,19 @@ public class V4MetadataProvider implements MetadataProvider {
             return;
         }
 
-        mqAdminExt.deleteTopic(topic);
+        TopicRouteData routeData = mqAdminExt.examineTopicRouteInfo(topic);
+        if (routeData != null && routeData.getBrokerDatas() != null) {
+            Set<String> clusters = new HashSet<>();
+            for (org.apache.rocketmq.remoting.protocol.route.BrokerData brokerData : routeData.getBrokerDatas()) {
+                String cluster = brokerData.getCluster();
+                if (cluster != null) {
+                    clusters.add(cluster);
+                }
+            }
+            for (String clusterName : clusters) {
+                mqAdminExt.deleteTopic(topic, clusterName);
+            }
+        }
     }
 
     @Override
@@ -240,7 +269,7 @@ public class V4MetadataProvider implements MetadataProvider {
         }
 
         // Removed
-        List<String> topicNames = mqAdminExt.fetchTopicListFromNameServer().getTopicList();
+        List<String> topicNames = new ArrayList<>(mqAdminExt.fetchAllTopicList().getTopicList());
         Set<String> groupNames = new HashSet<>();
 
         for (String topicName : topicNames) {
@@ -293,7 +322,30 @@ public class V4MetadataProvider implements MetadataProvider {
         }
 
         // Removed
-        mqAdminExt.deleteTopic("%RETRY%" + consumerGroup);
+        String retryTopic = "%RETRY%" + consumerGroup;
+        TopicRouteData routeData = mqAdminExt.examineTopicRouteInfo(retryTopic);
+        if (routeData != null && routeData.getBrokerDatas() != null) {
+            Set<String> clusters = new HashSet<>();
+            for (org.apache.rocketmq.remoting.protocol.route.BrokerData brokerData : routeData.getBrokerDatas()) {
+                String cluster = brokerData.getCluster();
+                if (cluster != null) {
+                    clusters.add(cluster);
+                }
+            }
+            for (String clusterName : clusters) {
+                mqAdminExt.deleteTopic(retryTopic, clusterName);
+            }
+        }
+    }
+
+    @Override
+    public List<SubscriptionInfo> listSubscriptions(String groupName) throws Exception {
+        return Collections.emptyList();
+    }
+
+    @Override
+    public void resetConsumerGroupOffset(String groupName, String topic, long timestamp) throws Exception {
+        throw new UnsupportedOperationException("V4 clusters do not support consumer group offset reset via this API");
     }
 
     // Removed
@@ -330,7 +382,7 @@ public class V4MetadataProvider implements MetadataProvider {
         List<ClientInstance> clientInstances = new ArrayList<>();
 
         // Removed
-        List<String> topicNames = mqAdminExt.fetchTopicListFromNameServer().getTopicList();
+        List<String> topicNames = new ArrayList<>(mqAdminExt.fetchAllTopicList().getTopicList());
         for (String topicName : topicNames) {
             if (topic.isPresent() && !topic.get().equals(topicName)) {
                 continue;
@@ -344,10 +396,10 @@ public class V4MetadataProvider implements MetadataProvider {
                     producerConnection.getConnectionSet().forEach(connection -> {
                         ClientInstance client = new ClientInstance();
                         client.setClientId(connection.getClientId());
-                        client.setClientAddress(connection.getRemoteAddr());
+                        client.setClientAddress(connection.getClientAddr());
                         client.setClientType(ClientInstance.ClientType.PRODUCER);
-                        client.setLanguage(connection.getLanguage());
-                        client.setSdkVersion(connection.getVersion());
+                        client.setLanguage(connection.getLanguage().name());
+                        client.setSdkVersion(MQVersion.getVersionDesc(connection.getVersion()));
                         client.setProtocolType(ClientInstance.ProtocolType.REMOTING);
                         client.setConnectTime(new Date());
                         client.setActive(true);
@@ -375,5 +427,97 @@ public class V4MetadataProvider implements MetadataProvider {
     public List<SubscriptionInfo> getClientSubscriptions(String clientId) throws Exception {
         // Removed
         return Collections.emptyList();
+    }
+
+    @Override
+    public List<MessageInfo> queryMessageByTopic(String topic, long beginTime, long endTime, int maxNum) throws Exception {
+        throw new UnsupportedOperationException("queryMessageByTopic not yet implemented in V4MetadataProvider");
+    }
+
+    @Override
+    public List<MessageInfo> queryMessageByTopicAndKey(String topic, String key, long beginTime, long endTime) throws Exception {
+        throw new UnsupportedOperationException("queryMessageByTopicAndKey not yet implemented in V4MetadataProvider");
+    }
+
+    @Override
+    public List<MessageInfo> queryMessageByGroup(String consumerGroup, String topic, long beginTime, long endTime) throws Exception {
+        throw new UnsupportedOperationException("queryMessageByGroup not yet implemented in V4MetadataProvider");
+    }
+
+    @Override
+    public Optional<MessageInfo> getMessageById(String msgId) throws Exception {
+        throw new UnsupportedOperationException("getMessageById not yet implemented in V4MetadataProvider");
+    }
+
+    @Override
+    public List<MessageInfo> getMessagesByOffset(String topic, String brokerName, int queueId, long offset, int count) throws Exception {
+        throw new UnsupportedOperationException("getMessagesByOffset not yet implemented in V4MetadataProvider");
+    }
+
+    @Override
+    public long searchOffset(String topic, String brokerName, int queueId, long timestamp) throws Exception {
+        throw new UnsupportedOperationException("searchOffset not yet implemented in V4MetadataProvider");
+    }
+
+    @Override
+    public long getMaxOffset(String topic, String brokerName, int queueId) throws Exception {
+        throw new UnsupportedOperationException("getMaxOffset not yet implemented in V4MetadataProvider");
+    }
+
+    @Override
+    public long getMinOffset(String topic, String brokerName, int queueId) throws Exception {
+        throw new UnsupportedOperationException("getMinOffset not yet implemented in V4MetadataProvider");
+    }
+
+    @Override
+    public void deleteMessage(String topic, String msgId) throws Exception {
+        throw new UnsupportedOperationException("deleteMessage not yet implemented in V4MetadataProvider");
+    }
+
+    @Override
+    public void resendMessage(String msgId, String newTopic) throws Exception {
+        throw new UnsupportedOperationException("resendMessage not yet implemented in V4MetadataProvider");
+    }
+
+    // ACL stub implementations - V4 does not support ACL natively
+
+    @Override
+    public List<ACLPolicy> listACLPolicies(String namespace) throws Exception {
+        throw new UnsupportedOperationException("ACL not supported in V4 clusters");
+    }
+
+    @Override
+    public void createACLUser(ACLUser user) throws Exception {
+        throw new UnsupportedOperationException("ACL not supported in V4 clusters");
+    }
+
+    @Override
+    public void updateACLUser(ACLUser user) throws Exception {
+        throw new UnsupportedOperationException("ACL not supported in V4 clusters");
+    }
+
+    @Override
+    public void deleteACLUser(String username) throws Exception {
+        throw new UnsupportedOperationException("ACL not supported in V4 clusters");
+    }
+
+    @Override
+    public void addACLPolicy(ACLPolicy policy) throws Exception {
+        throw new UnsupportedOperationException("ACL not supported in V4 clusters");
+    }
+
+    @Override
+    public void removeACLPolicy(String namespace, String policyName) throws Exception {
+        throw new UnsupportedOperationException("ACL not supported in V4 clusters");
+    }
+
+    @Override
+    public Optional<ACLUser> getACLUser(String username) throws Exception {
+        throw new UnsupportedOperationException("ACL not supported in V4 clusters");
+    }
+
+    @Override
+    public boolean checkACLPermission(String username, String resource, String action) throws Exception {
+        throw new UnsupportedOperationException("ACL not supported in V4 clusters");
     }
 }

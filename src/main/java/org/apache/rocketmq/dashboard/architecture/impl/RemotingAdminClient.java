@@ -16,13 +16,23 @@
  */
 package org.apache.rocketmq.dashboard.architecture.impl;
 
+import org.apache.rocketmq.client.QueryResult;
+import org.apache.rocketmq.common.TopicConfig;
+import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.dashboard.architecture.AdminClient;
 import org.apache.rocketmq.dashboard.architecture.ClusterAccessType;
-import org.apache.rocketmq.remoting.protocol.body.BrokerData;
+import org.apache.rocketmq.dashboard.model.AccessControlList;
+import org.apache.rocketmq.dashboard.model.GroupConsumeInfo;
+import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
+import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
+import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.remoting.protocol.body.KVTable;
+import org.apache.rocketmq.remoting.protocol.body.ProducerConnection;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
+import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
+import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,10 +41,6 @@ import org.springframework.util.Assert;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-
-// Removed
-import org.apache.rocketmq.common.admin.TopicConfig;
-import org.apache.rocketmq.common.subscription.SubscriptionGroupConfig;
 
 /**
  *

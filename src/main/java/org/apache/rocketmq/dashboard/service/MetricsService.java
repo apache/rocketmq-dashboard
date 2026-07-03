@@ -1,13 +1,18 @@
 package org.apache.rocketmq.dashboard.service;
 
+import org.apache.rocketmq.dashboard.model.request.MetricsDataSourceRequest;
+
 import java.util.List;
 import java.util.Map;
 
 /**
  * Metrics collection and export service interface
  * Provides Prometheus-compatible metrics for RocketMQ monitoring
+ * and PromQL proxy query capabilities with data source management.
  */
 public interface MetricsService {
+
+    // ==================== Core Metrics Collection ====================
 
     /**
      * Get cluster-level metrics
@@ -63,4 +68,68 @@ public interface MetricsService {
      * Get metrics availability summary
      */
     Map<String, Object> getMetricsSummary();
+
+    // ==================== PromQL Proxy Query ====================
+
+    /**
+     * Execute a PromQL instant query against the configured data source.
+     *
+     * @param params query parameters including "query", "time" (optional), "datasourceId" (optional)
+     * @return query results from Prometheus
+     * @throws UnsupportedOperationException if no data source is configured
+     */
+    Map<String, Object> executePromqlQuery(Map<String, Object> params);
+
+    /**
+     * Execute a PromQL range query against the configured data source.
+     *
+     * @param params query parameters including "query", "start", "end", "step", "datasourceId" (optional)
+     * @return range query results from Prometheus
+     * @throws UnsupportedOperationException if no data source is configured
+     */
+    Map<String, Object> executePromqlRangeQuery(Map<String, Object> params);
+
+    // ==================== Data Source Management ====================
+
+    /**
+     * List all configured data sources.
+     *
+     * @return list of data source configurations
+     */
+    List<Map<String, Object>> listDataSources();
+
+    /**
+     * Create a new data source configuration.
+     *
+     * @param request data source configuration
+     * @return created data source with generated ID
+     * @throws IllegalArgumentException if required fields are missing
+     */
+    Map<String, Object> createDataSource(MetricsDataSourceRequest request);
+
+    /**
+     * Update an existing data source configuration.
+     *
+     * @param id      data source ID
+     * @param request updated configuration
+     * @return updated data source
+     * @throws IllegalArgumentException if data source not found
+     */
+    Map<String, Object> updateDataSource(String id, MetricsDataSourceRequest request);
+
+    /**
+     * Delete a data source configuration.
+     *
+     * @param id data source ID
+     * @return true if deleted, false if not found
+     */
+    boolean deleteDataSource(String id);
+
+    /**
+     * Test connectivity to a data source.
+     *
+     * @param id data source ID
+     * @return test result with "success", "latencyMs", and "message" fields
+     */
+    Map<String, Object> testDataSource(String id);
 }

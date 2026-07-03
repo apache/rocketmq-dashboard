@@ -16,18 +16,24 @@
  */
 package org.apache.rocketmq.dashboard.architecture.impl;
 
-import org.apache.rocketmq.common.admin.TopicConfig;
-import org.apache.rocketmq.common.constant.TopicFilterType;
+import org.apache.rocketmq.common.TopicConfig;
+import org.apache.rocketmq.common.TopicFilterType;
+import org.apache.rocketmq.common.MQVersion;
 import org.apache.rocketmq.dashboard.architecture.MetadataProvider;
+import org.apache.rocketmq.dashboard.model.ACLPolicy;
+import org.apache.rocketmq.dashboard.model.ACLUser;
+import org.apache.rocketmq.dashboard.model.ClientInstance;
 import org.apache.rocketmq.dashboard.model.ClusterCapability;
 import org.apache.rocketmq.dashboard.model.ConsumerGroupInfo;
 import org.apache.rocketmq.dashboard.model.LiteTopicQuota;
 import org.apache.rocketmq.dashboard.model.LiteTopicSession;
 import org.apache.rocketmq.dashboard.model.LiteTopicSummary;
+import org.apache.rocketmq.dashboard.model.MessageInfo;
 import org.apache.rocketmq.dashboard.model.NamespaceInfo;
 import org.apache.rocketmq.dashboard.model.SubscriptionInfo;
 import org.apache.rocketmq.dashboard.model.TopicInfo;
 import org.apache.rocketmq.dashboard.model.TopicType;
+import org.apache.rocketmq.remoting.protocol.LanguageCode;
 import org.apache.rocketmq.remoting.protocol.route.QueueData;
 import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
@@ -117,11 +123,11 @@ public class V5ProxyMetadataProvider implements MetadataProvider {
 
     /**
      * Set cached capability info (called by parent cluster provider initialization).
-     * Used internally for capability-aware behavior (e.g., liteTopic support detection).
+     * Used internally and by ArchitectureConfig for capability-aware behavior (e.g., liteTopic support detection).
      *
      * @param capability the cluster capability object
      */
-    void setCachedCapability(ClusterCapability capability) {
+    public void setCachedCapability(ClusterCapability capability) {
         this.cachedCapability = capability;
     }
 
@@ -246,7 +252,7 @@ public class V5ProxyMetadataProvider implements MetadataProvider {
     @Override
     public List<TopicInfo> listTopics(Optional<String> namespace) throws Exception {
         String effectiveNs = resolveEffectiveNamespace(namespace);
-        List<String> topicNames = mqAdminExt.fetchTopicListFromNameServer().getTopicList();
+        List<String> topicNames = new ArrayList<>(mqAdminExt.fetchAllTopicList().getTopicList());
         List<TopicInfo> result = new ArrayList<>();
 
         for (String topicName : topicNames) {
@@ -364,7 +370,19 @@ public class V5ProxyMetadataProvider implements MetadataProvider {
         if (topic == null || topic.trim().isEmpty()) {
             throw new IllegalArgumentException("Topic name must not be empty");
         }
-        mqAdminExt.deleteTopic(topic);
+        TopicRouteData routeData = mqAdminExt.examineTopicRouteInfo(topic);
+        if (routeData != null && routeData.getBrokerDatas() != null) {
+            Set<String> clusters = new HashSet<>();
+            for (org.apache.rocketmq.remoting.protocol.route.BrokerData brokerData : routeData.getBrokerDatas()) {
+                String cluster = brokerData.getCluster();
+                if (cluster != null) {
+                    clusters.add(cluster);
+                }
+            }
+            for (String clusterName : clusters) {
+                mqAdminExt.deleteTopic(topic, clusterName);
+            }
+        }
         log.info("Deleted topic '{}' in namespace '{}'", topic,
             namespace.map(n -> "'" + n + "'").orElse("(default)"));
     }
@@ -487,13 +505,36 @@ public class V5ProxyMetadataProvider implements MetadataProvider {
         }
         // Delete the corresponding retry topic
         try {
-            mqAdminExt.deleteTopic("%RETRY%" + consumerGroup);
+            String retryTopic = "%RETRY%" + consumerGroup;
+            TopicRouteData routeData = mqAdminExt.examineTopicRouteInfo(retryTopic);
+            if (routeData != null && routeData.getBrokerDatas() != null) {
+                Set<String> clusters = new HashSet<>();
+                for (org.apache.rocketmq.remoting.protocol.route.BrokerData brokerData : routeData.getBrokerDatas()) {
+                    String cluster = brokerData.getCluster();
+                    if (cluster != null) {
+                        clusters.add(cluster);
+                    }
+                }
+                for (String clusterName : clusters) {
+                    mqAdminExt.deleteTopic(retryTopic, clusterName);
+                }
+            }
         } catch (Exception e) {
             log.warn("Failed to delete retry topic for consumer group {}: {}",
                 consumerGroup, e.getMessage());
         }
         log.info("Request to delete consumer group: {} in namespace '{}'",
             consumerGroup, namespace.map(n -> "'" + n + "'").orElse("(default)"));
+    }
+
+    @Override
+    public List<SubscriptionInfo> listSubscriptions(String groupName) throws Exception {
+        return Collections.emptyList();
+    }
+
+    @Override
+    public void resetConsumerGroupOffset(String groupName, String topic, long timestamp) throws Exception {
+        throw new UnsupportedOperationException("Consumer group offset reset not supported in V5 proxy mode");
     }
 
     // ==================== ACL Policy Operations ====================
@@ -541,7 +582,7 @@ public class V5ProxyMetadataProvider implements MetadataProvider {
     @Override
     public List<ClientInstance> listClientInstances(Optional<String> topic, Optional<String> group) throws Exception {
         List<ClientInstance> clientInstances = new ArrayList<>();
-        List<String> topicNames = mqAdminExt.fetchTopicListFromNameServer().getTopicList();
+        List<String> topicNames = new ArrayList<>(mqAdminExt.fetchAllTopicList().getTopicList());
 
         for (String topicName : topicNames) {
             if (topic.isPresent() && !topic.get().equals(topicName)) {
@@ -556,10 +597,10 @@ public class V5ProxyMetadataProvider implements MetadataProvider {
                     producerConnection.getConnectionSet().forEach(connection -> {
                         ClientInstance client = new ClientInstance();
                         client.setClientId(connection.getClientId());
-                        client.setClientAddress(connection.getRemoteAddr());
+                        client.setClientAddress(connection.getClientAddr());
                         client.setClientType(ClientInstance.ClientType.PRODUCER);
-                        client.setLanguage(connection.getLanguage());
-                        client.setSdkVersion(connection.getVersion());
+                        client.setLanguage(connection.getLanguage().name());
+                        client.setSdkVersion(MQVersion.getVersionDesc(connection.getVersion()));
                         // In 5.x, clients connect via Proxy -- protocol could be GRPC or REMOTING
                         client.setProtocolType(ClientInstance.ProtocolType.REMOTING);
                         client.setConnectTime(new Date());
@@ -589,6 +630,58 @@ public class V5ProxyMetadataProvider implements MetadataProvider {
         // Subscription info requires telemetry data from connected clients.
         // Not directly available through standard MQAdminExt -- return empty.
         return Collections.emptyList();
+    }
+
+    // ==================== Message Query Operations (stub) ====================
+
+    @Override
+    public List<MessageInfo> queryMessageByTopic(String topic, long beginTime, long endTime, int maxNum) throws Exception {
+        throw new UnsupportedOperationException("queryMessageByTopic not yet implemented in V5ProxyMetadataProvider");
+    }
+
+    @Override
+    public List<MessageInfo> queryMessageByTopicAndKey(String topic, String key, long beginTime, long endTime) throws Exception {
+        throw new UnsupportedOperationException("queryMessageByTopicAndKey not yet implemented in V5ProxyMetadataProvider");
+    }
+
+    @Override
+    public List<MessageInfo> queryMessageByGroup(String consumerGroup, String topic, long beginTime, long endTime) throws Exception {
+        throw new UnsupportedOperationException("queryMessageByGroup not yet implemented in V5ProxyMetadataProvider");
+    }
+
+    @Override
+    public Optional<MessageInfo> getMessageById(String msgId) throws Exception {
+        throw new UnsupportedOperationException("getMessageById not yet implemented in V5ProxyMetadataProvider");
+    }
+
+    @Override
+    public List<MessageInfo> getMessagesByOffset(String topic, String brokerName, int queueId, long offset, int count) throws Exception {
+        throw new UnsupportedOperationException("getMessagesByOffset not yet implemented in V5ProxyMetadataProvider");
+    }
+
+    @Override
+    public long searchOffset(String topic, String brokerName, int queueId, long timestamp) throws Exception {
+        throw new UnsupportedOperationException("searchOffset not yet implemented in V5ProxyMetadataProvider");
+    }
+
+    @Override
+    public long getMaxOffset(String topic, String brokerName, int queueId) throws Exception {
+        throw new UnsupportedOperationException("getMaxOffset not yet implemented in V5ProxyMetadataProvider");
+    }
+
+    @Override
+    public long getMinOffset(String topic, String brokerName, int queueId) throws Exception {
+        throw new UnsupportedOperationException("getMinOffset not yet implemented in V5ProxyMetadataProvider");
+    }
+
+    @Override
+    public void deleteMessage(String topic, String msgId) throws Exception {
+        throw new UnsupportedOperationException("deleteMessage not yet implemented in V5ProxyMetadataProvider");
+    }
+
+    @Override
+    public void resendMessage(String msgId, String newTopic) throws Exception {
+        throw new UnsupportedOperationException("resendMessage not yet implemented in V5ProxyMetadataProvider");
     }
 
     // ==================== Private helper methods ====================
@@ -656,7 +749,7 @@ public class V5ProxyMetadataProvider implements MetadataProvider {
      * getSubscriptionGroup() directly.
      */
     private Set<String> extractConsumerGroupsFromRetryTopics() throws Exception {
-        List<String> topicNames = mqAdminExt.fetchTopicListFromNameServer().getTopicList();
+        List<String> topicNames = new ArrayList<>(mqAdminExt.fetchAllTopicList().getTopicList());
         Set<String> groupNames = new HashSet<>();
 
         for (String topicName : topicNames) {
@@ -698,5 +791,47 @@ public class V5ProxyMetadataProvider implements MetadataProvider {
                 topicConfig.setOrder(false);
                 break;
         }
+    }
+
+    // ACL stub implementations - V5 Proxy delegates ACL to the broker
+
+    @Override
+    public List<ACLPolicy> listACLPolicies(String namespace) throws Exception {
+        throw new UnsupportedOperationException("ACL not yet implemented in V5ProxyMetadataProvider");
+    }
+
+    @Override
+    public void createACLUser(ACLUser user) throws Exception {
+        throw new UnsupportedOperationException("ACL not yet implemented in V5ProxyMetadataProvider");
+    }
+
+    @Override
+    public void updateACLUser(ACLUser user) throws Exception {
+        throw new UnsupportedOperationException("ACL not yet implemented in V5ProxyMetadataProvider");
+    }
+
+    @Override
+    public void deleteACLUser(String username) throws Exception {
+        throw new UnsupportedOperationException("ACL not yet implemented in V5ProxyMetadataProvider");
+    }
+
+    @Override
+    public void addACLPolicy(ACLPolicy policy) throws Exception {
+        throw new UnsupportedOperationException("ACL not yet implemented in V5ProxyMetadataProvider");
+    }
+
+    @Override
+    public void removeACLPolicy(String namespace, String policyName) throws Exception {
+        throw new UnsupportedOperationException("ACL not yet implemented in V5ProxyMetadataProvider");
+    }
+
+    @Override
+    public Optional<ACLUser> getACLUser(String username) throws Exception {
+        throw new UnsupportedOperationException("ACL not yet implemented in V5ProxyMetadataProvider");
+    }
+
+    @Override
+    public boolean checkACLPermission(String username, String resource, String action) throws Exception {
+        throw new UnsupportedOperationException("ACL not yet implemented in V5ProxyMetadataProvider");
     }
 }

@@ -30,7 +30,7 @@ public class ClientDiagnosticsUtil {
 
         // Check last heartbeat time
         if (client.getLastHeartbeatTime() != null) {
-            long timeSinceLastHeartbeat = System.currentTimeMillis() - client.getLastHeartbeatTime();
+            long timeSinceLastHeartbeat = System.currentTimeMillis() - client.getLastHeartbeatTime().getTime();
             if (timeSinceLastHeartbeat > 300000) { // 5 minutes
                 issues.add("Client has not sent heartbeat for " + (timeSinceLastHeartbeat / 1000) + " seconds");
                 recommendations.add("Check network connectivity and client status");
@@ -50,14 +50,14 @@ public class ClientDiagnosticsUtil {
 
         // Check protocol compatibility
         if (client.getProtocolType() != null) {
-            if (!isSupportedProtocol(client.getProtocolType())) {
+            if (!isSupportedProtocol(client.getProtocolType().name())) {
                 issues.add("Unsupported protocol type: " + client.getProtocolType());
                 recommendations.add("Use supported protocol (Remoting or gRPC)");
             }
         }
 
         // Check subscription count for consumers
-        if ("CONSUMER".equals(client.getClientType())) {
+        if (client.getClientType() != null && isConsumerType(client.getClientType())) {
             if (client.getSubscriptionCount() != null && client.getSubscriptionCount() > 100) {
                 issues.add("Consumer has too many subscriptions: " + client.getSubscriptionCount());
                 recommendations.add("Consider reducing subscription count for better performance");
@@ -72,7 +72,7 @@ public class ClientDiagnosticsUtil {
 
         // Check connection time
         if (client.getConnectTime() != null) {
-            long connectionDuration = System.currentTimeMillis() - client.getConnectTime();
+            long connectionDuration = System.currentTimeMillis() - client.getConnectTime().getTime();
             if (connectionDuration < 60000) { // 1 minute
                 recommendations.add("Client connected recently, monitor for stability");
             }
@@ -135,14 +135,14 @@ public class ClientDiagnosticsUtil {
         stats.setTotalCount(clients.size());
 
         // Group by type
-        long producerCount = clients.stream().filter(c -> "PRODUCER".equals(c.getClientType())).count();
-        long consumerCount = clients.stream().filter(c -> "CONSUMER".equals(c.getClientType())).count();
+        long producerCount = clients.stream().filter(c -> ClientInstance.ClientType.PRODUCER.equals(c.getClientType())).count();
+        long consumerCount = clients.stream().filter(c -> c.getClientType() != null && isConsumerType(c.getClientType())).count();
         stats.setProducerCount((int) producerCount);
         stats.setConsumerCount((int) consumerCount);
 
         // Group by protocol
-        long remotingCount = clients.stream().filter(c -> "Remoting".equals(c.getProtocolType())).count();
-        long grpcCount = clients.stream().filter(c -> "gRPC".equals(c.getProtocolType())).count();
+        long remotingCount = clients.stream().filter(c -> ClientInstance.ProtocolType.REMOTING.equals(c.getProtocolType())).count();
+        long grpcCount = clients.stream().filter(c -> ClientInstance.ProtocolType.GRPC.equals(c.getProtocolType())).count();
         stats.setRemotingCount((int) remotingCount);
         stats.setGrpcCount((int) grpcCount);
 
@@ -161,7 +161,14 @@ public class ClientDiagnosticsUtil {
     }
 
     private boolean isSupportedProtocol(String protocol) {
-        return "Remoting".equals(protocol) || "gRPC".equals(protocol);
+        return "REMOTING".equals(protocol) || "GRPC".equals(protocol);
+    }
+
+    private boolean isConsumerType(ClientInstance.ClientType clientType) {
+        return clientType == ClientInstance.ClientType.CONSUMER
+            || clientType == ClientInstance.ClientType.PUSH_CONSUMER
+            || clientType == ClientInstance.ClientType.PULL_CONSUMER
+            || clientType == ClientInstance.ClientType.SIMPLE_CONSUMER;
     }
 
     private String calculateHealthScore(List<String> issues, List<String> recommendations) {

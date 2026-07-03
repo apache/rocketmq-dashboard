@@ -38,18 +38,25 @@ public class AclVersionDetector {
             return "NONE";
         }
 
-        boolean supportsAcl1 = capability.supports(ACL_1_0);
-        boolean supportsAcl2 = capability.supports(ACL_2_0);
+        // Check ACL 2.0 support via dedicated boolean flag
+        boolean supportsAcl2 = capability.isAclV2Supported();
 
-        if (supportsAcl2) {
+        // Check ACL 1.0 support via extended capabilities or architecture version
+        boolean supportsAcl1 = capability.hasCapability(ACL_1_0)
+            || "4.0".equals(capability.getArchitectureVersion());
+
+        // Check mixed mode via extended capabilities
+        boolean mixedMode = capability.hasCapability(ACL_MIXED);
+
+        if (supportsAcl2 && supportsAcl1) {
+            log.info("Detected mixed ACL mode (both 1.0 and 2.0 supported)");
+            return ACL_MIXED;
+        } else if (supportsAcl2) {
             log.info("Detected ACL 2.0 support");
             return ACL_2_0;
         } else if (supportsAcl1) {
             log.info("Detected ACL 1.0 support");
             return ACL_1_0;
-        } else if (capability.supports(ACL_MIXED)) {
-            log.info("Detected mixed ACL mode (1.0 and 2.0)");
-            return ACL_MIXED;
         } else {
             log.warn("No ACL support detected in cluster");
             return "NONE";
@@ -60,21 +67,22 @@ public class AclVersionDetector {
      * Check if cluster supports ACL 1.0
      */
     public boolean supportsAcl1(ClusterCapability capability) {
-        return capability != null && capability.supports(ACL_1_0);
+        return capability != null && (capability.hasCapability(ACL_1_0)
+            || "4.0".equals(capability.getArchitectureVersion()));
     }
 
     /**
      * Check if cluster supports ACL 2.0
      */
     public boolean supportsAcl2(ClusterCapability capability) {
-        return capability != null && capability.supports(ACL_2_0);
+        return capability != null && capability.isAclV2Supported();
     }
 
     /**
      * Check if cluster is in mixed ACL mode
      */
     public boolean isMixedMode(ClusterCapability capability) {
-        return capability != null && capability.supports(ACL_MIXED);
+        return capability != null && capability.hasCapability(ACL_MIXED);
     }
 
     /**

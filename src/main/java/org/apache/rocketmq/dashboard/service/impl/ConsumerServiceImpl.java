@@ -4,6 +4,7 @@ import org.apache.rocketmq.dashboard.architecture.ClusterProvider;
 import org.apache.rocketmq.dashboard.architecture.MetadataProvider;
 import org.apache.rocketmq.dashboard.model.ClusterCapability;
 import org.apache.rocketmq.dashboard.model.ConsumerGroupInfo;
+import org.apache.rocketmq.dashboard.model.GroupConsumeInfo;
 import org.apache.rocketmq.dashboard.model.SubscriptionInfo;
 import org.apache.rocketmq.dashboard.service.ArchitectureBasedService;
 import org.apache.rocketmq.dashboard.service.ConsumerService;
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Consumer service implementation based on new architecture
@@ -28,7 +30,7 @@ public class ConsumerServiceImpl extends ArchitectureBasedService implements Con
     @Override
     public List<ConsumerGroupInfo> listConsumerGroups() {
         try {
-            return metadataProvider.listConsumerGroups();
+            return metadataProvider.listConsumerGroups(Optional.empty());
         } catch (Exception e) {
             handleUnsupportedOperation("List consumer groups");
             return List.of();
@@ -38,11 +40,10 @@ public class ConsumerServiceImpl extends ArchitectureBasedService implements Con
     @Override
     public List<ConsumerGroupInfo> getConsumerGroupsByCluster(String clusterName) {
         try {
-            if (supports("CONSUMER_GROUP_PER_CLUSTER")) {
-                return metadataProvider.getConsumerGroupsByCluster(clusterName);
-            }
-            // V4 architecture returns all consumer groups
-            return metadataProvider.listConsumerGroups();
+            // Filter consumer groups by cluster name from the full list
+            return metadataProvider.listConsumerGroups(Optional.empty()).stream()
+                .filter(g -> clusterName == null || clusterName.equals(g.getClusterName()))
+                .collect(java.util.stream.Collectors.toList());
         } catch (Exception e) {
             handleUnsupportedOperation("Get consumer groups by cluster");
             return List.of();
@@ -52,7 +53,7 @@ public class ConsumerServiceImpl extends ArchitectureBasedService implements Con
     @Override
     public ConsumerGroupInfo getConsumerGroup(String groupName) {
         try {
-            return metadataProvider.getConsumerGroup(groupName)
+            return metadataProvider.getConsumerGroup(groupName, Optional.empty())
                 .orElse(null);
         } catch (Exception e) {
             handleUnsupportedOperation("Get consumer group");
@@ -63,7 +64,7 @@ public class ConsumerServiceImpl extends ArchitectureBasedService implements Con
     @Override
     public boolean createConsumerGroup(ConsumerGroupInfo consumerGroup) {
         try {
-            if (consumerGroup.getGroupName() == null || consumerGroup.getGroupName().trim().isEmpty()) {
+            if (consumerGroup.getConsumerGroupName() == null || consumerGroup.getConsumerGroupName().trim().isEmpty()) {
                 throw new IllegalArgumentException("Consumer group name cannot be empty");
             }
             metadataProvider.createConsumerGroup(consumerGroup);
@@ -77,7 +78,7 @@ public class ConsumerServiceImpl extends ArchitectureBasedService implements Con
     @Override
     public boolean deleteConsumerGroup(String groupName) {
         try {
-            metadataProvider.deleteConsumerGroup(groupName);
+            metadataProvider.deleteConsumerGroup(groupName, Optional.empty());
             return true;
         } catch (Exception e) {
             handleUnsupportedOperation("Delete consumer group");
@@ -88,7 +89,7 @@ public class ConsumerServiceImpl extends ArchitectureBasedService implements Con
     @Override
     public List<SubscriptionInfo> getSubscriptions(String groupName) {
         try {
-            return metadataProvider.getSubscriptions(groupName);
+            return metadataProvider.listSubscriptions(groupName);
         } catch (Exception e) {
             handleUnsupportedOperation("Get subscriptions");
             return List.of();
@@ -126,12 +127,22 @@ public class ConsumerServiceImpl extends ArchitectureBasedService implements Con
         return clusterCapability;
     }
 
+    @Override
+    public GroupConsumeInfo queryGroup(String groupName, String namespace) {
+        try {
+            return adminClient.getGroupConsumeInfo(groupName);
+        } catch (Exception e) {
+            handleUnsupportedOperation("Query group consume info for " + groupName);
+            return new GroupConsumeInfo();
+        }
+    }
+
     /**
      * Check if consumer group exists
      */
     private boolean consumerGroupExists(String groupName) {
         try {
-            return metadataProvider.getConsumerGroup(groupName).isPresent();
+            return metadataProvider.getConsumerGroup(groupName, Optional.empty()).isPresent();
         } catch (Exception e) {
             return false;
         }
@@ -144,10 +155,10 @@ public class ConsumerServiceImpl extends ArchitectureBasedService implements Con
         if (consumerGroup == null) {
             throw new IllegalArgumentException("Consumer group cannot be null");
         }
-        if (consumerGroup.getGroupName() == null || consumerGroup.getGroupName().trim().isEmpty()) {
+        if (consumerGroup.getConsumerGroupName() == null || consumerGroup.getConsumerGroupName().trim().isEmpty()) {
             throw new IllegalArgumentException("Consumer group name cannot be empty");
         }
-        if (consumerGroup.getGroupName().length() > 255) {
+        if (consumerGroup.getConsumerGroupName().length() > 255) {
             throw new IllegalArgumentException("Consumer group name too long");
         }
     }

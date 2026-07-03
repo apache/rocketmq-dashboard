@@ -1,13 +1,19 @@
 package org.apache.rocketmq.dashboard.service.impl;
 
+import org.apache.rocketmq.common.Pair;
+import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.dashboard.architecture.ClusterProvider;
 import org.apache.rocketmq.dashboard.architecture.MetadataProvider;
 import org.apache.rocketmq.dashboard.model.MessageInfo;
+import org.apache.rocketmq.dashboard.model.MessageView;
 import org.apache.rocketmq.dashboard.service.ArchitectureBasedService;
 import org.apache.rocketmq.dashboard.service.MessageService;
+import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
+import org.apache.rocketmq.tools.admin.api.MessageTrack;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -22,6 +28,27 @@ public class MessageServiceImpl extends ArchitectureBasedService implements Mess
 
     @Resource
     private ClusterProvider clusterProvider;
+
+    @Override
+    public Pair<MessageView, List<MessageTrack>> viewMessage(String topic, String msgId) {
+        try {
+            if (supports("MESSAGE_QUERY")) {
+                MessageInfo messageInfo = metadataProvider.getMessageById(msgId).orElse(null);
+                if (messageInfo != null) {
+                    MessageView messageView = new MessageView();
+                    messageView.setTopic(messageInfo.getTopic());
+                    messageView.setMsgId(messageInfo.getMsgId());
+                    // Additional field mapping from MessageInfo to MessageView
+                    return new Pair<>(messageView, Collections.emptyList());
+                }
+            }
+            handleUnsupportedOperation("View message - not supported in current cluster");
+            return new Pair<>(null, Collections.emptyList());
+        } catch (Exception e) {
+            handleUnsupportedOperation("View message");
+            return new Pair<>(null, Collections.emptyList());
+        }
+    }
 
     @Override
     public List<MessageInfo> queryMessageByTopic(String topic, long beginTime, long endTime, int maxNum) {
@@ -192,6 +219,20 @@ public class MessageServiceImpl extends ArchitectureBasedService implements Mess
         }
         if (msgId.length() > 255) {
             throw new IllegalArgumentException("Message ID too long");
+        }
+    }
+
+    @Override
+    public ConsumeMessageDirectlyResult consumeMessageDirectly(String topic, String msgId, String consumerGroup, String clientId) {
+        try {
+            if (supports("MESSAGE_CONSUME_DIRECTLY")) {
+                return metadataProvider.consumeMessageDirectly(topic, msgId, consumerGroup, clientId);
+            }
+            handleUnsupportedOperation("Consume message directly - not supported in current cluster");
+            return null;
+        } catch (Exception e) {
+            handleUnsupportedOperation("Consume message directly");
+            return null;
         }
     }
 }

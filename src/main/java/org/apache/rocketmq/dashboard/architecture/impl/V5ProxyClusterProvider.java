@@ -305,7 +305,7 @@ public class V5ProxyClusterProvider implements ClusterProvider {
             log.warn("Remoting client init returned placeholder: {}", e.getMessage());
             // Fallback: create instance without start() for testing scenarios
             this.mqAdminExt = new org.apache.rocketmq.tools.admin.DefaultMQAdminExt(
-                org.apache.rocketmq.common.utils.ThreadFactoryImpl.DEFAULT_SHUTDOWN_TIMEOUT);
+                org.apache.rocketmq.common.ThreadFactoryImpl.DEFAULT_SHUTDOWN_TIMEOUT);
         }
     }
 
@@ -328,10 +328,10 @@ public class V5ProxyClusterProvider implements ClusterProvider {
     // ==================== Gated accessor (for MetadataProvider usage) ====================
 
     /**
-     * Package-private accessor for the underlying MQAdminExt.
-     * Used by V5ProxyMetadataProvider to delegate metadata operations.
+     * Public accessor for the underlying MQAdminExt.
+     * Used by V5ProxyMetadataProvider and ArchitectureConfig to delegate metadata operations.
      */
-    MQAdminExt getMqAdminExt() {
+    public MQAdminExt getMqAdminExt() {
         return mqAdminExt;
     }
 }
