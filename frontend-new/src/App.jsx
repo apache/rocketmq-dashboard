@@ -21,6 +21,7 @@ import {ToastContainer} from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import {ConfigProvider} from "antd";
 import {useTheme} from "./store/context/ThemeContext";
+import {ClusterCapabilitiesProvider} from "./store/context/ClusterCapabilitiesContext";
 
 function App() {
     const {currentTheme} = useTheme();

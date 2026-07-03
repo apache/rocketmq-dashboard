@@ -14,30 +14,52 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.dashboard.exception;
+package org.apache.rocketmq.dashboard.architecture;
+
+import org.apache.rocketmq.dashboard.model.ClusterCapability;
+import org.apache.rocketmq.dashboard.model.ClusterTopology;
+
+import java.util.List;
 
 /**
- * Custom exception for service layer operations.
+ *
+ *
+ *
  */
-public class ServiceException extends RuntimeException {
-    private static final long serialVersionUID = 9213584003139969215L;
-    private int code;
+public interface ClusterProvider {
 
     /**
-     * Constructs a ServiceException with code and message.
-     * @param code the error code
-     * @param message the error message
+ *
      */
-    public ServiceException(final int code, final String message) {
-        super(message);
-        this.code = code;
-    }
+    ClusterAccessType getAccessType();
 
     /**
-     * Gets the error code.
-     * @return the error code
+ *
      */
-    public int getCode() {
-        return code;
-    }
+    ClusterTopology getClusterTopology() throws Exception;
+
+    /**
+ *
+     */
+    ClusterCapability getClusterCapability() throws Exception;
+
+    /**
+ *
+     */
+    List<String> getNodeList() throws Exception;
+
+    /**
+ *
+     */
+    boolean isClusterHealthy() throws Exception;
+
+    /**
+ *
+     */
+    void initialize() throws Exception;
+
+    /**
+ *
+     */
+    void shutdown();
 }

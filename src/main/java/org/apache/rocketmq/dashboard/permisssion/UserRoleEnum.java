@@ -16,6 +16,9 @@
  */
 package org.apache.rocketmq.dashboard.permisssion;
 
+/**
+ * User role enumeration defining different access levels in the system.
+ */
 public enum UserRoleEnum {
     SUPER(1, "Super"),
     NORMAL(2, "Normal");
@@ -23,15 +26,28 @@ public enum UserRoleEnum {
     private int roleType;
     private String roleName;
 
-    UserRoleEnum(int roleType, String roleName) {
+    /**
+     * Constructor for UserRoleEnum.
+     * @param roleType the role type identifier
+     * @param roleName the display name of the role
+     */
+    UserRoleEnum(final int roleType, final String roleName) {
         this.roleType = roleType;
         this.roleName = roleName;
     }
 
+    /**
+     * Gets the role type identifier.
+     * @return the role type
+     */
     public int getRoleType() {
         return roleType;
     }
 
+    /**
+     * Gets the display name of the role.
+     * @return the role name
+     */
     public String getRoleName() {
         return roleName;
     }
