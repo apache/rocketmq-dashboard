@@ -62,4 +62,18 @@ public interface ClusterProvider {
  *
      */
     void shutdown();
+
+    /**
+     * Get the cluster name.
+     */
+    default String getClusterName() {
+        return "DEFAULT_CLUSTER";
+    }
+
+    /**
+     * Get the cluster version.
+     */
+    default String getClusterVersion() {
+        return "UNKNOWN";
+    }
 }

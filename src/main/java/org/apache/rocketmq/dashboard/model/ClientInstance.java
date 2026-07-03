@@ -43,6 +43,11 @@ public class ClientInstance {
     private ClientType clientType;
 
     /**
+     * Topics associated with this client (published topics for producers, subscribed topics for consumers)
+     */
+    private List<String> topics;
+
+    /**
  *
      */
     private String clientSubType;
@@ -159,6 +164,16 @@ public class ClientInstance {
     private Integer pendingAckCount;
 
     /**
+     * Subscription count for consumer clients
+     */
+    private Integer subscriptionCount;
+
+    /**
+     * Client status (ONLINE, OFFLINE, etc.)
+     */
+    private String status;
+
+    /**
  *
      */
     public String getDisplayName() {
@@ -206,8 +221,22 @@ public class ClientInstance {
         return ClientType.PRODUCER.equals(clientType);
     }
 
+    /**
+     * Get version string (alias for sdkVersion for backward compatibility)
+     */
+    public String getVersion() {
+        return sdkVersion;
+    }
+
+    /**
+     * Set version string (alias for sdkVersion for backward compatibility)
+     */
+    public void setVersion(String version) {
+        this.sdkVersion = version;
+    }
+
     public enum ClientType {
-        PRODUCER, CONSUMER
+        PRODUCER, CONSUMER, PUSH_CONSUMER, PULL_CONSUMER, SIMPLE_CONSUMER
     }
 
     public enum ProtocolType {

@@ -119,12 +119,12 @@ public class RemotingClientCollector {
         Map<String, ClientInstance> seenByClientId = new LinkedHashMap<>();
 
         try {
-            Set<String> topics = new HashSet<>(MQAdminInstance.threadLocalMQAdminExt().fetchTopicListFromNameServer().getTopicList());
+            Set<String> topics = new HashSet<>(MQAdminInstance.threadLocalMQAdminExt().fetchAllTopicList().getTopicList());
 
             for (String topic : topics) {
                 try {
                     ProducerConnection connection = MQAdminInstance.threadLocalMQAdminExt()
-                        .examineProducerConnectionInfo(topic);
+                        .examineProducerConnectionInfo("DEFAULT_PRODUCER", topic);
                     if (connection == null || connection.getConnectionSet() == null) {
                         continue;
                     }
@@ -171,7 +171,7 @@ public class RemotingClientCollector {
         client.setConnectTime(new Date());
         client.setActive(true);
         client.setTopics(Collections.singletonList(topic));
-        client.setProducerGroup(conn.getGroupId());
+        client.setProducerGroup("DEFAULT_PRODUCER");
 
         return client;
     }
@@ -201,7 +201,7 @@ public class RemotingClientCollector {
                     }
 
                     ConsumeType consumeType = connection.getConsumeType();
-                    Map<String, org.apache.rocketmq.common.protocol.topic.SubscriptionData> subscriptionTable =
+                    Map<String, org.apache.rocketmq.remoting.protocol.heartbeat.SubscriptionData> subscriptionTable =
                         connection.getSubscriptionTable();
 
                     List<String> topics = (subscriptionTable != null)
@@ -259,9 +259,9 @@ public class RemotingClientCollector {
             return ClientInstance.ClientType.PUSH_CONSUMER;
         }
         switch (consumeType) {
-            case PULL_CONSUME:
+            case CONSUME_ACTIVELY:
                 return ClientInstance.ClientType.PULL_CONSUMER;
-            case PUSH_CONSUME:
+            case CONSUME_PASSIVELY:
                 return ClientInstance.ClientType.PUSH_CONSUMER;
             default:
                 return ClientInstance.ClientType.PUSH_CONSUMER;
@@ -304,7 +304,7 @@ public class RemotingClientCollector {
 
         try {
             Set<String> topics = new HashSet<>(
-                MQAdminInstance.threadLocalMQAdminExt().fetchTopicListFromNameServer().getTopicList());
+                MQAdminInstance.threadLocalMQAdminExt().fetchAllTopicList().getTopicList());
 
             for (String topic : topics) {
                 if (topic.startsWith(RETRY_TOPIC_PREFIX) && topic.length() > RETRY_TOPIC_PREFIX.length()) {
