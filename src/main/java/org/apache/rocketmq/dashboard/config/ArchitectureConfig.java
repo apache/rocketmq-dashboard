@@ -27,6 +27,8 @@ import org.apache.rocketmq.dashboard.architecture.impl.V4MetadataProvider;
 import org.apache.rocketmq.dashboard.architecture.impl.V5ProxyClusterProvider;
 import org.apache.rocketmq.dashboard.architecture.impl.V5ProxyMetadataProvider;
 import org.apache.rocketmq.dashboard.model.ClusterCapability;
+import org.apache.rocketmq.dashboard.service.client.GrpcClientCollector;
+import org.apache.rocketmq.dashboard.service.client.ProxyAdminGrpcClient;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -102,6 +104,27 @@ public class ArchitectureConfig {
     @Bean
     public ArchitectureAdaptationManager architectureAdaptationManager(MQAdminExt mqAdminExt) {
         return new ArchitectureAdaptationManager(mqAdminExt);
+    }
+
+    /**
+     * Default ProxyAdminGrpcClient bean for RIP-2 Proxy Admin gRPC integration.
+     * Connects to the Proxy Admin gRPC server on localhost:8082 by default.
+     * When gRPC is unavailable, client queries gracefully degrade to Remoting-only.
+     */
+    @Bean
+    public ProxyAdminGrpcClient proxyAdminGrpcClient(
+            @org.springframework.beans.factory.annotation.Value("${rocketmq.dashboard.proxyAddress:localhost:8080}")
+            String proxyAddress) {
+        return new ProxyAdminGrpcClient(proxyAddress);
+    }
+
+    /**
+     * Default GrpcClientCollector bean for gRPC client data collection.
+     * Uses the ProxyAdminGrpcClient to call RIP-2 Proxy Admin ListClients/DescribeClient RPCs.
+     */
+    @Bean
+    public GrpcClientCollector grpcClientCollector(ProxyAdminGrpcClient proxyAdminGrpcClient) {
+        return new GrpcClientCollector(proxyAdminGrpcClient);
     }
 
     /**
@@ -240,8 +263,14 @@ public class ArchitectureConfig {
                 throw new RuntimeException("V5 Provider initialization failed", e);
             }
 
-            // Create V5-specific admin client with Remoting fallback
-            GrpcAdminClient grpcClient = new GrpcAdminClient(proxyAddresses[0], mqAdminExt);
+            // Create gRPC Proxy Admin client for RIP-2 M1 integration
+            ProxyAdminGrpcClient proxyAdminGrpcClient = new ProxyAdminGrpcClient(proxyAddresses[0]);
+
+            // Create V5-specific admin client with Remoting fallback + gRPC channel
+            GrpcAdminClient grpcClient = new GrpcAdminClient(proxyAddresses[0], mqAdminExt, proxyAdminGrpcClient);
+
+            // Create GrpcClientCollector using the real gRPC client
+            GrpcClientCollector grpcCollector = new GrpcClientCollector(proxyAdminGrpcClient);
 
             // Create V5-specific metadata provider
             V5ProxyMetadataProvider v5Metadata = new V5ProxyMetadataProvider(

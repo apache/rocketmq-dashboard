@@ -23,7 +23,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import javax.annotation.Resource;
+import jakarta.annotation.Resource;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -412,6 +412,27 @@ public class MetricsEnhancedServiceImpl implements MetricsEnhancedService {
         json.append("}");
 
         return json.toString();
+    }
+
+    @Override
+    public Map<String, Object> exportGrafanaJson(List<String> panelIds) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        List<Map<String, Object>> allPanels = listDashboards();
+
+        List<String> ids = (panelIds != null && !panelIds.isEmpty())
+            ? panelIds
+            : allPanels.stream().map(p -> (String) p.get("id")).collect(Collectors.toList());
+
+        for (String panelId : ids) {
+            try {
+                String grafanaJson = exportGrafanaJson(panelId);
+                result.put(panelId, grafanaJson);
+            } catch (Exception e) {
+                log.warn("Failed to export Grafana JSON for panel {}: {}", panelId, e.getMessage());
+                result.put(panelId, "{\"error\": \"" + escapeJson(e.getMessage()) + "\"}");
+            }
+        }
+        return result;
     }
 
     // ======================== Prebuilt Queries ========================

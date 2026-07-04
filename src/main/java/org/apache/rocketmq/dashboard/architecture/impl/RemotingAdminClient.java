@@ -38,9 +38,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.util.Assert;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 
 /**
  *
@@ -79,8 +82,8 @@ public class RemotingAdminClient implements AdminClient {
 
     @Override
     public List<String> getTopicList() throws Exception {
-        TopicList topicList = mqAdminExt.fetchTopicListFromNameServer();
-        return topicList.getTopicList();
+        TopicList topicList = mqAdminExt.fetchAllTopicList();
+        return new ArrayList<>(topicList.getTopicList());
     }
 
     @Override
@@ -115,19 +118,22 @@ public class RemotingAdminClient implements AdminClient {
 
     @Override
     public void deleteTopic(String topic, String clusterName) throws Exception {
-        mqAdminExt.deleteTopicInBroker(clusterName, topic);
-        mqAdminExt.deleteTopicInNameServer(topic);
+        Set<String> clusters = new HashSet<>();
+        clusters.add(clusterName);
+        mqAdminExt.deleteTopicInBroker(clusters, topic);
+        mqAdminExt.deleteTopicInNameServer(clusters, topic);
     }
 
     @Override
     public TopicList getTopicListFromBroker(String brokerAddr) throws Exception {
-        return mqAdminExt.getAllTopicList(brokerAddr);
+        TopicList result = mqAdminExt.fetchAllTopicList();
+        return result;
     }
 
     @Override
     public List<String> getConsumerGroupList() throws Exception {
         // Removed
-        return mqAdminExt.fetchAllTopicList().getTopicList();
+        return new ArrayList<>(mqAdminExt.fetchAllTopicList().getTopicList());
     }
 
     @Override
@@ -145,13 +151,13 @@ public class RemotingAdminClient implements AdminClient {
 
     @Override
     public void resetConsumeOffset(String consumerGroup, String topic, long timestamp, boolean force) throws Exception {
-        mqAdminExt.resetOffsetByTimestamp(consumerGroup, topic, timestamp, force);
+        mqAdminExt.resetOffsetByTimestamp(topic, consumerGroup, timestamp, force);
     }
 
     @Override
     public void createOrUpdateConsumerGroup(String consumerGroup, SubscriptionGroupConfig config) throws Exception {
         // Removed
-        TopicList topicList = mqAdminExt.fetchTopicListFromNameServer();
+        TopicList topicList = mqAdminExt.fetchAllTopicList();
         if (topicList.getTopicList() != null) {
             for (String topic : topicList.getTopicList()) {
                 TopicRouteData topicRouteData = mqAdminExt.examineTopicRouteInfo(topic);
@@ -195,7 +201,7 @@ public class RemotingAdminClient implements AdminClient {
 
     @Override
     public ConsumeMessageDirectlyResult consumeMessageDirectly(String consumerGroup, String topic, String msgId) throws Exception {
-        return mqAdminExt.consumeMessageDirectly(consumerGroup, topic, msgId);
+        return mqAdminExt.consumeMessageDirectly(consumerGroup, null, topic, msgId);
     }
 
     @Override
@@ -206,7 +212,18 @@ public class RemotingAdminClient implements AdminClient {
 
     @Override
     public KVTable getNameServerConfig(String namesrvAddr) throws Exception {
-        return mqAdminExt.fetchNameServerConfig(namesrvAddr);
+        Map<String, Properties> configMap = mqAdminExt.getNameServerConfig(java.util.Collections.singletonList(namesrvAddr));
+        KVTable kvTable = new KVTable();
+        if (configMap != null && !configMap.isEmpty()) {
+            java.util.HashMap<String, String> merged = new java.util.HashMap<>();
+            for (Properties props : configMap.values()) {
+                for (String key : props.stringPropertyNames()) {
+                    merged.put(key, props.getProperty(key));
+                }
+            }
+            kvTable.setTable(merged);
+        }
+        return kvTable;
     }
 
     @Override

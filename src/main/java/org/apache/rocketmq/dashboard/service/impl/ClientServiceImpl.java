@@ -8,7 +8,7 @@ import org.apache.rocketmq.dashboard.service.ArchitectureBasedService;
 import org.apache.rocketmq.dashboard.service.ClientService;
 import org.springframework.stereotype.Service;
 
-import javax.annotation.Resource;
+import jakarta.annotation.Resource;
 import java.util.List;
 
 /**
@@ -158,7 +158,7 @@ public class ClientServiceImpl extends ArchitectureBasedService implements Clien
             List<ClientInstance> allClients = metadataProvider.listClients();
             return allClients.stream()
                 .filter(client -> client.getLastHeartbeatTime() != null &&
-                    (System.currentTimeMillis() - client.getLastHeartbeatTime()) > idleTimeThreshold)
+                    (System.currentTimeMillis() - client.getLastHeartbeatTime().getTime()) > idleTimeThreshold)
                 .toList();
         } catch (Exception e) {
             handleUnsupportedOperation("Get idle clients");

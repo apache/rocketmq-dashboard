@@ -63,6 +63,15 @@ public interface MetricsEnhancedService {
     String exportGrafanaJson(String panelId);
 
     /**
+     * Export multiple panels (or all if null/empty) as Grafana Dashboard JSON.
+     * RIP-1 METRICS-01: One-click Grafana dashboard export for external visualization.
+     *
+     * @param panelIds list of panel IDs to export; if null or empty, exports all panels
+     * @return map of panelId -> Grafana Dashboard JSON (v8 schema)
+     */
+    Map<String, Object> exportGrafanaJson(List<String> panelIds);
+
+    /**
      * Return all pre-built PromQL queries grouped by category.
      *
      * @return map of category name -> list of query definitions

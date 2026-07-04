@@ -2,6 +2,7 @@ package org.apache.rocketmq.dashboard.controller;
 
 import org.apache.rocketmq.dashboard.adapter.PrometheusMetricsAdapter;
 import org.apache.rocketmq.dashboard.model.request.MetricsDataSourceRequest;
+import org.apache.rocketmq.dashboard.service.MetricsEnhancedService;
 import org.apache.rocketmq.dashboard.service.MetricsService;
 import org.apache.rocketmq.dashboard.support.JsonResult;
 import org.slf4j.Logger;
@@ -9,7 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 
-import javax.annotation.Resource;
+import jakarta.annotation.Resource;
 import java.util.*;
 
 /**
@@ -51,6 +52,9 @@ public class MetricsController {
 
     @Resource
     private PrometheusMetricsAdapter prometheusAdapter;
+
+    @Resource
+    private MetricsEnhancedService metricsEnhancedService;
 
     // ==================== Prometheus Format Endpoints ====================
 
@@ -393,6 +397,129 @@ public class MetricsController {
         } catch (Exception e) {
             log.error("Failed to test data source: {}", id, e);
             return new JsonResult<>(1, "Failed to test data source: " + e.getMessage());
+        }
+    }
+
+    // ==================== Dashboard & Alert Endpoints (RIP-1 METRICS-01) ====================
+
+    /**
+     * GET /api/metrics/dashboards - List all pre-built dashboard panels.
+     * RIP-1 METRICS-01: Standardized dashboards for all core components.
+     *
+     * @return JsonResult containing list of dashboard panel metadata
+     */
+    @GetMapping("/api/metrics/dashboards")
+    public Object listDashboards() {
+        try {
+            List<Map<String, Object>> dashboards = metricsEnhancedService.listDashboards();
+            return new JsonResult<>(dashboards);
+        } catch (Exception e) {
+            log.error("Failed to list dashboards", e);
+            return new JsonResult<>(1, "Failed to list dashboards: " + e.getMessage());
+        }
+    }
+
+    /**
+     * GET /api/metrics/dashboards/{id} - Get a specific dashboard panel.
+     * RIP-1 METRICS-01: Per-component detail dashboard panels.
+     *
+     * @param id dashboard panel ID (e.g., "cluster-overview", "consumer-lag")
+     * @return JsonResult containing the dashboard panel definition
+     */
+    @GetMapping("/api/metrics/dashboards/{id}")
+    public Object getDashboardPanel(@PathVariable String id) {
+        try {
+            if (id == null || id.trim().isEmpty()) {
+                return new JsonResult<>(1, "Dashboard ID cannot be empty");
+            }
+            Map<String, Object> panel = metricsEnhancedService.getDashboardPanel(id.trim());
+            if (panel.isEmpty()) {
+                return new JsonResult<>(1, "Dashboard panel '" + id + "' not found");
+            }
+            return new JsonResult<>(panel);
+        } catch (Exception e) {
+            log.error("Failed to get dashboard panel: {}", id, e);
+            return new JsonResult<>(1, "Failed to get dashboard panel: " + e.getMessage());
+        }
+    }
+
+    /**
+     * GET /api/metrics/alerts - Get pre-built alert rules in YAML format.
+     * RIP-1 METRICS-01: 16+ official alert rules covering broker, topic, consumer,
+     * client, and proxy categories.
+     *
+     * @param format optional format parameter: "json" returns structured data, default "yaml" returns YAML text
+     * @return JsonResult containing alert rules
+     */
+    @GetMapping("/api/metrics/alerts")
+    public Object getAlertRules(@RequestParam(defaultValue = "yaml") String format) {
+        try {
+            String alertRulesYaml = metricsEnhancedService.getAlertRulesYaml();
+            if ("json".equalsIgnoreCase(format)) {
+                // Return structured with metadata
+                Map<String, Object> result = new LinkedHashMap<>();
+                result.put("format", "yaml");
+                result.put("rules", alertRulesYaml);
+                result.put("message", "Alert rules are in Prometheus Alertmanager format. "
+                    + "Load into your Alertmanager to enable these rules.");
+                return new JsonResult<>(result);
+            }
+            // Return raw YAML
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("format", "yaml");
+            result.put("rules", alertRulesYaml);
+            return new JsonResult<>(result);
+        } catch (Exception e) {
+            log.error("Failed to get alert rules", e);
+            return new JsonResult<>(1, "Failed to get alert rules: " + e.getMessage());
+        }
+    }
+
+    /**
+     * POST /api/metrics/export/grafana - Export all dashboards as Grafana JSON.
+     * RIP-1 METRICS-01: One-click Grafana dashboard export for external visualization.
+     *
+     * @param dashboardIds optional request body containing list of dashboard IDs to export;
+     *                     if empty, exports all dashboards
+     * @return JsonResult containing Grafana-compatible JSON
+     */
+    @PostMapping("/api/metrics/export/grafana")
+    public Object exportGrafanaJson(@RequestBody(required = false) Map<String, Object> request) {
+        try {
+            @SuppressWarnings("unchecked")
+            List<String> dashboardIds = null;
+            if (request != null && request.containsKey("dashboardIds")) {
+                dashboardIds = (List<String>) request.get("dashboardIds");
+            }
+
+            Map<String, Object> grafanaJson = metricsEnhancedService.exportGrafanaJson(dashboardIds);
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("grafanaVersion", "8.0+");
+            result.put("exportedAt", new Date().toString());
+            result.put("dashboards", grafanaJson);
+            result.put("message", "Import this JSON into Grafana to use the pre-built RocketMQ dashboards.");
+            return new JsonResult<>(result);
+        } catch (Exception e) {
+            log.error("Failed to export Grafana JSON", e);
+            return new JsonResult<>(1, "Failed to export Grafana JSON: " + e.getMessage());
+        }
+    }
+
+    /**
+     * GET /api/metrics/queries - Get pre-built PromQL query templates.
+     * RIP-1 METRICS-01: Standard PromQL queries for common monitoring scenarios.
+     *
+     * @return JsonResult containing pre-built query templates grouped by category
+     */
+    @GetMapping("/api/metrics/queries")
+    public Object getPrebuiltQueries() {
+        try {
+            Map<String, Object> queries = metricsEnhancedService.getPrebuiltQueries();
+            return new JsonResult<>(queries);
+        } catch (Exception e) {
+            log.error("Failed to get prebuilt queries", e);
+            return new JsonResult<>(1, "Failed to get prebuilt queries: " + e.getMessage());
         }
     }
 }

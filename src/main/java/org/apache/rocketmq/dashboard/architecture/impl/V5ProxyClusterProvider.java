@@ -304,8 +304,7 @@ public class V5ProxyClusterProvider implements ClusterProvider {
         } catch (Exception e) {
             log.warn("Remoting client init returned placeholder: {}", e.getMessage());
             // Fallback: create instance without start() for testing scenarios
-            this.mqAdminExt = new org.apache.rocketmq.tools.admin.DefaultMQAdminExt(
-                org.apache.rocketmq.common.ThreadFactoryImpl.DEFAULT_SHUTDOWN_TIMEOUT);
+            this.mqAdminExt = new org.apache.rocketmq.tools.admin.DefaultMQAdminExt();
         }
     }
 
