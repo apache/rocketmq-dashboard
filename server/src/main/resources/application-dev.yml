@@ -1,0 +1,5 @@
+# Development profile
+logging:
+  level:
+    com.rocketmq.studio: DEBUG
+    org.springframework.web: DEBUG
