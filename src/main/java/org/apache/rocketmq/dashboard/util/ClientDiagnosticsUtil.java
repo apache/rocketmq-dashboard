@@ -23,7 +23,7 @@ public class ClientDiagnosticsUtil {
         ClientDiagnosisResult result = new ClientDiagnosisResult();
         result.setClientId(client.getClientId());
         result.setClientAddress(client.getClientAddress());
-        result.setProtocolType(client.getProtocolType());
+        result.setProtocolType(client.getProtocolType() != null ? client.getProtocolType().name() : "UNKNOWN");
 
         List<String> issues = new ArrayList<>();
         List<String> recommendations = new ArrayList<>();

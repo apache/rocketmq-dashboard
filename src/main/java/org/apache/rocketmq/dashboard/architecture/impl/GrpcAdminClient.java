@@ -39,9 +39,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.util.Assert;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 
 /**
  * gRPC-based AdminClient implementation for RocketMQ 5.x Proxy Cluster mode.
@@ -75,7 +77,10 @@ public class GrpcAdminClient implements AdminClient {
     /** Remoting fallback client for metadata operations. */
     private final MQAdminExt mqAdminExt;
 
-    /** Whether gRPC channel is available (currently always false until RIP-2). */
+    /** gRPC client for RIP-2 Proxy Admin queries (nullable — only set for V5 clusters). */
+    private final Object grpcClient;
+
+    /** Whether gRPC channel is available for client-level queries. */
     private volatile boolean grpcAvailable = false;
 
     /** Whether the client has been shut down. */
@@ -89,12 +94,31 @@ public class GrpcAdminClient implements AdminClient {
      * @throws IllegalArgumentException if any parameter is null or empty
      */
     public GrpcAdminClient(String proxyAddress, MQAdminExt mqAdminExt) {
+        this(proxyAddress, mqAdminExt, null);
+    }
+
+    /**
+     * Construct a new GrpcAdminClient with optional gRPC Proxy Admin client for RIP-2 integration.
+     *
+     * @param proxyAddress Proxy node address in format "host:port". Must not be null or empty.
+     * @param mqAdminExt   Remoting fallback client for metadata operations. Must not be null.
+     * @param grpcClient   Optional gRPC client for Proxy Admin queries (RIP-2 M1).
+     *                     If non-null, enables gRPC-native client queries.
+     * @throws IllegalArgumentException if proxyAddress or mqAdminExt is null/empty
+     */
+    public GrpcAdminClient(String proxyAddress, MQAdminExt mqAdminExt, Object grpcClient) {
         Assert.notNull(proxyAddress, "proxyAddress must not be null");
         Assert.hasText(proxyAddress, "proxyAddress must not be empty");
         Assert.notNull(mqAdminExt, "mqAdminExt must not be null");
         this.proxyAddress = proxyAddress;
         this.mqAdminExt = mqAdminExt;
-        log.info("GrpcAdminClient created for proxy: {} with Remoting fallback", proxyAddress);
+        this.grpcClient = grpcClient;
+        // Mark gRPC as available when a real gRPC client is provided (RIP-2 integration)
+        if (grpcClient != null) {
+            this.grpcAvailable = true;
+        }
+        log.info("GrpcAdminClient created for proxy: {} with Remoting fallback (gRPC: {})",
+            proxyAddress, grpcAvailable ? "enabled" : "disabled");
     }
 
     @Override
@@ -192,8 +216,10 @@ public class GrpcAdminClient implements AdminClient {
         if (grpcAvailable) {
             log.debug("[gRPC] deleteTopic for topic [{}]", topic);
         }
-        mqAdminExt.deleteTopicInBroker(clusterName, topic);
-        mqAdminExt.deleteTopicInNameServer(java.util.Collections.singleton(clusterName), topic);
+        Set<String> clusters = new HashSet<>();
+        clusters.add(clusterName);
+        mqAdminExt.deleteTopicInBroker(clusters, topic);
+        mqAdminExt.deleteTopicInNameServer(clusters, topic);
     }
 
     @Override

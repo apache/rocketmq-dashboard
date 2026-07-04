@@ -8,7 +8,7 @@ import org.apache.rocketmq.dashboard.service.ArchitectureBasedService;
 import org.apache.rocketmq.dashboard.service.AclService;
 import org.springframework.stereotype.Service;
 
-import javax.annotation.Resource;
+import jakarta.annotation.Resource;
 import java.util.List;
 
 /**
@@ -143,11 +143,11 @@ public class AclServiceImpl extends ArchitectureBasedService implements AclServi
         if (user == null) {
             throw new IllegalArgumentException("ACL user cannot be null");
         }
-        if (user.getUsername() == null || user.getUsername().trim().isEmpty()) {
+        if (user.getUserName() == null || user.getUserName().trim().isEmpty()) {
             throw new IllegalArgumentException("Username cannot be empty");
         }
-        if (user.getPassword() == null || user.getPassword().trim().isEmpty()) {
-            throw new IllegalArgumentException("Password cannot be empty");
+        if (user.getAccessKey() == null || user.getAccessKey().trim().isEmpty()) {
+            throw new IllegalArgumentException("AccessKey cannot be empty");
         }
     }
 

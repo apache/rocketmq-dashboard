@@ -5,14 +5,18 @@ import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.dashboard.architecture.ClusterProvider;
 import org.apache.rocketmq.dashboard.architecture.MetadataProvider;
 import org.apache.rocketmq.dashboard.model.MessageInfo;
+import org.apache.rocketmq.dashboard.model.MessagePage;
 import org.apache.rocketmq.dashboard.model.MessageView;
+import org.apache.rocketmq.dashboard.model.request.MessageQuery;
 import org.apache.rocketmq.dashboard.service.ArchitectureBasedService;
 import org.apache.rocketmq.dashboard.service.MessageService;
 import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
 import org.apache.rocketmq.tools.admin.api.MessageTrack;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.stereotype.Service;
 
-import javax.annotation.Resource;
+import jakarta.annotation.Resource;
 import java.util.Collections;
 import java.util.List;
 
@@ -47,6 +51,32 @@ public class MessageServiceImpl extends ArchitectureBasedService implements Mess
         } catch (Exception e) {
             handleUnsupportedOperation("View message");
             return new Pair<>(null, Collections.emptyList());
+        }
+    }
+
+    @Override
+    public MessagePage queryMessageByPage(MessageQuery query) {
+        try {
+            if (supports("MESSAGE_QUERY")) {
+                List<MessageInfo> messages = metadataProvider.queryMessageByTopic(
+                    query.getTopic(), query.getBegin(), query.getEnd(), query.getPageSize());
+                List<MessageView> views = new java.util.ArrayList<>();
+                for (MessageInfo msg : messages) {
+                    MessageView view = new MessageView();
+                    view.setTopic(msg.getTopic());
+                    view.setMsgId(msg.getMsgId());
+                    views.add(view);
+                }
+                Page<MessageView> page = new PageImpl<>(views,
+                    org.springframework.data.domain.PageRequest.of(query.getPageNum(), query.getPageSize()),
+                    views.size());
+                return new MessagePage(page, query.getTaskId());
+            }
+            handleUnsupportedOperation("Message query by page - not supported in current cluster");
+            return new MessagePage(Page.empty(), null);
+        } catch (Exception e) {
+            handleUnsupportedOperation("Query message by page");
+            return new MessagePage(Page.empty(), null);
         }
     }
 

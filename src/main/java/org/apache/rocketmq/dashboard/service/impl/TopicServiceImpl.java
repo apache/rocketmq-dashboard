@@ -17,6 +17,9 @@
 package org.apache.rocketmq.dashboard.service.impl;
 
 import jakarta.annotation.Resource;
+import org.apache.rocketmq.dashboard.model.ClusterCapability;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.rocketmq.dashboard.model.TopicInfo;
 import org.apache.rocketmq.dashboard.model.TopicType;
 import org.apache.rocketmq.dashboard.service.ArchitectureBasedService;
@@ -33,8 +36,15 @@ import java.util.Optional;
 @Service
 public class TopicServiceImpl extends ArchitectureBasedService implements TopicService {
 
+    private static final Logger log = LoggerFactory.getLogger(TopicServiceImpl.class);
+
     @Resource
     private org.apache.rocketmq.tools.admin.MQAdminExt mqAdminExt;
+
+    @Override
+    public ClusterCapability getClusterCapability() {
+        return super.getClusterCapability();
+    }
 
     @Override
     public List<String> getTopicList() {
@@ -136,11 +146,16 @@ public class TopicServiceImpl extends ArchitectureBasedService implements TopicS
     @Override
     public List<String> getTopicClusterList(String topic) {
         if (isV4Architecture()) {
-            return getClusterTopology().getBrokerNodes()
-                .stream()
-                .map(node -> node.getNodeName())
-                .distinct()
-                .toList();
+            try {
+                return getClusterTopology().getBrokerNodes()
+                    .stream()
+                    .map(node -> node.getNodeName())
+                    .distinct()
+                    .toList();
+            } catch (Exception e) {
+                log.warn("Failed to get cluster topology: {}", e.getMessage());
+                return List.of();
+            }
         }
         // V5 architecture can get from Namespace
         return List.of("default-cluster");
