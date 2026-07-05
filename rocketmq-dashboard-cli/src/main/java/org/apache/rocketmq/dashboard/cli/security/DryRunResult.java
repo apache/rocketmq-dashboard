@@ -22,6 +22,7 @@ import lombok.Builder;
 import lombok.Data;
 
 @Data
+/** Preview result for L2 controlled-mutation operations. Shows affected resources, change details, estimated duration, and warnings before actual execution. */
 @Builder
 public class DryRunResult {
 

@@ -33,6 +33,8 @@ import picocli.CommandLine.ParentCommand;
 @Command(name = "message", description = "Message management commands",
         subcommands = {MessageCommand.QueryByIdCmd.class, MessageCommand.QueryByTimeCmd.class,
                 MessageCommand.ResendCmd.class})
+
+/** CLI commands for message operations: query-by-id, query-by-time, resend (L2). */
 public class MessageCommand {
 
     @Command(name = "query-by-id", description = "Query a message by its ID (L1)")

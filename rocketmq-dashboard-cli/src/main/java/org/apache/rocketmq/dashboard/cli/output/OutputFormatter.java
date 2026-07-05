@@ -25,6 +25,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/** Formats CLI output in three modes: TABLE (aligned ASCII), JSON (structured), and YAML. Also provides formatted error display. */
 public class OutputFormatter {
 
     public enum Format { TABLE, JSON, YAML }

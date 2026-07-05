@@ -31,6 +31,7 @@ import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.Constructor;
 import org.yaml.snakeyaml.representer.Representer;
 
+/** Manages CLI context configuration persisted to ~/.rmqctl/config.yaml. Provides kubectl-style context switching and cluster registration. */
 public class CliContext {
 
     private static final Path CONFIG_DIR = Paths.get(System.getProperty("user.home"), ".rmqctl");

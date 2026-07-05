@@ -30,6 +30,8 @@ import picocli.CommandLine.Parameters;
 @Command(name = "broker", description = "Broker management commands",
         subcommands = {BrokerCommand.ListCmd.class, BrokerCommand.DescribeCmd.class,
                 BrokerCommand.ConfigCmd.class})
+
+/** CLI commands for broker operations: list brokers, describe broker details, view/update broker configuration. */
 public class BrokerCommand {
 
     @Command(name = "list", description = "List all brokers in the cluster (L1)")

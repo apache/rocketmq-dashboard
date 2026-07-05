@@ -32,6 +32,7 @@ import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.introspector.BeanAccess;
 
+/** Configuration model for LLM provider integration. Supports OpenAI, Azure, DeepSeek, Tongyi, Bedrock, and Ollama. Persisted to ~/.rmqctl/llm-config.yaml. */
 @Data
 public class LlmConfig {
 

@@ -24,6 +24,7 @@ import lombok.NoArgsConstructor;
 @Data
 @Builder
 @NoArgsConstructor
+/** Schema definition for a single tool parameter. Specifies name, type, whether required, description, default value, and allowed values for enum types. */
 @AllArgsConstructor
 public class ParamSchema {
     private String name;

@@ -34,6 +34,8 @@ import picocli.CommandLine.ParentCommand;
         subcommands = {GroupCommand.ListCmd.class, GroupCommand.DescribeCmd.class,
                 GroupCommand.CreateCmd.class, GroupCommand.UpdateCmd.class,
                 GroupCommand.ResetOffsetCmd.class, GroupCommand.DeleteCmd.class})
+
+/** CLI commands for consumer group management: list, describe, create (L2), update (L2), reset-offset (L2), delete (L3). */
 public class GroupCommand {
 
     @Command(name = "list", description = "List all consumer groups (L1)")

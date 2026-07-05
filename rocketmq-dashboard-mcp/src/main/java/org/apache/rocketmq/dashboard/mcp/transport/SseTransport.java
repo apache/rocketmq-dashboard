@@ -44,12 +44,14 @@ public class SseTransport implements McpTransport {
     private final List<SseEmitter> emitters = new CopyOnWriteArrayList<>();
     private McpMessageHandler handler;
 
+    /** {@inheritDoc} */
     @Override
     public void start(McpMessageHandler handler) {
         this.handler = handler;
         log.info("SseTransport started");
     }
 
+    /** {@inheritDoc} */
     @Override
     public void stop() {
         for (SseEmitter emitter : emitters) {
@@ -63,6 +65,7 @@ public class SseTransport implements McpTransport {
         log.info("SseTransport stopped");
     }
 
+    /** {@inheritDoc} */
     @Override
     public void sendMessage(String jsonMessage) {
         SseEmitter.SseEventBuilder event = SseEmitter.event()

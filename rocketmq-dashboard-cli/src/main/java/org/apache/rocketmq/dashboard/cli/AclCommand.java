@@ -33,6 +33,8 @@ import picocli.CommandLine.ParentCommand;
 @Command(name = "acl", description = "ACL management commands",
         subcommands = {AclCommand.ListCmd.class, AclCommand.CreateCmd.class,
                 AclCommand.UpdateCmd.class, AclCommand.DeleteCmd.class})
+
+/** CLI commands for ACL policy management: list, create (L2), update (L2), delete (L3). */
 public class AclCommand {
 
     @Command(name = "list", description = "List all ACL entries (L1)")

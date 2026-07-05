@@ -34,6 +34,8 @@ import picocli.CommandLine.Parameters;
                 ConfigCommand.SetContext.class,
                 ConfigCommand.AddCluster.class
         })
+
+/** CLI commands for managing cluster contexts and configuration: get-contexts, use-context, set-context, add-cluster. */
 public class ConfigCommand {
 
     @Command(name = "get-contexts", description = "List all configured contexts")

@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import lombok.Data;
 
+/** YAML-serializable configuration model for rmqctl. Holds clusters, users, contexts, and the current-context pointer. Uses kubectl-style context management. */
 @Data
 public class CliConfig {
 

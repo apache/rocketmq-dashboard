@@ -29,6 +29,8 @@ import picocli.CommandLine.Parameters;
 
 @Command(name = "client", description = "Client management commands",
         subcommands = {ClientCommand.ListCmd.class, ClientCommand.DescribeCmd.class})
+
+/** CLI commands for client management: list connected clients and describe individual client details. */
 public class ClientCommand {
 
     @Command(name = "list", description = "List all connected clients (L1)")

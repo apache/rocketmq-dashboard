@@ -38,6 +38,8 @@ import picocli.CommandLine.Option;
                 MetricsCommand.class,
                 NamespaceCommand.class
         })
+
+/** Picocli entry point for the rmqctl CLI tool. Provides global options (--cluster, --output, --dry-run, --yes, --force) and registers all resource subcommands. */
 public class RmqctlCommand implements Callable<Integer> {
 
     @Option(names = {"--cluster"}, description = "Target cluster name (overrides current context)")

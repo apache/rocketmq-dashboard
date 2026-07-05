@@ -26,6 +26,8 @@ import picocli.CommandLine.ParentCommand;
 @Command(name = "namespace", description = "Namespace management (V5+)",
         subcommands = {NamespaceCommand.ListCmd.class, NamespaceCommand.CreateCmd.class,
                 NamespaceCommand.DeleteCmd.class})
+
+/** CLI commands for namespace management (V5+): list, create (L2), delete (L3). */
 public class NamespaceCommand {
 
     @Command(name = "list", description = "List all namespaces")

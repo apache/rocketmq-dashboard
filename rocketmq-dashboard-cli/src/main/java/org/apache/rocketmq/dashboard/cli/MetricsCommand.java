@@ -29,6 +29,8 @@ import picocli.CommandLine.Parameters;
 
 @Command(name = "metrics", description = "Metrics query commands",
         subcommands = {MetricsCommand.QueryCmd.class})
+
+/** CLI command for querying cluster metrics by type (cluster, broker, topic, consumer, client, system). */
 public class MetricsCommand {
 
     @Command(name = "query", description = "Query metrics for a given resource type (L1)")
