@@ -21,6 +21,7 @@ import * as echarts from 'echarts';
 import moment from 'moment';
 import {useLanguage} from '../../i18n/LanguageContext';
 import {remoteApi, tools} from '../../api/remoteApi/remoteApi';
+import CommandBar from '../../components/llm/CommandBar';
 
 const {Option} = Select;
 
@@ -375,6 +376,7 @@ const DashboardPage = () => {
             {msgContextHolder}
             {notificationContextHolder}
             <div style={{padding: '20px'}}>
+                <CommandBar />
                 <Spin spinning={loading} tip={t.LOADING}>
                     <Row gutter={[16, 16]} style={{marginBottom: '20px'}}>
                         <Col span={12}>

@@ -17,7 +17,7 @@
 
 import React, {useEffect, useState} from 'react';
 import {Button, Drawer, Dropdown, Grid, Layout, Menu, Space} from 'antd';
-import {BgColorsOutlined, DownOutlined, GlobalOutlined, MenuOutlined, UserOutlined} from '@ant-design/icons';
+import {BgColorsOutlined, DownOutlined, GlobalOutlined, MenuOutlined, RobotOutlined, UserOutlined} from '@ant-design/icons';
 import {useLocation, useNavigate} from 'react-router-dom';
 import {useLanguage} from '../i18n/LanguageContext';
 import {useTheme} from "../store/context/ThemeContext";
@@ -151,6 +151,17 @@ const Navbar = ({rmqVersion = true, showAcl = true}) => {
             </div>
 
             <Space size={isExtraSmallScreen ? 8 : 16}> {/* Adjust spacing for buttons */}
+                {/* LLM Assistant button */}
+                <Button
+                    icon={<RobotOutlined />}
+                    size="small"
+                    type="text"
+                    style={{ color: 'white' }}
+                    onClick={() => navigate('/llm-settings')}
+                >
+                    {!isExtraSmallScreen && 'LLM'}
+                </Button>
+
                 {/* Theme switch button */}
                 <Dropdown overlay={themeMenu}>
                     <Button icon={<BgColorsOutlined/>} size="small">

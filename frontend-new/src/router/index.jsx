@@ -30,6 +30,7 @@ import Message from '../pages/Message/message';
 import DlqMessage from '../pages/DlqMessage/dlqmessage';
 import MessageTrace from '../pages/MessageTrace/messagetrace';
 import Acl from '../pages/Acl/acl';
+import LlmSettings from '../pages/LlmSettings/LlmSettings';
 
 import Navbar from '../components/Navbar';
 import DashboardPage from "../pages/Dashboard/DashboardPage";
@@ -242,6 +243,20 @@ const AppRouter = () => {
                                     transition={pageTransition}
                                 >
                                     <Acl/>
+                                </motion.div>
+                            }
+                        />
+                        <Route
+                            path="/llm-settings"
+                            element={
+                                <motion.div
+                                    variants={pageVariants}
+                                    initial="initial"
+                                    animate="in"
+                                    exit="out"
+                                    transition={pageTransition}
+                                >
+                                    <LlmSettings/>
                                 </motion.div>
                             }
                         />
