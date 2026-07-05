@@ -16,6 +16,8 @@ docker pull apacherocketmq/rocketmq-dashboard:latest
 
 #### Run it (use your own `rocketmq.namesrv.addr` and `port`)
 
+The default dashboard port is **8082**. You can change it by setting the `SERVER_PORT` environment variable or mapping a different host port:
+
 ```shell
 docker run -d --name rocketmq-dashboard -e "JAVA_OPTS=-Drocketmq.namesrv.addr=127.0.0.1:9876" -p 8082:8082 -t apacherocketmq/rocketmq-dashboard:latest
 ```

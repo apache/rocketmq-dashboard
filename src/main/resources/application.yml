@@ -16,7 +16,7 @@
 #
 
 server:
-  port: 8082
+  port: 8082 # Default dashboard port. Change via server.port property or SERVER_PORT env var.
   servlet:
     encoding:
       charset: UTF-8
