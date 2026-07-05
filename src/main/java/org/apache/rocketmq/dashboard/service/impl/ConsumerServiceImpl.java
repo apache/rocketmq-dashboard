@@ -180,6 +180,10 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
             ClusterInfo clusterInfo = clusterInfoService.get();
             for (BrokerData brokerData : clusterInfo.getBrokerAddrTable().values()) {
                 subscriptionGroupWrapper = mqAdminExt.getAllSubscriptionGroup(brokerData.selectBrokerAddr(), 30000L);
+                if (subscriptionGroupWrapper == null) {
+                    logger.warn("getAllSubscriptionGroup returned null for broker: {}", brokerData.selectBrokerAddr());
+                    continue;
+                }
                 for (String groupName : subscriptionGroupWrapper.getSubscriptionGroupTable().keySet()) {
                     if (!consumerGroupMap.containsKey(groupName)) {
                         consumerGroupMap.putIfAbsent(groupName, new ArrayList<>());
@@ -194,7 +198,7 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
             throw new RuntimeException(err);
         }
 
-        if (subscriptionGroupWrapper != null && subscriptionGroupWrapper.getSubscriptionGroupTable().isEmpty()) {
+        if (subscriptionGroupWrapper == null || subscriptionGroupWrapper.getSubscriptionGroupTable().isEmpty()) {
             logger.warn("No subscription group information available");
             isCacheBeingBuilt = false;
             return;
