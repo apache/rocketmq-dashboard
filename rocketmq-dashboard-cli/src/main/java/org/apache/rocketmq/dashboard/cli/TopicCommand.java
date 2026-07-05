@@ -34,6 +34,8 @@ import picocli.CommandLine.ParentCommand;
         subcommands = {TopicCommand.ListCmd.class, TopicCommand.DescribeCmd.class,
                 TopicCommand.CreateCmd.class, TopicCommand.UpdateCmd.class,
                 TopicCommand.DeleteCmd.class})
+
+/** CLI commands for topic management: list, describe, create (L2), update (L2), delete (L3). */
 public class TopicCommand {
 
     @Command(name = "list", description = "List all topics (L1)")

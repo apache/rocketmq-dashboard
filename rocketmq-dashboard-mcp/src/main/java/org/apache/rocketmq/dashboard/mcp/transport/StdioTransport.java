@@ -36,6 +36,7 @@ public class StdioTransport implements McpTransport {
     private volatile boolean running = false;
     private Thread readerThread;
 
+    /** {@inheritDoc} */
     @Override
     public void start(McpMessageHandler handler) {
         this.handler = handler;
@@ -77,6 +78,7 @@ public class StdioTransport implements McpTransport {
         log.info("StdioTransport started");
     }
 
+    /** {@inheritDoc} */
     @Override
     public void stop() {
         running = false;
@@ -86,6 +88,7 @@ public class StdioTransport implements McpTransport {
         log.info("StdioTransport stopped");
     }
 
+    /** {@inheritDoc} */
     @Override
     public void sendMessage(String jsonMessage) {
         synchronized (System.out) {

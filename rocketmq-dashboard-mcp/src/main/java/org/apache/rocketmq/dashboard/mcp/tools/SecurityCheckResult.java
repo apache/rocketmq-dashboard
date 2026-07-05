@@ -42,10 +42,12 @@ public class SecurityCheckResult {
         this.dryRunData = dryRunData;
     }
 
+    /** Creates an ALLOW result with no restrictions. */
     public static SecurityCheckResult allow() {
         return new SecurityCheckResult(Action.ALLOW, "Operation allowed", null);
     }
 
+    /** Creates a DRY_RUN result with the given preview message. */
     public static SecurityCheckResult dryRun(String message) {
         Map<String, Object> dryRunData = new LinkedHashMap<>();
         dryRunData.put("mode", "dry_run");
@@ -53,6 +55,7 @@ public class SecurityCheckResult {
         return new SecurityCheckResult(Action.DRY_RUN, message, dryRunData);
     }
 
+    /** Creates a BLOCK result with the given reason message. */
     public static SecurityCheckResult block(String message) {
         return new SecurityCheckResult(Action.BLOCK, message, null);
     }

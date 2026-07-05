@@ -19,6 +19,7 @@ package org.apache.rocketmq.dashboard.llm;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
+/** Spring Boot entry point for the LLM Bridge service. Provides REST endpoints at /api/llm for chat, tool filtering, and provider configuration. */
 @SpringBootApplication
 public class LlmApplication {
 

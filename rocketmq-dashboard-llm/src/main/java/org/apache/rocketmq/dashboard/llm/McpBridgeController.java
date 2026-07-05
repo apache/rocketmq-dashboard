@@ -26,7 +26,6 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.rocketmq.dashboard.cli.schema.ParamSchema;
-import org.apache.rocketmq.dashboard.cli.schema.RiskLevel;
 import org.apache.rocketmq.dashboard.cli.schema.ToolDefinition;
 import org.apache.rocketmq.dashboard.cli.schema.ToolRegistry;
 import org.apache.rocketmq.dashboard.mcp.tools.SecurityCheckResult;

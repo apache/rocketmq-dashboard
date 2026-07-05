@@ -30,6 +30,8 @@ import picocli.CommandLine.Parameters;
 
 @Command(name = "cluster", description = "Cluster management operations",
         subcommands = {ClusterCommand.ListClusters.class, ClusterCommand.DescribeCluster.class})
+
+/** CLI commands for cluster operations: list all configured clusters and describe cluster details. */
 public class ClusterCommand {
 
     @Command(name = "list", description = "List all clusters and their health status")

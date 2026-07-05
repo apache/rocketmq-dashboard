@@ -25,6 +25,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
+/** Thread-safe singleton that logs all write operations to ~/.rmqctl/audit/ with timestamp, cluster, command, result, and user for audit trail. */
 public class AuditLogger {
 
     private static final AuditLogger INSTANCE = new AuditLogger();

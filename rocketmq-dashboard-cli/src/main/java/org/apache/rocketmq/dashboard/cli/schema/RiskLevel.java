@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.dashboard.cli.schema;
 
+/** Three-tier risk classification for CLI and MCP operations: L1 (read-only, safe), L2 (controlled mutation, dry-run required), L3 (dangerous, blocked by default). */
 public enum RiskLevel {
     L1("Read-only", "Default open, AI can call silently"),
     L2("Controlled mutation", "Default dry-run two-step, confirm before apply"),

@@ -84,14 +84,17 @@ public class SecurityGate {
 
     // ---- Configuration setters ------------------------------------------------
 
+    /** Enable or disable L1 read-only operations. */
     public void setAllowL1(boolean allowL1) {
         this.allowL1 = allowL1;
     }
 
+    /** Enable or disable L2 controlled-mutation operations. */
     public void setAllowL2(boolean allowL2) {
         this.allowL2 = allowL2;
     }
 
+    /** Enable or disable L3 dangerous operations (requires explicit opt-in). */
     public void setAllowL3(boolean allowL3) {
         this.allowL3 = allowL3;
     }

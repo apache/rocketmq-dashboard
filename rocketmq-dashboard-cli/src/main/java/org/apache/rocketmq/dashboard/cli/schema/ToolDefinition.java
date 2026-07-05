@@ -25,6 +25,7 @@ import lombok.NoArgsConstructor;
 @Data
 @Builder
 @NoArgsConstructor
+/** Single source of truth definition for a tool. Shared by CLI help text, MCP tool descriptions, and LLM function calling schemas. Maps to rmqctl commands via resource+verb. */
 @AllArgsConstructor
 public class ToolDefinition {
     /** Full tool name, e.g. "rmq.topic.create" or "rmq.group.reset-offset". */

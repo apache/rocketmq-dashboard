@@ -24,6 +24,7 @@ import lombok.NoArgsConstructor;
 @Data
 @Builder
 @NoArgsConstructor
+/** Standardized error model with error code, human-readable message, and LLM-actionable fix hint. Used across CLI, MCP, and Console LLM. */
 @AllArgsConstructor
 public class ErrorModel {
     private String code;
