@@ -67,6 +67,12 @@ public class MetricsDataSourceConfig implements Serializable {
     private String bearerToken;
 
     /**
+     * Prometheus-compatible backend provider type.
+     * Supported: PROMETHEUS, VICTORIAMETRICS, THANOS, MIMIR, CORTEX, ARMS, CUSTOM
+     */
+    private String providerType = "PROMETHEUS";
+
+    /**
      * Whether TLS / HTTPS is enabled.
      */
     private boolean tlsEnabled;

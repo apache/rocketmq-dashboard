@@ -36,7 +36,9 @@ import picocli.CommandLine.Option;
                 AclCommand.class,
                 BrokerCommand.class,
                 MetricsCommand.class,
-                NamespaceCommand.class
+                NamespaceCommand.class,
+                ExplainCommand.class,
+                GenerateCompletion.class
         })
 
 /** Picocli entry point for the rmqctl CLI tool. Provides global options (--cluster, --output, --dry-run, --yes, --force) and registers all resource subcommands. */

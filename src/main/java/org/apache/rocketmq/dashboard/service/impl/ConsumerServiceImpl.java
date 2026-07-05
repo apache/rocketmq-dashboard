@@ -8,6 +8,10 @@ import org.apache.rocketmq.dashboard.model.GroupConsumeInfo;
 import org.apache.rocketmq.dashboard.model.SubscriptionInfo;
 import org.apache.rocketmq.dashboard.service.ArchitectureBasedService;
 import org.apache.rocketmq.dashboard.service.ConsumerService;
+import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
+import org.apache.rocketmq.remoting.protocol.heartbeat.ConsumeType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.Resource;
@@ -20,6 +24,8 @@ import java.util.Optional;
  */
 @Service
 public class ConsumerServiceImpl extends ArchitectureBasedService implements ConsumerService {
+
+    private static final Logger log = LoggerFactory.getLogger(ConsumerServiceImpl.class);
 
     @Resource
     private MetadataProvider metadataProvider;
@@ -130,11 +136,42 @@ public class ConsumerServiceImpl extends ArchitectureBasedService implements Con
     @Override
     public GroupConsumeInfo queryGroup(String groupName, String namespace) {
         try {
-            return adminClient.getGroupConsumeInfo(groupName);
+            GroupConsumeInfo info = adminClient.getGroupConsumeInfo(groupName);
+            // Fix #380: Pop consumers may show NOT_CONSUME_YET (diffTotal == -1) as normal behavior.
+            // Detect Pop consumers and clarify that this is expected, not an error.
+            if (isPopConsumerNotConsumeYet(groupName)) {
+                info.setSubGroupType("WAITING (Pop)");
+            }
+            return info;
         } catch (Exception e) {
             handleUnsupportedOperation("Query group consume info for " + groupName);
             return new GroupConsumeInfo();
         }
+    }
+
+    /**
+     * Fix #380: Check if a consumer group uses Pop consumption mode and has no pending messages.
+     * Pop consumers do not maintain traditional consume offsets, so diffTotal may remain -1.
+     * This is normal Pop consumer behavior, not an error condition.
+     *
+     * @param consumerGroup the consumer group name to check
+     * @return true if the group is a Pop consumer with no pending messages
+     */
+    private boolean isPopConsumerNotConsumeYet(String consumerGroup) {
+        try {
+            ConsumerConnection connection = adminClient.getConsumerConnection(consumerGroup);
+            if (connection != null) {
+                ConsumeType consumeType = connection.getConsumeType();
+                if (consumeType == ConsumeType.CONSUME_POP) {
+                    // Pop consumers don't maintain traditional consume offsets;
+                    // 0 or -1 diffTotal is normal behavior for newly started Pop consumers.
+                    return true;
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Failed to check Pop consumer status for {}: {}", consumerGroup, e.getMessage());
+        }
+        return false;
     }
 
     /**

@@ -294,7 +294,7 @@ public class MetricsController {
     /**
      * POST /api/metrics/datasources - Create a new data source.
      *
-     * @param request data source configuration
+     * @param request data source configuration including providerType
      * @return JsonResult with creation result
      */
     @PostMapping("/api/metrics/datasources")
@@ -382,8 +382,11 @@ public class MetricsController {
     /**
      * GET /api/metrics/datasources/{id}/test - Test data source connection.
      *
+     * <p>Tests connectivity to the data source backend. Supported provider types
+     * include PROMETHEUS, VICTORIAMETRICS, THANOS, MIMIR, CORTEX, ARMS, and CUSTOM.</p>
+     *
      * @param id data source ID
-     * @return JsonResult with connection test result
+     * @return JsonResult with connection test result including provider type info
      */
     @GetMapping("/api/metrics/datasources/{id}/test")
     public Object testDataSource(@PathVariable String id) {
@@ -393,6 +396,8 @@ public class MetricsController {
             }
 
             Map<String, Object> testResult = metricsService.testDataSource(id);
+            testResult.putIfAbsent("supportedProviderTypes",
+                "PROMETHEUS, VICTORIAMETRICS, THANOS, MIMIR, CORTEX, ARMS, CUSTOM");
             return new JsonResult<>(testResult);
         } catch (Exception e) {
             log.error("Failed to test data source: {}", id, e);
@@ -445,7 +450,7 @@ public class MetricsController {
 
     /**
      * GET /api/metrics/alerts - Get pre-built alert rules in YAML format.
-     * RIP-1 METRICS-01: 16+ official alert rules covering broker, topic, consumer,
+     * RIP-1 METRICS-01: 20+ official alert rules covering broker, topic, consumer,
      * client, and proxy categories.
      *
      * @param format optional format parameter: "json" returns structured data, default "yaml" returns YAML text

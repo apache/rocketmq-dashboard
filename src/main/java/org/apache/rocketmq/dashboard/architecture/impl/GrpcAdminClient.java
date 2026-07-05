@@ -19,10 +19,13 @@ package org.apache.rocketmq.dashboard.architecture.impl;
 import org.apache.rocketmq.client.QueryResult;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.message.MessageExt;
+import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.dashboard.architecture.AdminClient;
 import org.apache.rocketmq.dashboard.architecture.ClusterAccessType;
 import org.apache.rocketmq.dashboard.model.AccessControlList;
 import org.apache.rocketmq.dashboard.model.GroupConsumeInfo;
+import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
+import org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper;
 import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
@@ -285,6 +288,27 @@ public class GrpcAdminClient implements AdminClient {
             }
         } catch (Exception e) {
             log.warn("Failed to get group consume info for {}: {}", consumerGroup, e.getMessage());
+        }
+
+        // Fix #381: If diffTotal remains -1 (no matching %RETRY% topic found),
+        // attempt to query actual consume progress from the broker directly.
+        if (info.getDiffTotal() == -1) {
+            try {
+                ConsumeStats consumeStats = mqAdminExt.examineConsumeStats(consumerGroup);
+                if (consumeStats != null && consumeStats.getOffsetTable() != null) {
+                    long diff = 0L;
+                    for (Map.Entry<MessageQueue, OffsetWrapper> entry : consumeStats.getOffsetTable().entrySet()) {
+                        diff += entry.getValue().getBrokerOffset() - entry.getValue().getConsumerOffset();
+                    }
+                    info.setDiffTotal(diff);
+                }
+            } catch (Exception e) {
+                log.debug("Cannot get consume stats for {}, setting diffTotal to 0. "
+                    + "Real data requires a live cluster connection: {}", consumerGroup, e.getMessage());
+                // Set to 0 as default when no real cluster connection is available.
+                // Real data requires a live cluster connection.
+                info.setDiffTotal(0L);
+            }
         }
         return info;
     }

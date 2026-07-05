@@ -1001,6 +1001,21 @@ public class V5ProxyMetadataProvider implements MetadataProvider {
 
     @Override
     public boolean checkACLPermission(String username, String resource, String action) throws Exception {
+        return checkACLPermission(username, resource, action, null);
+    }
+
+    /**
+     * Fix #407: Check ACL permission with IP whitelist enforcement.
+     * Before returning the permission result, validates the request source IP
+     * against the policy's configured IP whitelist if one is present.
+     *
+     * @param username  the user to check
+     * @param resource  the resource being accessed
+     * @param action    the action being performed
+     * @param sourceIp  the source IP address of the request, or null to skip IP whitelist check
+     * @return true if the user is permitted
+     */
+    public boolean checkACLPermission(String username, String resource, String action, String sourceIp) throws Exception {
         if (username == null || resource == null || action == null) {
             return false;
         }
@@ -1012,6 +1027,19 @@ public class V5ProxyMetadataProvider implements MetadataProvider {
             if (policy.getUsers() != null && policy.getUsers().contains(username)) {
                 if (policy.getResources() != null && matchesV5Resource(policy.getResources(), resource)) {
                     if (policy.getActions() != null && matchesV5Action(policy.getActions(), action)) {
+                        // Fix #407: Enforce IP whitelist when configured on the policy
+                        if (policy.getIpWhiteList() != null && !policy.getIpWhiteList().isEmpty()) {
+                            if (sourceIp != null && !sourceIp.isEmpty()) {
+                                if (!isIpInWhitelist(sourceIp, policy.getIpWhiteList())) {
+                                    log.debug("ACL 2.0 check: IP {} not in whitelist for user={} resource={}",
+                                        sourceIp, username, resource);
+                                    return false;
+                                }
+                            } else {
+                                log.debug("ACL 2.0 check: policy {} has IP whitelist but no source IP provided; "
+                                    + "skipping IP check for user={}", policy.getPolicyId(), username);
+                            }
+                        }
                         if ("DENY".equalsIgnoreCase(policy.getPolicyType())) {
                             return false;
                         }
@@ -1021,6 +1049,91 @@ public class V5ProxyMetadataProvider implements MetadataProvider {
             }
         }
         return false;
+    }
+
+    /**
+     * Fix #407: Validate a source IP against an IP whitelist.
+     * Supports:
+     * <ul>
+     *   <li>Exact IP match (e.g., "192.168.1.100")</li>
+     *   <li>CIDR notation (e.g., "192.168.1.0/24")</li>
+     *   <li>Wildcard patterns (e.g., "192.168.*.*", "192.168.1.*")</li>
+     * </ul>
+     *
+     * @param sourceIp  the request source IP address
+     * @param whitelist the set of whitelist entries
+     * @return true if the source IP matches any whitelist entry
+     */
+    private boolean isIpInWhitelist(String sourceIp, Set<String> whitelist) {
+        if (sourceIp == null || sourceIp.isEmpty() || whitelist == null || whitelist.isEmpty()) {
+            return false;
+        }
+        for (String entry : whitelist) {
+            if (entry == null || entry.isEmpty()) {
+                continue;
+            }
+            // Exact match
+            if (entry.equals(sourceIp)) {
+                return true;
+            }
+            // CIDR notation
+            if (entry.contains("/")) {
+                if (isIpInCidr(sourceIp, entry)) {
+                    return true;
+                }
+                continue;
+            }
+            // Wildcard match (e.g., "192.168.*.*")
+            if (entry.contains("*")) {
+                String regex = entry.replace(".", "\\.").replace("*", "\\d{1,3}");
+                if (sourceIp.matches(regex)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Check if an IP address falls within a CIDR range.
+     *
+     * @param ip   the IP address to check (e.g., "192.168.1.100")
+     * @param cidr the CIDR notation (e.g., "192.168.1.0/24")
+     * @return true if the IP is within the CIDR range
+     */
+    private boolean isIpInCidr(String ip, String cidr) {
+        try {
+            String[] parts = cidr.split("/");
+            if (parts.length != 2) {
+                return false;
+            }
+            String networkPart = parts[0];
+            int prefixLength = Integer.parseInt(parts[1]);
+
+            long ipLong = ipToLong(ip);
+            long networkLong = ipToLong(networkPart);
+            long mask = prefixLength == 0 ? 0 : (0xFFFFFFFFL << (32 - prefixLength)) & 0xFFFFFFFFL;
+
+            return (ipLong & mask) == (networkLong & mask);
+        } catch (Exception e) {
+            log.debug("CIDR check failed for ip={} cidr={}: {}", ip, cidr, e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Convert an IPv4 address string to a long value for bitwise comparison.
+     */
+    private long ipToLong(String ip) {
+        String[] octets = ip.split("\\.");
+        if (octets.length != 4) {
+            throw new IllegalArgumentException("Invalid IP address: " + ip);
+        }
+        long result = 0;
+        for (int i = 0; i < 4; i++) {
+            result = (result << 8) | (Integer.parseInt(octets[i]) & 0xFF);
+        }
+        return result;
     }
 
     private boolean matchesV5Resource(Set<String> policyResources, String resource) {

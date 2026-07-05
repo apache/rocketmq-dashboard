@@ -1,0 +1,15 @@
+[
+  {"name": "org.apache.rocketmq.dashboard.cli.RmqctlCommand", "allPublicMethods": true},
+  {"name": "org.apache.rocketmq.dashboard.cli.ConfigCommand", "allPublicMethods": true},
+  {"name": "org.apache.rocketmq.dashboard.cli.ClusterCommand", "allPublicMethods": true},
+  {"name": "org.apache.rocketmq.dashboard.cli.TopicCommand", "allPublicMethods": true},
+  {"name": "org.apache.rocketmq.dashboard.cli.GroupCommand", "allPublicMethods": true},
+  {"name": "org.apache.rocketmq.dashboard.cli.MessageCommand", "allPublicMethods": true},
+  {"name": "org.apache.rocketmq.dashboard.cli.ClientCommand", "allPublicMethods": true},
+  {"name": "org.apache.rocketmq.dashboard.cli.AclCommand", "allPublicMethods": true},
+  {"name": "org.apache.rocketmq.dashboard.cli.BrokerCommand", "allPublicMethods": true},
+  {"name": "org.apache.rocketmq.dashboard.cli.MetricsCommand", "allPublicMethods": true},
+  {"name": "org.apache.rocketmq.dashboard.cli.NamespaceCommand", "allPublicMethods": true},
+  {"name": "org.apache.rocketmq.dashboard.cli.ExplainCommand", "allPublicMethods": true},
+  {"name": "org.apache.rocketmq.dashboard.cli.GenerateCompletion", "allPublicMethods": true}
+]
