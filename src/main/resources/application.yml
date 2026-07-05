@@ -77,6 +77,8 @@ rocketmq:
     # Default: file
     authMode: file
     useTLS: false
+    # Comma-separated list of allowed CORS origins. Default: http://localhost:3003
+    corsAllowedOrigins: http://localhost:3003
     proxyAddr: 127.0.0.1:8080
     proxyAddrs:
       - 127.0.0.1:8080
