@@ -61,8 +61,8 @@ const remoteApi = {
 
     _fetch: async (url, options = {}) => {
         const headers = {
-            ...options.headers,
             'Content-Type': 'application/json',
+            ...options.headers,
         };
 
 
