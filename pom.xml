@@ -27,7 +27,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.apache.rocketmq</groupId>
     <artifactId>rocketmq-dashboard</artifactId>
-    <packaging>jar</packaging>
+    <packaging>pom</packaging>
     <version>2.1.1-SNAPSHOT</version>
     <name>rocketmq-dashboard</name>
 
@@ -79,6 +79,13 @@
             <distribution>repo</distribution>
         </license>
     </licenses>
+
+    <modules>
+        <module>rocketmq-dashboard-app</module>
+        <module>rocketmq-dashboard-cli</module>
+        <module>rocketmq-dashboard-mcp</module>
+        <module>rocketmq-dashboard-llm</module>
+    </modules>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>

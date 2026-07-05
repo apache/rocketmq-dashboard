@@ -22,6 +22,8 @@ import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -63,33 +65,33 @@ public class V4MetadataProviderSecurityTest {
     @Test(expected = IllegalArgumentException.class)
     public void testCreateACLUser_NullUsername_ThrowsException() throws Exception {
         ACLUser user = new ACLUser();
-        user.setUsername(null);
+        user.setUserName(null);
         provider.createACLUser(user);
     }
 
     @Test(expected = IllegalArgumentException.class)
     public void testCreateACLUser_EmptyUsername_ThrowsException() throws Exception {
         ACLUser user = new ACLUser();
-        user.setUsername("");
+        user.setUserName("");
         provider.createACLUser(user);
     }
 
     @Test(expected = IllegalArgumentException.class)
     public void testCreateACLUser_BlankUsername_ThrowsException() throws Exception {
         ACLUser user = new ACLUser();
-        user.setUsername("   ");
+        user.setUserName("   ");
         provider.createACLUser(user);
     }
 
     @Test(expected = IllegalArgumentException.class)
     public void testCreateACLUser_DuplicateUsername_ThrowsException() throws Exception {
         ACLUser user = new ACLUser();
-        user.setUsername("admin");
+        user.setUserName("admin");
         provider.createACLUser(user);
 
         // Duplicate creation should fail
         ACLUser duplicate = new ACLUser();
-        duplicate.setUsername("admin");
+        duplicate.setUserName("admin");
         provider.createACLUser(duplicate);
     }
 
@@ -126,25 +128,25 @@ public class V4MetadataProviderSecurityTest {
     public void testCheckACLPermission_DenyPolicyOverridesAllow() throws Exception {
         // Create user
         ACLUser user = new ACLUser();
-        user.setUsername("testuser");
+        user.setUserName("testuser");
         provider.createACLUser(user);
 
         // Create ALLOW policy
         ACLPolicy allowPolicy = new ACLPolicy();
         allowPolicy.setPolicyId("allow-1");
         allowPolicy.setPolicyType("ALLOW");
-        allowPolicy.setUsers(new HashSet<>(Set.of("testuser")));
-        allowPolicy.setResources(new HashSet<>(Set.of("topic:order")));
-        allowPolicy.setActions(new HashSet<>(Set.of("read", "write")));
+        allowPolicy.setUsers(new HashSet<>(Collections.singletonList("testuser")));
+        allowPolicy.setResources(new HashSet<>(Collections.singletonList("topic:order")));
+        allowPolicy.setActions(new HashSet<>(Arrays.asList("read", "write")));
         provider.addACLPolicy(allowPolicy);
 
         // Create DENY policy with higher precedence
         ACLPolicy denyPolicy = new ACLPolicy();
         denyPolicy.setPolicyId("deny-1");
         denyPolicy.setPolicyType("DENY");
-        denyPolicy.setUsers(new HashSet<>(Set.of("testuser")));
-        denyPolicy.setResources(new HashSet<>(Set.of("topic:order")));
-        denyPolicy.setActions(new HashSet<>(Set.of("write")));
+        denyPolicy.setUsers(new HashSet<>(Collections.singletonList("testuser")));
+        denyPolicy.setResources(new HashSet<>(Collections.singletonList("topic:order")));
+        denyPolicy.setActions(new HashSet<>(Collections.singletonList("write")));
         provider.addACLPolicy(denyPolicy);
 
         // ALLOW should pass for read
@@ -169,13 +171,13 @@ public class V4MetadataProviderSecurityTest {
 
         for (String username : specialUsernames) {
             ACLUser user = new ACLUser();
-            user.setUsername(username);
+            user.setUserName(username);
             provider.createACLUser(user);
 
             // Verify user was created safely (no crash, no exception)
             Optional<ACLUser> found = provider.getACLUser(username);
             assertTrue("User with special chars should be retrievable", found.isPresent());
-            assertEquals(username, found.get().getUsername());
+            assertEquals(username, found.get().getUserName());
         }
     }
 
@@ -183,7 +185,7 @@ public class V4MetadataProviderSecurityTest {
     public void testAddACLPolicy_ResourcePatternInjection_HandlesSafely() throws Exception {
         ACLPolicy policy = new ACLPolicy();
         policy.setPolicyId("injection-test");
-        policy.setUsers(new HashSet<>(Set.of("user1")));
+        policy.setUsers(new HashSet<>(Collections.singletonList("user1")));
 
         // Resource with SQL injection pattern
         Set<String> resources = new HashSet<>();
@@ -205,14 +207,14 @@ public class V4MetadataProviderSecurityTest {
     @Test
     public void testCheckACLPermission_ResourceInjection_DoesNotBypass() throws Exception {
         ACLUser user = new ACLUser();
-        user.setUsername("injectionuser");
+        user.setUserName("injectionuser");
         provider.createACLUser(user);
 
         ACLPolicy policy = new ACLPolicy();
         policy.setPolicyId("safe-policy");
-        policy.setUsers(new HashSet<>(Set.of("injectionuser")));
-        policy.setResources(new HashSet<>(Set.of("topic:order")));
-        policy.setActions(new HashSet<>(Set.of("read")));
+        policy.setUsers(new HashSet<>(Collections.singletonList("injectionuser")));
+        policy.setResources(new HashSet<>(Collections.singletonList("topic:order")));
+        policy.setActions(new HashSet<>(Collections.singletonList("read")));
         provider.addACLPolicy(policy);
 
         // Attempt injection via resource parameter
@@ -227,14 +229,14 @@ public class V4MetadataProviderSecurityTest {
     @Test
     public void testCheckACLPermission_WildcardAction_DeniesIfNotExplicitlyGranted() throws Exception {
         ACLUser user = new ACLUser();
-        user.setUsername("limited");
+        user.setUserName("limited");
         provider.createACLUser(user);
 
         ACLPolicy policy = new ACLPolicy();
         policy.setPolicyId("limited-policy");
-        policy.setUsers(new HashSet<>(Set.of("limited")));
-        policy.setResources(new HashSet<>(Set.of("topic:orders")));
-        policy.setActions(new HashSet<>(Set.of("read")));  // Only "read", NOT "*"
+        policy.setUsers(new HashSet<>(Collections.singletonList("limited")));
+        policy.setResources(new HashSet<>(Collections.singletonList("topic:orders")));
+        policy.setActions(new HashSet<>(Collections.singletonList("read")));  // Only "read", NOT "*"
         provider.addACLPolicy(policy);
 
         assertTrue("Read should be allowed", provider.checkACLPermission("limited", "topic:orders", "read"));
@@ -247,14 +249,14 @@ public class V4MetadataProviderSecurityTest {
     @Test
     public void testCheckACLPermission_WildcardResource_AppliesCorrectly() throws Exception {
         ACLUser user = new ACLUser();
-        user.setUsername("global");
+        user.setUserName("global");
         provider.createACLUser(user);
 
         ACLPolicy policy = new ACLPolicy();
         policy.setPolicyId("global-policy");
-        policy.setUsers(new HashSet<>(Set.of("global")));
-        policy.setResources(new HashSet<>(Set.of("topic:*")));
-        policy.setActions(new HashSet<>(Set.of("read")));
+        policy.setUsers(new HashSet<>(Collections.singletonList("global")));
+        policy.setResources(new HashSet<>(Collections.singletonList("topic:*")));
+        policy.setActions(new HashSet<>(Collections.singletonList("read")));
         provider.addACLPolicy(policy);
 
         assertTrue("Wildcard resource should match topic:orders",
@@ -270,14 +272,14 @@ public class V4MetadataProviderSecurityTest {
     @Test
     public void testDeletedUser_CannotAccessResources() throws Exception {
         ACLUser user = new ACLUser();
-        user.setUsername("temporary");
+        user.setUserName("temporary");
         provider.createACLUser(user);
 
         ACLPolicy policy = new ACLPolicy();
         policy.setPolicyId("temp-policy");
-        policy.setUsers(new HashSet<>(Set.of("temporary")));
-        policy.setResources(new HashSet<>(Set.of("topic:temp")));
-        policy.setActions(new HashSet<>(Set.of("read", "write")));
+        policy.setUsers(new HashSet<>(Collections.singletonList("temporary")));
+        policy.setResources(new HashSet<>(Collections.singletonList("topic:temp")));
+        policy.setActions(new HashSet<>(Arrays.asList("read", "write")));
         provider.addACLPolicy(policy);
 
         // Access works before deletion
@@ -294,14 +296,14 @@ public class V4MetadataProviderSecurityTest {
     @Test
     public void testRemovedPolicy_DoesNotGrantAccess() throws Exception {
         ACLUser user = new ACLUser();
-        user.setUsername("revoked");
+        user.setUserName("revoked");
         provider.createACLUser(user);
 
         ACLPolicy policy = new ACLPolicy();
         policy.setPolicyId("revocable");
-        policy.setUsers(new HashSet<>(Set.of("revoked")));
-        policy.setResources(new HashSet<>(Set.of("topic:revocable")));
-        policy.setActions(new HashSet<>(Set.of("read")));
+        policy.setUsers(new HashSet<>(Collections.singletonList("revoked")));
+        policy.setResources(new HashSet<>(Collections.singletonList("topic:revocable")));
+        policy.setActions(new HashSet<>(Collections.singletonList("read")));
         provider.addACLPolicy(policy);
 
         assertTrue(provider.checkACLPermission("revoked", "topic:revocable", "read"));
@@ -316,14 +318,14 @@ public class V4MetadataProviderSecurityTest {
     @Test
     public void testDeleteUser_RemovesAssociatedPolicies() throws Exception {
         ACLUser user = new ACLUser();
-        user.setUsername("removable");
+        user.setUserName("removable");
         provider.createACLUser(user);
 
         ACLPolicy policy = new ACLPolicy();
         policy.setPolicyId("orphan-policy");
-        policy.setUsers(new HashSet<>(Set.of("removable")));
-        policy.setResources(new HashSet<>(Set.of("topic:orphan")));
-        policy.setActions(new HashSet<>(Set.of("read")));
+        policy.setUsers(new HashSet<>(Collections.singletonList("removable")));
+        policy.setResources(new HashSet<>(Collections.singletonList("topic:orphan")));
+        policy.setActions(new HashSet<>(Collections.singletonList("read")));
         provider.addACLPolicy(policy);
 
         assertEquals(1, provider.listACLPolicies(null).size());
@@ -347,7 +349,7 @@ public class V4MetadataProviderSecurityTest {
 
         for (int i = 0; i < 5; i++) {
             ACLUser user = new ACLUser();
-            user.setUsername("user-" + i);
+            user.setUserName("user-" + i);
             provider.createACLUser(user);
         }
 
@@ -357,12 +359,12 @@ public class V4MetadataProviderSecurityTest {
     @Test
     public void testUpdateACLUser_PreservesIdentity() throws Exception {
         ACLUser original = new ACLUser();
-        original.setUsername("updatable");
+        original.setUserName("updatable");
         original.setUserType("USER");
         provider.createACLUser(original);
 
         ACLUser updated = new ACLUser();
-        updated.setUsername("updatable");
+        updated.setUserName("updatable");
         updated.setUserType("ADMIN");
         provider.updateACLUser(updated);
 
@@ -374,7 +376,7 @@ public class V4MetadataProviderSecurityTest {
     @Test(expected = IllegalArgumentException.class)
     public void testUpdateACLUser_NonExistent_ThrowsException() throws Exception {
         ACLUser user = new ACLUser();
-        user.setUsername("nonexistent");
+        user.setUserName("nonexistent");
         provider.updateACLUser(user);
     }
 }

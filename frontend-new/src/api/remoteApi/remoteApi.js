@@ -965,6 +965,26 @@ const remoteApi = {
             console.error("Error fetching cluster capabilities:", error);
             return {status: 1, errMsg: "Failed to fetch cluster capabilities"};
         }
+    },
+
+    // LLM APIs
+    getLlmConfig: function() {
+        return remoteApi._fetch(remoteApi.buildUrl('/api/llm/config'), { method: 'GET' }).then(r => r.json());
+    },
+    saveLlmConfig: function(config) {
+        return remoteApi._fetch(remoteApi.buildUrl('/api/llm/config'), { method: 'POST', body: JSON.stringify(config) }).then(r => r.json());
+    },
+    testLlmConnection: function(config) {
+        return remoteApi._fetch(remoteApi.buildUrl('/api/llm/config/test'), { method: 'POST', body: JSON.stringify(config) }).then(r => r.json());
+    },
+    sendLlmMessage: function(message, cluster, history) {
+        return remoteApi._fetch(remoteApi.buildUrl('/api/llm/chat'), { method: 'POST', body: JSON.stringify({message, cluster, history}) }).then(r => r.json());
+    },
+    confirmLlmAction: function(toolCallId) {
+        return remoteApi._fetch(remoteApi.buildUrl('/api/llm/confirm'), { method: 'POST', body: JSON.stringify({toolCallId, confirm: true}) }).then(r => r.json());
+    },
+    getLlmTools: function(cluster) {
+        return remoteApi._fetch(remoteApi.buildUrl('/api/llm/tools?cluster=' + encodeURIComponent(cluster)), { method: 'GET' }).then(r => r.json());
     }
 };
 

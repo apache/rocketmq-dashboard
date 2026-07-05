@@ -21,17 +21,21 @@ import {ToastContainer} from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import {ConfigProvider} from "antd";
 import {useTheme} from "./store/context/ThemeContext";
-import {ClusterCapabilitiesProvider} from "./store/context/ClusterCapabilitiesContext";
+import {LlmProvider} from "./store/context/LlmContext";
+import CommandBarOverlay from "./components/llm/CommandBarOverlay";
 
 function App() {
     const {currentTheme} = useTheme();
 
     return (
         <>
-            <ConfigProvider theme={currentTheme}>
-                <ToastContainer/>
-                <AppRouter/>
-            </ConfigProvider>
+            <LlmProvider>
+                <ConfigProvider theme={currentTheme}>
+                    <ToastContainer/>
+                    <CommandBarOverlay />
+                    <AppRouter/>
+                </ConfigProvider>
+            </LlmProvider>
         </>
     );
 }
