@@ -1,4 +1,4 @@
-#
+#!/bin/sh
 # Licensed to the Apache Software Foundation (ASF) under one or more
 # contributor license agreements.  See the NOTICE file distributed with
 # this work for additional information regarding copyright ownership.
@@ -13,14 +13,19 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
 
-FROM eclipse-temurin:17.0.16_8-jre-ubi9-minimal
-VOLUME /tmp
-ADD rocketmq-dashboard-*.jar rocketmq-dashboard.jar
-RUN sh -c 'touch /rocketmq-dashboard.jar'
-ENV JAVA_OPTS=""
-ENV API_BASE_URL=""
-COPY env-config-entrypoint.sh /env-config-entrypoint.sh
-RUN chmod +x /env-config-entrypoint.sh
-ENTRYPOINT [ "/env-config-entrypoint.sh" ]
+# If API_BASE_URL is set, extract env-config.js from the jar and update it
+if [ -n "$API_BASE_URL" ]; then
+    TMP_DIR=$(mktemp -d)
+    cd "$TMP_DIR"
+    jar xf /rocketmq-dashboard.jar BOOT-INF/classes/static/env-config.js
+    cat > BOOT-INF/classes/static/env-config.js << EOF
+window.__ENV__ = window.__ENV__ || {};
+window.__ENV__.API_BASE_URL = "$API_BASE_URL";
+EOF
+    jar uf /rocketmq-dashboard.jar BOOT-INF/classes/static/env-config.js
+    cd /
+    rm -rf "$TMP_DIR"
+fi
+
+exec java $JAVA_OPTS -jar /rocketmq-dashboard.jar

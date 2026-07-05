@@ -16,7 +16,7 @@
  */
 
 const appConfig = {
-    apiBaseUrl: process.env.REACT_APP_API_BASE_URL || window.location.origin
+    apiBaseUrl: (window.__ENV__ && window.__ENV__.API_BASE_URL) || process.env.REACT_APP_API_BASE_URL || window.location.origin
 };
 
 let _redirectHandler = null;
