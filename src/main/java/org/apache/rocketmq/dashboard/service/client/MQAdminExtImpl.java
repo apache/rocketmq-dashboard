@@ -89,6 +89,27 @@ import java.util.Set;
 
 import static org.apache.rocketmq.remoting.protocol.RemotingSerializable.decode;
 
+/**
+ * Implementation of {@link MQAdminExt} that delegates all operations to the underlying
+ * RocketMQ client library via {@link MQAdminInstance#threadLocalMQAdminExt()}.
+ *
+ * <h3>Request Code Handling (Fix #402)</h3>
+ * <p>This class does not directly handle individual request codes. All protocol-level
+ * request codes, including:</p>
+ * <ul>
+ *   <li>{@code 106} (SEND_MESSAGE_V2) — handled by the underlying RocketMQ remoting
+ *       client through the producer/send message pipeline in the client library.</li>
+ *   <li>{@code 206} (CONSUMER_SEND_MSG_BACK) — handled by the underlying RocketMQ
+ *       consumer client when sending messages back for retry.</li>
+ * </ul>
+ * <p>are processed by the {@code rocketmq-tools} / {@code rocketmq-client} library layer
+ * through {@link MQAdminInstance#threadLocalMQAdminExt()} and its backing
+ * {@link org.apache.rocketmq.remoting.RemotingClient}. MQAdminExtImpl itself is a thin
+ * delegation wrapper and does not need explicit request code registration.</p>
+ *
+ * @see MQAdminInstance
+ * @see MQAdminExt
+ */
 @Service
 public class MQAdminExtImpl implements MQAdminExt {
     private Logger logger = LoggerFactory.getLogger(MQAdminExtImpl.class);

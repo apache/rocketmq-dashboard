@@ -473,7 +473,7 @@ public class MetricsEnhancedServiceImpl implements MetricsEnhancedService {
 
     /**
      * Built-in alert rule definitions compliant with Prometheus/VictoriaMetrics Alertmanager format.
-     * Contains 16 rules covering broker, topic, consumer, client, proxy, and infrastructure concerns.
+     * Contains 20 rules covering broker, topic, consumer, client, proxy, and infrastructure concerns.
      */
     private static final String ALERT_RULES_YAML =
             "# ==============================================================\n"
@@ -658,6 +658,52 @@ public class MetricsEnhancedServiceImpl implements MetricsEnhancedService {
             + "          team: consumer\n"
             + "        annotations:\n"
             + "          summary: \"POP nack rate above 5/s — consumers may be dropping messages\"\n"
+            + "\n"
+            + "  - name: rocketmq-broker-extended.rules\n"
+            + "    rules:\n"
+            + "      # Rule 17: Transaction check failure rate > 10%\n"
+            + "      - alert: Transaction_Check_Failure\n"
+            + "        expr: rate(rocketmq_transaction_check_failure_total[5m]) > 0.1 * rate(rocketmq_transaction_check_total[5m])\n"
+            + "        for: 5m\n"
+            + "        labels:\n"
+            + "          severity: warning\n"
+            + "          team: broker\n"
+            + "        annotations:\n"
+            + "          summary: \"Transaction check failure rate > 10% on {{ $labels.instance }}\"\n"
+            + "          description: \"Transaction message check operations are failing above the 10% threshold.\"\n"
+            + "\n"
+            + "      # Rule 18: Message accumulation growth rate > 1000 msg/min\n"
+            + "      - alert: Message_Accumulation_Rate\n"
+            + "        expr: rate(rocketmq_topic_accumulation_total[1m]) * 60 > 1000\n"
+            + "        for: 5m\n"
+            + "        labels:\n"
+            + "          severity: warning\n"
+            + "          team: topic\n"
+            + "        annotations:\n"
+            + "          summary: \"Message accumulation growing > 1000 msg/min on {{ $labels.topic }}\"\n"
+            + "          description: \"Topic {{ $labels.topic }} message accumulation rate exceeds 1000 messages per minute.\"\n"
+            + "\n"
+            + "      # Rule 19: Broker JVM GC time exceeds 5%\n"
+            + "      - alert: Broker_JVM_GC_High\n"
+            + "        expr: rate(rocketmq_broker_jvm_gc_seconds_sum[5m]) / rate(rocketmq_broker_jvm_gc_seconds_count[5m]) > 0.05\n"
+            + "        for: 5m\n"
+            + "        labels:\n"
+            + "          severity: warning\n"
+            + "          team: broker\n"
+            + "        annotations:\n"
+            + "          summary: \"Broker JVM GC time exceeds 5% on {{ $labels.instance }}\"\n"
+            + "          description: \"GC pause time accounts for more than 5% of runtime.\"\n"
+            + "\n"
+            + "      # Rule 20: Proxy connection reject count > 0\n"
+            + "      - alert: Proxy_Connection_Reject\n"
+            + "        expr: rocketmq_proxy_connection_reject_total > 0\n"
+            + "        for: 1m\n"
+            + "        labels:\n"
+            + "          severity: warning\n"
+            + "          team: proxy\n"
+            + "        annotations:\n"
+            + "          summary: \"Proxy connection rejection detected on {{ $labels.instance }}\"\n"
+            + "          description: \"Proxy is rejecting incoming connections. Check connection limits and broker health.\"\n"
             + "";
 
     // ======================== Internal Helpers ========================

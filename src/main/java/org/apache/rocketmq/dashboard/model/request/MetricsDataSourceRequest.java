@@ -47,6 +47,12 @@ public class MetricsDataSourceRequest {
     private String type;
 
     /**
+     * Prometheus-compatible backend provider type.
+     * Supported: PROMETHEUS, VICTORIAMETRICS, THANOS, MIMIR, CORTEX, ARMS, CUSTOM
+     */
+    private String providerType = "PROMETHEUS";
+
+    /**
      * Data source URL (required for create).
      * Example: "http://prometheus:9090"
      */
