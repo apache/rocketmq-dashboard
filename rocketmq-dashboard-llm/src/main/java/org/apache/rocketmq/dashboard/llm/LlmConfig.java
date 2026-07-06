@@ -29,8 +29,13 @@ import lombok.Data;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.DumperOptions;
+import org.yaml.snakeyaml.LoaderOptions;
+import org.yaml.snakeyaml.TypeDescription;
 import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.constructor.Constructor;
 import org.yaml.snakeyaml.introspector.BeanAccess;
+import org.yaml.snakeyaml.nodes.Tag;
+import org.yaml.snakeyaml.representer.Representer;
 
 /** Configuration model for LLM provider integration. Supports OpenAI, Azure, DeepSeek, Tongyi, Bedrock, and Ollama. Persisted to ~/.rmqctl/llm-config.yaml. */
 @Data
@@ -53,14 +58,25 @@ public class LlmConfig {
         private static final Path CONFIG_FILE =
                 Paths.get(System.getProperty("user.home"), ".rmqctl", "llm-config.yaml");
 
-        private static final Yaml YAML;
+        private static Yaml createLoadYaml() {
+            LoaderOptions loaderOptions = new LoaderOptions();
+            TypeDescription llmConfigDesc = new TypeDescription(LlmConfig.class,
+                    "tag:yaml.org,2002:org.apache.rocketmq.dashboard.llm.LlmConfig");
+            Constructor constructor = new Constructor(llmConfigDesc, loaderOptions);
+            Yaml yaml = new Yaml(constructor);
+            yaml.setBeanAccess(BeanAccess.FIELD);
+            return yaml;
+        }
 
-        static {
-            DumperOptions options = new DumperOptions();
-            options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
-            options.setPrettyFlow(true);
-            YAML = new Yaml(options);
-            YAML.setBeanAccess(BeanAccess.FIELD);
+       private static Yaml createDumpYaml() {
+            DumperOptions dumperOptions = new DumperOptions();
+            dumperOptions.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
+            dumperOptions.setPrettyFlow(true);
+            Representer representer = new Representer(dumperOptions);
+            representer.addClassTag(LlmConfig.class, Tag.MAP);
+            Yaml yaml = new Yaml(representer, dumperOptions);
+            yaml.setBeanAccess(BeanAccess.FIELD);
+            return new Yaml(dumperOptions);
         }
 
         /**
@@ -74,7 +90,7 @@ public class LlmConfig {
                 return new LlmConfig();
             }
             try (FileInputStream fis = new FileInputStream(file)) {
-                LlmConfig config = YAML.loadAs(fis, LlmConfig.class);
+                LlmConfig config = createLoadYaml().loadAs(fis, LlmConfig.class);
                 if (config == null) {
                     config = new LlmConfig();
                 }
@@ -96,7 +112,7 @@ public class LlmConfig {
             }
             try (OutputStreamWriter writer = new OutputStreamWriter(
                     new FileOutputStream(file), StandardCharsets.UTF_8)) {
-                YAML.dump(config, writer);
+                createDumpYaml().dump(config, writer);
             }
             log.info("LLM config saved to {}", CONFIG_FILE);
         }

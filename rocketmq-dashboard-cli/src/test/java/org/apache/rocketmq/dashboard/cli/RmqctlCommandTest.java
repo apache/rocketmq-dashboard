@@ -173,4 +173,75 @@ public class RmqctlCommandTest {
         command.outputFormat = "Table";
         Assert.assertEquals(OutputFormatter.Format.TABLE, command.getOutputFormat());
     }
+
+    @Test
+    public void testExplainSubcommand() {
+        RmqctlCommand command = new RmqctlCommand();
+        CommandLine cmd = new CommandLine(command);
+        Assert.assertNotNull(cmd.getSubcommands().get("explain"));
+    }
+
+    @Test
+    public void testGenerateCompletionSubcommand() {
+        RmqctlCommand command = new RmqctlCommand();
+        CommandLine cmd = new CommandLine(command);
+        Assert.assertNotNull(cmd.getSubcommands().get("generate-completion"));
+    }
+
+    @Test
+    public void testMainWithNoArgs() {
+        // main() with no args should print usage and exit with 0
+        // We can't easily test System.exit, but we can test the command execution
+        RmqctlCommand command = new RmqctlCommand();
+        CommandLine cmd = new CommandLine(command);
+        int exitCode = cmd.execute();
+        Assert.assertEquals(0, exitCode);
+    }
+
+    @Test
+    public void testOutputFormatEmptyString() {
+        RmqctlCommand command = new RmqctlCommand();
+        command.outputFormat = "";
+        Assert.assertEquals(OutputFormatter.Format.TABLE, command.getOutputFormat());
+    }
+
+    @Test
+    public void testOutputFormatWhitespace() {
+        RmqctlCommand command = new RmqctlCommand();
+        command.outputFormat = "  ";
+        Assert.assertEquals(OutputFormatter.Format.TABLE, command.getOutputFormat());
+    }
+
+    @Test
+    public void testClusterOverrideNull() {
+        RmqctlCommand command = new RmqctlCommand();
+        Assert.assertNull(command.getCluster());
+    }
+
+    @Test
+    public void testAllBooleanDefaults() {
+        RmqctlCommand command = new RmqctlCommand();
+        Assert.assertFalse(command.isDryRun());
+        Assert.assertFalse(command.isYes());
+        Assert.assertFalse(command.isForce());
+    }
+
+    @Test
+    public void testCommandDescription() {
+        CommandLine.Command cmd = RmqctlCommand.class.getAnnotation(CommandLine.Command.class);
+        Assert.assertNotNull(cmd);
+        Assert.assertTrue(java.util.Arrays.toString(cmd.description()).contains("kubectl-style"));
+    }
+
+    @Test
+    public void testVersionValue() {
+        CommandLine.Command cmd = RmqctlCommand.class.getAnnotation(CommandLine.Command.class);
+        Assert.assertEquals("rmqctl 2.1.1", cmd.version()[0]);
+    }
+
+    @Test
+    public void testMixinStandardHelpOptions() {
+        CommandLine.Command cmd = RmqctlCommand.class.getAnnotation(CommandLine.Command.class);
+        Assert.assertTrue(cmd.mixinStandardHelpOptions());
+    }
 }
