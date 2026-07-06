@@ -191,8 +191,12 @@ public class AclInfo {
                     for (org.apache.rocketmq.remoting.protocol.body.AclInfo.PolicyEntryInfo entry : policy.getEntries()) {
                         PolicyEntryInfo copiedEntry = new PolicyEntryInfo();
                         copiedEntry.setResource(entry.getResource());
-                        copiedEntry.setActions(new ArrayList<>(entry.getActions()));
-                        copiedEntry.setSourceIps(new ArrayList<>(entry.getSourceIps()));
+                        if (entry.getActions() != null) {
+                            copiedEntry.setActions(new ArrayList<>(entry.getActions()));
+                        }
+                        if (entry.getSourceIps() != null) {
+                            copiedEntry.setSourceIps(new ArrayList<>(entry.getSourceIps()));
+                        }
                         copiedEntry.setDecision(entry.getDecision());
                         copiedEntries.add(copiedEntry);
                     }
