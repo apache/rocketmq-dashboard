@@ -238,10 +238,10 @@ public class AclControllerTest extends BaseControllerTest {
         p.setPolicyType("ALLOW");
         List<org.apache.rocketmq.dashboard.model.Entry> entries = new ArrayList<>();
         org.apache.rocketmq.dashboard.model.Entry entry = new org.apache.rocketmq.dashboard.model.Entry();
-        Set<String> resourceSet = new HashSet<>();
+        List<String> resourceSet = new ArrayList<>();
         resourceSet.add("TOPIC:test");
         entry.setResource(resourceSet);
-        Set<String> actionSet = new HashSet<>();
+        List<String> actionSet = new ArrayList<>();
         actionSet.add("PUB");
         entry.setActions(actionSet);
         entries.add(entry);

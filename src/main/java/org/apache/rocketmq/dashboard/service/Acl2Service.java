@@ -17,9 +17,7 @@
 package org.apache.rocketmq.dashboard.service;
 
 import org.apache.rocketmq.dashboard.model.Acl2PolicyContext;
-import org.apache.rocketmq.dashboard.model.NamespaceInfo;
 
-import java.util.List;
 import java.util.Map;
 
 /**

@@ -16,7 +16,6 @@
  */
 package org.apache.rocketmq.dashboard.service.impl;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
@@ -37,8 +36,16 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Base64;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.LinkedHashMap;
 import java.util.stream.Collectors;
 
 /**
@@ -287,10 +294,10 @@ public class MetricsProviderImpl implements MetricsProvider {
         
         List<Map<String, Object>> labels;
         try {
-            Map<String, Object> respMap = objectMapper.convertValue(resp, new TypeReference<Map<String, Object>>() {});
+            Map<String, Object> respMap = objectMapper.convertValue(resp, new TypeReference<Map<String, Object>>() { });
             Object data = respMap.get("data");
             if (data instanceof List) {
-                labels = objectMapper.convertValue(data, new TypeReference<List<Map<String, Object>>>() {});
+                labels = objectMapper.convertValue(data, new TypeReference<List<Map<String, Object>>>() { });
             } else {
                 labels = Collections.emptyList();
             }
@@ -330,7 +337,7 @@ public class MetricsProviderImpl implements MetricsProvider {
             
             Object resp = executeRawGet(url, "health-check-connectivity");
             
-            Map<String, Object> respMap = objectMapper.convertValue(resp, new TypeReference<Map<String, Object>>() {});
+            Map<String, Object> respMap = objectMapper.convertValue(resp, new TypeReference<Map<String, Object>>() { });
             String status = (String) respMap.get("status");
             
             if (!"success".equals(status)) {
@@ -351,13 +358,13 @@ public class MetricsProviderImpl implements MetricsProvider {
                 String targetEndpoint = "/api/v1/targets";
                 String targetUrl = datasourceUrl + targetEndpoint;
                 Object targetResp = executeRawGet(targetUrl, "health-check-targets");
-                Map<String, Object> targetMap = objectMapper.convertValue(targetResp, new TypeReference<Map<String, Object>>() {});
+                Map<String, Object> targetMap = objectMapper.convertValue(targetResp, new TypeReference<Map<String, Object>>() { });
                 Object activeTargets = ((Map<String, Object>) targetMap.getOrDefault("data", Collections.emptyMap())).get("activeTargets");
                 if (activeTargets instanceof List) {
                     List<?> targets = (List<?>) activeTargets;
                     List<String> targetNames = targets.stream()
                             .map(t -> {
-                                Map<String, Object> tMap = objectMapper.convertValue(t, new TypeReference<Map<String, Object>>() {});
+                                Map<String, Object> tMap = objectMapper.convertValue(t, new TypeReference<Map<String, Object>>() { });
                                 return (String) tMap.getOrDefault("__name__", "");
                             })
                             .filter(n -> !n.isEmpty() && n.startsWith(METRIC_FAMILY_PREFIX))
@@ -432,7 +439,7 @@ public class MetricsProviderImpl implements MetricsProvider {
     private Object executeGet(String url, String description) {
         Object raw = executeRawGet(url, description);
         try {
-            return objectMapper.convertValue(raw, new TypeReference<Map<String, Object>>() {});
+            return objectMapper.convertValue(raw, new TypeReference<Map<String, Object>>() { });
         } catch (IllegalArgumentException e) {
             return raw;
         }
