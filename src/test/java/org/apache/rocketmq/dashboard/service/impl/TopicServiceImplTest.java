@@ -112,8 +112,8 @@ public class TopicServiceImplTest extends BaseTest {
         Assert.assertNotNull(result);
         Assert.assertEquals("test_topic", result.getTopicName());
         Assert.assertEquals(TopicType.NORMAL, result.getTopicType());
-        Assert.assertEquals(8, result.getReadQueueNums());
-        Assert.assertEquals(8, result.getWriteQueueNums());
+        Assert.assertEquals(8L, (long) result.getReadQueueNums());
+        Assert.assertEquals(8L, (long) result.getWriteQueueNums());
         verify(metadataProvider, times(1)).getTopic(eq("test_topic"), any(Optional.class));
     }
 
@@ -211,21 +211,17 @@ public class TopicServiceImplTest extends BaseTest {
         verify(metadataProvider, times(1)).updateTopic(any(TopicInfo.class));
     }
 
-    @Test
+    @Test(expected = UnsupportedOperationException.class)
     public void testExamineTopicConfigUnsupported() {
         // examineTopicConfig is a default method that throws UnsupportedOperationException
         // TopicServiceImpl does not override it, so calling it should throw
-        Assert.assertThrows(UnsupportedOperationException.class, () -> {
-            topicService.examineTopicConfig("test_topic");
-        });
+        topicService.examineTopicConfig("test_topic");
     }
 
-    @Test
+    @Test(expected = UnsupportedOperationException.class)
     public void testSendTopicMessageRequestUnsupported() {
         // sendTopicMessageRequest is a default method that throws UnsupportedOperationException
         // TopicServiceImpl does not override it, so calling it should throw
-        Assert.assertThrows(UnsupportedOperationException.class, () -> {
-            topicService.sendTopicMessageRequest(null);
-        });
+        topicService.sendTopicMessageRequest(null);
     }
 }

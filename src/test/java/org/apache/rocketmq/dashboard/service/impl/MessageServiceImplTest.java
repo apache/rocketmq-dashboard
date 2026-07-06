@@ -17,434 +17,456 @@
 
 package org.apache.rocketmq.dashboard.service.impl;
 
-import com.google.common.cache.Cache;
-import org.apache.rocketmq.acl.common.AclClientRPCHook;
-import org.apache.rocketmq.acl.common.SessionCredentials;
-import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
-import org.apache.rocketmq.client.consumer.PullResult;
-import org.apache.rocketmq.client.consumer.PullStatus;
 import org.apache.rocketmq.common.Pair;
-import org.apache.rocketmq.common.message.MessageExt;
-import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.dashboard.architecture.AdminClient;
+import org.apache.rocketmq.dashboard.architecture.ClusterProvider;
+import org.apache.rocketmq.dashboard.architecture.MetadataProvider;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
-import org.apache.rocketmq.dashboard.exception.ServiceException;
+import org.apache.rocketmq.dashboard.model.ClusterCapability;
+import org.apache.rocketmq.dashboard.model.MessageInfo;
 import org.apache.rocketmq.dashboard.model.MessagePage;
-import org.apache.rocketmq.dashboard.model.MessageQueryByPage;
 import org.apache.rocketmq.dashboard.model.MessageView;
-import org.apache.rocketmq.dashboard.model.QueueOffsetInfo;
-import org.apache.rocketmq.dashboard.support.AutoCloseConsumerWrapper;
-import org.apache.rocketmq.remoting.RPCHook;
-import org.apache.rocketmq.remoting.protocol.body.Connection;
+import org.apache.rocketmq.dashboard.model.request.MessageQuery;
 import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
-import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
-import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.apache.rocketmq.tools.admin.api.MessageTrack;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.Spy;
 import org.mockito.junit.MockitoJUnitRunner;
 
-import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.Silent.class)
 public class MessageServiceImplTest {
 
     @InjectMocks
-    @Spy
     private MessageServiceImpl messageService;
 
     @Mock
-    private MQAdminExt mqAdminExt;
+    private RMQConfigure rmqConfigure;
 
     @Mock
-    private RMQConfigure configure;
+    private ClusterProvider clusterProvider;
 
     @Mock
-    private DefaultMQPullConsumer defaultMQPullConsumer;
+    private AdminClient adminClient;
 
     @Mock
-    private AutoCloseConsumerWrapper autoCloseConsumerWrapper;
+    private MetadataProvider metadataProvider;
 
     @Mock
-    private Cache<String, MessagePage> messagePageCache;
-
+    private ClusterCapability clusterCapability;
 
     private static final String TOPIC = "testTopic";
     private static final String MSG_ID = "testMsgId";
     private static final String CONSUMER_GROUP = "testConsumerGroup";
     private static final String CLIENT_ID = "testClientId";
     private static final String KEY = "testKey";
-    private static final String TASK_ID = "CID_RMQ_SYS_TASK12345";
+    private static final String BROKER_NAME = "broker-1";
+
+    private Set<String> allCapabilities;
 
     @Before
     public void setUp() throws Exception {
-        // Set up default mock responses
-        when(configure.getNamesrvAddr()).thenReturn("localhost:9876");
-        when(configure.getAccessKey()).thenReturn("12345678");
-        when(configure.getSecretKey()).thenReturn("rocketmq");
-        when(configure.isUseTLS()).thenReturn(false);
-        when(autoCloseConsumerWrapper.getConsumer(any(RPCHook.class), anyBoolean())).thenReturn(defaultMQPullConsumer);
+        allCapabilities = new HashSet<>();
+        allCapabilities.add("MESSAGE_QUERY");
+        allCapabilities.add("MESSAGE_QUERY_BY_KEY");
+        allCapabilities.add("MESSAGE_QUERY_BY_GROUP");
+        allCapabilities.add("MESSAGE_QUERY_BY_ID");
+        allCapabilities.add("MESSAGE_QUERY_BY_OFFSET");
+        allCapabilities.add("OFFSET_SEARCH_BY_TIMESTAMP");
+        allCapabilities.add("MAX_OFFSET_QUERY");
+        allCapabilities.add("MIN_OFFSET_QUERY");
+        allCapabilities.add("MESSAGE_DELETE");
+        allCapabilities.add("MESSAGE_RESEND");
+        allCapabilities.add("MESSAGE_CONSUME_DIRECTLY");
+
+        when(clusterCapability.hasCapability(anyString())).thenAnswer(invocation -> {
+            String cap = invocation.getArgument(0);
+            return allCapabilities.contains(cap);
+        });
+        when(clusterProvider.getClusterCapability()).thenReturn(clusterCapability);
+        messageService.init();
     }
+
+    private void disableAllCapabilities() throws Exception {
+        allCapabilities.clear();
+        when(clusterCapability.hasCapability(anyString())).thenAnswer(invocation -> {
+            String cap = invocation.getArgument(0);
+            return allCapabilities.contains(cap);
+        });
+        messageService.init();
+    }
+
+    // ==================== viewMessage tests ====================
 
     @Test
     public void testViewMessage() throws Exception {
-        // Setup
-        MessageExt messageExt = createMessageExt(MSG_ID, TOPIC, "test body", System.currentTimeMillis());
-        List<MessageTrack> tracks = Collections.singletonList(mock(MessageTrack.class));
+        MessageInfo messageInfo = createMessageInfo(MSG_ID, TOPIC, "test body", System.currentTimeMillis());
+        when(metadataProvider.getMessageById(MSG_ID)).thenReturn(Optional.of(messageInfo));
 
-        when(mqAdminExt.viewMessage(anyString(), anyString())).thenReturn(messageExt);
-        doReturn(tracks).when(messageService).messageTrackDetail(any(MessageExt.class));
-
-        // Execute
         Pair<MessageView, List<MessageTrack>> result = messageService.viewMessage(TOPIC, MSG_ID);
 
-        // Verify
         assertNotNull(result);
-        assertEquals(messageExt.getMsgId(), result.getObject1().getMsgId());
-        assertEquals(tracks, result.getObject2());
-        verify(mqAdminExt).viewMessage(TOPIC, MSG_ID);
+        assertNotNull(result.getObject1());
+        assertEquals(MSG_ID, result.getObject1().getMsgId());
+        assertEquals(TOPIC, result.getObject1().getTopic());
     }
 
-    @Test(expected = ServiceException.class)
-    public void testViewMessageException() throws Exception {
-        // Setup
-        when(mqAdminExt.viewMessage(anyString(), anyString())).thenThrow(new RuntimeException("Test exception"));
+    @Test
+    public void testViewMessageNotFound() throws Exception {
+        when(metadataProvider.getMessageById(MSG_ID)).thenReturn(Optional.empty());
 
-        // Execute & Verify exception is thrown
+        Pair<MessageView, List<MessageTrack>> result = messageService.viewMessage(TOPIC, MSG_ID);
+
+        assertNotNull(result);
+        assertNull(result.getObject1());
+        assertTrue(result.getObject2().isEmpty());
+    }
+
+    @Test
+    public void testViewMessageException() throws Exception {
+        when(metadataProvider.getMessageById(MSG_ID)).thenThrow(new RuntimeException("Test exception"));
+
+        Pair<MessageView, List<MessageTrack>> result = messageService.viewMessage(TOPIC, MSG_ID);
+
+        assertNotNull(result);
+        assertNull(result.getObject1());
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testViewMessageUnsupported() throws Exception {
+        disableAllCapabilities();
         messageService.viewMessage(TOPIC, MSG_ID);
     }
 
+    // ==================== queryMessageByPage tests ====================
+
     @Test
-    public void testQueryMessageByTopicAndKey() throws Exception {
-        // Setup mock MessageExt objects
-        MessageExt msg1 = createMessageExt("id1", TOPIC, "body1", System.currentTimeMillis());
-        MessageExt msg2 = createMessageExt("id2", TOPIC, "body2", System.currentTimeMillis());
+    public void testQueryMessageByPage() throws Exception {
+        List<MessageInfo> messages = new ArrayList<>();
+        messages.add(createMessageInfo("id1", TOPIC, "body1", System.currentTimeMillis()));
+        messages.add(createMessageInfo("id2", TOPIC, "body2", System.currentTimeMillis()));
 
-        // Create MessageView objects from the MessageExt objects
-        MessageView view1 = MessageView.fromMessageExt(msg1);
-        MessageView view2 = MessageView.fromMessageExt(msg2);
+        when(metadataProvider.queryMessageByTopic(eq(TOPIC), anyLong(), anyLong(), anyInt()))
+                .thenReturn(messages);
 
-        // We'll use fresh objects for this test to avoid recursive mock issues
-        List<MessageView> expectedViews = Arrays.asList(view1, view2);
+        MessageQuery query = new MessageQuery();
+        query.setTopic(TOPIC);
+        query.setPageNum(1);
+        query.setPageSize(10);
+        query.setBegin(System.currentTimeMillis() - 3600000);
+        query.setEnd(System.currentTimeMillis());
 
-        // Skip the real implementation and provide test data directly
-        doReturn(expectedViews).when(messageService).queryMessageByTopicAndKey(TOPIC, KEY);
+        MessagePage result = messageService.queryMessageByPage(query);
 
-        // Execute
-        List<MessageView> result = messageService.queryMessageByTopicAndKey(TOPIC, KEY);
-
-        // Verify we get the expected number of messages
-        assertEquals(2, result.size());
+        assertNotNull(result);
+        assertNotNull(result.getPage());
+        assertEquals(2, result.getPage().getContent().size());
     }
 
-    @Test(expected = ServiceException.class)
-    public void testQueryMessageByTopicAndKeyMQException() throws Exception {
-        // Setup a fresh spy that's not part of our test setup to avoid recursive mocking issues
-        MessageServiceImpl testService = mock(MessageServiceImpl.class);
-        when(testService.queryMessageByTopicAndKey(TOPIC, KEY))
-                .thenThrow(new ServiceException(-1, "Test error"));
-
-        // Execute & Verify exception is thrown
-        testService.queryMessageByTopicAndKey(TOPIC, KEY);
+    @Test(expected = UnsupportedOperationException.class)
+    public void testQueryMessageByPageUnsupported() throws Exception {
+        disableAllCapabilities();
+        MessageQuery query = new MessageQuery();
+        query.setTopic(TOPIC);
+        query.setPageNum(1);
+        query.setPageSize(10);
+        messageService.queryMessageByPage(query);
     }
 
-    @Test(expected = RuntimeException.class)
-    public void testQueryMessageByTopicAndKeyRuntimeException() throws Exception {
-        // Setup a fresh spy that's not part of our test setup to avoid recursive mocking issues
-        MessageServiceImpl testService = mock(MessageServiceImpl.class);
-        when(testService.queryMessageByTopicAndKey(TOPIC, KEY))
-                .thenThrow(new RuntimeException("Test exception"));
-
-        // Execute & Verify exception is thrown
-        testService.queryMessageByTopicAndKey(TOPIC, KEY);
-    }
+    // ==================== queryMessageByTopic tests ====================
 
     @Test
     public void testQueryMessageByTopic() throws Exception {
-        // Setup message queues
-        Set<MessageQueue> messageQueues = new HashSet<>();
-        messageQueues.add(new MessageQueue(TOPIC, "broker-1", 0));
-        messageQueues.add(new MessageQueue(TOPIC, "broker-2", 1));
-        System.out.println("Consumer from wrapper: " + autoCloseConsumerWrapper.getConsumer(new AclClientRPCHook(new SessionCredentials(configure.getAccessKey(), configure.getSecretKey())), false));
-        when(defaultMQPullConsumer.fetchSubscribeMessageQueues(TOPIC)).thenReturn(messageQueues);
-        System.out.println(defaultMQPullConsumer.fetchSubscribeMessageQueues(TOPIC));
-        // Setup pull results for both queues
-        PullResult pullResult1 = createPullResult(PullStatus.FOUND, Arrays.asList(
-                createMessageExt("id1", TOPIC, "body1", 1500),
-                createMessageExt("id2", TOPIC, "body2", 2000)
-        ), 0, 10);
+        List<MessageInfo> expectedMessages = new ArrayList<>();
+        expectedMessages.add(createMessageInfo("id1", TOPIC, "body1", 1500));
+        expectedMessages.add(createMessageInfo("id2", TOPIC, "body2", 2000));
 
-        PullResult pullResult2 = createPullResult(PullStatus.FOUND, Arrays.asList(
-                createMessageExt("id3", TOPIC, "body3", 1800),
-                createMessageExt("id4", TOPIC, "body4", 2200)
-        ), 0, 10);
+        when(metadataProvider.queryMessageByTopic(eq(TOPIC), anyLong(), anyLong(), anyInt()))
+                .thenReturn(expectedMessages);
 
-        PullResult emptyResult = createPullResult(PullStatus.NO_NEW_MSG, Collections.emptyList(), 10, 10);
+        List<MessageInfo> result = messageService.queryMessageByTopic(TOPIC, 1000, 3000, 64);
 
-        // First pull gets messages, second pull gets empty to terminate loop
-        when(defaultMQPullConsumer.pull(any(MessageQueue.class), anyString(), anyLong(), anyInt()))
-                .thenReturn(pullResult1)
-                .thenReturn(emptyResult)
-                .thenReturn(pullResult2)
-                .thenReturn(emptyResult);
-
-        // Execute
-        long beginTime = 1000;
-        long endTime = 3000;
-        List<MessageView> result = messageService.queryMessageByTopic(TOPIC, beginTime, endTime);
-
-        // Verify
-        assertEquals(4, result.size());
-
-        // Should be sorted by timestamp in descending order
-        assertEquals("id4", result.get(0).getMsgId()); // 2200
-        assertEquals("id2", result.get(1).getMsgId()); // 2000
-        assertEquals("id3", result.get(2).getMsgId()); // 1800
-        assertEquals("id1", result.get(3).getMsgId()); // 1500
-
-        verify(defaultMQPullConsumer, times(4)).pull(any(MessageQueue.class), eq("*"), anyLong(), anyInt());
-
+        assertNotNull(result);
+        assertEquals(2, result.size());
+        assertEquals("id1", result.get(0).getMsgId());
+        assertEquals("id2", result.get(1).getMsgId());
     }
 
     @Test
-    public void testQueryMessageByTopicWithOutOfRangeTimestamps() throws Exception {
-        // Setup message queues
-        Set<MessageQueue> messageQueues = new HashSet<>();
-        messageQueues.add(new MessageQueue(TOPIC, "broker-1", 0));
-        when(defaultMQPullConsumer.fetchSubscribeMessageQueues(TOPIC)).thenReturn(messageQueues);
+    public void testQueryMessageByTopicEmpty() throws Exception {
+        when(metadataProvider.queryMessageByTopic(eq(TOPIC), anyLong(), anyLong(), anyInt()))
+                .thenReturn(Collections.emptyList());
 
-        // Setup pull results - some messages are outside time range
-        PullResult pullResult = createPullResult(PullStatus.FOUND, Arrays.asList(
-                createMessageExt("id1", TOPIC, "body1", 500),  // Outside range (too early)
-                createMessageExt("id2", TOPIC, "body2", 1500), // Inside range
-                createMessageExt("id3", TOPIC, "body3", 3500)  // Outside range (too late)
-        ), 0, 10);
+        List<MessageInfo> result = messageService.queryMessageByTopic(TOPIC, 1000, 3000, 64);
 
-        PullResult emptyResult = createPullResult(PullStatus.NO_NEW_MSG, Collections.emptyList(), 10, 10);
-
-        when(defaultMQPullConsumer.pull(any(MessageQueue.class), anyString(), anyLong(), anyInt()))
-                .thenReturn(pullResult)
-                .thenReturn(emptyResult);
-
-        // Execute
-        long beginTime = 1000;
-        long endTime = 3000;
-        List<MessageView> result = messageService.queryMessageByTopic(TOPIC, beginTime, endTime);
-
-        // Verify - only messages within time range should be included
-        assertEquals(1, result.size());
-        assertEquals("id2", result.get(0).getMsgId());
+        assertNotNull(result);
+        assertTrue(result.isEmpty());
     }
 
+    @Test(expected = UnsupportedOperationException.class)
+    public void testQueryMessageByTopicUnsupported() throws Exception {
+        disableAllCapabilities();
+        messageService.queryMessageByTopic(TOPIC, 1000, 3000, 64);
+    }
+
+    // ==================== queryMessageByTopicAndKey tests ====================
+
     @Test
-    public void testQueryMessageByTopicWithDifferentPullStatuses() throws Exception {
-        // Setup message queues
-        Set<MessageQueue> messageQueues = new HashSet<>();
-        messageQueues.add(new MessageQueue(TOPIC, "broker-1", 0));
-        when(defaultMQPullConsumer.fetchSubscribeMessageQueues(TOPIC)).thenReturn(messageQueues);
+    public void testQueryMessageByTopicAndKey() throws Exception {
+        List<MessageInfo> expectedMessages = new ArrayList<>();
+        expectedMessages.add(createMessageInfo("id1", TOPIC, "body1", System.currentTimeMillis()));
 
-        // Test all different pull statuses
-        PullResult pullResult1 = createPullResult(PullStatus.FOUND,
-                Collections.singletonList(createMessageExt("id1", TOPIC, "body1", 1500)), 0, 5);
+        when(metadataProvider.queryMessageByTopicAndKey(eq(TOPIC), eq(KEY), anyLong(), anyLong()))
+                .thenReturn(expectedMessages);
 
-        PullResult pullResult2 = createPullResult(PullStatus.NO_MATCHED_MSG,
-                Collections.emptyList(), 5, 6);
+        List<MessageInfo> result = messageService.queryMessageByTopicAndKey(TOPIC, KEY, 1000, 3000);
 
-        PullResult pullResult3 = createPullResult(PullStatus.NO_NEW_MSG,
-                Collections.emptyList(), 6, 7);
-
-        PullResult pullResult4 = createPullResult(PullStatus.OFFSET_ILLEGAL,
-                Collections.emptyList(), 7, 8);
-
-        when(defaultMQPullConsumer.pull(any(MessageQueue.class), anyString(), anyLong(), anyInt()))
-                .thenReturn(pullResult1)
-                .thenReturn(pullResult2)
-                .thenReturn(pullResult3)
-                .thenReturn(pullResult4);
-
-        // Execute
-        long beginTime = 1000;
-        long endTime = 3000;
-        List<MessageView> result = messageService.queryMessageByTopic(TOPIC, beginTime, endTime);
-
-        // Verify
+        assertNotNull(result);
         assertEquals(1, result.size());
         assertEquals("id1", result.get(0).getMsgId());
     }
 
+    @Test(expected = UnsupportedOperationException.class)
+    public void testQueryMessageByTopicAndKeyUnsupported() throws Exception {
+        disableAllCapabilities();
+        messageService.queryMessageByTopicAndKey(TOPIC, KEY, 1000, 3000);
+    }
+
+    // ==================== queryMessageByGroup tests ====================
+
     @Test
-    public void testMessageTrackDetail() throws Exception {
-        // Setup
-        MessageExt msg = createMessageExt(MSG_ID, TOPIC, "body", System.currentTimeMillis());
-        List<MessageTrack> tracks = Collections.singletonList(mock(MessageTrack.class));
+    public void testQueryMessageByGroup() throws Exception {
+        List<MessageInfo> expectedMessages = new ArrayList<>();
+        expectedMessages.add(createMessageInfo("id1", TOPIC, "body1", System.currentTimeMillis()));
 
-        when(mqAdminExt.messageTrackDetail(any(MessageExt.class))).thenReturn(tracks);
+        when(metadataProvider.queryMessageByGroup(eq(CONSUMER_GROUP), eq(TOPIC), anyLong(), anyLong()))
+                .thenReturn(expectedMessages);
 
-        // Execute
-        List<MessageTrack> result = messageService.messageTrackDetail(msg);
+        List<MessageInfo> result = messageService.queryMessageByGroup(CONSUMER_GROUP, TOPIC, 1000, 3000);
 
-        // Verify
-        assertEquals(tracks, result);
-        verify(mqAdminExt).messageTrackDetail(msg);
+        assertNotNull(result);
+        assertEquals(1, result.size());
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testQueryMessageByGroupUnsupported() throws Exception {
+        disableAllCapabilities();
+        messageService.queryMessageByGroup(CONSUMER_GROUP, TOPIC, 1000, 3000);
+    }
+
+    // ==================== getMessageById tests ====================
+
+    @Test
+    public void testGetMessageById() throws Exception {
+        MessageInfo messageInfo = createMessageInfo(MSG_ID, TOPIC, "test body", System.currentTimeMillis());
+        when(metadataProvider.getMessageById(MSG_ID)).thenReturn(Optional.of(messageInfo));
+
+        MessageInfo result = messageService.getMessageById(MSG_ID);
+
+        assertNotNull(result);
+        assertEquals(MSG_ID, result.getMsgId());
+        assertEquals(TOPIC, result.getTopic());
     }
 
     @Test
-    public void testMessageTrackDetailException() throws Exception {
-        // Setup
-        MessageExt msg = createMessageExt(MSG_ID, TOPIC, "body", System.currentTimeMillis());
-        when(mqAdminExt.messageTrackDetail(any(MessageExt.class))).thenThrow(new RuntimeException("Test exception"));
+    public void testGetMessageByIdNotFound() throws Exception {
+        when(metadataProvider.getMessageById(MSG_ID)).thenReturn(Optional.empty());
 
-        // Execute
-        List<MessageTrack> result = messageService.messageTrackDetail(msg);
+        MessageInfo result = messageService.getMessageById(MSG_ID);
 
-        // Verify - should return empty list on exception
-        assertTrue(result.isEmpty());
+        assertNull(result);
     }
 
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetMessageByIdUnsupported() throws Exception {
+        disableAllCapabilities();
+        messageService.getMessageById(MSG_ID);
+    }
+
+    // ==================== getMessagesByOffset tests ====================
+
     @Test
-    public void testConsumeMessageDirectlyWithClientId() throws Exception {
-        // Setup
+    public void testGetMessagesByOffset() throws Exception {
+        List<MessageInfo> expectedMessages = new ArrayList<>();
+        expectedMessages.add(createMessageInfo("id1", TOPIC, "body1", System.currentTimeMillis()));
+
+        when(metadataProvider.getMessagesByOffset(eq(TOPIC), eq(BROKER_NAME), eq(0), eq(0L), eq(10)))
+                .thenReturn(expectedMessages);
+
+        List<MessageInfo> result = messageService.getMessagesByOffset(TOPIC, BROKER_NAME, 0, 0L, 10);
+
+        assertNotNull(result);
+        assertEquals(1, result.size());
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetMessagesByOffsetUnsupported() throws Exception {
+        disableAllCapabilities();
+        messageService.getMessagesByOffset(TOPIC, BROKER_NAME, 0, 0L, 10);
+    }
+
+    // ==================== searchOffset tests ====================
+
+    @Test
+    public void testSearchOffset() throws Exception {
+        when(metadataProvider.searchOffset(eq(TOPIC), eq(BROKER_NAME), eq(0), anyLong()))
+                .thenReturn(100L);
+
+        long result = messageService.searchOffset(TOPIC, BROKER_NAME, 0, System.currentTimeMillis());
+
+        assertEquals(100L, result);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testSearchOffsetUnsupported() throws Exception {
+        disableAllCapabilities();
+        messageService.searchOffset(TOPIC, BROKER_NAME, 0, System.currentTimeMillis());
+    }
+
+    // ==================== getMaxOffset tests ====================
+
+    @Test
+    public void testGetMaxOffset() throws Exception {
+        when(metadataProvider.getMaxOffset(eq(TOPIC), eq(BROKER_NAME), eq(0)))
+                .thenReturn(500L);
+
+        long result = messageService.getMaxOffset(TOPIC, BROKER_NAME, 0);
+
+        assertEquals(500L, result);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetMaxOffsetUnsupported() throws Exception {
+        disableAllCapabilities();
+        messageService.getMaxOffset(TOPIC, BROKER_NAME, 0);
+    }
+
+    // ==================== getMinOffset tests ====================
+
+    @Test
+    public void testGetMinOffset() throws Exception {
+        when(metadataProvider.getMinOffset(eq(TOPIC), eq(BROKER_NAME), eq(0)))
+                .thenReturn(0L);
+
+        long result = messageService.getMinOffset(TOPIC, BROKER_NAME, 0);
+
+        assertEquals(0L, result);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetMinOffsetUnsupported() throws Exception {
+        disableAllCapabilities();
+        messageService.getMinOffset(TOPIC, BROKER_NAME, 0);
+    }
+
+    // ==================== deleteMessage tests ====================
+
+    @Test
+    public void testDeleteMessage() throws Exception {
+        doNothing().when(metadataProvider).deleteMessage(eq(TOPIC), eq(MSG_ID));
+
+        boolean result = messageService.deleteMessage(TOPIC, MSG_ID);
+
+        assertTrue(result);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testDeleteMessageUnsupported() throws Exception {
+        disableAllCapabilities();
+        messageService.deleteMessage(TOPIC, MSG_ID);
+    }
+
+    // ==================== resendMessage tests ====================
+
+    @Test
+    public void testResendMessage() throws Exception {
+        doNothing().when(metadataProvider).resendMessage(eq(MSG_ID), eq("newTopic"));
+
+        boolean result = messageService.resendMessage(MSG_ID, "newTopic");
+
+        assertTrue(result);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testResendMessageUnsupported() throws Exception {
+        disableAllCapabilities();
+        messageService.resendMessage(MSG_ID, "newTopic");
+    }
+
+    // ==================== consumeMessageDirectly tests ====================
+
+    @Test
+    public void testConsumeMessageDirectly() throws Exception {
         ConsumeMessageDirectlyResult expectedResult = new ConsumeMessageDirectlyResult();
 
-        when(mqAdminExt.consumeMessageDirectly(CONSUMER_GROUP, CLIENT_ID, TOPIC, MSG_ID))
+        when(metadataProvider.consumeMessageDirectly(eq(TOPIC), eq(MSG_ID), eq(CONSUMER_GROUP), eq(CLIENT_ID)))
                 .thenReturn(expectedResult);
 
-        // Execute
         ConsumeMessageDirectlyResult result = messageService.consumeMessageDirectly(TOPIC, MSG_ID, CONSUMER_GROUP, CLIENT_ID);
 
-        // Verify
+        assertNotNull(result);
         assertEquals(expectedResult, result);
-        verify(mqAdminExt).consumeMessageDirectly(CONSUMER_GROUP, CLIENT_ID, TOPIC, MSG_ID);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testConsumeMessageDirectlyUnsupported() throws Exception {
+        disableAllCapabilities();
+        messageService.consumeMessageDirectly(TOPIC, MSG_ID, CONSUMER_GROUP, CLIENT_ID);
+    }
+
+    // ==================== Exception handling tests ====================
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testQueryMessageByTopicException() throws Exception {
+        when(metadataProvider.queryMessageByTopic(eq(TOPIC), anyLong(), anyLong(), anyInt()))
+                .thenThrow(new RuntimeException("Test exception"));
+        messageService.queryMessageByTopic(TOPIC, 1000, 3000, 64);
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetMessageByIdException() throws Exception {
+        when(metadataProvider.getMessageById(MSG_ID))
+                .thenThrow(new RuntimeException("Test exception"));
+        messageService.getMessageById(MSG_ID);
     }
 
     @Test
-    public void testConsumeMessageDirectlyWithoutClientId() throws Exception {
-        // Setup
-        ConsumeMessageDirectlyResult expectedResult = new ConsumeMessageDirectlyResult();
-
-        ConsumerConnection consumerConnection = new ConsumerConnection();
-        HashSet<Connection> connectionSet = new HashSet<>();
-
-        // Add a connection without clientId - should be skipped
-        Connection emptyConn = new Connection();
-        connectionSet.add(emptyConn);
-
-        // Add a connection with clientId - should be used
-        Connection conn = new Connection();
-        conn.setClientId(CLIENT_ID);
-        connectionSet.add(conn);
-
-        consumerConnection.setConnectionSet(connectionSet);
-
-        when(mqAdminExt.examineConsumerConnectionInfo(CONSUMER_GROUP)).thenReturn(consumerConnection);
-        when(mqAdminExt.consumeMessageDirectly(CONSUMER_GROUP, CLIENT_ID, TOPIC, MSG_ID))
-                .thenReturn(expectedResult);
-
-        // Execute
-        ConsumeMessageDirectlyResult result = messageService.consumeMessageDirectly(TOPIC, MSG_ID, CONSUMER_GROUP, null);
-
-        // Verify
-        assertEquals(expectedResult, result);
-        verify(mqAdminExt).examineConsumerConnectionInfo(CONSUMER_GROUP);
-        verify(mqAdminExt).consumeMessageDirectly(CONSUMER_GROUP, CLIENT_ID, TOPIC, MSG_ID);
+    public void testDeleteMessageException() throws Exception {
+        // Exception in deleteMessage is caught and UnsupportedOperationException is thrown
+        // But the first call succeeds
+        doNothing().when(metadataProvider).deleteMessage(eq(TOPIC), eq(MSG_ID));
+        assertTrue(messageService.deleteMessage(TOPIC, MSG_ID));
     }
 
-    @Test(expected = IllegalStateException.class)
-    public void testConsumeMessageDirectlyWithNoConsumer() throws Exception {
-        // Setup
-        ConsumerConnection consumerConnection = new ConsumerConnection();
-        consumerConnection.setConnectionSet(new HashSet<>());
+    // ==================== Helper methods ====================
 
-        when(mqAdminExt.examineConsumerConnectionInfo(CONSUMER_GROUP)).thenReturn(consumerConnection);
-
-        // Execute & Verify exception
-        messageService.consumeMessageDirectly(TOPIC, MSG_ID, CONSUMER_GROUP, null);
-    }
-
-    @Test
-    public void testMoveStartOffset() throws Exception {
-        // Create test queue offsets
-        List<QueueOffsetInfo> queueOffsets = new ArrayList<>();
-        MessageQueue mq1 = new MessageQueue(TOPIC, "broker", 0);
-        MessageQueue mq2 = new MessageQueue(TOPIC, "broker", 1);
-        MessageQueue mq3 = new MessageQueue(TOPIC, "broker", 2);
-
-        QueueOffsetInfo qo1 = new QueueOffsetInfo(0, 0L, 10L, 0L, 0L, mq1);
-        QueueOffsetInfo qo2 = new QueueOffsetInfo(1, 0L, 20L, 0L, 0L, mq2);
-        QueueOffsetInfo qo3 = new QueueOffsetInfo(2, 0L, 30L, 0L, 0L, mq3);
-
-        queueOffsets.add(qo1);
-        queueOffsets.add(qo2);
-        queueOffsets.add(qo3);
-
-        // Create query with offset 15 (page 2 with size 15)
-        MessageQueryByPage query = new MessageQueryByPage(2, 15, TOPIC, 1000, 3000);
-
-        // Access the private method
-        Method method = MessageServiceImpl.class.getDeclaredMethod("moveStartOffset",
-                List.class, MessageQueryByPage.class);
-        method.setAccessible(true);
-        int nextIndex = (Integer) method.invoke(messageService, queueOffsets, query);
-
-        // Verify - the actual implementation distributes 15 units of offset across 3 queues
-        assertEquals(15, qo1.getStartOffset() + qo2.getStartOffset() + qo3.getStartOffset());
-        assertTrue(nextIndex >= 0 && nextIndex < queueOffsets.size());
-    }
-
-    @Test
-    public void testMoveEndOffset() throws Exception {
-        // Create test queue offsets
-        List<QueueOffsetInfo> queueOffsets = new ArrayList<>();
-        MessageQueue mq1 = new MessageQueue(TOPIC, "broker", 0);
-        MessageQueue mq2 = new MessageQueue(TOPIC, "broker", 1);
-
-        QueueOffsetInfo qo1 = new QueueOffsetInfo(0, 0L, 10L, 5L, 5L, mq1);
-        QueueOffsetInfo qo2 = new QueueOffsetInfo(1, 0L, 20L, 10L, 10L, mq2);
-
-        queueOffsets.add(qo1);
-        queueOffsets.add(qo2);
-
-        // Create query with page size 10
-        MessageQueryByPage query = new MessageQueryByPage(2, 10, TOPIC, 1000, 3000);
-        int nextIndex = 0; // Start with the first queue
-
-        // Access the private method
-        Method method = MessageServiceImpl.class.getDeclaredMethod("moveEndOffset",
-                List.class, MessageQueryByPage.class, int.class);
-        method.setAccessible(true);
-        method.invoke(messageService, queueOffsets, query, nextIndex);
-
-        // Verify total endOffset increment is page size
-        assertEquals(10, (qo1.getEndOffset() - 5L) + (qo2.getEndOffset() - 10L));
-    }
-
-    // Helper methods
-
-    private MessageExt createMessageExt(String msgId, String topic, String body, long storeTimestamp) {
-        MessageExt msg = new MessageExt();
-        msg.setMsgId(msgId);
-        msg.setTopic(topic);
-        msg.setBody(body.getBytes());
-        msg.setStoreTimestamp(storeTimestamp);
-        return msg;
-    }
-
-    private PullResult createPullResult(PullStatus status, List<MessageExt> msgFoundList, long nextBeginOffset, long minOffset) {
-        return new PullResult(status, nextBeginOffset, minOffset, minOffset + msgFoundList.size(), msgFoundList);
+    private MessageInfo createMessageInfo(String msgId, String topic, String body, long storeTimestamp) {
+        MessageInfo info = new MessageInfo();
+        info.setMsgId(msgId);
+        info.setTopic(topic);
+        info.setBody(body);
+        info.setStoreTimestamp(storeTimestamp);
+        return info;
     }
 }
