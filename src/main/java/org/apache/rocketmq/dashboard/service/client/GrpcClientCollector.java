@@ -23,7 +23,6 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 import org.apache.rocketmq.dashboard.model.SubscriptionInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

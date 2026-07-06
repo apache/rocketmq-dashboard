@@ -33,12 +33,19 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.yaml.snakeyaml.Yaml;
 
-import java.io.*;
+import java.io.File;
+import java.io.FileReader;
+import java.io.FileWriter;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.LinkedHashMap;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
 
 /**
  * ACL 2.0 Service Implementation.
@@ -59,7 +66,7 @@ public class Acl2ServiceImpl implements Acl2Service {
     private static final String ACL2_POLICY_FILE = "acl" + File.separator + "acl2_policy_conf.yaml";
 
     /** ACL version detection component */
-    private static final AclVersionDetector aclVersionDetector = new AclVersionDetector();
+    private static final AclVersionDetector ACL_VERSION_DETECTOR = new AclVersionDetector();
 
     @Resource
     private RMQConfigure rmqConfigure;
@@ -97,7 +104,7 @@ public class Acl2ServiceImpl implements Acl2Service {
 
         try {
             ClusterCapability capability = clusterProvider.getClusterCapability();
-            String version = aclVersionDetector.detectAclVersion(capability);
+            String version = ACL_VERSION_DETECTOR.detectAclVersion(capability);
 
             if ("ACL_2_0".equals(version)) {
                 cachedAclVersion = "V2";
@@ -128,7 +135,7 @@ public class Acl2ServiceImpl implements Acl2Service {
 
         try {
             ClusterCapability capability = clusterProvider.getClusterCapability();
-            String detectedVersion = aclVersionDetector.detectAclVersion(capability);
+            String detectedVersion = ACL_VERSION_DETECTOR.detectAclVersion(capability);
 
             report.put("rawDetection", detectedVersion);
             report.put("aclV2Supported", capability != null && capability.isAclV2Supported());
@@ -145,7 +152,7 @@ public class Acl2ServiceImpl implements Acl2Service {
                 report.put("effectiveVersion", "NONE");
             }
 
-            AclVersionDetector.AclMigrationInfo migrationInfo = aclVersionDetector.getMigrationInfo(capability);
+            AclVersionDetector.AclMigrationInfo migrationInfo = ACL_VERSION_DETECTOR.getMigrationInfo(capability);
             report.put("migrationStatus", migrationInfo.getStatus());
             report.put("migrationDescription", migrationInfo.getDescription());
 

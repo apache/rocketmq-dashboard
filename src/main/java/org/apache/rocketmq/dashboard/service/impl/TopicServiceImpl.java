@@ -160,7 +160,7 @@ public class TopicServiceImpl extends ArchitectureBasedService implements TopicS
             } else {
                 metadataProvider.createTopic(topicInfo);
             }
-         } catch (Exception e) {
+        } catch (Exception e) {
             throw new RuntimeException("Failed to create or update topic: " + topicConfigInfo.getTopicName(), e);
         }
     }
