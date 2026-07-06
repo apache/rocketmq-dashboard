@@ -93,4 +93,70 @@ public class ErrorModelTest {
         Assert.assertTrue(str.contains("M1"));
         Assert.assertTrue(str.contains("H1"));
     }
+
+    @Test
+    public void testErrorModelBuilderNoArgsConstructor() {
+        ErrorModel.ErrorModelBuilder builder = ErrorModel.builder();
+        ErrorModel error = builder.build();
+        Assert.assertNotNull(error);
+        Assert.assertNull(error.getCode());
+        Assert.assertNull(error.getMessage());
+        Assert.assertNull(error.getHint());
+    }
+
+    @Test
+    public void testErrorModelBuilderPartial() {
+        ErrorModel error = ErrorModel.builder()
+                .code("ERR_PARTIAL")
+                .message("Partial build")
+                .build();
+        Assert.assertEquals("ERR_PARTIAL", error.getCode());
+        Assert.assertEquals("Partial build", error.getMessage());
+        Assert.assertNull(error.getHint());
+    }
+
+    @Test
+    public void testErrorModelBuilderChaining() {
+        ErrorModel.ErrorModelBuilder builder = ErrorModel.builder()
+                .code("C1")
+                .message("M1")
+                .hint("H1");
+        ErrorModel error = builder.build();
+        Assert.assertEquals("C1", error.getCode());
+        Assert.assertEquals("M1", error.getMessage());
+        Assert.assertEquals("H1", error.getHint());
+    }
+
+    @Test
+    public void testErrorModelWithNullValues() {
+        ErrorModel error = new ErrorModel();
+        error.setCode(null);
+        error.setMessage(null);
+        error.setHint(null);
+        Assert.assertNull(error.getCode());
+        Assert.assertNull(error.getMessage());
+        Assert.assertNull(error.getHint());
+    }
+
+    @Test
+    public void testErrorModelOfWithEmptyStrings() {
+        ErrorModel error = ErrorModel.of("", "", "");
+        Assert.assertEquals("", error.getCode());
+        Assert.assertEquals("", error.getMessage());
+        Assert.assertEquals("", error.getHint());
+    }
+
+    @Test
+    public void testErrorModelNotEqual() {
+        ErrorModel e1 = ErrorModel.of("C1", "M1", "H1");
+        ErrorModel e2 = ErrorModel.of("C2", "M2", "H2");
+        Assert.assertNotEquals(e1, e2);
+    }
+
+    @Test
+    public void testErrorModelCanEqual() {
+        ErrorModel e1 = ErrorModel.of("C1", "M1", "H1");
+        Object obj = new Object();
+        Assert.assertNotEquals(e1, obj);
+    }
 }

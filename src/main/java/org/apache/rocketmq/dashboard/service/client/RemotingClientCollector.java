@@ -24,6 +24,7 @@ import org.apache.rocketmq.remoting.protocol.LanguageCode;
 import org.apache.rocketmq.remoting.protocol.body.Connection;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.remoting.protocol.body.ProducerConnection;
+import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -49,6 +50,7 @@ import java.util.stream.Collectors;
  * caching, or gRPC fallback).
  */
 @Slf4j
+@Component
 public class RemotingClientCollector {
 
     private static final String RETRY_TOPIC_PREFIX = "%RETRY%";

@@ -35,8 +35,10 @@ import static org.junit.Assert.assertTrue;
 public class LlmAuditLoggerTest {
 
     private static final String TEST_USER_HOME;
+    private static final String ORIGINAL_USER_HOME;
 
     static {
+        ORIGINAL_USER_HOME = System.getProperty("user.home");
         String tmpDir = System.getProperty("java.io.tmpdir");
         TEST_USER_HOME = tmpDir + File.separator + "llm-audit-test-" + System.currentTimeMillis();
     }
@@ -62,6 +64,7 @@ public class LlmAuditLoggerTest {
 
     @After
     public void tearDown() throws IOException {
+        System.setProperty("user.home", ORIGINAL_USER_HOME);
         File testHome = new File(TEST_USER_HOME);
         if (testHome.exists()) {
             Files.walk(testHome.toPath())

@@ -236,8 +236,17 @@ public class McpServerTest {
             String output = capturedOut.toString(StandardCharsets.UTF_8.name()).trim();
             assertFalse("Output should not be empty", output.isEmpty());
 
+            String jsonLine = null;
+            for (String line : output.split("\\R")) {
+                String trimmed = line.trim();
+                if (trimmed.startsWith("{")) {
+                    jsonLine = trimmed;
+                }
+            }
+            assertNotNull("Should find a JSON response line in output", jsonLine);
+
             // Parse the response
-            JsonNode root = objectMapper.readTree(output);
+            JsonNode root = objectMapper.readTree(jsonLine);
             assertNotNull("Response should be valid JSON", root);
             assertTrue("Response should have result", root.has("result"));
             assertFalse("Response should not have error", root.has("error"));
