@@ -45,12 +45,15 @@ import picocli.CommandLine.ParentCommand;
                 ClusterCommand.CleanCmd.class, ClusterCommand.WipeWritePermCmd.class})
 public class ClusterCommand {
 
+    @ParentCommand
+    RmqctlCommand root;
+
     // ==================== L1: Read-only ====================
 
     @Command(name = "list", description = "List all configured clusters and their health status (L1)")
     static class ListCmd implements Callable<Integer> {
         @ParentCommand
-        RmqctlCommand root;
+        ClusterCommand parent;
 
         @Override
         public Integer call() throws Exception {
@@ -70,7 +73,7 @@ public class ClusterCommand {
                 row.put("NAMESRV", cluster != null ? cluster.getNamesrvAddr() : "-");
 
                 // Try to connect and get real cluster status
-                try (AdminClientHelper admin = AdminClientHelper.connect(name, root)) {
+                try (AdminClientHelper admin = AdminClientHelper.connect(name, parent.root)) {
                     ClusterInfo clusterInfo = admin.getClusterInfo();
                     int brokerCount = clusterInfo.getBrokerAddrTable() != null
                             ? clusterInfo.getBrokerAddrTable().size() : 0;
@@ -96,13 +99,13 @@ public class ClusterCommand {
         String clusterName;
 
         @ParentCommand
-        RmqctlCommand root;
+        ClusterCommand parent;
 
         @Override
         public Integer call() throws Exception {
             CliContext ctx = new CliContext();
             String name = clusterName != null ? clusterName
-                    : (root != null && root.getCluster() != null ? root.getCluster() : ctx.getCurrentContext());
+                    : (parent.root != null && parent.root.getCluster() != null ? parent.root.getCluster() : ctx.getCurrentContext());
             if (name == null) {
                 System.err.println("Error: No cluster specified and no current context set.");
                 return 1;
@@ -120,7 +123,7 @@ public class ClusterCommand {
             result.put("Proxy Addr", cluster.getProxyAddr() != null && !cluster.getProxyAddr().isEmpty()
                     ? cluster.getProxyAddr() : "N/A");
 
-            try (AdminClientHelper admin = AdminClientHelper.connect(name, root)) {
+            try (AdminClientHelper admin = AdminClientHelper.connect(name, parent.root)) {
                 ClusterInfo clusterInfo = admin.getClusterInfo();
                 if (clusterInfo.getBrokerAddrTable() != null) {
                     result.put("Broker Count", String.valueOf(clusterInfo.getBrokerAddrTable().size()));
@@ -159,11 +162,11 @@ public class ClusterCommand {
         String cluster;
 
         @ParentCommand
-        RmqctlCommand root;
+        ClusterCommand parent;
 
         @Override
         public Integer call() throws Exception {
-            try (AdminClientHelper admin = AdminClientHelper.connect(cluster, root)) {
+            try (AdminClientHelper admin = AdminClientHelper.connect(cluster, parent.root)) {
                 MQAdminExt mqAdminExt = admin.getMqAdminExt();
                 ClusterInfo clusterInfo = admin.getClusterInfo();
 
@@ -230,14 +233,11 @@ public class ClusterCommand {
         @ParentCommand
         ClusterCommand parent;
 
-        @ParentCommand
-        RmqctlCommand root;
-
         @Override
         public Integer call() throws Exception {
-            if (root != null && root.isYes()) {
+            if (parent.root != null && parent.root.isYes()) {
                 // Execute the update operation
-                try (AdminClientHelper admin = AdminClientHelper.connect(cluster, root)) {
+                try (AdminClientHelper admin = AdminClientHelper.connect(cluster, parent.root)) {
                     MQAdminExt mqAdminExt = admin.getMqAdminExt();
                     ClusterInfo clusterInfo = admin.getClusterInfo();
 
@@ -326,9 +326,6 @@ public class ClusterCommand {
         @ParentCommand
         ClusterCommand parent;
 
-        @ParentCommand
-        RmqctlCommand root;
-
         @Override
         public Integer call() throws Exception {
             if (!unusedTopics) {
@@ -337,9 +334,9 @@ public class ClusterCommand {
                 return 1;
             }
 
-            if (root != null && root.isYes()) {
+            if (parent.root != null && parent.root.isYes()) {
                 // Execute the cleanup operation
-                try (AdminClientHelper admin = AdminClientHelper.connect(cluster, root)) {
+                try (AdminClientHelper admin = AdminClientHelper.connect(cluster, parent.root)) {
                     MQAdminExt mqAdminExt = admin.getMqAdminExt();
                     String clusterName = admin.getClusterName();
 
@@ -424,14 +421,11 @@ public class ClusterCommand {
         @ParentCommand
         ClusterCommand parent;
 
-        @ParentCommand
-        RmqctlCommand root;
-
         @Override
         public Integer call() throws Exception {
-            if (root != null && root.isYes() && root.isForce()) {
+            if (parent.root != null && parent.root.isYes() && parent.root.isForce()) {
                 // Execute the wipe operation
-                try (AdminClientHelper admin = AdminClientHelper.connect(cluster, root)) {
+                try (AdminClientHelper admin = AdminClientHelper.connect(cluster, parent.root)) {
                     MQAdminExt mqAdminExt = admin.getMqAdminExt();
 
                     // Get the namesrv address from AdminClientHelper
@@ -470,10 +464,10 @@ public class ClusterCommand {
                         + "' is a dangerous operation (L3).");
                 System.err.println("This will prevent the broker from accepting any new WRITE requests.");
                 System.err.println("Affected: " + brokerName + " (all producers will be redirected away from this broker)");
-                if (root == null || !root.isYes()) {
+                if (parent.root == null || !parent.root.isYes()) {
                     System.err.println("HINT: Add --yes to confirm execution.");
                 }
-                if (root == null || !root.isForce()) {
+                if (parent.root == null || !parent.root.isForce()) {
                     System.err.println("HINT: Add --force to acknowledge this is a destructive L3 operation.");
                 }
                 System.err.println("HINT: Use --yes --force to proceed.");

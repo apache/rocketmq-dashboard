@@ -49,7 +49,7 @@ public class ClusterCommandTest extends AbstractCliTest {
 
     @Test
     public void testListClustersEmpty() throws Exception {
-        ClusterCommand.ListClusters cmd = new ClusterCommand.ListClusters();
+        ClusterCommand.ListCmd cmd = withParent(new ClusterCommand.ListCmd(), newParentWithRoot(ClusterCommand.class));
         int result = cmd.call();
         Assert.assertEquals(0, result);
         String output = capturedOut.toString();
@@ -71,7 +71,7 @@ public class ClusterCommandTest extends AbstractCliTest {
                 + "    clusterType: V4_NAMESRV\n"
                 + "users: {}\ncontexts: []\n");
 
-        ClusterCommand.ListClusters cmd = new ClusterCommand.ListClusters();
+        ClusterCommand.ListCmd cmd = withParent(new ClusterCommand.ListCmd(), newParentWithRoot(ClusterCommand.class));
         int result = cmd.call();
         Assert.assertEquals(0, result);
         String output = capturedOut.toString();
@@ -85,7 +85,8 @@ public class ClusterCommandTest extends AbstractCliTest {
 
     @Test
     public void testDescribeClusterNoNameNoContext() throws Exception {
-        ClusterCommand.DescribeCluster cmd = new ClusterCommand.DescribeCluster();
+        ClusterCommand.DescribeCmd cmd = new ClusterCommand.DescribeCmd();
+        withParent(cmd, newParentWithRoot(ClusterCommand.class));
         cmd.clusterName = null;
         int result = cmd.call();
         Assert.assertEquals(1, result);
@@ -95,7 +96,8 @@ public class ClusterCommandTest extends AbstractCliTest {
 
     @Test
     public void testDescribeClusterNonExistent() throws Exception {
-        ClusterCommand.DescribeCluster cmd = new ClusterCommand.DescribeCluster();
+        ClusterCommand.DescribeCmd cmd = new ClusterCommand.DescribeCmd();
+        withParent(cmd, newParentWithRoot(ClusterCommand.class));
         cmd.clusterName = "non-existent";
         int result = cmd.call();
         Assert.assertEquals(1, result);
@@ -113,7 +115,8 @@ public class ClusterCommandTest extends AbstractCliTest {
                 + "    clusterType: V4_NAMESRV\n"
                 + "users: {}\ncontexts: []\n");
 
-        ClusterCommand.DescribeCluster cmd = new ClusterCommand.DescribeCluster();
+        ClusterCommand.DescribeCmd cmd = new ClusterCommand.DescribeCmd();
+        withParent(cmd, newParentWithRoot(ClusterCommand.class));
         cmd.clusterName = "my-cluster";
         int result = cmd.call();
         Assert.assertEquals(0, result);
@@ -134,7 +137,8 @@ public class ClusterCommandTest extends AbstractCliTest {
                 + "    clusterType: V4_NAMESRV\n"
                 + "users: {}\ncontexts: []\n");
 
-        ClusterCommand.DescribeCluster cmd = new ClusterCommand.DescribeCluster();
+        ClusterCommand.DescribeCmd cmd = new ClusterCommand.DescribeCmd();
+        withParent(cmd, newParentWithRoot(ClusterCommand.class));
         cmd.clusterName = "simple";
         int result = cmd.call();
         Assert.assertEquals(0, result);
@@ -158,7 +162,8 @@ public class ClusterCommandTest extends AbstractCliTest {
                 + "  user: admin\n"
                 + "  namespace: default\n");
 
-        ClusterCommand.DescribeCluster cmd = new ClusterCommand.DescribeCluster();
+        ClusterCommand.DescribeCmd cmd = new ClusterCommand.DescribeCmd();
+        withParent(cmd, newParentWithRoot(ClusterCommand.class));
         cmd.clusterName = null;
         int result = cmd.call();
         Assert.assertEquals(0, result);
@@ -177,14 +182,14 @@ public class ClusterCommandTest extends AbstractCliTest {
                 + "    clusterType: V5_PROXY\n"
                 + "users: {}\ncontexts: []\n");
 
-        ClusterCommand.DescribeCluster cmd = new ClusterCommand.DescribeCluster();
+        ClusterCommand.DescribeCmd cmd = withParent(new ClusterCommand.DescribeCmd(), newParentWithRoot(ClusterCommand.class));
         cmd.clusterName = "prod";
         int result = cmd.call();
         Assert.assertEquals(0, result);
         String output = capturedOut.toString();
-        Assert.assertTrue(output.contains("cluster name"));
-        Assert.assertTrue(output.contains("type"));
-        Assert.assertTrue(output.contains("namesrv addr"));
-        Assert.assertTrue(output.contains("proxy addr"));
+        Assert.assertTrue(output.contains("Cluster Name"));
+        Assert.assertTrue(output.contains("Type"));
+        Assert.assertTrue(output.contains("Namesrv Addr"));
+        Assert.assertTrue(output.contains("Proxy Addr"));
     }
 }

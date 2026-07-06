@@ -47,17 +47,20 @@ import picocli.CommandLine.ParentCommand;
 /** CLI commands for topic management: list, describe, create (L2), update (L2), delete (L3). */
 public class TopicCommand {
 
+    @ParentCommand
+    RmqctlCommand root;
+
     @Command(name = "list", description = "List all topics (L1)")
     static class ListCmd implements Callable<Integer> {
         @Option(names = {"--cluster"}, description = "Target cluster name")
         String cluster;
 
         @ParentCommand
-        RmqctlCommand root;
+        TopicCommand parent;
 
         @Override
         public Integer call() throws Exception {
-            try (AdminClientHelper admin = AdminClientHelper.connect(cluster, root)) {
+            try (AdminClientHelper admin = AdminClientHelper.connect(cluster, parent.root)) {
                 MQAdminExt mqAdminExt = admin.getMqAdminExt();
                 ClusterInfo clusterInfo = admin.getClusterInfo();
 
@@ -113,11 +116,11 @@ public class TopicCommand {
         String topicName;
 
         @ParentCommand
-        RmqctlCommand root;
+        TopicCommand parent;
 
         @Override
         public Integer call() throws Exception {
-            try (AdminClientHelper admin = AdminClientHelper.connect(null, root)) {
+            try (AdminClientHelper admin = AdminClientHelper.connect(null, parent.root)) {
                 MQAdminExt mqAdminExt = admin.getMqAdminExt();
 
                 // Get topic route info for queue distribution
@@ -195,14 +198,11 @@ public class TopicCommand {
         @ParentCommand
         TopicCommand parent;
 
-        @ParentCommand
-        RmqctlCommand root;
-
         @Override
         public Integer call() throws Exception {
-            if (root != null && root.isYes()) {
+            if (parent.root != null && parent.root.isYes()) {
                 // Execute the create operation
-                try (AdminClientHelper admin = AdminClientHelper.connect(null, root)) {
+                try (AdminClientHelper admin = AdminClientHelper.connect(null, parent.root)) {
                     TopicConfig topicConfig = new TopicConfig(topicName);
                     topicConfig.setReadQueueNums(readQueue);
                     topicConfig.setWriteQueueNums(writeQueue);
@@ -221,7 +221,7 @@ public class TopicCommand {
                 } catch (Exception e) {
                     System.err.println("Error: Failed to create topic '" + topicName + "' - " + e.getMessage());
                     AuditLogger.getInstance().log(
-                            root.getCluster() != null ? root.getCluster() : "(default)",
+                            parent.root.getCluster() != null ? parent.root.getCluster() : "(default)",
                             "topic create " + topicName,
                             "FAILED: " + e.getMessage(),
                             System.getProperty("user.name", "unknown"));
@@ -274,14 +274,11 @@ public class TopicCommand {
         @ParentCommand
         TopicCommand parent;
 
-        @ParentCommand
-        RmqctlCommand root;
-
         @Override
         public Integer call() throws Exception {
-            if (root != null && root.isYes()) {
+            if (parent.root != null && parent.root.isYes()) {
                 // Execute the update operation
-                try (AdminClientHelper admin = AdminClientHelper.connect(null, root)) {
+                try (AdminClientHelper admin = AdminClientHelper.connect(null, parent.root)) {
                     // Get existing config from the first available broker
                     TopicConfig topicConfig = admin.examineTopicConfig(topicName);
                     if (topicConfig == null) {
@@ -312,7 +309,7 @@ public class TopicCommand {
                 } catch (Exception e) {
                     System.err.println("Error: Failed to update topic '" + topicName + "' - " + e.getMessage());
                     AuditLogger.getInstance().log(
-                            root.getCluster() != null ? root.getCluster() : "(default)",
+                            parent.root.getCluster() != null ? parent.root.getCluster() : "(default)",
                             "topic update " + topicName,
                             "FAILED: " + e.getMessage(),
                             System.getProperty("user.name", "unknown"));
@@ -357,14 +354,11 @@ public class TopicCommand {
         @ParentCommand
         TopicCommand parent;
 
-        @ParentCommand
-        RmqctlCommand root;
-
         @Override
         public Integer call() throws Exception {
-            if (root != null && root.isYes() && root.isForce()) {
+            if (parent.root != null && parent.root.isYes() && parent.root.isForce()) {
                 // Execute the delete operation
-                try (AdminClientHelper admin = AdminClientHelper.connect(null, root)) {
+                try (AdminClientHelper admin = AdminClientHelper.connect(null, parent.root)) {
                     admin.deleteTopicFromCluster(topicName);
 
                     String clusterName = admin.getClusterName();
@@ -378,7 +372,7 @@ public class TopicCommand {
                 } catch (Exception e) {
                     System.err.println("Error: Failed to delete topic '" + topicName + "' - " + e.getMessage());
                     AuditLogger.getInstance().log(
-                            root.getCluster() != null ? root.getCluster() : "(default)",
+                            parent.root.getCluster() != null ? parent.root.getCluster() : "(default)",
                             "topic delete " + topicName,
                             "FAILED: " + e.getMessage(),
                             System.getProperty("user.name", "unknown"));
