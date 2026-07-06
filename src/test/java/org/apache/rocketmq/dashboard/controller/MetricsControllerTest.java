@@ -262,7 +262,7 @@ public class MetricsControllerTest extends BaseControllerTest {
         grafanaResult.put("exportedCount", 13);
         grafanaResult.put("grafanaJson", "{\"dashboards\":[]}");
 
-        when(metricsEnhancedService.exportGrafanaJson(any())).thenReturn(grafanaResult);
+        when(metricsEnhancedService.exportGrafanaJson(anyList())).thenReturn(grafanaResult);
 
         final String url = "/api/metrics/export/grafana";
         requestBuilder = MockMvcRequestBuilders.post(url);
@@ -286,7 +286,7 @@ public class MetricsControllerTest extends BaseControllerTest {
         grafanaResult.put("exportedCount", 3);
         grafanaResult.put("grafanaJson", "{\"dashboards\":[]}");
 
-        when(metricsEnhancedService.exportGrafanaJson(any())).thenReturn(grafanaResult);
+        when(metricsEnhancedService.exportGrafanaJson(anyList())).thenReturn(grafanaResult);
 
         final String url = "/api/metrics/export/grafana";
         requestBuilder = MockMvcRequestBuilders.post(url);
@@ -310,7 +310,7 @@ public class MetricsControllerTest extends BaseControllerTest {
         grafanaResult.put("exportedCount", 0);
         grafanaResult.put("grafanaJson", "{\"dashboards\":[]}");
 
-        when(metricsEnhancedService.exportGrafanaJson(any())).thenReturn(grafanaResult);
+        when(metricsEnhancedService.exportGrafanaJson(anyList())).thenReturn(grafanaResult);
 
         final String url = "/api/metrics/export/grafana";
         requestBuilder = MockMvcRequestBuilders.post(url);
@@ -325,7 +325,7 @@ public class MetricsControllerTest extends BaseControllerTest {
 
     @Test
     public void testExportGrafanaJsonError() throws Exception {
-        when(metricsEnhancedService.exportGrafanaJson(any()))
+        when(metricsEnhancedService.exportGrafanaJson(anyList()))
                 .thenThrow(new RuntimeException("Export failed"));
 
         final String url = "/api/metrics/export/grafana";

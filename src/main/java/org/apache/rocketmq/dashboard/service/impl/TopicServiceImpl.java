@@ -18,6 +18,7 @@ package org.apache.rocketmq.dashboard.service.impl;
 
 import jakarta.annotation.Resource;
 import org.apache.rocketmq.dashboard.model.ClusterCapability;
+import org.apache.rocketmq.dashboard.model.request.TopicConfigInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.rocketmq.dashboard.model.TopicInfo;
@@ -130,6 +131,37 @@ public class TopicServiceImpl extends ArchitectureBasedService implements TopicS
             return true;
         } catch (Exception e) {
             throw new RuntimeException("Failed to update topic: " + topic, e);
+        }
+    }
+
+    @Override
+    public void createOrUpdate(TopicConfigInfo topicConfigInfo) {
+        try {
+            TopicInfo topicInfo = new TopicInfo();
+            topicInfo.setTopicName(topicConfigInfo.getTopicName());
+            topicInfo.setNamespace(getDefaultNamespace());
+            topicInfo.setReadQueueNums(topicConfigInfo.getReadQueueNums());
+            topicInfo.setWriteQueueNums(topicConfigInfo.getWriteQueueNums());
+            topicInfo.setPerm(topicConfigInfo.getPerm());
+            topicInfo.setOrderTopic(topicConfigInfo.isOrder());
+
+            if (topicConfigInfo.getMessageType() != null) {
+                try {
+                    topicInfo.setTopicType(TopicType.valueOf(topicConfigInfo.getMessageType()));
+                } catch (IllegalArgumentException e) {
+                    topicInfo.setTopicType(TopicType.NORMAL);
+                }
+            } else  {
+                topicInfo.setTopicType(TopicType.NORMAL);
+            }
+
+            if (metadataProvider.getTopic(topicConfigInfo.getTopicName(), Optional.of(getDefaultNamespace())).isPresent()) {
+                metadataProvider.updateTopic(topicInfo);
+            } else {
+                metadataProvider.createTopic(topicInfo);
+            }
+         } catch (Exception e) {
+            throw new RuntimeException("Failed to create or update topic: " + topicConfigInfo.getTopicName(), e);
         }
     }
 

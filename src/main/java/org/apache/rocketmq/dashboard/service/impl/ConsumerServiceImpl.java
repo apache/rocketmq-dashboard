@@ -6,6 +6,7 @@ import org.apache.rocketmq.dashboard.model.ClusterCapability;
 import org.apache.rocketmq.dashboard.model.ConsumerGroupInfo;
 import org.apache.rocketmq.dashboard.model.GroupConsumeInfo;
 import org.apache.rocketmq.dashboard.model.SubscriptionInfo;
+import org.apache.rocketmq.dashboard.model.request.ConsumerConfigInfo;
 import org.apache.rocketmq.dashboard.service.ArchitectureBasedService;
 import org.apache.rocketmq.dashboard.service.ConsumerService;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
@@ -146,6 +147,22 @@ public class ConsumerServiceImpl extends ArchitectureBasedService implements Con
         } catch (Exception e) {
             handleUnsupportedOperation("Query group consume info for " + groupName);
             return new GroupConsumeInfo();
+        }
+    }
+
+    @Override
+    public Object createAndUpdateSubscriptionGroupConfig(ConsumerConfigInfo consumerConfigInfo) {
+        if (consumerConfigInfo == null || consumerConfigInfo.getSubscriptionGroupConfig() == null) {
+            throw new IllegalArgumentException("ConsumerConfigInfo and subscriptionGroupConfig cannot be null");
+        }
+        ConsumerGroupInfo groupInfo = new ConsumerGroupInfo();
+        groupInfo.setConsumerGroupName(consumerConfigInfo.getSubscriptionGroupConfig().getGroupName());
+        try {
+            metadataProvider.createConsumerGroup(groupInfo);
+            return true;
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to create/update consumer group: "
+                + consumerConfigInfo.getSubscriptionGroupConfig().getGroupName(), e);
         }
     }
 

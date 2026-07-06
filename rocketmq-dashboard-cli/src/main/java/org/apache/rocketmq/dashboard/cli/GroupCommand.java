@@ -36,6 +36,7 @@ import org.apache.rocketmq.remoting.protocol.body.SubscriptionGroupWrapper;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
+import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
@@ -241,9 +242,17 @@ public class GroupCommand {
         @ParentCommand
         GroupCommand parent;
 
+        @CommandLine.Mixin
+        GlobalOptions globalOptions;
+
+        private boolean isYes() {
+            return (globalOptions != null && globalOptions.yes)
+                    || (parent.root != null && parent.root.isYes());
+        }
+
         @Override
         public Integer call() throws Exception {
-            if (parent.root != null && parent.root.isYes()) {
+            if (isYes()) {
                 // Execute the create operation
                 try (AdminClientHelper admin = AdminClientHelper.connect(cluster, parent.root)) {
                     SubscriptionGroupConfig config = new SubscriptionGroupConfig();
@@ -322,9 +331,17 @@ public class GroupCommand {
         @ParentCommand
         GroupCommand parent;
 
+        @CommandLine.Mixin
+        GlobalOptions globalOptions;
+
+        private boolean isYes() {
+            return (globalOptions != null && globalOptions.yes)
+                    || (parent.root != null && parent.root.isYes());
+        }
+
         @Override
         public Integer call() throws Exception {
-            if (parent.root != null && parent.root.isYes()) {
+            if (isYes()) {
                 // Execute the update operation
                 try (AdminClientHelper admin = AdminClientHelper.connect(cluster, parent.root)) {
                     // Fetch existing config from a broker
@@ -409,7 +426,7 @@ public class GroupCommand {
         @Option(names = {"--by-interval"}, description = "Reset to N hours ago (e.g., 24)")
         Long intervalHours;
 
-        @Option(names = {"--force"}, description = "Force reset even if consumers are online")
+        @Option(names = {"--force-reset"}, description = "Force reset even if consumers are online")
         boolean forceReset;
 
         @Option(names = {"--cluster"}, description = "Target cluster name")
@@ -417,6 +434,14 @@ public class GroupCommand {
 
         @ParentCommand
         GroupCommand parent;
+
+        @CommandLine.Mixin
+        GlobalOptions globalOptions;
+
+        private boolean isYes() {
+            return (globalOptions != null && globalOptions.yes)
+                    || (parent.root != null && parent.root.isYes());
+        }
 
         @Override
         public Integer call() throws Exception {
@@ -440,7 +465,7 @@ public class GroupCommand {
                 offsetTarget = "current time";
             }
 
-            if (parent.root != null && parent.root.isYes()) {
+            if (isYes()) {
                 // Execute the reset-offset operation
                 try (AdminClientHelper admin = AdminClientHelper.connect(cluster, parent.root)) {
                     MQAdminExt mqAdminExt = admin.getMqAdminExt();
@@ -510,9 +535,22 @@ public class GroupCommand {
         @ParentCommand
         GroupCommand parent;
 
+        @CommandLine.Mixin
+        GlobalOptions globalOptions;
+
+        private boolean isYes() {
+            return (globalOptions != null && globalOptions.yes)
+                    || (parent.root != null && parent.root.isYes());
+        }
+
+        private boolean isForce() {
+            return (globalOptions != null && globalOptions.force)
+                    || (parent.root != null && parent.root.isForce());
+        }
+
         @Override
         public Integer call() throws Exception {
-            if (parent.root != null && parent.root.isYes() && parent.root.isForce()) {
+            if (isYes() && isForce()) {
                 // Execute the delete operation
                 try (AdminClientHelper admin = AdminClientHelper.connect(cluster, parent.root)) {
                     int brokerCount = admin.deleteConsumerGroupFromAllBrokers(groupName);
@@ -541,10 +579,10 @@ public class GroupCommand {
                         + "' is a dangerous operation (L3).");
                 System.err.println("This will permanently remove the group and ALL its consumer offsets.");
                 System.err.println("Affected: " + groupName + " (all subscription and offset data)");
-                if (parent.root == null || !parent.root.isYes()) {
+                if (parent.root == null || !isYes()) {
                     System.err.println("HINT: Add --yes to confirm execution.");
                 }
-                if (parent.root == null || !parent.root.isForce()) {
+                if (parent.root == null || !isForce()) {
                     System.err.println("HINT: Add --force to acknowledge this is a destructive L3 operation.");
                 }
                 System.err.println("HINT: Use --yes --force to proceed, or manage via the Web Console at /consumer");
