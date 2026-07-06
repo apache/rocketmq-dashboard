@@ -197,18 +197,21 @@ public class V4MetadataProvider implements MetadataProvider {
         topicConfig.setPerm(topic.getPerm() != null ? topic.getPerm() : 6);
         topicConfig.setTopicFilterType(TopicFilterType.SINGLE_TAG);
 
-        // Removed
-        org.apache.rocketmq.remoting.protocol.route.TopicRouteData topicRouteData = 
-            mqAdminExt.examineTopicRouteInfo(topic.getTopicName());
-
-        if (topicRouteData != null && topicRouteData.getBrokerDatas() != null) {
-            for (org.apache.rocketmq.remoting.protocol.route.BrokerData brokerData : topicRouteData.getBrokerDatas()) {
-                for (Map.Entry<Long, String> entry : brokerData.getBrokerAddrs().entrySet()) {
-                    if (entry.getKey() == 0) { // Removed
+        // Use examineBrokerClusterInfo() to get all master broker addresses
+        // (examineTopicRouteInfo() would fail for a new topic that doesn't exist yet)
+        org.apache.rocketmq.remoting.protocol.body.ClusterInfo clusterInfo =
+            mqAdminExt.examineBrokerClusterInfo();
+        if (clusterInfo != null && clusterInfo.getBrokerAddrTable() != null) {
+            for (org.apache.rocketmq.remoting.protocol.route.BrokerData brokerData
+                : clusterInfo.getBrokerAddrTable().values()) {
+                if (brokerData.getBrokerAddrs() != null) {
+                    String masterAddr = brokerData.getBrokerAddrs().get(0L);
+                    if (masterAddr != null) {
                         try {
-                            mqAdminExt.createAndUpdateTopicConfig(entry.getValue(), topicConfig);
+                            mqAdminExt.createAndUpdateTopicConfig(masterAddr, topicConfig);
                         } catch (Exception e) {
-                            log.warn("Failed to create topic {} on broker {}", topic.getTopicName(), entry.getValue(), e);
+                            log.warn("Failed to create topic {} on broker {}",
+                                topic.getTopicName(), masterAddr, e);
                         }
                     }
                 }
@@ -324,23 +327,24 @@ public class V4MetadataProvider implements MetadataProvider {
         config.setConsumeEnable(true);
         config.setRetryMaxTimes(16);
 
-        List<String> topicNames = new ArrayList<>(mqAdminExt.fetchAllTopicList().getTopicList());
-        for (String topic : topicNames) {
-            try {
-                org.apache.rocketmq.remoting.protocol.route.TopicRouteData routeData =
-                    mqAdminExt.examineTopicRouteInfo(topic);
-                if (routeData != null && routeData.getBrokerDatas() != null) {
-                    for (org.apache.rocketmq.remoting.protocol.route.BrokerData brokerData
-                        : routeData.getBrokerDatas()) {
-                        for (Map.Entry<Long, String> entry : brokerData.getBrokerAddrs().entrySet()) {
-                            if (entry.getKey() == 0L) {
-                                mqAdminExt.createAndUpdateSubscriptionGroupConfig(entry.getValue(), config);
-                            }
+        // Use examineBrokerClusterInfo() to get master broker addresses directly
+        // (previously iterated all topics which was very inefficient)
+        org.apache.rocketmq.remoting.protocol.body.ClusterInfo clusterInfo =
+            mqAdminExt.examineBrokerClusterInfo();
+        if (clusterInfo != null && clusterInfo.getBrokerAddrTable() != null) {
+            for (org.apache.rocketmq.remoting.protocol.route.BrokerData brokerData
+                : clusterInfo.getBrokerAddrTable().values()) {
+                if (brokerData.getBrokerAddrs() != null) {
+                    String masterAddr = brokerData.getBrokerAddrs().get(0L);
+                    if (masterAddr != null) {
+                        try {
+                            mqAdminExt.createAndUpdateSubscriptionGroupConfig(masterAddr, config);
+                        } catch (Exception e) {
+                            log.warn("Failed to create consumer group {} on broker {}",
+                                consumerGroup.getConsumerGroupName(), masterAddr, e);
                         }
                     }
                 }
-            } catch (Exception e) {
-                log.debug("Skipping topic {} for group creation: {}", topic, e.getMessage());
             }
         }
         log.info("Created consumer group: {}", consumerGroup.getConsumerGroupName());
@@ -360,20 +364,44 @@ public class V4MetadataProvider implements MetadataProvider {
             return;
         }
 
-        // Removed
-        String retryTopic = "%RETRY%" + consumerGroup;
-        TopicRouteData routeData = mqAdminExt.examineTopicRouteInfo(retryTopic);
-        if (routeData != null && routeData.getBrokerDatas() != null) {
-            Set<String> clusters = new HashSet<>();
-            for (org.apache.rocketmq.remoting.protocol.route.BrokerData brokerData : routeData.getBrokerDatas()) {
-                String cluster = brokerData.getCluster();
-                if (cluster != null) {
-                    clusters.add(cluster);
+        // Delete subscription group config from all brokers, then delete the retry topic
+        org.apache.rocketmq.remoting.protocol.body.ClusterInfo clusterInfo =
+            mqAdminExt.examineBrokerClusterInfo();
+        if (clusterInfo != null && clusterInfo.getBrokerAddrTable() != null) {
+            for (org.apache.rocketmq.remoting.protocol.route.BrokerData brokerData
+                : clusterInfo.getBrokerAddrTable().values()) {
+                if (brokerData.getBrokerAddrs() != null) {
+                    String brokerAddr = brokerData.selectBrokerAddr();
+                    if (brokerAddr != null) {
+                        try {
+                            mqAdminExt.deleteSubscriptionGroup(brokerAddr, consumerGroup, true);
+                        } catch (Exception e) {
+                            log.warn("Failed to delete subscription group {} on broker {}",
+                                consumerGroup, brokerAddr, e);
+                        }
+                    }
                 }
             }
-            for (String clusterName : clusters) {
-                mqAdminExt.deleteTopic(retryTopic, clusterName);
+        }
+
+        // Also delete the retry topic
+        String retryTopic = "%RETRY%" + consumerGroup;
+        try {
+            TopicRouteData routeData = mqAdminExt.examineTopicRouteInfo(retryTopic);
+            if (routeData != null && routeData.getBrokerDatas() != null) {
+                Set<String> clusters = new HashSet<>();
+                for (org.apache.rocketmq.remoting.protocol.route.BrokerData bd : routeData.getBrokerDatas()) {
+                    String cluster = bd.getCluster();
+                    if (cluster != null) {
+                        clusters.add(cluster);
+                    }
+                }
+                for (String clusterName : clusters) {
+                    mqAdminExt.deleteTopic(retryTopic, clusterName);
+                }
             }
+        } catch (Exception e) {
+            log.debug("Retry topic {} not found or already deleted: {}", retryTopic, e.getMessage());
         }
     }
 

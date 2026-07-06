@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.dashboard.mcp.transport;
 
+import jakarta.annotation.PreDestroy;
 import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -53,6 +54,7 @@ public class SseTransport implements McpTransport {
 
     /** {@inheritDoc} */
     @Override
+    @PreDestroy
     public void stop() {
         for (SseEmitter emitter : emitters) {
             try {

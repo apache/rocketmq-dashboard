@@ -20,12 +20,19 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
+import java.util.TreeMap;
 import java.util.concurrent.Callable;
-import org.apache.rocketmq.dashboard.cli.context.CliContext;
+import org.apache.rocketmq.dashboard.cli.context.AdminClientHelper;
 import org.apache.rocketmq.dashboard.cli.output.OutputFormatter;
+import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
+import org.apache.rocketmq.remoting.protocol.body.KVTable;
+import org.apache.rocketmq.remoting.protocol.route.BrokerData;
+import org.apache.rocketmq.tools.admin.MQAdminExt;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
+import picocli.CommandLine.ParentCommand;
 
 @Command(name = "broker", description = "Broker management commands",
         subcommands = {BrokerCommand.ListCmd.class, BrokerCommand.DescribeCmd.class,
@@ -36,97 +43,144 @@ public class BrokerCommand {
 
     @Command(name = "list", description = "List all brokers in the cluster (L1)")
     static class ListCmd implements Callable<Integer> {
+        @ParentCommand
+        RmqctlCommand root;
+
         @Option(names = {"--cluster"}, description = "Target cluster name")
         String cluster;
 
         @Override
         public Integer call() throws Exception {
-            CliContext ctx = new CliContext();
-            String clusterName = cluster != null ? cluster : ctx.getCurrentContext();
-            System.out.println("Cluster: " + (clusterName != null ? clusterName : "(not set)"));
-            System.out.println();
+            MQAdminExt admin = AdminClientHelper.connectRaw(cluster, root);
+            try {
+                ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
+                Map<String, BrokerData> brokerAddrTable = clusterInfo.getBrokerAddrTable();
+                if (brokerAddrTable == null || brokerAddrTable.isEmpty()) {
+                    System.out.println("No brokers found in the cluster.");
+                    return 0;
+                }
 
-            List<Map<String, Object>> rows = new ArrayList<>();
+                List<Map<String, Object>> rows = new ArrayList<>();
+                for (Map.Entry<String, BrokerData> entry : brokerAddrTable.entrySet()) {
+                    String brokerName = entry.getKey();
+                    BrokerData brokerData = entry.getValue();
+                    Map<Long, String> brokerAddrs = brokerData.getBrokerAddrs();
+                    if (brokerAddrs == null || brokerAddrs.isEmpty()) {
+                        continue;
+                    }
 
-            Map<String, Object> row1 = new LinkedHashMap<>();
-            row1.put("BROKER NAME", "broker-a");
-            row1.put("ADDRESS", "10.0.2.10:10911");
-            row1.put("VERSION", "V5_2.0");
-            row1.put("ROLE", "Master");
-            row1.put("STATUS", "ONLINE");
-            row1.put("TOPICS", "12");
-            rows.add(row1);
+                    for (Map.Entry<Long, String> addrEntry : brokerAddrs.entrySet()) {
+                        Long brokerId = addrEntry.getKey();
+                        String brokerAddr = addrEntry.getValue();
+                        String role = (brokerId == 0L) ? "Master" : "Slave";
 
-            Map<String, Object> row2 = new LinkedHashMap<>();
-            row2.put("BROKER NAME", "broker-a-slave");
-            row2.put("ADDRESS", "10.0.2.11:10911");
-            row2.put("VERSION", "V5_2.0");
-            row2.put("ROLE", "Slave");
-            row2.put("STATUS", "ONLINE");
-            row2.put("TOPICS", "12");
-            rows.add(row2);
+                        Map<String, Object> row = new LinkedHashMap<>();
+                        row.put("BROKER NAME", brokerName);
+                        row.put("ADDRESS", brokerAddr);
+                        row.put("ROLE", role);
+                        row.put("STATUS", "ONLINE");
 
-            Map<String, Object> row3 = new LinkedHashMap<>();
-            row3.put("BROKER NAME", "broker-b");
-            row3.put("ADDRESS", "10.0.2.20:10911");
-            row3.put("VERSION", "V5_2.0");
-            row3.put("ROLE", "Master");
-            row3.put("STATUS", "ONLINE");
-            row3.put("TOPICS", "10");
-            rows.add(row3);
+                        try {
+                            KVTable runtimeStats = admin.fetchBrokerRuntimeStats(brokerAddr);
+                            Map<String, String> stats = runtimeStats.getTable();
+                            row.put("VERSION", stats.getOrDefault("brokerVersionDesc", "N/A"));
+                            row.put("TOPICS", stats.getOrDefault("topicCount", "N/A"));
+                        } catch (Exception e) {
+                            row.put("VERSION", "N/A");
+                            row.put("TOPICS", "N/A");
+                        }
 
-            Map<String, Object> row4 = new LinkedHashMap<>();
-            row4.put("BROKER NAME", "broker-c");
-            row4.put("ADDRESS", "10.0.2.30:10911");
-            row4.put("VERSION", "V5_2.0");
-            row4.put("ROLE", "Master");
-            row4.put("STATUS", "ONLINE");
-            row4.put("TOPICS", "8");
-            rows.add(row4);
+                        rows.add(row);
+                    }
+                }
 
-            System.out.println(OutputFormatter.format(rows, OutputFormatter.Format.TABLE));
-            System.out.println();
-            System.out.println("Note: This is sample data. Connect to a live cluster for real broker listing.");
+                System.out.println(OutputFormatter.format(rows, OutputFormatter.Format.TABLE));
+            } finally {
+                admin.shutdown();
+            }
             return 0;
         }
     }
 
     @Command(name = "describe", description = "Describe a broker in detail (L1)")
     static class DescribeCmd implements Callable<Integer> {
+        @ParentCommand
+        RmqctlCommand root;
+
         @Parameters(index = "0", description = "Broker name")
         String brokerName;
 
         @Override
         public Integer call() throws Exception {
-            Map<String, Object> result = new LinkedHashMap<>();
-            result.put("Broker Name", brokerName);
-            result.put("Cluster", "DefaultCluster");
-            result.put("Address", "10.0.2.10:10911");
-            result.put("Version", "V5_2.0");
-            result.put("Role", "Master");
-            result.put("Status", "ONLINE");
-            result.put("CommitLog Max Offset", "15,234,567,890");
-            result.put("CommitLog Min Offset", "0");
-            result.put("Topic Count", "12");
-            result.put("Queue Count", "96");
-            result.put("Boot Time", "2026-06-15 08:00:00");
-            result.put("Uptime", "19 days 3 hours 30 minutes");
-            result.put("In TPS", "1,500");
-            result.put("Out TPS", "1,500");
-            result.put("Producer Count", "8");
-            result.put("Consumer Count", "15");
-            result.put("Memory", "75% (3.0GB / 4.0GB)");
-            result.put("Disk", "45% (450GB / 1.0TB)");
+            MQAdminExt admin = AdminClientHelper.connectRaw(null, root);
+            try {
+                ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
+                Map<String, BrokerData> brokerAddrTable = clusterInfo.getBrokerAddrTable();
+                if (brokerAddrTable == null || !brokerAddrTable.containsKey(brokerName)) {
+                    System.err.println("Error: Broker '" + brokerName + "' not found in the cluster.");
+                    return 1;
+                }
 
-            System.out.println(OutputFormatter.format(result, OutputFormatter.Format.TABLE));
-            System.out.println();
-            System.out.println("Note: This is sample data. Connect to a live cluster for real broker details.");
+                BrokerData brokerData = brokerAddrTable.get(brokerName);
+                Map<Long, String> brokerAddrs = brokerData.getBrokerAddrs();
+                if (brokerAddrs == null || brokerAddrs.isEmpty()) {
+                    System.err.println("Error: No addresses found for broker '" + brokerName + "'.");
+                    return 1;
+                }
+
+                // Use master (brokerId=0) address for runtime stats
+                String masterAddr = brokerAddrs.get(0L);
+                if (masterAddr == null) {
+                    // Fall back to first available address
+                    masterAddr = brokerAddrs.values().iterator().next();
+                }
+
+                Map<String, Object> result = new LinkedHashMap<>();
+                result.put("Broker Name", brokerName);
+                result.put("Cluster", brokerData.getCluster() != null ? brokerData.getCluster() : "N/A");
+                result.put("Address", masterAddr);
+
+                try {
+                    KVTable runtimeStats = admin.fetchBrokerRuntimeStats(masterAddr);
+                    Map<String, String> stats = runtimeStats.getTable();
+
+                    result.put("Version", stats.getOrDefault("brokerVersionDesc", "N/A"));
+                    result.put("Role", "Master");
+                    result.put("Status", "ONLINE");
+                    result.put("Boot Time", stats.getOrDefault("bootTimestamp", "N/A"));
+                    result.put("Uptime", stats.getOrDefault("runtime", "N/A"));
+
+                    String putTps = stats.getOrDefault("putTps", "N/A");
+                    result.put("In TPS", putTps);
+                    result.put("Out TPS", stats.getOrDefault("getTransferedTps", "N/A"));
+
+                    result.put("CommitLog Max Offset", stats.getOrDefault("commitLogMaxOffset", "N/A"));
+                    result.put("CommitLog Min Offset", stats.getOrDefault("commitLogMinOffset", "N/A"));
+
+                    result.put("Topic Count", stats.getOrDefault("topicCount", "N/A"));
+                    result.put("Producer Count", stats.getOrDefault("producerCount", "N/A"));
+                    result.put("Consumer Count", stats.getOrDefault("consumerCount", "N/A"));
+
+                    result.put("Put Message Average Speed", stats.getOrDefault("putMessageAverageSpeed", "N/A"));
+                    result.put("Put Message Size", stats.getOrDefault("putMessageSize", "N/A"));
+                } catch (Exception e) {
+                    result.put("Status", "UNREACHABLE");
+                    result.put("Error", e.getMessage());
+                }
+
+                System.out.println(OutputFormatter.format(result, OutputFormatter.Format.TABLE));
+            } finally {
+                admin.shutdown();
+            }
             return 0;
         }
     }
 
     @Command(name = "config", description = "Show broker runtime configuration (L1)")
     static class ConfigCmd implements Callable<Integer> {
+        @ParentCommand
+        RmqctlCommand root;
+
         @Parameters(index = "0", description = "Broker name")
         String brokerName;
 
@@ -135,62 +189,78 @@ public class BrokerCommand {
 
         @Override
         public Integer call() throws Exception {
-            CliContext ctx = new CliContext();
-            String cluster = ctx.getCurrentContext();
-            System.out.println("Cluster: " + (cluster != null ? cluster : "(not set)"));
-            System.out.println("Broker: " + brokerName);
-            if (filter != null) {
-                System.out.println("Filter: " + filter);
+            MQAdminExt admin = AdminClientHelper.connectRaw(null, root);
+            try {
+                ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
+                Map<String, BrokerData> brokerAddrTable = clusterInfo.getBrokerAddrTable();
+                if (brokerAddrTable == null || !brokerAddrTable.containsKey(brokerName)) {
+                    System.err.println("Error: Broker '" + brokerName + "' not found in the cluster.");
+                    return 1;
+                }
+
+                BrokerData brokerData = brokerAddrTable.get(brokerName);
+                Map<Long, String> brokerAddrs = brokerData.getBrokerAddrs();
+                if (brokerAddrs == null || brokerAddrs.isEmpty()) {
+                    System.err.println("Error: No addresses found for broker '" + brokerName + "'.");
+                    return 1;
+                }
+
+                // Use master (brokerId=0) address
+                String brokerAddr = brokerAddrs.get(0L);
+                if (brokerAddr == null) {
+                    brokerAddr = brokerAddrs.values().iterator().next();
+                }
+
+                Properties props = admin.getBrokerConfig(brokerAddr);
+
+                // Build sorted config entries, applying filter if specified
+                String[] filterKeys = null;
+                if (filter != null && !filter.isEmpty()) {
+                    filterKeys = filter.split(",");
+                }
+
+                TreeMap<String, String> sortedConfig = new TreeMap<>();
+                for (String key : props.stringPropertyNames()) {
+                    if (filterKeys != null) {
+                        boolean matched = false;
+                        String keyLower = key.toLowerCase();
+                        for (String f : filterKeys) {
+                            if (keyLower.contains(f.trim().toLowerCase())) {
+                                matched = true;
+                                break;
+                            }
+                        }
+                        if (!matched) {
+                            continue;
+                        }
+                    }
+                    sortedConfig.put(key, props.getProperty(key));
+                }
+
+                if (sortedConfig.isEmpty()) {
+                    System.out.println("No configuration entries found" +
+                            (filter != null ? " matching filter '" + filter + "'" : "") + ".");
+                    return 0;
+                }
+
+                List<Map<String, Object>> rows = new ArrayList<>();
+                for (Map.Entry<String, String> entry : sortedConfig.entrySet()) {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("CONFIG KEY", entry.getKey());
+                    row.put("VALUE", entry.getValue());
+                    rows.add(row);
+                }
+
+                System.out.println("Broker: " + brokerName);
+                System.out.println("Address: " + brokerAddr);
+                if (filter != null) {
+                    System.out.println("Filter: " + filter);
+                }
+                System.out.println();
+                System.out.println(OutputFormatter.format(rows, OutputFormatter.Format.TABLE));
+            } finally {
+                admin.shutdown();
             }
-            System.out.println();
-
-            List<Map<String, Object>> rows = new ArrayList<>();
-
-            Map<String, Object> row1 = new LinkedHashMap<>();
-            row1.put("CONFIG KEY", "flushDiskType");
-            row1.put("VALUE", "ASYNC_FLUSH");
-            row1.put("DEFAULT", "ASYNC_FLUSH");
-            row1.put("DYNAMIC", "true");
-            rows.add(row1);
-
-            Map<String, Object> row2 = new LinkedHashMap<>();
-            row2.put("CONFIG KEY", "flushCommitLogTimed");
-            row2.put("VALUE", "false");
-            row2.put("DEFAULT", "false");
-            row2.put("DYNAMIC", "true");
-            rows.add(row2);
-
-            Map<String, Object> row3 = new LinkedHashMap<>();
-            row3.put("CONFIG KEY", "syncFlushTimeout");
-            row3.put("VALUE", "5000");
-            row3.put("DEFAULT", "5000");
-            row3.put("DYNAMIC", "false");
-            rows.add(row3);
-
-            Map<String, Object> row4 = new LinkedHashMap<>();
-            row4.put("CONFIG KEY", "brokerRole");
-            row4.put("VALUE", "SYNC_MASTER");
-            row4.put("DEFAULT", "ASYNC_MASTER");
-            row4.put("DYNAMIC", "false");
-            rows.add(row4);
-
-            Map<String, Object> row5 = new LinkedHashMap<>();
-            row5.put("CONFIG KEY", "maxMessageSize");
-            row5.put("VALUE", "4194304");
-            row5.put("DEFAULT", "4194304");
-            row5.put("DYNAMIC", "true");
-            rows.add(row5);
-
-            Map<String, Object> row6 = new LinkedHashMap<>();
-            row6.put("CONFIG KEY", "sendMessageThreadPoolNums");
-            row6.put("VALUE", "8");
-            row6.put("DEFAULT", "8");
-            row6.put("DYNAMIC", "false");
-            rows.add(row6);
-
-            System.out.println(OutputFormatter.format(rows, OutputFormatter.Format.TABLE));
-            System.out.println();
-            System.out.println("Note: This is sample data. Connect to a live cluster for real broker configuration.");
             return 0;
         }
     }
