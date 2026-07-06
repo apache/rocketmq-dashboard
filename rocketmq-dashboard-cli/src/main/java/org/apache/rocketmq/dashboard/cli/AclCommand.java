@@ -25,6 +25,7 @@ import java.util.concurrent.Callable;
 import org.apache.rocketmq.dashboard.cli.context.CliContext;
 import org.apache.rocketmq.dashboard.cli.output.OutputFormatter;
 import org.apache.rocketmq.dashboard.cli.security.DryRunResult;
+import org.apache.rocketmq.dashboard.cli.RmqctlCommand;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
@@ -37,10 +38,16 @@ import picocli.CommandLine.ParentCommand;
 /** CLI commands for ACL policy management: list, create (L2), update (L2), delete (L3). */
 public class AclCommand {
 
+    @ParentCommand
+    RmqctlCommand root;
+
     @Command(name = "list", description = "List all ACL entries (L1)")
     static class ListCmd implements Callable<Integer> {
         @Option(names = {"--cluster"}, description = "Target cluster name")
         String cluster;
+
+        @ParentCommand
+        AclCommand parent;
 
         @Override
         public Integer call() throws Exception {

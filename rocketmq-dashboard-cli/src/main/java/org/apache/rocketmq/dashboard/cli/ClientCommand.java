@@ -43,6 +43,9 @@ import picocli.CommandLine.ParentCommand;
 /** CLI commands for client management: list connected clients and describe individual client details. */
 public class ClientCommand {
 
+    @ParentCommand
+    RmqctlCommand root;
+
     /**
      * Holds aggregated client information collected from consumer and producer connections.
      */
@@ -66,13 +69,13 @@ public class ClientCommand {
         String group;
 
         @ParentCommand
-        RmqctlCommand root;
+        ClientCommand parent;
 
         @Override
         public Integer call() throws Exception {
             MQAdminExt admin = null;
             try {
-                admin = AdminClientHelper.connectRaw(cluster, root);
+                admin = AdminClientHelper.connectRaw(cluster, parent.root);
 
                 // Collect all consumer groups across all brokers
                 Set<String> allGroups = new TreeSet<>();
@@ -229,13 +232,13 @@ public class ClientCommand {
         String cluster;
 
         @ParentCommand
-        RmqctlCommand root;
+        ClientCommand parent;
 
         @Override
         public Integer call() throws Exception {
             MQAdminExt admin = null;
             try {
-                admin = AdminClientHelper.connectRaw(cluster, root);
+                admin = AdminClientHelper.connectRaw(cluster, parent.root);
 
                 // Collect all consumer groups across all brokers
                 Set<String> allGroups = new TreeSet<>();

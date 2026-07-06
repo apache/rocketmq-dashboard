@@ -19,6 +19,7 @@ package org.apache.rocketmq.dashboard.cli;
 import java.util.Arrays;
 import java.util.concurrent.Callable;
 import org.apache.rocketmq.dashboard.cli.security.DryRunResult;
+import org.apache.rocketmq.dashboard.cli.RmqctlCommand;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Parameters;
 import picocli.CommandLine.ParentCommand;
@@ -30,8 +31,14 @@ import picocli.CommandLine.ParentCommand;
 /** CLI commands for namespace management (V5+): list, create (L2), delete (L3). */
 public class NamespaceCommand {
 
+    @ParentCommand
+    RmqctlCommand root;
+
     @Command(name = "list", description = "List all namespaces")
     static class ListCmd implements Callable<Integer> {
+        @ParentCommand
+        NamespaceCommand parent;
+
         @Override
         public Integer call() throws Exception {
             System.out.println("NAMESPACE\n--------");

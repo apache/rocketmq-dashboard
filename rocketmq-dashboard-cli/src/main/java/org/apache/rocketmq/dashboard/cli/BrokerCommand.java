@@ -41,17 +41,20 @@ import picocli.CommandLine.ParentCommand;
 /** CLI commands for broker operations: list brokers, describe broker details, view/update broker configuration. */
 public class BrokerCommand {
 
+    @ParentCommand
+    RmqctlCommand root;
+
     @Command(name = "list", description = "List all brokers in the cluster (L1)")
     static class ListCmd implements Callable<Integer> {
         @ParentCommand
-        RmqctlCommand root;
+        BrokerCommand parent;
 
         @Option(names = {"--cluster"}, description = "Target cluster name")
         String cluster;
 
         @Override
         public Integer call() throws Exception {
-            MQAdminExt admin = AdminClientHelper.connectRaw(cluster, root);
+            MQAdminExt admin = AdminClientHelper.connectRaw(cluster, parent.root);
             try {
                 ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
                 Map<String, BrokerData> brokerAddrTable = clusterInfo.getBrokerAddrTable();
@@ -105,14 +108,14 @@ public class BrokerCommand {
     @Command(name = "describe", description = "Describe a broker in detail (L1)")
     static class DescribeCmd implements Callable<Integer> {
         @ParentCommand
-        RmqctlCommand root;
+        BrokerCommand parent;
 
         @Parameters(index = "0", description = "Broker name")
         String brokerName;
 
         @Override
         public Integer call() throws Exception {
-            MQAdminExt admin = AdminClientHelper.connectRaw(null, root);
+            MQAdminExt admin = AdminClientHelper.connectRaw(null, parent.root);
             try {
                 ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
                 Map<String, BrokerData> brokerAddrTable = clusterInfo.getBrokerAddrTable();
@@ -179,7 +182,7 @@ public class BrokerCommand {
     @Command(name = "config", description = "Show broker runtime configuration (L1)")
     static class ConfigCmd implements Callable<Integer> {
         @ParentCommand
-        RmqctlCommand root;
+        BrokerCommand parent;
 
         @Parameters(index = "0", description = "Broker name")
         String brokerName;
@@ -189,7 +192,7 @@ public class BrokerCommand {
 
         @Override
         public Integer call() throws Exception {
-            MQAdminExt admin = AdminClientHelper.connectRaw(null, root);
+            MQAdminExt admin = AdminClientHelper.connectRaw(null, parent.root);
             try {
                 ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
                 Map<String, BrokerData> brokerAddrTable = clusterInfo.getBrokerAddrTable();

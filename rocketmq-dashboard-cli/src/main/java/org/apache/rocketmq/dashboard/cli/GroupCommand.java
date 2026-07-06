@@ -49,17 +49,20 @@ import picocli.CommandLine.ParentCommand;
 /** CLI commands for consumer group management: list, describe, create (L2), update (L2), reset-offset (L2), delete (L3). */
 public class GroupCommand {
 
+    @ParentCommand
+    RmqctlCommand root;
+
     @Command(name = "list", description = "List all consumer groups (L1)")
     static class ListCmd implements Callable<Integer> {
         @Option(names = {"--cluster"}, description = "Target cluster name")
         String cluster;
 
         @ParentCommand
-        RmqctlCommand root;
+        GroupCommand parent;
 
         @Override
         public Integer call() throws Exception {
-            try (AdminClientHelper admin = AdminClientHelper.connect(cluster, root)) {
+            try (AdminClientHelper admin = AdminClientHelper.connect(cluster, parent.root)) {
                 MQAdminExt mqAdminExt = admin.getMqAdminExt();
 
                 // Collect all subscription groups across all brokers
@@ -135,11 +138,11 @@ public class GroupCommand {
         String cluster;
 
         @ParentCommand
-        RmqctlCommand root;
+        GroupCommand parent;
 
         @Override
         public Integer call() throws Exception {
-            try (AdminClientHelper admin = AdminClientHelper.connect(cluster, root)) {
+            try (AdminClientHelper admin = AdminClientHelper.connect(cluster, parent.root)) {
                 MQAdminExt mqAdminExt = admin.getMqAdminExt();
 
                 // Find the subscription group config from brokers
@@ -238,14 +241,11 @@ public class GroupCommand {
         @ParentCommand
         GroupCommand parent;
 
-        @ParentCommand
-        RmqctlCommand root;
-
         @Override
         public Integer call() throws Exception {
-            if (root != null && root.isYes()) {
+            if (parent.root != null && parent.root.isYes()) {
                 // Execute the create operation
-                try (AdminClientHelper admin = AdminClientHelper.connect(cluster, root)) {
+                try (AdminClientHelper admin = AdminClientHelper.connect(cluster, parent.root)) {
                     SubscriptionGroupConfig config = new SubscriptionGroupConfig();
                     config.setGroupName(groupName);
                     config.setConsumeEnable(true);
@@ -322,14 +322,11 @@ public class GroupCommand {
         @ParentCommand
         GroupCommand parent;
 
-        @ParentCommand
-        RmqctlCommand root;
-
         @Override
         public Integer call() throws Exception {
-            if (root != null && root.isYes()) {
+            if (parent.root != null && parent.root.isYes()) {
                 // Execute the update operation
-                try (AdminClientHelper admin = AdminClientHelper.connect(cluster, root)) {
+                try (AdminClientHelper admin = AdminClientHelper.connect(cluster, parent.root)) {
                     // Fetch existing config from a broker
                     SubscriptionGroupConfig existingConfig = admin.examineSubscriptionGroupConfig(groupName);
                     if (existingConfig == null) {
@@ -421,9 +418,6 @@ public class GroupCommand {
         @ParentCommand
         GroupCommand parent;
 
-        @ParentCommand
-        RmqctlCommand root;
-
         @Override
         public Integer call() throws Exception {
             // Determine target timestamp
@@ -446,9 +440,9 @@ public class GroupCommand {
                 offsetTarget = "current time";
             }
 
-            if (root != null && root.isYes()) {
+            if (parent.root != null && parent.root.isYes()) {
                 // Execute the reset-offset operation
-                try (AdminClientHelper admin = AdminClientHelper.connect(cluster, root)) {
+                try (AdminClientHelper admin = AdminClientHelper.connect(cluster, parent.root)) {
                     MQAdminExt mqAdminExt = admin.getMqAdminExt();
 
                     Map<?, ?> resetResult = mqAdminExt.resetOffsetByTimestamp(topicName, groupName, targetTimestamp, forceReset);
@@ -516,14 +510,11 @@ public class GroupCommand {
         @ParentCommand
         GroupCommand parent;
 
-        @ParentCommand
-        RmqctlCommand root;
-
         @Override
         public Integer call() throws Exception {
-            if (root != null && root.isYes() && root.isForce()) {
+            if (parent.root != null && parent.root.isYes() && parent.root.isForce()) {
                 // Execute the delete operation
-                try (AdminClientHelper admin = AdminClientHelper.connect(cluster, root)) {
+                try (AdminClientHelper admin = AdminClientHelper.connect(cluster, parent.root)) {
                     int brokerCount = admin.deleteConsumerGroupFromAllBrokers(groupName);
 
                     String clusterName = admin.getClusterName();
@@ -550,10 +541,10 @@ public class GroupCommand {
                         + "' is a dangerous operation (L3).");
                 System.err.println("This will permanently remove the group and ALL its consumer offsets.");
                 System.err.println("Affected: " + groupName + " (all subscription and offset data)");
-                if (root == null || !root.isYes()) {
+                if (parent.root == null || !parent.root.isYes()) {
                     System.err.println("HINT: Add --yes to confirm execution.");
                 }
-                if (root == null || !root.isForce()) {
+                if (parent.root == null || !parent.root.isForce()) {
                     System.err.println("HINT: Add --force to acknowledge this is a destructive L3 operation.");
                 }
                 System.err.println("HINT: Use --yes --force to proceed, or manage via the Web Console at /consumer");

@@ -48,6 +48,9 @@ import picocli.CommandLine.ParentCommand;
 /** CLI commands for message operations: query-by-id, query-by-time, resend (L2). */
 public class MessageCommand {
 
+    @ParentCommand
+    RmqctlCommand root;
+
     private static final String DATETIME_FMT = "yyyy-MM-dd HH:mm:ss.SSS";
 
     private static String formatTimestamp(long ts) {
@@ -81,13 +84,13 @@ public class MessageCommand {
         String topicName;
 
         @ParentCommand
-        RmqctlCommand root;
+        MessageCommand parent;
 
         @Override
         public Integer call() throws Exception {
             MQAdminExt admin = null;
             try {
-                admin = AdminClientHelper.connectRaw(null, root);
+                admin = AdminClientHelper.connectRaw(null, parent.root);
                 MessageExt msg = admin.viewMessage(topicName, messageId);
 
                 Map<String, Object> result = new LinkedHashMap<>();
@@ -135,7 +138,7 @@ public class MessageCommand {
         int maxNum;
 
         @ParentCommand
-        RmqctlCommand root;
+        MessageCommand parent;
 
         @Override
         public Integer call() throws Exception {
@@ -154,7 +157,7 @@ public class MessageCommand {
 
             MQAdminExt admin = null;
             try {
-                admin = AdminClientHelper.connectRaw(null, root);
+                admin = AdminClientHelper.connectRaw(null, parent.root);
 
                 System.out.println("Topic: " + topicName);
                 System.out.println("Time Range: " + formatTimestamp(beginTimestamp)
@@ -212,15 +215,12 @@ public class MessageCommand {
         @ParentCommand
         MessageCommand parent;
 
-        @ParentCommand
-        RmqctlCommand root;
-
         @Override
         public Integer call() throws Exception {
-            if (root != null && root.isYes()) {
+            if (parent.root != null && parent.root.isYes()) {
                 MQAdminExt admin = null;
                 try {
-                    admin = AdminClientHelper.connectRaw(null, root);
+                    admin = AdminClientHelper.connectRaw(null, parent.root);
 
                     // Find a live consumer clientId from the target group
                     String clientId = null;
@@ -243,7 +243,7 @@ public class MessageCommand {
                     ConsumeMessageDirectlyResult result = admin.consumeMessageDirectly(
                             groupName, clientId, topicName, messageId);
 
-                    String clusterName = root.getCluster();
+                    String clusterName = parent.root.getCluster();
                     System.out.println("Message '" + messageId + "' resent to group '" + groupName
                             + "' via consumer '" + clientId + "'.");
                     System.out.println("Result: " + (result.getConsumeResult() != null
@@ -263,7 +263,7 @@ public class MessageCommand {
                     System.err.println("Error: Failed to resend message '" + messageId
                             + "' to group '" + groupName + "' - " + e.getMessage());
                     AuditLogger.getInstance().log(
-                            root.getCluster() != null ? root.getCluster() : "(default)",
+                            parent.root.getCluster() != null ? parent.root.getCluster() : "(default)",
                             "message resend " + messageId + " -> " + groupName,
                             "FAILED: " + e.getMessage(),
                             System.getProperty("user.name", "unknown"));

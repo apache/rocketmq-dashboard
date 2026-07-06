@@ -39,14 +39,15 @@ public class CommandClassesTest extends AbstractCliTest {
 
     @Test
     public void testClusterList() throws Exception {
-        ClusterCommand.ListClusters cmd = new ClusterCommand.ListClusters();
+        ClusterCommand.ListCmd cmd = withParent(new ClusterCommand.ListCmd(), newParentWithRoot(ClusterCommand.class));
         int result = cmd.call();
         Assert.assertEquals(0, result);
     }
 
     @Test
     public void testClusterDescribe() throws Exception {
-        ClusterCommand.DescribeCluster cmd = new ClusterCommand.DescribeCluster();
+        ClusterCommand.DescribeCmd cmd = new ClusterCommand.DescribeCmd();
+        withParent(cmd, newParentWithRoot(ClusterCommand.class));
         cmd.clusterName = null;
         int result = cmd.call();
         Assert.assertEquals(1, result);
@@ -54,7 +55,8 @@ public class CommandClassesTest extends AbstractCliTest {
 
     @Test
     public void testClusterDescribeWithName() throws Exception {
-        ClusterCommand.DescribeCluster cmd = new ClusterCommand.DescribeCluster();
+        ClusterCommand.DescribeCmd cmd = new ClusterCommand.DescribeCmd();
+        withParent(cmd, newParentWithRoot(ClusterCommand.class));
         cmd.clusterName = "non-existent-cluster";
         int result = cmd.call();
         Assert.assertEquals(1, result);
@@ -71,9 +73,9 @@ public class CommandClassesTest extends AbstractCliTest {
 
     @Test
     public void testTopicList() throws Exception {
-        TopicCommand.ListCmd cmd = new TopicCommand.ListCmd();
+        TopicCommand.ListCmd cmd = withParent(new TopicCommand.ListCmd(), newParentWithRoot(TopicCommand.class));
         int result = cmd.call();
-        Assert.assertEquals(0, result);
+        Assert.assertEquals(1, result);
     }
 
     @Test
@@ -81,12 +83,13 @@ public class CommandClassesTest extends AbstractCliTest {
         TopicCommand.DescribeCmd cmd = new TopicCommand.DescribeCmd();
         cmd.topicName = "test-topic";
         int result = cmd.call();
-        Assert.assertEquals(0, result);
+        Assert.assertEquals(1, result);
     }
 
     @Test
     public void testTopicCreate() throws Exception {
         TopicCommand.CreateCmd cmd = new TopicCommand.CreateCmd();
+        withParent(cmd, newParentWithRoot(TopicCommand.class));
         cmd.topicName = "new-topic";
         int result = cmd.call();
         Assert.assertEquals(0, result);
@@ -95,6 +98,7 @@ public class CommandClassesTest extends AbstractCliTest {
     @Test
     public void testTopicUpdate() throws Exception {
         TopicCommand.UpdateCmd cmd = new TopicCommand.UpdateCmd();
+        withParent(cmd, newParentWithRoot(TopicCommand.class));
         cmd.topicName = "existing-topic";
         cmd.readQueue = 16;
         cmd.writeQueue = 16;
@@ -105,6 +109,7 @@ public class CommandClassesTest extends AbstractCliTest {
     @Test
     public void testTopicDelete() throws Exception {
         TopicCommand.DeleteCmd cmd = new TopicCommand.DeleteCmd();
+        withParent(cmd, newParentWithRoot(TopicCommand.class));
         cmd.topicName = "doomed-topic";
         int result = cmd.call();
         Assert.assertEquals(1, result);
@@ -123,7 +128,7 @@ public class CommandClassesTest extends AbstractCliTest {
     public void testGroupList() throws Exception {
         GroupCommand.ListCmd cmd = new GroupCommand.ListCmd();
         int result = cmd.call();
-        Assert.assertEquals(0, result);
+        Assert.assertEquals(1, result);
     }
 
     @Test
@@ -131,12 +136,13 @@ public class CommandClassesTest extends AbstractCliTest {
         GroupCommand.DescribeCmd cmd = new GroupCommand.DescribeCmd();
         cmd.groupName = "test-group";
         int result = cmd.call();
-        Assert.assertEquals(0, result);
+        Assert.assertEquals(1, result);
     }
 
     @Test
     public void testGroupCreate() throws Exception {
         GroupCommand.CreateCmd cmd = new GroupCommand.CreateCmd();
+        withParent(cmd, newParentWithRoot(GroupCommand.class));
         cmd.groupName = "new-group";
         int result = cmd.call();
         Assert.assertEquals(0, result);
@@ -145,6 +151,7 @@ public class CommandClassesTest extends AbstractCliTest {
     @Test
     public void testGroupUpdate() throws Exception {
         GroupCommand.UpdateCmd cmd = new GroupCommand.UpdateCmd();
+        withParent(cmd, newParentWithRoot(GroupCommand.class));
         cmd.groupName = "existing-group";
         cmd.retryMax = 10;
         int result = cmd.call();
@@ -154,6 +161,7 @@ public class CommandClassesTest extends AbstractCliTest {
     @Test
     public void testGroupResetOffset() throws Exception {
         GroupCommand.ResetOffsetCmd cmd = new GroupCommand.ResetOffsetCmd();
+        withParent(cmd, newParentWithRoot(GroupCommand.class));
         cmd.groupName = "test-group";
         cmd.topicName = "test-topic";
         cmd.timestamp = "2026-07-04 10:00:00";
@@ -164,6 +172,7 @@ public class CommandClassesTest extends AbstractCliTest {
     @Test
     public void testGroupResetOffsetByInterval() throws Exception {
         GroupCommand.ResetOffsetCmd cmd = new GroupCommand.ResetOffsetCmd();
+        withParent(cmd, newParentWithRoot(GroupCommand.class));
         cmd.groupName = "test-group";
         cmd.topicName = "test-topic";
         cmd.intervalHours = 24L;
@@ -174,6 +183,7 @@ public class CommandClassesTest extends AbstractCliTest {
     @Test
     public void testGroupResetOffsetDefaultToLatest() throws Exception {
         GroupCommand.ResetOffsetCmd cmd = new GroupCommand.ResetOffsetCmd();
+        withParent(cmd, newParentWithRoot(GroupCommand.class));
         cmd.groupName = "test-group";
         cmd.topicName = "test-topic";
         int result = cmd.call();
@@ -183,6 +193,7 @@ public class CommandClassesTest extends AbstractCliTest {
     @Test
     public void testGroupDelete() throws Exception {
         GroupCommand.DeleteCmd cmd = new GroupCommand.DeleteCmd();
+        withParent(cmd, newParentWithRoot(GroupCommand.class));
         cmd.groupName = "doomed-group";
         int result = cmd.call();
         Assert.assertEquals(1, result);
@@ -203,7 +214,7 @@ public class CommandClassesTest extends AbstractCliTest {
         cmd.messageId = "test-msg-id";
         cmd.topicName = "test-topic";
         int result = cmd.call();
-        Assert.assertEquals(0, result);
+        Assert.assertEquals(1, result);
     }
 
     @Test
@@ -214,12 +225,13 @@ public class CommandClassesTest extends AbstractCliTest {
         cmd.endT = "2026-07-04 11:00:00";
         cmd.maxNum = 10;
         int result = cmd.call();
-        Assert.assertEquals(0, result);
+        Assert.assertEquals(1, result);
     }
 
     @Test
     public void testMessageResend() throws Exception {
         MessageCommand.ResendCmd cmd = new MessageCommand.ResendCmd();
+        withParent(cmd, newParentWithRoot(MessageCommand.class));
         cmd.messageId = "test-msg-id";
         cmd.groupName = "test-group";
         cmd.topicName = "test-topic";
@@ -240,7 +252,7 @@ public class CommandClassesTest extends AbstractCliTest {
     public void testClientList() throws Exception {
         ClientCommand.ListCmd cmd = new ClientCommand.ListCmd();
         int result = cmd.call();
-        Assert.assertEquals(0, result);
+        Assert.assertEquals(1, result);
     }
 
     @Test
@@ -248,7 +260,7 @@ public class CommandClassesTest extends AbstractCliTest {
         ClientCommand.ListCmd cmd = new ClientCommand.ListCmd();
         cmd.group = "test-group";
         int result = cmd.call();
-        Assert.assertEquals(0, result);
+        Assert.assertEquals(1, result);
     }
 
     @Test
@@ -256,7 +268,7 @@ public class CommandClassesTest extends AbstractCliTest {
         ClientCommand.DescribeCmd cmd = new ClientCommand.DescribeCmd();
         cmd.clientId = "test-client-id";
         int result = cmd.call();
-        Assert.assertEquals(0, result);
+        Assert.assertEquals(1, result);
     }
 
     // ---- AclCommand ----
@@ -314,33 +326,53 @@ public class CommandClassesTest extends AbstractCliTest {
     @Test
     public void testBrokerList() throws Exception {
         BrokerCommand.ListCmd cmd = new BrokerCommand.ListCmd();
-        int result = cmd.call();
-        Assert.assertEquals(0, result);
+        withParent(cmd, newParentWithRoot(BrokerCommand.class));
+        try {
+            cmd.call();
+            Assert.fail("Expected IllegalStateException");
+        } catch (IllegalStateException e) {
+            Assert.assertTrue(e.getMessage().contains("No cluster specified"));
+        }
     }
 
     @Test
     public void testBrokerDescribe() throws Exception {
         BrokerCommand.DescribeCmd cmd = new BrokerCommand.DescribeCmd();
+        withParent(cmd, newParentWithRoot(BrokerCommand.class));
         cmd.brokerName = "broker-a";
-        int result = cmd.call();
-        Assert.assertEquals(0, result);
+        try {
+            cmd.call();
+            Assert.fail("Expected IllegalStateException");
+        } catch (IllegalStateException e) {
+            Assert.assertTrue(e.getMessage().contains("No cluster specified"));
+        }
     }
 
     @Test
     public void testBrokerConfig() throws Exception {
         BrokerCommand.ConfigCmd cmd = new BrokerCommand.ConfigCmd();
+        withParent(cmd, newParentWithRoot(BrokerCommand.class));
         cmd.brokerName = "broker-a";
-        int result = cmd.call();
-        Assert.assertEquals(0, result);
+        try {
+            cmd.call();
+            Assert.fail("Expected IllegalStateException");
+        } catch (IllegalStateException e) {
+            Assert.assertTrue(e.getMessage().contains("No cluster specified"));
+        }
     }
 
     @Test
     public void testBrokerConfigWithFilter() throws Exception {
         BrokerCommand.ConfigCmd cmd = new BrokerCommand.ConfigCmd();
+        withParent(cmd, newParentWithRoot(BrokerCommand.class));
         cmd.brokerName = "broker-a";
         cmd.filter = "flush";
-        int result = cmd.call();
-        Assert.assertEquals(0, result);
+        try {
+            cmd.call();
+            Assert.fail("Expected IllegalStateException");
+        } catch (IllegalStateException e) {
+            Assert.assertTrue(e.getMessage().contains("No cluster specified"));
+        }
     }
 
     // ---- MetricsCommand ----
