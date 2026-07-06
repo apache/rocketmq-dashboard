@@ -27,8 +27,10 @@ import java.util.List;
 import java.util.Set;
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.LoaderOptions;
+import org.yaml.snakeyaml.TypeDescription;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.Constructor;
+import org.yaml.snakeyaml.nodes.Tag;
 import org.yaml.snakeyaml.representer.Representer;
 
 /** Manages CLI context configuration persisted to ~/.rmqctl/config.yaml. Provides kubectl-style context switching and cluster registration. */
@@ -47,9 +49,12 @@ public class CliContext {
 
         Representer representer = new Representer(dumperOptions);
         representer.getPropertyUtils().setSkipMissingProperties(true);
-
+        representer.addClassTag(CliConfig.class, Tag.MAP);
         LoaderOptions loaderOptions = new LoaderOptions();
-        this.yaml = new Yaml(new Constructor(CliConfig.class, loaderOptions), representer, dumperOptions);
+        TypeDescription clientConfigDesc = new TypeDescription(CliConfig.class,
+                "tag:yaml.org,2002:org.apache.rocketmq.dashboard.cli.context.CliConfig");
+        Constructor constructor = new Constructor(clientConfigDesc, loaderOptions);
+        this.yaml = new Yaml(constructor, representer, dumperOptions);
         loadConfig();
     }
 

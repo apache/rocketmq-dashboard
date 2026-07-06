@@ -81,7 +81,10 @@ public class AdminClientHelper implements AutoCloseable {
             resolvedName = root.getCluster();
         }
         if (resolvedName == null) {
-            resolvedName = ctx.getCurrentContext();
+            CliConfig.ContextEntry contextEntry = ctx.resolveCurrentContext();
+            if (contextEntry != null) {
+                resolvedName = contextEntry.getCluster();
+            }
         }
         if (resolvedName == null) {
             throw new IllegalStateException("No cluster specified and no current context set. Use 'rmqctl config use-context' or --cluster.");
@@ -117,6 +120,7 @@ public class AdminClientHelper implements AutoCloseable {
         DefaultMQAdminExt mqAdminExt = new DefaultMQAdminExt(rpcHook, 10000);
         mqAdminExt.setAdminExtGroup("rmqctl_cli_" + System.currentTimeMillis());
         mqAdminExt.setVipChannelEnabled(false);
+        mqAdminExt.setNamesrvAddr(nsAddr);
         mqAdminExt.start();
 
         System.out.println("Connected to cluster: " + resolvedName + " (" + nsAddr + ")");
@@ -139,7 +143,10 @@ public class AdminClientHelper implements AutoCloseable {
             resolvedName = root.getCluster();
         }
         if (resolvedName == null) {
-            resolvedName = ctx.getCurrentContext();
+            CliConfig.ContextEntry contextEntry = ctx.resolveCurrentContext();
+            if (contextEntry != null) {
+                resolvedName = contextEntry.getCluster();
+            }
         }
         if (resolvedName == null) {
             throw new IllegalStateException("No cluster specified and no current context set. Use 'rmqctl config use-context' or --cluster.");
@@ -172,6 +179,7 @@ public class AdminClientHelper implements AutoCloseable {
         DefaultMQAdminExt mqAdminExt = new DefaultMQAdminExt(rpcHook, 10000);
         mqAdminExt.setAdminExtGroup("rmqctl_cli_" + System.currentTimeMillis());
         mqAdminExt.setVipChannelEnabled(false);
+        mqAdminExt.setNamesrvAddr(nsAddr);
         mqAdminExt.start();
 
         System.out.println("Connected to cluster: " + resolvedName + " (" + nsAddr + ")");

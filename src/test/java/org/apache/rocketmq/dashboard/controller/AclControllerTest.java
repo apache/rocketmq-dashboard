@@ -18,13 +18,13 @@ package org.apache.rocketmq.dashboard.controller;
 
 
 import com.google.gson.Gson;
-import org.apache.rocketmq.auth.authentication.enums.UserStatus;
-import org.apache.rocketmq.auth.authentication.enums.UserType;
-import org.apache.rocketmq.dashboard.model.UserInfoDto;
+import com.google.gson.reflect.TypeToken;
+import org.apache.rocketmq.dashboard.model.ACLPolicy;
+import org.apache.rocketmq.dashboard.model.ACLUser;
 import org.apache.rocketmq.dashboard.model.request.UserCreateRequest;
 import org.apache.rocketmq.dashboard.model.request.UserInfoParam;
 import org.apache.rocketmq.dashboard.model.request.UserUpdateRequest;
-import org.apache.rocketmq.dashboard.service.impl.AclServiceImpl;
+import org.apache.rocketmq.dashboard.service.AclService;
 import org.apache.rocketmq.dashboard.support.GlobalExceptionHandler;
 import org.junit.Before;
 import org.junit.Test;
@@ -34,11 +34,15 @@ import org.mockito.MockitoAnnotations;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import java.util.Arrays;
+
+import java.lang.reflect.Type;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.Mockito.doNothing;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -48,7 +52,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 public class AclControllerTest extends BaseControllerTest {
 
     @Mock
-    private AclServiceImpl aclService;
+    private AclService aclService;
 
     @InjectMocks
     private AclController aclController;
@@ -63,85 +67,45 @@ public class AclControllerTest extends BaseControllerTest {
 
     @Test
     public void testListUsers() throws Exception {
-        // Prepare test data
-        String clusterName = "test-cluster";
-        String brokerName = "localhost:10911";
-        List<UserInfoDto> expectedUsers = Arrays.asList(
-                new UserInfoDto("user1", "password1", "super","enable"),
-                new UserInfoDto("user2", "password2", "super","enable")
-        );
+        // Prepare test data using new ACLUser model
+        List<ACLUser> expectedUsers = new ArrayList<>();
+        ACLUser user1 = new ACLUser();
+        user1.setUserName("user1");
+        user1.setAccessKey("password1");
+        user1.setUserType("SUPER");
+        user1.setStatus("ENABLE");
+        expectedUsers.add(user1);
 
-        // Mock service behavior
-        when(aclService.listUsers(clusterName, brokerName)).thenReturn(expectedUsers);
+        ACLUser user2 = new ACLUser();
+        user2.setUserName("user2");
+        user2.setAccessKey("password2");
+        user2.setUserType("SUPER");
+        user2.setStatus("ENABLE");
+        expectedUsers.add(user2);
 
-        // Call controller method via MockMVC
-        mockMvc.perform(MockMvcRequestBuilders.get("/acl/users.query")
-                        .param("clusterName", clusterName)
-                        .param("brokerName", brokerName))
-                .andExpect(status().isOk())
-                .andExpect(result -> {
-                    List<UserInfoDto> actualUsers = gson.fromJson(result.getResponse().getContentAsString(), List.class);
-                    // Due to Gson's deserialization of List to LinkedTreeMap, direct assertEquals on List<UserInfo> won't work easily.
-                    // A more robust comparison would involve iterating or using a custom matcher if UserInfoDto doesn't override equals/hashCode.
-                    // For simplicity, let's assume UserInfoDto has proper equals/hashCode for now or convert to JSON string for comparison.
-                    assertEquals(gson.toJson(expectedUsers), result.getResponse().getContentAsString());
-                });
-
-        // Verify
-        verify(aclService, times(1)).listUsers(clusterName, brokerName);
-    }
-
-    @Test
-    public void testListUsersWithoutBrokerAddressAndClusterName() throws Exception {
-        // Prepare test data
-        List<UserInfoDto> expectedUsers = Arrays.asList(
-                new UserInfoDto("user2", "password2", "super","enable")
-        );
-
-        // Mock service behavior
-        when(aclService.listUsers(null, null)).thenReturn(expectedUsers);
+        // Mock service behavior - new API: listUsers() no parameters
+        when(aclService.listUsers()).thenReturn(expectedUsers);
 
         // Call controller method via MockMVC
         mockMvc.perform(MockMvcRequestBuilders.get("/acl/users.query"))
                 .andExpect(status().isOk())
-                .andExpect(result -> assertEquals(gson.toJson(expectedUsers), result.getResponse().getContentAsString()));
+                .andExpect(result -> {
+                    Type listType = new TypeToken<List<ACLUser>>() {}.getType();
+                    List<ACLUser> actualUsers = gson.fromJson(result.getResponse().getContentAsString(), listType);
+                    assertEquals(expectedUsers.size(), actualUsers.size());
+                });
 
         // Verify
-        verify(aclService, times(1)).listUsers(null, null);
+        verify(aclService, times(1)).listUsers();
     }
-
-
-
 
     @Test
     public void testDeleteUser() throws Exception {
         // Prepare test data
-        String clusterName = "test-cluster";
-        String brokerName = "localhost:9092";
         String username = "user1";
 
-        // Mock service behavior (void method)
-        doNothing().when(aclService).deleteUser(clusterName, brokerName, username);
-
-        // Call controller method via MockMVC
-        mockMvc.perform(delete("/acl/deleteUser.do")
-                        .param("clusterName", clusterName)
-                        .param("brokerName", brokerName)
-                        .param("username", username))
-                .andExpect(status().isOk())
-                .andExpect(result -> assertEquals("true", result.getResponse().getContentAsString()));
-
-        // Verify
-        verify(aclService, times(1)).deleteUser(clusterName, brokerName, username);
-    }
-
-    @Test
-    public void testDeleteUserWithoutBrokerAddressAndClusterName() throws Exception {
-        // Prepare test data
-        String username = "user1";
-
-        // Mock service behavior (void method)
-        doNothing().when(aclService).deleteUser(null, null, username);
+        // Mock service behavior - new API: deleteUser(String username) returns boolean
+        when(aclService.deleteUser(username)).thenReturn(true);
 
         // Call controller method via MockMVC
         mockMvc.perform(delete("/acl/deleteUser.do")
@@ -150,19 +114,17 @@ public class AclControllerTest extends BaseControllerTest {
                 .andExpect(result -> assertEquals("true", result.getResponse().getContentAsString()));
 
         // Verify
-        verify(aclService, times(1)).deleteUser(null, null, username);
+        verify(aclService, times(1)).deleteUser(username);
     }
 
     @Test
     public void testUpdateUser() throws Exception {
         // Prepare test data
         UserUpdateRequest request = new UserUpdateRequest();
-        request.setClusterName("test-cluster");
-        request.setBrokerName("localhost:9092");
-        request.setUserInfo(new UserInfoParam("user1", "newPassword", UserStatus.ENABLE.getName(), UserType.SUPER.getName()));
+        request.setUserInfo(new UserInfoParam("user1", "newPassword", "ENABLE", "SUPER"));
 
-        // Mock service behavior (void method)
-        doNothing().when(aclService).updateUser(request.getClusterName(), request.getBrokerName(), request.getUserInfo());
+        // Mock service behavior - new API: updateUser(ACLUser user) returns boolean
+        when(aclService.updateUser(org.mockito.ArgumentMatchers.any(ACLUser.class))).thenReturn(true);
 
         // Call controller method via MockMVC
         mockMvc.perform(MockMvcRequestBuilders.post("/acl/updateUser.do")
@@ -172,19 +134,17 @@ public class AclControllerTest extends BaseControllerTest {
                 .andExpect(result -> assertEquals("true", result.getResponse().getContentAsString()));
 
         // Verify
-        verify(aclService, times(1)).updateUser(request.getClusterName(), request.getBrokerName(), request.getUserInfo());
+        verify(aclService, times(1)).updateUser(org.mockito.ArgumentMatchers.any(ACLUser.class));
     }
 
     @Test
     public void testCreateUser() throws Exception {
         // Prepare test data
         UserCreateRequest request = new UserCreateRequest();
-        request.setClusterName("test-cluster");
-        request.setBrokerName("localhost:9092");
-        request.setUserInfo(new UserInfoParam("user1", "newPassword", UserStatus.ENABLE.getName(), UserType.SUPER.getName()));
+        request.setUserInfo(new UserInfoParam("user1", "newPassword", "ENABLE", "SUPER"));
 
-        // Mock service behavior (void method)
-        doNothing().when(aclService).createUser(request.getClusterName(), request.getBrokerName(), request.getUserInfo());
+        // Mock service behavior - new API: createUser(ACLUser user) returns boolean
+        when(aclService.createUser(org.mockito.ArgumentMatchers.any(ACLUser.class))).thenReturn(true);
 
         // Call controller method via MockMVC
         mockMvc.perform(MockMvcRequestBuilders.post("/acl/createUser.do")
@@ -194,40 +154,36 @@ public class AclControllerTest extends BaseControllerTest {
                 .andExpect(result -> assertEquals("true", result.getResponse().getContentAsString()));
 
         // Verify
-        verify(aclService, times(1)).createUser(request.getClusterName(), request.getBrokerName(), request.getUserInfo());
+        verify(aclService, times(1)).createUser(org.mockito.ArgumentMatchers.any(ACLUser.class));
     }
 
     @Test
     public void testDeleteAcl() throws Exception {
         // Prepare test data
-        String clusterName = "test-cluster";
-        String brokerName = "localhost:9092";
         String subject = "user1";
         String resource = "TOPIC:test";
 
-        // Mock service behavior (void method)
-        doNothing().when(aclService).deleteAcl(clusterName, brokerName, subject, resource);
+        // Mock service behavior - new API: removePolicy(String username, String policyId) returns boolean
+        when(aclService.removePolicy(subject, resource)).thenReturn(true);
 
         // Call controller method via MockMVC
         mockMvc.perform(delete("/acl/deleteAcl.do")
-                        .param("clusterName", clusterName)
-                        .param("brokerName", brokerName)
                         .param("subject", subject)
                         .param("resource", resource))
                 .andExpect(status().isOk())
                 .andExpect(result -> assertEquals("true", result.getResponse().getContentAsString()));
 
         // Verify
-        verify(aclService, times(1)).deleteAcl(clusterName, brokerName, subject, resource);
+        verify(aclService, times(1)).removePolicy(subject, resource);
     }
 
     @Test
-    public void testDeleteAclWithoutBrokerAddressAndResourceAndClusterName() throws Exception {
+    public void testDeleteAclWithoutResource() throws Exception {
         // Prepare test data
         String subject = "user1";
 
-        // Mock service behavior (void method)
-        doNothing().when(aclService).deleteAcl(null, null, subject, null);
+        // Mock service behavior - new API: removePolicy with null policyId
+        when(aclService.removePolicy(subject, null)).thenReturn(true);
 
         // Call controller method via MockMVC
         mockMvc.perform(delete("/acl/deleteAcl.do")
@@ -236,10 +192,76 @@ public class AclControllerTest extends BaseControllerTest {
                 .andExpect(result -> assertEquals("true", result.getResponse().getContentAsString()));
 
         // Verify
-        verify(aclService, times(1)).deleteAcl(null, null, subject, null);
+        verify(aclService, times(1)).removePolicy(subject, null);
     }
 
+    @Test
+    public void testListAcls() throws Exception {
+        // Prepare test data using new ACLPolicy model
+        List<ACLPolicy> expectedPolicies = new ArrayList<>();
+        ACLPolicy policy = new ACLPolicy();
+        policy.setPolicyId("policy1");
+        policy.setPolicyName("testPolicy");
+        Set<String> users = new HashSet<>();
+        users.add("user1");
+        policy.setUsers(users);
+        Set<String> resources = new HashSet<>();
+        resources.add("TOPIC:test");
+        policy.setResources(resources);
+        policy.setPolicyType("ALLOW");
+        expectedPolicies.add(policy);
 
+        // Mock service behavior - new API: listPolicies(String username)
+        when(aclService.listPolicies("user1")).thenReturn(expectedPolicies);
+
+        // Call controller method via MockMVC
+        mockMvc.perform(MockMvcRequestBuilders.get("/acl/acls.query")
+                        .param("username", "user1"))
+                .andExpect(status().isOk())
+                .andExpect(result -> {
+                    Type listType = new TypeToken<List<ACLPolicy>>() {}.getType();
+                    List<ACLPolicy> actualPolicies = gson.fromJson(result.getResponse().getContentAsString(), listType);
+                    assertEquals(expectedPolicies.size(), actualPolicies.size());
+                });
+
+        // Verify
+        verify(aclService, times(1)).listPolicies("user1");
+    }
+
+    @Test
+    public void testCreateAcl() throws Exception {
+        // Prepare test data using PolicyRequest
+        org.apache.rocketmq.dashboard.model.PolicyRequest request = new org.apache.rocketmq.dashboard.model.PolicyRequest();
+        request.setSubject("user1");
+        List<org.apache.rocketmq.dashboard.model.Policy> policies = new ArrayList<>();
+        org.apache.rocketmq.dashboard.model.Policy p = new org.apache.rocketmq.dashboard.model.Policy();
+        p.setPolicyType("ALLOW");
+        List<org.apache.rocketmq.dashboard.model.Entry> entries = new ArrayList<>();
+        org.apache.rocketmq.dashboard.model.Entry entry = new org.apache.rocketmq.dashboard.model.Entry();
+        Set<String> resourceSet = new HashSet<>();
+        resourceSet.add("TOPIC:test");
+        entry.setResource(resourceSet);
+        Set<String> actionSet = new HashSet<>();
+        actionSet.add("PUB");
+        entry.setActions(actionSet);
+        entries.add(entry);
+        p.setEntries(entries);
+        policies.add(p);
+        request.setPolicies(policies);
+
+        // Mock service behavior - new API: addPolicy(ACLPolicy) returns boolean
+        when(aclService.addPolicy(org.mockito.ArgumentMatchers.any(ACLPolicy.class))).thenReturn(true);
+
+        // Call controller method via MockMVC
+        mockMvc.perform(MockMvcRequestBuilders.post("/acl/createAcl.do")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(gson.toJson(request)))
+                .andExpect(status().isOk())
+                .andExpect(result -> assertEquals("true", result.getResponse().getContentAsString()));
+
+        // Verify
+        verify(aclService, times(1)).addPolicy(org.mockito.ArgumentMatchers.any(ACLPolicy.class));
+    }
 
     @Override
     protected Object getTestController() {

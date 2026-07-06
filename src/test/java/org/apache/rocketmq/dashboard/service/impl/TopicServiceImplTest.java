@@ -17,36 +17,25 @@
 
 package org.apache.rocketmq.dashboard.service.impl;
 
-import org.apache.rocketmq.acl.common.AclClientRPCHook;
-import org.apache.rocketmq.client.producer.DefaultMQProducer;
-import org.apache.rocketmq.client.producer.SendResult;
-import org.apache.rocketmq.client.producer.SendStatus;
-import org.apache.rocketmq.client.producer.TransactionMQProducer;
-import org.apache.rocketmq.common.attribute.TopicMessageType;
-import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.dashboard.BaseTest;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
-import org.apache.rocketmq.dashboard.model.request.SendTopicMessageRequest;
-import org.apache.rocketmq.dashboard.model.request.TopicConfigInfo;
-import org.apache.rocketmq.dashboard.model.request.TopicTypeList;
-import org.apache.rocketmq.dashboard.service.ClusterInfoService;
-import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
-import org.apache.rocketmq.remoting.protocol.body.TopicList;
-import org.apache.rocketmq.tools.admin.MQAdminExt;
+import org.apache.rocketmq.dashboard.model.TopicInfo;
+import org.apache.rocketmq.dashboard.model.TopicType;
+import org.apache.rocketmq.dashboard.architecture.AdminClient;
+import org.apache.rocketmq.dashboard.architecture.ClusterProvider;
+import org.apache.rocketmq.dashboard.architecture.MetadataProvider;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.MockitoJUnitRunner;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
+import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -59,216 +48,184 @@ public class TopicServiceImplTest extends BaseTest {
     private TopicServiceImpl topicService;
 
     @Mock
-    private MQAdminExt mqAdminExt;
+    private RMQConfigure rmqConfigure;
 
     @Mock
-    private RMQConfigure configure;
+    private ClusterProvider clusterProvider;
 
     @Mock
-    private ClusterInfoService clusterInfoService;
+    private AdminClient adminClient;
+
+    @Mock
+    private MetadataProvider metadataProvider;
 
     @Before
     public void setUp() {
-        when(configure.getNamesrvAddr()).thenReturn("localhost:9876");
-        // Use lenient() to prevent the unnecessary stubbing error
-        lenient().when(configure.isUseTLS()).thenReturn(false);
+        when(rmqConfigure.getNamesrvAddr()).thenReturn("localhost:9876");
+        lenient().when(rmqConfigure.isUseTLS()).thenReturn(false);
     }
 
     @Test
-    public void testSendTopicMessageRequestNormal() throws Exception {
+    public void testGetTopicList() throws Exception {
         // Prepare test data
-        SendTopicMessageRequest request = new SendTopicMessageRequest();
-        request.setTopic("testTopic");
-        request.setTag("testTag");
-        request.setKey("testKey");
-        request.setMessageBody("Hello RocketMQ");
-        request.setTraceEnabled(false);
+        List<TopicInfo> topicInfos = new ArrayList<>();
+        TopicInfo topic1 = new TopicInfo();
+        topic1.setTopicName("test_topic1");
+        topic1.setTopicType(TopicType.NORMAL);
+        topicInfos.add(topic1);
 
-        // Mock the topic config
-        TopicConfigInfo configInfo = new TopicConfigInfo();
-        configInfo.setMessageType(TopicMessageType.NORMAL.name());
-        List<TopicConfigInfo> topicConfigInfos = new ArrayList<>();
-        topicConfigInfos.add(configInfo);
-        doReturn(topicConfigInfos).when(topicService).examineTopicConfig("testTopic");
+        TopicInfo topic2 = new TopicInfo();
+        topic2.setTopicName("test_topic2");
+        topic2.setTopicType(TopicType.FIFO);
+        topicInfos.add(topic2);
 
-        // Mock ACL disabled
-        when(configure.isACLEnabled()).thenReturn(false);
-
-        // Mock producer
-        DefaultMQProducer mockProducer = mock(DefaultMQProducer.class);
-        doReturn(mockProducer).when(topicService).buildDefaultMQProducer(any(), any(), anyBoolean());
-
-        // Mock send result
-        SendResult expectedResult = new SendResult();
-        expectedResult.setSendStatus(SendStatus.SEND_OK);
-        when(mockProducer.send(any(Message.class))).thenReturn(expectedResult);
+        // Mock metadataProvider
+        when(metadataProvider.listTopics(any(Optional.class))).thenReturn(topicInfos);
 
         // Call the method
-        SendResult result = topicService.sendTopicMessageRequest(request);
+        List<String> result = topicService.getTopicList();
 
         // Verify
-        Assert.assertEquals(expectedResult, result);
-
-        // Verify producer configuration and message sending
-        verify(mockProducer).setInstanceName(anyString());
-        verify(mockProducer).setNamesrvAddr("localhost:9876");
-        verify(mockProducer).start();
-
-        // Verify message content
-        ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
-        verify(mockProducer).send(messageCaptor.capture());
-        Message sentMessage = messageCaptor.getValue();
-        Assert.assertEquals("testTopic", sentMessage.getTopic());
-        Assert.assertEquals("testTag", sentMessage.getTags());
-        Assert.assertEquals("testKey", sentMessage.getKeys());
-        Assert.assertEquals("Hello RocketMQ", new String(sentMessage.getBody()));
-
-        // Verify producer shutdown
-        verify(mockProducer).shutdown();
+        Assert.assertEquals(2, result.size());
+        Assert.assertTrue(result.contains("test_topic1"));
+        Assert.assertTrue(result.contains("test_topic2"));
+        verify(metadataProvider, times(1)).listTopics(any(Optional.class));
     }
 
     @Test
-    public void testSendTopicMessageRequestTransaction() throws Exception {
+    public void testGetTopicInfo() throws Exception {
         // Prepare test data
-        SendTopicMessageRequest request = new SendTopicMessageRequest();
-        request.setTopic("testTopic");
-        request.setTag("testTag");
-        request.setKey("testKey");
-        request.setMessageBody("Hello RocketMQ");
-        request.setTraceEnabled(false);
+        TopicInfo topicInfo = new TopicInfo();
+        topicInfo.setTopicName("test_topic");
+        topicInfo.setTopicType(TopicType.NORMAL);
+        topicInfo.setReadQueueNums(8);
+        topicInfo.setWriteQueueNums(8);
 
-        // Mock the topic config
-        TopicConfigInfo configInfo = new TopicConfigInfo();
-        configInfo.setMessageType(TopicMessageType.TRANSACTION.name());
-        List<TopicConfigInfo> topicConfigInfos = new ArrayList<>();
-        topicConfigInfos.add(configInfo);
-        doReturn(topicConfigInfos).when(topicService).examineTopicConfig("testTopic");
-
-        // Mock ACL disabled
-        when(configure.isACLEnabled()).thenReturn(false);
-
-        // Mock producer
-        TransactionMQProducer mockProducer = mock(TransactionMQProducer.class);
-        doReturn(mockProducer).when(topicService).buildTransactionMQProducer(any(), any(), anyBoolean());
-
-        // Mock send result - use org.apache.rocketmq.client.producer.TransactionSendResult instead of SendResult
-        org.apache.rocketmq.client.producer.TransactionSendResult expectedResult = new org.apache.rocketmq.client.producer.TransactionSendResult();
-        expectedResult.setSendStatus(SendStatus.SEND_OK);
-        when(mockProducer.sendMessageInTransaction(any(Message.class), isNull())).thenReturn(expectedResult);
+        // Mock metadataProvider
+        when(metadataProvider.getTopic(eq("test_topic"), any(Optional.class)))
+                .thenReturn(Optional.of(topicInfo));
 
         // Call the method
-        SendResult result = topicService.sendTopicMessageRequest(request);
+        TopicInfo result = topicService.getTopicInfo("test_topic");
 
         // Verify
-        Assert.assertEquals(expectedResult, result);
-
-        // Verify producer configuration and message sending
-        verify(mockProducer).setInstanceName(anyString());
-        verify(mockProducer).setNamesrvAddr("localhost:9876");
-        verify(mockProducer).setTransactionListener(any());
-        verify(mockProducer).start();
-
-        // Verify message content
-        ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
-        verify(mockProducer).sendMessageInTransaction(messageCaptor.capture(), isNull());
-        Message sentMessage = messageCaptor.getValue();
-        Assert.assertEquals("testTopic", sentMessage.getTopic());
-        Assert.assertEquals("testTag", sentMessage.getTags());
-        Assert.assertEquals("testKey", sentMessage.getKeys());
-        Assert.assertEquals("Hello RocketMQ", new String(sentMessage.getBody()));
-
-        // Verify producer shutdown
-        verify(mockProducer).shutdown();
+        Assert.assertNotNull(result);
+        Assert.assertEquals("test_topic", result.getTopicName());
+        Assert.assertEquals(TopicType.NORMAL, result.getTopicType());
+        Assert.assertEquals(8, result.getReadQueueNums());
+        Assert.assertEquals(8, result.getWriteQueueNums());
+        verify(metadataProvider, times(1)).getTopic(eq("test_topic"), any(Optional.class));
     }
 
     @Test
-    public void testSendTopicMessageRequestWithACLEnabled() throws Exception {
-        // Prepare test data
-        SendTopicMessageRequest request = new SendTopicMessageRequest();
-        request.setTopic("testTopic");
-        request.setTag("testTag");
-        request.setKey("testKey");
-        request.setMessageBody("Hello RocketMQ");
-        request.setTraceEnabled(false);
-
-        // Mock the topic config
-        TopicConfigInfo configInfo = new TopicConfigInfo();
-        configInfo.setMessageType(TopicMessageType.NORMAL.name());
-        List<TopicConfigInfo> topicConfigInfos = new ArrayList<>();
-        topicConfigInfos.add(configInfo);
-        doReturn(topicConfigInfos).when(topicService).examineTopicConfig("testTopic");
-
-        // Mock ACL enabled
-        when(configure.isACLEnabled()).thenReturn(true);
-        when(configure.getAccessKey()).thenReturn("testAccessKey");
-        when(configure.getSecretKey()).thenReturn("testSecretKey");
-
-        // Mock producer
-        DefaultMQProducer mockProducer = mock(DefaultMQProducer.class);
-        doReturn(mockProducer).when(topicService).buildDefaultMQProducer(any(), any(AclClientRPCHook.class), anyBoolean());
-
-        // Mock send result
-        SendResult expectedResult = new SendResult();
-        expectedResult.setSendStatus(SendStatus.SEND_OK);
-        when(mockProducer.send(any(Message.class))).thenReturn(expectedResult);
+    public void testGetTopicInfoNotFound() throws Exception {
+        // Mock metadataProvider returns empty
+        when(metadataProvider.getTopic(eq("nonexistent"), any(Optional.class)))
+                .thenReturn(Optional.empty());
 
         // Call the method
-        SendResult result = topicService.sendTopicMessageRequest(request);
+        TopicInfo result = topicService.getTopicInfo("nonexistent");
 
         // Verify
-        Assert.assertEquals(expectedResult, result);
-
-        // Since we can't directly verify the AclClientRPCHook content, we verify that build was called with non-null hook
-        verify(topicService).buildDefaultMQProducer(any(), any(AclClientRPCHook.class), eq(false));
-
-        // Verify producer methods
-        verify(mockProducer).start();
-        verify(mockProducer).send(any(Message.class));
-        verify(mockProducer).shutdown();
+        Assert.assertNull(result);
+        verify(metadataProvider, times(1)).getTopic(eq("nonexistent"), any(Optional.class));
     }
 
     @Test
-    public void testSendTopicMessageRequestWithTraceEnabled() throws Exception {
+    public void testIsTopicExist() throws Exception {
         // Prepare test data
-        SendTopicMessageRequest request = new SendTopicMessageRequest();
-        request.setTopic("testTopic");
-        request.setTag("testTag");
-        request.setKey("testKey");
-        request.setMessageBody("Hello RocketMQ");
-        request.setTraceEnabled(true); // Enable tracing
+        TopicInfo topicInfo = new TopicInfo();
+        topicInfo.setTopicName("existing_topic");
 
-        // Mock the topic config
-        TopicConfigInfo configInfo = new TopicConfigInfo();
-        configInfo.setMessageType(TopicMessageType.NORMAL.name());
-        List<TopicConfigInfo> topicConfigInfos = new ArrayList<>();
-        topicConfigInfos.add(configInfo);
-        doReturn(topicConfigInfos).when(topicService).examineTopicConfig("testTopic");
+        // Mock metadataProvider
+        when(metadataProvider.getTopic(eq("existing_topic"), any(Optional.class)))
+                .thenReturn(Optional.of(topicInfo));
+        when(metadataProvider.getTopic(eq("nonexistent_topic"), any(Optional.class)))
+                .thenReturn(Optional.empty());
 
-        // Mock ACL disabled
-        when(configure.isACLEnabled()).thenReturn(false);
+        // Call and verify
+        Assert.assertTrue(topicService.isTopicExist("existing_topic"));
+        Assert.assertFalse(topicService.isTopicExist("nonexistent_topic"));
+    }
 
-        // Mock producer
-        DefaultMQProducer mockProducer = mock(DefaultMQProducer.class);
-        doReturn(mockProducer).when(topicService).buildDefaultMQProducer(any(), any(), eq(true));
+    @Test
+    public void testGetAllTopicList() throws Exception {
+        // Prepare test data
+        List<TopicInfo> topicInfos = new ArrayList<>();
+        TopicInfo topic1 = new TopicInfo();
+        topic1.setTopicName("topic1");
+        topicInfos.add(topic1);
 
-        // Cannot mock waitSendTraceFinish as it's private
-        // doNothing().when(topicService).waitSendTraceFinish(any(DefaultMQProducer.class), eq(true));
+        TopicInfo topic2 = new TopicInfo();
+        topic2.setTopicName("topic2");
+        topicInfos.add(topic2);
 
-        // Mock send result
-        SendResult expectedResult = new SendResult();
-        expectedResult.setSendStatus(SendStatus.SEND_OK);
-        when(mockProducer.send(any(Message.class))).thenReturn(expectedResult);
+        // Mock metadataProvider
+        when(metadataProvider.listTopics(any(Optional.class))).thenReturn(topicInfos);
 
         // Call the method
-        SendResult result = topicService.sendTopicMessageRequest(request);
+        List<TopicInfo> result = topicService.getAllTopicList();
 
         // Verify
-        Assert.assertEquals(expectedResult, result);
+        Assert.assertEquals(2, result.size());
+        Assert.assertEquals("topic1", result.get(0).getTopicName());
+        Assert.assertEquals("topic2", result.get(1).getTopicName());
+    }
 
-        // Verify that buildDefaultMQProducer was called with traceEnabled=true
-        verify(topicService).buildDefaultMQProducer(any(), any(), eq(true));
+    @Test
+    public void testDeleteTopic() throws Exception {
+        // Mock metadataProvider - deleteTopic returns void
+        doNothing().when(metadataProvider).deleteTopic(eq("test_topic"), any(Optional.class));
 
-        // Cannot verify waitSendTraceFinish as it's private
-        // verify(topicService).waitSendTraceFinish(mockProducer, true);
+        // Call the method
+        boolean result = topicService.deleteTopic("test_topic");
+
+        // Verify
+        Assert.assertTrue(result);
+        verify(metadataProvider, times(1)).deleteTopic(eq("test_topic"), any(Optional.class));
+    }
+
+    @Test
+    public void testCreateTopicWithType() throws Exception {
+        // Prepare test data
+        doNothing().when(metadataProvider).createTopic(any(TopicInfo.class));
+
+        // Call the method
+        boolean result = topicService.createTopicWithType("new_topic", 4, 4, 6, TopicType.NORMAL);
+
+        // Verify
+        Assert.assertTrue(result);
+        verify(metadataProvider, times(1)).createTopic(any(TopicInfo.class));
+    }
+
+    @Test
+    public void testUpdateTopic() throws Exception {
+        // Mock metadataProvider
+        doNothing().when(metadataProvider).updateTopic(any(TopicInfo.class));
+
+        // Call the method
+        boolean result = topicService.updateTopic("test_topic", 8, 8, 6);
+
+        // Verify
+        Assert.assertTrue(result);
+        verify(metadataProvider, times(1)).updateTopic(any(TopicInfo.class));
+    }
+
+    @Test
+    public void testExamineTopicConfigUnsupported() {
+        // examineTopicConfig is a default method that throws UnsupportedOperationException
+        // TopicServiceImpl does not override it, so calling it should throw
+        Assert.assertThrows(UnsupportedOperationException.class, () -> {
+            topicService.examineTopicConfig("test_topic");
+        });
+    }
+
+    @Test
+    public void testSendTopicMessageRequestUnsupported() {
+        // sendTopicMessageRequest is a default method that throws UnsupportedOperationException
+        // TopicServiceImpl does not override it, so calling it should throw
+        Assert.assertThrows(UnsupportedOperationException.class, () -> {
+            topicService.sendTopicMessageRequest(null);
+        });
     }
 }

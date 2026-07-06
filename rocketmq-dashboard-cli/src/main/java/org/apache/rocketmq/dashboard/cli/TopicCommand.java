@@ -34,6 +34,7 @@ import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.route.QueueData;
 import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
+import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
@@ -198,9 +199,17 @@ public class TopicCommand {
         @ParentCommand
         TopicCommand parent;
 
+        @CommandLine.Mixin
+        GlobalOptions globalOptions;
+
+        private boolean isYes() {
+            return (globalOptions != null && globalOptions.yes)
+                    || (parent.root != null && parent.root.isYes());
+        }
+
         @Override
         public Integer call() throws Exception {
-            if (parent.root != null && parent.root.isYes()) {
+            if (isYes()) {
                 // Execute the create operation
                 try (AdminClientHelper admin = AdminClientHelper.connect(null, parent.root)) {
                     TopicConfig topicConfig = new TopicConfig(topicName);
@@ -274,9 +283,17 @@ public class TopicCommand {
         @ParentCommand
         TopicCommand parent;
 
+        @CommandLine.Mixin
+        GlobalOptions globalOptions;
+
+        private boolean isYes() {
+            return (globalOptions != null && globalOptions.yes)
+                    || (parent.root != null && parent.root.isYes());
+        }
+
         @Override
         public Integer call() throws Exception {
-            if (parent.root != null && parent.root.isYes()) {
+            if (isYes()) {
                 // Execute the update operation
                 try (AdminClientHelper admin = AdminClientHelper.connect(null, parent.root)) {
                     // Get existing config from the first available broker
@@ -354,9 +371,22 @@ public class TopicCommand {
         @ParentCommand
         TopicCommand parent;
 
+        @CommandLine.Mixin
+        GlobalOptions globalOptions;
+
+        private boolean isYes() {
+            return (globalOptions != null && globalOptions.yes)
+                    || (parent.root != null && parent.root.isYes());
+        }
+
+        private boolean isForce() {
+            return (globalOptions != null && globalOptions.isForce())
+                    || (parent.root != null && parent.root.isForce());
+        }
+
         @Override
         public Integer call() throws Exception {
-            if (parent.root != null && parent.root.isYes() && parent.root.isForce()) {
+            if (isYes() && isForce()) {
                 // Execute the delete operation
                 try (AdminClientHelper admin = AdminClientHelper.connect(null, parent.root)) {
                     admin.deleteTopicFromCluster(topicName);
