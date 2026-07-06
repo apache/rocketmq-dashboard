@@ -167,6 +167,11 @@ public class TopicServiceImpl extends ArchitectureBasedService implements TopicS
 
     @Override
     public boolean deleteTopic(String topic) {
+        return deleteTopic(topic, null);
+    }
+
+    @Override
+    public boolean deleteTopic(String topic, String clusterName) {
         try {
             metadataProvider.deleteTopic(topic, Optional.of(getDefaultNamespace()));
             return true;
