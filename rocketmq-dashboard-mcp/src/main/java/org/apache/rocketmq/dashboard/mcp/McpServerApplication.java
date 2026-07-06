@@ -85,21 +85,21 @@ public class McpServerApplication {
         log.info("Starting MCP server: transport={}, port={}, dangerousOps={}",
                 transport, port, enableDangerousOps);
 
-        // Create security gate
-        SecurityGate securityGate = new SecurityGate(enableDangerousOps);
-
-        // Create MCP components
-        McpToolRegistry toolRegistry = new McpToolRegistry(securityGate);
-        ResourceProvider resourceProvider = new ResourceProvider();
-        McpProtocolHandler protocolHandler = new McpProtocolHandler(toolRegistry, resourceProvider);
-
         if ("sse".equalsIgnoreCase(transport)) {
-            // SSE mode: use Spring Boot with SseTransport as a @Service
+            // SSE mode: use Spring Boot with SseTransport as a @Service.
+            // McpServerConfig registers all MCP components as Spring beans
+            // and initializes SseTransport via CommandLineRunner.
             System.setProperty("server.port", String.valueOf(port));
+            System.setProperty("mcp.enableDangerousOps", String.valueOf(enableDangerousOps));
             log.info("Starting SSE transport on port {}", port);
             SpringApplication.run(McpServerApplication.class, args);
         } else {
             // Stdio mode: use StdioTransport directly, no Spring context
+            SecurityGate securityGate = new SecurityGate(enableDangerousOps);
+            McpToolRegistry toolRegistry = new McpToolRegistry(securityGate);
+            ResourceProvider resourceProvider = new ResourceProvider();
+            McpProtocolHandler protocolHandler = new McpProtocolHandler(toolRegistry, resourceProvider);
+
             log.info("Starting stdio transport");
             McpTransport stdioTransport = new StdioTransport();
             stdioTransport.start(protocolHandler);

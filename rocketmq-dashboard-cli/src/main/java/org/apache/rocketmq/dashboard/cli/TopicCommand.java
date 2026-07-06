@@ -21,10 +21,19 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Callable;
-import org.apache.rocketmq.dashboard.cli.security.DryRunResult;
-import org.apache.rocketmq.dashboard.cli.context.CliContext;
+import java.util.stream.Collectors;
+import org.apache.rocketmq.common.TopicConfig;
+import org.apache.rocketmq.dashboard.cli.context.AdminClientHelper;
 import org.apache.rocketmq.dashboard.cli.output.OutputFormatter;
+import org.apache.rocketmq.dashboard.cli.security.AuditLogger;
+import org.apache.rocketmq.dashboard.cli.security.DryRunResult;
+import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
+import org.apache.rocketmq.remoting.protocol.route.BrokerData;
+import org.apache.rocketmq.remoting.protocol.route.QueueData;
+import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
+import org.apache.rocketmq.tools.admin.MQAdminExt;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
@@ -43,59 +52,58 @@ public class TopicCommand {
         @Option(names = {"--cluster"}, description = "Target cluster name")
         String cluster;
 
+        @ParentCommand
+        RmqctlCommand root;
+
         @Override
         public Integer call() throws Exception {
-            CliContext ctx = new CliContext();
-            String clusterName = cluster != null ? cluster : ctx.getCurrentContext();
-            System.out.println("Cluster: " + (clusterName != null ? clusterName : "(not set)"));
-            System.out.println();
+            try (AdminClientHelper admin = AdminClientHelper.connect(cluster, root)) {
+                MQAdminExt mqAdminExt = admin.getMqAdminExt();
+                ClusterInfo clusterInfo = admin.getClusterInfo();
 
-            List<Map<String, Object>> rows = new ArrayList<>();
+                Set<String> topicNames = mqAdminExt.fetchAllTopicList().getTopicList();
+                if (topicNames == null || topicNames.isEmpty()) {
+                    System.out.println("No topics found in the cluster.");
+                    return 0;
+                }
 
-            Map<String, Object> row1 = new LinkedHashMap<>();
-            row1.put("TOPIC NAME", "TOPIC_ORDER_PAY");
-            row1.put("TYPE", "Normal");
-            row1.put("READ QUEUE", "8");
-            row1.put("WRITE QUEUE", "8");
-            row1.put("STATUS", "OK");
-            rows.add(row1);
+                List<String> sortedTopics = topicNames.stream().sorted().collect(Collectors.toList());
 
-            Map<String, Object> row2 = new LinkedHashMap<>();
-            row2.put("TOPIC NAME", "TOPIC_ORDER_STATUS");
-            row2.put("TYPE", "Normal");
-            row2.put("READ QUEUE", "4");
-            row2.put("WRITE QUEUE", "4");
-            row2.put("STATUS", "OK");
-            rows.add(row2);
+                // Build broker name list for display
+                List<String> brokerNames = admin.getBrokerNames();
+                String brokerSummary = brokerNames.isEmpty() ? "-" : String.join(", ", brokerNames);
 
-            Map<String, Object> row3 = new LinkedHashMap<>();
-            row3.put("TOPIC NAME", "TOPIC_GOODS_CHANGE");
-            row3.put("TYPE", "Normal");
-            row3.put("READ QUEUE", "8");
-            row3.put("WRITE QUEUE", "8");
-            row3.put("STATUS", "OK");
-            rows.add(row3);
+                List<Map<String, Object>> rows = new ArrayList<>();
+                for (String topicName : sortedTopics) {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("TOPIC NAME", topicName);
+                    try {
+                        TopicRouteData routeData = mqAdminExt.examineTopicRouteInfo(topicName);
+                        if (routeData != null && routeData.getQueueDatas() != null && !routeData.getQueueDatas().isEmpty()) {
+                            QueueData qd = routeData.getQueueDatas().get(0);
+                            row.put("READ QUEUE", String.valueOf(qd.getReadQueueNums()));
+                            row.put("WRITE QUEUE", String.valueOf(qd.getWriteQueueNums()));
+                            row.put("PERM", String.valueOf(qd.getPerm()));
+                        } else {
+                            row.put("READ QUEUE", "-");
+                            row.put("WRITE QUEUE", "-");
+                            row.put("PERM", "-");
+                        }
+                    } catch (Exception e) {
+                        row.put("READ QUEUE", "-");
+                        row.put("WRITE QUEUE", "-");
+                        row.put("PERM", "-");
+                    }
+                    row.put("BROKERS", brokerSummary);
+                    rows.add(row);
+                }
 
-            Map<String, Object> row4 = new LinkedHashMap<>();
-            row4.put("TOPIC NAME", "DLQ_ORDER_PAY");
-            row4.put("TYPE", "DLQ");
-            row4.put("READ QUEUE", "1");
-            row4.put("WRITE QUEUE", "1");
-            row4.put("STATUS", "WARN");
-            rows.add(row4);
-
-            Map<String, Object> row5 = new LinkedHashMap<>();
-            row5.put("TOPIC NAME", "SCHEDULE_TOPIC_XXXX");
-            row5.put("TYPE", "System");
-            row5.put("READ QUEUE", "8");
-            row5.put("WRITE QUEUE", "8");
-            row5.put("STATUS", "OK");
-            rows.add(row5);
-
-            System.out.println(OutputFormatter.format(rows, OutputFormatter.Format.TABLE));
-            System.out.println();
-            System.out.println("Note: This is sample data. Connect to a live cluster for real topic listing.");
-            return 0;
+                System.out.println(OutputFormatter.format(rows, OutputFormatter.Format.TABLE));
+                return 0;
+            } catch (Exception e) {
+                System.err.println("Error: Failed to list topics - " + e.getMessage());
+                return 1;
+            }
         }
     }
 
@@ -104,27 +112,69 @@ public class TopicCommand {
         @Parameters(index = "0", description = "Topic name")
         String topicName;
 
+        @ParentCommand
+        RmqctlCommand root;
+
         @Override
         public Integer call() throws Exception {
-            Map<String, Object> result = new LinkedHashMap<>();
-            result.put("Topic Name", topicName);
-            result.put("Type", "Normal");
-            result.put("Read Queue", "8");
-            result.put("Write Queue", "8");
-            result.put("Perm", "6 (R/W)");
-            result.put("Status", "OK");
-            result.put("Total Messages", "1,245,332");
-            result.put("Total Size", "2.3 GB");
-            result.put("Min Offset", "0");
-            result.put("Max Offset", "1245332");
-            result.put("Create Time", "2026-06-15 08:00:00");
-            result.put("Last Update", "2026-07-04 10:30:00");
-            result.put("Broker", "broker-a (Master)");
+            try (AdminClientHelper admin = AdminClientHelper.connect(null, root)) {
+                MQAdminExt mqAdminExt = admin.getMqAdminExt();
 
-            System.out.println(OutputFormatter.format(result, OutputFormatter.Format.TABLE));
-            System.out.println();
-            System.out.println("Note: This is sample data. Connect to a live cluster for real topic details.");
-            return 0;
+                // Get topic route info for queue distribution
+                TopicRouteData routeData = mqAdminExt.examineTopicRouteInfo(topicName);
+
+                // Get topic config from the first available broker
+                TopicConfig topicConfig = admin.examineTopicConfig(topicName);
+                String configBrokerName = null;
+                if (topicConfig != null && routeData != null && routeData.getQueueDatas() != null && !routeData.getQueueDatas().isEmpty()) {
+                    configBrokerName = routeData.getQueueDatas().get(0).getBrokerName();
+                }
+
+                Map<String, Object> result = new LinkedHashMap<>();
+                result.put("Topic Name", topicName);
+
+                if (topicConfig != null) {
+                    result.put("Read Queue", String.valueOf(topicConfig.getReadQueueNums()));
+                    result.put("Write Queue", String.valueOf(topicConfig.getWriteQueueNums()));
+                    result.put("Perm", String.valueOf(topicConfig.getPerm()));
+                    result.put("Order", String.valueOf(topicConfig.isOrder()));
+                } else if (routeData != null && routeData.getQueueDatas() != null && !routeData.getQueueDatas().isEmpty()) {
+                    QueueData qd = routeData.getQueueDatas().get(0);
+                    result.put("Read Queue", String.valueOf(qd.getReadQueueNums()));
+                    result.put("Write Queue", String.valueOf(qd.getWriteQueueNums()));
+                    result.put("Perm", String.valueOf(qd.getPerm()));
+                    result.put("Order", "-");
+                } else {
+                    result.put("Read Queue", "-");
+                    result.put("Write Queue", "-");
+                    result.put("Perm", "-");
+                    result.put("Order", "-");
+                }
+
+                if (configBrokerName != null) {
+                    result.put("Broker", configBrokerName);
+                }
+
+                if (routeData != null && routeData.getQueueDatas() != null && !routeData.getQueueDatas().isEmpty()) {
+                    StringBuilder queueDist = new StringBuilder();
+                    for (QueueData qd : routeData.getQueueDatas()) {
+                        if (queueDist.length() > 0) {
+                            queueDist.append(", ");
+                        }
+                        queueDist.append(qd.getBrokerName())
+                                .append("(R:").append(qd.getReadQueueNums())
+                                .append("/W:").append(qd.getWriteQueueNums())
+                                .append("/P:").append(qd.getPerm()).append(")");
+                    }
+                    result.put("Queue Distribution", queueDist.toString());
+                }
+
+                System.out.println(OutputFormatter.format(result, OutputFormatter.Format.TABLE));
+                return 0;
+            } catch (Exception e) {
+                System.err.println("Error: Failed to describe topic '" + topicName + "' - " + e.getMessage());
+                return 1;
+            }
         }
     }
 
@@ -145,8 +195,41 @@ public class TopicCommand {
         @ParentCommand
         TopicCommand parent;
 
+        @ParentCommand
+        RmqctlCommand root;
+
         @Override
         public Integer call() throws Exception {
+            if (root != null && root.isYes()) {
+                // Execute the create operation
+                try (AdminClientHelper admin = AdminClientHelper.connect(null, root)) {
+                    TopicConfig topicConfig = new TopicConfig(topicName);
+                    topicConfig.setReadQueueNums(readQueue);
+                    topicConfig.setWriteQueueNums(writeQueue);
+                    topicConfig.setPerm(perm);
+
+                    int brokerCount = admin.createTopicOnAllBrokers(topicConfig);
+
+                    String clusterName = admin.getClusterName();
+                    System.out.println("Topic '" + topicName + "' created successfully on " + brokerCount + " broker(s).");
+                    AuditLogger.getInstance().log(
+                            clusterName != null ? clusterName : "(default)",
+                            "topic create " + topicName,
+                            "SUCCESS",
+                            System.getProperty("user.name", "unknown"));
+                    return 0;
+                } catch (Exception e) {
+                    System.err.println("Error: Failed to create topic '" + topicName + "' - " + e.getMessage());
+                    AuditLogger.getInstance().log(
+                            root.getCluster() != null ? root.getCluster() : "(default)",
+                            "topic create " + topicName,
+                            "FAILED: " + e.getMessage(),
+                            System.getProperty("user.name", "unknown"));
+                    return 1;
+                }
+            }
+
+            // Dry-run preview
             DryRunResult dryRun = DryRunResult.builder()
                     .operation("create topic " + topicName)
                     .willExecute(true)
@@ -191,8 +274,53 @@ public class TopicCommand {
         @ParentCommand
         TopicCommand parent;
 
+        @ParentCommand
+        RmqctlCommand root;
+
         @Override
         public Integer call() throws Exception {
+            if (root != null && root.isYes()) {
+                // Execute the update operation
+                try (AdminClientHelper admin = AdminClientHelper.connect(null, root)) {
+                    // Get existing config from the first available broker
+                    TopicConfig topicConfig = admin.examineTopicConfig(topicName);
+                    if (topicConfig == null) {
+                        topicConfig = new TopicConfig(topicName);
+                    }
+
+                    // Apply updates
+                    if (readQueue != null) {
+                        topicConfig.setReadQueueNums(readQueue);
+                    }
+                    if (writeQueue != null) {
+                        topicConfig.setWriteQueueNums(writeQueue);
+                    }
+                    if (perm != null) {
+                        topicConfig.setPerm(perm);
+                    }
+
+                    int brokerCount = admin.createTopicOnAllBrokers(topicConfig);
+
+                    String clusterName = admin.getClusterName();
+                    System.out.println("Topic '" + topicName + "' updated successfully on " + brokerCount + " broker(s).");
+                    AuditLogger.getInstance().log(
+                            clusterName != null ? clusterName : "(default)",
+                            "topic update " + topicName,
+                            "SUCCESS",
+                            System.getProperty("user.name", "unknown"));
+                    return 0;
+                } catch (Exception e) {
+                    System.err.println("Error: Failed to update topic '" + topicName + "' - " + e.getMessage());
+                    AuditLogger.getInstance().log(
+                            root.getCluster() != null ? root.getCluster() : "(default)",
+                            "topic update " + topicName,
+                            "FAILED: " + e.getMessage(),
+                            System.getProperty("user.name", "unknown"));
+                    return 1;
+                }
+            }
+
+            // Dry-run preview
             Map<String, Object> changeDetails = new LinkedHashMap<>();
             changeDetails.put("topic", topicName);
             if (readQueue != null) {
@@ -229,8 +357,36 @@ public class TopicCommand {
         @ParentCommand
         TopicCommand parent;
 
+        @ParentCommand
+        RmqctlCommand root;
+
         @Override
         public Integer call() throws Exception {
+            if (root != null && root.isYes() && root.isForce()) {
+                // Execute the delete operation
+                try (AdminClientHelper admin = AdminClientHelper.connect(null, root)) {
+                    admin.deleteTopicFromCluster(topicName);
+
+                    String clusterName = admin.getClusterName();
+                    System.out.println("Topic '" + topicName + "' deleted successfully.");
+                    AuditLogger.getInstance().log(
+                            clusterName != null ? clusterName : "(default)",
+                            "topic delete " + topicName,
+                            "SUCCESS",
+                            System.getProperty("user.name", "unknown"));
+                    return 0;
+                } catch (Exception e) {
+                    System.err.println("Error: Failed to delete topic '" + topicName + "' - " + e.getMessage());
+                    AuditLogger.getInstance().log(
+                            root.getCluster() != null ? root.getCluster() : "(default)",
+                            "topic delete " + topicName,
+                            "FAILED: " + e.getMessage(),
+                            System.getProperty("user.name", "unknown"));
+                    return 1;
+                }
+            }
+
+            // Flags missing - show error with hint
             System.err.println("ERROR [ERR_L3_BLOCKED]: Deleting topic '" + topicName
                     + "' is a dangerous operation (L3).");
             System.err.println("This will permanently remove the topic and ALL its messages.");
