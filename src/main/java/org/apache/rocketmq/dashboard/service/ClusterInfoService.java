@@ -18,6 +18,8 @@ package org.apache.rocketmq.dashboard.service;
 
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.dashboard.config.RMQConfigure;
+import org.apache.rocketmq.dashboard.service.client.ProxyAdmin;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,6 +37,12 @@ public class ClusterInfoService {
 
     @Autowired
     private MQAdminExt mqAdminExt;
+
+    @Autowired
+    private ProxyAdmin proxyAdmin;
+
+    @Autowired
+    private RMQConfigure configure;
 
     @Value("${rocketmq.cluster.cache.expire:60000}")
     private long cacheExpireMs;
@@ -61,7 +69,17 @@ public class ClusterInfoService {
             cachedRef.set(fresh);
             return fresh;
         } catch (Exception e) {
-            log.warn("Refresh cluster info failed", e);
+            log.warn("Refresh cluster info via mqAdminExt failed, trying proxy: {}", e.getMessage());
+            try {
+                String proxyAddr = configure.getProxyAddr();
+                if (proxyAddr != null && !proxyAddr.isEmpty()) {
+                    ClusterInfo fresh = proxyAdmin.getBrokerClusterInfo(proxyAddr);
+                    cachedRef.set(fresh);
+                    return fresh;
+                }
+            } catch (Exception proxyEx) {
+                log.warn("Refresh cluster info via proxy also failed", proxyEx);
+            }
             ClusterInfo old = cachedRef.get();
             if (old != null) {
                 return old;

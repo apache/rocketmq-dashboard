@@ -23,10 +23,17 @@ import org.apache.rocketmq.remoting.exception.RemotingConnectException;
 import org.apache.rocketmq.remoting.exception.RemotingSendRequestException;
 import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
+import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
+import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
+import org.apache.rocketmq.remoting.protocol.body.TopicList;
 import org.apache.rocketmq.remoting.protocol.header.GetConsumerConnectionListRequestHeader;
+import org.apache.rocketmq.remoting.protocol.header.GetConsumeStatsRequestHeader;
 import org.springframework.stereotype.Service;
 
+import static org.apache.rocketmq.remoting.protocol.RequestCode.GET_BROKER_CLUSTER_INFO;
+import static org.apache.rocketmq.remoting.protocol.RequestCode.GET_ALL_TOPIC_LIST_FROM_NAMESERVER;
+import static org.apache.rocketmq.remoting.protocol.RequestCode.GET_CONSUME_STATS;
 import static org.apache.rocketmq.remoting.protocol.RequestCode.GET_CONSUMER_CONNECTION_LIST;
 
 @Slf4j
@@ -49,6 +56,62 @@ public class ProxyAdminImpl implements ProxyAdmin {
             }
         } catch (Exception e) {
             log.error("examineConsumerConnectionInfo error", e);
+            throw e;
+        }
+    }
+
+    @Override
+    public ClusterInfo getBrokerClusterInfo(String addr) throws RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException, InterruptedException, MQBrokerException {
+        try {
+            RemotingClient remotingClient = MQAdminInstance.threadLocalRemotingClient();
+            RemotingCommand request = RemotingCommand.createRequestCommand(GET_BROKER_CLUSTER_INFO, null);
+            RemotingCommand response = remotingClient.invokeSync(addr, request, 3000);
+            switch (response.getCode()) {
+                case 0:
+                    return ClusterInfo.decode(response.getBody(), ClusterInfo.class);
+                default:
+                    throw new MQBrokerException(response.getCode(), response.getRemark(), addr);
+            }
+        } catch (Exception e) {
+            log.error("getBrokerClusterInfo error", e);
+            throw e;
+        }
+    }
+
+    @Override
+    public TopicList getAllTopicListFromNameServer(String addr) throws RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException, InterruptedException, MQBrokerException {
+        try {
+            RemotingClient remotingClient = MQAdminInstance.threadLocalRemotingClient();
+            RemotingCommand request = RemotingCommand.createRequestCommand(GET_ALL_TOPIC_LIST_FROM_NAMESERVER, null);
+            RemotingCommand response = remotingClient.invokeSync(addr, request, 3000);
+            switch (response.getCode()) {
+                case 0:
+                    return TopicList.decode(response.getBody(), TopicList.class);
+                default:
+                    throw new MQBrokerException(response.getCode(), response.getRemark(), addr);
+            }
+        } catch (Exception e) {
+            log.error("getAllTopicListFromNameServer error", e);
+            throw e;
+        }
+    }
+
+    @Override
+    public ConsumeStats examineConsumeStats(String addr, String consumerGroup) throws RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException, InterruptedException, MQBrokerException {
+        try {
+            RemotingClient remotingClient = MQAdminInstance.threadLocalRemotingClient();
+            GetConsumeStatsRequestHeader requestHeader = new GetConsumeStatsRequestHeader();
+            requestHeader.setConsumerGroup(consumerGroup);
+            RemotingCommand request = RemotingCommand.createRequestCommand(GET_CONSUME_STATS, requestHeader);
+            RemotingCommand response = remotingClient.invokeSync(addr, request, 3000);
+            switch (response.getCode()) {
+                case 0:
+                    return ConsumeStats.decode(response.getBody(), ConsumeStats.class);
+                default:
+                    throw new MQBrokerException(response.getCode(), response.getRemark(), addr);
+            }
+        } catch (Exception e) {
+            log.error("examineConsumeStats error", e);
             throw e;
         }
     }

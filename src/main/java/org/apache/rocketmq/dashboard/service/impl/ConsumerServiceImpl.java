@@ -252,7 +252,15 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
             try {
                 consumeStats = mqAdminExt.examineConsumeStats(consumerGroup);
             } catch (Exception e) {
-                logger.warn("examineConsumeStats exception to consumerGroup {}, response [{}]", consumerGroup, e.getMessage());
+                logger.warn("examineConsumeStats exception to consumerGroup {}, trying proxy: {}", consumerGroup, e.getMessage());
+                try {
+                    String proxyAddr = configure.getProxyAddr();
+                    if (StringUtils.isNotEmpty(proxyAddr)) {
+                        consumeStats = proxyAdmin.examineConsumeStats(proxyAddr, consumerGroup);
+                    }
+                } catch (Exception proxyEx) {
+                    logger.warn("examineConsumeStats via proxy also failed for consumerGroup {}", consumerGroup, proxyEx);
+                }
             }
             if (consumeStats != null) {
                 groupConsumeInfo.setConsumeTps((int) consumeStats.getConsumeTps());

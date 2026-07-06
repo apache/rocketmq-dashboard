@@ -21,7 +21,9 @@ import com.google.common.base.Throwables;
 import com.google.common.collect.Maps;
 import jakarta.annotation.Resource;
 import org.apache.rocketmq.common.attribute.TopicMessageType;
+import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.service.ClusterService;
+import org.apache.rocketmq.dashboard.service.client.ProxyAdmin;
 import org.apache.rocketmq.dashboard.util.JsonUtil;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.KVTable;
@@ -41,12 +43,26 @@ public class ClusterServiceImpl implements ClusterService {
     private Logger logger = LoggerFactory.getLogger(ClusterServiceImpl.class);
     @Resource
     private MQAdminExt mqAdminExt;
+    @Resource
+    private ProxyAdmin proxyAdmin;
+    @Resource
+    private RMQConfigure configure;
 
     @Override
     public Map<String, Object> list() {
         try {
             Map<String, Object> resultMap = Maps.newHashMap();
-            ClusterInfo clusterInfo = mqAdminExt.examineBrokerClusterInfo();
+            ClusterInfo clusterInfo;
+            try {
+                clusterInfo = mqAdminExt.examineBrokerClusterInfo();
+            } catch (Exception e) {
+                logger.warn("examineBrokerClusterInfo failed, trying proxy: {}", e.getMessage());
+                String proxyAddr = configure.getProxyAddr();
+                if (proxyAddr == null || proxyAddr.isEmpty()) {
+                    throw e;
+                }
+                clusterInfo = proxyAdmin.getBrokerClusterInfo(proxyAddr);
+            }
             logger.info("op=look_clusterInfo {}", JsonUtil.obj2String(clusterInfo));
             Map<String/*brokerName*/, Map<Long/* brokerId */, Object/* brokerDetail */>> brokerServer = Maps.newHashMap();
             for (BrokerData brokerData : clusterInfo.getBrokerAddrTable().values()) {

@@ -38,6 +38,7 @@ import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.topic.TopicValidator;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
+import org.apache.rocketmq.dashboard.service.client.ProxyAdmin;
 import org.apache.rocketmq.dashboard.model.request.SendTopicMessageRequest;
 import org.apache.rocketmq.dashboard.model.request.TopicConfigInfo;
 import org.apache.rocketmq.dashboard.model.request.TopicTypeList;
@@ -90,10 +91,23 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
     @Autowired
     private RMQConfigure configure;
 
+    @Autowired
+    private ProxyAdmin proxyAdmin;
+
     @Override
     public TopicList fetchAllTopicList(boolean skipSysProcess, boolean skipRetryAndDlq) {
         try {
-            TopicList allTopics = mqAdminExt.fetchAllTopicList();
+            TopicList allTopics;
+            try {
+                allTopics = mqAdminExt.fetchAllTopicList();
+            } catch (Exception e) {
+                logger.warn("fetchAllTopicList failed, trying proxy: {}", e.getMessage());
+                String proxyAddr = configure.getProxyAddr();
+                if (proxyAddr == null || proxyAddr.isEmpty()) {
+                    throw e;
+                }
+                allTopics = proxyAdmin.getAllTopicListFromNameServer(proxyAddr);
+            }
             TopicList sysTopics = getSystemTopicList();
             Set<String> topics =
                     allTopics.getTopicList().stream().map(topic -> {
