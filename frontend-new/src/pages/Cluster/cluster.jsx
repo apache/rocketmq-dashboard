@@ -19,11 +19,13 @@ import React, {useCallback, useEffect, useState} from 'react';
 import {Button, Modal, notification, Select, Spin, Table} from 'antd';
 import {useLanguage} from "../../i18n/LanguageContext";
 import {remoteApi, tools} from "../../api/remoteApi/remoteApi"; // 确保路径正确
+import {useOperationEvent, OperationEvents} from '../../store/context/OperationEventContext';
 
 const {Option} = Select;
 
 const Cluster = () => {
     const {t} = useLanguage();
+    const {emit, subscribe} = useOperationEvent();
 
     const [loading, setLoading] = useState(false);
     const [clusterNames, setClusterNames] = useState([]);
@@ -53,7 +55,7 @@ const Cluster = () => {
         switchCluster(value);
     };
 
-    useEffect(() => {
+    const fetchClusterList = useCallback(() => {
         setLoading(true);
         remoteApi.queryClusterList((resp) => {
             setLoading(false);
@@ -81,7 +83,25 @@ const Cluster = () => {
                 api.error({message: resp.errMsg || t.QUERY_CLUSTER_LIST_FAILED, duration: 2});
             }
         });
-    }, []);
+    }, [t, api]);
+
+    useEffect(() => {
+        fetchClusterList();
+    }, [fetchClusterList]);
+
+    // Subscribe to operation events from chat (Chat → Web refresh)
+    useEffect(() => {
+        const unsubConfigUpdated = subscribe(OperationEvents.BROKER_CONFIG_UPDATED, () => {
+            fetchClusterList();
+        });
+        const unsubClusterRefreshed = subscribe(OperationEvents.CLUSTER_REFRESHED, () => {
+            fetchClusterList();
+        });
+        return () => {
+            unsubConfigUpdated();
+            unsubClusterRefreshed();
+        };
+    }, [subscribe, fetchClusterList]);
 
     const showDetail = (brokerName, brokerId, record) => { // 传入 record 整个对象，方便直接显示
         setCurrentBrokerName(brokerName);

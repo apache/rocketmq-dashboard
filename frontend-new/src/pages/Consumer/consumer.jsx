@@ -19,6 +19,7 @@ import React, {useCallback, useEffect, useState} from 'react';
 import {Button, Checkbox, Input, message, notification, Select, Spin, Switch, Table} from 'antd';
 import {useLanguage} from '../../i18n/LanguageContext';
 import {remoteApi} from '../../api/remoteApi/remoteApi';
+import {useOperationEvent, OperationEvents} from '../../store/context/OperationEventContext';
 import ClientInfoModal from "../../components/consumer/ClientInfoModal";
 import ConsumerDetailModal from "../../components/consumer/ConsumerDetailModal";
 import ConsumerConfigModal from "../../components/consumer/ConsumerConfigModal";
@@ -26,6 +27,7 @@ import DeleteConsumerModal from "../../components/consumer/DeleteConsumerModal";
 
 const ConsumerGroupList = () => {
     const {t} = useLanguage();
+    const {emit, subscribe} = useOperationEvent();
     const [filterStr, setFilterStr] = useState('');
     const [filterNormal, setFilterNormal] = useState(true);
     const [filterFIFO, setFilterFIFO] = useState(false);
@@ -223,6 +225,28 @@ const ConsumerGroupList = () => {
     useEffect(() => {
         loadConsumerGroups();
     }, [loadConsumerGroups]);
+
+    // Subscribe to operation events from chat (Chat → Web refresh)
+    useEffect(() => {
+        const unsubCreated = subscribe(OperationEvents.CONSUMER_CREATED, () => {
+            loadConsumerGroups();
+        });
+        const unsubUpdated = subscribe(OperationEvents.CONSUMER_UPDATED, () => {
+            loadConsumerGroups();
+        });
+        const unsubDeleted = subscribe(OperationEvents.CONSUMER_DELETED, () => {
+            loadConsumerGroups();
+        });
+        const unsubOffsetReset = subscribe(OperationEvents.CONSUMER_OFFSET_RESET, () => {
+            loadConsumerGroups();
+        });
+        return () => {
+            unsubCreated();
+            unsubUpdated();
+            unsubDeleted();
+            unsubOffsetReset();
+        };
+    }, [subscribe, loadConsumerGroups]);
 
     useEffect(() => {
         let intervalId;
@@ -460,6 +484,17 @@ const ConsumerGroupList = () => {
         setIsAddConfig(false);
     }
 
+    const handleConfigSuccess = () => {
+        const eventType = isAddConfig ? OperationEvents.CONSUMER_CREATED : OperationEvents.CONSUMER_UPDATED;
+        emit(eventType, { groupName: selectedGroup });
+        loadConsumerGroups();
+    };
+
+    const handleDeleteSuccess = () => {
+        emit(OperationEvents.CONSUMER_DELETED, { groupName: selectedGroup });
+        loadConsumerGroups();
+    };
+
     return (
         <>
             {msgContextHolder}
@@ -571,14 +606,14 @@ const ConsumerGroupList = () => {
                     group={selectedGroup}
                     onCancel={closeConfigModal}
                     setIsAddConfig={setIsAddConfig}
-                    onSuccess={loadConsumerGroups}
+                    onSuccess={handleConfigSuccess}
                 />
 
                 <DeleteConsumerModal
                     visible={showDeleteModal}
                     group={selectedGroup}
                     onCancel={() => setShowDeleteModal(false)}
-                    onSuccess={loadConsumerGroups}
+                    onSuccess={handleDeleteSuccess}
                     t={t}
                 />
             </div>

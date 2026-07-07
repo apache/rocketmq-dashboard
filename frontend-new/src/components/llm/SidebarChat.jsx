@@ -15,50 +15,42 @@
  * limitations under the License.
  */
 
-import React, { useState } from 'react';
-import { Drawer, FloatButton } from 'antd';
-import { RobotOutlined } from '@ant-design/icons';
+import React, { useCallback } from 'react';
+import { Tooltip } from 'antd';
+import { RobotOutlined, CloseOutlined } from '@ant-design/icons';
 import { useLlm } from '../../store/context/LlmContext';
-import { useClusterCapabilities } from '../../store/context/ClusterCapabilitiesContext';
 import ChatPanel from './ChatPanel';
+import './SidebarChat.css';
 
-function SidebarChat({ contextPrefix }) {
-    const [open, setOpen] = useState(false);
-    const { messages, isLoading, sendMessage } = useLlm();
-    const { selectedCluster } = useClusterCapabilities();
+function SidebarChat() {
+    const { isPanelOpen, togglePanelOpen, messages } = useLlm();
 
-    const handleSend = (text) => {
-        const fullMessage = contextPrefix ? `${contextPrefix}: ${text}` : text;
-        sendMessage(fullMessage, selectedCluster);
-    };
+    const handleClose = useCallback(() => {
+        togglePanelOpen();
+    }, [togglePanelOpen]);
 
     return (
         <>
-            <FloatButton
-                icon={<RobotOutlined />}
-                type="primary"
-                style={{ right: 24, bottom: 24 }}
-                onClick={() => setOpen(true)}
-                tooltip="Ask LLM"
-            />
-            <Drawer
-                title="RocketMQ Assistant"
-                placement="right"
-                onClose={() => setOpen(false)}
-                open={open}
-                width={480}
-                styles={{
-                    body: {
-                        padding: 0,
-                    },
-                }}
-            >
-                <ChatPanel
-                    messages={messages}
-                    isLoading={isLoading}
-                    onSend={handleSend}
-                />
-            </Drawer>
+            <Tooltip title="AI 助手" placement="left">
+                <div
+                    className={`sidebar-chat-trigger ${isPanelOpen ? 'sidebar-chat-trigger-active' : ''} ${messages.length > 0 ? 'sidebar-chat-trigger-unread' : ''}`}
+                    onClick={togglePanelOpen}
+                >
+                    <RobotOutlined style={{ fontSize: 20 }} />
+                    {messages.length > 0 && !isPanelOpen && (
+                        <span className="sidebar-chat-badge">{messages.length}</span>
+                    )}
+                </div>
+            </Tooltip>
+
+            <div className={`sidebar-chat-overlay ${isPanelOpen ? 'sidebar-chat-overlay-open' : ''}`}>
+                <div className={`sidebar-chat-panel ${isPanelOpen ? 'sidebar-chat-panel-open' : ''}`}>
+                    <button className="sidebar-chat-close" onClick={handleClose} title="关闭面板">
+                        <CloseOutlined />
+                    </button>
+                    <ChatPanel />
+                </div>
+            </div>
         </>
     );
 }

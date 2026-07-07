@@ -16,12 +16,13 @@
  */
 
 import React, {useEffect, useState} from 'react';
-import {Button, Drawer, Dropdown, Grid, Layout, Menu, Space} from 'antd';
-import {BgColorsOutlined, DownOutlined, GlobalOutlined, MenuOutlined, RobotOutlined, UserOutlined} from '@ant-design/icons';
+import {Button, Drawer, Dropdown, Grid, Layout, Menu, Space, Tooltip} from 'antd';
+import {BgColorsOutlined, DownOutlined, GlobalOutlined, MenuOutlined, RobotOutlined, SearchOutlined, UserOutlined} from '@ant-design/icons';
 import {useLocation, useNavigate} from 'react-router-dom';
 import {useLanguage} from '../i18n/LanguageContext';
 import {useTheme} from "../store/context/ThemeContext";
 import {useClusterCapabilities} from '../store/context/ClusterCapabilitiesContext';
+import {useLlm} from '../store/context/LlmContext';
 import {remoteApi} from "../api/remoteApi/remoteApi";
 
 const {Header} = Layout;
@@ -34,6 +35,7 @@ const Navbar = ({rmqVersion = true, showAcl = true}) => {
     const screens = useBreakpoint(); // Get current screen size breakpoints
     const {currentThemeName, setCurrentThemeName} = useTheme();
     const {capabilities, loading} = useClusterCapabilities();
+    const {setIsOpen: setCommandBarOpen} = useLlm();
     const [userName, setUserName] = useState(null);
     const [drawerVisible, setDrawerVisible] = useState(false); // Controls drawer visibility
 
@@ -151,16 +153,33 @@ const Navbar = ({rmqVersion = true, showAcl = true}) => {
             </div>
 
             <Space size={isExtraSmallScreen ? 8 : 16}> {/* Adjust spacing for buttons */}
-                {/* LLM Assistant button */}
-                <Button
-                    icon={<RobotOutlined />}
-                    size="small"
-                    type="text"
-                    style={{ color: 'white' }}
-                    onClick={() => navigate('/llm-settings')}
-                >
-                    {!isExtraSmallScreen && 'LLM'}
-                </Button>
+                {/* Command Bar trigger button */}
+                <Tooltip title="搜索 / AI 助手 (⌘K)">
+                    <Button
+                        icon={<SearchOutlined />}
+                        size="small"
+                        type="text"
+                        style={{ color: 'white' }}
+                        onClick={() => setCommandBarOpen(true)}
+                    >
+                        {!isExtraSmallScreen && (
+                            <span style={{ opacity: 0.85, fontSize: '12px' }}>⌘K</span>
+                        )}
+                    </Button>
+                </Tooltip>
+
+                {/* AI助手设置按钮 */}
+                <Tooltip title="AI助手配置">
+                    <Button
+                        icon={<RobotOutlined />}
+                        size="small"
+                        type="text"
+                        style={{ color: 'white' }}
+                        onClick={() => navigate('/llm-settings')}
+                    >
+                        {!isExtraSmallScreen && 'AI配置'}
+                    </Button>
+                </Tooltip>
 
                 {/* Theme switch button */}
                 <Dropdown overlay={themeMenu}>
