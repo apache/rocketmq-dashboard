@@ -22,7 +22,10 @@ import 'react-toastify/dist/ReactToastify.css';
 import {ConfigProvider} from "antd";
 import {useTheme} from "./store/context/ThemeContext";
 import {LlmProvider} from "./store/context/LlmContext";
+import {OperationEventProvider} from "./store/context/OperationEventContext";
 import CommandBarOverlay from "./components/llm/CommandBarOverlay";
+import SidebarChat from "./components/llm/SidebarChat";
+import OperationEventBridge from "./components/llm/OperationEventBridge";
 
 function App() {
     const {currentTheme} = useTheme();
@@ -30,11 +33,15 @@ function App() {
     return (
         <>
             <LlmProvider>
-                <ConfigProvider theme={currentTheme}>
-                    <ToastContainer/>
-                    <CommandBarOverlay />
-                    <AppRouter/>
-                </ConfigProvider>
+                <OperationEventProvider>
+                    <ConfigProvider theme={currentTheme}>
+                        <ToastContainer/>
+                        <OperationEventBridge />
+                        <CommandBarOverlay />
+                        <SidebarChat />
+                        <AppRouter/>
+                    </ConfigProvider>
+                </OperationEventProvider>
             </LlmProvider>
         </>
     );

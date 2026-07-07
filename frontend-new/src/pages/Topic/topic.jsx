@@ -19,6 +19,7 @@ import React, {useEffect, useState} from 'react';
 import {Button, Checkbox, Form, Input, message, Popconfirm, Space, Table} from 'antd';
 import {useLanguage} from '../../i18n/LanguageContext';
 import {remoteApi} from '../../api/remoteApi/remoteApi';
+import {useOperationEvent, OperationEvents} from '../../store/context/OperationEventContext';
 import ResetOffsetResultDialog from "../../components/topic/ResetOffsetResultDialog";
 import SendResultDialog from "../../components/topic/SendResultDialog";
 import TopicModifyDialog from "../../components/topic/TopicModifyDialog";
@@ -32,6 +33,7 @@ import SendTopicMessageDialog from "../../components/topic/SendTopicMessageDialo
 
 const DeployHistoryList = () => {
     const {t} = useLanguage();
+    const {emit, subscribe} = useOperationEvent();
     const [filterStr, setFilterStr] = useState('');
     const [filterNormal, setFilterNormal] = useState(true);
     const [filterDelay, setFilterDelay] = useState(false);
@@ -93,6 +95,24 @@ const DeployHistoryList = () => {
     useEffect(() => {
         getTopicList();
     }, []);
+
+    // Subscribe to operation events from chat (Chat → Web refresh)
+    useEffect(() => {
+        const unsubCreated = subscribe(OperationEvents.TOPIC_CREATED, () => {
+            getTopicList();
+        });
+        const unsubUpdated = subscribe(OperationEvents.TOPIC_UPDATED, () => {
+            getTopicList();
+        });
+        const unsubDeleted = subscribe(OperationEvents.TOPIC_DELETED, () => {
+            getTopicList();
+        });
+        return () => {
+            unsubCreated();
+            unsubUpdated();
+            unsubDeleted();
+        };
+    }, [subscribe]);
 
     useEffect(() => {
         filterList(paginationConf.current);
@@ -285,6 +305,9 @@ const DeployHistoryList = () => {
             if (result.status === 0) {
                 messageApi.success(t.TOPIC_OPERATION_SUCCESS);
                 closeAddUpdateDialog();
+                // Emit operation event (Web → Chat sync)
+                const eventType = isUpdateMode ? OperationEvents.TOPIC_UPDATED : OperationEvents.TOPIC_CREATED;
+                emit(eventType, { topicName: values.topicName || values.name });
                 if (!isUpdateMode) {
                     await getTopicList()
                 }
@@ -303,6 +326,8 @@ const DeployHistoryList = () => {
             const result = await remoteApi.deleteTopic(topicToDelete);
             if (result.status === 0) {
                 messageApi.success(`${t.TOPIC} [${topicToDelete}] ${t.DELETED_SUCCESSFULLY}`);
+                // Emit operation event (Web → Chat sync)
+                emit(OperationEvents.TOPIC_DELETED, { topicName: topicToDelete });
                 setAllTopicList(allTopicList.filter(topic => topic !== topicToDelete));
                 await getTopicList()
             } else {

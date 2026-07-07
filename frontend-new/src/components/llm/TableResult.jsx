@@ -15,46 +15,79 @@
  * limitations under the License.
  */
 
-import React from 'react';
-import { Table } from 'antd';
+import React, { useMemo } from 'react';
+import { Table, Empty } from 'antd';
 
+/**
+ * TableResult — 使用 Ant Design Table 渲染表格结果
+ * - 自动解析 columns / dataSource
+ * - 中文分页标签
+ * - 紧凑样式适配聊天面板
+ */
 function TableResult({ columns, dataSource, title }) {
-    const resolvedColumns = columns && columns.length > 0
-        ? columns.map((col, index) => ({
-            title: typeof col === 'string' ? col : (col.title || col.key || `Column ${index + 1}`),
-            dataIndex: typeof col === 'string' ? col : (col.dataIndex || col.key),
-            key: typeof col === 'string' ? col : (col.key || col.dataIndex || `col_${index}`),
-            sorter: (a, b) => {
-                const key = typeof col === 'string' ? col : (col.dataIndex || col.key);
-                const valA = a[key];
-                const valB = b[key];
-                if (typeof valA === 'number' && typeof valB === 'number') {
-                    return valA - valB;
-                }
-                return String(valA || '').localeCompare(String(valB || ''));
-            },
-            ...(typeof col === 'object' ? col : {}),
-        }))
-        : [];
+    const resolvedColumns = useMemo(() => {
+        if (!columns || columns.length === 0) return [];
+        return columns.map((col, index) => {
+            if (typeof col === 'string') {
+                return {
+                    title: col,
+                    dataIndex: col,
+                    key: col,
+                    ellipsis: true,
+                };
+            }
+            return {
+                title: col.title || col.label || col.key || `列${index + 1}`,
+                dataIndex: col.dataIndex || col.key,
+                key: col.key || col.dataIndex || `col_${index}`,
+                ellipsis: col.ellipsis !== false,
+                width: col.width,
+                render: col.render,
+                sorter: col.sorter !== false ? (a, b) => {
+                    const key = col.dataIndex || col.key;
+                    const valA = a[key];
+                    const valB = b[key];
+                    if (typeof valA === 'number' && typeof valB === 'number') return valA - valB;
+                    return String(valA || '').localeCompare(String(valB || ''));
+                } : undefined,
+            };
+        });
+    }, [columns]);
 
-    const resolvedDataSource = dataSource && dataSource.length > 0
-        ? dataSource.map((row, index) => ({ ...row, _key: row.key || index }))
-        : [];
+    const resolvedDataSource = useMemo(() => {
+        if (!dataSource || dataSource.length === 0) return [];
+        return dataSource.map((row, index) => ({
+            ...row,
+            _key: row.key || row.id || index,
+        }));
+    }, [dataSource]);
 
-    if (!resolvedColumns.length || !resolvedDataSource.length) {
-        return <div style={{ color: '#999', padding: '8px' }}>No data available</div>;
+    if (!resolvedColumns.length) {
+        return <Empty description="无列定义" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
+    }
+
+    if (!resolvedDataSource.length) {
+        return <Empty description="暂无数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
     }
 
     return (
-        <div>
-            {title && <h4 style={{ margin: '0 0 8px 0' }}>{title}</h4>}
+        <div className="table-result">
+            {title && <div className="table-result-title">{title}</div>}
             <Table
                 columns={resolvedColumns}
                 dataSource={resolvedDataSource}
                 rowKey="_key"
                 size="small"
-                pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `Total ${total} items` }}
+                bordered
+                pagination={{
+                    pageSize: 5,
+                    size: 'small',
+                    showSizeChanger: true,
+                    pageSizeOptions: ['5', '10', '20'],
+                    showTotal: (total, range) => `${range[0]}-${range[1]} / 共 ${total} 条`,
+                }}
                 scroll={{ x: 'max-content' }}
+                className="table-result-ant"
             />
         </div>
     );

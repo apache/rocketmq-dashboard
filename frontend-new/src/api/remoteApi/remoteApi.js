@@ -980,6 +980,20 @@ const remoteApi = {
     sendLlmMessage: function(message, cluster, history) {
         return remoteApi._fetch(remoteApi.buildUrl('/api/llm/chat'), { method: 'POST', body: JSON.stringify({message, cluster, history}) }).then(r => r.json());
     },
+    /**
+     * SSE streaming chat endpoint.
+     * Returns an EventSource for server-sent events.
+     * Event types: 'token' (partial text), 'tool_call' (tool invocation), 'done' (complete), 'error'
+     */
+    sendLlmMessageStream: function(message, cluster, history) {
+        const params = new URLSearchParams();
+        params.set('message', message);
+        if (cluster) params.set('cluster', cluster);
+        if (history && history.length > 0) params.set('history', JSON.stringify(history));
+
+        const url = remoteApi.buildUrl('/api/llm/chat/stream?' + params.toString());
+        return new EventSource(url, { withCredentials: true });
+    },
     confirmLlmAction: function(toolCallId) {
         return remoteApi._fetch(remoteApi.buildUrl('/api/llm/confirm'), { method: 'POST', body: JSON.stringify({toolCallId, confirm: true}) }).then(r => r.json());
     },

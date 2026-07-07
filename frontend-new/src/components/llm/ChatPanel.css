@@ -1,0 +1,1111 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/* ChatPanel container */
+.chat-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    background: #ffffff;
+}
+
+/* Header */
+.chat-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid #f0f0f0;
+    background: #fafafa;
+    flex-shrink: 0;
+}
+
+.chat-panel-header-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.chat-panel-header-icon {
+    font-size: 18px;
+    color: #1677ff;
+}
+
+.chat-panel-header-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: rgba(0, 0, 0, 0.88);
+}
+
+.chat-panel-header-right {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.chat-panel-header-btn {
+    color: #8c8c8c !important;
+}
+
+.chat-panel-header-btn:hover {
+    color: #1677ff !important;
+}
+
+/* Messages area */
+.chat-panel-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    min-height: 0;
+    scroll-behavior: smooth;
+}
+
+.chat-panel-messages::-webkit-scrollbar {
+    width: 5px;
+}
+
+.chat-panel-messages::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.chat-panel-messages::-webkit-scrollbar-thumb {
+    background: #d9d9d9;
+    border-radius: 3px;
+}
+
+.chat-panel-messages::-webkit-scrollbar-thumb:hover {
+    background: #bfbfbf;
+}
+
+/* Empty state */
+.chat-panel-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 240px;
+    padding: 40px 20px;
+    text-align: center;
+}
+
+.chat-panel-unconfigured {
+    margin-top: 16px;
+    padding: 8px 16px;
+    background: #fffbe6;
+    border: 1px solid #ffe58f;
+    border-radius: 6px;
+}
+
+/* Loading dots animation */
+.chat-panel-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 0;
+}
+
+.chat-loading-dots {
+    display: flex;
+    gap: 4px;
+}
+
+.chat-loading-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #1677ff;
+    animation: chat-loading-bounce 1.4s infinite ease-in-out both;
+}
+
+.chat-loading-dot:nth-child(1) { animation-delay: -0.32s; }
+.chat-loading-dot:nth-child(2) { animation-delay: -0.16s; }
+.chat-loading-dot:nth-child(3) { animation-delay: 0s; }
+
+@keyframes chat-loading-bounce {
+    0%, 80%, 100% {
+        transform: scale(0);
+        opacity: 0.5;
+    }
+    40% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+/* Scroll to bottom button */
+.chat-scroll-bottom {
+    position: absolute;
+    bottom: 90px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 6px 16px;
+    background: #1677ff;
+    color: #fff;
+    border-radius: 16px;
+    font-size: 12px;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(22, 119, 255, 0.3);
+    transition: all 0.2s;
+    z-index: 10;
+    user-select: none;
+}
+
+.chat-scroll-bottom:hover {
+    background: #4096ff;
+    transform: translateX(-50%) translateY(-1px);
+    box-shadow: 0 4px 12px rgba(22, 119, 255, 0.4);
+}
+
+/* Input area */
+.chat-panel-input-area {
+    flex-shrink: 0;
+    border-top: 1px solid #f0f0f0;
+    background: #fafafa;
+    padding: 12px 16px 8px;
+}
+
+.chat-panel-input-wrapper {
+    display: flex;
+    align-items: flex-end;
+    background: #ffffff;
+    border: 1px solid #d9d9d9;
+    border-radius: 10px;
+    padding: 4px 8px 4px 12px;
+    transition: all 0.2s;
+}
+
+.chat-panel-input-wrapper:focus-within {
+    border-color: #1677ff;
+    box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1);
+}
+
+.chat-panel-textarea {
+    flex: 1;
+    border: none;
+    outline: none;
+    resize: none;
+    font-size: 14px;
+    line-height: 22px;
+    color: rgba(0, 0, 0, 0.88);
+    background: transparent;
+    padding: 6px 0;
+    max-height: 120px;
+    overflow-y: auto;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+.chat-panel-textarea::placeholder {
+    color: #bfbfbf;
+}
+
+.chat-panel-textarea:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.chat-panel-input-actions {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    margin-left: 4px;
+}
+
+.chat-panel-send-btn {
+    width: 32px !important;
+    height: 32px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border-radius: 8px !important;
+}
+
+.chat-panel-input-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 6px;
+    padding: 0 4px;
+}
+
+/* ===== ChatMessage styles ===== */
+
+.chat-message {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 16px;
+    position: relative;
+}
+
+.chat-message-error {
+    justify-content: center;
+}
+
+.chat-message-system {
+    justify-content: center;
+}
+
+.chat-message-bubble-system {
+    background: #f0f5ff;
+    border: 1px solid #d6e4ff;
+    border-radius: 8px;
+    padding: 6px 14px;
+    max-width: 90%;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.chat-message-bubble-system a {
+    color: #1677ff;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.chat-message-bubble-system a:hover {
+    text-decoration: underline;
+}
+
+.chat-message-user {
+    flex-direction: row-reverse;
+}
+
+.chat-message-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.chat-message-avatar-user {
+    background: #1677ff;
+    color: #ffffff;
+}
+
+.chat-message-avatar-assistant {
+    background: #e6f7ff;
+    color: #1677ff;
+}
+
+.chat-message-avatar-tool {
+    background: #f6ffed;
+    color: #52c41a;
+}
+
+.chat-message-body {
+    max-width: 80%;
+    min-width: 0;
+}
+
+.chat-message-user .chat-message-body {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+}
+
+.chat-message-bubble {
+    padding: 10px 14px;
+    border-radius: 12px;
+    word-break: break-word;
+    line-height: 1.6;
+    font-size: 14px;
+}
+
+.chat-message-bubble-user {
+    background: #1677ff;
+    color: #ffffff;
+    border-bottom-right-radius: 4px;
+}
+
+.chat-message-bubble-assistant {
+    background: #f5f5f5;
+    color: rgba(0, 0, 0, 0.88);
+    border-bottom-left-radius: 4px;
+}
+
+.chat-message-bubble-error {
+    background: #fff2f0;
+    border: 1px solid #ffccc7;
+    border-radius: 8px;
+    padding: 10px 16px;
+    max-width: 90%;
+}
+
+.chat-message-streaming {
+    position: relative;
+}
+
+/* Streaming cursor */
+.chat-cursor {
+    display: inline-block;
+    width: 2px;
+    height: 16px;
+    background: #1677ff;
+    margin-left: 2px;
+    vertical-align: text-bottom;
+    animation: chat-cursor-blink 1s step-end infinite;
+}
+
+@keyframes chat-cursor-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+}
+
+.chat-message-time {
+    margin-top: 4px;
+    padding: 0 4px;
+}
+
+.chat-message-time-user {
+    text-align: right;
+}
+
+.chat-message-tool-calls {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.chat-message-degraded {
+    margin-top: 8px;
+    padding: 6px 10px;
+    background: #fffbe6;
+    border-radius: 4px;
+}
+
+/* ===== ToolCallCard styles ===== */
+
+.chat-tool-card {
+    background: #ffffff;
+    border: 1px solid #e8e8e8;
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 13px;
+}
+
+.chat-tool-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.chat-tool-card-title {
+    display: flex;
+    align-items: center;
+}
+
+.chat-tool-name {
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', Menlo, Monaco, Consolas, monospace;
+    font-size: 13px;
+}
+
+.chat-tool-card-status {
+    display: flex;
+    align-items: center;
+}
+
+.chat-tool-card-desc {
+    margin-bottom: 8px;
+}
+
+.chat-tool-card-args,
+.chat-tool-card-result,
+.chat-tool-card-error {
+    margin-top: 8px;
+}
+
+.chat-tool-card-pre {
+    background: #f5f5f5;
+    border: 1px solid #e8e8e8;
+    border-radius: 4px;
+    padding: 8px;
+    margin: 4px 0 0;
+    font-size: 12px;
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', Menlo, Monaco, Consolas, monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.chat-tool-card-error .chat-tool-card-pre {
+    background: #fff2f0;
+    border-color: #ffccc7;
+    color: #cf1322;
+}
+
+.chat-tool-card-confirm {
+    margin-top: 8px;
+}
+
+/* ===== DryRunCard styles ===== */
+
+.dryrun-card {
+    border-radius: 8px;
+    overflow: hidden;
+    font-size: 13px;
+}
+
+/* L2 — Preview card (orange border) */
+.dryrun-card-preview {
+    border: 2px solid #fa8c16;
+    background: #fff7e6;
+}
+
+/* L3 — Rejected card (red border) */
+.dryrun-card-rejected {
+    border: 2px solid #ff4d4f;
+    background: #fff2f0;
+}
+
+.dryrun-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.dryrun-card-preview .dryrun-card-header {
+    background: rgba(250, 140, 22, 0.08);
+    border-bottom-color: rgba(250, 140, 22, 0.15);
+}
+
+.dryrun-card-rejected .dryrun-card-header {
+    background: rgba(255, 77, 79, 0.08);
+    border-bottom-color: rgba(255, 77, 79, 0.15);
+}
+
+.dryrun-card-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.dryrun-card-op-name {
+    font-weight: 600;
+    font-size: 14px;
+    color: rgba(0, 0, 0, 0.88);
+}
+
+.dryrun-card-icon-preview {
+    color: #fa8c16;
+    font-size: 16px;
+}
+
+.dryrun-card-icon-rejected {
+    color: #ff4d4f;
+    font-size: 16px;
+}
+
+.dryrun-card-risk-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 20px;
+}
+
+.dryrun-risk-L2 {
+    background: rgba(250, 173, 20, 0.15);
+    color: #d48806;
+    border: 1px solid rgba(250, 173, 20, 0.3);
+}
+
+.dryrun-risk-L3 {
+    background: rgba(255, 77, 79, 0.15);
+    color: #cf1322;
+    border: 1px solid rgba(255, 77, 79, 0.3);
+}
+
+.dryrun-card-body {
+    padding: 12px 14px;
+}
+
+.dryrun-card-field {
+    margin-bottom: 8px;
+}
+
+.dryrun-card-field:last-child {
+    margin-bottom: 0;
+}
+
+.dryrun-card-label {
+    color: rgba(0, 0, 0, 0.45);
+    font-size: 12px;
+    display: block;
+    margin-bottom: 2px;
+}
+
+.dryrun-card-value {
+    color: rgba(0, 0, 0, 0.88);
+    font-size: 13px;
+    word-break: break-word;
+}
+
+.dryrun-card-value-mono {
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+    background: rgba(0, 0, 0, 0.04);
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+.dryrun-card-params {
+    background: rgba(0, 0, 0, 0.04);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 4px;
+    padding: 8px 10px;
+    margin: 4px 0 0;
+    font-size: 12px;
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', Menlo, Monaco, Consolas, monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 160px;
+    overflow-y: auto;
+    color: rgba(0, 0, 0, 0.75);
+}
+
+.dryrun-card-reason {
+    color: #cf1322;
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 10px;
+    padding: 6px 10px;
+    background: rgba(255, 77, 79, 0.06);
+    border-radius: 4px;
+}
+
+.dryrun-card-warnings {
+    margin-top: 8px;
+    padding: 8px 10px;
+    background: rgba(250, 173, 20, 0.08);
+    border: 1px solid rgba(250, 173, 20, 0.2);
+    border-radius: 4px;
+    color: #d48806;
+    font-size: 12px;
+}
+
+.dryrun-card-warning-item {
+    padding: 2px 0;
+    padding-left: 16px;
+}
+
+.dryrun-card-footer {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    background: rgba(0, 0, 0, 0.02);
+}
+
+.dryrun-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 5px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.2s;
+    line-height: 22px;
+}
+
+.dryrun-btn-confirm {
+    background: #52c41a;
+    color: #ffffff;
+    border-color: #52c41a;
+}
+
+.dryrun-btn-confirm:hover {
+    background: #73d13d;
+    border-color: #73d13d;
+}
+
+.dryrun-btn-confirm:active {
+    background: #389e0d;
+    border-color: #389e0d;
+}
+
+.dryrun-btn-cancel {
+    background: #ffffff;
+    color: rgba(0, 0, 0, 0.65);
+    border-color: #d9d9d9;
+}
+
+.dryrun-btn-cancel:hover {
+    color: #4096ff;
+    border-color: #4096ff;
+}
+
+.dryrun-btn-cancel:active {
+    color: #1677ff;
+    border-color: #1677ff;
+}
+
+/* ===== ResultCard styles ===== */
+
+.result-card {
+    background: #ffffff;
+    border: 1px solid #e8e8e8;
+    border-radius: 8px;
+    overflow: hidden;
+    font-size: 13px;
+}
+
+.result-card-body {
+    padding: 12px;
+}
+
+.result-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 8px 12px;
+    border-top: 1px solid #f0f0f0;
+    background: #fafafa;
+}
+
+.result-card-console-link {
+    display: inline-flex;
+    align-items: center;
+    color: #1677ff;
+    font-size: 12px;
+    text-decoration: none;
+    transition: color 0.2s;
+}
+
+.result-card-console-link:hover {
+    color: #4096ff;
+    text-decoration: underline;
+}
+
+/* ===== DetailCard styles ===== */
+
+.detail-card {
+    font-size: 13px;
+}
+
+.detail-card-title {
+    font-weight: 600;
+    font-size: 14px;
+    color: rgba(0, 0, 0, 0.88);
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.detail-card-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.detail-card-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    line-height: 1.6;
+}
+
+.detail-card-key {
+    flex-shrink: 0;
+    min-width: 80px;
+    max-width: 140px;
+    color: rgba(0, 0, 0, 0.45);
+    font-size: 12px;
+}
+
+.detail-card-value {
+    flex: 1;
+    min-width: 0;
+    color: rgba(0, 0, 0, 0.88);
+    word-break: break-word;
+    font-size: 13px;
+}
+
+.detail-card-empty {
+    color: rgba(0, 0, 0, 0.25);
+    font-size: 13px;
+    text-align: center;
+    padding: 16px 0;
+}
+
+.detail-card-raw {
+    color: rgba(0, 0, 0, 0.65);
+    font-size: 12px;
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', Menlo, Monaco, Consolas, monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.detail-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-top: 8px;
+    margin-top: 8px;
+    border-top: 1px solid #f0f0f0;
+}
+
+.detail-card-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.detail-card-tag {
+    display: inline-block;
+    padding: 1px 8px;
+    background: #f0f5ff;
+    border: 1px solid #adc6ff;
+    border-radius: 4px;
+    font-size: 11px;
+    color: #1677ff;
+    line-height: 20px;
+}
+
+/* ===== TableResult styles ===== */
+
+.table-result {
+    font-size: 13px;
+}
+
+.table-result-title {
+    font-weight: 600;
+    font-size: 14px;
+    color: rgba(0, 0, 0, 0.88);
+    margin-bottom: 8px;
+}
+
+.table-result-ant .ant-table {
+    font-size: 12px;
+}
+
+.table-result-ant .ant-table-thead > tr > th {
+    padding: 6px 8px;
+    font-size: 12px;
+    background: #fafafa;
+}
+
+.table-result-ant .ant-table-tbody > tr > td {
+    padding: 6px 8px;
+    font-size: 12px;
+}
+
+.table-result-ant .ant-pagination {
+    margin: 8px 0 0;
+    font-size: 12px;
+}
+
+/* ===== TimeseriesResult styles ===== */
+
+.timeseries-result {
+    width: 100%;
+    min-height: 200px;
+}
+
+.timeseries-title {
+    font-weight: 600;
+    font-size: 14px;
+    color: rgba(0, 0, 0, 0.88);
+    margin-bottom: 8px;
+}
+
+.timeseries-svg {
+    display: block;
+    width: 100%;
+}
+
+.timeseries-empty {
+    color: rgba(0, 0, 0, 0.25);
+    font-size: 13px;
+    text-align: center;
+    padding: 24px 0;
+}
+
+/* ===== Dark mode ===== */
+@media (prefers-color-scheme: dark) {
+    .chat-panel {
+        background: #1f1f1f;
+    }
+
+    .chat-panel-header {
+        background: #141414;
+        border-bottom-color: #303030;
+    }
+
+    .chat-panel-header-title {
+        color: rgba(255, 255, 255, 0.85);
+    }
+
+    .chat-panel-messages {
+        background: #1f1f1f;
+    }
+
+    .chat-panel-input-area {
+        background: #141414;
+        border-top-color: #303030;
+    }
+
+    .chat-panel-input-wrapper {
+        background: #1f1f1f;
+        border-color: #424242;
+    }
+
+    .chat-panel-input-wrapper:focus-within {
+        border-color: #1677ff;
+        box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.2);
+    }
+
+    .chat-panel-textarea {
+        color: rgba(255, 255, 255, 0.85);
+    }
+
+    .chat-message-bubble-assistant {
+        background: #2a2a2a;
+        color: rgba(255, 255, 255, 0.85);
+    }
+
+    .chat-message-bubble-error {
+        background: #2a1215;
+        border-color: #58181c;
+    }
+
+    .chat-message-bubble-system {
+        background: #111d2c;
+        border-color: #15325b;
+    }
+
+    .chat-message-bubble-system a {
+        color: #4096ff;
+    }
+
+    .chat-message-avatar-assistant {
+        background: #111d2c;
+    }
+
+    .chat-message-avatar-tool {
+        background: #162312;
+    }
+
+    .chat-tool-card {
+        background: #2a2a2a;
+        border-color: #3a3a3a;
+    }
+
+    .chat-tool-card-pre {
+        background: #1f1f1f;
+        border-color: #3a3a3a;
+        color: rgba(255, 255, 255, 0.75);
+    }
+
+    .chat-tool-card-error .chat-tool-card-pre {
+        background: #2a1215;
+        border-color: #58181c;
+        color: #e84749;
+    }
+
+    .chat-panel-unconfigured {
+        background: #2a2115;
+        border-color: #594214;
+    }
+
+    /* DryRunCard dark mode */
+    .dryrun-card-preview {
+        background: #2a2115;
+        border-color: #d48806;
+    }
+
+    .dryrun-card-rejected {
+        background: #2a1215;
+        border-color: #e84749;
+    }
+
+    .dryrun-card-preview .dryrun-card-header {
+        background: rgba(212, 136, 6, 0.12);
+        border-bottom-color: rgba(212, 136, 6, 0.2);
+    }
+
+    .dryrun-card-rejected .dryrun-card-header {
+        background: rgba(232, 71, 73, 0.12);
+        border-bottom-color: rgba(232, 71, 73, 0.2);
+    }
+
+    .dryrun-card-op-name {
+        color: rgba(255, 255, 255, 0.85);
+    }
+
+    .dryrun-card-label {
+        color: rgba(255, 255, 255, 0.45);
+    }
+
+    .dryrun-card-value {
+        color: rgba(255, 255, 255, 0.85);
+    }
+
+    .dryrun-card-value-mono {
+        background: rgba(255, 255, 255, 0.08);
+    }
+
+    .dryrun-card-params {
+        background: rgba(255, 255, 255, 0.06);
+        border-color: rgba(255, 255, 255, 0.1);
+        color: rgba(255, 255, 255, 0.75);
+    }
+
+    .dryrun-card-reason {
+        background: rgba(232, 71, 73, 0.1);
+        color: #e84749;
+    }
+
+    .dryrun-card-warnings {
+        background: rgba(212, 136, 6, 0.1);
+        border-color: rgba(212, 136, 6, 0.25);
+        color: #d89614;
+    }
+
+    .dryrun-card-footer {
+        border-top-color: rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.04);
+    }
+
+    .dryrun-btn-cancel {
+        background: #2a2a2a;
+        color: rgba(255, 255, 255, 0.65);
+        border-color: #424242;
+    }
+
+    .dryrun-btn-cancel:hover {
+        color: #4096ff;
+        border-color: #4096ff;
+    }
+
+    .dryrun-risk-L2 {
+        background: rgba(212, 136, 6, 0.2);
+        color: #d89614;
+        border-color: rgba(212, 136, 6, 0.4);
+    }
+
+    .dryrun-risk-L3 {
+        background: rgba(232, 71, 73, 0.2);
+        color: #e84749;
+        border-color: rgba(232, 71, 73, 0.4);
+    }
+
+    /* ResultCard dark mode */
+    .result-card {
+        background: #2a2a2a;
+        border-color: #3a3a3a;
+    }
+
+    .result-card-footer {
+        border-top-color: #3a3a3a;
+        background: #1f1f1f;
+    }
+
+    .result-card-console-link {
+        color: #4096ff;
+    }
+
+    .result-card-console-link:hover {
+        color: #69b1ff;
+    }
+
+    /* DetailCard dark mode */
+    .detail-card-title {
+        color: rgba(255, 255, 255, 0.85);
+        border-bottom-color: #3a3a3a;
+    }
+
+    .detail-card-key {
+        color: rgba(255, 255, 255, 0.45);
+    }
+
+    .detail-card-value {
+        color: rgba(255, 255, 255, 0.85);
+    }
+
+    .detail-card-empty {
+        color: rgba(255, 255, 255, 0.25);
+    }
+
+    .detail-card-raw {
+        color: rgba(255, 255, 255, 0.65);
+    }
+
+    .detail-card-footer {
+        border-top-color: #3a3a3a;
+    }
+
+    .detail-card-tag {
+        background: rgba(22, 119, 255, 0.15);
+        border-color: rgba(22, 119, 255, 0.3);
+        color: #4096ff;
+    }
+
+    /* TableResult dark mode */
+    .table-result-title {
+        color: rgba(255, 255, 255, 0.85);
+    }
+
+    .table-result-ant .ant-table-thead > tr > th {
+        background: #1f1f1f;
+        color: rgba(255, 255, 255, 0.85);
+        border-bottom-color: #3a3a3a;
+    }
+
+    .table-result-ant .ant-table-tbody > tr > td {
+        border-bottom-color: #303030;
+        color: rgba(255, 255, 255, 0.75);
+    }
+
+    .table-result-ant .ant-table-tbody > tr:hover > td {
+        background: #303030;
+    }
+
+    .table-result-ant .ant-table {
+        background: #2a2a2a;
+        color: rgba(255, 255, 255, 0.75);
+    }
+
+    .table-result-ant .ant-table-container {
+        border-color: #3a3a3a;
+    }
+
+    /* TimeseriesResult dark mode */
+    .timeseries-title {
+        color: rgba(255, 255, 255, 0.85);
+    }
+
+    .timeseries-empty {
+        color: rgba(255, 255, 255, 0.25);
+    }
+}

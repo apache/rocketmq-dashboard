@@ -16,40 +16,50 @@
  */
 
 import React from 'react';
-import { Descriptions, Button } from 'antd';
 import { LinkOutlined } from '@ant-design/icons';
+
+/**
+ * TopicDetailCard — 主题详情卡片
+ * 使用 DetailCard 风格的 key-value 列表展示
+ */
+const TOPIC_FIELDS = [
+    { key: 'name', label: '主题名称', alt: 'topicName' },
+    { key: 'type', label: '类型', alt: 'topicType' },
+    { key: 'readQueueNums', label: '读队列数' },
+    { key: 'writeQueueNums', label: '写队列数' },
+    { key: 'perm', label: '权限' },
+    { key: 'status', label: '状态' },
+    { key: 'createTime', label: '创建时间', alt: 'createTimestamp' },
+    { key: 'brokerName', label: 'Broker' },
+];
 
 function TopicDetailCard({ data }) {
     if (!data) {
-        return <div style={{ color: '#999', padding: '8px' }}>No topic data available</div>;
+        return <div className="detail-card-empty">暂无主题数据</div>;
     }
 
     const topicData = data.topic || data;
 
     return (
-        <div>
-            <Descriptions
-                bordered
-                size="small"
-                column={1}
-                style={{ marginBottom: '12px' }}
-            >
-                <Descriptions.Item label="Name">{topicData.name || topicData.topicName || '-'}</Descriptions.Item>
-                <Descriptions.Item label="Type">{topicData.type || topicData.topicType || '-'}</Descriptions.Item>
-                <Descriptions.Item label="Read Queue Nums">{topicData.readQueueNums ?? '-'}</Descriptions.Item>
-                <Descriptions.Item label="Write Queue Nums">{topicData.writeQueueNums ?? '-'}</Descriptions.Item>
-                <Descriptions.Item label="Perm">{topicData.perm ?? '-'}</Descriptions.Item>
-                <Descriptions.Item label="Status">{topicData.status || '-'}</Descriptions.Item>
-                <Descriptions.Item label="Create Time">{topicData.createTime || topicData.createTimestamp || '-'}</Descriptions.Item>
-            </Descriptions>
-            <Button
-                type="link"
-                icon={<LinkOutlined />}
-                href="/#/topic"
-                size="small"
-            >
-                View in Console
-            </Button>
+        <div className="detail-card">
+            <div className="detail-card-list">
+                {TOPIC_FIELDS.map(field => {
+                    const value = topicData[field.key] ?? topicData[field.alt];
+                    if (value === undefined || value === null) return null;
+                    return (
+                        <div className="detail-card-row" key={field.key}>
+                            <span className="detail-card-key">{field.label}</span>
+                            <span className="detail-card-value">{String(value)}</span>
+                        </div>
+                    );
+                })}
+            </div>
+            <div className="detail-card-footer">
+                <a className="result-card-console-link" href="/#/topic">
+                    <LinkOutlined style={{ marginRight: 4 }} />
+                    在控制台中打开
+                </a>
+            </div>
         </div>
     );
 }
