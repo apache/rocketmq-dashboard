@@ -20,6 +20,7 @@ import jakarta.annotation.PostConstruct;
 import org.apache.rocketmq.dashboard.architecture.AdminClient;
 import org.apache.rocketmq.dashboard.architecture.ClusterProvider;
 import org.apache.rocketmq.dashboard.architecture.MetadataProvider;
+import org.apache.rocketmq.dashboard.config.ArchitectureConfig;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.model.ClusterCapability;
 import org.apache.rocketmq.dashboard.model.ClusterTopology;
@@ -45,6 +46,9 @@ public abstract class ArchitectureBasedService {
     @Autowired
     protected MetadataProvider metadataProvider;
 
+    @Autowired(required = false)
+    protected ArchitectureConfig.ArchitectureAdaptationManager adaptationManager;
+
     protected ClusterCapability clusterCapability;
 
     @PostConstruct
@@ -61,10 +65,40 @@ public abstract class ArchitectureBasedService {
      * Check if cluster supports specific capability
      */
     protected boolean supports(String capability) {
+        ClusterCapability clusterCapability = resolveClusterCapability();
         if (clusterCapability == null) {
             return false;
         }
         return clusterCapability.hasCapability(capability);
+    }
+
+    /**
+     * Resolve cluster capability
+     * @return
+     */
+    private ClusterCapability resolveClusterCapability() {
+        if (adaptationManager != null) {
+            try {
+                ClusterCapability dynamic = adaptationManager.getCurrentCapability();
+                if (dynamic != null) {
+                    return dynamic;
+                }
+            } catch (Exception e) {
+                // fail back to other sources
+            }
+        }
+        if (clusterProvider != null) {
+            try {
+                ClusterCapability live = clusterProvider.getClusterCapability();
+                if (live != null) {
+                    this.clusterCapability = live;
+                    return live;
+                }
+            } catch (Exception e) {
+                // fail back to other sources
+            }
+        }
+        return clusterCapability;
     }
 
     /**
@@ -124,19 +158,43 @@ public abstract class ArchitectureBasedService {
     }
 
     /**
- *
+     * Get cluster capability
+     * @return
      */
     protected ClusterCapability getClusterCapability() {
-        return clusterCapability;
+        return resolveClusterCapability();
+    }
+
+    /**
+     * Get metadata provider
+     * @return
+     */
+    protected MetadataProvider getMetadataProvider() {
+        if (adaptationManager != null && adaptationManager.getCurrentCapability() != null) {
+            return adaptationManager.getMetadataProvider();
+        }
+        return this.metadataProvider;
+    }
+
+    /**
+     * Get cluster provider
+     * @return
+     */
+    protected ClusterProvider getClusterProvider() {
+        if (adaptationManager != null && adaptationManager.getCurrentCapability() != null) {
+            return adaptationManager.getClusterProvider();
+        }
+        return this.clusterProvider;
     }
 
     /**
  *
      */
     protected void handleUnsupportedOperation(String operation) {
+        ClusterCapability current = resolveClusterCapability();
         throw new UnsupportedOperationException(
             String.format("Operation '%s' is not supported in current cluster architecture (version: %s)",
-                operation, clusterCapability != null ? clusterCapability.getArchitectureVersion() : "unknown"));
+                operation, current != null ? current.getArchitectureVersion() : "unknown"));
     }
 
     /**
