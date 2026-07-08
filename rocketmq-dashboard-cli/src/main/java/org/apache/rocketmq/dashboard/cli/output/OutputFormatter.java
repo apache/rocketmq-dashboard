@@ -30,9 +30,9 @@ public class OutputFormatter {
 
     public enum Format { TABLE, JSON, YAML }
 
-    private static final ObjectMapper jsonMapper = new ObjectMapper()
+    private static final ObjectMapper JSON_MAPPER = new ObjectMapper()
             .enable(SerializationFeature.INDENT_OUTPUT);
-    private static final YAMLMapper yamlMapper = new YAMLMapper();
+    private static final YAMLMapper YAML_MAPPER = new YAMLMapper();
 
     public static String format(Object data, Format format) {
         switch (format) {
@@ -59,7 +59,7 @@ public class OutputFormatter {
 
     private static String toJson(Object data) {
         try {
-            return jsonMapper.writeValueAsString(data);
+            return JSON_MAPPER.writeValueAsString(data);
         } catch (JsonProcessingException e) {
             return "{}";
         }
@@ -67,7 +67,7 @@ public class OutputFormatter {
 
     private static String toYaml(Object data) {
         try {
-            return yamlMapper.writeValueAsString(data);
+            return YAML_MAPPER.writeValueAsString(data);
         } catch (JsonProcessingException e) {
             return "";
         }

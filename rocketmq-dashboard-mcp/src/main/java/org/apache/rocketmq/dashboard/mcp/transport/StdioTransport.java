@@ -44,7 +44,8 @@ public class StdioTransport implements McpTransport {
 
         readerThread = new Thread(() -> {
             try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
+                new InputStreamReader(System.in, StandardCharsets.UTF_8)
+            )) {
                 String line;
                 while (running && (line = reader.readLine()) != null) {
                     if (line.trim().isEmpty()) {

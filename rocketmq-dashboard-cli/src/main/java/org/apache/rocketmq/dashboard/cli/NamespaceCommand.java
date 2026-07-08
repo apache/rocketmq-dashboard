@@ -19,7 +19,6 @@ package org.apache.rocketmq.dashboard.cli;
 import java.util.Arrays;
 import java.util.concurrent.Callable;
 import org.apache.rocketmq.dashboard.cli.security.DryRunResult;
-import org.apache.rocketmq.dashboard.cli.RmqctlCommand;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Parameters;
 import picocli.CommandLine.ParentCommand;

@@ -30,7 +30,6 @@ import org.apache.rocketmq.dashboard.cli.output.OutputFormatter;
 import org.apache.rocketmq.dashboard.cli.security.AuditLogger;
 import org.apache.rocketmq.dashboard.cli.security.DryRunResult;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
-import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.route.QueueData;
 import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.tools.admin.MQAdminExt;

@@ -19,11 +19,10 @@ package org.apache.rocketmq.dashboard.cli;
 import org.apache.rocketmq.dashboard.cli.schema.ToolDefinition;
 import org.apache.rocketmq.dashboard.cli.schema.ToolRegistry;
 import org.apache.rocketmq.dashboard.cli.schema.ParamSchema;
-import org.apache.rocketmq.dashboard.cli.output.OutputFormatter;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Parameters;
 
-import java.util.*;
+import java.util.List;
 import java.util.concurrent.Callable;
 
 /**

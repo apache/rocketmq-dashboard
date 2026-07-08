@@ -25,7 +25,6 @@ import java.util.concurrent.Callable;
 import org.apache.rocketmq.dashboard.cli.context.CliContext;
 import org.apache.rocketmq.dashboard.cli.output.OutputFormatter;
 import org.apache.rocketmq.dashboard.cli.security.DryRunResult;
-import org.apache.rocketmq.dashboard.cli.RmqctlCommand;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
