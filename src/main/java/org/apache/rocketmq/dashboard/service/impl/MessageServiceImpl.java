@@ -37,6 +37,7 @@ import org.apache.rocketmq.common.Pair;
 import org.apache.rocketmq.common.message.MessageClientIDSetter;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.common.utils.NetworkUtil;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.exception.ServiceException;
 import org.apache.rocketmq.dashboard.model.MessagePage;
@@ -53,6 +54,8 @@ import org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper;
 import org.apache.rocketmq.remoting.protocol.body.Connection;
 import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
+import org.apache.rocketmq.remoting.protocol.route.BrokerData;
+import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.apache.rocketmq.tools.admin.api.MessageTrack;
 import org.apache.rocketmq.tools.admin.api.TrackType;
@@ -68,6 +71,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -209,20 +213,42 @@ public class MessageServiceImpl implements MessageService {
         }
 
         // Re-verify tracks marked as NOT_CONSUME_YET.
-        // The underlying consumed() method in DefaultMQAdminExtImpl requires an
-        // exact broker-address match between msg.getStoreHost() and the broker's
-        // registered address.  When the broker registers with a hostname (or when
-        // DNS resolution inside the dashboard container differs from the broker),
-        // the address comparison silently fails and every message is incorrectly
-        // reported as NOT_CONSUME_YET even though it has already been consumed.
         //
-        // The fallback below re-checks the consumer offset directly, matching
-        // only on topic + queueId + offset and skipping the fragile address
-        // comparison.  See: https://github.com/apache/rocketmq-dashboard/issues/380
-        if (messageTracks != null) {
+        // Root cause: the underlying consumed() method in DefaultMQAdminExtImpl
+        // requires an exact broker-address match between msg.getStoreHost() and
+        // the broker's registered address.  When the broker registers with a
+        // hostname (or when DNS resolution inside the dashboard JVM differs from
+        // the broker), the address comparison silently fails and every message is
+        // incorrectly reported as NOT_CONSUME_YET even though it has been consumed.
+        //
+        // The fallback below re-checks the consumer offset directly.  To avoid
+        // cross-broker false positives in multi-broker clusters (where broker-a
+        // and broker-b both have queueId=0 for the same topic with independent
+        // offsets), we first resolve msg.getStoreHost() to a brokerName via the
+        // topic route data, then only compare offsets for that brokerName.
+        //
+        // Conservative policy: if the brokerName cannot be determined (route info
+        // unavailable or no address matches), the track remains NOT_CONSUME_YET —
+        // we prefer preserving the original false negative over introducing a new
+        // false positive.
+        //
+        // See: https://github.com/apache/rocketmq-dashboard/issues/380
+        if (messageTracks != null && !messageTracks.isEmpty()) {
+            // Cache ConsumeStats per consumer group within this request to avoid
+            // duplicate examineConsumeStats RPCs when multiple tracks share a group.
+            Map<String, ConsumeStats> statsCache = new HashMap<>();
             for (MessageTrack track : messageTracks) {
                 if (track.getTrackType() == TrackType.NOT_CONSUME_YET) {
-                    if (isConsumedByGroup(msg, track.getConsumerGroup())) {
+                    String group = track.getConsumerGroup();
+                    ConsumeStats stats = statsCache.computeIfAbsent(group, g -> {
+                        try {
+                            return mqAdminExt.examineConsumeStats(g);
+                        } catch (Exception e) {
+                            logger.warn("op=examineConsumeStatsError, group={}", g, e);
+                            return null;
+                        }
+                    });
+                    if (stats != null && isConsumedByGroup(msg, stats)) {
                         track.setTrackType(TrackType.CONSUMED);
                     }
                 }
@@ -234,29 +260,86 @@ public class MessageServiceImpl implements MessageService {
 
     /**
      * Independently verify whether a message has been consumed by the given
-     * consumer group.  Unlike {@link org.apache.rocketmq.tools.admin.DefaultMQAdminExt#consumed},
-     * this method does NOT compare broker addresses — it matches solely on
-     * topic, queueId and consumer offset, which avoids false negatives caused
-     * by hostname/IP mismatches between the broker registry and store host.
+     * consumer group, using pre-fetched {@link ConsumeStats}.
+     *
+     * <p>Unlike {@link org.apache.rocketmq.tools.admin.DefaultMQAdminExt#consumed},
+     * this method does NOT rely on an exact broker-address string comparison.
+     * Instead it:
+     * <ol>
+     *   <li>Resolves the message's store host to a brokerName via topic route
+     *       data, performing a loose IP-level match against all registered
+     *       broker addresses.</li>
+     *   <li>Only compares consumer offsets for {@link MessageQueue}s whose
+     *       brokerName, topic, and queueId all match, preventing cross-broker
+     *       false positives in multi-broker deployments.</li>
+     * </ol>
+     *
+     * @param msg   the message to verify
+     * @param stats pre-fetched ConsumeStats for the consumer group
+     * @return {@code true} only if the consumer offset for the matching broker
+     *         has advanced past the message's queue offset; {@code false} if no
+     *         matching broker is found or the offset has not been reached
      */
-    private boolean isConsumedByGroup(MessageExt msg, String consumerGroup) {
-        try {
-            ConsumeStats stats = mqAdminExt.examineConsumeStats(consumerGroup);
-            if (stats == null || stats.getOffsetTable() == null) {
-                return false;
+    private boolean isConsumedByGroup(MessageExt msg, ConsumeStats stats) {
+        if (stats == null || stats.getOffsetTable() == null) {
+            return false;
+        }
+
+        String targetBrokerName = resolveBrokerName(msg);
+        if (targetBrokerName == null) {
+            // Cannot determine which broker holds this message.
+            // Conservative: do not upgrade, leave NOT_CONSUME_YET.
+            return false;
+        }
+
+        for (Map.Entry<MessageQueue, OffsetWrapper> entry : stats.getOffsetTable().entrySet()) {
+            MessageQueue mq = entry.getKey();
+            if (mq.getBrokerName().equals(targetBrokerName)
+                && mq.getTopic().equals(msg.getTopic())
+                && mq.getQueueId() == msg.getQueueId()) {
+                if (entry.getValue().getConsumerOffset() > msg.getQueueOffset()) {
+                    return true;
+                }
             }
-            for (Map.Entry<MessageQueue, OffsetWrapper> entry : stats.getOffsetTable().entrySet()) {
-                MessageQueue mq = entry.getKey();
-                if (mq.getTopic().equals(msg.getTopic()) && mq.getQueueId() == msg.getQueueId()) {
-                    if (entry.getValue().getConsumerOffset() > msg.getQueueOffset()) {
-                        return true;
+        }
+        return false;
+    }
+
+    /**
+     * Resolve the brokerName that owns the given message by matching
+     * {@code msg.getStoreHost()} against the topic's route data.
+     *
+     * <p>The match is performed at the IP level: both the store host and the
+     * registered broker addresses are normalised to their IP components before
+     * comparison, so a broker that registers with a hostname whose DNS resolves
+     * to the same IP as the store host will still match.
+     *
+     * @return the matching brokerName, or {@code null} if no match is found
+     */
+    private String resolveBrokerName(MessageExt msg) {
+        try {
+            TopicRouteData routeData = mqAdminExt.examineTopicRouteInfo(msg.getTopic());
+            if (routeData == null || routeData.getBrokerDatas() == null) {
+                return null;
+            }
+
+            String storeHostIp = NetworkUtil.socketAddress2String(msg.getStoreHost()).split(":")[0];
+
+            for (BrokerData brokerData : routeData.getBrokerDatas()) {
+                if (brokerData.getBrokerAddrs() == null) {
+                    continue;
+                }
+                for (String brokerAddr : brokerData.getBrokerAddrs().values()) {
+                    String brokerIp = NetworkUtil.convert2IpString(brokerAddr).split(":")[0];
+                    if (storeHostIp.equals(brokerIp)) {
+                        return brokerData.getBrokerName();
                     }
                 }
             }
         } catch (Exception e) {
-            logger.warn("op=isConsumedByGroupError, group={}", consumerGroup, e);
+            logger.warn("op=resolveBrokerNameError, topic={}", msg.getTopic(), e);
         }
-        return false;
+        return null;
     }
 
 

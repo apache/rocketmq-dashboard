@@ -39,6 +39,8 @@ import org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper;
 import org.apache.rocketmq.remoting.protocol.body.Connection;
 import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
+import org.apache.rocketmq.remoting.protocol.route.BrokerData;
+import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.apache.rocketmq.tools.admin.api.MessageTrack;
 import org.apache.rocketmq.tools.admin.api.TrackType;
@@ -51,6 +53,8 @@ import org.mockito.Spy;
 import org.mockito.junit.MockitoJUnitRunner;
 
 import java.lang.reflect.Method;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -446,7 +450,43 @@ public class MessageServiceImplTest {
         msg.setTopic(topic);
         msg.setBody(body.getBytes());
         msg.setStoreTimestamp(storeTimestamp);
+        msg.setBornHost(new InetSocketAddress("127.0.0.1", 0));
+        msg.setStoreHost(new InetSocketAddress("192.168.1.100", 10911));
         return msg;
+    }
+
+    /**
+     * Create a TopicRouteData with a single broker whose address matches
+     * the default storeHost (192.168.1.100:10911) used by createMessageExt.
+     */
+    private TopicRouteData createSingleBrokerRouteData(String brokerName) {
+        TopicRouteData routeData = new TopicRouteData();
+        HashMap<Long, String> brokerAddrs = new HashMap<>();
+        brokerAddrs.put(0L, "192.168.1.100:10911");
+        List<BrokerData> brokerDatas = Collections.singletonList(
+            new BrokerData("test-cluster", brokerName, brokerAddrs));
+        routeData.setBrokerDatas(brokerDatas);
+        return routeData;
+    }
+
+    /**
+     * Create a TopicRouteData with two brokers, only one of which matches
+     * the default storeHost IP. Used to verify cross-broker isolation.
+     */
+    private TopicRouteData createMultiBrokerRouteData() {
+        TopicRouteData routeData = new TopicRouteData();
+        List<BrokerData> brokerDatas = new ArrayList<>();
+
+        HashMap<Long, String> addrsA = new HashMap<>();
+        addrsA.put(0L, "192.168.1.100:10911");
+        brokerDatas.add(new BrokerData("test-cluster", "broker-a", addrsA));
+
+        HashMap<Long, String> addrsB = new HashMap<>();
+        addrsB.put(0L, "192.168.2.200:10911");
+        brokerDatas.add(new BrokerData("test-cluster", "broker-b", addrsB));
+
+        routeData.setBrokerDatas(brokerDatas);
+        return routeData;
     }
 
     private PullResult createPullResult(PullStatus status, List<MessageExt> msgFoundList, long nextBeginOffset, long minOffset) {
@@ -471,6 +511,10 @@ public class MessageServiceImplTest {
 
         when(mqAdminExt.messageTrackDetail(any(MessageExt.class)))
                 .thenReturn(Collections.singletonList(track));
+
+        // Topic route data maps the message's store host IP to broker-a
+        when(mqAdminExt.examineTopicRouteInfo(TOPIC))
+                .thenReturn(createSingleBrokerRouteData("broker-a"));
 
         // ConsumeStats shows consumerOffset (200) > msg.queueOffset (100) → consumed
         ConsumeStats stats = new ConsumeStats();
@@ -508,6 +552,9 @@ public class MessageServiceImplTest {
         when(mqAdminExt.messageTrackDetail(any(MessageExt.class)))
                 .thenReturn(Collections.singletonList(track));
 
+        when(mqAdminExt.examineTopicRouteInfo(TOPIC))
+                .thenReturn(createSingleBrokerRouteData("broker-a"));
+
         // consumerOffset (100) < msg.queueOffset (500) → genuinely not consumed yet
         ConsumeStats stats = new ConsumeStats();
         MessageQueue mq = new MessageQueue(TOPIC, "broker-a", 0);
@@ -524,6 +571,100 @@ public class MessageServiceImplTest {
         List<MessageTrack> result = messageService.messageTrackDetail(msg);
 
         // Verify NOT_CONSUME_YET remains
+        assertNotNull(result);
+        assertEquals(1, result.size());
+        assertEquals(TrackType.NOT_CONSUME_YET, result.get(0).getTrackType());
+    }
+
+    @Test
+    public void testMessageTrackDetail_CrossBrokerNoFalsePositive() throws Exception {
+        // Multi-broker scenario: message is stored on broker-a queue-0, but
+        // broker-b also has queue-0 for the same topic with a higher consumer
+        // offset. The fix must NOT match across brokers.
+        MessageExt msg = createMessageExt(MSG_ID, TOPIC, "body", System.currentTimeMillis());
+        msg.setQueueId(0);
+        msg.setQueueOffset(1000);
+
+        MessageTrack track = new MessageTrack();
+        track.setConsumerGroup(CONSUMER_GROUP);
+        track.setTrackType(TrackType.NOT_CONSUME_YET);
+
+        when(mqAdminExt.messageTrackDetail(any(MessageExt.class)))
+                .thenReturn(Collections.singletonList(track));
+
+        // Route data: broker-a at 192.168.1.100 (matches storeHost),
+        //             broker-b at 192.168.2.200 (different IP)
+        when(mqAdminExt.examineTopicRouteInfo(TOPIC))
+                .thenReturn(createMultiBrokerRouteData());
+
+        // ConsumeStats has entries for both brokers' queue-0.
+        // broker-a (the real owner): consumerOffset 500 < msg offset 1000 → not consumed
+        // broker-b (wrong broker):   consumerOffset 5000 > msg offset 1000 → would be false positive
+        ConsumeStats stats = new ConsumeStats();
+        Map<MessageQueue, OffsetWrapper> offsetTable = new HashMap<>();
+
+        MessageQueue mqA = new MessageQueue(TOPIC, "broker-a", 0);
+        OffsetWrapper owA = new OffsetWrapper();
+        owA.setConsumerOffset(500);
+        owA.setBrokerOffset(1000);
+        offsetTable.put(mqA, owA);
+
+        MessageQueue mqB = new MessageQueue(TOPIC, "broker-b", 0);
+        OffsetWrapper owB = new OffsetWrapper();
+        owB.setConsumerOffset(5000);
+        owB.setBrokerOffset(5000);
+        offsetTable.put(mqB, owB);
+
+        stats.setOffsetTable(offsetTable);
+        when(mqAdminExt.examineConsumeStats(CONSUMER_GROUP)).thenReturn(stats);
+
+        // Execute
+        List<MessageTrack> result = messageService.messageTrackDetail(msg);
+
+        // Verify: must remain NOT_CONSUME_YET — broker-b's high offset must NOT leak
+        assertNotNull(result);
+        assertEquals(1, result.size());
+        assertEquals(TrackType.NOT_CONSUME_YET, result.get(0).getTrackType());
+    }
+
+    @Test
+    public void testMessageTrackDetail_BrokerNameUnresolvableStaysNotConsumeYet() throws Exception {
+        // If examineTopicRouteInfo returns null (or no matching broker), the
+        // track must remain NOT_CONSUME_YET (conservative: no false positive).
+        MessageExt msg = createMessageExt(MSG_ID, TOPIC, "body", System.currentTimeMillis());
+        msg.setQueueId(0);
+        msg.setQueueOffset(100);
+
+        MessageTrack track = new MessageTrack();
+        track.setConsumerGroup(CONSUMER_GROUP);
+        track.setTrackType(TrackType.NOT_CONSUME_YET);
+
+        when(mqAdminExt.messageTrackDetail(any(MessageExt.class)))
+                .thenReturn(Collections.singletonList(track));
+
+        // Route data with a non-matching broker address
+        TopicRouteData routeData = new TopicRouteData();
+        HashMap<Long, String> addrs = new HashMap<>();
+        addrs.put(0L, "10.0.0.1:10911"); // does NOT match 192.168.1.100
+        routeData.setBrokerDatas(Collections.singletonList(
+            new BrokerData("test-cluster", "broker-x", addrs)));
+        when(mqAdminExt.examineTopicRouteInfo(TOPIC)).thenReturn(routeData);
+
+        // ConsumeStats has a matching topic+queueId on broker-x, but the
+        // message does not belong to broker-x, so we must not use this entry.
+        ConsumeStats stats = new ConsumeStats();
+        MessageQueue mq = new MessageQueue(TOPIC, "broker-x", 0);
+        OffsetWrapper ow = new OffsetWrapper();
+        ow.setConsumerOffset(9999); // would cause false positive if we didn't filter
+        Map<MessageQueue, OffsetWrapper> offsetTable = new HashMap<>();
+        offsetTable.put(mq, ow);
+        stats.setOffsetTable(offsetTable);
+        when(mqAdminExt.examineConsumeStats(CONSUMER_GROUP)).thenReturn(stats);
+
+        // Execute
+        List<MessageTrack> result = messageService.messageTrackDetail(msg);
+
+        // Verify: NOT_CONSUME_YET preserved — cannot determine broker, so conservative
         assertNotNull(result);
         assertEquals(1, result.size());
         assertEquals(TrackType.NOT_CONSUME_YET, result.get(0).getTrackType());
@@ -584,6 +725,8 @@ public class MessageServiceImplTest {
 
         when(mqAdminExt.messageTrackDetail(any(MessageExt.class)))
                 .thenReturn(Collections.singletonList(track));
+        when(mqAdminExt.examineTopicRouteInfo(TOPIC))
+                .thenReturn(createSingleBrokerRouteData("broker-a"));
         when(mqAdminExt.examineConsumeStats(CONSUMER_GROUP))
                 .thenThrow(new RuntimeException("Connection refused"));
 
@@ -593,5 +736,48 @@ public class MessageServiceImplTest {
         assertNotNull(result);
         assertEquals(1, result.size());
         assertEquals(TrackType.NOT_CONSUME_YET, result.get(0).getTrackType());
+    }
+
+    @Test
+    public void testMessageTrackDetail_GroupLevelStatsCache() throws Exception {
+        // Verify that when multiple NOT_CONSUME_YET tracks share the same
+        // consumer group, examineConsumeStats is called only once (cached).
+        MessageExt msg = createMessageExt(MSG_ID, TOPIC, "body", System.currentTimeMillis());
+        msg.setQueueId(0);
+        msg.setQueueOffset(100);
+
+        MessageTrack track1 = new MessageTrack();
+        track1.setConsumerGroup(CONSUMER_GROUP);
+        track1.setTrackType(TrackType.NOT_CONSUME_YET);
+
+        MessageTrack track2 = new MessageTrack();
+        track2.setConsumerGroup(CONSUMER_GROUP); // same group
+        track2.setTrackType(TrackType.NOT_CONSUME_YET);
+
+        when(mqAdminExt.messageTrackDetail(any(MessageExt.class)))
+                .thenReturn(Arrays.asList(track1, track2));
+
+        when(mqAdminExt.examineTopicRouteInfo(TOPIC))
+                .thenReturn(createSingleBrokerRouteData("broker-a"));
+
+        ConsumeStats stats = new ConsumeStats();
+        MessageQueue mq = new MessageQueue(TOPIC, "broker-a", 0);
+        OffsetWrapper ow = new OffsetWrapper();
+        ow.setConsumerOffset(200);
+        Map<MessageQueue, OffsetWrapper> offsetTable = new HashMap<>();
+        offsetTable.put(mq, ow);
+        stats.setOffsetTable(offsetTable);
+
+        when(mqAdminExt.examineConsumeStats(CONSUMER_GROUP)).thenReturn(stats);
+
+        // Execute
+        List<MessageTrack> result = messageService.messageTrackDetail(msg);
+
+        // Both tracks should be corrected, but examineConsumeStats called only once
+        assertNotNull(result);
+        assertEquals(2, result.size());
+        assertEquals(TrackType.CONSUMED, result.get(0).getTrackType());
+        assertEquals(TrackType.CONSUMED, result.get(1).getTrackType());
+        verify(mqAdminExt, times(1)).examineConsumeStats(CONSUMER_GROUP);
     }
 }
