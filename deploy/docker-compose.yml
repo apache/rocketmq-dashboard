@@ -1,0 +1,24 @@
+name: rocketmq-studio
+
+services:
+  rocketmq-server:
+    build:
+      context: ../server
+      dockerfile: Dockerfile
+    image: rocketmq-server:latest
+    container_name: rocketmq-server
+    restart: unless-stopped
+    expose:
+      - "8888"
+
+  rocketmq-web:
+    build:
+      context: ../web
+      dockerfile: Dockerfile
+    image: rocketmq-web:latest
+    container_name: rocketmq-web
+    restart: unless-stopped
+    ports:
+      - "6789:80"
+    depends_on:
+      - rocketmq-server
