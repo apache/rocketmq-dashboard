@@ -1,0 +1,371 @@
+# =============================================================================
+# Apache RocketMQ – Prometheus Alerting Rules
+# =============================================================================
+# Metric names and labels are kept in sync with the official OpenTelemetry-based
+# exporter embedded in RocketMQ broker/proxy (since 5.x).
+#
+# Source of truth:
+#   broker/src/main/java/.../broker/metrics/BrokerMetricsConstant.java
+#   proxy/src/main/java/.../proxy/metrics/ProxyMetricsConstant.java
+#
+# All metric names use the "rocketmq_" prefix exported by the broker's
+# built-in Prometheus endpoint (metricsExporterType=PROM in broker.conf).
+#
+# Loading: see README.md in this directory.
+# =============================================================================
+groups:
+  # ---------------------------------------------------------------------------
+  # 1. Broker availability
+  # ---------------------------------------------------------------------------
+  - name: rocketmq-broker-availability
+    rules:
+      # Rule 1 – Broker permission degraded
+      # GAUGE_BROKER_PERMISSION: 4=WRITE, 2=READ, 6=READ|WRITE, 1=INVISIBLE
+      # A value < 6 on a read-write broker means the broker can no longer
+      # accept producers, consumers, or both.
+      - alert: RocketMQBrokerPermissionDegraded
+        expr: rocketmq_broker_permission{node_type="broker"} < 6
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Broker {{ $labels.node_id }} permission degraded (value={{ $value }})"
+          description: >
+            Broker permission has dropped below READ|WRITE (6).
+            Current value: {{ $value }}. Check broker status and disk usage.
+
+      # Rule 2 – Processor watermark too high
+      # GAUGE_PROCESSOR_WATERMARK: number of pending requests in the
+      # request processor queue. A sustained high watermark indicates the
+      # broker thread pool is saturated and cannot keep up.
+      - alert: RocketMQProcessorWatermarkHigh
+        expr: rocketmq_processor_watermark{node_type="broker"} > 10000
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Processor watermark high on {{ $labels.node_id }} (processor={{ $labels.processor }})"
+          description: >
+            Pending requests in processor '{{ $labels.processor }}' exceeded 10 000
+            for 3 minutes. The broker may be overloaded.
+
+  # ---------------------------------------------------------------------------
+  # 2. Proxy availability
+  # ---------------------------------------------------------------------------
+  - name: rocketmq-proxy-availability
+    rules:
+      # Rule 3 – Proxy down
+      # GAUGE_PROXY_UP: always 1 when the proxy process is running and
+      # metrics endpoint is reachable.  A value of 0 (or absent series)
+      # means the proxy is down.
+      - alert: RocketMQProxyDown
+        expr: rocketmq_proxy_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RocketMQ Proxy {{ $labels.node_id }} is down"
+          description: >
+            Proxy '{{ $labels.node_id }}' (mode={{ $labels.proxy_mode }}) has
+            been reporting rocketmq_proxy_up=0 for at least 1 minute.
+
+      # Rule 4 – Proxy unreachable (no metrics received at all)
+      - alert: RocketMQProxyUnreachable
+        expr: absent(rocketmq_proxy_up)
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No RocketMQ Proxy metrics received"
+          description: >
+            Prometheus has not received any rocketmq_proxy_up series for 2 minutes.
+            All proxy instances may be down or the metrics endpoint is misconfigured.
+
+  # ---------------------------------------------------------------------------
+  # 3. Consumer lag
+  # ---------------------------------------------------------------------------
+  - name: rocketmq-consumer-lag
+    rules:
+      # Rule 5 – Consumer lag (message count) high
+      # GAUGE_CONSUMER_LAG_MESSAGES: number of messages that have been
+      # produced but not yet consumed.  10 000 is a generic threshold;
+      # tune per topic/group as needed.
+      - alert: RocketMQConsumerLagMessagesHigh
+        expr: rocketmq_consumer_lag_messages{is_system="false"} > 10000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Consumer lag high: group={{ $labels.consumer_group }}, topic={{ $labels.topic }}"
+          description: >
+            {{ $value | humanize }} messages are waiting to be consumed.
+            Check consumer health and processing throughput.
+
+      # Rule 6 – Consumer lag latency high
+      # GAUGE_CONSUMER_LAG_LATENCY: time difference between the newest
+      # unconsumed message and the current time, in milliseconds.
+      # 10 minutes (600 000 ms) indicates significant delay.
+      - alert: RocketMQConsumerLagLatencyHigh
+        expr: rocketmq_consumer_lag_latency{is_system="false"} > 600000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Consumer lag latency high: group={{ $labels.consumer_group }}, topic={{ $labels.topic }}"
+          description: >
+            Consumer group lag latency exceeded 10 minutes.
+            The consumer may be stuck or processing too slowly.
+
+      # Rule 7 – Consumer lag messages critical
+      # 100 000 messages indicates severe backlog.
+      - alert: RocketMQConsumerLagMessagesCritical
+        expr: rocketmq_consumer_lag_messages{is_system="false"} > 100000
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Consumer lag CRITICAL: group={{ $labels.consumer_group }}, topic={{ $labels.topic }}"
+          description: >
+            Consumer backlog exceeded 100 000 messages for 5 minutes.
+            Immediate intervention required.
+
+      # Rule 8 – Consumer inflight messages high
+      # GAUGE_CONSUMER_INFLIGHT_MESSAGES: messages that have been pulled
+      # by the consumer but not yet acknowledged.  A high value may
+      # indicate the consumer is stuck or the push batch is too large.
+      - alert: RocketMQConsumerInflightMessagesHigh
+        expr: rocketmq_consumer_inflight_messages{is_system="false"} > 50000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Inflight messages high: group={{ $labels.consumer_group }}"
+          description: >
+            {{ $value | humanize }} messages are inflight (pulled but not ACK'd).
+            The consumer may be stuck or batch size is too large.
+
+      # Rule 9 – Consumer queueing latency high
+      # GAUGE_CONSUMER_QUEUEING_LATENCY: time messages spend waiting in
+      # the broker queue before being pulled.  High value means the
+      # consumer pull interval is too long.
+      - alert: RocketMQConsumerQueueingLatencyHigh
+        expr: rocketmq_consumer_queueing_latency{is_system="false"} > 300000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Consumer queueing latency high: group={{ $labels.consumer_group }}, topic={{ $labels.topic }}"
+          description: >
+            Messages have been waiting in the broker queue for over 5 minutes
+            before being pulled.  Check consumer pull interval and activity.
+
+  # ---------------------------------------------------------------------------
+  # 4. Throughput anomalies
+  # ---------------------------------------------------------------------------
+  - name: rocketmq-throughput
+    rules:
+      # Rule 10 – Producer throughput drop to zero
+      # COUNTER_MESSAGES_IN_TOTAL is monotonically increasing.  A rate()
+      # of 0 for 5 minutes means no new messages are being produced.
+      - alert: RocketMQProducerThroughputZero
+        expr: sum by (cluster, node_id)(rate(rocketmq_messages_in_total{is_system="false"}[5m])) == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Producer throughput dropped to zero on {{ $labels.node_id }}"
+          description: >
+            No non-system messages have been produced to broker '{{ $labels.node_id }}'
+            in the last 5 minutes.  Producers may be disconnected or stalled.
+
+      # Rule 11 – Consumer throughput drop to zero
+      - alert: RocketMQConsumerThroughputZero
+        expr: sum by (cluster, node_id)(rate(rocketmq_messages_out_total{is_system="false"}[5m])) == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Consumer throughput dropped to zero on {{ $labels.node_id }}"
+          description: >
+            No non-system messages have been consumed from broker '{{ $labels.node_id }}'
+            in the last 5 minutes.  Consumers may be disconnected.
+
+      # Rule 12 – DLQ send rate high
+      # COUNTER_CONSUMER_SEND_TO_DLQ_MESSAGES_TOTAL: messages sent to the
+      # dead letter queue.  A high rate indicates repeated consumption failures.
+      - alert: RocketMQDLQRateHigh
+        expr: sum by (cluster, consumer_group)(rate(rocketmq_send_to_dlq_messages_total[5m])) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High DLQ rate for group {{ $labels.consumer_group }}"
+          description: >
+            Consumer group '{{ $labels.consumer_group }}' is sending more than
+            10 messages/second to the dead letter queue.  Check for poison-pill
+            messages or consumer processing errors.
+
+  # ---------------------------------------------------------------------------
+  # 5. Connection anomalies
+  # ---------------------------------------------------------------------------
+  - name: rocketmq-connections
+    rules:
+      # Rule 13 – Producer connections dropped to zero
+      # GAUGE_PRODUCER_CONNECTIONS: number of active producer connections.
+      # Zero connections means no producers are registered.
+      - alert: RocketMQProducerConnectionsZero
+        expr: sum by (cluster, node_id)(rocketmq_producer_connections) == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No producer connections on {{ $labels.node_id }}"
+          description: >
+            Broker '{{ $labels.node_id }}' has zero producer connections.
+            All producers may be disconnected.
+
+      # Rule 14 – Consumer connections dropped to zero
+      - alert: RocketMQConsumerConnectionsZero
+        expr: sum by (cluster, node_id)(rocketmq_consumer_connections) == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No consumer connections on {{ $labels.node_id }}"
+          description: >
+            Broker '{{ $labels.node_id }}' has zero consumer connections.
+            All consumers may be disconnected.
+
+  # ---------------------------------------------------------------------------
+  # 6. Resource saturation
+  # ---------------------------------------------------------------------------
+  - name: rocketmq-resource-saturation
+    rules:
+      # Rule 15 – Topic count high
+      # GAUGE_TOPIC_NUM: total number of topics on the broker.  Excessive
+      # topics increase memory usage and degrade performance.
+      - alert: RocketMQTopicCountHigh
+        expr: rocketmq_topic_number > 10000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Topic count high on {{ $labels.node_id }} ({{ $value }} topics)"
+          description: >
+            Broker '{{ $labels.node_id }}' is managing {{ $value }} topics.
+            Excessive topics increase memory and CPU pressure.
+
+      # Rule 16 – Consumer group count high
+      - alert: RocketMQConsumerGroupCountHigh
+        expr: rocketmq_consumer_group_number > 10000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Consumer group count high on {{ $labels.node_id }} ({{ $value }} groups)"
+          description: >
+            Broker '{{ $labels.node_id }}' is managing {{ $value }} consumer groups.
+            Excessive groups increase memory and CPU pressure.
+
+  # ---------------------------------------------------------------------------
+  # 7. Transaction messages
+  # ---------------------------------------------------------------------------
+  - name: rocketmq-transactions
+    rules:
+      # Rule 17 – Half messages accumulating
+      # GAUGE_HALF_MESSAGES: number of unresolved transaction half messages.
+      # A growing count indicates transaction timeouts are not being processed.
+      - alert: RocketMQHalfMessagesAccumulating
+        expr: rocketmq_half_messages > 1000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Half messages accumulating on {{ $labels.node_id }} ({{ $value }})"
+          description: >
+            {{ $value }} transaction half messages are unresolved for over 10 minutes.
+            Check transaction checker service and producer commit/rollback logic.
+
+      # Rule 18 – Transaction rollback rate high
+      # COUNTER_ROLLBACK_MESSAGES_TOTAL: number of rolled-back transactions.
+      # A high rollback rate indicates producers are frequently failing.
+      - alert: RocketMQTransactionRollbackRateHigh
+        expr: sum by (cluster)(rate(rocketmq_rollback_messages_total[5m])) > 50
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Transaction rollback rate high in cluster {{ $labels.cluster }}"
+          description: >
+            More than 50 transactions/second are being rolled back.
+            Check producer application logic and downstream service availability.
+
+  # ---------------------------------------------------------------------------
+  # 8. Message size anomalies
+  # ---------------------------------------------------------------------------
+  - name: rocketmq-message-size
+    rules:
+      # Rule 19 – Average message size unusually large
+      # HISTOGRAM_MESSAGE_SIZE: distribution of message sizes in bytes.
+      # avg() > 1 MB may indicate misuse (e.g., sending files as messages).
+      - alert: RocketMQMessageSizeTooLarge
+        expr: sum by (cluster, topic)(rate(rocketmq_message_size_sum{is_system="false"}[5m])) / sum by (cluster, topic)(rate(rocketmq_message_size_count{is_system="false"}[5m])) > 1048576
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Average message size > 1 MB for topic {{ $labels.topic }}"
+          description: >
+            The average message size for topic '{{ $labels.topic }}' exceeds 1 MB.
+            Large messages can degrade throughput and increase memory pressure.
+
+  # ---------------------------------------------------------------------------
+  # 9. Throughput bandwidth
+  # ---------------------------------------------------------------------------
+  - name: rocketmq-throughput-bandwidth
+    rules:
+      # Rule 20 – Inbound bandwidth high
+      # COUNTER_THROUGHPUT_IN_TOTAL: total inbound bytes.  100 MB/s is
+      # a high watermark for most deployments.
+      - alert: RocketMQInboundBandwidthHigh
+        expr: sum by (cluster, node_id)(rate(rocketmq_throughput_in_total[5m])) > 104857600
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Inbound bandwidth high on {{ $labels.node_id }}"
+          description: >
+            Inbound throughput exceeded 100 MB/s for 5 minutes on
+            broker '{{ $labels.node_id }}'. Verify if this is expected.
+
+      # Rule 21 – Outbound bandwidth high
+      - alert: RocketMQOutboundBandwidthHigh
+        expr: sum by (cluster, node_id)(rate(rocketmq_throughput_out_total[5m])) > 104857600
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Outbound bandwidth high on {{ $labels.node_id }}"
+          description: >
+            Outbound throughput exceeded 100 MB/s for 5 minutes on
+            broker '{{ $labels.node_id }}'. Verify if this is expected.
+
+  # ---------------------------------------------------------------------------
+  # 10. Finish message latency (transactions)
+  # ---------------------------------------------------------------------------
+  - name: rocketmq-transaction-latency
+    rules:
+      # Rule 22 – Transaction finish latency high
+      # HISTOGRAM_FINISH_MSG_LATENCY: time taken for a transaction message
+      # to be fully completed (committed or rolled back).
+      # p99 > 30 seconds indicates transaction processing is slow.
+      - alert: RocketMQTransactionFinishLatencyHigh
+        expr: histogram_quantile(0.99, sum by (le, cluster)(rate(rocketmq_finish_message_latency_bucket[5m]))) > 30000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Transaction finish latency p99 high in cluster {{ $labels.cluster }}"
+          description: >
+            99th-percentile transaction finish latency exceeded 30 seconds.
+            Check producer commit/rollback callback performance.
