@@ -874,6 +874,164 @@ const remoteApi = {
         }
     },
 
+    queryAccumulationData: async (date, topicName, callback) => {
+        try {
+            const url = new URL(remoteApi.buildUrl('/dashboard/accumulation.query'));
+            url.searchParams.append('date', date);
+            if (topicName) {
+                url.searchParams.append('topicName', topicName);
+            }
+            const response = await remoteApi._fetch(url.toString(), {signal: AbortSignal.timeout(15000)});
+            const data = await response.json();
+            callback(data);
+        } catch (error) {
+            if (error.name === 'TimeoutError') {
+                console.error("Accumulation data request timed out:", error);
+                callback({status: 1, errMsg: "Request timed out for accumulation data"});
+            } else {
+                console.error("Error fetching accumulation data:", error);
+                callback({status: 1, errMsg: "Failed to fetch accumulation data"});
+            }
+        }
+    },
+
+    queryTransactionData: async (date, topicName, callback) => {
+        try {
+            const url = new URL(remoteApi.buildUrl('/dashboard/transaction.query'));
+            url.searchParams.append('date', date);
+            if (topicName) {
+                url.searchParams.append('topicName', topicName);
+            }
+            const response = await remoteApi._fetch(url.toString(), {signal: AbortSignal.timeout(15000)});
+            const data = await response.json();
+            callback(data);
+        } catch (error) {
+            if (error.name === 'TimeoutError') {
+                console.error("Transaction data request timed out:", error);
+                callback({status: 1, errMsg: "Request timed out for transaction data"});
+            } else {
+                console.error("Error fetching transaction data:", error);
+                callback({status: 1, errMsg: "Failed to fetch transaction data"});
+            }
+        }
+    },
+
+    queryStorageLatencyData: async (date, topicName, callback) => {
+        try {
+            const url = new URL(remoteApi.buildUrl('/dashboard/storageLatency.query'));
+            url.searchParams.append('date', date);
+            if (topicName) {
+                url.searchParams.append('topicName', topicName);
+            }
+            const response = await remoteApi._fetch(url.toString(), {signal: AbortSignal.timeout(15000)});
+            const data = await response.json();
+            callback(data);
+        } catch (error) {
+            if (error.name === 'TimeoutError') {
+                console.error("Storage latency data request timed out:", error);
+                callback({status: 1, errMsg: "Request timed out for storage latency data"});
+            } else {
+                console.error("Error fetching storage latency data:", error);
+                callback({status: 1, errMsg: "Failed to fetch storage latency data"});
+            }
+        }
+    },
+
+    queryNetworkThroughputData: async (date, brokerName, callback) => {
+        try {
+            const url = new URL(remoteApi.buildUrl('/dashboard/networkThroughput.query'));
+            url.searchParams.append('date', date);
+            if (brokerName) {
+                url.searchParams.append('brokerName', brokerName);
+            }
+            const response = await remoteApi._fetch(url.toString(), {signal: AbortSignal.timeout(15000)});
+            const data = await response.json();
+            callback(data);
+        } catch (error) {
+            if (error.name === 'TimeoutError') {
+                console.error("Network throughput data request timed out:", error);
+                callback({status: 1, errMsg: "Request timed out for network throughput data"});
+            } else {
+                console.error("Error fetching network throughput data:", error);
+                callback({status: 1, errMsg: "Failed to fetch network throughput data"});
+            }
+        }
+    },
+
+    queryReplicaSyncData: async (date, brokerName, callback) => {
+        try {
+            const url = new URL(remoteApi.buildUrl('/dashboard/replicaSync.query'));
+            url.searchParams.append('date', date);
+            if (brokerName) {
+                url.searchParams.append('brokerName', brokerName);
+            }
+            const response = await remoteApi._fetch(url.toString(), {signal: AbortSignal.timeout(15000)});
+            const data = await response.json();
+            callback(data);
+        } catch (error) {
+            if (error.name === 'TimeoutError') {
+                console.error("Replica sync data request timed out:", error);
+                callback({status: 1, errMsg: "Request timed out for replica sync data"});
+            } else {
+                console.error("Error fetching replica sync data:", error);
+                callback({status: 1, errMsg: "Failed to fetch replica sync data"});
+            }
+        }
+    },
+
+    queryHotTopicData: async (date, topicName, callback) => {
+        try {
+            const url = new URL(remoteApi.buildUrl('/dashboard/hotTopic.query'));
+            url.searchParams.append('date', date);
+            if (topicName) {
+                url.searchParams.append('topicName', topicName);
+            }
+            const response = await remoteApi._fetch(url.toString(), {signal: AbortSignal.timeout(15000)});
+            const data = await response.json();
+            callback(data);
+        } catch (error) {
+            if (error.name === 'TimeoutError') {
+                console.error("Hot topic data request timed out:", error);
+                callback({status: 1, errMsg: "Request timed out for hot topic data"});
+            } else {
+                console.error("Error fetching hot topic data:", error);
+                callback({status: 1, errMsg: "Failed to fetch hot topic data"});
+            }
+        }
+    },
+
+    queryConsumerConcurrency: async (callback) => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl('/dashboard/consumerConcurrency.query'), {signal: AbortSignal.timeout(15000)});
+            const data = await response.json();
+            callback(data);
+        } catch (error) {
+            if (error.name === 'TimeoutError') {
+                console.error("Consumer concurrency request timed out:", error);
+                callback({status: 1, errMsg: "Request timed out for consumer concurrency data"});
+            } else {
+                console.error("Error fetching consumer concurrency data:", error);
+                callback({status: 1, errMsg: "Failed to fetch consumer concurrency data"});
+            }
+        }
+    },
+
+    queryBrokerJvmStats: async (callback) => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl('/dashboard/brokerJvmStats.query'), {signal: AbortSignal.timeout(15000)});
+            const data = await response.json();
+            callback(data);
+        } catch (error) {
+            if (error.name === 'TimeoutError') {
+                console.error("Broker JVM stats request timed out:", error);
+                callback({status: 1, errMsg: "Request timed out for broker JVM stats"});
+            } else {
+                console.error("Error fetching broker JVM stats:", error);
+                callback({status: 1, errMsg: "Failed to fetch broker JVM stats"});
+            }
+        }
+    },
+
     queryBrokerConfig: async (brokerAddr, callback) => {
         try {
             const url = new URL(remoteApi.buildUrl('/cluster/brokerConfig.query'));

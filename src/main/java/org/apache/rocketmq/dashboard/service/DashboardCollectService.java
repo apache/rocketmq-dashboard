@@ -29,9 +29,33 @@ public interface DashboardCollectService {
 
     LoadingCache<String, List<String>> getTopicMap();
 
+    LoadingCache<String, List<String>> getAccumulationMap();
+
+    LoadingCache<String, List<String>> getTransactionMap();
+
+    LoadingCache<String, List<String>> getStorageLatencyMap();
+
+    LoadingCache<String, List<String>> getNetworkThroughputMap();
+
+    LoadingCache<String, List<String>> getReplicaSyncMap();
+
+    LoadingCache<String, List<String>> getHotTopicMap();
+
     Map<String, List<String>> jsonDataFile2map(File file);
 
     Map<String, List<String>> getBrokerCache(String date);
 
     Map<String, List<String>> getTopicCache(String date);
+
+    Map<String, List<String>> getAccumulationCache(String date);
+
+    Map<String, List<String>> getTransactionCache(String date);
+
+    Map<String, List<String>> getStorageLatencyCache(String date);
+
+    Map<String, List<String>> getNetworkThroughputCache(String date);
+
+    Map<String, List<String>> getReplicaSyncCache(String date);
+
+    Map<String, List<String>> getHotTopicCache(String date);
 }

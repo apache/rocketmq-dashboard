@@ -92,6 +92,132 @@ public class DashboardCollectServiceImpl implements DashboardCollectService {
                     }
             );
 
+    private LoadingCache<String, List<String>> accumulationMap = CacheBuilder.newBuilder()
+            .maximumSize(1000)
+            .concurrencyLevel(10)
+            .recordStats()
+            .ticker(Ticker.systemTicker())
+            .removalListener(new RemovalListener<Object, Object>() {
+                @Override
+                public void onRemoval(RemovalNotification<Object, Object> notification) {
+                    log.debug(notification.getKey() + " was removed, cause is " + notification.getCause());
+                }
+            })
+            .build(
+                    new CacheLoader<String, List<String>>() {
+                        @Override
+                        public List<String> load(String key) {
+                            List<String> list = Lists.newArrayList();
+                            return list;
+                        }
+                    }
+            );
+
+    private LoadingCache<String, List<String>> transactionMap = CacheBuilder.newBuilder()
+            .maximumSize(1000)
+            .concurrencyLevel(10)
+            .recordStats()
+            .ticker(Ticker.systemTicker())
+            .removalListener(new RemovalListener<Object, Object>() {
+                @Override
+                public void onRemoval(RemovalNotification<Object, Object> notification) {
+                    log.debug(notification.getKey() + " was removed, cause is " + notification.getCause());
+                }
+            })
+            .build(
+                    new CacheLoader<String, List<String>>() {
+                        @Override
+                        public List<String> load(String key) {
+                            List<String> list = Lists.newArrayList();
+                            return list;
+                        }
+                    }
+            );
+
+    private LoadingCache<String, List<String>> storageLatencyMap = CacheBuilder.newBuilder()
+            .maximumSize(1000)
+            .concurrencyLevel(10)
+            .recordStats()
+            .ticker(Ticker.systemTicker())
+            .removalListener(new RemovalListener<Object, Object>() {
+                @Override
+                public void onRemoval(RemovalNotification<Object, Object> notification) {
+                    log.debug(notification.getKey() + " was removed, cause is " + notification.getCause());
+                }
+            })
+            .build(
+                    new CacheLoader<String, List<String>>() {
+                        @Override
+                        public List<String> load(String key) {
+                            List<String> list = Lists.newArrayList();
+                            return list;
+                        }
+                    }
+            );
+
+    private LoadingCache<String, List<String>> networkThroughputMap = CacheBuilder.newBuilder()
+            .maximumSize(1000)
+            .concurrencyLevel(10)
+            .recordStats()
+            .ticker(Ticker.systemTicker())
+            .removalListener(new RemovalListener<Object, Object>() {
+                @Override
+                public void onRemoval(RemovalNotification<Object, Object> notification) {
+                    log.debug(notification.getKey() + " was removed, cause is " + notification.getCause());
+                }
+            })
+            .build(
+                    new CacheLoader<String, List<String>>() {
+                        @Override
+                        public List<String> load(String key) {
+                            List<String> list = Lists.newArrayList();
+                            return list;
+                        }
+                    }
+            );
+
+    private LoadingCache<String, List<String>> replicaSyncMap = CacheBuilder.newBuilder()
+            .maximumSize(1000)
+            .concurrencyLevel(10)
+            .recordStats()
+            .ticker(Ticker.systemTicker())
+            .removalListener(new RemovalListener<Object, Object>() {
+                @Override
+                public void onRemoval(RemovalNotification<Object, Object> notification) {
+                    log.debug(notification.getKey() + " was removed, cause is " + notification.getCause());
+                }
+            })
+            .build(
+                    new CacheLoader<String, List<String>>() {
+                        @Override
+                        public List<String> load(String key) {
+                            List<String> list = Lists.newArrayList();
+                            return list;
+                        }
+                    }
+            );
+
+    private LoadingCache<String, List<String>> hotTopicMap = CacheBuilder.newBuilder()
+            .maximumSize(1000)
+            .concurrencyLevel(10)
+            .recordStats()
+            .ticker(Ticker.systemTicker())
+            .removalListener(new RemovalListener<Object, Object>() {
+                @Override
+                public void onRemoval(RemovalNotification<Object, Object> notification) {
+                    log.debug(notification.getKey() + " was removed, cause is " + notification.getCause());
+                }
+            })
+            .build(
+                    new CacheLoader<String, List<String>>() {
+                        @Override
+                        public List<String> load(String key) {
+                            List<String> list = Lists.newArrayList();
+                            return list;
+                        }
+                    }
+            );
+
     @Override
     public LoadingCache<String, List<String>> getBrokerMap() {
         return brokerMap;
@@ -100,6 +226,36 @@ public class DashboardCollectServiceImpl implements DashboardCollectService {
     @Override
     public LoadingCache<String, List<String>> getTopicMap() {
         return topicMap;
+    }
+
+    @Override
+    public LoadingCache<String, List<String>> getAccumulationMap() {
+        return accumulationMap;
+    }
+
+    @Override
+    public LoadingCache<String, List<String>> getTransactionMap() {
+        return transactionMap;
+    }
+
+    @Override
+    public LoadingCache<String, List<String>> getStorageLatencyMap() {
+        return storageLatencyMap;
+    }
+
+    @Override
+    public LoadingCache<String, List<String>> getNetworkThroughputMap() {
+        return networkThroughputMap;
+    }
+
+    @Override
+    public LoadingCache<String, List<String>> getReplicaSyncMap() {
+        return replicaSyncMap;
+    }
+
+    @Override
+    public LoadingCache<String, List<String>> getHotTopicMap() {
+        return hotTopicMap;
     }
 
     @Override
@@ -151,6 +307,72 @@ public class DashboardCollectServiceImpl implements DashboardCollectService {
         if (!file.exists()) {
             log.info(String.format("No dashboard data for data: %s", date));
             //throw Throwables.propagate(new ServiceException(1, "This date have't data!"));
+            return Maps.newHashMap();
+        }
+        return jsonDataFile2map(file);
+    }
+
+    @Override
+    public Map<String, List<String>> getAccumulationCache(String date) {
+        String dataLocationPath = configure.getDashboardCollectData();
+        File file = new File(dataLocationPath + date + "_accumulation" + ".json");
+        if (!file.exists()) {
+            log.info(String.format("No dashboard data for accumulation cache data: %s", date));
+            return Maps.newHashMap();
+        }
+        return jsonDataFile2map(file);
+    }
+
+    @Override
+    public Map<String, List<String>> getTransactionCache(String date) {
+        String dataLocationPath = configure.getDashboardCollectData();
+        File file = new File(dataLocationPath + date + "_transaction" + ".json");
+        if (!file.exists()) {
+            log.info(String.format("No dashboard data for transaction cache data: %s", date));
+            return Maps.newHashMap();
+        }
+        return jsonDataFile2map(file);
+    }
+
+    @Override
+    public Map<String, List<String>> getStorageLatencyCache(String date) {
+        String dataLocationPath = configure.getDashboardCollectData();
+        File file = new File(dataLocationPath + date + "_storageLatency" + ".json");
+        if (!file.exists()) {
+            log.info(String.format("No dashboard data for storage latency cache data: %s", date));
+            return Maps.newHashMap();
+        }
+        return jsonDataFile2map(file);
+    }
+
+    @Override
+    public Map<String, List<String>> getNetworkThroughputCache(String date) {
+        String dataLocationPath = configure.getDashboardCollectData();
+        File file = new File(dataLocationPath + date + "_networkThroughput" + ".json");
+        if (!file.exists()) {
+            log.info(String.format("No dashboard data for network throughput cache data: %s", date));
+            return Maps.newHashMap();
+        }
+        return jsonDataFile2map(file);
+    }
+
+    @Override
+    public Map<String, List<String>> getReplicaSyncCache(String date) {
+        String dataLocationPath = configure.getDashboardCollectData();
+        File file = new File(dataLocationPath + date + "_replicaSync" + ".json");
+        if (!file.exists()) {
+            log.info(String.format("No dashboard data for replica sync cache data: %s", date));
+            return Maps.newHashMap();
+        }
+        return jsonDataFile2map(file);
+    }
+
+    @Override
+    public Map<String, List<String>> getHotTopicCache(String date) {
+        String dataLocationPath = configure.getDashboardCollectData();
+        File file = new File(dataLocationPath + date + "_hotTopic" + ".json");
+        if (!file.exists()) {
+            log.info(String.format("No dashboard data for hot topic cache data: %s", date));
             return Maps.newHashMap();
         }
         return jsonDataFile2map(file);
