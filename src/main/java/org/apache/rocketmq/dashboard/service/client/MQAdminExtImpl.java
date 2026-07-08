@@ -677,8 +677,8 @@ public class MQAdminExtImpl implements MQAdminExt {
     @Override
     public void deleteTopic(String topicName, String clusterName)
             throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'deleteTopic'");
+        logger.info("op=deleteTopic topicName={} clusterName={}", topicName, clusterName);
+        MQAdminInstance.threadLocalMQAdminExt().deleteTopic(topicName, clusterName);
     }
 
     @Override

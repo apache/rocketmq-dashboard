@@ -27,7 +27,6 @@ import org.apache.rocketmq.dashboard.architecture.AdminClient;
 import org.apache.rocketmq.dashboard.model.ConsumerGroupInfo;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.remoting.protocol.body.KVTable;
-import org.apache.rocketmq.remoting.protocol.heartbeat.SubscriptionGroupConfig;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
@@ -194,38 +193,14 @@ public class DashboardServiceImpl implements DashboardService {
                 return result;
             }
 
-            // Get cluster info to find broker addresses for subscription config lookup
-            ClusterInfo clusterInfo = mqAdminExt.examineBrokerClusterInfo();
-            String firstBrokerAddr = null;
-            for (BrokerData brokerData : clusterInfo.getBrokerAddrTable().values()) {
-                // Prefer master (brokerId=0) address
-                String addr = brokerData.getBrokerAddrs().get(0L);
-                if (addr != null) {
-                    firstBrokerAddr = addr;
-                    break;
-                }
-            }
-
             for (ConsumerGroupInfo groupInfo : consumerGroups) {
                 try {
                     String groupName = groupInfo.getConsumerGroupName();
                     Map<String, Object> entry = new HashMap<>();
                     entry.put("groupName", groupName);
 
-                    // Get subscription group config for thread limits from broker
-                    int consumeThreadMax = 20; // RocketMQ default
+                    int consumeThreadMax = 20;
                     int consumeThreadMin = 20;
-                    if (firstBrokerAddr != null) {
-                        try {
-                            SubscriptionGroupConfig config = mqAdminExt.examineSubscriptionGroupConfig(firstBrokerAddr, groupName);
-                            if (config != null) {
-                                consumeThreadMax = config.getConsumeThreadMax();
-                                consumeThreadMin = config.getConsumeThreadMin();
-                            }
-                        } catch (Exception e) {
-                            logger.debug("Failed to get subscription config for group: {}", groupName);
-                        }
-                    }
                     entry.put("consumeThreadMax", consumeThreadMax);
                     entry.put("consumeThreadMin", consumeThreadMin);
 

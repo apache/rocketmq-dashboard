@@ -79,8 +79,16 @@ public class MetricsEnhancedServiceImpl implements MetricsEnhancedService {
         if (panelsInitialized) return;
         synchronized (this) {
             if (panelsInitialized) return;
-            buildAllPanels();
-            panelsInitialized = true;
+            try {
+                buildAllPanels();
+                panelsInitialized = true;
+            } catch (Exception e) {
+                log.error("Failed to load dashboard panels", e);
+                if (panelsCache == null) {
+                    panelsCache = new LinkedHashMap<>();
+                }
+                panelsInitialized = true;
+            }
         }
     }
 
@@ -95,9 +103,7 @@ public class MetricsEnhancedServiceImpl implements MetricsEnhancedService {
                 "category", "Overview",
                 "promql", "sum(rocketmq_broker_bornTotal)",
                 "graphPanel", Map.of("type", "graph", "yAxis", Map.of("format", "short")),
-                "legendFormat", "{{broker}} - born",
-                "threshold", null,
-                "alertCondition", null
+                "legendFormat", "{{broker}} - born"
         ));
 
         // 2. broker-stats
@@ -107,9 +113,7 @@ public class MetricsEnhancedServiceImpl implements MetricsEnhancedService {
                 "category", "Broker",
                 "promql", "rate(rocketmq_broker_sendTPS[5m])\nrate(rocketmq_broker_bornTPS[5m])",
                 "graphPanel", Map.of("type", "graph", "yAxis", Map.of("format", "reqps")),
-                "legendFormat", "{{instance}} - {{metric}}",
-                "threshold", null,
-                "alertCondition", null
+                "legendFormat", "{{instance}} - {{metric}}"
         ));
 
         // 3. topic-throughput
@@ -119,9 +123,7 @@ public class MetricsEnhancedServiceImpl implements MetricsEnhancedService {
                 "category", "Topic",
                 "promql", "topk(10, rate(rocketmq_topic_putNumsTotal[5m]))",
                 "graphPanel", Map.of("type", "graph", "yAxis", Map.of("format", "ops")),
-                "legendFormat", "{{topic}}",
-                "threshold", null,
-                "alertCondition", null
+                "legendFormat", "{{topic}}"
         ));
 
         // 4. consumer-lag
@@ -143,9 +145,7 @@ public class MetricsEnhancedServiceImpl implements MetricsEnhancedService {
                 "category", "Client",
                 "promql", "count by(protocol)(rocketmq_client_connected)",
                 "graphPanel", Map.of("type", "graph", "yAxis", Map.of("format", "short")),
-                "legendFormat", "{{protocol}}",
-                "threshold", null,
-                "alertCondition", null
+                "legendFormat", "{{protocol}}"
         ));
 
         // 6. dlq-count
@@ -167,9 +167,7 @@ public class MetricsEnhancedServiceImpl implements MetricsEnhancedService {
                 "category", "Consumer",
                 "promql", "rate(rocketmq_pop_ack_count_total[5m])",
                 "graphPanel", Map.of("type", "graph", "yAxis", Map.of("format", "ops")),
-                "legendFormat", "{{group}}",
-                "threshold", null,
-                "alertCondition", null
+                "legendFormat", "{{group}}"
         ));
 
         // 8. proxy-qps
@@ -179,9 +177,7 @@ public class MetricsEnhancedServiceImpl implements MetricsEnhancedService {
                 "category", "Proxy",
                 "promql", "rate(rocketmq_proxy_requestTotal[5m])",
                 "graphPanel", Map.of("type", "graph", "yAxis", Map.of("format", "reqps")),
-                "legendFormat", "{{instance}}",
-                "threshold", null,
-                "alertCondition", null
+                "legendFormat", "{{instance}}"
         ));
 
         // 9. broker-disk-io
@@ -215,9 +211,7 @@ public class MetricsEnhancedServiceImpl implements MetricsEnhancedService {
                 "category", "Consumer",
                 "promql", "rate(rocketmq_group_consumeTotal[5m])",
                 "graphPanel", Map.of("type", "graph", "yAxis", Map.of("format", "ops")),
-                "legendFormat", "{{group}}",
-                "threshold", null,
-                "alertCondition", null
+                "legendFormat", "{{group}}"
         ));
 
         // 12. producer-send-latency
@@ -263,9 +257,7 @@ public class MetricsEnhancedServiceImpl implements MetricsEnhancedService {
                 "category", "Topic",
                 "promql", "rate(rocketmq_transaction_commit_total[5m])",
                 "graphPanel", Map.of("type", "graph", "yAxis", Map.of("format", "ops")),
-                "legendFormat", "{{instance}}",
-                "threshold", null,
-                "alertCondition", null
+                "legendFormat", "{{instance}}"
         ));
 
         // 16. storage-write-latency
@@ -287,9 +279,7 @@ public class MetricsEnhancedServiceImpl implements MetricsEnhancedService {
                 "category", "Broker",
                 "promql", "rate(rocketmq_broker_sendTPS[5m])",
                 "graphPanel", Map.of("type", "graph", "yAxis", Map.of("format", "reqps")),
-                "legendFormat", "{{instance}}",
-                "threshold", null,
-                "alertCondition", null
+                "legendFormat", "{{instance}}"
         ));
 
         // 18. replica-sync-latency
@@ -311,9 +301,7 @@ public class MetricsEnhancedServiceImpl implements MetricsEnhancedService {
                 "category", "Topic",
                 "promql", "topk(10, rate(rocketmq_topic_putNumsTotal[5m]))",
                 "graphPanel", Map.of("type", "graph", "yAxis", Map.of("format", "ops")),
-                "legendFormat", "{{topic}}",
-                "threshold", null,
-                "alertCondition", null
+                "legendFormat", "{{topic}}"
         ));
 
         // 20. consumer-concurrency
@@ -323,9 +311,7 @@ public class MetricsEnhancedServiceImpl implements MetricsEnhancedService {
                 "category", "Consumer",
                 "promql", "rocketmq_group_consumeThreadPoolSize",
                 "graphPanel", Map.of("type", "graph", "yAxis", Map.of("format", "short")),
-                "legendFormat", "{{group}}",
-                "threshold", null,
-                "alertCondition", null
+                "legendFormat", "{{group}}"
         ));
 
         // 21. broker-jvm-gc-stats
@@ -335,9 +321,7 @@ public class MetricsEnhancedServiceImpl implements MetricsEnhancedService {
                 "category", "Broker",
                 "promql", "rate(java_lang_GcTime_milliseconds[5m])",
                 "graphPanel", Map.of("type", "graph", "yAxis", Map.of("format", "ms")),
-                "legendFormat", "{{instance}}",
-                "threshold", null,
-                "alertCondition", null
+                "legendFormat", "{{instance}}"
         ));
     }
 
@@ -348,6 +332,8 @@ public class MetricsEnhancedServiceImpl implements MetricsEnhancedService {
         if (!enriched.containsKey("graphPanel")) {
             enriched.put("graphPanel", Map.of("type", "graph"));
         }
+        enriched.putIfAbsent("threshold", null);
+        enriched.putIfAbsent("alertCondition", null);
         panelsCache.put(id, enriched);
     }
 
@@ -366,11 +352,13 @@ public class MetricsEnhancedServiceImpl implements MetricsEnhancedService {
     public List<Map<String, Object>> listDashboards() {
         ensurePanelsLoaded();
         return panelsCache.values().stream()
-                .map(p -> Map.<String, Object>of(
-                        "id", p.get("id"),
-                        "title", p.get("title"),
-                        "category", p.get("category")
-                ))
+                .map(p -> {
+                    Map<String, Object> summary = new LinkedHashMap<>();
+                    summary.put("id", p.get("id"));
+                    summary.put("title", p.getOrDefault("title", ""));
+                    summary.put("category", p.getOrDefault("category", ""));
+                    return summary;
+                })
                 .collect(Collectors.toList());
     }
 
