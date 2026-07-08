@@ -16,10 +16,15 @@
  */
 package org.apache.rocketmq.dashboard.architecture.impl;
 
+import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
+import org.apache.rocketmq.client.consumer.PullResult;
+import org.apache.rocketmq.client.consumer.PullStatus;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.TopicFilterType;
 import org.apache.rocketmq.common.MQVersion;
+import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.dashboard.architecture.MetadataProvider;
+import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.model.ACLPolicy;
 import org.apache.rocketmq.dashboard.model.ACLUser;
 import org.apache.rocketmq.dashboard.model.ClientInstance;
@@ -32,6 +37,8 @@ import org.apache.rocketmq.dashboard.model.NamespaceInfo;
 import org.apache.rocketmq.dashboard.model.SubscriptionInfo;
 import org.apache.rocketmq.dashboard.model.TopicInfo;
 import org.apache.rocketmq.dashboard.model.TopicType;
+import org.apache.rocketmq.dashboard.support.AutoCloseConsumerWrapper;
+import org.apache.rocketmq.remoting.protocol.route.QueueData;
 import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -59,6 +66,12 @@ public class V4MetadataProvider implements MetadataProvider {
 
     private final org.apache.rocketmq.tools.admin.MQAdminExt mqAdminExt;
 
+    /** Pull consumer wrapper for route-based message query. */
+    private final AutoCloseConsumerWrapper consumerWrapper;
+
+    /** RMQ configuration for ACL and TLS settings. */
+    private final RMQConfigure rmqConfigure;
+
     /** In-memory ACL user storage for V4 clusters. */
     private final ConcurrentHashMap<String, ACLUser> aclUserStore = new ConcurrentHashMap<>();
 
@@ -66,7 +79,15 @@ public class V4MetadataProvider implements MetadataProvider {
     private final ConcurrentHashMap<String, ACLPolicy> aclPolicyStore = new ConcurrentHashMap<>();
 
     public V4MetadataProvider(org.apache.rocketmq.tools.admin.MQAdminExt mqAdminExt) {
+        this(mqAdminExt, null, null);
+    }
+
+    public V4MetadataProvider(org.apache.rocketmq.tools.admin.MQAdminExt mqAdminExt,
+                              AutoCloseConsumerWrapper consumerWrapper,
+                              RMQConfigure rmqConfigure) {
         this.mqAdminExt = mqAdminExt;
+        this.consumerWrapper = consumerWrapper;
+        this.rmqConfigure = rmqConfigure;
     }
 
     @Override
@@ -520,6 +541,18 @@ public class V4MetadataProvider implements MetadataProvider {
 
     @Override
     public List<MessageInfo> queryMessageByTopic(String topic, long beginTime, long endTime, int maxNum) throws Exception {
+        // Try route-based approach first: get topic route data, build message queues,
+        // create pull consumer, search offsets by timestamp, and pull messages from each queue.
+        if (consumerWrapper != null) {
+            try {
+                return queryMessageByTopicViaRoute(topic, beginTime, endTime, maxNum);
+            } catch (Exception e) {
+                log.warn("Route-based queryMessageByTopic failed for topic: {}, falling back to admin query. Error: {}",
+                    topic, e.getMessage());
+            }
+        }
+
+        // Fallback: use the admin queryMessage API
         List<MessageInfo> result = new ArrayList<>();
         try {
             org.apache.rocketmq.client.QueryResult queryResult = mqAdminExt.queryMessage(
@@ -535,6 +568,95 @@ public class V4MetadataProvider implements MetadataProvider {
             }
             log.error("queryMessageByTopic no message for topic: {}, error: {}", topic, e.getMessage());
         }
+        return result;
+    }
+
+    /**
+     * Route-based message query: gets topic route data to discover all message queues,
+     * builds MessageQueue objects from route data, creates a pull consumer,
+     * searches offsets by timestamp, and pulls messages from each queue.
+     */
+    private List<MessageInfo> queryMessageByTopicViaRoute(String topic, long beginTime, long endTime, int maxNum) throws Exception {
+        List<MessageInfo> result = new ArrayList<>();
+
+        // Step 1: Get topic route data to discover all message queues
+        TopicRouteData routeData = mqAdminExt.examineTopicRouteInfo(topic);
+        if (routeData == null || routeData.getQueueDatas() == null || routeData.getQueueDatas().isEmpty()) {
+            log.warn("No route data found for topic: {}", topic);
+            return result;
+        }
+
+        // Step 2: Build MessageQueue objects from route data
+        List<MessageQueue> messageQueues = new ArrayList<>();
+        for (QueueData queueData : routeData.getQueueDatas()) {
+            String brokerName = queueData.getBrokerName();
+            int readQueueNums = queueData.getReadQueueNums();
+            for (int i = 0; i < readQueueNums; i++) {
+                messageQueues.add(new MessageQueue(topic, brokerName, i));
+            }
+        }
+
+        if (messageQueues.isEmpty()) {
+            log.warn("No message queues found for topic: {}", topic);
+            return result;
+        }
+
+        // Step 3: Create pull consumer to query messages by offset
+        org.apache.rocketmq.remoting.RPCHook rpcHook = null;
+        if (rmqConfigure != null && rmqConfigure.isACLEnabled()) {
+            rpcHook = new org.apache.rocketmq.acl.common.AclClientRPCHook(
+                new org.apache.rocketmq.acl.common.SessionCredentials(
+                    rmqConfigure.getAccessKey(), rmqConfigure.getSecretKey()));
+        }
+        boolean useTLS = rmqConfigure != null && rmqConfigure.isUseTLS();
+        DefaultMQPullConsumer consumer = consumerWrapper.getConsumer(rpcHook, useTLS);
+
+        // Step 4: Pull messages from each queue within the time range
+        int remaining = maxNum;
+        for (MessageQueue mq : messageQueues) {
+            if (remaining <= 0) {
+                break;
+            }
+            try {
+                // Search the start offset for beginTime
+                long startOffset = consumer.searchOffset(mq, beginTime);
+                // Search the end offset for endTime
+                long endOffset = consumer.searchOffset(mq, endTime);
+
+                if (startOffset >= endOffset) {
+                    continue; // No messages in this queue for the time range
+                }
+
+                long currentOffset = startOffset;
+                int pullBatchSize = Math.min(32, remaining);
+
+                while (currentOffset < endOffset && remaining > 0) {
+                    PullResult pullResult = consumer.pull(mq, "*", currentOffset, pullBatchSize);
+                    if (pullResult.getPullStatus() == PullStatus.FOUND) {
+                        for (org.apache.rocketmq.common.message.MessageExt msg : pullResult.getMsgFoundList()) {
+                            // Double-check message timestamp is within the range
+                            if (msg.getBornTimestamp() >= beginTime && msg.getBornTimestamp() <= endTime) {
+                                result.add(convertToMessageInfo(msg));
+                                remaining--;
+                                if (remaining <= 0) {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (pullResult.getNextBeginOffset() > currentOffset) {
+                        currentOffset = pullResult.getNextBeginOffset();
+                    } else {
+                        break; // No more messages
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Failed to pull messages from queue: {}-{} for topic: {}, error: {}",
+                    mq.getBrokerName(), mq.getQueueId(), topic, e.getMessage());
+            }
+        }
+
+        log.debug("queryMessageByTopicViaRoute: topic={}, queues={}, found={}", topic, messageQueues.size(), result.size());
         return result;
     }
 

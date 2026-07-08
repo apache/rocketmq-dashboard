@@ -45,7 +45,7 @@ import java.util.Map;
 @Service
 public class DashboardServiceImpl implements DashboardService {
 
-    private static final Logger logger = LoggerFactory.getLogger(DashboardServiceImpl.class);
+    private static final Logger LOG = LoggerFactory.getLogger(DashboardServiceImpl.class);
 
     @Resource
     private DashboardCollectService dashboardCollectService;
@@ -212,7 +212,7 @@ public class DashboardServiceImpl implements DashboardService {
                             clientCount = connection.getConnectionSet().size();
                         }
                     } catch (Exception e) {
-                        logger.debug("Failed to get connection for group: {}", groupName);
+                        LOG.debug("Failed to get connection for group: {}", groupName);
                     }
                     // Fallback to onlineClientCount if connection query failed
                     if (clientCount == 0 && groupInfo.getOnlineClientCount() != null) {
@@ -222,11 +222,11 @@ public class DashboardServiceImpl implements DashboardService {
 
                     result.add(entry);
                 } catch (Exception e) {
-                    logger.warn("Failed to get concurrency data for group: {}", groupInfo.getConsumerGroupName(), e);
+                    LOG.warn("Failed to get concurrency data for group: {}", groupInfo.getConsumerGroupName(), e);
                 }
             }
         } catch (Exception e) {
-            logger.error("Failed to query consumer concurrency", e);
+            LOG.error("Failed to query consumer concurrency", e);
         }
         return result;
     }
@@ -266,12 +266,12 @@ public class DashboardServiceImpl implements DashboardService {
 
                         result.add(entry);
                     } catch (Exception e) {
-                        logger.warn("Failed to get JVM stats for broker: {}", brokerAddr.getValue(), e);
+                        LOG.warn("Failed to get JVM stats for broker: {}", brokerAddr.getValue(), e);
                     }
                 }
             }
         } catch (Exception e) {
-            logger.error("Failed to query broker JVM stats", e);
+            LOG.error("Failed to query broker JVM stats", e);
         }
         return result;
     }
