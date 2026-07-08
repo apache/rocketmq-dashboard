@@ -243,6 +243,102 @@ public class MetricsEnhancedServiceImpl implements MetricsEnhancedService {
                 "threshold", 80,
                 "alertCondition", "java_lang_memory_HeapMemoryUsage_used / java_lang_memory_HeapMemoryUsage_max > 0.80"
         ));
+
+        // 14. accumulation-depth-trend
+        putPanel("accumulation-depth-trend", Map.of(
+                "title", "Accumulation Depth Trend",
+                "description", "Consumer group accumulation depth over time, tracking lag trends for backlog monitoring.",
+                "category", "Consumer",
+                "promql", "max by(group)(rocketmq_group_diff)",
+                "graphPanel", Map.of("type", "graph", "yAxis", Map.of("format", "short")),
+                "legendFormat", "{{group}}",
+                "threshold", 100000,
+                "alertCondition", "max by(group)(rocketmq_group_diff) > 100000"
+        ));
+
+        // 15. transaction-msg-metrics
+        putPanel("transaction-msg-metrics", Map.of(
+                "title", "Transaction Message Metrics",
+                "description", "Transaction message commit and rollback rates, tracking transaction processing health.",
+                "category", "Topic",
+                "promql", "rate(rocketmq_transaction_commit_total[5m])",
+                "graphPanel", Map.of("type", "graph", "yAxis", Map.of("format", "ops")),
+                "legendFormat", "{{instance}}",
+                "threshold", null,
+                "alertCondition", null
+        ));
+
+        // 16. storage-write-latency
+        putPanel("storage-write-latency", Map.of(
+                "title", "Storage Write Latency",
+                "description", "Message storage write latency per broker (P99), indicating disk I/O performance.",
+                "category", "Broker",
+                "promql", "histogram_quantile(0.99, rate(rocketmq_broker_putLatency_bucket[5m]))",
+                "graphPanel", Map.of("type", "graph", "yAxis", Map.of("format", "ms")),
+                "legendFormat", "{{instance}}",
+                "threshold", 100,
+                "alertCondition", "histogram_quantile(0.99, rate(rocketmq_broker_putLatency_bucket[5m])) > 0.1"
+        ));
+
+        // 17. broker-network-throughput
+        putPanel("broker-network-throughput", Map.of(
+                "title", "Broker Network Throughput",
+                "description", "Network bytes sent and received throughput per broker instance.",
+                "category", "Broker",
+                "promql", "rate(rocketmq_broker_sendTPS[5m])",
+                "graphPanel", Map.of("type", "graph", "yAxis", Map.of("format", "reqps")),
+                "legendFormat", "{{instance}}",
+                "threshold", null,
+                "alertCondition", null
+        ));
+
+        // 18. replica-sync-latency
+        putPanel("replica-sync-latency", Map.of(
+                "title", "Replica Sync Latency",
+                "description", "Master-slave replica synchronization lag in bytes, indicating replication health.",
+                "category", "Broker",
+                "promql", "rocketmq_broker_slaveFallBehindSize",
+                "graphPanel", Map.of("type", "graph", "yAxis", Map.of("format", "bytes")),
+                "legendFormat", "{{broker}}",
+                "threshold", 1073741824,
+                "alertCondition", "rocketmq_broker_slaveFallBehindSize > 1073741824"
+        ));
+
+        // 19. hot-topic-top10
+        putPanel("hot-topic-top10", Map.of(
+                "title", "Hot Topic Top 10",
+                "description", "Top 10 topics by message put rate, identifying high-traffic topics.",
+                "category", "Topic",
+                "promql", "topk(10, rate(rocketmq_topic_putNumsTotal[5m]))",
+                "graphPanel", Map.of("type", "graph", "yAxis", Map.of("format", "ops")),
+                "legendFormat", "{{topic}}",
+                "threshold", null,
+                "alertCondition", null
+        ));
+
+        // 20. consumer-concurrency
+        putPanel("consumer-concurrency", Map.of(
+                "title", "Consumer Concurrency",
+                "description", "Active consumer thread pool size vs configured maximum per consumer group, helping identify scaling needs.",
+                "category", "Consumer",
+                "promql", "rocketmq_group_consumeThreadPoolSize",
+                "graphPanel", Map.of("type", "graph", "yAxis", Map.of("format", "short")),
+                "legendFormat", "{{group}}",
+                "threshold", null,
+                "alertCondition", null
+        ));
+
+        // 21. broker-jvm-gc-stats
+        putPanel("broker-jvm-gc-stats", Map.of(
+                "title", "Broker JVM GC Statistics",
+                "description", "JVM garbage collection pause time and frequency per broker, helping tune JVM parameters.",
+                "category", "Broker",
+                "promql", "rate(java_lang_GcTime_milliseconds[5m])",
+                "graphPanel", Map.of("type", "graph", "yAxis", Map.of("format", "ms")),
+                "legendFormat", "{{instance}}",
+                "threshold", null,
+                "alertCondition", null
+        ));
     }
 
     private void putPanel(String id, Map<String, Object> panel) {

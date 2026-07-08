@@ -1032,6 +1032,24 @@ const remoteApi = {
         }
     },
 
+    queryAlertRules: async (callback) => {
+        try {
+            const url = new URL(remoteApi.buildUrl('/metrics/alerts'));
+            url.searchParams.append('format', 'yaml');
+            const response = await remoteApi._fetch(url.toString(), {signal: AbortSignal.timeout(15000)});
+            const data = await response.json();
+            callback(data);
+        } catch (error) {
+            if (error.name === 'TimeoutError') {
+                console.error("Alert rules request timed out:", error);
+                callback({status: 1, errMsg: "Request timed out for alert rules"});
+            } else {
+                console.error("Error fetching alert rules:", error);
+                callback({status: 1, errMsg: "Failed to fetch alert rules"});
+            }
+        }
+    },
+
     queryBrokerConfig: async (brokerAddr, callback) => {
         try {
             const url = new URL(remoteApi.buildUrl('/cluster/brokerConfig.query'));
