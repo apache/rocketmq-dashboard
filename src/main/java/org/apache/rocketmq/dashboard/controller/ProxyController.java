@@ -43,7 +43,10 @@ public class ProxyController {
     @RequestMapping(value = "/addProxyAddr.do", method = RequestMethod.POST)
     @ResponseBody
     public Object addProxyAddr(@RequestBody Map<String, String> params) {
-        String newProxyAddr = params.get("newProxyAddr");
+        String newProxyAddr = params == null ? null : params.get("newProxyAddr");
+        if (newProxyAddr == null || newProxyAddr.trim().isEmpty()) {
+            throw new IllegalArgumentException("newProxyAddr is required");
+        }
         proxyService.addProxyAddrList(newProxyAddr);
         return true;
     }
