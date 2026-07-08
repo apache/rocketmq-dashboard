@@ -61,8 +61,8 @@ const remoteApi = {
 
     _fetch: async (url, options = {}) => {
         const headers = {
-            ...options.headers,
             'Content-Type': 'application/json',
+            ...options.headers,
         };
 
 
@@ -908,8 +908,7 @@ const remoteApi = {
         try {
             const response = await remoteApi._fetch(remoteApi.buildUrl("/proxy/addProxyAddr.do"), {
                 method: 'POST',
-                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                body: new URLSearchParams({newProxyAddr}).toString()
+                body: JSON.stringify({newProxyAddr})
             });
             const data = await response.json();
             callback(data);

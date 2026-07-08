@@ -17,12 +17,13 @@
 package org.apache.rocketmq.dashboard.controller;
 
 import jakarta.annotation.Resource;
+import java.util.Map;
 import org.apache.rocketmq.dashboard.permisssion.Permission;
 import org.apache.rocketmq.dashboard.service.ProxyService;
 import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 
 @Controller
@@ -41,14 +42,16 @@ public class ProxyController {
 
     @RequestMapping(value = "/addProxyAddr.do", method = RequestMethod.POST)
     @ResponseBody
-    public Object addProxyAddr(@RequestParam String newProxyAddr) {
+    public Object addProxyAddr(@RequestBody Map<String, String> params) {
+        String newProxyAddr = params.get("newProxyAddr");
         proxyService.addProxyAddrList(newProxyAddr);
         return true;
     }
 
     @RequestMapping(value = "/updateProxyAddr.do", method = RequestMethod.POST)
     @ResponseBody
-    public Object updateProxyAddr(@RequestParam String proxyAddr) {
+    public Object updateProxyAddr(@RequestBody Map<String, String> params) {
+        String proxyAddr = params.get("proxyAddr");
         proxyService.updateProxyAddrList(proxyAddr);
         return true;
     }
