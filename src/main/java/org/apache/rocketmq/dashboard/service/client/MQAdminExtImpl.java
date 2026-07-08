@@ -801,8 +801,7 @@ public class MQAdminExtImpl implements MQAdminExt {
     @Override
     public HARuntimeInfo getBrokerHAStatus(String brokerAddr) throws RemotingConnectException,
             RemotingSendRequestException, RemotingTimeoutException, InterruptedException, MQBrokerException {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getBrokerHAStatus'");
+        return MQAdminInstance.threadLocalMQAdminExt().getBrokerHAStatus(brokerAddr);
     }
 
     @Override

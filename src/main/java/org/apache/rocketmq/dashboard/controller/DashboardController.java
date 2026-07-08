@@ -56,4 +56,70 @@ public class DashboardController {
         return dashboardService.queryTopicCurrentData();
     }
 
+    @RequestMapping(value = "/accumulation.query", method = RequestMethod.GET)
+    @ResponseBody
+    public Object accumulation(@RequestParam String date, @RequestParam(required = false) String topicName) {
+        if (Strings.isNullOrEmpty(topicName)) {
+            return dashboardService.queryAccumulationData(date);
+        }
+        return dashboardService.queryAccumulationData(date, topicName);
+    }
+
+    @RequestMapping(value = "/transaction.query", method = RequestMethod.GET)
+    @ResponseBody
+    public Object transaction(@RequestParam String date, @RequestParam(required = false) String topicName) {
+        if (Strings.isNullOrEmpty(topicName)) {
+            return dashboardService.queryTransactionData(date);
+        }
+        return dashboardService.queryTransactionData(date, topicName);
+    }
+
+    @RequestMapping(value = "/storageLatency.query", method = RequestMethod.GET)
+    @ResponseBody
+    public Object storageLatency(@RequestParam String date, @RequestParam(required = false) String topicName) {
+        if (Strings.isNullOrEmpty(topicName)) {
+            return dashboardService.queryStorageLatencyData(date);
+        }
+        return dashboardService.queryStorageLatencyData(date, topicName);
+    }
+
+    @RequestMapping(value = "/networkThroughput.query", method = RequestMethod.GET)
+    @ResponseBody
+    public Object networkThroughput(@RequestParam String date, @RequestParam(required = false) String brokerName) {
+        if (Strings.isNullOrEmpty(brokerName)) {
+            return dashboardService.queryNetworkThroughputData(date);
+        }
+        return dashboardService.queryNetworkThroughputData(date, brokerName);
+    }
+
+    @RequestMapping(value = "/replicaSync.query", method = RequestMethod.GET)
+    @ResponseBody
+    public Object replicaSync(@RequestParam String date, @RequestParam(required = false) String brokerName) {
+        if (Strings.isNullOrEmpty(brokerName)) {
+            return dashboardService.queryReplicaSyncData(date);
+        }
+        return dashboardService.queryReplicaSyncData(date, brokerName);
+    }
+
+    @RequestMapping(value = "/hotTopic.query", method = RequestMethod.GET)
+    @ResponseBody
+    public Object hotTopic(@RequestParam String date, @RequestParam(required = false) String topicName) {
+        if (Strings.isNullOrEmpty(topicName)) {
+            return dashboardService.queryHotTopicData(date);
+        }
+        return dashboardService.queryHotTopicData(date, topicName);
+    }
+
+    @RequestMapping(value = "/consumerConcurrency.query", method = RequestMethod.GET)
+    @ResponseBody
+    public Object consumerConcurrency() {
+        return dashboardService.queryConsumerConcurrency();
+    }
+
+    @RequestMapping(value = "/brokerJvmStats.query", method = RequestMethod.GET)
+    @ResponseBody
+    public Object brokerJvmStats() {
+        return dashboardService.queryBrokerJvmStats();
+    }
+
 }

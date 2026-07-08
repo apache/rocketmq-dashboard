@@ -48,6 +48,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 
 @Component
@@ -162,6 +163,131 @@ public class DashboardCollectTask {
         }
     }
 
+    @Scheduled(cron = "10 0/1 * * * ?")
+    public void collectAccumulation() {
+        if (!rmqConfigure.isEnableDashBoardCollect()) {
+            return;
+        }
+        try {
+            Date date = new Date();
+            TopicList topicList = mqAdminExt.fetchAllTopicList();
+            Set<String> topicSet = topicList.getTopicList();
+            for (String topic : topicSet) {
+                if (topic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)
+                        || topic.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX)
+                        || TopicValidator.isSystemTopic(topic)) {
+                    continue;
+                }
+                try {
+                    AccumulationCollectTask accumulationTask = new AccumulationCollectTask(
+                            topic, mqAdminExt, dashboardCollectService);
+                    collectExecutor.submit(accumulationTask);
+                } catch (Exception e) {
+                    log.warn("Failed to submit accumulation collect task for topic: {}", topic, e);
+                }
+            }
+        } catch (Exception err) {
+            log.error("Failed to collect accumulation data", err);
+        }
+    }
+
+    @Scheduled(cron = "20 0/1 * * * ?")
+    public void collectTransaction() {
+        if (!rmqConfigure.isEnableDashBoardCollect()) {
+            return;
+        }
+        try {
+            Date date = new Date();
+            TopicList topicList = mqAdminExt.fetchAllTopicList();
+            Set<String> topicSet = topicList.getTopicList();
+            for (String topic : topicSet) {
+                if (topic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)
+                        || topic.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX)
+                        || TopicValidator.isSystemTopic(topic)) {
+                    continue;
+                }
+                try {
+                    TransactionCollectTask transactionTask = new TransactionCollectTask(
+                            topic, mqAdminExt, dashboardCollectService);
+                    collectExecutor.submit(transactionTask);
+                } catch (Exception e) {
+                    log.warn("Failed to submit transaction collect task for topic: {}", topic, e);
+                }
+            }
+        } catch (Exception err) {
+            log.error("Failed to collect transaction data", err);
+        }
+    }
+
+    @Scheduled(cron = "30 0/1 * * * ?")
+    public void collectStorageLatency() {
+        if (!rmqConfigure.isEnableDashBoardCollect()) {
+            return;
+        }
+        try {
+            TopicList topicList = mqAdminExt.fetchAllTopicList();
+            Set<String> topicSet = topicList.getTopicList();
+            for (String topic : topicSet) {
+                if (topic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)
+                        || topic.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX)
+                        || TopicValidator.isSystemTopic(topic)) {
+                    continue;
+                }
+                try {
+                    StorageLatencyCollectTask storageLatencyTask = new StorageLatencyCollectTask(
+                            topic, mqAdminExt, dashboardCollectService);
+                    collectExecutor.submit(storageLatencyTask);
+                } catch (Exception e) {
+                    log.warn("Failed to submit storage latency collect task for topic: {}", topic, e);
+                }
+            }
+        } catch (Exception err) {
+            log.error("Failed to collect storage latency data", err);
+        }
+    }
+
+    @Scheduled(cron = "40 0/1 * * * ?")
+    public void collectNetworkThroughput() {
+        if (!rmqConfigure.isEnableDashBoardCollect()) {
+            return;
+        }
+        try {
+            NetworkThroughputCollectTask networkThroughputTask = new NetworkThroughputCollectTask(
+                    mqAdminExt, dashboardCollectService);
+            collectExecutor.submit(networkThroughputTask);
+        } catch (Exception e) {
+            log.error("Failed to submit network throughput collect task", e);
+        }
+    }
+
+    @Scheduled(cron = "50 0/1 * * * ?")
+    public void collectReplicaSync() {
+        if (!rmqConfigure.isEnableDashBoardCollect()) {
+            return;
+        }
+        try {
+            ReplicaSyncCollectTask replicaSyncTask = new ReplicaSyncCollectTask(
+                    mqAdminExt, dashboardCollectService);
+            collectExecutor.submit(replicaSyncTask);
+        } catch (Exception e) {
+            log.error("Failed to submit replica sync collect task", e);
+        }
+    }
+
+    @Scheduled(cron = "50 0/1 * * * ?")
+    public void collectHotTopic() {
+        if (!rmqConfigure.isEnableDashBoardCollect()) {
+            return;
+        }
+        try {
+            HotTopicCollectTask hotTopicTask = new HotTopicCollectTask(
+                    mqAdminExt, dashboardCollectService);
+            collectExecutor.submit(hotTopicTask);
+        } catch (Exception e) {
+            log.error("Failed to submit hot topic collect task", e);
+        }
+    }
+
     @Scheduled(cron = "0/5 * * * * ?")
     public void saveData() {
         if (!rmqConfigure.isEnableDashBoardCollect()) {
@@ -175,13 +301,31 @@ public class DashboardCollectTask {
         if (!currentDateStr.equals(nowDateStr)) {
             dashboardCollectService.getBrokerMap().invalidateAll();
             dashboardCollectService.getTopicMap().invalidateAll();
+            dashboardCollectService.getAccumulationMap().invalidateAll();
+            dashboardCollectService.getTransactionMap().invalidateAll();
+            dashboardCollectService.getStorageLatencyMap().invalidateAll();
+            dashboardCollectService.getNetworkThroughputMap().invalidateAll();
+            dashboardCollectService.getReplicaSyncMap().invalidateAll();
+            dashboardCollectService.getHotTopicMap().invalidateAll();
             currentDate = new Date();
         }
         File brokerFile = new File(dataLocationPath + nowDateStr + ".json");
         File topicFile = new File(dataLocationPath + nowDateStr + "_topic" + ".json");
+        File accumulationFile = new File(dataLocationPath + nowDateStr + "_accumulation" + ".json");
+        File transactionFile = new File(dataLocationPath + nowDateStr + "_transaction" + ".json");
+        File storageLatencyFile = new File(dataLocationPath + nowDateStr + "_storageLatency" + ".json");
+        File networkThroughputFile = new File(dataLocationPath + nowDateStr + "_networkThroughput" + ".json");
+        File replicaSyncFile = new File(dataLocationPath + nowDateStr + "_replicaSync" + ".json");
+        File hotTopicFile = new File(dataLocationPath + nowDateStr + "_hotTopic" + ".json");
         try {
             Map<String, List<String>> brokerFileMap;
             Map<String, List<String>> topicFileMap;
+            Map<String, List<String>> accumulationFileMap;
+            Map<String, List<String>> transactionFileMap;
+            Map<String, List<String>> storageLatencyFileMap;
+            Map<String, List<String>> networkThroughputFileMap;
+            Map<String, List<String>> replicaSyncFileMap;
+            Map<String, List<String>> hotTopicFileMap;
             if (brokerFile.exists()) {
                 brokerFileMap = dashboardCollectService.jsonDataFile2map(brokerFile);
             } else {
@@ -196,11 +340,65 @@ public class DashboardCollectTask {
                 Files.createParentDirs(topicFile);
             }
 
+            if (accumulationFile.exists()) {
+                accumulationFileMap = dashboardCollectService.jsonDataFile2map(accumulationFile);
+            } else {
+                accumulationFileMap = Maps.newHashMap();
+                Files.createParentDirs(accumulationFile);
+            }
+
+            if (transactionFile.exists()) {
+                transactionFileMap = dashboardCollectService.jsonDataFile2map(transactionFile);
+            } else {
+                transactionFileMap = Maps.newHashMap();
+                Files.createParentDirs(transactionFile);
+            }
+
+            if (storageLatencyFile.exists()) {
+                storageLatencyFileMap = dashboardCollectService.jsonDataFile2map(storageLatencyFile);
+            } else {
+                storageLatencyFileMap = Maps.newHashMap();
+                Files.createParentDirs(storageLatencyFile);
+            }
+
+            if (networkThroughputFile.exists()) {
+                networkThroughputFileMap = dashboardCollectService.jsonDataFile2map(networkThroughputFile);
+            } else {
+                networkThroughputFileMap = Maps.newHashMap();
+                Files.createParentDirs(networkThroughputFile);
+            }
+
+            if (replicaSyncFile.exists()) {
+                replicaSyncFileMap = dashboardCollectService.jsonDataFile2map(replicaSyncFile);
+            } else {
+                replicaSyncFileMap = Maps.newHashMap();
+                Files.createParentDirs(replicaSyncFile);
+            }
+
+            if (hotTopicFile.exists()) {
+                hotTopicFileMap = dashboardCollectService.jsonDataFile2map(hotTopicFile);
+            } else {
+                hotTopicFileMap = Maps.newHashMap();
+                Files.createParentDirs(hotTopicFile);
+            }
+
             brokerFile.createNewFile();
             topicFile.createNewFile();
+            accumulationFile.createNewFile();
+            transactionFile.createNewFile();
+            storageLatencyFile.createNewFile();
+            networkThroughputFile.createNewFile();
+            replicaSyncFile.createNewFile();
+            hotTopicFile.createNewFile();
 
             writeFile(dashboardCollectService.getBrokerMap(), brokerFileMap, brokerFile);
             writeFile(dashboardCollectService.getTopicMap(), topicFileMap, topicFile);
+            writeFile(dashboardCollectService.getAccumulationMap(), accumulationFileMap, accumulationFile);
+            writeFile(dashboardCollectService.getTransactionMap(), transactionFileMap, transactionFile);
+            writeFile(dashboardCollectService.getStorageLatencyMap(), storageLatencyFileMap, storageLatencyFile);
+            writeFile(dashboardCollectService.getNetworkThroughputMap(), networkThroughputFileMap, networkThroughputFile);
+            writeFile(dashboardCollectService.getReplicaSyncMap(), replicaSyncFileMap, replicaSyncFile);
+            writeFile(dashboardCollectService.getHotTopicMap(), hotTopicFileMap, hotTopicFile);
             log.debug("Broker Collected Data in memory = {}" + JsonUtil.obj2String(dashboardCollectService.getBrokerMap().asMap()));
             log.debug("Topic Collected Data in memory = {}" + JsonUtil.obj2String(dashboardCollectService.getTopicMap().asMap()));
 
