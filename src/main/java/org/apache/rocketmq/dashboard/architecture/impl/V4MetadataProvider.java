@@ -521,12 +521,19 @@ public class V4MetadataProvider implements MetadataProvider {
     @Override
     public List<MessageInfo> queryMessageByTopic(String topic, long beginTime, long endTime, int maxNum) throws Exception {
         List<MessageInfo> result = new ArrayList<>();
-        org.apache.rocketmq.client.QueryResult queryResult = mqAdminExt.queryMessage(
-            topic, null, maxNum, beginTime, endTime);
-        if (queryResult != null && queryResult.getMessageList() != null) {
-            for (org.apache.rocketmq.common.message.MessageExt msg : queryResult.getMessageList()) {
-                result.add(convertToMessageInfo(msg));
+        try {
+            org.apache.rocketmq.client.QueryResult queryResult = mqAdminExt.queryMessage(
+                    topic, null, maxNum, beginTime, endTime);
+            if (queryResult != null && queryResult.getMessageList() != null) {
+                for (org.apache.rocketmq.common.message.MessageExt msg : queryResult.getMessageList()) {
+                    result.add(convertToMessageInfo(msg));
+                }
             }
+        } catch (org.apache.rocketmq.client.exception.MQClientException e) {
+            if (e.getResponseCode() != 200) {
+                throw e;
+            }
+            log.error("queryMessageByTopic no message for topic: {}, error: {}", topic, e.getMessage());
         }
         return result;
     }

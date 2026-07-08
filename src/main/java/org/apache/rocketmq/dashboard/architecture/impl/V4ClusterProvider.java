@@ -26,7 +26,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  *
@@ -65,6 +67,39 @@ public class V4ClusterProvider implements ClusterProvider {
         capability.setDelayMessageSupported(true); // Removed
         capability.setTransactionMessageSupported(true); // Removed
         capability.setFifoMessageSupported(true); // Removed
+        
+        Set<String> extended = new HashSet<>();
+        extended.add("MESSAGE_QUERY");
+        extended.add("MESSAGE_QUERY_BY_KEY");
+        extended.add("MESSAGE_QUERY_BY_GROUP");
+        extended.add("MESSAGE_QUERY_BY_ID");
+        extended.add("MESSAGE_QUERY_BY_OFFSET");
+        extended.add("OFFSET_SEARCH_BY_TIMESTAMP");
+        extended.add("MAX_OFFSET_QUERY");
+        extended.add("MIN_OFFSET_QUERY");
+        extended.add("MESSAGE_DELETE");
+        extended.add("MESSAGE_RESEND");
+        extended.add("MESSAGE_CONSUME_DIRECTLY");
+
+        extended.add("TOPIC_CREATE");
+        extended.add("TOPIC_DELETE");
+        extended.add("TOPIC_UPDATE");
+        extended.add("TOPIC_QUERY");
+
+        extended.add("CONSUMER_GROUP_QUERY");
+        extended.add("CONSUMER_GROUP_MANAGE");
+
+        extended.add("METRICS_EXPORT");
+        extended.add("BROKER_METRICS");
+        extended.add("TOPIC_METRICS");
+        extended.add("CONSUMER_GROUP_METRICS");
+        extended.add("ALL_BROKERS_METRICS");
+        extended.add("ALL_TOPICS_METRICS");
+        extended.add("CLIENT_METRICS");
+        extended.add("SYSTEM_METRICS");
+        extended.add("CUSTOM_METRICS");
+        extended.add("METRICS_CONFIGURATION");
+        capability.setExtendedCapabilities(extended);
         return capability;
     }
 
