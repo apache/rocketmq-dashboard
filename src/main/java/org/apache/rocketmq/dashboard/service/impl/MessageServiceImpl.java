@@ -323,9 +323,19 @@ public class MessageServiceImpl implements MessageService {
                 return null;
             }
 
+            List<BrokerData> brokerDatas = routeData.getBrokerDatas();
+
+            // Short-circuit: single-broker deployment — no address matching needed.
+            // This covers the most common deployment (dev / test / small-scale prod)
+            // and is immune to DNS/hostname/NAT mismatches that would otherwise
+            // cause the IP-level match below to fail silently.
+            if (brokerDatas.size() == 1) {
+                return brokerDatas.get(0).getBrokerName();
+            }
+
             String storeHostIp = NetworkUtil.socketAddress2String(msg.getStoreHost()).split(":")[0];
 
-            for (BrokerData brokerData : routeData.getBrokerDatas()) {
+            for (BrokerData brokerData : brokerDatas) {
                 if (brokerData.getBrokerAddrs() == null) {
                     continue;
                 }

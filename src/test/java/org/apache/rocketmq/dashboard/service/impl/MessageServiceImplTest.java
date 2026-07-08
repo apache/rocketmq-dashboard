@@ -629,8 +629,9 @@ public class MessageServiceImplTest {
 
     @Test
     public void testMessageTrackDetail_BrokerNameUnresolvableStaysNotConsumeYet() throws Exception {
-        // If examineTopicRouteInfo returns null (or no matching broker), the
-        // track must remain NOT_CONSUME_YET (conservative: no false positive).
+        // Multi-broker route where NO broker's address matches msg.getStoreHost().
+        // The short-circuit does not apply (>1 broker), IP matching fails on all
+        // brokers, so resolveBrokerName returns null → conservative NOT_CONSUME_YET.
         MessageExt msg = createMessageExt(MSG_ID, TOPIC, "body", System.currentTimeMillis());
         msg.setQueueId(0);
         msg.setQueueOffset(100);
@@ -642,22 +643,31 @@ public class MessageServiceImplTest {
         when(mqAdminExt.messageTrackDetail(any(MessageExt.class)))
                 .thenReturn(Collections.singletonList(track));
 
-        // Route data with a non-matching broker address
+        // Two brokers, neither matching the storeHost IP (192.168.1.100)
         TopicRouteData routeData = new TopicRouteData();
-        HashMap<Long, String> addrs = new HashMap<>();
-        addrs.put(0L, "10.0.0.1:10911"); // does NOT match 192.168.1.100
-        routeData.setBrokerDatas(Collections.singletonList(
-            new BrokerData("test-cluster", "broker-x", addrs)));
+        List<BrokerData> brokerDatas = new ArrayList<>();
+        HashMap<Long, String> addrsX = new HashMap<>();
+        addrsX.put(0L, "10.0.0.1:10911");
+        brokerDatas.add(new BrokerData("test-cluster", "broker-x", addrsX));
+        HashMap<Long, String> addrsY = new HashMap<>();
+        addrsY.put(0L, "10.0.0.2:10911");
+        brokerDatas.add(new BrokerData("test-cluster", "broker-y", addrsY));
+        routeData.setBrokerDatas(brokerDatas);
         when(mqAdminExt.examineTopicRouteInfo(TOPIC)).thenReturn(routeData);
 
-        // ConsumeStats has a matching topic+queueId on broker-x, but the
-        // message does not belong to broker-x, so we must not use this entry.
+        // ConsumeStats has matching topic+queueId entries for both brokers,
+        // but since resolveBrokerName can't determine which broker holds the
+        // message (no IP match), neither entry should be used.
         ConsumeStats stats = new ConsumeStats();
-        MessageQueue mq = new MessageQueue(TOPIC, "broker-x", 0);
-        OffsetWrapper ow = new OffsetWrapper();
-        ow.setConsumerOffset(9999); // would cause false positive if we didn't filter
+        MessageQueue mqX = new MessageQueue(TOPIC, "broker-x", 0);
+        MessageQueue mqY = new MessageQueue(TOPIC, "broker-y", 0);
+        OffsetWrapper owX = new OffsetWrapper();
+        owX.setConsumerOffset(9999);
+        OffsetWrapper owY = new OffsetWrapper();
+        owY.setConsumerOffset(8888);
         Map<MessageQueue, OffsetWrapper> offsetTable = new HashMap<>();
-        offsetTable.put(mq, ow);
+        offsetTable.put(mqX, owX);
+        offsetTable.put(mqY, owY);
         stats.setOffsetTable(offsetTable);
         when(mqAdminExt.examineConsumeStats(CONSUMER_GROUP)).thenReturn(stats);
 
@@ -668,6 +678,51 @@ public class MessageServiceImplTest {
         assertNotNull(result);
         assertEquals(1, result.size());
         assertEquals(TrackType.NOT_CONSUME_YET, result.get(0).getTrackType());
+    }
+
+    @Test
+    public void testMessageTrackDetail_SingleBrokerShortCircuitWithMismatchedIp() throws Exception {
+        // Single-broker deployment where the broker registers with a hostname/IP
+        // that does NOT match msg.getStoreHost(). The single-broker short-circuit
+        // should still resolve the brokerName, allowing the fallback to work —
+        // this is the exact scenario reported in issue #380.
+        MessageExt msg = createMessageExt(MSG_ID, TOPIC, "body", System.currentTimeMillis());
+        msg.setQueueId(2);
+        msg.setQueueOffset(100);
+
+        MessageTrack track = new MessageTrack();
+        track.setConsumerGroup(CONSUMER_GROUP);
+        track.setTrackType(TrackType.NOT_CONSUME_YET);
+
+        when(mqAdminExt.messageTrackDetail(any(MessageExt.class)))
+                .thenReturn(Collections.singletonList(track));
+
+        // Single broker with a non-matching address (DNS/hostname mismatch scenario)
+        TopicRouteData routeData = new TopicRouteData();
+        HashMap<Long, String> addrs = new HashMap<>();
+        addrs.put(0L, "broker-a-hostname:10911"); // does NOT match 192.168.1.100
+        routeData.setBrokerDatas(Collections.singletonList(
+            new BrokerData("test-cluster", "broker-a", addrs)));
+        when(mqAdminExt.examineTopicRouteInfo(TOPIC)).thenReturn(routeData);
+
+        // Consumer offset has advanced past the message
+        ConsumeStats stats = new ConsumeStats();
+        MessageQueue mq = new MessageQueue(TOPIC, "broker-a", 2);
+        OffsetWrapper ow = new OffsetWrapper();
+        ow.setConsumerOffset(200);
+        Map<MessageQueue, OffsetWrapper> offsetTable = new HashMap<>();
+        offsetTable.put(mq, ow);
+        stats.setOffsetTable(offsetTable);
+        when(mqAdminExt.examineConsumeStats(CONSUMER_GROUP)).thenReturn(stats);
+
+        // Execute
+        List<MessageTrack> result = messageService.messageTrackDetail(msg);
+
+        // Verify: corrected to CONSUMED despite IP mismatch, because single-broker
+        // short-circuit resolved the brokerName without address matching.
+        assertNotNull(result);
+        assertEquals(1, result.size());
+        assertEquals(TrackType.CONSUMED, result.get(0).getTrackType());
     }
 
     @Test
