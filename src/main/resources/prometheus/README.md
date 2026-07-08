@@ -79,21 +79,19 @@ services:
       - "9090:9090"
 ```
 
-### Option 3: Via Helm (kube-prometheus-stack)
+### Option 3: Via Helm (kube-prometheus-stack / Prometheus Operator)
 
-```bash
-kubectl create configmap rocketmq-alerts --from-file=rocketmq-alerts.yaml -n monitoring
-kubectl annotate configmap rocketmq-alerts prometheus.io/rules=true -n monitoring
-```
+kube-prometheus-stack loads alerting rules via `PrometheusRule` resources (not ConfigMaps or `prometheusSpec.ruleFiles`).
 
-Or add to your `values.yaml`:
-
-```yaml
-prometheusSpec:
-  ruleFiles:
-    rocketmq-alerts: |-
-      <contents of rocketmq-alerts.yaml>
-```
+    apiVersion: monitoring.coreos.com/v1
+    kind: PrometheusRule
+    metadata:
+      name: rocketmq-alerts
+      labels:
+        release: <your-helm-release-name>
+    spec:
+      groups:
+        # paste the `groups:` section from rocketmq-alerts.yaml here
 
 ## Customizing Thresholds
 
