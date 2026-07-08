@@ -29,6 +29,8 @@ import org.apache.rocketmq.dashboard.architecture.impl.V5ProxyMetadataProvider;
 import org.apache.rocketmq.dashboard.model.ClusterCapability;
 import org.apache.rocketmq.dashboard.service.client.GrpcClientCollector;
 import org.apache.rocketmq.dashboard.service.client.ProxyAdminGrpcClient;
+import org.apache.rocketmq.dashboard.support.AutoCloseConsumerWrapper;
+import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.junit.Before;
 import org.junit.Test;
@@ -53,15 +55,19 @@ import static org.mockito.Mockito.mock;
 public class ArchitectureConfigTest {
 
     private MQAdminExt mqAdminExt;
+    private AutoCloseConsumerWrapper consumerWrapper;
+    private RMQConfigure rmqConfigure;
     private ArchitectureConfig.ClusterCapabilityDetector capabilityDetector;
     private ArchitectureConfig.ArchitectureAdaptationManager adaptationManager;
 
     @Before
     public void setUp() {
         mqAdminExt = mock(MQAdminExt.class);
+        consumerWrapper = mock(AutoCloseConsumerWrapper.class);
+        rmqConfigure = mock(RMQConfigure.class);
         ArchitectureConfig config = new ArchitectureConfig();
         capabilityDetector = config.clusterCapabilityDetector();
-        adaptationManager = config.architectureAdaptationManager(mqAdminExt);
+        adaptationManager = config.architectureAdaptationManager(mqAdminExt, consumerWrapper, rmqConfigure);
     }
 
     // ==================== ClusterCapabilityDetector Tests ====================

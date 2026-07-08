@@ -29,6 +29,7 @@ import org.apache.rocketmq.dashboard.architecture.impl.V5ProxyMetadataProvider;
 import org.apache.rocketmq.dashboard.model.ClusterCapability;
 import org.apache.rocketmq.dashboard.service.client.GrpcClientCollector;
 import org.apache.rocketmq.dashboard.service.client.ProxyAdminGrpcClient;
+import org.apache.rocketmq.dashboard.support.AutoCloseConsumerWrapper;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -85,8 +86,10 @@ public class ArchitectureConfig {
      */
     @Bean
     @Primary
-    public MetadataProvider v4MetadataProvider(MQAdminExt mqAdminExt) {
-        return new V4MetadataProvider(mqAdminExt);
+    public MetadataProvider v4MetadataProvider(MQAdminExt mqAdminExt,
+                                               AutoCloseConsumerWrapper consumerWrapper,
+                                               RMQConfigure rmqConfigure) {
+        return new V4MetadataProvider(mqAdminExt, consumerWrapper, rmqConfigure);
     }
 
     /**
@@ -102,8 +105,10 @@ public class ArchitectureConfig {
      * different cluster architecture types at runtime.
      */
     @Bean
-    public ArchitectureAdaptationManager architectureAdaptationManager(MQAdminExt mqAdminExt) {
-        return new ArchitectureAdaptationManager(mqAdminExt);
+    public ArchitectureAdaptationManager architectureAdaptationManager(MQAdminExt mqAdminExt,
+                                                                        AutoCloseConsumerWrapper consumerWrapper,
+                                                                        RMQConfigure rmqConfigure) {
+        return new ArchitectureAdaptationManager(mqAdminExt, consumerWrapper, rmqConfigure);
     }
 
     /**
@@ -173,6 +178,8 @@ public class ArchitectureConfig {
         private static final Logger log = LoggerFactory.getLogger(ArchitectureAdaptationManager.class);
 
         private final MQAdminExt mqAdminExt;
+        private final AutoCloseConsumerWrapper consumerWrapper;
+        private final RMQConfigure rmqConfigure;
         private final ConcurrentHashMap<ClusterAccessType, ClusterProvider> providerCache = new ConcurrentHashMap<>();
         private final ConcurrentHashMap<ClusterAccessType, AdminClient> adminClientCache = new ConcurrentHashMap<>();
         private final ConcurrentHashMap<ClusterAccessType, MetadataProvider> metadataProviderCache = new ConcurrentHashMap<>();
@@ -182,13 +189,17 @@ public class ArchitectureConfig {
         private volatile MetadataProvider currentMetadataProvider;
         private volatile ClusterAccessType currentAccessType;
 
-        public ArchitectureAdaptationManager(MQAdminExt mqAdminExt) {
+        public ArchitectureAdaptationManager(MQAdminExt mqAdminExt,
+                                              AutoCloseConsumerWrapper consumerWrapper,
+                                              RMQConfigure rmqConfigure) {
             this.mqAdminExt = mqAdminExt;
+            this.consumerWrapper = consumerWrapper;
+            this.rmqConfigure = rmqConfigure;
             // Initialize with V4 as default
             this.currentAccessType = ClusterAccessType.V4_NAMESRV;
             this.currentProvider = new V4ClusterProvider(mqAdminExt);
             this.currentAdminClient = new RemotingAdminClient(mqAdminExt);
-            this.currentMetadataProvider = new V4MetadataProvider(mqAdminExt);
+            this.currentMetadataProvider = new V4MetadataProvider(mqAdminExt, consumerWrapper, rmqConfigure);
         }
 
         /**
@@ -274,7 +285,7 @@ public class ArchitectureConfig {
 
             // Create V5-specific metadata provider
             V5ProxyMetadataProvider v5Metadata = new V5ProxyMetadataProvider(
-                v5Provider.getMqAdminExt(), namespace);
+                v5Provider.getMqAdminExt(), namespace, consumerWrapper, rmqConfigure);
             v5Metadata.setCachedCapability(v5Provider.getClusterCapability());
 
             // Cache and set current
@@ -368,7 +379,7 @@ public class ArchitectureConfig {
         private MetadataProvider createMetadataProvider(ClusterAccessType accessType) {
             switch (accessType) {
                 case V4_NAMESRV:
-                    return new V4MetadataProvider(mqAdminExt);
+                    return new V4MetadataProvider(mqAdminExt, consumerWrapper, rmqConfigure);
                 case V5_PROXY_LOCAL:
                 case V5_PROXY_CLUSTER:
                     throw new IllegalArgumentException(
