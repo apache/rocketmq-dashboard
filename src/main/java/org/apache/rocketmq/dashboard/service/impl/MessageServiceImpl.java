@@ -48,11 +48,14 @@ import org.apache.rocketmq.dashboard.model.request.MessageQuery;
 import org.apache.rocketmq.dashboard.service.MessageService;
 import org.apache.rocketmq.dashboard.support.AutoCloseConsumerWrapper;
 import org.apache.rocketmq.remoting.RPCHook;
+import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
+import org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper;
 import org.apache.rocketmq.remoting.protocol.body.Connection;
 import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.apache.rocketmq.tools.admin.api.MessageTrack;
+import org.apache.rocketmq.tools.admin.api.TrackType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -66,6 +69,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -196,12 +200,63 @@ public class MessageServiceImpl implements MessageService {
 
     @Override
     public List<MessageTrack> messageTrackDetail(MessageExt msg) {
+        List<MessageTrack> messageTracks;
         try {
-            return mqAdminExt.messageTrackDetail(msg);
+            messageTracks = mqAdminExt.messageTrackDetail(msg);
         } catch (Exception e) {
             logger.error("op=messageTrackDetailError", e);
             return Collections.emptyList();
         }
+
+        // Re-verify tracks marked as NOT_CONSUME_YET.
+        // The underlying consumed() method in DefaultMQAdminExtImpl requires an
+        // exact broker-address match between msg.getStoreHost() and the broker's
+        // registered address.  When the broker registers with a hostname (or when
+        // DNS resolution inside the dashboard container differs from the broker),
+        // the address comparison silently fails and every message is incorrectly
+        // reported as NOT_CONSUME_YET even though it has already been consumed.
+        //
+        // The fallback below re-checks the consumer offset directly, matching
+        // only on topic + queueId + offset and skipping the fragile address
+        // comparison.  See: https://github.com/apache/rocketmq-dashboard/issues/380
+        if (messageTracks != null) {
+            for (MessageTrack track : messageTracks) {
+                if (track.getTrackType() == TrackType.NOT_CONSUME_YET) {
+                    if (isConsumedByGroup(msg, track.getConsumerGroup())) {
+                        track.setTrackType(TrackType.CONSUMED);
+                    }
+                }
+            }
+        }
+
+        return messageTracks;
+    }
+
+    /**
+     * Independently verify whether a message has been consumed by the given
+     * consumer group.  Unlike {@link org.apache.rocketmq.tools.admin.DefaultMQAdminExt#consumed},
+     * this method does NOT compare broker addresses — it matches solely on
+     * topic, queueId and consumer offset, which avoids false negatives caused
+     * by hostname/IP mismatches between the broker registry and store host.
+     */
+    private boolean isConsumedByGroup(MessageExt msg, String consumerGroup) {
+        try {
+            ConsumeStats stats = mqAdminExt.examineConsumeStats(consumerGroup);
+            if (stats == null || stats.getOffsetTable() == null) {
+                return false;
+            }
+            for (Map.Entry<MessageQueue, OffsetWrapper> entry : stats.getOffsetTable().entrySet()) {
+                MessageQueue mq = entry.getKey();
+                if (mq.getTopic().equals(msg.getTopic()) && mq.getQueueId() == msg.getQueueId()) {
+                    if (entry.getValue().getConsumerOffset() > msg.getQueueOffset()) {
+                        return true;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("op=isConsumedByGroupError, group={}", consumerGroup, e);
+        }
+        return false;
     }
 
 

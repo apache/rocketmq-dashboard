@@ -34,11 +34,14 @@ import org.apache.rocketmq.dashboard.model.MessageView;
 import org.apache.rocketmq.dashboard.model.QueueOffsetInfo;
 import org.apache.rocketmq.dashboard.support.AutoCloseConsumerWrapper;
 import org.apache.rocketmq.remoting.RPCHook;
+import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
+import org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper;
 import org.apache.rocketmq.remoting.protocol.body.Connection;
 import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.apache.rocketmq.tools.admin.api.MessageTrack;
+import org.apache.rocketmq.tools.admin.api.TrackType;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -51,8 +54,10 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.Assert.assertEquals;
@@ -446,5 +451,147 @@ public class MessageServiceImplTest {
 
     private PullResult createPullResult(PullStatus status, List<MessageExt> msgFoundList, long nextBeginOffset, long minOffset) {
         return new PullResult(status, nextBeginOffset, minOffset, minOffset + msgFoundList.size(), msgFoundList);
+    }
+
+    // ==================== Tests for issue #380: NOT_CONSUME_YET false positive ====================
+
+    @Test
+    public void testMessageTrackDetail_NotConsumeYetCorrectedToConsumed() throws Exception {
+        // Simulate the scenario from issue #380:
+        // DefaultMQAdminExtImpl.consumed() returns false due to broker address mismatch,
+        // resulting in NOT_CONSUME_YET, but the message was actually consumed.
+        MessageExt msg = createMessageExt(MSG_ID, TOPIC, "body", System.currentTimeMillis());
+        msg.setQueueId(2);
+        msg.setQueueOffset(100);
+
+        // messageTrackDetail from MQAdminExt returns NOT_CONSUME_YET
+        MessageTrack track = new MessageTrack();
+        track.setConsumerGroup(CONSUMER_GROUP);
+        track.setTrackType(TrackType.NOT_CONSUME_YET);
+
+        when(mqAdminExt.messageTrackDetail(any(MessageExt.class)))
+                .thenReturn(Collections.singletonList(track));
+
+        // ConsumeStats shows consumerOffset (200) > msg.queueOffset (100) → consumed
+        ConsumeStats stats = new ConsumeStats();
+        MessageQueue mq = new MessageQueue(TOPIC, "broker-a", 2);
+        OffsetWrapper offsetWrapper = new OffsetWrapper();
+        offsetWrapper.setConsumerOffset(200);
+        offsetWrapper.setBrokerOffset(250);
+        Map<MessageQueue, OffsetWrapper> offsetTable = new HashMap<>();
+        offsetTable.put(mq, offsetWrapper);
+        stats.setOffsetTable(offsetTable);
+
+        when(mqAdminExt.examineConsumeStats(CONSUMER_GROUP)).thenReturn(stats);
+
+        // Execute
+        List<MessageTrack> result = messageService.messageTrackDetail(msg);
+
+        // Verify NOT_CONSUME_YET was corrected to CONSUMED
+        assertNotNull(result);
+        assertEquals(1, result.size());
+        assertEquals(TrackType.CONSUMED, result.get(0).getTrackType());
+    }
+
+    @Test
+    public void testMessageTrackDetail_NotConsumeYetRemainsWhenNotConsumed() throws Exception {
+        // When the consumer offset is actually behind the message offset,
+        // NOT_CONSUME_YET should remain unchanged.
+        MessageExt msg = createMessageExt(MSG_ID, TOPIC, "body", System.currentTimeMillis());
+        msg.setQueueId(0);
+        msg.setQueueOffset(500);
+
+        MessageTrack track = new MessageTrack();
+        track.setConsumerGroup(CONSUMER_GROUP);
+        track.setTrackType(TrackType.NOT_CONSUME_YET);
+
+        when(mqAdminExt.messageTrackDetail(any(MessageExt.class)))
+                .thenReturn(Collections.singletonList(track));
+
+        // consumerOffset (100) < msg.queueOffset (500) → genuinely not consumed yet
+        ConsumeStats stats = new ConsumeStats();
+        MessageQueue mq = new MessageQueue(TOPIC, "broker-a", 0);
+        OffsetWrapper offsetWrapper = new OffsetWrapper();
+        offsetWrapper.setConsumerOffset(100);
+        offsetWrapper.setBrokerOffset(600);
+        Map<MessageQueue, OffsetWrapper> offsetTable = new HashMap<>();
+        offsetTable.put(mq, offsetWrapper);
+        stats.setOffsetTable(offsetTable);
+
+        when(mqAdminExt.examineConsumeStats(CONSUMER_GROUP)).thenReturn(stats);
+
+        // Execute
+        List<MessageTrack> result = messageService.messageTrackDetail(msg);
+
+        // Verify NOT_CONSUME_YET remains
+        assertNotNull(result);
+        assertEquals(1, result.size());
+        assertEquals(TrackType.NOT_CONSUME_YET, result.get(0).getTrackType());
+    }
+
+    @Test
+    public void testMessageTrackDetail_ConsumedTrackUnchanged() throws Exception {
+        // Tracks that are already CONSUMED should not be re-verified
+        MessageExt msg = createMessageExt(MSG_ID, TOPIC, "body", System.currentTimeMillis());
+
+        MessageTrack track = new MessageTrack();
+        track.setConsumerGroup(CONSUMER_GROUP);
+        track.setTrackType(TrackType.CONSUMED);
+
+        when(mqAdminExt.messageTrackDetail(any(MessageExt.class)))
+                .thenReturn(Collections.singletonList(track));
+
+        // Execute
+        List<MessageTrack> result = messageService.messageTrackDetail(msg);
+
+        // Verify CONSUMED is unchanged, and examineConsumeStats was never called
+        assertNotNull(result);
+        assertEquals(1, result.size());
+        assertEquals(TrackType.CONSUMED, result.get(0).getTrackType());
+        verify(mqAdminExt, never()).examineConsumeStats(anyString());
+    }
+
+    @Test
+    public void testMessageTrackDetail_NotOnlineTrackUnchanged() throws Exception {
+        // NOT_ONLINE tracks should not be re-verified
+        MessageExt msg = createMessageExt(MSG_ID, TOPIC, "body", System.currentTimeMillis());
+
+        MessageTrack track = new MessageTrack();
+        track.setConsumerGroup(CONSUMER_GROUP);
+        track.setTrackType(TrackType.NOT_ONLINE);
+
+        when(mqAdminExt.messageTrackDetail(any(MessageExt.class)))
+                .thenReturn(Collections.singletonList(track));
+
+        // Execute
+        List<MessageTrack> result = messageService.messageTrackDetail(msg);
+
+        assertNotNull(result);
+        assertEquals(TrackType.NOT_ONLINE, result.get(0).getTrackType());
+        verify(mqAdminExt, never()).examineConsumeStats(anyString());
+    }
+
+    @Test
+    public void testMessageTrackDetail_ExamineConsumeStatsThrowsException() throws Exception {
+        // When examineConsumeStats throws, the original NOT_CONSUME_YET should be preserved
+        MessageExt msg = createMessageExt(MSG_ID, TOPIC, "body", System.currentTimeMillis());
+        msg.setQueueId(0);
+        msg.setQueueOffset(100);
+
+        MessageTrack track = new MessageTrack();
+        track.setConsumerGroup(CONSUMER_GROUP);
+        track.setTrackType(TrackType.NOT_CONSUME_YET);
+
+        when(mqAdminExt.messageTrackDetail(any(MessageExt.class)))
+                .thenReturn(Collections.singletonList(track));
+        when(mqAdminExt.examineConsumeStats(CONSUMER_GROUP))
+                .thenThrow(new RuntimeException("Connection refused"));
+
+        // Execute — should not throw
+        List<MessageTrack> result = messageService.messageTrackDetail(msg);
+
+        assertNotNull(result);
+        assertEquals(1, result.size());
+        assertEquals(TrackType.NOT_CONSUME_YET, result.get(0).getTrackType());
     }
 }
