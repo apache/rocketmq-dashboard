@@ -459,17 +459,17 @@ public class MetricsController {
     }
 
     /**
-     * GET /api/metrics/pandels - List all pre-built dashboard panels.
+     * GET /api/metrics/panels - List all pre-built dashboard panels.
      * @return JsonResult containing list of dashboard panel metadata
      */
-    @GetMapping("/api/metrics/pandels")
+    @GetMapping("/api/metrics/panels")
     public Object listPanelsAlias() {
         try {
             List<Map<String, Object>> dashboards = metricsEnhancedService.listDashboards();
             return new JsonResult<>(dashboards);
         } catch (Exception e) {
-            log.error("Failed to list listPanelsAlias", e);
-            return new JsonResult<>(1, "Failed to list listPanelsAlias: " + e.getMessage());
+            log.error("Failed to list panels", e);
+            return new JsonResult<>(1, "Failed to list panels: " + e.getMessage());
         }
     }
 

@@ -115,7 +115,7 @@ const remoteApi = {
             const result = await response.json();
             if (result.status === 0 && Array.isArray(result.data)) {
                 const topicList = result.data.map(item =>
-                    typeof item === 'string' ? item : item.topic || item
+                    typeof item === 'string' ? item : item.topicName || item.topic || item
                 );
                 return {status: 0, data: {topicList}};
             }
@@ -597,7 +597,7 @@ const remoteApi = {
             const result = await response.json();
             if (result.status === 0 && Array.isArray(result.data)) {
                 const topicNameList = result.data.map(item =>
-                    typeof item === 'string' ? item : item.topicName || item
+                    typeof item === 'string' ? item : item.topicName || item.topic || item
                 );
                 const messageTypeList = result.data.map(item =>
                     typeof item === 'string' ? 'NORMAL' : item.topicType || 'NORMAL'
