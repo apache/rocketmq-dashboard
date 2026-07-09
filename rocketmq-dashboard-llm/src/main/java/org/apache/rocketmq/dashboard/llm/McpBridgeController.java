@@ -262,6 +262,49 @@ public class McpBridgeController {
     }
 
     /**
+     * GET /api/llm/capabilities
+     * Returns LLM Bridge capability information including provider, model,
+     * enabled status, available tool count, and supported features.
+     */
+    @GetMapping("/capabilities")
+    public Map<String, Object> getCapabilities() {
+        Map<String, Object> result = new LinkedHashMap<>();
+
+        LlmConfig config = LlmConfig.LlmConfigManager.load();
+
+        // Provider & model info
+        result.put("provider", config.getProvider() != null ? config.getProvider() : "NOT_CONFIGURED");
+        result.put("model", config.getModel() != null ? config.getModel() : "NOT_CONFIGURED");
+        result.put("enabled", config.isEnabled());
+        result.put("configured", LlmConfig.LlmConfigManager.isConfigured());
+
+        // Available tool count
+        List<ToolDefinition> allTools = ToolRegistry.getInstance().getAllTools();
+        ClusterCapability capability = ClusterCapability.all();
+        List<ToolDefinition> filteredTools = ToolFilter.filterForUser(allTools, "ADMIN", capability);
+        result.put("toolCount", filteredTools.size());
+
+        // Supported features
+        List<String> features = new ArrayList<>();
+        features.add("tool_discovery");
+        features.add("chat");
+        features.add("dry_run_confirmation");
+        features.add("security_gate");
+        features.add("audit_logging");
+        if (LlmConfig.LlmConfigManager.isConfigured()) {
+            features.add("function_calling");
+            features.add("multi_turn_conversation");
+        }
+        result.put("features", features);
+
+        // Supported providers
+        result.put("supportedProviders", java.util.Arrays.asList(
+                "OPENAI", "AZURE", "DEEPSEEK", "TONGYI", "BEDROCK", "OLLAMA"));
+
+        return result;
+    }
+
+    /**
      * POST /api/llm/config
      * Saves the LLM configuration.
      */

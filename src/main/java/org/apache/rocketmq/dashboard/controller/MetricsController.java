@@ -66,6 +66,13 @@ import java.util.LinkedHashMap;
  *   <tr><td>PUT</td><td>/api/metrics/datasources/{id}</td><td>Update data source</td></tr>
  *   <tr><td>DELETE</td><td>/api/metrics/datasources/{id}</td><td>Delete data source</td></tr>
  *   <tr><td>GET</td><td>/api/metrics/datasources/{id}/test</td><td>Test data source connection</td></tr>
+ *   <tr><td>GET</td><td>/api/metrics/dashboards</td><td>List dashboard panels (e2e discovery)</td></tr>
+ *   <tr><td>GET</td><td>/api/metrics/dashboards/{id}</td><td>Get specific dashboard panel</td></tr>
+ *   <tr><td>GET</td><td>/api/metrics/alerts</td><td>Get alert rules (JSON-wrapped YAML)</td></tr>
+ *   <tr><td>GET</td><td>/api/metrics/alerts.yaml</td><td>Export alert rules as raw Prometheus Alertmanager YAML</td></tr>
+ *   <tr><td>POST</td><td>/api/metrics/export/grafana</td><td>Export Grafana dashboard JSON (POST)</td></tr>
+ *   <tr><td>GET</td><td>/api/metrics/export/grafana</td><td>One-click export Grafana dashboard JSON (GET)</td></tr>
+ *   <tr><td>GET</td><td>/api/metrics/queries</td><td>Get pre-built PromQL query templates</td></tr>
  * </table>
  */
 @RestController
@@ -452,6 +459,21 @@ public class MetricsController {
     }
 
     /**
+     * GET /api/metrics/pandels - List all pre-built dashboard panels.
+     * @return JsonResult containing list of dashboard panel metadata
+     */
+    @GetMapping("/api/metrics/pandels")
+    public Object listPanelsAlias() {
+        try {
+            List<Map<String, Object>> dashboards = metricsEnhancedService.listDashboards();
+            return new JsonResult<>(dashboards);
+        } catch (Exception e) {
+            log.error("Failed to list listPanelsAlias", e);
+            return new JsonResult<>(1, "Failed to list listPanelsAlias: " + e.getMessage());
+        }
+    }
+
+    /**
      * GET /api/metrics/dashboards/{id} - Get a specific dashboard panel.
      * RIP-1 METRICS-01: Per-component detail dashboard panels.
      *
@@ -508,6 +530,25 @@ public class MetricsController {
     }
 
     /**
+     * GET /api/metrics/alerts.yaml - Export alert rules as raw Prometheus Alertmanager YAML.
+     *
+     * <p>Returns the alert rules directly in Prometheus Alertmanager compatible YAML format,
+     * suitable for saving as a file and loading into Alertmanager. This endpoint is
+     * designed for e2e test discovery and direct file download scenarios.</p>
+     *
+     * @return Raw YAML content in Prometheus Alertmanager format
+     */
+    @GetMapping(value = "/api/metrics/alerts/yaml", produces = "application/x-yaml")
+    public String exportAlertRulesYaml() {
+        try {
+            return metricsEnhancedService.getAlertRulesYaml();
+        } catch (Exception e) {
+            log.error("Failed to export alert rules YAML", e);
+            return "# Error exporting alert rules: " + e.getMessage();
+        }
+    }
+
+    /**
      * POST /api/metrics/export/grafana - Export all dashboards as Grafana JSON.
      * RIP-1 METRICS-01: One-click Grafana dashboard export for external visualization.
      *
@@ -525,6 +566,42 @@ public class MetricsController {
             }
 
             Map<String, Object> grafanaJson = metricsEnhancedService.exportGrafanaJson(dashboardIds);
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("grafanaVersion", "8.0+");
+            result.put("exportedAt", new Date().toString());
+            result.put("dashboards", grafanaJson);
+            result.put("message", "Import this JSON into Grafana to use the pre-built RocketMQ dashboards.");
+            return new JsonResult<>(result);
+        } catch (Exception e) {
+            log.error("Failed to export Grafana JSON", e);
+            return new JsonResult<>(1, "Failed to export Grafana JSON: " + e.getMessage());
+        }
+    }
+
+    /**
+     * GET /api/metrics/export/grafana - One-click export Grafana dashboard JSON.
+     *
+     * <p>Exports dashboards as Grafana-compatible JSON via GET request, suitable for
+     * direct browser download or e2e test retrieval. Accepts optional comma-separated
+     * dashboard IDs; if omitted, exports all dashboards.</p>
+     *
+     * @param dashboardIds optional comma-separated list of dashboard IDs to export;
+     *                     if empty, exports all dashboards
+     * @return JsonResult containing Grafana-compatible JSON with export metadata
+     */
+    @GetMapping("/api/metrics/export/grafana")
+    public Object exportGrafanaJsonGet(@RequestParam(required = false) String dashboardIds) {
+        try {
+            List<String> ids = null;
+            if (dashboardIds != null && !dashboardIds.trim().isEmpty()) {
+                ids = java.util.Arrays.stream(dashboardIds.split(","))
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .collect(java.util.stream.Collectors.toList());
+            }
+
+            Map<String, Object> grafanaJson = metricsEnhancedService.exportGrafanaJson(ids);
 
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("grafanaVersion", "8.0+");
