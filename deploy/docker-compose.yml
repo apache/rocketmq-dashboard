@@ -1,24 +1,147 @@
-name: rocketmq-studio
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+version: '3.8'
+
+name: rocketmq-dashboard
 
 services:
-  rocketmq-server:
+  # RocketMQ Dashboard Backend
+  rocketmq-dashboard:
     build:
-      context: ../server
-      dockerfile: Dockerfile
-    image: rocketmq-server:latest
-    container_name: rocketmq-server
-    restart: unless-stopped
-    expose:
-      - "8888"
-
-  rocketmq-web:
-    build:
-      context: ../web
-      dockerfile: Dockerfile
-    image: rocketmq-web:latest
-    container_name: rocketmq-web
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: rocketmq-dashboard:latest
+    container_name: rocketmq-dashboard
     restart: unless-stopped
     ports:
-      - "6789:80"
+      - "8082:8082"
+    environment:
+      # Java options
+      - JAVA_OPTS=-Xms512m -Xmx1024m -XX:+UseG1GC
+      # RocketMQ connection
+      - ROCKETMQ_NAMESRV_ADDR=namesrv:9876
+      - ROCKETMQ_PROXY_ADDR=proxy:8080
+      # Spring profiles (optional)
+      - SPRING_PROFILES_ACTIVE=docker
+    volumes:
+      # Persist logs
+      - dashboard-logs:/app/logs
+      # Optional: mount custom configuration
+      # - ./config:/app/config
     depends_on:
-      - rocketmq-server
+      - namesrv
+    networks:
+      - rocketmq-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # RocketMQ Dashboard Frontend
+  rocketmq-web:
+    build:
+      context: ../frontend-new
+      dockerfile: Dockerfile
+    image: rocketmq-dashboard-web:latest
+    container_name: rocketmq-dashboard-web
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    environment:
+      # Backend API URL (used by nginx proxy)
+      - BACKEND_URL=http://rocketmq-dashboard:8082
+    depends_on:
+      - rocketmq-dashboard
+    networks:
+      - rocketmq-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  # RocketMQ NameServer (optional, for development)
+  namesrv:
+    image: apache/rocketmq:5.3.1
+    container_name: rocketmq-namesrv
+    restart: unless-stopped
+    ports:
+      - "9876:9876"
+    environment:
+      - JAVA_OPT_EXT=-server -Xms256m -Xmx256m
+    command: sh ./bin/mqnamesrv
+    volumes:
+      - namesrv-logs:/home/rocketmq/logs
+    networks:
+      - rocketmq-network
+
+  # RocketMQ Broker (optional, for development)
+  broker:
+    image: apache/rocketmq:5.3.1
+    container_name: rocketmq-broker
+    restart: unless-stopped
+    ports:
+      - "10911:10911"
+      - "10909:10909"
+    environment:
+      - NAMESRV_ADDR=namesrv:9876
+      - JAVA_OPT_EXT=-server -Xms256m -Xmx256m
+    command: sh ./bin/mqbroker -n namesrv:9876 --enable-proxy
+    depends_on:
+      - namesrv
+    volumes:
+      - broker-logs:/home/rocketmq/logs
+      - broker-store:/home/rocketmq/store
+    networks:
+      - rocketmq-network
+
+  # RocketMQ Proxy (optional, for development)
+  proxy:
+    image: apache/rocketmq:5.3.1
+    container_name: rocketmq-proxy
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - NAMESRV_ADDR=namesrv:9876
+      - JAVA_OPT_EXT=-server -Xms256m -Xmx256m
+    command: sh ./bin/mqproxy -n namesrv:9876
+    depends_on:
+      - namesrv
+      - broker
+    volumes:
+      - proxy-logs:/home/rocketmq/logs
+    networks:
+      - rocketmq-network
+
+volumes:
+  dashboard-logs:
+    driver: local
+  namesrv-logs:
+    driver: local
+  broker-logs:
+    driver: local
+  broker-store:
+    driver: local
+  proxy-logs:
+    driver: local
+
+networks:
+  rocketmq-network:
+    driver: bridge

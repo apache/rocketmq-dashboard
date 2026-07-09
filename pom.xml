@@ -89,8 +89,8 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
         <maven.test.skip>false</maven.test.skip>
         <guava.version>29.0-jre</guava.version>
         <commons-digester.version>2.1</commons-digester.version>
@@ -104,7 +104,7 @@
         <lombok.version>1.18.30</lombok.version>
         <main.basedir>${basedir}/../..</main.basedir>
         <docker.image.prefix>apacherocketmq</docker.image.prefix>
-        <spring.boot.version>3.4.5</spring.boot.version>
+        <spring.boot.version>3.5.3</spring.boot.version>
         <mockito-inline.version>3.3.3</mockito-inline.version>
         <jakarta.xml.bind-api.version>4.0.0</jakarta.xml.bind-api.version>
         <commons-pool2.version>2.4.3</commons-pool2.version>
@@ -360,7 +360,7 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.11.0</version>
                 <configuration>
-                    <release>17</release>
+                    <release>21</release>
                     <showDeprecation>true</showDeprecation>
                     <showWarnings>true</showWarnings>
                     <annotationProcessorPaths>
