@@ -112,10 +112,17 @@ const remoteApi = {
             }
 
             const response = await remoteApi._fetch(remoteApi.buildUrl(`/topic/list.query?${params.toString()}`));
-            const data = await response.json();
-            return data;
+            const result = await response.json();
+            if (result.status === 0 && Array.isArray(result.data)) {
+                const topicList = result.data.map(item =>
+                    typeof item === 'string' ? item : item.topic || item
+                );
+                return {status: 0, data: {topicList}};
+            }
+            return result;
         } catch (error) {
             console.error("Error fetching topic list:", error);
+            return {status: 1, errMsg: "Failed to fetch topic list"};
         }
     },
 
@@ -586,8 +593,18 @@ const remoteApi = {
     },
     queryTopicList: async () => {
         try {
-            const response = await remoteApi._fetch(remoteApi.buildUrl("/topic/list.queryTopicType"));
-            return await response.json();
+            const response = await remoteApi._fetch(remoteApi.buildUrl("/topic/list.query"));
+            const result = await response.json();
+            if (result.status === 0 && Array.isArray(result.data)) {
+                const topicNameList = result.data.map(item =>
+                    typeof item === 'string' ? item : item.topicName || item
+                );
+                const messageTypeList = result.data.map(item =>
+                    typeof item === 'string' ? 'NORMAL' : item.topicType || 'NORMAL'
+                );
+                return {status: 0, data: {topicNameList, messageTypeList}};
+            }
+            return result;
         } catch (error) {
             console.error("Error fetching topic list:", error);
             return {status: 1, errMsg: "Failed to fetch topic list"};

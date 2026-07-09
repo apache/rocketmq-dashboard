@@ -16,7 +16,7 @@
  */
 
 import React, {useEffect} from 'react';
-import {HashRouter as Router, Navigate, Route, Routes, useLocation, useNavigate} from 'react-router-dom';
+import {Navigate, Route, Routes, useLocation, useNavigate} from 'react-router-dom';
 import {Layout} from 'antd';
 import {AnimatePresence, motion} from 'framer-motion';
 import Login from '../pages/Login/login';
@@ -283,10 +283,4 @@ const AppRouter = () => {
     );
 };
 
-const AppWrapper = () => (
-    <Router>
-        <AppRouter/>
-    </Router>
-);
-
-export default AppWrapper;
+export default AppRouter;

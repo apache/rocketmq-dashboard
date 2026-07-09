@@ -19,6 +19,7 @@ package org.apache.rocketmq.dashboard.service.impl;
 import jakarta.annotation.Resource;
 import org.apache.rocketmq.dashboard.model.ClusterCapability;
 import org.apache.rocketmq.dashboard.model.request.TopicConfigInfo;
+import org.apache.rocketmq.dashboard.model.request.TopicTypeList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.rocketmq.dashboard.model.TopicInfo;
@@ -27,6 +28,7 @@ import org.apache.rocketmq.dashboard.service.ArchitectureBasedService;
 import org.apache.rocketmq.dashboard.service.TopicService;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -223,6 +225,27 @@ public class TopicServiceImpl extends ArchitectureBasedService implements TopicS
             return metadataProvider.listTopics(Optional.of(getDefaultNamespace()));
         } catch (Exception e) {
             throw new RuntimeException("Failed to get all topic list", e);
+        }
+    }
+
+    @Override
+    public TopicTypeList examineAllTopicType() {
+        try {
+            List<TopicInfo> allTopics = metadataProvider.listTopics(Optional.of(getDefaultNamespace()));
+            List<String> topicNameList = new ArrayList<>();
+            List<String> messageTypeList = new ArrayList<>();
+            for (TopicInfo info : allTopics) {
+                String name = info.getTopicName();
+                if (name.startsWith("%") || name.startsWith("RMQ_SYS") || name.startsWith("SELF_TEST")) {
+                    topicNameList.add("%SYS%" + name);
+                } else {
+                    topicNameList.add(name);
+                }
+                messageTypeList.add(info.getTopicType() != null ? info.getTopicType().name() : "NORMAL");
+            }
+            return new TopicTypeList(topicNameList, messageTypeList);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to examine all topic type", e);
         }
     }
 

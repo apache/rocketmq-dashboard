@@ -185,11 +185,11 @@ const DeployHistoryList = () => {
         try {
             const result = await remoteApi.queryTopicList();
             if (result.status === 0) {
-                setAllTopicList(result.data.topicNameList);
-                setAllMessageTypeList(result.data.messageTypeList);
+                setAllTopicList(result.data.topicNameList || []);
+                setAllMessageTypeList(result.data.messageTypeList || []);
                 setPaginationConf(prev => ({
                     ...prev,
-                    total: result.data.topicNameList.length
+                    total: (result.data.topicNameList || []).length
                 }));
             } else {
                 messageApi.error(result.errMsg);
@@ -225,15 +225,16 @@ const DeployHistoryList = () => {
     };
 
     const filterByType = (topic, type) => {
-        if (filterRetry && type.includes("RETRY")) return true;
-        if (filterDLQ && type.includes("DLQ")) return true;
-        if (filterSystem && type.includes("SYSTEM")) return true;
-        if (rmqVersion && filterUnspecified && type.includes("UNSPECIFIED")) return true;
-        if (filterNormal && type.includes("NORMAL")) return true;
-        if (!rmqVersion && filterNormal && type.includes("UNSPECIFIED")) return true;
-        if (rmqVersion && filterDelay && type.includes("DELAY")) return true;
-        if (rmqVersion && filterFifo && type.includes("FIFO")) return true;
-        if (rmqVersion && filterTransaction && type.includes("TRANSACTION")) return true;
+        const safeType = type || '';
+        if (filterRetry && safeType.includes("RETRY")) return true;
+        if (filterDLQ && safeType.includes("DLQ")) return true;
+        if (filterSystem && safeType.includes("SYSTEM")) return true;
+        if (rmqVersion && filterUnspecified && safeType.includes("UNSPECIFIED")) return true;
+        if (filterNormal && safeType.includes("NORMAL")) return true;
+        if (!rmqVersion && filterNormal && safeType.includes("UNSPECIFIED")) return true;
+        if (rmqVersion && filterDelay && safeType.includes("DELAY")) return true;
+        if (rmqVersion && filterFifo && safeType.includes("FIFO")) return true;
+        if (rmqVersion && filterTransaction && safeType.includes("TRANSACTION")) return true;
 
         return false;
     };

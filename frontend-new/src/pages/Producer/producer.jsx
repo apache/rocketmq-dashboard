@@ -37,7 +37,7 @@ const ProducerConnectionList = () => {
                     return;
                 }
                 if (resp.status === 0) {
-                    setAllTopicList(resp.data.topicList.sort());
+                    setAllTopicList((resp.data.topicList || []).sort());
                 } else {
                     messageApi.error(resp.errMsg || "Failed to fetch topic list");
                 }

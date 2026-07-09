@@ -63,7 +63,7 @@ const MessageQueryPage = () => {
         try {
             const resp = await remoteApi.queryTopic(false);
             if (resp.status === 0) {
-                setAllTopicList(resp.data.topicList.sort());
+                setAllTopicList((resp.data.topicList || []).sort());
             } else {
                 notificationApi.error({
                     message: t.ERROR,

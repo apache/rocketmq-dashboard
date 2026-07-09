@@ -59,7 +59,7 @@ const MessageTraceQueryPage = () => {
                 const resp = await remoteApi.queryTopic(true);
 
                 if (resp.status === 0) {
-                    const topics = resp.data.topicList.sort();
+                    const topics = (resp.data.topicList || []).sort();
                     setAllTopicList(topics);
 
                     const traceTopics = topics.filter(topic =>

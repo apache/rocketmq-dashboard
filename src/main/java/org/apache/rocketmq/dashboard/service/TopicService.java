@@ -21,6 +21,7 @@ import org.apache.rocketmq.dashboard.model.TopicInfo;
 import org.apache.rocketmq.dashboard.model.TopicType;
 import org.apache.rocketmq.dashboard.model.request.SendTopicMessageRequest;
 import org.apache.rocketmq.dashboard.model.request.TopicConfigInfo;
+import org.apache.rocketmq.dashboard.model.request.TopicTypeList;
 
 import java.util.List;
 
@@ -113,8 +114,8 @@ public interface TopicService {
     /**
      * Examine all topic types.
      */
-    default List<TopicType> examineAllTopicType() {
-        return getSupportedTopicTypes();
+    default TopicTypeList examineAllTopicType() {
+        throw new UnsupportedOperationException("examineAllTopicType not supported");
     }
 
     /**

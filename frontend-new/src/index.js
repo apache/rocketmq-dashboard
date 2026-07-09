@@ -22,20 +22,26 @@ import App from './App';
 import {App as AntdApp} from 'antd';
 import reportWebVitals from './reportWebVitals';
 import {LanguageProvider} from "./i18n/LanguageContext";
+import {ClusterCapabilitiesProvider} from "./store/context/ClusterCapabilitiesContext";
 import {Provider} from "react-redux";
+import {HashRouter} from "react-router-dom";
 import store from './store';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
-    <LanguageProvider>
-        <React.StrictMode>
-            <AntdApp>
-                <Provider store={store}>
-                    <App/>
-                </Provider>
-            </AntdApp>
-        </React.StrictMode>
-    </LanguageProvider>
+    <HashRouter>
+        <LanguageProvider>
+            <ClusterCapabilitiesProvider>
+                <React.StrictMode>
+                    <AntdApp>
+                        <Provider store={store}>
+                            <App/>
+                        </Provider>
+                    </AntdApp>
+                </React.StrictMode>
+            </ClusterCapabilitiesProvider>
+        </LanguageProvider>
+    </HashRouter>
 );
 
 // If you want to start measuring performance in your app, pass a function

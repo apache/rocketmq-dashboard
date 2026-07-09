@@ -627,7 +627,7 @@ const DashboardPage = () => {
                     _data[selectedTopic] = resp.data;
                     topicLineChartInstance.current?.setOption(getTopicLineChartOp([selectedTopic], _data));
                 } else {
-                    notificationApi.error({message: resp.errMsg || t.QUERY_TOPIC_HISTORY_FAILED, duration: 2});
+                    console.warn("Topic history data query failed:", resp.errMsg || t.QUERY_TOPIC_HISTORY_FAILED)
                 }
             });
         }
@@ -644,7 +644,7 @@ const DashboardPage = () => {
                 _data[selectedTopic] = resp.data;
                 accumulationChartInstance.current?.setOption(getAccumulationLineChartOp([selectedTopic], _data));
             } else {
-                notificationApi.error({message: resp.errMsg || t.QUERY_ACCUMULATION_FAILED, duration: 2});
+                console.warn("Accumulation data query failed:", resp.errMsg || t.QUERY_ACCUMULATION_FAILED)
             }
         });
     }, [date, selectedTopic, getAccumulationLineChartOp, t]);
@@ -660,7 +660,7 @@ const DashboardPage = () => {
                 _data[selectedTopic] = resp.data;
                 transactionChartInstance.current?.setOption(getTransactionLineChartOp([selectedTopic], _data));
             } else {
-                notificationApi.error({message: resp.errMsg || t.QUERY_TRANSACTION_FAILED, duration: 2});
+                console.warn("Transaction data query failed:", resp.errMsg || t.QUERY_TRANSACTION_FAILED)
             }
         });
     }, [date, selectedTopic, getTransactionLineChartOp, t]);
@@ -676,7 +676,7 @@ const DashboardPage = () => {
                 _data[selectedTopic] = resp.data;
                 storageLatencyChartInstance.current?.setOption(getStorageLatencyLineChartOp([selectedTopic], _data));
             } else {
-                notificationApi.error({message: resp.errMsg || t.QUERY_STORAGE_LATENCY_FAILED, duration: 2});
+                console.warn("Storage latency data query failed:", resp.errMsg || t.QUERY_STORAGE_LATENCY_FAILED)
             }
         });
     }, [date, selectedTopic, getStorageLatencyLineChartOp, t]);
