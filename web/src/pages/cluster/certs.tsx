@@ -33,18 +33,15 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import { EditOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import PageHeader from '../../components/PageHeader';
+import { useLang } from '../../i18n/LangContext';
 import { mockK8sCerts, type K8sCertInfo } from '../../mock/clusters';
+import { formatDateTime } from '../../utils/format';
 
 const { Text } = Typography;
 
-const formatDateTime = (iso: string): string => {
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-};
-
 const K8sCertsPage = () => {
   const [certs, setCerts] = useState<K8sCertInfo[]>(mockK8sCerts);
+  const { t } = useLang();
   const [certSearch, setCertSearch] = useState('');
   const [certTypeFilter, setCertTypeFilter] = useState<string>('');
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -62,7 +59,7 @@ const K8sCertsPage = () => {
 
   const certColumns: ColumnsType<K8sCertInfo> = [
     {
-      title: 'K8s 集群名称',
+      title: t('cert.clusterName'),
       dataIndex: 'cluster',
       key: 'cluster',
       width: 160,
@@ -70,7 +67,7 @@ const K8sCertsPage = () => {
       render: (name: string) => <Text strong>{name}</Text>,
     },
     {
-      title: '证书名称',
+      title: t('cert.certName'),
       dataIndex: 'name',
       key: 'name',
       width: 280,
@@ -80,7 +77,7 @@ const K8sCertsPage = () => {
       ),
     },
     {
-      title: '类型',
+      title: t('common.type'),
       dataIndex: 'type',
       key: 'type',
       width: 130,
@@ -95,14 +92,14 @@ const K8sCertsPage = () => {
       },
     },
     {
-      title: '签发者',
+      title: t('cert.issuer'),
       dataIndex: 'issuer',
       key: 'issuer',
       width: 130,
       sorter: (a, b) => a.issuer.localeCompare(b.issuer),
     },
     {
-      title: '到期时间',
+      title: t('cert.expiryTime'),
       dataIndex: 'notAfter',
       key: 'notAfter',
       width: 170,
@@ -114,7 +111,7 @@ const K8sCertsPage = () => {
       ),
     },
     {
-      title: '剩余天数',
+      title: t('cert.daysRemaining'),
       dataIndex: 'daysRemaining',
       key: 'daysRemaining',
       width: 100,
@@ -131,23 +128,23 @@ const K8sCertsPage = () => {
       ),
     },
     {
-      title: '状态',
+      title: t('common.status'),
       dataIndex: 'status',
       key: 'status',
       width: 100,
       sorter: (a, b) => a.status.localeCompare(b.status),
       render: (status: string) => {
-        const map: Record<string, { color: string; label: string }> = {
-          valid: { color: 'green', label: '有效' },
-          expiring: { color: 'orange', label: '即将过期' },
-          expired: { color: 'red', label: '已过期' },
+        const map: Record<string, { color: string; labelKey: string }> = {
+          valid: { color: 'green', labelKey: 'cert.statusValid' },
+          expiring: { color: 'orange', labelKey: 'cert.statusExpiring' },
+          expired: { color: 'red', labelKey: 'cert.statusExpired' },
         };
-        const cfg = map[status] ?? { color: 'default', label: status };
-        return <Tag color={cfg.color}>{cfg.label}</Tag>;
+        const cfg = map[status] ?? { color: 'default', labelKey: status };
+        return <Tag color={cfg.color}>{t(cfg.labelKey)}</Tag>;
       },
     },
     {
-      title: '操作',
+      title: t('common.actions'),
       key: 'action',
       width: 200,
       render: (_: unknown, record: K8sCertInfo) => (
@@ -175,14 +172,14 @@ const K8sCertsPage = () => {
             style={{ borderColor: '#ff4d4f', color: '#ff4d4f' }}
             onClick={() => {
               Modal.confirm({
-                title: '确认删除',
-                content: `确定要删除证书 "${record.name}" 吗？`,
-                okText: '确认',
-                cancelText: '取消',
+                title: t('cert.confirmDelete'),
+                content: t('cert.deleteConfirm', { name: record.name }),
+                okText: t('common.confirm'),
+                cancelText: t('common.cancel'),
                 okButtonProps: { danger: true },
                 onOk: () => {
                   setCerts((prev) => prev.filter((c) => c.id !== record.id));
-                  message.success(`证书已删除: ${record.name}`);
+                  message.success(t('cert.deleted', { name: record.name }));
                 },
               });
             }}
@@ -197,22 +194,22 @@ const K8sCertsPage = () => {
   return (
     <div style={{ padding: 24 }}>
       <PageHeader
-        title="K8s 证书管理"
-        subtitle={`共 ${filteredCerts.length} 个证书`}
+        title={t('nav.certs')}
+        subtitle={t('cert.totalCount', { count: filteredCerts.length })}
         extra={
           <Button
             type="primary"
             icon={<PlusOutlined />}
-            onClick={() => message.info('添加证书功能开发中')}
+            onClick={() => message.info(t('cert.featureWip'))}
           >
-            添加证书
+            {t('cert.addCert')}
           </Button>
         }
       />
       <Flex justify="space-between" style={{ marginBottom: 16 }}>
         <Space>
           <Input.Search
-            placeholder="搜索证书名称或集群"
+            placeholder={t('cert.searchPlaceholder')}
             allowClear
             onSearch={setCertSearch}
             onChange={(e) => !e.target.value && setCertSearch('')}
@@ -223,7 +220,7 @@ const K8sCertsPage = () => {
             onChange={setCertTypeFilter}
             style={{ width: 160 }}
             options={[
-              { value: '', label: '全部' },
+              { value: '', label: t('common.all') },
               { value: 'TLS', label: 'TLS' },
               { value: 'mTLS', label: 'mTLS' },
               { value: 'ServiceAccount', label: 'ServiceAccount' },
@@ -243,7 +240,7 @@ const K8sCertsPage = () => {
 
       {/* Edit Cert Modal */}
       <Modal
-        title={`编辑证书 — ${editingCert?.name || ''}`}
+        title={t('cert.editCert', { name: editingCert?.name || '' })}
         open={editModalOpen}
         onCancel={() => {
           setEditModalOpen(false);
@@ -259,20 +256,20 @@ const K8sCertsPage = () => {
                   : c,
               ),
             );
-            message.success(`证书「${editingCert.name}」已更新`);
+            message.success(t('cert.certUpdated', { name: editingCert.name }));
             setEditModalOpen(false);
             editForm.resetFields();
           });
         }}
-        okText="保存"
-        cancelText="取消"
+        okText={t('common.save')}
+        cancelText={t('common.cancel')}
         width={520}
       >
         <Form form={editForm} layout="vertical" style={{ marginTop: 16 }}>
-          <Form.Item label="证书名称">
+          <Form.Item label={t('cert.certName')}>
             <Input value={editingCert?.name} disabled />
           </Form.Item>
-          <Form.Item label="类型">
+          <Form.Item label={t('common.type')}>
             <Select
               value={editingCert?.type}
               disabled
@@ -283,11 +280,11 @@ const K8sCertsPage = () => {
               ]}
             />
           </Form.Item>
-          <Form.Item label="签发者" name="issuer">
-            <Input placeholder="例：kubernetes-ca" />
+          <Form.Item label={t('cert.issuer')} name="issuer">
+            <Input placeholder={t('cert.issuerPlaceholder')} />
           </Form.Item>
-          <Form.Item label="命名空间" name="namespace">
-            <Input placeholder="例：kube-system" />
+          <Form.Item label={t('cert.namespace')} name="namespace">
+            <Input placeholder={t('cert.namespacePlaceholder')} />
           </Form.Item>
         </Form>
       </Modal>

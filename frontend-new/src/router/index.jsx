@@ -15,10 +15,9 @@
  * limitations under the License.
  */
 
-import React, {useEffect} from 'react';
-import {Navigate, Route, Routes, useLocation, useNavigate} from 'react-router-dom';
-import {Layout} from 'antd';
-import {AnimatePresence, motion} from 'framer-motion';
+import React, { useEffect } from 'react';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { AnimatePresence, motion } from 'framer-motion';
 import Login from '../pages/Login/login';
 import Ops from '../pages/Ops/ops';
 import Proxy from '../pages/Proxy/proxy';
@@ -32,32 +31,26 @@ import MessageTrace from '../pages/MessageTrace/messagetrace';
 import Acl from '../pages/Acl/acl';
 import AlertManagement from '../pages/Alert/AlertManagement';
 import LlmSettings from '../pages/LlmSettings/LlmSettings';
+import DashboardPage from '../pages/Dashboard/DashboardPage';
 
-import Navbar from '../components/Navbar';
-import DashboardPage from "../pages/Dashboard/DashboardPage";
-import {remoteApi} from "../api/remoteApi/remoteApi";
+// 新页面
+import HomePage from '../pages/Home/HomePage';
+import GroupManagement from '../pages/GroupManagement/GroupManagement';
+import BrokerCluster from '../pages/BrokerCluster/BrokerCluster';
 
-const {Header, Content} = Layout;
+import StudioLayout from '../components/StudioLayout/StudioLayout';
+import { remoteApi } from '../api/remoteApi/remoteApi';
 
 const pageVariants = {
-    initial: {
-        opacity: 0,
-        x: "-100vw"
-    },
-    in: {
-        opacity: 1,
-        x: 0
-    },
-    out: {
-        opacity: 0,
-        x: "100vw"
-    }
+    initial: { opacity: 0, y: 8 },
+    in: { opacity: 1, y: 0 },
+    out: { opacity: 0, y: -8 },
 };
 
 const pageTransition = {
-    type: "tween",
-    ease: "anticipate",
-    duration: 0.2
+    type: 'tween',
+    ease: 'easeInOut',
+    duration: 0.2,
 };
 
 const AppRouter = () => {
@@ -66,220 +59,147 @@ const AppRouter = () => {
 
     useEffect(() => {
         remoteApi.setRedirectHandler(() => {
-            navigate('/login', {replace: true});
+            navigate('/login', { replace: true });
         });
     }, [navigate]);
 
-    return (
-        <Layout style={{minHeight: '100vh'}}>
-            <Header style={{padding: 0, height: 'auto', lineHeight: 'normal'}}>
-                <Navbar/>
-            </Header>
+    // 登录页不使用 StudioLayout
+    if (location.pathname === '/login') {
+        return (
+            <Routes>
+                <Route path="/login" element={<Login />} />
+            </Routes>
+        );
+    }
 
-            <Content style={{padding: '24px'}}>
-                <AnimatePresence mode="wait">
-                    <Routes location={location} key={location.pathname}>
-                        <Route
-                            path="/login"
-                            element={
-                                <motion.div
-                                    variants={pageVariants}
-                                    initial="initial"
-                                    animate="in"
-                                    exit="out"
-                                    transition={pageTransition}
-                                >
-                                    <Login/>
-                                </motion.div>
-                            }
-                        />
-                        <Route
-                            path="/"
-                            element={
-                                <motion.div
-                                    variants={pageVariants}
-                                    initial="initial"
-                                    animate="in"
-                                    exit="out"
-                                    transition={pageTransition}
-                                >
-                                    <DashboardPage/>
-                                </motion.div>
-                            }
-                        />
-                        <Route
-                            path="/ops"
-                            element={
-                                <motion.div
-                                    variants={pageVariants}
-                                    initial="initial"
-                                    animate="in"
-                                    exit="out"
-                                    transition={pageTransition}
-                                >
-                                    <Ops/>
-                                </motion.div>
-                            }
-                        />
-                        <Route
-                            path="/proxy"
-                            element={
-                                <motion.div
-                                    variants={pageVariants}
-                                    initial="initial"
-                                    animate="in"
-                                    exit="out"
-                                    transition={pageTransition}
-                                >
-                                    <Proxy/>
-                                </motion.div>
-                            }
-                        />
-                        <Route
-                            path="/cluster"
-                            element={
-                                <motion.div
-                                    variants={pageVariants}
-                                    initial="initial"
-                                    animate="in"
-                                    exit="out"
-                                    transition={pageTransition}
-                                >
-                                    <Cluster/>
-                                </motion.div>
-                            }
-                        />
-                        <Route
-                            path="/topic"
-                            element={
-                                <motion.div
-                                    variants={pageVariants}
-                                    initial="initial"
-                                    animate="in"
-                                    exit="out"
-                                    transition={pageTransition}
-                                >
-                                    <Topic/>
-                                </motion.div>
-                            }
-                        />
-                        <Route
-                            path="/consumer"
-                            element={
-                                <motion.div
-                                    variants={pageVariants}
-                                    initial="initial"
-                                    animate="in"
-                                    exit="out"
-                                    transition={pageTransition}
-                                >
-                                    <Consumer/>
-                                </motion.div>
-                            }
-                        />
-                        <Route
-                            path="/producer"
-                            element={
-                                <motion.div
-                                    variants={pageVariants}
-                                    initial="initial"
-                                    animate="in"
-                                    exit="out"
-                                    transition={pageTransition}
-                                >
-                                    <Producer/>
-                                </motion.div>
-                            }
-                        />
-                        <Route
-                            path="/message"
-                            element={
-                                <motion.div
-                                    variants={pageVariants}
-                                    initial="initial"
-                                    animate="in"
-                                    exit="out"
-                                    transition={pageTransition}
-                                >
-                                    <Message/>
-                                </motion.div>
-                            }
-                        />
-                        <Route
-                            path="/dlqMessage"
-                            element={
-                                <motion.div
-                                    variants={pageVariants}
-                                    initial="initial"
-                                    animate="in"
-                                    exit="out"
-                                    transition={pageTransition}
-                                >
-                                    <DlqMessage/>
-                                </motion.div>
-                            }
-                        />
-                        <Route
-                            path="/messageTrace"
-                            element={
-                                <motion.div
-                                    variants={pageVariants}
-                                    initial="initial"
-                                    animate="in"
-                                    exit="out"
-                                    transition={pageTransition}
-                                >
-                                    <MessageTrace/>
-                                </motion.div>
-                            }
-                        />
-                        <Route
-                            path="/acl"
-                            element={
-                                <motion.div
-                                    variants={pageVariants}
-                                    initial="initial"
-                                    animate="in"
-                                    exit="out"
-                                    transition={pageTransition}
-                                >
-                                    <Acl/>
-                                </motion.div>
-                            }
-                        />
-                        <Route
-                            path="/alert"
-                            element={
-                                <motion.div
-                                    variants={pageVariants}
-                                    initial="initial"
-                                    animate="in"
-                                    exit="out"
-                                    transition={pageTransition}
-                                >
-                                    <AlertManagement/>
-                                </motion.div>
-                            }
-                        />
-                        <Route
-                            path="/llm-settings"
-                            element={
-                                <motion.div
-                                    variants={pageVariants}
-                                    initial="initial"
-                                    animate="in"
-                                    exit="out"
-                                    transition={pageTransition}
-                                >
-                                    <LlmSettings/>
-                                </motion.div>
-                            }
-                        />
-                        <Route path="*" element={<Navigate to="/"/>}/>
-                    </Routes>
-                </AnimatePresence>
-            </Content>
-        </Layout>
+    return (
+        <StudioLayout>
+            <AnimatePresence mode="wait">
+                <Routes location={location} key={location.pathname}>
+                    <Route
+                        path="/"
+                        element={
+                            <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
+                                <HomePage />
+                            </motion.div>
+                        }
+                    />
+                    <Route
+                        path="/home"
+                        element={
+                            <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
+                                <HomePage />
+                            </motion.div>
+                        }
+                    />
+                    <Route
+                        path="/consumer"
+                        element={
+                            <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
+                                <GroupManagement />
+                            </motion.div>
+                        }
+                    />
+                    <Route
+                        path="/cluster"
+                        element={
+                            <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
+                                <BrokerCluster />
+                            </motion.div>
+                        }
+                    />
+                    <Route
+                        path="/ops"
+                        element={
+                            <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
+                                <Ops />
+                            </motion.div>
+                        }
+                    />
+                    <Route
+                        path="/proxy"
+                        element={
+                            <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
+                                <Proxy />
+                            </motion.div>
+                        }
+                    />
+                    <Route
+                        path="/topic"
+                        element={
+                            <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
+                                <Topic />
+                            </motion.div>
+                        }
+                    />
+                    <Route
+                        path="/producer"
+                        element={
+                            <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
+                                <Producer />
+                            </motion.div>
+                        }
+                    />
+                    <Route
+                        path="/message"
+                        element={
+                            <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
+                                <Message />
+                            </motion.div>
+                        }
+                    />
+                    <Route
+                        path="/dlqMessage"
+                        element={
+                            <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
+                                <DlqMessage />
+                            </motion.div>
+                        }
+                    />
+                    <Route
+                        path="/messageTrace"
+                        element={
+                            <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
+                                <MessageTrace />
+                            </motion.div>
+                        }
+                    />
+                    <Route
+                        path="/acl"
+                        element={
+                            <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
+                                <Acl />
+                            </motion.div>
+                        }
+                    />
+                    <Route
+                        path="/alert"
+                        element={
+                            <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
+                                <AlertManagement />
+                            </motion.div>
+                        }
+                    />
+                    <Route
+                        path="/dashboard"
+                        element={
+                            <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
+                                <DashboardPage />
+                            </motion.div>
+                        }
+                    />
+                    <Route
+                        path="/llm-settings"
+                        element={
+                            <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
+                                <LlmSettings />
+                            </motion.div>
+                        }
+                    />
+                    <Route path="*" element={<Navigate to="/" />} />
+                </Routes>
+            </AnimatePresence>
+        </StudioLayout>
     );
 };
 

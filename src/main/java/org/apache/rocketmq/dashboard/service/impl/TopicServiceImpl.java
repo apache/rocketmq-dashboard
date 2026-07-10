@@ -144,7 +144,11 @@ public class TopicServiceImpl extends ArchitectureBasedService implements TopicS
             topicInfo.setNamespace(getDefaultNamespace());
             topicInfo.setReadQueueNums(topicConfigInfo.getReadQueueNums());
             topicInfo.setWriteQueueNums(topicConfigInfo.getWriteQueueNums());
-            topicInfo.setPerm(topicConfigInfo.getPerm());
+            int perm = topicConfigInfo.getPerm();
+            if (perm == 0) {
+                perm = 6;
+            }
+            topicInfo.setPerm(perm);
             topicInfo.setOrderTopic(topicConfigInfo.isOrder());
 
             if (topicConfigInfo.getMessageType() != null) {

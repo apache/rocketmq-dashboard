@@ -15,28 +15,43 @@
  * limitations under the License.
  */
 
-import { Badge, Space, Typography } from 'antd';
-import { STATUS_MAP } from '../constants/theme';
-import { useLang } from '../i18n/LangContext';
-
-const { Text } = Typography;
-
-interface StatusBadgeProps {
-  status: keyof typeof STATUS_MAP;
-  text?: string;
-  showDot?: boolean;
+.broker-cluster-page {
+    padding: 0;
 }
 
-const StatusBadge = ({ status, text, showDot = true }: StatusBadgeProps) => {
-  const { t } = useLang();
-  const config = STATUS_MAP[status] || STATUS_MAP.offline;
-  const label = text || t(config.labelKey);
-  return (
-    <Space size={4}>
-      {showDot && <Badge color={config.dot} />}
-      <Text style={{ color: config.color, fontSize: 13 }}>{label}</Text>
-    </Space>
-  );
-};
+.broker-cluster-page .page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
 
-export default StatusBadge;
+.broker-cluster-page .page-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: #1a1a1a;
+    margin: 0;
+    display: flex;
+    align-items: center;
+}
+
+.cluster-card {
+    border-radius: 8px !important;
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.04) !important;
+}
+
+.cluster-card .ant-card-body {
+    padding: 16px !important;
+}
+
+.cluster-card .ant-tabs-nav {
+    margin-bottom: 16px;
+}
+
+@media (max-width: 768px) {
+    .broker-cluster-page .page-header {
+        flex-direction: column;
+        gap: 12px;
+        align-items: flex-start;
+    }
+}

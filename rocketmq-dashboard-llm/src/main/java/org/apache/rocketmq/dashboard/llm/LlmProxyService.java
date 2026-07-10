@@ -30,6 +30,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import org.apache.rocketmq.dashboard.cli.schema.ParamSchema;
 import org.apache.rocketmq.dashboard.cli.schema.ToolDefinition;
@@ -191,7 +192,9 @@ public class LlmProxyService {
                 toolEntry.put("type", "function");
 
                 Map<String, Object> function = new LinkedHashMap<>();
-                function.put("name", tool.getMcpToolName());
+                String llmFunctionName = tool.getMcpToolName().replace('.', '_');
+                functionNameToToolName.put(llmFunctionName, tool.getMcpToolName());
+                function.put("name", llmFunctionName);
                 function.put("description", tool.getDescription());
 
                 // Build parameters schema
@@ -233,6 +236,16 @@ public class LlmProxyService {
         }
 
         return body;
+    }
+
+    private final Map<String, String> functionNameToToolName = new ConcurrentHashMap<>();
+
+    /**
+     * POST /api/llm/resolveFunctionName
+     * @return toolName
+     */
+    public String resolveFunctionName(String llmFunctionName) {
+        return functionNameToToolName.getOrDefault(llmFunctionName, llmFunctionName);
     }
 
     /**
@@ -322,7 +335,10 @@ public class LlmProxyService {
                             Map<String, Object> function =
                                     (Map<String, Object>) call.get("function");
                             if (function != null) {
-                                parsedCall.put("name", function.get("name"));
+                                String llmFunctionName = (String) function.get("name");
+                                String originalName = functionNameToToolName.getOrDefault(
+                                        llmFunctionName, llmFunctionName);
+                                parsedCall.put("name", originalName);
                                 String arguments = (String) function.get("arguments");
                                 if (arguments != null) {
                                     try {

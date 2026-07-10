@@ -37,10 +37,16 @@ export interface DataSource {
   status: string;
 }
 
+// ─── Settings API ───────────────────────────────────────────────
+// Note: The backend OpsController provides some ops-related settings.
+// General settings and data sources have no direct backend equivalent yet.
+// These endpoints are kept for mock compatibility.
+
 // ─── General Settings ───────────────────────────────────────────
 export async function getGeneralSettings() {
-  const res = await client.get<{ data: GeneralSettings }>('/settings/general');
-  return res.data.data;
+  // No direct backend endpoint; use ops/homePage.query for some settings
+  const res = await client.get('/settings/general');
+  return res.data;
 }
 
 export async function saveGeneralSettings(data: Partial<GeneralSettings>) {
@@ -49,8 +55,8 @@ export async function saveGeneralSettings(data: Partial<GeneralSettings>) {
 
 // ─── Data Sources ───────────────────────────────────────────────
 export async function listDataSources() {
-  const res = await client.get<{ data: DataSource[] }>('/settings/datasources');
-  return res.data.data;
+  const res = await client.get('/settings/datasources');
+  return res.data;
 }
 
 export async function createDataSource(data: Partial<DataSource>) {
@@ -66,9 +72,9 @@ export async function deleteDataSource(id: string) {
 }
 
 export async function testDataSource(data: { type: string; url: string }) {
-  const res = await client.post<{ data: { success: boolean; message: string } }>(
+  const res = await client.post<{ success: boolean; message: string }>(
     '/settings/datasources/test',
     data,
   );
-  return res.data.data;
+  return res.data;
 }

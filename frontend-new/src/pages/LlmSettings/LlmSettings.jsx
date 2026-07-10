@@ -169,7 +169,7 @@ function LlmSettings() {
                 }
                 form.setFieldsValue({
                     provider,
-                    apiBaseUrl: config.apiBaseUrl || '',
+                    apiBase: config.apiBase || '',
                     model: config.model || '',
                     maxTokens: config.maxTokens || 4096,
                     temperature: config.temperature !== undefined ? config.temperature : 0.7,
@@ -199,7 +199,7 @@ function LlmSettings() {
         if (provider) {
             // 自动填充默认值
             form.setFieldsValue({
-                apiBaseUrl: provider.defaultBaseUrl,
+                apiBase: provider.defaultBaseUrl,
                 model: provider.defaultModel,
             });
             // 如果不需要API Key，清空
@@ -323,7 +323,7 @@ function LlmSettings() {
                     initialValues={{
                         provider: 'openai',
                         model: 'gpt-4o',
-                        apiBaseUrl: 'https://api.openai.com/v1',
+                        apiBase: 'https://api.openai.com/v1',
                         maxTokens: 4096,
                         temperature: 0.7,
                         apiVersion: '2024-02-15-preview',
@@ -395,7 +395,7 @@ function LlmSettings() {
                         </Col>
                         <Col span={12}>
                             <Form.Item
-                                name="apiBaseUrl"
+                                name="apiBase"
                                 label={
                                     <span>
                                         <GlobalOutlined style={{ marginRight: 4 }} />

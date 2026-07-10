@@ -45,22 +45,38 @@ export interface UpdateInstanceRequest {
   remark?: string;
 }
 
-// ─── Instance CRUD ──────────────────────────────────────────────
+// ─── Instance API ──────────────────────────────────────────────
+// Backend: ProxyController at /proxy
+// GET  /proxy/homePage.query       → proxy home page (instance list)
+// POST /proxy/addProxyAddr.do      → add proxy address
+// POST /proxy/updateProxyAddr.do   → update proxy address
+//
+// Note: The backend "instance" concept maps to ProxyController.
+// These endpoints are kept for mock compatibility until the backend
+// provides full CRUD for instances.
+
 export async function listInstances() {
-  const res = await client.get<{ data: Instance[] }>('/instances');
-  return res.data.data;
+  // No direct backend endpoint for instance list; use proxy homePage
+  const res = await client.get('/proxy/homePage.query');
+  return res.data;
 }
 
 export async function createInstance(data: CreateInstanceRequest) {
-  const res = await client.post<{ data: Instance }>('/instances/create', data);
-  return res.data.data;
+  const res = await client.post('/proxy/addProxyAddr.do', null, {
+    params: { proxyAddr: data.endpoint },
+  });
+  return res.data;
 }
 
 export async function updateInstance(data: UpdateInstanceRequest) {
-  const res = await client.post<{ data: Instance }>('/instances/update', data);
-  return res.data.data;
+  const res = await client.post('/proxy/updateProxyAddr.do', null, {
+    params: { proxyAddr: data.endpoint },
+  });
+  return res.data;
 }
 
 export async function deleteInstance(id: string) {
+  // No direct delete endpoint in ProxyController
+  // Kept for mock compatibility
   await client.post('/instances/delete', { id });
 }

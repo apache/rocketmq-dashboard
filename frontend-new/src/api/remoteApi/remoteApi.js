@@ -1051,7 +1051,7 @@ const remoteApi = {
 
     queryAlertRules: async (callback) => {
         try {
-            const url = new URL(remoteApi.buildUrl('/metrics/alerts'));
+            const url = new URL(remoteApi.buildUrl('/api/metrics/alerts'));
             url.searchParams.append('format', 'yaml');
             const response = await remoteApi._fetch(url.toString(), {signal: AbortSignal.timeout(15000)});
             const data = await response.json();

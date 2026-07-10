@@ -60,6 +60,7 @@ public class LlmConfig {
 
         private static Yaml createLoadYaml() {
             LoaderOptions loaderOptions = new LoaderOptions();
+            loaderOptions.setTagInspector(tag -> true);
             TypeDescription llmConfigDesc = new TypeDescription(LlmConfig.class,
                     "tag:yaml.org,2002:org.apache.rocketmq.dashboard.llm.LlmConfig");
             Constructor constructor = new Constructor(llmConfigDesc, loaderOptions);
@@ -76,7 +77,7 @@ public class LlmConfig {
             representer.addClassTag(LlmConfig.class, Tag.MAP);
             Yaml yaml = new Yaml(representer, dumperOptions);
             yaml.setBeanAccess(BeanAccess.FIELD);
-            return new Yaml(dumperOptions);
+            return yaml;
         }
 
         /**

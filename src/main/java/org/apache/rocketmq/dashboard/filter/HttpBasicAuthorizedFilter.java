@@ -29,7 +29,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 
 
-@WebFilter(urlPatterns = "/*", filterName = "httpBasicAuthorizedFilter")
+@WebFilter(urlPatterns = "/*", filterName = "httpBasicAuthorizedFilter", asyncSupported = true)
 public class HttpBasicAuthorizedFilter implements Filter {
 
     @Override

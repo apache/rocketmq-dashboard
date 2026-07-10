@@ -32,6 +32,7 @@ import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -325,8 +326,8 @@ public class McpBridgeControllerTest {
         config.setApiKey("sk-test-key");
         config.setEnabled(true);
 
-        Map<String, String> result = controller.saveConfig(config);
-        assertEquals("Status should be saved", "saved", result.get("status"));
+        Map<String, Object> result = controller.saveConfig(config);
+        assertEquals("Status should be saved", 0, result.get("status"));
     }
 
     @Test
@@ -356,8 +357,8 @@ public class McpBridgeControllerTest {
         config.setApiKey("new-real-key");
         config.setEnabled(true);
 
-        Map<String, String> result = controller.saveConfig(config);
-        assertEquals("Status should be saved", "saved", result.get("status"));
+        Map<String, Object> result = controller.saveConfig(config);
+        assertEquals("Status should be saved", 0, result.get("status"));
     }
 
     // ---- POST /config/test tests -----------------------------------------------
@@ -371,9 +372,9 @@ public class McpBridgeControllerTest {
 
         Map<String, Object> result = controller.testConnection(config);
 
-        assertFalse("Should not be successful", (Boolean) result.get("success"));
+        assertEquals("Should fail with status -1", result.get("status"));
         assertTrue("Should mention API key required",
-                result.get("message").toString().contains("API key"));
+                result.get("errMsg").toString().contains("API key"));
     }
 
     @Test
@@ -384,8 +385,8 @@ public class McpBridgeControllerTest {
 
         Map<String, Object> result = controller.testConnection(config);
 
-        assertFalse("Should not be successful with null API key",
-                (Boolean) result.get("success"));
+        assertEquals("Should fail with status -1",
+                result.get("status"));
     }
 
     @Test
@@ -407,10 +408,9 @@ public class McpBridgeControllerTest {
         // This will try to call the real API which will fail in unit test
         assertNotNull("Result should not be null", result);
         // The key was resolved but HTTP call fails: should not say "API key is required"
-        Object message = result.get("message");
-        assertNotNull("Should have a message", message);
-        assertFalse("Should not be API key required error",
-                "API key is required".equals(message));
+        Object errMsg = result.get("errMsg");
+        assertNotNull("Should have an error message", errMsg);
+        assertNotEquals("Should not be API key required error", "API key is required", errMsg);
     }
 
     // ---- Mask API key tests ----------------------------------------------------

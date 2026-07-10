@@ -29,7 +29,6 @@ import {
   ArrowUp,
   MagnifyingGlass,
   CaretDown,
-  MegaphoneSimple,
   Database,
 } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
@@ -44,7 +43,7 @@ function getGreetingKey(): string {
   return 'home.greeting.evening';
 }
 
-/* ─── Mode definitions (keys only, labels resolved via t()) ─── */
+/* ─── Mode definitions ─── */
 const modes = [
   { key: 'query', labelKey: 'home.mode.query', icon: MagnifyingGlass },
   { key: 'diagnose', labelKey: 'home.mode.diagnose', icon: Stethoscope },
@@ -52,7 +51,7 @@ const modes = [
   { key: 'chat', labelKey: 'home.mode.chat', icon: ChatCircleDots },
 ];
 
-/* ─── Model option values ─── */
+/* ─── Model options ─── */
 const modelOptions = [
   { value: 'qwen3.7-max', recommended: true },
   { value: 'qwen3.7-plus', recommended: false },
@@ -60,9 +59,22 @@ const modelOptions = [
   { value: 'gpt-5.4', recommended: false },
 ];
 
-/* ═══════════════════════════════════════════════════════
+/* ─── Quick action capsules ── */
+const quickActions = [
+  {
+    key: '/instance/message',
+    icon: MagnifyingGlass,
+    labelKey: 'home.mode.query',
+    color: '#1677ff',
+  },
+  { key: '/cluster', icon: Stethoscope, labelKey: 'home.mode.diagnose', color: '#722ed1' },
+  { key: '/instance', icon: Database, labelKey: 'home.mode.manage', color: '#52c41a' },
+  { key: '/ai', icon: ChatCircleDots, labelKey: 'home.mode.chat', color: '#fa8c16' },
+];
+
+/* ═══════════════════════════════════════════════════════════════
    HomePage Component
-   ═══════════════════════════════════════════════════════ */
+   ═══════════════════════════════════════════════════════════════ */
 const HomePage = () => {
   const [activeMode, setActiveMode] = useState('query');
   const [selectedModel, setSelectedModel] = useState('qwen3.7-max');
@@ -72,21 +84,16 @@ const HomePage = () => {
   const navigate = useNavigate();
   const { t, lang } = useLang();
 
-  /* ─── Mode switch handler ─── */
   const handleModeSwitch = useCallback((key: string, btn: HTMLButtonElement) => {
     setActiveMode(key);
     const parent = modeBarRef.current;
     if (parent) {
       const rect = btn.getBoundingClientRect();
       const parentRect = parent.getBoundingClientRect();
-      setIndicatorStyle({
-        width: rect.width,
-        left: rect.left - parentRect.left - 6,
-      });
+      setIndicatorStyle({ width: rect.width, left: rect.left - parentRect.left - 6 });
     }
   }, []);
 
-  /* ─── Fix indicator on mount and language/mode change ─── */
   useEffect(() => {
     const parent = modeBarRef.current;
     if (!parent) return;
@@ -94,14 +101,10 @@ const HomePage = () => {
     if (activeBtn) {
       const rect = activeBtn.getBoundingClientRect();
       const parentRect = parent.getBoundingClientRect();
-      setIndicatorStyle({
-        width: rect.width,
-        left: rect.left - parentRect.left - 6,
-      });
+      setIndicatorStyle({ width: rect.width, left: rect.left - parentRect.left - 6 });
     }
   }, [lang, activeMode]);
 
-  /* ─── Auto-resize textarea ─── */
   useEffect(() => {
     const ta = textareaRef.current;
     if (!ta) return;
@@ -113,7 +116,6 @@ const HomePage = () => {
     return () => ta.removeEventListener('input', handler);
   }, []);
 
-  /* ─── Keyboard shortcut: Enter to send ─── */
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -126,85 +128,29 @@ const HomePage = () => {
       <div
         className="relative w-full overflow-y-auto scrollbar-hide"
         style={{
-          minHeight: 'calc(100vh - 48px)',
+          minHeight: '100%',
           display: 'flex',
           flexDirection: 'column',
+          alignItems: 'center',
           background: '#fff',
         }}
       >
-        {/* ── Animated Orbs Background ── */}
-        <div
-          className="pointer-events-none absolute inset-0 overflow-hidden"
-          style={{ animation: '8s ease-in-out infinite oneday-bg-drift' }}
-        >
-          <div
-            aria-hidden="true"
-            className="absolute"
-            style={{
-              top: '-14%',
-              left: '-7%',
-              width: '42%',
-              height: '42%',
-              background:
-                'radial-gradient(circle at 30% 30%, rgb(186, 230, 253) 0%, transparent 65%)',
-              opacity: 0.45,
-              filter: 'blur(80px)',
-              animation: '8s ease-in-out infinite oneday-orb-drift-a',
-              willChange: 'transform, opacity',
-            }}
-          />
-          <div
-            aria-hidden="true"
-            className="absolute inset-0"
-            style={{
-              backgroundImage: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='1'/></svg>")`,
-              opacity: 0.025,
-              mixBlendMode: 'multiply',
-            }}
-          />
-        </div>
-
-        {/* ── Top Banner ── */}
-        <div className="sticky top-0 z-10 w-full">
-          <div
-            className="flex justify-center items-center backdrop-blur-[8px]"
-            style={{
-              background: 'linear-gradient(to bottom, rgba(255,255,255,0.8) 0%, transparent 100%)',
-            }}
-          >
-            <div className="max-w-[920px] w-full mx-auto">
-              <div className="flex justify-center items-center px-4 py-2 min-h-[36px]">
-                <span className="inline-flex items-center gap-2 text-sm text-amber-600 cursor-pointer hover:text-amber-700 transition-colors">
-                  <MegaphoneSimple size={16} weight="fill" />
-                  <span>RocketMQ Studio — 跨集群 · 跨架构 · 跨云的统一管控平台</span>
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-
         {/* ── Main Content ── */}
         <div
           className="relative z-[1] mx-auto flex w-full max-w-[960px] flex-col items-center px-6"
-          style={{ flex: 1, justifyContent: 'center' }}
+          style={{ paddingTop: 48, flex: 1 }}
         >
           {/* ── Greeting Section ── */}
           <div
-            className="pt-4"
-            style={{
-              marginBottom: 32,
-              textAlign: 'center',
-              animation: 'float-in 0.6s ease-out',
-            }}
+            style={{ marginBottom: 28, textAlign: 'center', animation: 'float-in 0.6s ease-out' }}
           >
             <div
               style={{
-                fontSize: '3rem',
-                lineHeight: 1.15,
-                fontWeight: 600,
+                fontSize: '2.5rem',
+                lineHeight: 1.2,
+                fontWeight: 700,
                 letterSpacing: '-0.025em',
-                whiteSpace: 'nowrap',
-                color: 'var(--bolt-elements-textPrimary)',
+                color: '#1b1b1a',
               }}
             >
               {t(getGreetingKey())}
@@ -220,41 +166,77 @@ const HomePage = () => {
                 🚀
               </span>
               {lang === 'zh' ? t('home.welcomeTo') : 'to'}{' '}
-              <span
-                className="bg-clip-text text-transparent bg-gradient-to-r from-violet-600 via-fuchsia-500 to-orange-500"
-                style={{ marginLeft: '0.15em' }}
-              >
+              <span className="gradient-text" style={{ marginLeft: '0.1em' }}>
                 RocketMQ Studio
               </span>
             </div>
-            <div
-              style={{
-                marginTop: 12,
-                fontSize: '1.071rem',
-                lineHeight: 1.5,
-                color: 'var(--bolt-elements-textSecondary)',
-              }}
-            >
+            <div style={{ marginTop: 10, fontSize: '1rem', lineHeight: 1.6, color: '#7c7670' }}>
               {t('home.tagline')}
             </div>
           </div>
 
-          {/* ── Chat Input Area ── */}
-          <div className="w-full" style={{ animation: 'float-in 0.6s ease-out 0.1s both' }}>
-            <div className="w-full mx-auto relative z-[300] max-w-[60rem]">
+          {/* ── Quick Action Capsules ── */}
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 10,
+              justifyContent: 'center',
+              marginBottom: 32,
+              animation: 'float-in 0.6s ease-out 0.1s both',
+            }}
+          >
+            {quickActions.map((action) => {
+              const Icon = action.icon;
+              return (
+                <button
+                  key={action.key}
+                  onClick={() => navigate(action.key)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '6px 14px',
+                    borderRadius: 9999,
+                    fontSize: 13,
+                    fontWeight: 500,
+                    color: action.color,
+                    background: `${action.color}0a`,
+                    border: `1px solid ${action.color}20`,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = `${action.color}15`;
+                    e.currentTarget.style.borderColor = `${action.color}40`;
+                    e.currentTarget.style.transform = 'translateY(-1px)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = `${action.color}0a`;
+                    e.currentTarget.style.borderColor = `${action.color}20`;
+                    e.currentTarget.style.transform = 'none';
+                  }}
+                >
+                  <Icon size={15} weight="duotone" />
+                  <span>{t(action.labelKey)}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* ── AI Chat Card ── */}
+          <div
+            className="w-full"
+            style={{ animation: 'float-in 0.6s ease-out 0.15s both', maxWidth: 800 }}
+          >
+            <div className="w-full mx-auto relative z-[300]">
               {/* Mode Toggle Bar */}
               <div className="flex justify-center mb-5">
                 <div
                   ref={modeBarRef}
                   className="relative rounded-full bg-white/70 shadow-[0_8px_24px_rgba(120,120,180,0.08)] backdrop-blur-md border border-white"
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    padding: 6,
-                  }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: 6 }}
                 >
-                  {/* Active indicator */}
                   <div
                     className="pointer-events-none absolute top-1.5 bottom-1.5 rounded-full bg-purple-50 shadow-sm transition-all duration-300"
                     style={{
@@ -262,7 +244,6 @@ const HomePage = () => {
                       transform: `translateX(${indicatorStyle.left}px)`,
                     }}
                   />
-
                   {modes.map((m) => {
                     const Icon = m.icon;
                     return (
@@ -281,7 +262,6 @@ const HomePage = () => {
 
               {/* Main Input Box */}
               <div className="relative overflow-visible border-[1.5px] backdrop-blur-xl border-white mx-auto rounded-2xl bg-white/80 shadow-[0_20px_60px_-20px_rgba(80,90,180,0.18)]">
-                {/* Model Selector & History */}
                 <div className="flex items-center justify-between gap-3 px-3.5 pt-4">
                   <div className="flex flex-1 min-w-0 items-center gap-2">
                     <Select
@@ -315,7 +295,6 @@ const HomePage = () => {
                   </div>
                 </div>
 
-                {/* Textarea */}
                 <div className="relative flex flex-col">
                   <textarea
                     ref={textareaRef}
@@ -325,16 +304,10 @@ const HomePage = () => {
                   />
                   <RobotOutlined
                     className="text-gray-400"
-                    style={{
-                      position: 'absolute',
-                      top: 18,
-                      left: 26,
-                      fontSize: 17,
-                    }}
+                    style={{ position: 'absolute', top: 18, left: 26, fontSize: 17 }}
                   />
                 </div>
 
-                {/* Bottom Toolbar */}
                 <div className="flex justify-between text-sm items-center px-3.5 py-3 border-t border-gray-100/80">
                   <div className="flex flex-1 gap-1 items-center min-w-0">
                     <div className="flex items-center gap-2 w-full">
@@ -379,12 +352,10 @@ const HomePage = () => {
             position: 'relative',
             zIndex: 1,
             paddingBottom: 24,
-            paddingTop: 64,
+            paddingTop: 48,
             textAlign: 'center',
             fontSize: '0.857rem',
             lineHeight: 1.5,
-            background:
-              'linear-gradient(to top, var(--bolt-elements-bg-depth-1) 0%, color-mix(in srgb, var(--bolt-elements-bg-depth-1) 92%, transparent) 55%, transparent 100%)',
           }}
         >
           <span className="pointer-events-auto">

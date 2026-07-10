@@ -559,7 +559,7 @@ function CommandBarOverlay() {
                                     </span>
                                 </div>
                                 <p className="command-bar-degraded-hint">
-                                    前往 <a onClick={() => { navigate('/llmSettings'); setIsOpen(false); }}>AI助手配置</a> 页面启用智能助手
+                                    前往 <a onClick={() => { navigate('/llm-settings'); setIsOpen(false); }}>AI助手配置</a> 页面启用智能助手
                                 </p>
                             </div>
                         </div>

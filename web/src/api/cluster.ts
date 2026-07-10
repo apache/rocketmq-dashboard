@@ -92,66 +92,59 @@ export interface K8sCertInfo {
   san: string[];
 }
 
-// ─── Cluster ────────────────────────────────────────────────────
+// ─── Cluster API ────────────────────────────────────────────────
+// Backend: ClusterController at /cluster
+// GET /cluster/list.query           → list clusters
+// GET /cluster/brokerConfig.query   → broker config
+
 export async function listClusters() {
-  const res = await client.get<{ data: ClusterInfo[] }>('/clusters');
-  return res.data.data;
+  const res = await client.get('/cluster/list.query');
+  return res.data;
 }
 
 export async function getCluster(id: string) {
-  const res = await client.get<{ data: ClusterDetail }>(`/clusters/${id}`);
-  return res.data.data;
+  // Backend doesn't have a single-cluster endpoint; list all and filter
+  const res = await client.get('/cluster/list.query');
+  const clusters = res.data;
+  return Array.isArray(clusters) ? clusters.find((c: ClusterInfo) => c.id === id) : null;
 }
 
-export async function updateClusterConfig(data: { id: string } & Partial<ClusterConfig>) {
+export async function getBrokerConfig(brokerAddr: string) {
+  const res = await client.get('/cluster/brokerConfig.query', { params: { brokerAddr } });
+  return res.data;
+}
+
+// ─── NameServer API ─────────────────────────────────────────────
+// Backend: NamesvrController at /rocketmq
+// GET /rocketmq/nsaddr.query        → get nameserver addresses
+
+export async function getNameServerAddresses() {
+  const res = await client.get('/rocketmq/nsaddr.query');
+  return res.data;
+}
+
+// ─── Cluster Config & Broker Ops (no direct backend endpoint) ───
+// These are kept for mock compatibility; the backend cluster controller
+// only provides list.query and brokerConfig.query
+
+export async function updateClusterConfig(data: { id: string } & Record<string, unknown>) {
+  // No direct backend endpoint; kept for mock compatibility
   await client.post('/clusters/config/update', data);
 }
 
 export async function restartBroker(clusterId: string, brokerName: string) {
-  const res = await client.post<{ data: { success: boolean; message: string } }>(
+  // No direct backend endpoint; kept for mock compatibility
+  const res = await client.post<{ success: boolean; message: string }>(
     `/clusters/${clusterId}/brokers/${brokerName}/restart`,
   );
-  return res.data.data;
+  return res.data;
 }
 
-// ─── NameServer ─────────────────────────────────────────────────
-export async function restartNameServer(data: { clusterId: string; addr: string }) {
-  await client.post('/nameservers/restart', data);
-}
-
-export async function upgradeNameServer(data: {
-  clusterId: string;
-  addr: string;
-  version: string;
-}) {
-  await client.post('/nameservers/upgrade', data);
-}
-
-export async function deleteNameServer(data: { clusterId: string; addr: string }) {
-  await client.post('/nameservers/delete', data);
-}
-
-export async function createNameServer(data: { clusterId: string; addr: string }) {
-  await client.post('/nameservers/create', data);
-}
-
-export async function updateNameServer(data: {
-  clusterId: string;
-  addr: string;
-  newAddr?: string;
-}) {
-  await client.post('/nameservers/update', data);
-}
-
-// ─── Proxy ──────────────────────────────────────────────────────
-export async function restartProxy(data: { clusterId: string; addr: string }) {
-  await client.post('/proxies/restart', data);
-}
-
-// ─── K8s Certs ──────────────────────────────────────────────────
+// ─── K8s Certs (no backend equivalent yet — uses mock) ──────────
 export async function listK8sCerts() {
-  const res = await client.get<{ data: K8sCertInfo[] }>('/k8s-certs');
-  return res.data.data;
+  // No backend endpoint for K8s certs yet
+  const res = await client.get('/k8s-certs');
+  return res.data;
 }
 
 export async function createK8sCert(data: Partial<K8sCertInfo>) {

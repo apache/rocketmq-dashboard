@@ -1,0 +1,404 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/* ===== 浏览器外壳框架 ===== */
+.studio-browser-frame {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+    background: #f5f5f5;
+    border-radius: 8px;
+    box-shadow: 0 2px 16px rgba(0, 0, 0, 0.12);
+}
+
+/* ===== Mac Chrome 标签栏 ===== */
+.browser-chrome-top {
+    flex-shrink: 0;
+    background: #e8eaed;
+    border-bottom: 1px solid #d4d4d4;
+    -webkit-app-region: drag;
+}
+
+.browser-tab-bar {
+    display: flex;
+    align-items: center;
+    height: 38px;
+    padding: 0 12px;
+    background: #dee1e6;
+}
+
+.browser-traffic-lights {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-right: 16px;
+    -webkit-app-region: no-drag;
+}
+
+.browser-traffic-lights .light {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.browser-traffic-lights .light.red {
+    background: #ff5f57;
+}
+
+.browser-traffic-lights .light.yellow {
+    background: #febc2e;
+}
+
+.browser-traffic-lights .light.green {
+    background: #28c840;
+}
+
+.browser-tabs {
+    display: flex;
+    flex: 1;
+    gap: 2px;
+}
+
+.browser-tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 16px;
+    background: #ffffff;
+    border-radius: 8px 8px 0 0;
+    font-size: 12px;
+    color: #333;
+    max-width: 220px;
+    min-width: 120px;
+}
+
+.browser-tab.active {
+    background: #ffffff;
+    border-bottom: 2px solid #ffffff;
+}
+
+.browser-tab .tab-icon {
+    font-size: 12px;
+}
+
+.browser-tab .tab-title {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: 500;
+}
+
+/* ===== 地址栏 ===== */
+.browser-address-bar {
+    display: flex;
+    align-items: center;
+    height: 36px;
+    padding: 0 12px;
+    background: #ffffff;
+    gap: 8px;
+}
+
+.address-bar-left {
+    display: flex;
+    gap: 2px;
+    align-items: center;
+}
+
+.nav-btn {
+    width: 28px !important;
+    height: 28px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border-radius: 6px !important;
+    color: #666 !important;
+}
+
+.nav-btn:hover {
+    background: #f0f0f0 !important;
+}
+
+.address-input {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    background: #f1f3f4;
+    border-radius: 20px;
+    padding: 4px 14px;
+    font-size: 13px;
+    color: #555;
+    height: 28px;
+}
+
+.address-input span {
+    color: #333;
+}
+
+.address-bar-right {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.toolbar-btn {
+    height: 28px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    border-radius: 6px !important;
+    color: #555 !important;
+    font-size: 13px !important;
+    padding: 0 8px !important;
+}
+
+.toolbar-btn:hover {
+    background: #f0f0f0 !important;
+}
+
+.shortcut-hint {
+    font-size: 11px;
+    color: #999;
+    background: #f0f0f0;
+    padding: 1px 5px;
+    border-radius: 4px;
+    margin-left: 2px;
+}
+
+.lang-label {
+    font-size: 12px;
+    font-weight: 500;
+}
+
+/* ===== 主体内容区 ===== */
+.browser-body {
+    flex: 1;
+    overflow: hidden;
+    background: #ffffff;
+}
+
+.studio-layout {
+    height: 100%;
+    background: #ffffff;
+}
+
+/* ===== 左侧侧边栏 ===== */
+.studio-sider {
+    background: #f7f8fa !important;
+    border-right: 1px solid #e8e8e8;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.studio-sider .ant-layout-sider-children {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.sider-logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 20px;
+    border-bottom: 1px solid #e8e8e8;
+    flex-shrink: 0;
+}
+
+.sider-logo .logo-icon {
+    font-size: 22px;
+    flex-shrink: 0;
+}
+
+.sider-logo .logo-text {
+    font-size: 16px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.sider-logo .logo-rocket {
+    background: linear-gradient(135deg, #722ed1, #1677ff);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.sider-logo .logo-mq {
+    background: linear-gradient(135deg, #1677ff, #fa8c16);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.sider-logo .logo-studio {
+    color: #333;
+    font-weight: 400;
+    font-size: 14px;
+}
+
+/* ===== 侧边栏菜单样式 ===== */
+.studio-menu {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    border-right: none !important;
+    background: transparent !important;
+    padding: 4px 0;
+}
+
+.studio-menu .ant-menu-item-group-title {
+    font-size: 11px;
+    color: #8c8c8c;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 12px 20px 6px !important;
+    font-weight: 600;
+}
+
+.studio-menu .ant-menu-item {
+    height: 36px;
+    line-height: 36px;
+    margin: 2px 8px;
+    border-radius: 6px;
+    padding-left: 20px !important;
+    color: #595959;
+    font-size: 13px;
+}
+
+.studio-menu .ant-menu-item:hover {
+    background: #e6f4ff !important;
+    color: #1677ff !important;
+}
+
+.studio-menu .ant-menu-item-selected {
+    background: #e6f4ff !important;
+    color: #1677ff !important;
+    font-weight: 500;
+}
+
+.studio-menu .ant-menu-item-selected .anticon {
+    color: #1677ff !important;
+}
+
+.studio-menu .ant-menu-item .anticon {
+    font-size: 14px;
+    margin-right: 8px;
+}
+
+/* ===== 底部独立菜单 ===== */
+.sider-bottom-menu {
+    border-top: 1px solid #e8e8e8;
+    padding: 8px 0;
+    flex-shrink: 0;
+}
+
+.bottom-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 20px;
+    cursor: pointer;
+    color: #595959;
+    font-size: 13px;
+    transition: all 0.2s;
+    margin: 2px 8px;
+    border-radius: 6px;
+}
+
+.bottom-menu-item:hover {
+    background: #e6f4ff;
+    color: #1677ff;
+}
+
+.bottom-menu-item.active {
+    background: #e6f4ff;
+    color: #1677ff;
+    font-weight: 500;
+}
+
+.bottom-menu-item .anticon {
+    font-size: 14px;
+}
+
+.bottom-menu-label {
+    white-space: nowrap;
+}
+
+/* ===== 折叠按钮 ===== */
+.sider-collapse-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+    cursor: pointer;
+    color: #8c8c8c;
+    border-top: 1px solid #e8e8e8;
+    transition: all 0.2s;
+    flex-shrink: 0;
+}
+
+.sider-collapse-btn:hover {
+    color: #1677ff;
+    background: #f0f5ff;
+}
+
+/* ===== 右侧主内容区 ===== */
+.studio-content-layout {
+    background: #f5f7fa !important;
+}
+
+.studio-content {
+    padding: 24px;
+    overflow-y: auto;
+    height: 100%;
+    background: #f5f7fa;
+}
+
+/* ===== 滚动条美化 ===== */
+.studio-menu::-webkit-scrollbar,
+.studio-content::-webkit-scrollbar {
+    width: 4px;
+}
+
+.studio-menu::-webkit-scrollbar-thumb,
+.studio-content::-webkit-scrollbar-thumb {
+    background: #d9d9d9;
+    border-radius: 4px;
+}
+
+.studio-menu::-webkit-scrollbar-thumb:hover,
+.studio-content::-webkit-scrollbar-thumb:hover {
+    background: #bfbfbf;
+}
+
+/* ===== 响应式 ===== */
+@media (max-width: 768px) {
+    .studio-sider {
+        position: fixed;
+        z-index: 100;
+        height: calc(100vh - 74px);
+        top: 74px;
+        left: 0;
+    }
+
+    .shortcut-hint,
+    .lang-label {
+        display: none;
+    }
+}

@@ -25,6 +25,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+
+import com.google.common.collect.Lists;
 import org.apache.rocketmq.dashboard.cli.schema.ParamSchema;
 import org.apache.rocketmq.dashboard.cli.schema.ToolDefinition;
 import org.apache.rocketmq.dashboard.cli.schema.ToolRegistry;
@@ -33,12 +35,14 @@ import org.apache.rocketmq.dashboard.mcp.tools.SecurityGate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
  * REST controller that bridges the Console frontend to the LLM and MCP layers.
@@ -172,6 +176,139 @@ public class McpBridgeController {
         return result;
     }
 
+    /**
+     * POST /api/llm/chat/stream
+     * @param message The user's message
+     * @param cluster The cluster to use
+     * @param history The history of previous messages
+     * @return A stream of events
+     */
+    @GetMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter chatStream(@RequestParam String message,
+                                 @RequestParam(required = false) String cluster,
+                                 @RequestParam(required = false) String history) {
+        SseEmitter emitter = new SseEmitter(0L);
+        LlmConfig config = LlmConfig.LlmConfigManager.load();
+        if (!LlmConfig.LlmConfigManager.isConfigured()) {
+            emitter.completeWithError(new IllegalStateException(
+                    "LLM is not configured. Go to Settings to configure an LLM provider."
+            ));
+            return emitter;
+        }
+        ClusterCapability capability = ClusterCapability.all();
+        List<ToolDefinition> allTools = ToolRegistry.getInstance().getAllTools();
+        List<ToolDefinition> filterTools = ToolFilter.filterForUser(allTools, "ADMIN", capability);
+        String fullPropt = buildPromptWithHistory(message, parseHistory(history));
+        List<Map<String, Object>> streamToolCalls = Lists.newArrayList();
+        StringBuilder accumulatedContent = new StringBuilder();
+        llmProxyService.chatStream(fullPropt, filterTools, config, chunk -> {
+            try {
+                if (chunk == null || chunk.trim().isEmpty() || "[DONE]".equals( chunk.trim())) {
+                    emitter.send(SseEmitter.event().name("done").data("{}"));
+                    emitter.complete();
+                    return;
+                }
+                Map<String, Object> parsed  = objectMapper.readValue(chunk, Map.class);
+                List<Map<String, Object>> choices = (List<Map<String, Object>>) parsed.get("choices");
+                if (choices == null || choices.isEmpty()) {
+                    return;
+                }
+                Map<String, Object> choice = choices.get(0);
+                Map<String, Object> delta = (Map<String, Object>) choice.get("delta");
+                String finishReason = (String) choice.get("finish_reason");
+
+                if (delta != null) {
+                    Object content = delta.get("content");
+                    if (content != null) {
+                        String text = content.toString();
+                        accumulatedContent.append(text);
+                        Map<String, Object> token = new LinkedHashMap<>();
+                        token.put("content", text);
+                        emitter.send(SseEmitter.event().name("token")
+                                .data(objectMapper.writeValueAsString(token)));
+                    }
+
+                    List<Map<String, Object>> deltaToolCalls =
+                            (List<Map<String, Object>>) delta.get("tool_calls");
+                    if (deltaToolCalls != null) {
+                        for (Map<String, Object> call : deltaToolCalls) {
+                            Integer index = (Integer) call.get("index");
+                            if (index ==  null) {
+                                continue;
+                            }
+                            while (streamToolCalls.size() <= index) {
+                                streamToolCalls.add(new LinkedHashMap<>());
+                            }
+
+                            Map<String, Object> acc = streamToolCalls.get(index);
+                            if (call.get("id") != null) {
+                                acc.put("id", call.get("id"));
+                            }
+                            Map<String, Object> function = (Map<String, Object>) call.get("function");
+                            if (function != null) {
+                                Map<String, Object> accFunction =
+                                        (Map<String, Object>) acc.computeIfAbsent("function", k -> new LinkedHashMap<>());
+                                if (function.get("name") != null) {
+                                    accFunction.put("name", function.get("name"));
+                                }
+                                if (function.get("arguments") != null) {
+                                    accFunction.merge("arguments", function.get("arguments"),
+                                            (oldVal, newVal) -> oldVal.toString() + newVal.toString());
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if ("stop".equals(finishReason) || "tool_calls".equals(finishReason)) {
+                    if (!streamToolCalls.isEmpty()) {
+                        List<Map<String, Object>> finalCalls = Lists.newArrayList();
+                        for (Map<String, Object> call : streamToolCalls) {
+                            Map<String, Object> parsedCall = new LinkedHashMap<>();
+                            parsedCall.put("id", call.get("id"));
+                            Map<String, Object> function = (Map<String, Object>) call.get("function");
+                            if (function != null) {
+                                String llmFunctionName = (String) function.get("name");
+                                String originalName = llmProxyService.resolveFunctionName(llmFunctionName);
+                                parsedCall.put("name", originalName);
+                                String args = (String) function.get("arguments");
+                                if (args != null) {
+                                    try {
+                                        parsedCall.put("arguments", objectMapper.readValue(args, Map.class));
+                                    } catch (Exception e) {
+                                        parsedCall.put("arguments", args);
+                                    }
+                                }
+                            }
+                            finalCalls.add(parsedCall);
+                        }
+                        emitter.send(SseEmitter.event().name("tool_calls")
+                                .data(objectMapper.writeValueAsString(finalCalls)));
+                        Map<String, Object> hint = new LinkedHashMap<>();
+                        hint.put("viewHint", finalCalls.isEmpty() ? "text" : "dry-run");
+                        emitter.send(SseEmitter.event().name("viewHint")
+                                .data(objectMapper.writeValueAsString(hint)));
+                    }
+                    emitter.send(SseEmitter.event().name("done").data("{}"));
+                    emitter.complete();
+                }
+            } catch (Exception e) {
+                log.error("Error processing LLM stream chunk: {}", e.getMessage(), e);
+                try {
+                    emitter.send(SseEmitter.event().name("error")
+                            .data("{\"message\":") + escapeJson(e.getMessage()) + "\"}");
+                    emitter.complete();
+                } catch (Exception ex) {
+                    emitter.completeWithError(ex);
+                }
+            }
+        });
+        emitter.onTimeout(() -> log.warn("LLM SSE stream timed out"));
+        emitter.onCompletion(() -> log.warn("LLM SSE stream completed"));
+        emitter.onError(e -> log.error("LLM SSE stream error: " + e.getMessage(), e));
+        return emitter;
+    }
+
     // -----------------------------------------------------------------------
     // Confirm
     // -----------------------------------------------------------------------
@@ -236,6 +373,30 @@ public class McpBridgeController {
         }
 
         return result;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> parseHistory(String history) {
+        if (history == null || history.trim().isEmpty()) {
+            return Lists.newArrayList();
+        }
+        try {
+            return objectMapper.readValue(history, List.class);
+        } catch (JsonProcessingException e) {
+            log.error("Failed to parse history: {}", e.getMessage(), e);
+            return Lists.newArrayList();
+        }
+    }
+
+    private String escapeJson(String s) {
+        if (s == null) {
+            return "";
+        }
+        return s.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t");
     }
 
     // -----------------------------------------------------------------------
@@ -309,8 +470,8 @@ public class McpBridgeController {
      * Saves the LLM configuration.
      */
     @PostMapping("/config")
-    public Map<String, String> saveConfig(@RequestBody LlmConfig config) {
-        Map<String, String> result = new LinkedHashMap<>();
+    public Map<String, Object> saveConfig(@RequestBody LlmConfig config) {
+        Map<String, Object> result = new LinkedHashMap<>();
         try {
             // If the apiKey was masked, preserve the existing key
             if (config.getApiKey() != null && config.getApiKey().startsWith("****")) {
@@ -318,11 +479,12 @@ public class McpBridgeController {
                 config.setApiKey(existing.getApiKey());
             }
             LlmConfig.LlmConfigManager.save(config);
-            result.put("status", "saved");
+            result.put("status", 0);
+            result.put("msg", "saved");
         } catch (IOException e) {
             log.error("Failed to save LLM config: {}", e.getMessage(), e);
-            result.put("status", "error");
-            result.put("message", e.getMessage());
+            result.put("status", -1);
+            result.put("errMsg", e.getMessage());
         }
         return result;
     }
@@ -342,8 +504,8 @@ public class McpBridgeController {
         }
 
         if (config.getApiKey() == null || config.getApiKey().isEmpty()) {
-            result.put("success", false);
-            result.put("message", "API key is required");
+            result.put("status", -1);
+            result.put("errMsg", "API key is required");
             return result;
         }
 
@@ -355,17 +517,17 @@ public class McpBridgeController {
             Map<String, Object> parsed = objectMapper.readValue(response, Map.class);
 
             if (parsed.containsKey("error")) {
-                result.put("success", false);
-                result.put("message", parsed.get("error").toString());
+                result.put("status", -1);
+                result.put("errMsg", parsed.get("error").toString());
             } else {
-                result.put("success", true);
-                result.put("message", "Successfully connected to "
+                result.put("status", 0);
+                result.put("msg", "Successfully connected to "
                         + (config.getProvider() != null ? config.getProvider() : "LLM provider"));
             }
         } catch (Exception e) {
             log.error("LLM connection test failed: {}", e.getMessage(), e);
-            result.put("success", false);
-            result.put("message", "Connection failed: " + e.getMessage());
+            result.put("status", -1);
+            result.put("errMsg", "Connection failed: " + e.getMessage());
         }
 
         return result;

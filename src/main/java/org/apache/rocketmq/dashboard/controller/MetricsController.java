@@ -17,6 +17,7 @@
 package org.apache.rocketmq.dashboard.controller;
 
 import org.apache.rocketmq.dashboard.adapter.PrometheusMetricsAdapter;
+import org.apache.rocketmq.dashboard.aspect.admin.annotation.OriginalControllerReturnValue;
 import org.apache.rocketmq.dashboard.model.request.MetricsDataSourceRequest;
 import org.apache.rocketmq.dashboard.service.MetricsEnhancedService;
 import org.apache.rocketmq.dashboard.service.MetricsService;
@@ -539,6 +540,7 @@ public class MetricsController {
      * @return Raw YAML content in Prometheus Alertmanager format
      */
     @GetMapping(value = "/api/metrics/alerts/yaml", produces = "application/x-yaml")
+    @OriginalControllerReturnValue
     public String exportAlertRulesYaml() {
         try {
             return metricsEnhancedService.getAlertRulesYaml();

@@ -31,7 +31,11 @@ export interface AiExecuteRequest {
   tools?: string[];
 }
 
-// ─── AI ─────────────────────────────────────────────────────────
+// ─── AI API ─────────────────────────────────────────────────────
+// Backend: SkillRegistryController at /api/skill
+// Note: The AI/LLM endpoints are still in development.
+// These endpoints are kept for mock compatibility.
+
 export async function chatStream(
   data: AiExecuteRequest,
   onChunk: (text: string) => void,
@@ -41,7 +45,6 @@ export async function chatStream(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
     },
     body: JSON.stringify(data),
     signal,
@@ -74,14 +77,11 @@ export async function chatStream(
 }
 
 export async function executeAiCommand(data: AiExecuteRequest) {
-  const res = await client.post<{ data: { result: string; toolCalls: unknown[] } }>(
-    '/ai/execute',
-    data,
-  );
-  return res.data.data;
+  const res = await client.post<{ result: string; toolCalls: unknown[] }>('/ai/execute', data);
+  return res.data;
 }
 
 export async function listTools() {
-  const res = await client.get<{ data: McpTool[] }>('/ai/tools');
-  return res.data.data;
+  const res = await client.get('/api/skill/list');
+  return res.data;
 }

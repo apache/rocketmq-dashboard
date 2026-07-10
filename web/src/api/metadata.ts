@@ -5,7 +5,7 @@
 
 import client from './client';
 
-// ─── Topic (matches mock/topics.ts) ────────────────────────────
+// ─── Topic Types ───────────────────────────────────────────────
 export interface Topic {
   name: string;
   namespace: string;
@@ -38,7 +38,7 @@ export interface ConsumerGroupInfo {
   diffTotal: number;
 }
 
-// ─── Consumer Group (matches mock/consumers.ts) ─────────────────
+// ─── Consumer Group Types ──────────────────────────────────────
 export interface ConsumerGroup {
   name: string;
   namespace: string;
@@ -78,32 +78,41 @@ export interface SubscriptionEntry {
 }
 
 // ─── Topic API ──────────────────────────────────────────────────
+// Backend: TopicController at /topic
+// GET  /topic/list.query                    → list topics
+// GET  /topic/route.query?topic=xxx         → topic route info
+// GET  /topic/queryConsumerByTopic.query?topic=xxx → consumer groups by topic
+// POST /topic/createOrUpdate.do             → create or update topic
+// POST /topic/deleteTopic.do                → delete topic
+// POST /topic/sendTopicMessage.do           → send test message
+
 export async function listTopics(params?: { keyword?: string; type?: string; namespace?: string }) {
-  const res = await client.get<{ data: Topic[] }>('/topics', { params });
-  return res.data.data;
+  const res = await client.get('/topic/list.query', { params });
+  return res.data;
 }
 
 export async function createTopic(data: Partial<Topic>) {
-  const res = await client.post<{ data: Topic }>('/topics/create', data);
-  return res.data.data;
+  const res = await client.post('/topic/createOrUpdate.do', data);
+  return res.data;
 }
 
 export async function updateTopic(data: Partial<Topic>) {
-  await client.post('/topics/update', data);
+  const res = await client.post('/topic/createOrUpdate.do', data);
+  return res.data;
 }
 
 export async function deleteTopic(name: string) {
-  await client.post('/topics/delete', { name });
+  await client.post('/topic/deleteTopic.do', null, { params: { topic: name } });
 }
 
 export async function getTopicRoutes(name: string) {
-  const res = await client.get<{ data: BrokerRoute[] }>(`/topics/${name}/routes`);
-  return res.data.data;
+  const res = await client.get('/topic/route.query', { params: { topic: name } });
+  return res.data;
 }
 
 export async function getTopicConsumers(name: string) {
-  const res = await client.get<{ data: ConsumerGroupInfo[] }>(`/topics/${name}/consumers`);
-  return res.data.data;
+  const res = await client.get('/topic/queryConsumerByTopic.query', { params: { topic: name } });
+  return res.data;
 }
 
 export interface SendTopicMessageRequest {
@@ -121,52 +130,63 @@ export interface SendTopicMessageResult {
 }
 
 export async function sendTopicMessage(data: SendTopicMessageRequest) {
-  const res = await client.post<{ data: SendTopicMessageResult }>('/topics/send', data);
-  return res.data.data;
+  const res = await client.post('/topic/sendTopicMessage.do', data);
+  return res.data;
 }
 
 // ─── Consumer Group API ─────────────────────────────────────────
+// Backend: ConsumerController at /consumer
+// GET  /consumer/groupList.query             → list consumer groups
+// GET  /consumer/group.query?consumerGroup=xxx → group detail
+// GET  /consumer/queryTopicByConsumer.query?consumerGroup=xxx → progress
+// GET  /consumer/consumerConnection.query?consumerGroup=xxx → connections
+// POST /consumer/createOrUpdate.do           → create or update group
+// POST /consumer/deleteSubGroup.do           → delete group
+// POST /consumer/resetOffset.do              → reset offset
+
 export async function listConsumerGroups(params?: { keyword?: string }) {
-  const res = await client.get<{ data: ConsumerGroup[] }>('/groups', { params });
-  return res.data.data;
+  const res = await client.get('/consumer/groupList.query', { params });
+  return res.data;
 }
 
 export async function getConsumerGroup(name: string) {
-  const res = await client.get<{ data: ConsumerGroup & { instances: ConsumerInstance[] } }>(
-    `/groups/${name}`,
-  );
-  return res.data.data;
+  const res = await client.get('/consumer/group.query', { params: { consumerGroup: name } });
+  return res.data;
 }
 
 export async function getConsumerProgress(name: string) {
-  const res = await client.get<{ data: QueueProgress[] }>(`/groups/${name}/progress`);
-  return res.data.data;
+  const res = await client.get('/consumer/queryTopicByConsumer.query', {
+    params: { consumerGroup: name },
+  });
+  return res.data;
 }
 
 export async function getConsumerSubscriptions(name: string) {
-  const res = await client.get<{ data: SubscriptionEntry[] }>(`/groups/${name}/subscriptions`);
-  return res.data.data;
+  const res = await client.get('/consumer/consumerConnection.query', {
+    params: { consumerGroup: name },
+  });
+  return res.data;
 }
 
 export async function createConsumerGroup(data: Partial<ConsumerGroup>) {
-  await client.post('/groups/create', data);
+  await client.post('/consumer/createOrUpdate.do', data);
 }
 
 export async function deleteConsumerGroup(name: string) {
-  await client.post('/groups/delete', { name });
+  await client.post('/consumer/deleteSubGroup.do', { consumerGroup: name });
 }
 
 export async function resetConsumerOffset(data: Record<string, unknown>) {
-  await client.post('/groups/reset-offset', data);
+  await client.post('/consumer/resetOffset.do', data);
 }
 
 export async function importConsumerGroups(data: string) {
-  await client.post('/groups/import', { data });
+  await client.post('/consumer/createOrUpdate.do', { data });
 }
 
 export async function exportConsumerGroups(names?: string[]) {
-  const res = await client.get<{ data: string }>('/groups/export', {
+  const res = await client.get('/consumer/groupList.query', {
     params: { names: names?.join(',') },
   });
-  return res.data.data;
+  return res.data;
 }

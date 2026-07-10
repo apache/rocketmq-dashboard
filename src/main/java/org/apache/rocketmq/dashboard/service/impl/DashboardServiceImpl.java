@@ -81,10 +81,14 @@ public class DashboardServiceImpl implements DashboardService {
      */
     @Override
     public List<String> queryTopicData(String date, String topicName) {
-        if (null != dashboardCollectService.getTopicCache(date)) {
-            return dashboardCollectService.getTopicCache(date).get(topicName);
+        Map<String, List<String>> topicCache = dashboardCollectService.getTopicCache(date);
+        if (null != topicCache) {
+            List<String> data = topicCache.get(topicName);
+            if (data != null) {
+                return data;
+            }
         }
-        return null;
+        return Lists.newArrayList();
     }
 
     @Override
@@ -109,9 +113,12 @@ public class DashboardServiceImpl implements DashboardService {
     public List<String> queryAccumulationData(String date, String topicName) {
         Map<String, List<String>> accumulationCache = dashboardCollectService.getAccumulationCache(date);
         if (null != accumulationCache) {
-            return accumulationCache.get(topicName);
+            List<String> data = accumulationCache.get(topicName);
+            if (data != null) {
+                return data;
+            }
         }
-        return null;
+        return Lists.newArrayList();
     }
 
     @Override
@@ -123,9 +130,12 @@ public class DashboardServiceImpl implements DashboardService {
     public List<String> queryTransactionData(String date, String topicName) {
         Map<String, List<String>> transactionCache = dashboardCollectService.getTransactionCache(date);
         if (null != transactionCache) {
-            return transactionCache.get(topicName);
+            List<String> data = transactionCache.get(topicName);
+            if (data != null) {
+                return data;
+            }
         }
-        return null;
+        return Lists.newArrayList();
     }
 
     @Override
@@ -137,9 +147,12 @@ public class DashboardServiceImpl implements DashboardService {
     public List<String> queryStorageLatencyData(String date, String topicName) {
         Map<String, List<String>> storageLatencyCache = dashboardCollectService.getStorageLatencyCache(date);
         if (null != storageLatencyCache) {
-            return storageLatencyCache.get(topicName);
+            List<String> data = storageLatencyCache.get(topicName);
+            if (data != null) {
+                return data;
+            }
         }
-        return null;
+        return Lists.newArrayList();
     }
 
     @Override
@@ -151,9 +164,12 @@ public class DashboardServiceImpl implements DashboardService {
     public List<String> queryNetworkThroughputData(String date, String brokerName) {
         Map<String, List<String>> networkThroughputCache = dashboardCollectService.getNetworkThroughputCache(date);
         if (null != networkThroughputCache) {
-            return networkThroughputCache.get(brokerName);
+            List<String> data = networkThroughputCache.get(brokerName);
+            if (data != null) {
+                return data;
+            }
         }
-        return null;
+        return Lists.newArrayList();
     }
 
     @Override
@@ -165,9 +181,12 @@ public class DashboardServiceImpl implements DashboardService {
     public List<String> queryReplicaSyncData(String date, String brokerName) {
         Map<String, List<String>> replicaSyncCache = dashboardCollectService.getReplicaSyncCache(date);
         if (null != replicaSyncCache) {
-            return replicaSyncCache.get(brokerName);
+            List<String> data = replicaSyncCache.get(brokerName);
+            if (data != null) {
+                return data;
+            }
         }
-        return null;
+        return Lists.newArrayList();
     }
 
     @Override
@@ -179,9 +198,12 @@ public class DashboardServiceImpl implements DashboardService {
     public List<String> queryHotTopicData(String date, String topicName) {
         Map<String, List<String>> hotTopicCache = dashboardCollectService.getHotTopicCache(date);
         if (null != hotTopicCache) {
-            return hotTopicCache.get(topicName);
+            List<String> data = hotTopicCache.get(topicName);
+            if (data != null) {
+                return data;
+            }
         }
-        return null;
+        return Lists.newArrayList();
     }
 
     @Override

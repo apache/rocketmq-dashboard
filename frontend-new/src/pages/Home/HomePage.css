@@ -1,0 +1,322 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+.home-page {
+    position: relative;
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 20px 20px;
+}
+
+/* 背景渐变装饰 */
+.home-bg-decoration {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 400px;
+    background: linear-gradient(
+        180deg,
+        rgba(22, 119, 255, 0.04) 0%,
+        rgba(114, 46, 209, 0.02) 40%,
+        transparent 100%
+    );
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* 欢迎区域 */
+.home-welcome-section {
+    text-align: center;
+    margin-bottom: 32px;
+    position: relative;
+    z-index: 1;
+}
+
+.home-greeting {
+    font-size: 28px;
+    font-weight: 600;
+    color: #1a1a1a;
+    margin: 0 0 12px;
+    line-height: 1.4;
+}
+
+.gradient-text {
+    background: linear-gradient(135deg, #722ed1, #1677ff, #fa8c16);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    font-weight: 700;
+}
+
+.home-subtitle {
+    font-size: 15px;
+    color: #8c8c8c;
+    margin: 0 0 24px;
+    letter-spacing: 1px;
+}
+
+/* 快捷操作胶囊按钮 */
+.quick-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.quick-action-btn {
+    border-radius: 20px !important;
+    padding: 4px 20px !important;
+    height: 40px !important;
+    font-size: 14px !important;
+    border-color: var(--action-color, #1677ff) !important;
+    color: var(--action-color, #1677ff) !important;
+    background: transparent !important;
+    transition: all 0.3s ease !important;
+    box-shadow: 0 2px 8px rgba(22, 119, 255, 0.08);
+}
+
+.quick-action-btn:hover {
+    background: var(--action-color, #1677ff) !important;
+    color: #ffffff !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(22, 119, 255, 0.2);
+}
+
+/* AI 聊天卡片 */
+.ai-chat-card {
+    width: 100%;
+    max-width: 800px;
+    border-radius: 12px !important;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06) !important;
+    position: relative;
+    z-index: 1;
+    overflow: hidden;
+}
+
+.ai-chat-card .ant-card-body {
+    padding: 0 !important;
+}
+
+.ai-chat-panel {
+    display: flex;
+    flex-direction: column;
+    height: 420px;
+}
+
+/* 聊天消息区域 */
+.ai-chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 24px;
+    min-height: 0;
+}
+
+.ai-chat-messages::-webkit-scrollbar {
+    width: 4px;
+}
+
+.ai-chat-messages::-webkit-scrollbar-thumb {
+    background: #d9d9d9;
+    border-radius: 4px;
+}
+
+/* 空状态 */
+.ai-chat-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #bfbfbf;
+}
+
+.ai-chat-empty .empty-icon {
+    font-size: 48px;
+    color: #d9d9d9;
+    margin-bottom: 12px;
+}
+
+.ai-chat-empty p {
+    font-size: 14px;
+    color: #8c8c8c;
+    margin: 0 0 20px;
+}
+
+.empty-suggestions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    max-width: 320px;
+}
+
+.suggestion-chip {
+    padding: 8px 16px;
+    background: #f5f7fa;
+    border: 1px solid #e8e8e8;
+    border-radius: 8px;
+    font-size: 13px;
+    color: #595959;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+}
+
+.suggestion-chip:hover {
+    background: #e6f4ff;
+    border-color: #91caff;
+    color: #1677ff;
+}
+
+/* 输入区域 */
+.ai-chat-input-area {
+    border-top: 1px solid #f0f0f0;
+    padding: 12px 16px;
+    background: #fafafa;
+}
+
+.input-toolbar {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.model-select {
+    width: 140px;
+}
+
+.model-select .ant-select-selector {
+    border-radius: 6px !important;
+    font-size: 12px !important;
+}
+
+.input-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+}
+
+.chat-input {
+    flex: 1;
+    border-radius: 8px !important;
+    border-color: #e8e8e8 !important;
+    resize: none !important;
+    font-size: 14px !important;
+    padding: 8px 12px !important;
+}
+
+.chat-input:focus {
+    border-color: #1677ff !important;
+    box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1) !important;
+}
+
+.input-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+    padding-bottom: 2px;
+}
+
+.input-action-btn {
+    color: #8c8c8c !important;
+    width: 28px !important;
+    height: 28px !important;
+}
+
+.input-action-btn:hover {
+    color: #1677ff !important;
+    background: #f0f5ff !important;
+}
+
+.send-btn {
+    background: #722ed1 !important;
+    border-color: #722ed1 !important;
+    width: 32px !important;
+    height: 32px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin-left: 4px;
+}
+
+.send-btn:hover {
+    background: #531dab !important;
+    border-color: #531dab !important;
+}
+
+.send-btn:disabled {
+    background: #d9d9d9 !important;
+    border-color: #d9d9d9 !important;
+}
+
+/* 页脚 */
+.home-footer {
+    margin-top: 24px;
+    text-align: center;
+    font-size: 12px;
+    color: #bfbfbf;
+    position: relative;
+    z-index: 1;
+    padding-bottom: 8px;
+}
+
+.footer-link {
+    color: #8c8c8c;
+    text-decoration: none;
+    transition: color 0.2s;
+}
+
+.footer-link:hover {
+    color: #1677ff;
+}
+
+.footer-divider {
+    margin: 0 8px;
+    color: #d9d9d9;
+}
+
+.footer-text {
+    color: #bfbfbf;
+}
+
+/* ===== 响应式 ===== */
+@media (max-width: 768px) {
+    .home-greeting {
+        font-size: 22px;
+    }
+
+    .home-subtitle {
+        font-size: 13px;
+    }
+
+    .quick-actions {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .ai-chat-card {
+        max-width: 100%;
+    }
+
+    .ai-chat-panel {
+        height: 350px;
+    }
+}
