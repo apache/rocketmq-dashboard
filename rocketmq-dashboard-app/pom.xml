@@ -71,6 +71,7 @@
                         <phase>generate-resources</phase>
                         <configuration>
                             <target>
+                                <delete dir="${project.build.directory}/classes/public" />
                                 <copy todir="${project.build.directory}/classes/public">
                                     <fileset dir="${project.basedir}/../frontend-new/build" />
                                 </copy>
