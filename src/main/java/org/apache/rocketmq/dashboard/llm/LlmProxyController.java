@@ -17,7 +17,7 @@
 package org.apache.rocketmq.dashboard.llm;
 
 import jakarta.servlet.http.HttpServletRequest;
-import org.apache.rocketmq.dashboard.aspect.admin.annotation.OriginalControllerReturnValue;
+import jakarta.servlet.http.HttpServletResponse;import org.apache.rocketmq.dashboard.aspect.admin.annotation.OriginalControllerReturnValue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,12 +33,11 @@ import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.net.http.HttpClient;
+import java.io.OutputStream;import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
@@ -74,16 +73,22 @@ public class LlmProxyController {
     @RequestMapping(value = "/**", method = {RequestMethod.GET, RequestMethod.POST})
     @ResponseBody
     public ResponseEntity<byte[]> proxy(HttpServletRequest request,
+                                        HttpServletResponse  response,
                                         @RequestBody(required = false) byte[]  body) {
+        String requestPath = request.getRequestURI().substring(request.getContextPath().length());
+        if ("GET".equalsIgnoreCase(request.getMethod()) && requestPath.endsWith("/chat/stream")) {
+            handleSseStream(request, response);
+            return null;
+        }
         String targetUrl = buildTargetUrl(request);
         HttpMethod method = HttpMethod.valueOf(request.getMethod());
         HttpHeaders headers = copyHeaders(request);
         HttpEntity<byte[]> entity = new HttpEntity<>(body, headers);
         try {
-            ResponseEntity<byte[]> response = restTemplate.exchange(targetUrl, method, entity, byte[].class);
-            return ResponseEntity.status(response.getStatusCode())
-                    .headers(filterResponseHeaders(response.getHeaders()))
-                    .body(response.getBody());
+            ResponseEntity<byte[]> responseEntity = restTemplate.exchange(targetUrl, method, entity, byte[].class);
+            return ResponseEntity.status(responseEntity.getStatusCode())
+                    .headers(filterResponseHeaders(responseEntity.getHeaders()))
+                    .body(responseEntity.getBody());
         } catch (HttpStatusCodeException e) {
             return ResponseEntity.status(e.getStatusCode())
                     .headers(filterResponseHeaders(e.getResponseHeaders()))
@@ -97,58 +102,45 @@ public class LlmProxyController {
 
 
     /**
-     * LLM Proxy Stream
+     * LLM SSE Stream
      * @param request HttpServletRequest
-     * @return SseEmitter
+     * @param response HttpServletResponse
      */
-    @OriginalControllerReturnValue
-    @ResponseBody
-    @RequestMapping(value = "/chat/stream", method = RequestMethod.GET)
-    public SseEmitter proxyStream(HttpServletRequest request) {
+    private void handleSseStream(HttpServletRequest request, HttpServletResponse  response) {
         String targetUrl = buildTargetUrl(request);
-        SseEmitter emitter = new SseEmitter(0L);
+        response.setContentType(MediaType.TEXT_EVENT_STREAM_VALUE);
+        response.setCharacterEncoding("UTF-8");
+        response.setHeader("Cache-Control", "no-cache");
+        response.setHeader("Connection", "keep-alive");
         HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(java.net.URI.create(targetUrl))
                 .timeout(Duration.ofMinutes(10))
                 .header("Accept", "text/event-stream");
         conyHeadersToHttpClient(request, builder);
 
-        sseClent.sendAsync(builder.GET().build(), HttpResponse.BodyHandlers.ofInputStream())
-                .thenAccept(response -> {
-                    try (BufferedReader reader = new BufferedReader(
-                            new InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
-                        String line;
-                        StringBuilder eventData = new StringBuilder();
-                        String eventName = "message";
-                        while ((line = reader.readLine()) != null) {
-                            if (line.startsWith("event: ")) {
-                                eventName = line.substring(6).trim();
-                            } else if (line.startsWith("data: ")) {
-                                if (line.length() > 0) {
-                                    eventData.append("\n");
-                                }
-                                eventData.append(line.substring(5).trim());
-                            } else if (line.isEmpty()) {
-                                if (eventData.length() > 0) {
-                                    emitter.send(SseEmitter.event()
-                                            .name(eventName)
-                                            .data(eventData.toString()));
-                                    eventData.setLength(0);
-                                }
-                                eventName = "message";
-                            }
-                        }
-                        emitter.complete();
-                    } catch (IOException e) {
-                        logger.error("Error processing LLM SSE stream chunk: {}", e.getMessage(), e);
-                        emitter.completeWithError(e);
-                    }
-                }).exceptionally(e -> {
-                    logger.error("Error processing LLM SSE stream: {}", e.getMessage(), e);
-                    emitter.completeWithError(e);
-                    return null;
-                });
-        return emitter;
+        try {
+            HttpResponse<java.io.InputStream> httpResponse =
+                    sseClent.send(builder.GET().build(), HttpResponse.BodyHandlers.ofInputStream());
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(httpResponse.body(), StandardCharsets.UTF_8));
+                 OutputStream out = response.getOutputStream()) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    out.write((line + "\n").getBytes(StandardCharsets.UTF_8));
+                    out.flush();
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Error processing LLM SSE stream: {}", e.getMessage(), e);
+            try {
+                OutputStream out = response.getOutputStream();
+                out.write(("event: error\ndata: {\"message\":\"" + e.getMessage() + "\"}\n\n")
+                        .getBytes(StandardCharsets.UTF_8));
+                out.flush();
+            } catch (IOException ex) {
+
+            }
+        }
     }
 
     private String buildTargetUrl(HttpServletRequest request) {

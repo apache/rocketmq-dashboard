@@ -478,6 +478,9 @@ public class McpBridgeController {
                 LlmConfig existing = LlmConfig.LlmConfigManager.load();
                 config.setApiKey(existing.getApiKey());
             }
+            if (config.getApiKey() != null && !config.getApiKey().isEmpty()) {
+                config.setEnabled(true);
+            }
             LlmConfig.LlmConfigManager.save(config);
             result.put("status", 0);
             result.put("msg", "saved");
@@ -509,6 +512,7 @@ public class McpBridgeController {
             return result;
         }
 
+        config.setEnabled(true);
         try {
             // Try a simple chat completion with minimal prompt
             List<ToolDefinition> emptyTools = new ArrayList<>();
