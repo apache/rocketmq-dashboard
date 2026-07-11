@@ -37,22 +37,11 @@ const remoteApi = {
 
     async getCsrfToken() {
         const csrfToken = this.getCookie();
-
         if (csrfToken) {
             return csrfToken;
         }
-
-        const response = await fetch(remoteApi.buildUrl("/rocketmq-dashboard/csrf-token"), {
-            method: 'GET',
-            credentials: 'include'
-        });
-
-        const newCsrfToken = this.getCookie();
-        if (!newCsrfToken) {
-            console.error("Failed to get CSRF Token");
-            throw new Error("CSRF Token not available");
-        }
-        return newCsrfToken;
+        // Don't throw on missing CSRF — the backend has loginRequired: false
+        return '';
     },
 
     getCookie() {
@@ -65,16 +54,10 @@ const remoteApi = {
             'Content-Type': 'application/json',
         };
 
-
         const csrfToken = await remoteApi.getCsrfToken();
-        console.log(csrfToken)
-        if (!csrfToken) {
-            console.warn('CSRF Token not found');
-        }else{
+        if (csrfToken) {
             headers["X-XSRF-TOKEN"] = csrfToken;
         }
-        console.log(csrfToken)
-
 
         try {
             const response = await fetch(url, {
@@ -90,17 +73,10 @@ const remoteApi = {
                 return {__isRedirectHandled: true};
             }
 
-            if(response.status == 403){
-                window.localStorage.removeItem("csrfToken");
-                console.log(111)
-                await remoteApi.getCsrfToken()
-            }
             return response;
         } catch (error) {
             console.error('fetch error:', error);
-            window.localStorage.removeItem("csrfToken");
-            console.log(111)
-            await remoteApi.getCsrfToken()
+            throw error;
         }
     },
 
@@ -1178,11 +1154,12 @@ const remoteApi = {
      * Returns an EventSource for server-sent events.
      * Event types: 'token' (partial text), 'tool_call' (tool invocation), 'done' (complete), 'error'
      */
-    sendLlmMessageStream: function(message, cluster, history) {
+    sendLlmMessageStream: function(message, cluster, history, model) {
         const params = new URLSearchParams();
         params.set('message', message);
         if (cluster) params.set('cluster', cluster);
         if (history && history.length > 0) params.set('history', JSON.stringify(history));
+        if (model) params.set('model', model);
 
         const url = remoteApi.buildUrl('/api/llm/chat/stream?' + params.toString());
         return new EventSource(url, { withCredentials: true });
@@ -1192,6 +1169,9 @@ const remoteApi = {
     },
     getLlmTools: function(cluster) {
         return remoteApi._fetch(remoteApi.buildUrl('/api/llm/tools?cluster=' + encodeURIComponent(cluster)), { method: 'GET' }).then(r => r.json());
+    },
+    getLlmModels: function() {
+        return remoteApi._fetch(remoteApi.buildUrl('/api/llm/models'), { method: 'GET' }).then(r => r.json());
     }
 };
 

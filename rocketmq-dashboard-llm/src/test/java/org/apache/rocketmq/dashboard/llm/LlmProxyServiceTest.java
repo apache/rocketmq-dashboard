@@ -47,6 +47,20 @@ public class LlmProxyServiceTest {
         service = new LlmProxyService();
     }
 
+    /** Build a simple messages list with a single user message (for testing). */
+    private List<Map<String, Object>> simpleMessages(String userText) {
+        List<Map<String, Object>> messages = new ArrayList<>();
+        Map<String, Object> sys = new LinkedHashMap<>();
+        sys.put("role", "system");
+        sys.put("content", "You are a RocketMQ operations assistant.");
+        messages.add(sys);
+        Map<String, Object> usr = new LinkedHashMap<>();
+        usr.put("role", "user");
+        usr.put("content", userText);
+        messages.add(usr);
+        return messages;
+    }
+
     // ---- Chat when not configured tests ----------------------------------------
 
     @Test
@@ -90,7 +104,7 @@ public class LlmProxyServiceTest {
         config.setEnabled(false);
 
         AtomicReference<String> received = new AtomicReference<>();
-        service.chatStream("Hello", Collections.emptyList(), config,
+        service.chatStream(simpleMessages("Hello"), Collections.emptyList(), config,
                 chunk -> received.set(chunk));
 
         assertNotNull("Should have received error chunk", received.get());
@@ -400,7 +414,8 @@ public class LlmProxyServiceTest {
         config.setEnabled(false);
 
         List<String> chunks = new ArrayList<>();
-        service.chatStream("test", Collections.emptyList(), config, chunk -> chunks.add(chunk));
+        service.chatStream(simpleMessages("test"), Collections.emptyList(), config,
+                chunk -> chunks.add(chunk));
 
         assertFalse("Should have received at least one error chunk", chunks.isEmpty());
         assertTrue("Error chunk should mention not configured",
@@ -414,7 +429,8 @@ public class LlmProxyServiceTest {
         config.setApiKey(null);
 
         List<String> chunks = new ArrayList<>();
-        service.chatStream("test", Collections.emptyList(), config, chunk -> chunks.add(chunk));
+        service.chatStream(simpleMessages("test"), Collections.emptyList(), config,
+                chunk -> chunks.add(chunk));
 
         assertFalse("Should have received at least one chunk", chunks.isEmpty());
         assertTrue("Should contain error", chunks.get(0).contains("error"));

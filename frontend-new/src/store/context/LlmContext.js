@@ -151,12 +151,20 @@ export function LlmProvider({ children }) {
     }, []);
 
     // Non-streaming send (fallback)
-    const sendMessage = useCallback(async (text, cluster) => {
-        const userMsg = { role: 'user', content: text, id: Date.now() };
-        setMessages(prev => [...prev, userMsg]);
+    const sendMessage = useCallback(async (text, cluster, skipUserMsg) => {
+        if (!skipUserMsg) {
+            const userMsg = { role: 'user', content: text, id: Date.now() };
+            setMessages(prev => [...prev, userMsg]);
+        }
         setIsLoading(true);
         try {
-            const history = messages.map(m => ({ role: m.role, content: m.content }));
+            const history = messages.map(m => {
+                const h = { role: m.role, content: m.content };
+                if (m.role === 'assistant' && m.toolCalls) {
+                    h.toolCalls = m.toolCalls;
+                }
+                return h;
+            });
             const result = await remoteApi.sendLlmMessage(text, cluster, history);
             const assistantMsg = {
                 role: 'assistant',
@@ -182,12 +190,13 @@ export function LlmProvider({ children }) {
     }, [messages]);
 
     // SSE streaming send
-    const sendMessageStream = useCallback((text, cluster) => {
+    const sendMessageStream = useCallback((text, cluster, modelOverride) => {
         // Close any existing stream
         if (eventSourceRef.current) {
             eventSourceRef.current.close();
         }
 
+        console.log('[LLM] sendMessageStream called:', text);
         const userMsg = { role: 'user', content: text, id: Date.now() };
         setMessages(prev => [...prev, userMsg]);
         setIsLoading(true);
@@ -197,10 +206,53 @@ export function LlmProvider({ children }) {
         let accumulatedText = '';
         let toolCalls = [];
         let viewHint = null;
+        let isCompleted = false;
+        let hasFallbacked = false;
 
-        const history = messages.map(m => ({ role: m.role, content: m.content }));
-        const es = remoteApi.sendLlmMessageStream(text, cluster, history);
+        // Dedup helper: prevents any handler from adding the same message twice
+        const saveAssistantMessage = (msg) => {
+            setMessages(prev => {
+                if (prev.some(m => m.id === assistantMsgId)) return prev;
+                return [...prev, { ...msg, id: assistantMsgId }];
+            });
+        };
+
+        // Include toolCalls in history for multi-turn context
+        const history = messages.map(m => {
+            const h = { role: m.role, content: m.content };
+            if (m.role === 'assistant' && m.toolCalls) {
+                h.toolCalls = m.toolCalls;
+            }
+            return h;
+        });
+        const es = remoteApi.sendLlmMessageStream(text, cluster, history, modelOverride);
         eventSourceRef.current = es;
+
+        // Safety timeout: reset loading after 90s if stream hangs
+        const safetyTimer = setTimeout(() => {
+            if (isCompleted || hasFallbacked) return;
+            console.log('[LLM] Safety timeout — forcing reset');
+            isCompleted = true;
+            hasFallbacked = true;
+            es.close();
+            eventSourceRef.current = null;
+            setStreamingText('');
+            setIsLoading(false);
+            if (accumulatedText || toolCalls.length > 0) {
+                saveAssistantMessage({
+                    role: 'assistant',
+                    content: accumulatedText + '\n\n⚠️ 响应超时，数据可能不完整',
+                    toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+                    viewHint: viewHint
+                });
+            } else {
+                setMessages(prev => [...prev, {
+                    role: 'error',
+                    content: '请求超时，请重试',
+                    id: assistantMsgId
+                }]);
+            }
+        }, 90000);
 
         es.addEventListener('token', (event) => {
             try {
@@ -217,7 +269,12 @@ export function LlmProvider({ children }) {
         es.addEventListener('tool_call', (event) => {
             try {
                 const data = JSON.parse(event.data);
-                toolCalls.push(data);
+                // Backend sends an array of tool calls
+                if (Array.isArray(data)) {
+                    toolCalls.push(...data);
+                } else {
+                    toolCalls.push(data);
+                }
             } catch {
                 // ignore parse errors
             }
@@ -233,39 +290,48 @@ export function LlmProvider({ children }) {
         });
 
         es.addEventListener('done', () => {
+            clearTimeout(safetyTimer);
+            console.log('[LLM] SSE done event received, content:', accumulatedText?.length, 'toolCalls:', toolCalls.length);
+            // If onerror already saved a partial message, do NOT duplicate
+            if (hasFallbacked) {
+                console.log('[LLM] SSE done skipped — onerror already handled');
+                eventSourceRef.current = null;
+                return;
+            }
+            // Mark completed BEFORE any processing to prevent error/onerror race
+            isCompleted = true;
+            eventSourceRef.current = null;
+            setIsLoading(false);
+            setStreamingText('');
+            // Close the EventSource after done to prevent auto-reconnect
+            try { es.close(); } catch (e) { /* ignore */ }
             // Finalize the assistant message
-            const assistantMsg = {
+            saveAssistantMessage({
                 role: 'assistant',
                 content: accumulatedText,
                 toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-                viewHint: viewHint,
-                id: assistantMsgId
-            };
-            setMessages(prev => [...prev, assistantMsg]);
-            setStreamingText('');
-            setIsLoading(false);
-            eventSourceRef.current = null;
+                viewHint: viewHint
+            });
         });
 
         es.addEventListener('error', (event) => {
+            clearTimeout(safetyTimer);
+            // Skip if stream already completed normally
+            if (isCompleted || hasFallbacked) return;
+
             // If we have accumulated text, save it as a partial message
-            if (accumulatedText) {
-                const partialMsg = {
+            if (accumulatedText || toolCalls.length > 0) {
+                saveAssistantMessage({
                     role: 'assistant',
                     content: accumulatedText,
                     toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-                    viewHint: viewHint,
-                    id: assistantMsgId
-                };
-                setMessages(prev => [...prev, partialMsg]);
+                    viewHint: viewHint
+                });
             } else {
-                // No text received — add error message
-                const errorMsg = {
+                saveAssistantMessage({
                     role: 'error',
-                    content: event.data || 'Connection lost, please try again later',
-                    id: assistantMsgId
-                };
-                setMessages(prev => [...prev, errorMsg]);
+                    content: event.data || 'Connection lost, please try again later'
+                });
             }
             setStreamingText('');
             setIsLoading(false);
@@ -273,14 +339,35 @@ export function LlmProvider({ children }) {
         });
 
         es.onerror = () => {
-            // SSE connection failed — fallback to non-streaming
+            clearTimeout(safetyTimer);
+            console.log('[LLM] SSE onerror fired, isCompleted:', isCompleted, 'hasFallbacked:', hasFallbacked);
+            // Always close to stop EventSource auto-reconnect
             es.close();
             eventSourceRef.current = null;
+
+            // Skip if stream completed normally or already handled
+            if (isCompleted || hasFallbacked) return;
+            hasFallbacked = true;
+
+            // If we have streaming data or tool calls, save it as a completed message
+            if (accumulatedText || toolCalls.length > 0) {
+                console.log('[LLM] SSE onerror -> saving partial message');
+                setStreamingText('');
+                setIsLoading(false);
+                saveAssistantMessage({
+                    role: 'assistant',
+                    content: accumulatedText,
+                    toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+                    viewHint: viewHint
+                });
+                return;
+            }
+
+            // Only fallback if we got absolutely nothing — the stream truly failed
+            console.log('[LLM] SSE onerror -> triggering fallback sendMessage');
             setStreamingText('');
             setIsLoading(false);
-
-            // Fallback to regular send
-            sendMessage(text, cluster);
+            sendMessage(text, cluster, true);
         };
     }, [messages, sendMessage]);
 

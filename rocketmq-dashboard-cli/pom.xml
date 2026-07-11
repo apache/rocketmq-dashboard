@@ -36,6 +36,7 @@
             <groupId>org.apache.rocketmq</groupId>
             <artifactId>rocketmq-dashboard-app</artifactId>
             <version>${project.version}</version>
+            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>info.picocli</groupId>
@@ -109,7 +110,27 @@
                                         <exclude>META-INF/*.RSA</exclude>
                                     </excludes>
                                 </filter>
+                                <filter>
+                                    <artifact>org.springframework.boot:spring-boot</artifact>
+                                    <excludes>
+                                        <exclude>org/springframework/**</exclude>
+                                    </excludes>
+                                </filter>
+                                <filter>
+                                    <artifact>org.springframework.boot:spring-boot-autoconfigure</artifact>
+                                    <excludes>
+                                        <exclude>org/springframework/**</exclude>
+                                    </excludes>
+                                </filter>
+                                <filter>
+                                    <artifact>org.springframework.boot:spring-boot-actuator-autoconfigure</artifact>
+                                    <excludes>
+                                        <exclude>org/springframework/**</exclude>
+                                    </excludes>
+                                </filter>
                             </filters>
+                            <shadedArtifactAttached>true</shadedArtifactAttached>
+                            <shadedClassifierName>standalone</shadedClassifierName>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <mainClass>org.apache.rocketmq.dashboard.cli.RmqctlCommand</mainClass>

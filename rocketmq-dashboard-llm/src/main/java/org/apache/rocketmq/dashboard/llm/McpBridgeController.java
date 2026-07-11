@@ -62,6 +62,9 @@ public class McpBridgeController {
     @Autowired
     private LlmProxyService llmProxyService;
 
+    @Autowired
+    private DashboardApiClient dashboardApiClient;
+
     // -----------------------------------------------------------------------
     // Tools
     // -----------------------------------------------------------------------
@@ -190,23 +193,57 @@ public class McpBridgeController {
         SseEmitter emitter = new SseEmitter(0L);
         LlmConfig config = LlmConfig.LlmConfigManager.load();
         if (!LlmConfig.LlmConfigManager.isConfigured()) {
-            emitter.completeWithError(new IllegalStateException(
-                    "LLM is not configured. Go to Settings to configure an LLM provider."
-            ));
+            try {
+                Map<String, Object> errorData = new LinkedHashMap<>();
+                errorData.put("message", "LLM is not configured. Go to Settings to configure an LLM provider.");
+                emitter.send(SseEmitter.event().name("error")
+                        .data(objectMapper.writeValueAsString(errorData)));
+                emitter.complete();
+            } catch (Exception ex) {
+                log.warn("Could not send unconfigured error via SSE: {}", ex.getMessage());
+            }
             return emitter;
         }
         ClusterCapability capability = ClusterCapability.all();
         List<ToolDefinition> allTools = ToolRegistry.getInstance().getAllTools();
         List<ToolDefinition> filterTools = ToolFilter.filterForUser(allTools, "ADMIN", capability);
-        String fullPropt = buildPromptWithHistory(message, parseHistory(history));
+
+        // Build structured messages array from history (preserving tool calls for multi-turn context)
+        List<Map<String, Object>> historyList = parseHistory(history);
+        List<Map<String, Object>> messages = buildMessagesWithTools(message, historyList);
         List<Map<String, Object>> streamToolCalls = Lists.newArrayList();
         StringBuilder accumulatedContent = new StringBuilder();
-        llmProxyService.chatStream(fullPropt, filterTools, config, chunk -> {
+        llmProxyService.chatStream(messages, filterTools, config, chunk -> {
             try {
                 if (chunk == null || chunk.trim().isEmpty() || "[DONE]".equals( chunk.trim())) {
                     emitter.send(SseEmitter.event().name("done").data("{}"));
                     emitter.complete();
                     return;
+                }
+
+                // Detect LLM API errors (e.g. 401 auth failure) and send as SSE error event
+                try {
+                    Map<String, Object> checkObj = objectMapper.readValue(chunk, Map.class);
+                    if (checkObj.containsKey("error")) {
+                        log.warn("LLM API error in chunk: {}", checkObj.get("error"));
+                        Object errDetail = checkObj.get("error");
+                        String errMsg;
+                        if (errDetail instanceof Map) {
+                            Object msg = ((Map<?, ?>) errDetail).get("message");
+                            errMsg = msg != null ? msg.toString() : errDetail.toString();
+                        } else {
+                            errMsg = String.valueOf(errDetail);
+                        }
+                        Map<String, Object> errorBody = new LinkedHashMap<>();
+                        errorBody.put("message", "LLM API error: " + errMsg);
+                        emitter.send(SseEmitter.event().name("error")
+                                .data(objectMapper.writeValueAsString(errorBody)));
+                        emitter.send(SseEmitter.event().name("done").data("{}"));
+                        emitter.complete();
+                        return;
+                    }
+                } catch (Exception parseEx) {
+                    // Not JSON, fall through to normal processing
                 }
                 Map<String, Object> parsed  = objectMapper.readValue(chunk, Map.class);
                 List<Map<String, Object>> choices = (List<Map<String, Object>>) parsed.get("choices");
@@ -271,22 +308,52 @@ public class McpBridgeController {
                                 String llmFunctionName = (String) function.get("name");
                                 String originalName = llmProxyService.resolveFunctionName(llmFunctionName);
                                 parsedCall.put("name", originalName);
-                                String args = (String) function.get("arguments");
-                                if (args != null) {
+                                String argsStr = (String) function.get("arguments");
+                                Map<String, Object> args = new LinkedHashMap<>();
+                                if (argsStr != null && !argsStr.isEmpty()) {
                                     try {
-                                        parsedCall.put("arguments", objectMapper.readValue(args, Map.class));
+                                        args = objectMapper.readValue(argsStr, Map.class);
                                     } catch (Exception e) {
-                                        parsedCall.put("arguments", args);
+                                        args.put("raw", argsStr);
                                     }
+                                }
+                                parsedCall.put("arguments", args);
+
+                                // Execute the tool call through processToolCall
+                                // (same logic as the non-streaming chat() endpoint)
+                                try {
+                                    Map<String, Object> executed = processToolCall(
+                                            parsedCall,
+                                            cluster != null ? cluster : "default",
+                                            "console-user");
+                                    parsedCall.put("status", executed.getOrDefault("status", "pending"));
+                                    parsedCall.put("riskLevel", executed.get("riskLevel"));
+                                    parsedCall.put("riskLabel", executed.get("riskLabel"));
+                                    if (executed.get("result") != null) {
+                                        parsedCall.put("result", executed.get("result"));
+                                    }
+                                    if (executed.get("autoExecute") != null) {
+                                        parsedCall.put("autoExecute", executed.get("autoExecute"));
+                                    }
+                                    if (executed.get("requiresConfirmation") != null) {
+                                        parsedCall.put("requiresConfirmation", executed.get("requiresConfirmation"));
+                                    }
+                                    if (executed.get("message") != null) {
+                                        parsedCall.put("message", executed.get("message"));
+                                    }
+                                } catch (Exception execEx) {
+                                    log.error("Tool execution failed for {}: {}", originalName, execEx.getMessage());
+                                    parsedCall.put("status", "failed");
+                                    parsedCall.put("result", "Execution error: " + execEx.getMessage());
                                 }
                             }
                             finalCalls.add(parsedCall);
                         }
-                        emitter.send(SseEmitter.event().name("tool_calls")
+                        emitter.send(SseEmitter.event().name("tool_call")
                                 .data(objectMapper.writeValueAsString(finalCalls)));
                         Map<String, Object> hint = new LinkedHashMap<>();
                         hint.put("viewHint", finalCalls.isEmpty() ? "text" : "dry-run");
-                        emitter.send(SseEmitter.event().name("viewHint")
+                        emitter.send(SseEmitter.event().name("view_hint")
                                 .data(objectMapper.writeValueAsString(hint)));
                     }
                     emitter.send(SseEmitter.event().name("done").data("{}"));
@@ -295,11 +362,17 @@ public class McpBridgeController {
             } catch (Exception e) {
                 log.error("Error processing LLM stream chunk: {}", e.getMessage(), e);
                 try {
+                    Map<String, Object> errorBody = new LinkedHashMap<>();
+                    errorBody.put("message", e.getMessage());
                     emitter.send(SseEmitter.event().name("error")
-                            .data("{\"message\":") + escapeJson(e.getMessage()) + "\"}");
+                            .data(objectMapper.writeValueAsString(errorBody)));
                     emitter.complete();
                 } catch (Exception ex) {
-                    emitter.completeWithError(ex);
+                    log.error("Failed to send error SSE event: {}", ex.getMessage());
+                    // Avoid completeWithError which can cause "setHeaders after sent"
+                    if (emitter != null) {
+                        try { emitter.complete(); } catch (Exception ignored) { }
+                    }
                 }
             }
         });
@@ -388,6 +461,92 @@ public class McpBridgeController {
         }
     }
 
+    /**
+     * Build a structured messages array for the LLM API from conversation history.
+     * Preserves tool call information so the LLM has multi-turn context.
+     */
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> buildMessagesWithTools(String currentMessage,
+                                                              List<Map<String, Object>> history) {
+        List<Map<String, Object>> messages = new ArrayList<>();
+
+        // System message
+        Map<String, Object> sys = new LinkedHashMap<>();
+        sys.put("role", "system");
+        sys.put("content", "You are a RocketMQ operations assistant. "
+                + "Use the provided tools to help the user manage their RocketMQ cluster. "
+                + "Always confirm cluster context before operations. "
+                + "For write operations, show what will happen before executing.");
+        messages.add(sys);
+
+        // Add history messages with tool call context
+        for (Map<String, Object> entry : history) {
+            String role = (String) entry.get("role");
+            if (role == null) continue;
+
+            Map<String, Object> msg = new LinkedHashMap<>();
+            msg.put("role", role);
+
+            // For assistant messages, include tool_calls if present
+            if ("assistant".equals(role)) {
+                Object content = entry.get("content");
+                msg.put("content", content != null ? content.toString() : "");
+
+                List<Map<String, Object>> toolCalls =
+                        (List<Map<String, Object>>) entry.get("toolCalls");
+                if (toolCalls != null && !toolCalls.isEmpty()) {
+                    List<Map<String, Object>> tcList = new ArrayList<>();
+                    for (Map<String, Object> tc : toolCalls) {
+                        Map<String, Object> tcCopy = new LinkedHashMap<>();
+                        tcCopy.put("id", tc.getOrDefault("id", "call_" + System.currentTimeMillis()));
+                        tcCopy.put("type", "function");
+                        Map<String, Object> func = new LinkedHashMap<>();
+                        func.put("name", ((String) tc.get("name")).replace('.', '_'));
+                        String argsStr = "{}";
+                        Object args = tc.get("arguments");
+                        if (args instanceof Map) {
+                            try {
+                                argsStr = objectMapper.writeValueAsString(args);
+                            } catch (Exception e) {
+                                argsStr = args.toString();
+                            }
+                        } else if (args instanceof String) {
+                            argsStr = (String) args;
+                        }
+                        func.put("arguments", argsStr);
+                        tcCopy.put("function", func);
+
+                        // DON'T include full result (can be huge — brokerServer has 60+ fields)
+                        // Instead provide a brief status summary for the LLM
+                        Object status = tc.get("status");
+                        if (status != null) {
+                            tcCopy.put("_status", status);  // metadata, not API field
+                        }
+                        tcList.add(tcCopy);
+                    }
+                    msg.put("tool_calls", tcList);
+                }
+            } else if ("user".equals(role)) {
+                msg.put("content", entry.get("content") != null
+                        ? entry.get("content").toString() : "");
+            } else {
+                // Other roles (tool, system, etc.)
+                msg.put("content", entry.get("content") != null
+                        ? entry.get("content").toString() : "");
+            }
+
+            messages.add(msg);
+        }
+
+        // Current user message
+        Map<String, Object> current = new LinkedHashMap<>();
+        current.put("role", "user");
+        current.put("content", currentMessage);
+        messages.add(current);
+
+        return messages;
+    }
+
     private String escapeJson(String s) {
         if (s == null) {
             return "";
@@ -402,6 +561,31 @@ public class McpBridgeController {
     // -----------------------------------------------------------------------
     // Config
     // -----------------------------------------------------------------------
+
+    /**
+     * GET /api/llm/models
+     * Fetches the available model list from the configured LLM provider in real time.
+     */
+    @GetMapping("/models")
+    public Map<String, Object> getModels() {
+        Map<String, Object> result = new LinkedHashMap<>();
+        LlmConfig config = LlmConfig.LlmConfigManager.load();
+        if (!LlmConfig.LlmConfigManager.isConfigured()) {
+            result.put("status", -1);
+            result.put("errMsg", "LLM is not configured");
+            return result;
+        }
+        try {
+            List<Map<String, Object>> models = llmProxyService.listModels(config);
+            result.put("status", 0);
+            result.put("data", models);
+        } catch (Exception e) {
+            log.error("Failed to list models: {}", e.getMessage(), e);
+            result.put("status", -1);
+            result.put("errMsg", "Failed to fetch models: " + e.getMessage());
+        }
+        return result;
+    }
 
     /**
      * GET /api/llm/config
@@ -652,8 +836,8 @@ public class McpBridgeController {
 
         switch (checkResult.getAction()) {
             case ALLOW:
-                // L1: execute immediately
-                enriched.put("status", "allowed");
+                // L1: execute immediately — status "completed" so frontend displays results
+                enriched.put("status", "completed");
                 enriched.put("riskLevel", tool.getRiskLevel().name());
                 enriched.put("riskLabel", tool.getRiskLevel().getLabel());
                 enriched.put("autoExecute", true);
@@ -703,43 +887,83 @@ public class McpBridgeController {
     }
 
     /**
-     * Execute a tool call and return the result.
-     * In production, this would connect to a live RocketMQ cluster.
+     * Execute a tool call by forwarding to the main Dashboard REST API.
+     * Maps each tool name to its corresponding HTTP endpoint.
      */
     private Map<String, Object> executeTool(String toolName, Map<String, Object> arguments,
                                              String cluster, String username) {
+        // Ensure cluster param is set
+        if (arguments != null && !arguments.containsKey("cluster")) {
+            arguments.put("cluster", cluster != null ? cluster : "default");
+        }
+
+        Map<String, Object> rawResult;
+        switch (toolName) {
+            case "rmq.cluster.list":
+                rawResult = dashboardApiClient.clusterList(arguments);
+                break;
+            case "rmq.cluster.describe":
+                rawResult = dashboardApiClient.clusterDescribe(arguments);
+                break;
+            case "rmq.topic.list":
+                rawResult = dashboardApiClient.topicList(arguments);
+                break;
+            case "rmq.topic.describe":
+                rawResult = dashboardApiClient.topicDescribe(arguments);
+                break;
+            case "rmq.group.list":
+                rawResult = dashboardApiClient.groupList(arguments);
+                break;
+            case "rmq.group.describe":
+                rawResult = dashboardApiClient.groupDescribe(arguments);
+                break;
+            case "rmq.broker.list":
+                rawResult = dashboardApiClient.brokerList(arguments);
+                break;
+            case "rmq.broker.describe":
+                rawResult = dashboardApiClient.brokerDescribe(arguments);
+                break;
+            case "rmq.message.query-by-id":
+                rawResult = dashboardApiClient.messageQueryById(arguments);
+                break;
+            case "rmq.message.query-by-time":
+                rawResult = dashboardApiClient.messageQueryByTime(arguments);
+                break;
+            case "rmq.namespace.list":
+                rawResult = dashboardApiClient.namespaceList(arguments);
+                break;
+            case "rmq.client.list":
+                rawResult = dashboardApiClient.clientList(arguments);
+                break;
+            case "rmq.acl.list":
+                rawResult = dashboardApiClient.aclList(arguments);
+                break;
+            default:
+                rawResult = new LinkedHashMap<>();
+                rawResult.put("status", -1);
+                rawResult.put("errMsg", "Tool not yet connected to live API: " + toolName);
+                break;
+        }
+
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("tool", toolName);
         result.put("cluster", cluster);
-        result.put("status", "success");
-
         if (arguments != null) {
             result.put("arguments", arguments);
         }
 
-        // Look up tool for return type
-        ToolDefinition tool = ToolRegistry.getInstance().getTool(toolName);
-        if (tool == null) {
-            String nameWithHyphens = toolName.replace("_", "-");
-            tool = ToolRegistry.getInstance().getTool(nameWithHyphens);
-        }
-
-        if (tool != null) {
-            switch (tool.getReturnType()) {
-                case "LIST":
-                    result.put("data", generateMockList(tool));
-                    break;
-                case "OBJECT":
-                    result.put("data", generateMockObject(tool, arguments));
-                    break;
-                case "VOID":
-                    result.put("data", "OK");
-                    break;
-                default:
-                    result.put("data", generateMockObject(tool, arguments));
-            }
+        if (rawResult.get("status") != null && (Integer) rawResult.get("status") == -1) {
+            result.put("status", "error");
+            result.put("error", rawResult.getOrDefault("errMsg", "Unknown error"));
         } else {
-            result.put("data", "OK");
+            result.put("status", "success");
+            // If rawResult already has a "data" field, use it directly
+            // Otherwise wrap the entire rawResult as data
+            if (rawResult.containsKey("data")) {
+                result.put("data", rawResult.get("data"));
+            } else {
+                result.put("data", rawResult);
+            }
         }
 
         return result;
@@ -795,76 +1019,6 @@ public class McpBridgeController {
             resources.add(resourceType + ":<unspecified>");
         }
         return resources;
-    }
-
-    private List<Map<String, Object>> generateMockList(ToolDefinition tool) {
-        List<Map<String, Object>> list = new ArrayList<>();
-        for (int i = 1; i <= 3; i++) {
-            Map<String, Object> item = new LinkedHashMap<>();
-            switch (tool.getResource()) {
-                case "topic":
-                    item.put("name", "Topic-" + i);
-                    item.put("status", "ACTIVE");
-                    item.put("queueNums", 8);
-                    item.put("perm", 6);
-                    break;
-                case "group":
-                    item.put("name", "Group-" + i);
-                    item.put("status", "ACTIVE");
-                    item.put("consumeMode", "CLUSTER");
-                    break;
-                case "cluster":
-                    item.put("name", "Cluster-" + i);
-                    item.put("status", "HEALTHY");
-                    break;
-                case "namespace":
-                    item.put("name", "ns-" + i);
-                    item.put("status", "ACTIVE");
-                    break;
-                case "acl":
-                    item.put("policyId", "policy-" + i);
-                    item.put("username", "user-" + i);
-                    item.put("decision", "ALLOW");
-                    break;
-                case "broker":
-                    item.put("name", "broker-" + i);
-                    item.put("status", "RUNNING");
-                    item.put("version", "5.5.0");
-                    break;
-                case "client":
-                    item.put("clientId", "client-" + i);
-                    item.put("type", "CONSUMER");
-                    item.put("version", "5.5.0");
-                    break;
-                case "message":
-                    item.put("msgId", "7F00000100002A9F" + i);
-                    item.put("topic", "Topic-" + i);
-                    break;
-                case "capabilities":
-                    item.put("feature", "capability-" + i);
-                    item.put("supported", true);
-                    break;
-                default:
-                    item.put("id", "item-" + i);
-                    item.put("name", tool.getResource() + "-" + i);
-            }
-            list.add(item);
-        }
-        return list;
-    }
-
-    private Map<String, Object> generateMockObject(ToolDefinition tool,
-                                                    Map<String, Object> arguments) {
-        Map<String, Object> obj = new LinkedHashMap<>();
-        obj.put("name", arguments != null && arguments.containsKey("topic")
-                ? arguments.get("topic")
-                : tool.getResource() + "-detail");
-        obj.put("status", "ACTIVE");
-        obj.put("type", tool.getResource());
-        if (arguments != null) {
-            obj.put("requestedParams", arguments);
-        }
-        return obj;
     }
 
     // -----------------------------------------------------------------------

@@ -207,6 +207,14 @@
     font-size: 12px !important;
 }
 
+.model-loading {
+    font-size: 12px;
+    color: #8c8c8c;
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+}
+
 .input-row {
     display: flex;
     align-items: flex-end;

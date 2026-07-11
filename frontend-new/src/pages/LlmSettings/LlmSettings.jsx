@@ -28,9 +28,7 @@ import {
     Space,
     Typography,
     Divider,
-    Tooltip,
     Alert,
-    InputNumber,
     Row,
     Col,
 } from 'antd';
@@ -45,13 +43,22 @@ import {
     GlobalOutlined,
     KeyOutlined,
     SafetyCertificateOutlined,
-    LoadingOutlined,
 } from '@ant-design/icons';
 import { remoteApi } from '../../api/remoteApi/remoteApi';
 import './AiConfigPage.css';
 
-const { Title, Text, Paragraph } = Typography;
+const { Title, Text } = Typography;
 const { Option } = Select;
+
+// 各 LLM 提供商的默认可用模型列表（API 获取失败时的回退）
+const FALLBACK_MODELS = {
+    openai: ['gpt-4o', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'],
+    azure: ['gpt-4o', 'gpt-4', 'gpt-3.5-turbo'],
+    deepseek: ['deepseek-chat', 'deepseek-reasoner'],
+    tongyi: ['qwen-max', 'qwen-plus', 'qwen-turbo'],
+    ollama: ['llama3', 'mistral', 'gemma2', 'qwen2.5'],
+    bedrock: ['anthropic.claude-3-sonnet', 'anthropic.claude-3-haiku', 'meta.llama3-70b'],
+};
 
 /**
  * 提供商配置定义
@@ -146,10 +153,55 @@ function LlmSettings() {
     const [selectedProvider, setSelectedProvider] = useState('openai');
     const [apiKeyMasked, setApiKeyMasked] = useState(true);
     const [savedApiKey, setSavedApiKey] = useState('');
+    const [modelOptions, setModelOptions] = useState([]);
+    const [modelsLoading, setModelsLoading] = useState(false);
 
     useEffect(() => {
         fetchConfig();
         // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // 动态拉取模型列表
+    useEffect(() => {
+        let cancelled = false;
+        const fetchModels = async () => {
+            setModelsLoading(true);
+            try {
+                // 1. 检查 AI 是否已配置
+                const config = await remoteApi.getLlmConfig();
+                if (!config || !config.enabled) {
+                    if (!cancelled) setModelOptions([]);
+                    return;
+                }
+
+                // 2. 从 LLM 提供商 API 动态拉取模型列表
+                let models = [];
+                try {
+                    const modelsResult = await remoteApi.getLlmModels();
+                    if (modelsResult && modelsResult.status === 0 && modelsResult.data) {
+                        models = modelsResult.data.map(m => m.id || m.name).filter(Boolean);
+                    }
+                } catch {
+                    // API 获取失败，使用静态回退
+                }
+
+                // 3. 如果 API 返回空或失败，使用静态默认列表作为回退
+                if (models.length === 0) {
+                    const provider = config.provider || 'openai';
+                    models = FALLBACK_MODELS[provider] || [config.model || ''].filter(Boolean);
+                }
+
+                if (!cancelled) {
+                    setModelOptions(models.map(m => ({ value: m, label: m })));
+                }
+            } catch {
+                if (!cancelled) setModelOptions([]);
+            } finally {
+                if (!cancelled) setModelsLoading(false);
+            }
+        };
+        fetchModels();
+        return () => { cancelled = true; };
     }, []);
 
     const fetchConfig = async () => {
@@ -235,13 +287,24 @@ function LlmSettings() {
             // 构建测试配置，如果API Key是掩码则使用已保存的值
             const testConfig = {
                 ...values,
-                apiKey: apiKeyMasked ? savedApiKey : values.apiKey,
+                apiKey: (apiKeyMasked && savedApiKey) ? savedApiKey : (values.apiKey || ''),
                 enabled: true,
             };
             const result = await remoteApi.testLlmConnection(testConfig);
             if (result && result.status === 0) {
                 setTestResult({ success: true, msg: result.msg || '连接测试成功！API Key 有效。' });
                 message.success('连接测试成功');
+                // Auto-save config after successful connection test
+                try {
+                    await remoteApi.saveLlmConfig(testConfig);
+                    if (testConfig.apiKey) {
+                        setSavedApiKey(testConfig.apiKey);
+                        form.setFieldsValue({ apiKey: maskApiKey(testConfig.apiKey) });
+                        setApiKeyMasked(true);
+                    }
+                } catch (saveErr) {
+                    console.warn('Auto-save after connection test failed:', saveErr);
+                }
             } else {
                 setTestResult({
                     success: false,
@@ -266,7 +329,7 @@ function LlmSettings() {
             const values = await form.validateFields();
             const config = {
                 ...values,
-                apiKey: apiKeyMasked ? savedApiKey : values.apiKey,
+                apiKey: (apiKeyMasked && savedApiKey) ? savedApiKey : (values.apiKey || ''),
                 enabled,
             };
             const result = await remoteApi.saveLlmConfig(config);
@@ -467,63 +530,86 @@ function LlmSettings() {
                     <Form.Item
                         name="model"
                         label="模型名称"
-                        rules={[{ required: true, message: '请输入模型名称' }]}
-                        extra="输入模型标识，如 gpt-4o、deepseek-chat、qwen-max 等"
+                        rules={[{ required: true, message: '请选择或输入模型名称' }]}
+                        extra="实时从 LLM 提供商获取可用模型列表，也可直接输入自定义模型名"
                     >
-                        <Input placeholder={currentProvider.defaultModel} />
+                        <Select
+                            showSearch
+                            loading={modelsLoading}
+                            placeholder={modelsLoading ? '正在获取模型列表...' : (currentProvider.defaultModel)}
+                            filterOption={(input, option) =>
+                                (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                            }
+                            notFoundContent={modelsLoading ? '加载中...' : '未获取到模型，请确认已保存配置并测试连接'}
+                            options={modelOptions}
+                        />
                     </Form.Item>
 
                     <Row gutter={16}>
                         <Col span={12}>
                             <Form.Item
-                                name="maxTokens"
-                                label={
-                                    <span>
-                                        最大 Token 数
-                                        <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
-                                            {form.getFieldValue('maxTokens')}
-                                        </Text>
-                                    </span>
-                                }
+                                noStyle
+                                shouldUpdate={(prev, cur) => prev.maxTokens !== cur.maxTokens}
                             >
-                                <Slider
-                                    min={256}
-                                    max={128000}
-                                    step={256}
-                                    marks={{
-                                        256: '256',
-                                        4096: '4K',
-                                        8192: '8K',
-                                        32768: '32K',
-                                        128000: '128K',
-                                    }}
-                                />
+                                {({ getFieldValue }) => (
+                                    <Form.Item
+                                        name="maxTokens"
+                                        label={
+                                            <span>
+                                                最大 Token 数
+                                                <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                                                    {getFieldValue('maxTokens') ?? 4096}
+                                                </Text>
+                                            </span>
+                                        }
+                                    >
+                                        <Slider
+                                            min={256}
+                                            max={128000}
+                                            step={256}
+                                            marks={{
+                                                256: '256',
+                                                4096: '4K',
+                                                8192: '8K',
+                                                32768: '32K',
+                                                128000: '128K',
+                                            }}
+                                        />
+                                    </Form.Item>
+                                )}
                             </Form.Item>
                         </Col>
                         <Col span={12}>
                             <Form.Item
-                                name="temperature"
-                                label={
-                                    <span>
-                                        温度 (Temperature)
-                                        <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
-                                            {form.getFieldValue('temperature')}
-                                        </Text>
-                                    </span>
-                                }
-                                extra="值越低输出越确定，越高越随机"
+                                noStyle
+                                shouldUpdate={(prev, cur) => prev.temperature !== cur.temperature}
                             >
-                                <Slider
-                                    min={0}
-                                    max={2}
-                                    step={0.1}
-                                    marks={{
-                                        0: { label: '0', style: { fontSize: 11 } },
-                                        0.7: { label: '0.7', style: { fontSize: 11 } },
-                                        1: { label: '1', style: { fontSize: 11 } },
-                                        2: { label: '2', style: { fontSize: 11 } },
-                                    }}
-                                />
+                                {({ getFieldValue }) => (
+                                    <Form.Item
+                                        name="temperature"
+                                        label={
+                                            <span>
+                                                温度 (Temperature)
+                                                <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                                                    {getFieldValue('temperature') ?? 0.7}
+                                                </Text>
+                                            </span>
+                                        }
+                                        extra="值越低输出越确定，越高越随机"
+                                    >
+                                        <Slider
+                                            min={0}
+                                            max={2}
+                                            step={0.1}
+                                            marks={{
+                                                0: { label: '0', style: { fontSize: 11 } },
+                                                0.7: { label: '0.7', style: { fontSize: 11 } },
+                                                1: { label: '1', style: { fontSize: 11 } },
+                                                2: { label: '2', style: { fontSize: 11 } },
+                                            }}
+                                        />
+                                    </Form.Item>
+                                )}
                             </Form.Item>
                         </Col>
                     </Row>

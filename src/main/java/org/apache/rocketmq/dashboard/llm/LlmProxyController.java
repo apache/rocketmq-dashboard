@@ -95,8 +95,11 @@ public class LlmProxyController {
                     .body(e.getResponseBodyAsByteArray());
         } catch (Exception e) {
             logger.error("Failed to call LLM API {} : {}", targetUrl, e.getMessage(), e);
+            String errorJson = "{\"status\":-1,\"errMsg\":\"LLM proxy error: " 
+                    + e.getMessage().replace("\"", "\\\"") + "\"}";
             return ResponseEntity.status(500)
-                    .body(("LLM proxy error: " + e.getMessage()).getBytes(StandardCharsets.UTF_8));
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(errorJson.getBytes(StandardCharsets.UTF_8));
         }
     }
 

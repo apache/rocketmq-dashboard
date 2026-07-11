@@ -43,6 +43,7 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf
                         .ignoringRequestMatchers("/actuator/**")
                         .ignoringRequestMatchers("/rocketmq-dashboard/csrf-token")
+                        .ignoringRequestMatchers("/api/llm/**")
                         .csrfTokenRepository(csrfTokenRepository())
                         .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
                 )

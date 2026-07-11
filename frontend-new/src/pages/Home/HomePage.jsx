@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { Button, Select, Tooltip, Input, Card } from 'antd';
 import {
     SearchOutlined,
@@ -26,12 +26,24 @@ import {
     ThunderboltOutlined,
     AudioOutlined,
     SendOutlined,
+    LoadingOutlined,
 } from '@ant-design/icons';
 import { useLlm } from '../../store/context/LlmContext';
+import { remoteApi } from '../../api/remoteApi/remoteApi';
 import ChatMessage from '../../components/llm/ChatMessage';
 import './HomePage.css';
 
 const { TextArea } = Input;
+
+// 静态默认模型（API 获取失败时的回退）
+const FALLBACK_MODELS = {
+    openai: ['gpt-4o', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'],
+    azure: ['gpt-4o', 'gpt-4', 'gpt-3.5-turbo'],
+    deepseek: ['deepseek-chat', 'deepseek-reasoner'],
+    tongyi: ['qwen-max', 'qwen-plus', 'qwen-turbo'],
+    ollama: ['llama3', 'mistral', 'gemma2', 'qwen2.5'],
+    bedrock: ['anthropic.claude-3-sonnet', 'anthropic.claude-3-haiku', 'meta.llama3-70b'],
+};
 
 const HomePage = () => {
     const {
@@ -46,11 +58,67 @@ const HomePage = () => {
     } = useLlm();
 
     const [inputValue, setInputValue] = useState('');
-    const [selectedModel, setSelectedModel] = useState('qwen3.7-max');
+    const [selectedModel, setSelectedModel] = useState('');
     const [autoScroll, setAutoScroll] = useState(true);
+    const [modelOptions, setModelOptions] = useState([]);
+    const [modelsLoading, setModelsLoading] = useState(false);
     const messagesEndRef = useRef(null);
     const messagesContainerRef = useRef(null);
     const inputRef = useRef(null);
+
+    // 动态拉取模型列表：从 LLM 提供商 API 实时获取
+    useEffect(() => {
+        let cancelled = false;
+
+        const fetchModels = async () => {
+            setModelsLoading(true);
+            try {
+                // 1. 检查 AI 是否已配置
+                const config = await remoteApi.getLlmConfig();
+                if (!config || !config.enabled) return;
+
+                // 2. 测试连接是否可用
+                const testResult = await remoteApi.testLlmConnection({
+                    ...config,
+                    enabled: true,
+                });
+                if (!testResult || testResult.status !== 0) return;
+
+                // 3. 从 LLM 提供商 API 动态拉取模型列表
+                let models = [];
+                try {
+                    const modelsResult = await remoteApi.getLlmModels();
+                    if (modelsResult && modelsResult.status === 0 && modelsResult.data) {
+                        models = modelsResult.data.map(m => m.id || m.name).filter(Boolean);
+                    }
+                } catch {
+                    // API 获取失败，使用静态回退
+                }
+
+                // 4. 如果 API 返回空或失败，使用静态默认列表作为回退
+                if (models.length === 0) {
+                    const provider = config.provider || 'openai';
+                    models = FALLBACK_MODELS[provider] || [config.model];
+                }
+
+                if (!cancelled) {
+                    setModelOptions(models.map(m => ({ value: m, label: m })));
+                    // 默认选中已配置的模型
+                    setSelectedModel(config.model || models[0] || '');
+                }
+            } catch {
+                if (!cancelled) setModelOptions([]);
+            } finally {
+                if (!cancelled) setModelsLoading(false);
+            }
+        };
+
+        fetchModels();
+        return () => { cancelled = true; };
+    }, []);
+
+    // 模型选项可用性
+    const showModelSelect = modelOptions.length > 0 && !modelsLoading;
 
     // 自动滚动到底部
     useEffect(() => {
@@ -72,11 +140,11 @@ const HomePage = () => {
         setInputValue('');
         setAutoScroll(true);
         if (sendMessageStream) {
-            sendMessageStream(text);
+            sendMessageStream(text, undefined, selectedModel || undefined);
         } else {
             sendMessage(text);
         }
-    }, [inputValue, isLoading, sendMessage, sendMessageStream]);
+    }, [inputValue, isLoading, sendMessage, sendMessageStream, selectedModel]);
 
     const handleKeyDown = useCallback((e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -178,17 +246,21 @@ const HomePage = () => {
                     {/* 输入区域 */}
                     <div className="ai-chat-input-area">
                         <div className="input-toolbar">
-                            <Select
-                                value={selectedModel}
-                                onChange={setSelectedModel}
-                                size="small"
-                                className="model-select"
-                                options={[
-                                    { value: 'qwen3.7-max', label: 'qwen3.7-max' },
-                                    { value: 'gpt-4o', label: 'gpt-4o' },
-                                    { value: 'claude-3.5', label: 'claude-3.5' },
-                                ]}
-                            />
+                            {modelsLoading && (
+                                <span className="model-loading">
+                                    <LoadingOutlined spin style={{ fontSize: 12, marginRight: 4 }} />
+                                    检测模型...
+                                </span>
+                            )}
+                            {showModelSelect && (
+                                <Select
+                                    value={selectedModel}
+                                    onChange={setSelectedModel}
+                                    size="small"
+                                    className="model-select"
+                                    options={modelOptions}
+                                />
+                            )}
                         </div>
                         <div className="input-row">
                             <TextArea

@@ -71,11 +71,26 @@ public class LlmProxyService {
     @SuppressWarnings("unchecked")
     public String chat(String userMessage, List<ToolDefinition> tools, LlmConfig config) {
         if (!config.isEnabled() || config.getApiKey() == null || config.getApiKey().isEmpty()) {
+            return buildError("LLM is not configured.");
+        }
+        // Build simple messages with system + user for backward compat
+        List<Map<String, Object>> messages = new ArrayList<>();
+        Map<String, Object> sys = new LinkedHashMap<>();
+        sys.put("role", "system"); sys.put("content", SYSTEM_PROMPT);
+        messages.add(sys);
+        Map<String, Object> usr = new LinkedHashMap<>();
+        usr.put("role", "user"); usr.put("content", userMessage);
+        messages.add(usr);
+        return doChat(messages, tools, config);
+    }
+
+    private String doChat(List<Map<String, Object>> messages, List<ToolDefinition> tools, LlmConfig config) {
+        if (!config.isEnabled() || config.getApiKey() == null || config.getApiKey().isEmpty()) {
             return buildError("LLM is not configured. Please set apiKey and enable the provider.");
         }
 
         try {
-            Map<String, Object> requestBody = buildChatRequest(userMessage, tools, config, false);
+            Map<String, Object> requestBody = buildChatRequest(messages, tools, config, false);
             String requestJson = objectMapper.writeValueAsString(requestBody);
 
             String url = buildChatUrl(config);
@@ -103,15 +118,10 @@ public class LlmProxyService {
     }
 
     /**
-     * Send a streaming chat message to the configured LLM provider.
-     *
-     * @param userMessage   the user's natural language message
-     * @param tools         the available tool definitions for function calling
-     * @param config        the LLM configuration
-     * @param chunkCallback called for each SSE chunk received
+     * Send a streaming chat message using pre-built messages array (supports multi-turn).
      */
     @SuppressWarnings("unchecked")
-    public void chatStream(String userMessage, List<ToolDefinition> tools,
+    public void chatStream(List<Map<String, Object>> messages, List<ToolDefinition> tools,
                            LlmConfig config, Consumer<String> chunkCallback) {
         if (!config.isEnabled() || config.getApiKey() == null || config.getApiKey().isEmpty()) {
             chunkCallback.accept(buildError("LLM is not configured."));
@@ -119,7 +129,7 @@ public class LlmProxyService {
         }
 
         try {
-            Map<String, Object> requestBody = buildChatRequest(userMessage, tools, config, true);
+            Map<String, Object> requestBody = buildChatRequest(messages, tools, config, true);
             String requestJson = objectMapper.writeValueAsString(requestBody);
 
             String url = buildChatUrl(config);
@@ -159,29 +169,98 @@ public class LlmProxyService {
     }
 
     /**
-     * Build the OpenAI-compatible chat completion request body.
+     * List available models from the configured LLM provider.
+     * Calls the /v1/models (OpenAI-compatible) endpoint.
      */
-    private Map<String, Object> buildChatRequest(String userMessage, List<ToolDefinition> tools,
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> listModels(LlmConfig config) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        if (!config.isEnabled() || config.getApiKey() == null || config.getApiKey().isEmpty()) {
+            return result;
+        }
+
+        try {
+            String baseUrl = buildModelsUrl(config);
+            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
+                    .uri(URI.create(baseUrl))
+                    .header("Content-Type", "application/json")
+                    .timeout(Duration.ofSeconds(30))
+                    .GET();
+
+            addAuthHeaders(requestBuilder, config);
+
+            HttpRequest request = requestBuilder.build();
+            HttpResponse<String> response = httpClient.send(request,
+                    HttpResponse.BodyHandlers.ofString());
+
+            if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                Map<String, Object> body = objectMapper.readValue(response.body(), Map.class);
+                List<Map<String, Object>> data = (List<Map<String, Object>>) body.get("data");
+                if (data != null) {
+                    for (Map<String, Object> model : data) {
+                        Map<String, Object> entry = new LinkedHashMap<>();
+                        entry.put("id", model.get("id"));
+                        entry.put("name", model.getOrDefault("id", "unknown"));
+                        result.add(entry);
+                    }
+                }
+            } else {
+                log.error("listModels API returned status {}: {}", response.statusCode(), response.body());
+            }
+        } catch (Exception e) {
+            log.warn("Failed to list models from provider: {}", e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * Build the models listing URL for the given provider.
+     */
+    private String buildModelsUrl(LlmConfig config) {
+        String provider = config.getProvider() != null
+                ? config.getProvider().toUpperCase() : "OPENAI";
+        switch (provider) {
+            case "OLLAMA":
+                String ollamaBase = config.getApiBase() != null
+                        ? config.getApiBase().replaceAll("/$", "") : "http://localhost:11434";
+                return ollamaBase + "/api/tags";
+            case "AZURE":
+                String azureBase = config.getApiBase() != null
+                        ? config.getApiBase().replaceAll("/$", "") : "";
+                return azureBase + "/openai/models";
+            default:
+                // OpenAI, DeepSeek, Tongyi, and other compatible providers
+                String customBase = config.getApiBase() != null
+                        ? config.getApiBase().replaceAll("/$", "") : "";
+                if (!customBase.isEmpty()) {
+                    return customBase + "/models";
+                }
+                // Use known defaults
+                switch (provider) {
+                    case "OPENAI":
+                        return "https://api.openai.com/v1/models";
+                    case "DEEPSEEK":
+                        return "https://api.deepseek.com/v1/models";
+                    case "TONGYI":
+                        return "https://dashscope.aliyuncs.com/compatible-mode/v1/models";
+                    default:
+                        return customBase + "/v1/models";
+                }
+        }
+    }
+
+    /**
+     * Build the OpenAI-compatible chat completion request body.
+     * @param messages pre-built messages array (system + history + current user message)
+     */
+    private Map<String, Object> buildChatRequest(List<Map<String, Object>> messages,
+                                                  List<ToolDefinition> tools,
                                                   LlmConfig config, boolean stream) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", config.getModel() != null ? config.getModel() : "gpt-4");
         body.put("max_tokens", config.getMaxTokens());
         body.put("temperature", config.getTemperature());
         body.put("stream", stream);
-
-        // Build messages
-        List<Map<String, Object>> messages = new ArrayList<>();
-
-        Map<String, Object> systemMsg = new LinkedHashMap<>();
-        systemMsg.put("role", "system");
-        systemMsg.put("content", SYSTEM_PROMPT);
-        messages.add(systemMsg);
-
-        Map<String, Object> userMsg = new LinkedHashMap<>();
-        userMsg.put("role", "user");
-        userMsg.put("content", userMessage);
-        messages.add(userMsg);
-
         body.put("messages", messages);
 
         // Build tool definitions in OpenAI function calling format
@@ -233,6 +312,7 @@ public class LlmProxyService {
                 toolList.add(toolEntry);
             }
             body.put("tools", toolList);
+            body.put("tool_choice", "auto");
         }
 
         return body;
