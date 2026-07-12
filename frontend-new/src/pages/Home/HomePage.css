@@ -102,9 +102,10 @@
 /* AI 聊天卡片 */
 .ai-chat-card {
     width: 100%;
-    max-width: 800px;
-    border-radius: 12px !important;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06) !important;
+    max-width: 1080px;
+    border-radius: 16px !important;
+    box-shadow: 0 8px 32px rgba(22, 119, 255, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04) !important;
+    border: 1px solid #eef2f7 !important;
     position: relative;
     z-index: 1;
     overflow: hidden;
@@ -117,7 +118,7 @@
 .ai-chat-panel {
     display: flex;
     flex-direction: column;
-    height: 420px;
+    height: 600px;
 }
 
 /* 聊天消息区域 */
@@ -325,6 +326,6 @@
     }
 
     .ai-chat-panel {
-        height: 350px;
+        height: 520px;
     }
 }

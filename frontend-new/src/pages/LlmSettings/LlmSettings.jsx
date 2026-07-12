@@ -568,11 +568,10 @@ function LlmSettings() {
                                             max={128000}
                                             step={256}
                                             marks={{
-                                                256: '256',
-                                                4096: '4K',
-                                                8192: '8K',
-                                                32768: '32K',
-                                                128000: '128K',
+                                                2048: { label: '2K', style: { fontSize: 11 } },
+                                                8192: { label: '8K', style: { fontSize: 11 } },
+                                                32768: { label: '32K', style: { fontSize: 11 } },
+                                                128000: { label: '128K', style: { fontSize: 11 } },
                                             }}
                                         />
                                     </Form.Item>

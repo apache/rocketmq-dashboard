@@ -132,6 +132,20 @@ public class LlmProxyService {
             Map<String, Object> requestBody = buildChatRequest(messages, tools, config, true);
             String requestJson = objectMapper.writeValueAsString(requestBody);
 
+            // Log messages summary for debugging multi-turn issues
+            if (log.isDebugEnabled()) {
+                log.debug("LLM stream request: {} messages, model={}, provider={}",
+                        messages.size(), config.getModel(), config.getProvider());
+                for (int i = 0; i < messages.size(); i++) {
+                    Map<String, Object> msg = messages.get(i);
+                    String role = String.valueOf(msg.get("role"));
+                    boolean hasToolCalls = msg.containsKey("tool_calls");
+                    boolean hasToolCallId = msg.containsKey("tool_call_id");
+                    log.debug("  msg[{}]: role={}, hasToolCalls={}, hasToolCallId={}",
+                            i, role, hasToolCalls, hasToolCallId);
+                }
+            }
+
             String url = buildChatUrl(config);
             HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                     .uri(URI.create(url))
@@ -142,12 +156,16 @@ public class LlmProxyService {
             addAuthHeaders(requestBuilder, config);
 
             HttpRequest request = requestBuilder.build();
-            HttpResponse<java.io.InputStream> response =
-                    httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            HttpResponse<String> response =
+                    httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                // Parse SSE events from the response body
+                String body = response.body();
                 try (BufferedReader reader = new BufferedReader(
-                        new InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
+                        new InputStreamReader(
+                                new java.io.ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8)),
+                                StandardCharsets.UTF_8))) {
                     String line;
                     while ((line = reader.readLine()) != null) {
                         if (line.startsWith("data: ")) {
@@ -160,7 +178,29 @@ public class LlmProxyService {
                     }
                 }
             } else {
-                chunkCallback.accept(buildError("LLM streaming error: HTTP " + response.statusCode()));
+                // Read and include the error response body for debugging
+                String errorBody = response.body();
+                log.error("LLM streaming API returned HTTP {}: {}", response.statusCode(), errorBody);
+                // Try to extract a meaningful error message from the response body
+                String errorMessage = "HTTP " + response.statusCode();
+                try {
+                    Map<String, Object> errorObj = objectMapper.readValue(errorBody, Map.class);
+                    Object error = errorObj.get("error");
+                    if (error instanceof Map) {
+                        Object msg = ((Map<?, ?>) error).get("message");
+                        if (msg != null) {
+                            errorMessage = msg.toString();
+                        }
+                    }
+                } catch (Exception parseEx) {
+                    // If we can't parse the error body, include a truncated version
+                    if (errorBody != null && errorBody.length() > 200) {
+                        errorMessage += " - " + errorBody.substring(0, 200) + "...";
+                    } else if (errorBody != null && !errorBody.isEmpty()) {
+                        errorMessage += " - " + errorBody;
+                    }
+                }
+                chunkCallback.accept(buildError("LLM streaming error: " + errorMessage));
             }
         } catch (IOException | InterruptedException e) {
             log.error("Failed to call LLM streaming API: {}", e.getMessage(), e);

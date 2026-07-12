@@ -60,15 +60,35 @@ function ResultCard({ viewHint, data, content, consoleLink }) {
     const linkPath = consoleLink || CONSOLE_ROUTES[viewHint] || null;
 
     const renderContent = () => {
+        // Auto-detect table: if data is an array, render as table regardless of viewHint
+        if (Array.isArray(data) && data.length > 0) {
+            const firstRow = data[0];
+            const inferredColumns = typeof firstRow === 'object' && firstRow !== null
+                ? Object.keys(firstRow).slice(0, 5).map(key => ({
+                    dataIndex: key,
+                    title: key,
+                    key: key,
+                    ellipsis: true,
+                  })) : [];
+            return (
+                <TableResult
+                    columns={data?.columns || inferredColumns}
+                    dataSource={data}
+                    title={content}
+                />
+            );
+        }
+        // If data has columns+rows explicitly (e.g. structured table data)
+        if (data?.columns && (data?.rows || data?.dataSource)) {
+            return (
+                <TableResult
+                    columns={data.columns}
+                    dataSource={data.rows || data.dataSource}
+                    title={content}
+                />
+            );
+        }
         switch (viewHint) {
-            case 'table':
-                return (
-                    <TableResult
-                        columns={data?.columns}
-                        dataSource={data?.rows || data?.dataSource}
-                        title={content}
-                    />
-                );
             case 'timeseries':
                 return <TimeseriesResult data={data} title={content} />;
             case 'topic-detail':

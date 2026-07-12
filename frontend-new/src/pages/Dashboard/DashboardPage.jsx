@@ -22,6 +22,17 @@ import moment from 'moment';
 import {useLanguage} from '../../i18n/LanguageContext';
 import {remoteApi, tools} from '../../api/remoteApi/remoteApi';
 import CommandBar from '../../components/llm/CommandBar';
+import {
+    CHART_PALETTE,
+    baseGrid,
+    baseTooltip,
+    titleStyle,
+    categoryAxis,
+    valueAxis,
+    lineCategoryAxis,
+    withAreaStyle,
+    barSeries,
+} from './chartTheme';
 
 const {Option} = Select;
 
@@ -66,71 +77,28 @@ const DashboardPage = () => {
     const initChart = useCallback((chartRef, titleText, isLine = false) => {
         if (chartRef.current) {
             const chart = echarts.init(chartRef.current);
-            let option = {
-                title: {text: titleText},
-                tooltip: {},
-                legend: {data: ['TotalMsg']},
-                axisPointer: {type: 'shadow'},
-                xAxis: {
-                    type: 'category',
-                    data: [],
-                    axisLabel: {
-                        inside: false,
-                        color: '#000000',
-                        rotate: 0,
-                        interval: 0
-                    },
-                    axisTick: {show: true},
-                    axisLine: {show: true},
-                    z: 10
-                },
-                yAxis: {
-                    type: 'value',
-                    boundaryGap: [0, '100%'],
-                    axisLabel: {formatter: (value) => value.toFixed(2)},
-                    splitLine: {show: true}
-                },
-                series: [{name: 'TotalMsg', type: 'bar', data: []}]
+            const base = {
+                color: CHART_PALETTE,
+                title: titleStyle(titleText),
+                grid: baseGrid(),
+                tooltip: baseTooltip(),
             };
 
             if (isLine) {
-                option = {
-                    title: {text: titleText},
-                    toolbox: {
-                        feature: {
-                            dataZoom: {yAxisIndex: 'none'},
-                            restore: {},
-                            saveAsImage: {}
-                        }
-                    },
-                    tooltip: {trigger: 'axis', axisPointer: {animation: false}},
-                    yAxis: {
-                        type: 'value',
-                        boundaryGap: [0, '80%'],
-                        axisLabel: {formatter: (value) => value.toFixed(2)},
-                        splitLine: {show: true}
-                    },
-                    dataZoom: [{
-                        type: 'inside', start: 90, end: 100
-                    }, {
-                        start: 0,
-                        end: 10,
-                        handleIcon: 'M10.7,11.9v-1.3H9.3v1.3c-4.9,0.3-8.8,4.4-8.8,9.4c0,5,3.9,9.1,8.8,9.4v1.3h1.3v-1.3c4.9-0.3,8.8-4.4,8.8-9.4C19.5,16.3,15.6,12.2,10.7,11.9z M13.3,24.4H6.7V23h6.6V24.4z M13.3,19.6H6.7v-1.4h6.6V19.6z',
-                        handleSize: '80%',
-                        handleStyle: {
-                            color: '#fff',
-                            shadowBlur: 3,
-                            shadowColor: 'rgba(0, 0, 0, 0.6)',
-                            shadowOffsetX: 2,
-                            shadowOffsetY: 2
-                        }
-                    }],
-                    legend: {data: [], top: 30},
-                    xAxis: {type: 'time', boundaryGap: false, data: []},
-                    series: []
-                };
+                base.legend = { data: [], top: 32, icon: 'roundRect', itemWidth: 12, itemHeight: 6, textStyle: { color: '#595959', fontSize: 12 } };
+                base.xAxis = lineCategoryAxis([]);
+                base.yAxis = valueAxis();
+                base.series = [];
+                base.dataZoom = [{
+                    type: 'inside', start: 0, end: 100,
+                }];
+            } else {
+                base.legend = { show: false };
+                base.xAxis = categoryAxis([]);
+                base.yAxis = valueAxis({ axisLabel: { formatter: (v) => v.toFixed(2) } });
+                base.series = [barSeries([], 'TotalMsg')];
             }
-            chart.setOption(option);
+            chart.setOption(base);
             return chart;
         }
         return null;
@@ -152,10 +120,17 @@ const DashboardPage = () => {
         if (consumerConcurrencyChartRef.current) {
             const chart = echarts.init(consumerConcurrencyChartRef.current);
             chart.setOption({
-                title: { text: t.CONSUMER_CONCURRENCY },
+                color: CHART_PALETTE,
+                title: titleStyle(t.CONSUMER_CONCURRENCY),
                 tooltip: {
                     trigger: 'axis',
                     axisPointer: { type: 'shadow' },
+                    backgroundColor: 'rgba(255,255,255,0.96)',
+                    borderColor: '#f0f0f0',
+                    borderWidth: 1,
+                    padding: [8, 12],
+                    textStyle: { color: '#595959', fontSize: 12, lineHeight: 18 },
+                    extraCssText: 'box-shadow:0 6px 20px rgba(0,0,0,0.08);border-radius:8px;',
                     formatter: function (params) {
                         let result = params[0].name + '<br/>';
                         params.forEach(p => {
@@ -168,27 +143,25 @@ const DashboardPage = () => {
                         return result;
                     }
                 },
-                legend: { data: [t.CONFIGURED_THREAD_MAX, t.ACTUAL_CONSUMER_CLIENTS], top: 30 },
-                grid: { left: '3%', right: '4%', bottom: '15%', containLabel: true },
-                xAxis: {
-                    type: 'category',
-                    data: [],
-                    axisLabel: { rotate: 30, interval: 0, fontSize: 10 },
-                },
-                yAxis: { type: 'value', name: t.THREAD_COUNT },
+                legend: { data: [t.CONFIGURED_THREAD_MAX, t.ACTUAL_CONSUMER_CLIENTS], top: 32, icon: 'roundRect', itemWidth: 12, itemHeight: 6, textStyle: { color: '#595959', fontSize: 12 } },
+                grid: baseGrid({ top: 70, bottom: '16%' }),
+                xAxis: categoryAxis([], { axisLabel: { rotate: 30, interval: 0, fontSize: 10 } }),
+                yAxis: valueAxis({ axisLabel: { formatter: (v) => v } }),
                 series: [
                     {
                         name: t.CONFIGURED_THREAD_MAX,
                         type: 'bar',
                         data: [],
-                        itemStyle: { color: '#5470C6' },
-                        barGap: '10%',
+                        barMaxWidth: 24,
+                        barGap: '12%',
+                        itemStyle: { borderRadius: [4, 4, 0, 0], color: CHART_PALETTE[0] },
                     },
                     {
                         name: t.ACTUAL_CONSUMER_CLIENTS,
                         type: 'bar',
                         data: [],
-                        itemStyle: { color: '#91CC75' },
+                        barMaxWidth: 24,
+                        itemStyle: { borderRadius: [4, 4, 0, 0], color: CHART_PALETTE[2] },
                     },
                 ],
             });
@@ -199,10 +172,17 @@ const DashboardPage = () => {
         if (jvmGcStatsChartRef.current) {
             const chart = echarts.init(jvmGcStatsChartRef.current);
             chart.setOption({
-                title: { text: t.JVM_GC_STATS },
+                color: CHART_PALETTE,
+                title: titleStyle(t.JVM_GC_STATS),
                 tooltip: {
                     trigger: 'axis',
                     axisPointer: { type: 'shadow' },
+                    backgroundColor: 'rgba(255,255,255,0.96)',
+                    borderColor: '#f0f0f0',
+                    borderWidth: 1,
+                    padding: [8, 12],
+                    textStyle: { color: '#595959', fontSize: 12, lineHeight: 18 },
+                    extraCssText: 'box-shadow:0 6px 20px rgba(0,0,0,0.08);border-radius:8px;',
                     formatter: function (params) {
                         let result = params[0].name + '<br/>';
                         params.forEach(p => {
@@ -211,43 +191,60 @@ const DashboardPage = () => {
                         return result;
                     }
                 },
-                legend: { data: [t.GC_COUNT, t.GC_TIME_MS, t.HEAP_USED, t.HEAP_MAX], top: 30 },
-                grid: { left: '3%', right: '6%', bottom: '15%', containLabel: true },
-                xAxis: {
-                    type: 'category',
-                    data: [],
-                    axisLabel: { rotate: 30, interval: 0, fontSize: 10 },
-                },
+                legend: { data: [t.GC_COUNT, t.GC_TIME_MS, t.HEAP_USED, t.HEAP_MAX], top: 32, icon: 'roundRect', itemWidth: 12, itemHeight: 6, textStyle: { color: '#595959', fontSize: 12 } },
+                grid: baseGrid({ top: 70, right: '7%', bottom: '16%' }),
+                xAxis: categoryAxis([], { axisLabel: { rotate: 30, interval: 0, fontSize: 10 } }),
                 yAxis: [
-                    { type: 'value', name: t.GC_COUNT + ' / ' + t.GC_TIME_MS, position: 'left' },
-                    { type: 'value', name: t.HEAP_USAGE + ' (MB)', position: 'right' },
+                    {
+                        type: 'value',
+                        name: t.GC_COUNT + ' / ' + t.GC_TIME_MS,
+                        nameTextStyle: { color: '#8c8c8c', fontSize: 11, align: 'left' },
+                        axisLabel: { color: '#8c8c8c', fontSize: 11 },
+                        axisLine: { show: false },
+                        axisTick: { show: false },
+                        splitLine: { lineStyle: { color: '#f5f5f5' } },
+                    },
+                    {
+                        type: 'value',
+                        name: t.HEAP_USAGE + ' (MB)',
+                        position: 'right',
+                        nameTextStyle: { color: '#8c8c8c', fontSize: 11, align: 'right' },
+                        axisLabel: { color: '#8c8c8c', fontSize: 11 },
+                        axisLine: { show: false },
+                        axisTick: { show: false },
+                        splitLine: { show: false },
+                    },
                 ],
                 series: [
                     {
                         name: t.GC_COUNT,
                         type: 'bar',
                         data: [],
-                        itemStyle: { color: '#EE6666' },
+                        barMaxWidth: 22,
+                        itemStyle: { borderRadius: [4, 4, 0, 0], color: CHART_PALETTE[0] },
                     },
                     {
                         name: t.GC_TIME_MS,
                         type: 'bar',
                         data: [],
-                        itemStyle: { color: '#FC8452' },
+                        barMaxWidth: 22,
+                        itemStyle: { borderRadius: [4, 4, 0, 0], color: CHART_PALETTE[1] },
                     },
                     {
                         name: t.HEAP_USED,
                         type: 'bar',
                         yAxisIndex: 1,
                         data: [],
-                        itemStyle: { color: '#5470C6' },
+                        barMaxWidth: 22,
+                        itemStyle: { borderRadius: [4, 4, 0, 0], color: CHART_PALETTE[2] },
                     },
                     {
                         name: t.HEAP_MAX,
                         type: 'bar',
                         yAxisIndex: 1,
                         data: [],
-                        itemStyle: { color: '#73C0DE', opacity: 0.5 },
+                        barMaxWidth: 22,
+                        itemStyle: { borderRadius: [4, 4, 0, 0], color: CHART_PALETTE[3], opacity: 0.55 },
                     },
                 ],
             });
@@ -272,8 +269,8 @@ const DashboardPage = () => {
 
     const getBrokerBarChartOp = useCallback((xAxisData, data) => {
         return {
-            xAxis: {data: xAxisData},
-            series: [{name: 'TotalMsg', data: data}]
+            xAxis: categoryAxis(xAxisData, { axisLabel: { rotate: 30, interval: 0, fontSize: 10 } }),
+            series: [barSeries(data, 'TotalMsg')]
         };
     }, []);
 
@@ -295,18 +292,17 @@ const DashboardPage = () => {
             series.push({
                 name: key,
                 type: 'line',
-                smooth: true,
-                symbol: 'none',
-                sampling: 'average',
                 data: tpsValues
             });
         });
 
         return {
-            legend: {data: legend},
-            color: ["#FF0000", "#00BFFF", "#FF00FF", "#1ce322", "#000000", '#EE7942'],
-            xAxis: {type: 'category', boundaryGap: false, data: xAxisData},
-            series: series
+            legend: { data: legend, top: 32, icon: 'roundRect', itemWidth: 12, itemHeight: 6, textStyle: { color: '#595959', fontSize: 12 } },
+            xAxis: lineCategoryAxis(xAxisData),
+            yAxis: valueAxis(),
+            grid: baseGrid(),
+            tooltip: baseTooltip(),
+            series: withAreaStyle(series),
         };
     }, []);
 
@@ -328,17 +324,17 @@ const DashboardPage = () => {
             series.push({
                 name: key,
                 type: 'line',
-                smooth: true,
-                symbol: 'none',
-                sampling: 'average',
                 data: tpsValues
             });
         });
 
         return {
-            legend: {data: legend},
-            xAxis: {type: 'category', boundaryGap: false, data: xAxisData},
-            series: series
+            legend: { data: legend, top: 32, icon: 'roundRect', itemWidth: 12, itemHeight: 6, textStyle: { color: '#595959', fontSize: 12 } },
+            xAxis: lineCategoryAxis(xAxisData),
+            yAxis: valueAxis(),
+            grid: baseGrid(),
+            tooltip: baseTooltip(),
+            series: withAreaStyle(series),
         };
     }, []);
 
@@ -360,19 +356,17 @@ const DashboardPage = () => {
             series.push({
                 name: key,
                 type: 'line',
-                smooth: true,
-                symbol: 'none',
-                sampling: 'average',
-                areaStyle: {opacity: 0.3},
                 data: diffValues
             });
         });
 
         return {
-            legend: {data: legend},
-            color: ["#EE6666", "#5470C6", "#91CC75", "#FAC858", "#73C0DE"],
-            xAxis: {type: 'category', boundaryGap: false, data: xAxisData},
-            series: series
+            legend: { data: legend, top: 32, icon: 'roundRect', itemWidth: 12, itemHeight: 6, textStyle: { color: '#595959', fontSize: 12 } },
+            xAxis: lineCategoryAxis(xAxisData),
+            yAxis: valueAxis(),
+            grid: baseGrid(),
+            tooltip: baseTooltip(),
+            series: withAreaStyle(series),
         };
     }, []);
 
@@ -416,10 +410,12 @@ const DashboardPage = () => {
         });
 
         return {
-            legend: {data: series.map(s => s.name), top: 30},
-            color: ["#EE6666", "#FC8452", "#5470C6", "#91CC75"],
-            xAxis: {type: 'category', boundaryGap: false, data: xAxisData},
-            series: series
+            legend: { data: series.map(s => s.name), top: 32, icon: 'roundRect', itemWidth: 12, itemHeight: 6, textStyle: { color: '#595959', fontSize: 12 } },
+            xAxis: lineCategoryAxis(xAxisData),
+            yAxis: valueAxis(),
+            grid: baseGrid({ top: 70 }),
+            tooltip: baseTooltip(),
+            series: withAreaStyle(series),
         };
     }, [t]);
 
@@ -463,10 +459,12 @@ const DashboardPage = () => {
         });
 
         return {
-            legend: {data: series.map(s => s.name), top: 30},
-            color: ["#EE6666", "#5470C6", "#91CC75", "#FAC858"],
-            xAxis: {type: 'category', boundaryGap: false, data: xAxisData},
-            series: series
+            legend: { data: series.map(s => s.name), top: 32, icon: 'roundRect', itemWidth: 12, itemHeight: 6, textStyle: { color: '#595959', fontSize: 12 } },
+            xAxis: lineCategoryAxis(xAxisData),
+            yAxis: valueAxis(),
+            grid: baseGrid({ top: 70 }),
+            tooltip: baseTooltip(),
+            series: withAreaStyle(series),
         };
     }, [t]);
 
@@ -510,10 +508,12 @@ const DashboardPage = () => {
         });
 
         return {
-            legend: {data: series.map(s => s.name), top: 30},
-            color: ["#EE6666", "#FC8452", "#5470C6", "#91CC75"],
-            xAxis: {type: 'category', boundaryGap: false, data: xAxisData},
-            series: series
+            legend: { data: series.map(s => s.name), top: 32, icon: 'roundRect', itemWidth: 12, itemHeight: 6, textStyle: { color: '#595959', fontSize: 12 } },
+            xAxis: lineCategoryAxis(xAxisData),
+            yAxis: valueAxis(),
+            grid: baseGrid({ top: 70 }),
+            tooltip: baseTooltip(),
+            series: withAreaStyle(series),
         };
     }, [t]);
 
@@ -557,10 +557,12 @@ const DashboardPage = () => {
         });
 
         return {
-            legend: {data: series.map(s => s.name), top: 30},
-            color: ["#EE6666", "#5470C6", "#91CC75", "#FAC858"],
-            xAxis: {type: 'category', boundaryGap: false, data: xAxisData},
-            series: series
+            legend: { data: series.map(s => s.name), top: 32, icon: 'roundRect', itemWidth: 12, itemHeight: 6, textStyle: { color: '#595959', fontSize: 12 } },
+            xAxis: lineCategoryAxis(xAxisData),
+            yAxis: valueAxis(),
+            grid: baseGrid({ top: 70 }),
+            tooltip: baseTooltip(),
+            series: withAreaStyle(series),
         };
     }, [t]);
 
@@ -592,10 +594,12 @@ const DashboardPage = () => {
         });
 
         return {
-            legend: {data: series.map(s => s.name), top: 30},
-            color: ["#EE6666", "#5470C6"],
-            xAxis: {type: 'category', boundaryGap: false, data: xAxisData},
-            series: series
+            legend: { data: series.map(s => s.name), top: 32, icon: 'roundRect', itemWidth: 12, itemHeight: 6, textStyle: { color: '#595959', fontSize: 12 } },
+            xAxis: lineCategoryAxis(xAxisData),
+            yAxis: valueAxis(),
+            grid: baseGrid({ top: 70 }),
+            tooltip: baseTooltip(),
+            series: withAreaStyle(series),
         };
     }, [t]);
 
@@ -871,16 +875,11 @@ const DashboardPage = () => {
                 });
 
                 const option = {
-                    xAxis: {
-                        data: xAxisData,
-                        axisLabel: {
-                            inside: false,
-                            color: '#000000',
-                            rotate: 60,
-                            interval: 0
-                        },
-                    },
-                    series: [{name: 'TotalMsg', data: data}]
+                    xAxis: categoryAxis(xAxisData, { axisLabel: { rotate: 45, interval: 0, fontSize: 10 } }),
+                    yAxis: valueAxis({ axisLabel: { formatter: (v) => v.toFixed(2) } }),
+                    grid: baseGrid(),
+                    tooltip: baseTooltip(),
+                    series: [barSeries(data, 'TotalMsg')]
                 };
                 topicBarChartInstance.current?.setOption(option);
             } else {

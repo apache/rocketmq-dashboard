@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -464,6 +465,13 @@ public class McpBridgeController {
     /**
      * Build a structured messages array for the LLM API from conversation history.
      * Preserves tool call information so the LLM has multi-turn context.
+     *
+     * <p>Important: OpenAI-compatible APIs require that after an assistant message
+     * with tool_calls, there must be a "tool" role message for each tool call
+     * containing the result. Without these, the API returns HTTP 400.
+     *
+     * <p>Also filters out non-standard roles (e.g., "error") that are frontend-only
+     * concepts and would cause LLM API rejection.
      */
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> buildMessagesWithTools(String currentMessage,
@@ -479,29 +487,50 @@ public class McpBridgeController {
                 + "For write operations, show what will happen before executing.");
         messages.add(sys);
 
+        // Valid roles that LLM APIs accept
+        Set<String> validRoles = Set.of("user", "assistant", "tool", "system");
+
         // Add history messages with tool call context
         for (Map<String, Object> entry : history) {
             String role = (String) entry.get("role");
-            if (role == null) continue;
+            if (role == null || !validRoles.contains(role)) {
+                // Skip non-standard roles like "error" that frontend may add
+                log.debug("Skipping history message with invalid role: {}", role);
+                continue;
+            }
 
             Map<String, Object> msg = new LinkedHashMap<>();
             msg.put("role", role);
 
             // For assistant messages, include tool_calls if present
+            // Also build tool response messages to ensure tool_call_id consistency
             if ("assistant".equals(role)) {
                 Object content = entry.get("content");
-                msg.put("content", content != null ? content.toString() : "");
-
                 List<Map<String, Object>> toolCalls =
                         (List<Map<String, Object>>) entry.get("toolCalls");
                 if (toolCalls != null && !toolCalls.isEmpty()) {
+                    // For assistant+tool_calls: set content to null if empty/blank
+                    // Some LLM providers reject empty string content with tool_calls
+                    if (content != null && !content.toString().isBlank()) {
+                        msg.put("content", content.toString());
+                    }
+                    // If content is null/empty, omit it entirely — OpenAI spec allows null content with tool_calls
+
                     List<Map<String, Object>> tcList = new ArrayList<>();
-                    for (Map<String, Object> tc : toolCalls) {
+                    List<Map<String, Object>> toolResponseMsgs = new ArrayList<>();
+
+                    for (int i = 0; i < toolCalls.size(); i++) {
+                        Map<String, Object> tc = toolCalls.get(i);
+                        // Generate or retrieve tool call ID - use index for deterministic fallback
+                        String toolCallId = tc.getOrDefault("id", "call_" + i).toString();
+
+                        // Build tool_calls entry for the assistant message
                         Map<String, Object> tcCopy = new LinkedHashMap<>();
-                        tcCopy.put("id", tc.getOrDefault("id", "call_" + System.currentTimeMillis()));
+                        tcCopy.put("id", toolCallId);
                         tcCopy.put("type", "function");
                         Map<String, Object> func = new LinkedHashMap<>();
-                        func.put("name", ((String) tc.get("name")).replace('.', '_'));
+                        String toolName = tc.get("name") != null ? tc.get("name").toString() : "unknown";
+                        func.put("name", toolName.replace('.', '_'));
                         String argsStr = "{}";
                         Object args = tc.get("arguments");
                         if (args instanceof Map) {
@@ -515,27 +544,75 @@ public class McpBridgeController {
                         }
                         func.put("arguments", argsStr);
                         tcCopy.put("function", func);
-
-                        // DON'T include full result (can be huge — brokerServer has 60+ fields)
-                        // Instead provide a brief status summary for the LLM
-                        Object status = tc.get("status");
-                        if (status != null) {
-                            tcCopy.put("_status", status);  // metadata, not API field
-                        }
                         tcList.add(tcCopy);
+
+                        // Build the corresponding tool response message
+                        Map<String, Object> toolMsg = new LinkedHashMap<>();
+                        toolMsg.put("role", "tool");
+                        toolMsg.put("tool_call_id", toolCallId);
+                        // Include tool name for better context (some providers use this)
+                        toolMsg.put("name", toolName.replace('.', '_'));
+
+                        Object result = tc.get("result");
+                        String resultContent;
+                        if (result != null) {
+                            try {
+                                resultContent = objectMapper.writeValueAsString(result);
+                            } catch (Exception e) {
+                                resultContent = result.toString();
+                            }
+                        } else {
+                            String status = tc.get("status") != null ? tc.get("status").toString() : "unknown";
+                            switch (status) {
+                                case "completed":
+                                    resultContent = "Tool executed successfully.";
+                                    break;
+                                case "dry_run":
+                                    resultContent = "Operation requires user confirmation before execution.";
+                                    break;
+                                case "blocked":
+                                    resultContent = "Operation blocked by security policy.";
+                                    break;
+                                case "not_found":
+                                    resultContent = "Tool not found.";
+                                    break;
+                                case "failed":
+                                    resultContent = "Tool execution failed.";
+                                    break;
+                                default:
+                                    resultContent = "Tool execution result not available.";
+                                    break;
+                            }
+                        }
+                        toolMsg.put("content", resultContent);
+                        toolResponseMsgs.add(toolMsg);
                     }
                     msg.put("tool_calls", tcList);
+                    messages.add(msg);
+                    // Add tool response messages immediately after the assistant message
+                    messages.addAll(toolResponseMsgs);
+                } else {
+                    // Assistant message without tool calls — content is required
+                    msg.put("content", content != null ? content.toString() : "");
+                    messages.add(msg);
                 }
             } else if ("user".equals(role)) {
                 msg.put("content", entry.get("content") != null
                         ? entry.get("content").toString() : "");
-            } else {
-                // Other roles (tool, system, etc.)
+                messages.add(msg);
+            } else if ("tool".equals(role)) {
+                // Tool role message from history — pass through with required fields
+                msg.put("tool_call_id", entry.get("tool_call_id") != null
+                        ? entry.get("tool_call_id").toString() : "unknown");
                 msg.put("content", entry.get("content") != null
                         ? entry.get("content").toString() : "");
+                messages.add(msg);
+            } else {
+                // System or other valid roles
+                msg.put("content", entry.get("content") != null
+                        ? entry.get("content").toString() : "");
+                messages.add(msg);
             }
-
-            messages.add(msg);
         }
 
         // Current user message
@@ -543,6 +620,20 @@ public class McpBridgeController {
         current.put("role", "user");
         current.put("content", currentMessage);
         messages.add(current);
+
+        // Log the final messages array for debugging
+        log.info("Built {} messages for LLM API (history={}, current='{}')",
+                messages.size(), history.size(),
+                currentMessage.length() > 50 ? currentMessage.substring(0, 50) + "..." : currentMessage);
+        for (int i = 0; i < messages.size(); i++) {
+            Map<String, Object> m = messages.get(i);
+            String r = String.valueOf(m.get("role"));
+            boolean hasTc = m.containsKey("tool_calls");
+            boolean hasTci = m.containsKey("tool_call_id");
+            log.debug("  msg[{}]: role={}, hasToolCalls={}, hasToolCallId={}, contentLen={}",
+                    i, r, hasTc, hasTci,
+                    m.get("content") != null ? String.valueOf(m.get("content")).length() : 0);
+        }
 
         return messages;
     }
@@ -657,8 +748,8 @@ public class McpBridgeController {
     public Map<String, Object> saveConfig(@RequestBody LlmConfig config) {
         Map<String, Object> result = new LinkedHashMap<>();
         try {
-            // If the apiKey was masked, preserve the existing key
-            if (config.getApiKey() != null && config.getApiKey().startsWith("****")) {
+            // Preserve existing key if a masked value was sent (mask format: "sk-c****c4ec")
+            if (config.getApiKey() != null && config.getApiKey().contains("****")) {
                 LlmConfig existing = LlmConfig.LlmConfigManager.load();
                 config.setApiKey(existing.getApiKey());
             }
