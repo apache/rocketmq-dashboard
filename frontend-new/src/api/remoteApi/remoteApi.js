@@ -15,6 +15,132 @@
  * limitations under the License.
  */
 
+/**
+ * FetchEventSource — a drop-in replacement for EventSource that uses fetch + POST.
+ * This avoids the URL length limits of GET-based EventSource, which causes
+ * "Connection lost" errors when conversation history grows large after multiple
+ * rounds of tool_calls.
+ *
+ * Supports the same interface as EventSource:
+ *   - addEventListener(name, callback)
+ *   - onerror = callback
+ *   - close()
+ */
+class FetchEventSource {
+    constructor(url, options = {}) {
+        this._listeners = {};
+        this._controller = new AbortController();
+        this._closed = false;
+        this._doneReceived = false;
+        this.onerror = null;
+        this.readyState = 0; // CONNECTING
+
+        const { body, ...fetchOptions } = options;
+
+        fetch(url, {
+            ...fetchOptions,
+            method: 'POST',
+            body: body,
+            signal: this._controller.signal
+        }).then(response => {
+            if (!response.ok) {
+                this.readyState = 0;
+                this._dispatch('error', { data: JSON.stringify({ message: `HTTP ${response.status}: ${response.statusText}` }) });
+                return;
+            }
+            this.readyState = 1; // OPEN
+            this._processStream(response);
+        }).catch(err => {
+            if (err.name !== 'AbortError' && !this._closed) {
+                this.readyState = 0;
+                this._dispatch('error', { data: JSON.stringify({ message: err.message || 'Connection failed' }) });
+            }
+        });
+    }
+
+    addEventListener(name, callback) {
+        if (!this._listeners[name]) this._listeners[name] = [];
+        this._listeners[name].push(callback);
+    }
+
+    removeEventListener(name, callback) {
+        if (!this._listeners[name]) return;
+        this._listeners[name] = this._listeners[name].filter(cb => cb !== callback);
+    }
+
+    close() {
+        this._closed = true;
+        this.readyState = 2; // CLOSED
+        this._controller.abort();
+    }
+
+    _dispatch(name, event) {
+        (this._listeners[name] || []).forEach(cb => {
+            try { cb(event); } catch (e) { console.error('[FetchEventSource] Error in listener for', name, e); }
+        });
+        if (name === 'error' && this.onerror) {
+            try { this.onerror(event); } catch (e) { console.error('[FetchEventSource] Error in onerror', e); }
+        }
+    }
+
+    _processStream(response) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        const read = () => {
+            reader.read().then(({ done, value }) => {
+                if (done) {
+                    this.readyState = 2;
+                    // Stream ended normally — if 'done' SSE event was received, this is expected
+                    if (!this._doneReceived && !this._closed) {
+                        this._dispatch('error', { data: '' });
+                    }
+                    return;
+                }
+                buffer += decoder.decode(value, { stream: true });
+
+                // Parse SSE events: events are separated by blank lines (\n\n)
+                const parts = buffer.split('\n\n');
+                buffer = parts.pop(); // keep the last (possibly incomplete) part
+
+                for (const part of parts) {
+                    if (!part.trim()) continue;
+                    let eventName = 'message';
+                    let dataLines = [];
+
+                    for (const line of part.split('\n')) {
+                        if (line.startsWith('event:')) {
+                            eventName = line.slice(6).trim();
+                        } else if (line.startsWith('data:')) {
+                            dataLines.push(line.slice(5).trim());
+                        }
+                        // ignore 'id:', 'retry:', and comment lines starting with ':'
+                    }
+
+                    if (eventName === 'done') {
+                        this._doneReceived = true;
+                    }
+
+                    if (eventName !== 'message' && dataLines.length > 0) {
+                        const eventData = dataLines.join('\n');
+                        this._dispatch(eventName, { data: eventData });
+                    }
+                }
+
+                read();
+            }).catch(err => {
+                if (err.name !== 'AbortError' && !this._closed) {
+                    this.readyState = 0;
+                    this._dispatch('error', { data: JSON.stringify({ message: err.message || 'Stream read error' }) });
+                }
+            });
+        };
+
+        read();
+    }
+}
+
 const appConfig = {
     apiBaseUrl: process.env.REACT_APP_API_BASE_URL || window.location.origin
 };
@@ -1150,19 +1276,23 @@ const remoteApi = {
         return remoteApi._fetch(remoteApi.buildUrl('/api/llm/chat'), { method: 'POST', body: JSON.stringify({message, cluster, history}) }).then(r => r.json());
     },
     /**
-     * SSE streaming chat endpoint.
-     * Returns an EventSource for server-sent events.
+     * SSE streaming chat endpoint using fetch + POST.
+     * Returns a FetchEventSource object that mimics the EventSource interface.
      * Event types: 'token' (partial text), 'tool_call' (tool invocation), 'done' (complete), 'error'
+     *
+     * Uses POST instead of GET to avoid URL length limits when history grows large
+     * after multiple rounds of tool_calls conversations.
      */
     sendLlmMessageStream: function(message, cluster, history, model) {
-        const params = new URLSearchParams();
-        params.set('message', message);
-        if (cluster) params.set('cluster', cluster);
-        if (history && history.length > 0) params.set('history', JSON.stringify(history));
-        if (model) params.set('model', model);
-
-        const url = remoteApi.buildUrl('/api/llm/chat/stream?' + params.toString());
-        return new EventSource(url, { withCredentials: true });
+        const url = remoteApi.buildUrl('/api/llm/chat/stream');
+        const body = { message };
+        if (cluster) body.cluster = cluster;
+        if (history && history.length > 0) body.history = history;
+        if (model) body.model = model;
+        return new FetchEventSource(url, {
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
     },
     confirmLlmAction: function(toolCallId) {
         return remoteApi._fetch(remoteApi.buildUrl('/api/llm/confirm'), { method: 'POST', body: JSON.stringify({toolCallId, confirm: true}) }).then(r => r.json());

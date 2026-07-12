@@ -76,8 +76,8 @@ public class LlmProxyController {
                                         HttpServletResponse  response,
                                         @RequestBody(required = false) byte[]  body) {
         String requestPath = request.getRequestURI().substring(request.getContextPath().length());
-        if ("GET".equalsIgnoreCase(request.getMethod()) && requestPath.endsWith("/chat/stream")) {
-            handleSseStream(request, response);
+        if (requestPath.endsWith("/chat/stream")) {
+            handleSseStream(request, response, body);
             return null;
         }
         String targetUrl = buildTargetUrl(request);
@@ -109,7 +109,7 @@ public class LlmProxyController {
      * @param request HttpServletRequest
      * @param response HttpServletResponse
      */
-    private void handleSseStream(HttpServletRequest request, HttpServletResponse  response) {
+    private void handleSseStream(HttpServletRequest request, HttpServletResponse  response, byte[] body) {
         String targetUrl = buildTargetUrl(request);
         response.setContentType(MediaType.TEXT_EVENT_STREAM_VALUE);
         response.setCharacterEncoding("UTF-8");
@@ -122,8 +122,15 @@ public class LlmProxyController {
         conyHeadersToHttpClient(request, builder);
 
         try {
+            HttpRequest httpRequest;
+            if ("POST".equalsIgnoreCase(request.getMethod()) && body != null && body.length > 0) {
+                builder.header("Content-Type", "application/json");
+                httpRequest = builder.POST(HttpRequest.BodyPublishers.ofByteArray(body)).build();
+            } else {
+                httpRequest = builder.GET().build();
+            }
             HttpResponse<java.io.InputStream> httpResponse =
-                    sseClent.send(builder.GET().build(), HttpResponse.BodyHandlers.ofInputStream());
+                    sseClent.send(httpRequest, HttpResponse.BodyHandlers.ofInputStream());
             try (BufferedReader reader = new BufferedReader(
                     new InputStreamReader(httpResponse.body(), StandardCharsets.UTF_8));
                  OutputStream out = response.getOutputStream()) {

@@ -84,6 +84,18 @@ public class LlmProxyService {
         return doChat(messages, tools, config);
     }
 
+    /**
+     * Send a chat message with pre-built messages array (supports multi-turn with tool calls).
+     *
+     * @param messages the full messages array including system, user, assistant, and tool messages
+     * @param tools    the available tool definitions for function calling
+     * @param config   the LLM configuration
+     * @return JSON string with response content and any tool calls
+     */
+    public String chatWithMessages(List<Map<String, Object>> messages, List<ToolDefinition> tools, LlmConfig config) {
+        return doChat(messages, tools, config);
+    }
+
     private String doChat(List<Map<String, Object>> messages, List<ToolDefinition> tools, LlmConfig config) {
         if (!config.isEnabled() || config.getApiKey() == null || config.getApiKey().isEmpty()) {
             return buildError("LLM is not configured. Please set apiKey and enable the provider.");
@@ -132,19 +144,9 @@ public class LlmProxyService {
             Map<String, Object> requestBody = buildChatRequest(messages, tools, config, true);
             String requestJson = objectMapper.writeValueAsString(requestBody);
 
-            // Log messages summary for debugging multi-turn issues
-            if (log.isDebugEnabled()) {
-                log.debug("LLM stream request: {} messages, model={}, provider={}",
-                        messages.size(), config.getModel(), config.getProvider());
-                for (int i = 0; i < messages.size(); i++) {
-                    Map<String, Object> msg = messages.get(i);
-                    String role = String.valueOf(msg.get("role"));
-                    boolean hasToolCalls = msg.containsKey("tool_calls");
-                    boolean hasToolCallId = msg.containsKey("tool_call_id");
-                    log.debug("  msg[{}]: role={}, hasToolCalls={}, hasToolCallId={}",
-                            i, role, hasToolCalls, hasToolCallId);
-                }
-            }
+            // Log full request for debugging multi-turn issues
+            log.info("LLM stream request JSON (first 2000 chars): {}", 
+                requestJson.length() > 2000 ? requestJson.substring(0, 2000) + "..." : requestJson);
 
             String url = buildChatUrl(config);
             HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
@@ -208,7 +210,9 @@ public class LlmProxyService {
                         errorMessage += " - " + errorBody;
                     }
                 }
-                chunkCallback.accept(buildError("LLM streaming error: " + errorMessage));
+                // Include first 500 chars of request for debugging
+                String requestPreview = requestJson.length() > 500 ? requestJson.substring(0, 500) + "..." : requestJson;
+                chunkCallback.accept(buildError("LLM streaming error: " + errorMessage + " | Request: " + requestPreview));
             }
         } catch (IOException | InterruptedException e) {
             log.error("Failed to call LLM streaming API: {}", e.getMessage(), e);

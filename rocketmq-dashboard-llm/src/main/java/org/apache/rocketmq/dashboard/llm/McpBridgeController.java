@@ -181,7 +181,25 @@ public class McpBridgeController {
     }
 
     /**
-     * POST /api/llm/chat/stream
+     * POST /api/llm/chat/stream  (preferred — history in request body, no URL length limit)
+     * Body: { "message": "...", "cluster": "...", "history": [...], "model": "..." }
+     */
+    @SuppressWarnings("unchecked")
+    @PostMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter chatStreamPost(@RequestBody Map<String, Object> request) {
+        String message = (String) request.get("message");
+        String cluster = (String) request.get("cluster");
+        String model = (String) request.get("model");
+        List<Map<String, Object>> historyList =
+                (List<Map<String, Object>>) request.get("history");
+        if (historyList == null) {
+            historyList = Lists.newArrayList();
+        }
+        return doChatStream(message, cluster, model, historyList);
+    }
+
+    /**
+     * GET /api/llm/chat/stream  (legacy — history in URL query param, subject to URL length limits)
      * @param message The user's message
      * @param cluster The cluster to use
      * @param history The history of previous messages
@@ -190,7 +208,17 @@ public class McpBridgeController {
     @GetMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter chatStream(@RequestParam String message,
                                  @RequestParam(required = false) String cluster,
-                                 @RequestParam(required = false) String history) {
+                                 @RequestParam(required = false) String history,
+                                 @RequestParam(required = false) String model) {
+        List<Map<String, Object>> historyList = parseHistory(history);
+        return doChatStream(message, cluster, model, historyList);
+    }
+
+    /**
+     * Shared streaming chat logic used by both GET and POST endpoints.
+     */
+    private SseEmitter doChatStream(String message, String cluster, String model,
+                                    List<Map<String, Object>> historyList) {
         SseEmitter emitter = new SseEmitter(0L);
         LlmConfig config = LlmConfig.LlmConfigManager.load();
         if (!LlmConfig.LlmConfigManager.isConfigured()) {
@@ -210,7 +238,6 @@ public class McpBridgeController {
         List<ToolDefinition> filterTools = ToolFilter.filterForUser(allTools, "ADMIN", capability);
 
         // Build structured messages array from history (preserving tool calls for multi-turn context)
-        List<Map<String, Object>> historyList = parseHistory(history);
         List<Map<String, Object>> messages = buildMessagesWithTools(message, historyList);
         List<Map<String, Object>> streamToolCalls = Lists.newArrayList();
         StringBuilder accumulatedContent = new StringBuilder();
