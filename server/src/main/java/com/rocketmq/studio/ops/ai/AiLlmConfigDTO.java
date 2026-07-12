@@ -14,18 +14,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package com.rocketmq.studio.ops.ai;
 
-// jest-dom adds custom jest matchers for asserting on DOM nodes.
-// allows you to do things like:
-// expect(element).toHaveTextContent(/react/i)
-// learn more: https://github.com/testing-library/jest-dom
-import '@testing-library/jest-dom';
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-// Polyfill TextEncoder/TextDecoder for jsdom environment (not available by default)
-const { TextEncoder, TextDecoder } = require('util');
-if (typeof global.TextEncoder === 'undefined') {
-    global.TextEncoder = TextEncoder;
-}
-if (typeof global.TextDecoder === 'undefined') {
-    global.TextDecoder = TextDecoder;
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class AiLlmConfigDTO {
+    private String provider;
+    private String apiKey;
+    private String model;
+    private String baseUrl;
 }

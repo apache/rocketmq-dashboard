@@ -1342,4 +1342,4 @@ const tools = {
     }
 };
 
-export {remoteApi, tools};
+export {remoteApi, tools, FetchEventSource};

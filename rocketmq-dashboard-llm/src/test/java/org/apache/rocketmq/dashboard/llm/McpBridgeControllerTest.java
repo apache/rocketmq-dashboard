@@ -29,6 +29,7 @@ import java.util.Map;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -372,7 +373,7 @@ public class McpBridgeControllerTest {
 
         Map<String, Object> result = controller.testConnection(config);
 
-        assertEquals("Should fail with status -1", result.get("status"));
+        assertEquals(-1, result.get("status"));
         assertTrue("Should mention API key required",
                 result.get("errMsg").toString().contains("API key"));
     }
@@ -385,8 +386,7 @@ public class McpBridgeControllerTest {
 
         Map<String, Object> result = controller.testConnection(config);
 
-        assertEquals("Should fail with status -1",
-                result.get("status"));
+        assertEquals(-1, result.get("status"));
     }
 
     @Test
@@ -445,6 +445,149 @@ public class McpBridgeControllerTest {
                 returned.getApiKey().contains("****"));
         assertEquals("Masked key should show first4+****+last4", "1234****6789",
                 returned.getApiKey());
+    }
+
+    // ---- POST /chat/stream tests -----------------------------------------------
+
+    @Test
+    public void testChatStreamPostReturnsSseEmitter() {
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("message", "List all topics");
+        request.put("cluster", "test-cluster");
+
+        SseEmitter emitter = controller.chatStreamPost(request);
+
+        assertNotNull("POST /chat/stream should return SseEmitter", emitter);
+    }
+
+    @Test
+    public void testChatStreamPostWithNullMessageReturnsSseEmitter() {
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("cluster", "test-cluster");
+        // message is null — doChatStream does not validate message emptiness (unlike chat())
+
+        SseEmitter emitter = controller.chatStreamPost(request);
+
+        assertNotNull("Should return SseEmitter even with null message", emitter);
+    }
+
+    @Test
+    public void testChatStreamPostWithEmptyMessageReturnsSseEmitter() {
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("message", "");
+        request.put("cluster", "test-cluster");
+
+        SseEmitter emitter = controller.chatStreamPost(request);
+
+        assertNotNull("Should return SseEmitter even with empty message", emitter);
+    }
+
+    @Test
+    public void testChatStreamPostWhenNotConfiguredSendsErrorEvent() {
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("message", "List all topics");
+        request.put("cluster", "test-cluster");
+
+        SseEmitter emitter = controller.chatStreamPost(request);
+        assertNotNull("Should return SseEmitter when not configured", emitter);
+
+        // When LLM is not configured, doChatStream sends an error event and completes.
+        // After complete(), any further send() should throw IllegalStateException.
+        boolean completed = false;
+        try {
+            emitter.send(SseEmitter.event().name("test").data("probe"));
+        } catch (IllegalStateException e) {
+            completed = true;
+        } catch (Exception e) {
+            // Other exceptions are also acceptable (e.g., IOException from closed emitter)
+            completed = true;
+        }
+        assertTrue("SseEmitter should be completed after unconfigured error event", completed);
+    }
+
+    @Test
+    public void testChatStreamPostWithNullHistoryDefaultsToEmpty() {
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("message", "List all topics");
+        request.put("cluster", "test-cluster");
+        // history is null — should default to empty list without throwing
+
+        SseEmitter emitter = controller.chatStreamPost(request);
+
+        assertNotNull("Should handle null history gracefully", emitter);
+    }
+
+    @Test
+    public void testChatStreamPostWithHistoryReturnsSseEmitter() {
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("message", "What about topicA?");
+        request.put("cluster", "test-cluster");
+
+        List<Map<String, Object>> history = new ArrayList<>();
+        Map<String, Object> entry = new LinkedHashMap<>();
+        entry.put("role", "assistant");
+        entry.put("content", "I found 3 topics.");
+        history.add(entry);
+        request.put("history", history);
+
+        SseEmitter emitter = controller.chatStreamPost(request);
+
+        assertNotNull("Should return SseEmitter with history", emitter);
+    }
+
+    @Test
+    public void testChatStreamPostWithToolCallsHistoryReturnsSseEmitter() {
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("message", "Yes, execute that");
+        request.put("cluster", "test-cluster");
+
+        List<Map<String, Object>> history = new ArrayList<>();
+        Map<String, Object> assistantEntry = new LinkedHashMap<>();
+        assistantEntry.put("role", "assistant");
+        assistantEntry.put("content", "");
+        List<Map<String, Object>> toolCalls = new ArrayList<>();
+        Map<String, Object> tc = new LinkedHashMap<>();
+        tc.put("id", "call_123");
+        tc.put("name", "listTopics");
+        tc.put("arguments", "{}");
+        toolCalls.add(tc);
+        assistantEntry.put("toolCalls", toolCalls);
+        history.add(assistantEntry);
+
+        Map<String, Object> toolEntry = new LinkedHashMap<>();
+        toolEntry.put("role", "tool");
+        toolEntry.put("content", "{\"topics\":[\"topicA\"]}");
+        toolEntry.put("toolCallId", "call_123");
+        history.add(toolEntry);
+
+        request.put("history", history);
+
+        SseEmitter emitter = controller.chatStreamPost(request);
+
+        assertNotNull("Should return SseEmitter with tool_calls history", emitter);
+    }
+
+    @Test
+    public void testChatStreamPostWithMinimalRequestReturnsSseEmitter() {
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("message", "Hello");
+        // No cluster, no model, no history
+
+        SseEmitter emitter = controller.chatStreamPost(request);
+
+        assertNotNull("Should return SseEmitter with minimal request", emitter);
+    }
+
+    @Test
+    public void testChatStreamPostWithModelOverrideReturnsSseEmitter() {
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("message", "List topics");
+        request.put("cluster", "test-cluster");
+        request.put("model", "deepseek-chat");
+
+        SseEmitter emitter = controller.chatStreamPost(request);
+
+        assertNotNull("Should return SseEmitter with model override", emitter);
     }
 
     // ---- Helper methods --------------------------------------------------------

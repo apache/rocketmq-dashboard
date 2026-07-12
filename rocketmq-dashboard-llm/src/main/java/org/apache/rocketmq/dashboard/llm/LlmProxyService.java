@@ -56,7 +56,7 @@ public class LlmProxyService {
             + "Always confirm cluster context before operations. "
             + "For write operations, show what will happen before executing.";
 
-    private final HttpClient httpClient = HttpClient.newBuilder()
+    private HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(30))
             .build();
 
