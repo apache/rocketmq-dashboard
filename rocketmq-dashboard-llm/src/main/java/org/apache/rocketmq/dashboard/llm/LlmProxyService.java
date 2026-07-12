@@ -156,16 +156,13 @@ public class LlmProxyService {
             addAuthHeaders(requestBuilder, config);
 
             HttpRequest request = requestBuilder.build();
-            HttpResponse<String> response =
-                    httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<java.io.InputStream> response =
+                    httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
 
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
-                // Parse SSE events from the response body
-                String body = response.body();
+                // Process SSE stream in real-time
                 try (BufferedReader reader = new BufferedReader(
-                        new InputStreamReader(
-                                new java.io.ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8)),
-                                StandardCharsets.UTF_8))) {
+                        new InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
                     String line;
                     while ((line = reader.readLine()) != null) {
                         if (line.startsWith("data: ")) {
@@ -178,8 +175,19 @@ public class LlmProxyService {
                     }
                 }
             } else {
-                // Read and include the error response body for debugging
-                String errorBody = response.body();
+                // Read error response body for debugging (must consume InputStream)
+                String errorBody = "";
+                try (BufferedReader errorReader = new BufferedReader(
+                        new InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
+                    StringBuilder sb = new StringBuilder();
+                    String errLine;
+                    while ((errLine = errorReader.readLine()) != null) {
+                        sb.append(errLine);
+                    }
+                    errorBody = sb.toString();
+                } catch (Exception e) {
+                    log.warn("Failed to read error response body: {}", e.getMessage());
+                }
                 log.error("LLM streaming API returned HTTP {}: {}", response.statusCode(), errorBody);
                 // Try to extract a meaningful error message from the response body
                 String errorMessage = "HTTP " + response.statusCode();

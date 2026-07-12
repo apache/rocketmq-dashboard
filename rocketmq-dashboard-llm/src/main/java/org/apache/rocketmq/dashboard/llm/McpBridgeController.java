@@ -550,8 +550,6 @@ public class McpBridgeController {
                         Map<String, Object> toolMsg = new LinkedHashMap<>();
                         toolMsg.put("role", "tool");
                         toolMsg.put("tool_call_id", toolCallId);
-                        // Include tool name for better context (some providers use this)
-                        toolMsg.put("name", toolName.replace('.', '_'));
 
                         Object result = tc.get("result");
                         String resultContent;
