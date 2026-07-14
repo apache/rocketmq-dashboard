@@ -1302,6 +1302,66 @@ const remoteApi = {
     },
     getLlmModels: function() {
         return remoteApi._fetch(remoteApi.buildUrl('/api/llm/models'), { method: 'GET' }).then(r => r.json());
+    },
+
+    // LiteTopic APIs
+    queryLiteTopicList: async (pattern, namespace) => {
+        try {
+            const params = new URLSearchParams();
+            if (pattern) params.append('pattern', pattern);
+            if (namespace) params.append('namespace', namespace);
+            const response = await remoteApi._fetch(remoteApi.buildUrl(`/api/liteTopic/list?${params.toString()}`));
+            return await response.json();
+        } catch (error) {
+            console.error("Error fetching liteTopic list:", error);
+            return {status: 1, errMsg: "Failed to fetch LiteTopic list"};
+        }
+    },
+
+    queryLiteTopicSession: async (sessionId) => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl(`/api/liteTopic/session/${encodeURIComponent(sessionId)}`));
+            return await response.json();
+        } catch (error) {
+            console.error("Error fetching liteTopic session:", error);
+            return {status: 1, errMsg: "Failed to fetch LiteTopic session"};
+        }
+    },
+
+    extendLiteTopicTTL: async (topicPattern, newTTL) => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl('/api/liteTopic/extendTTL'), {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({topicPattern, newTTL})
+            });
+            return await response.json();
+        } catch (error) {
+            console.error("Error extending liteTopic TTL:", error);
+            return {status: 1, errMsg: "Failed to extend LiteTopic TTL"};
+        }
+    },
+
+    queryLiteTopicQuota: async (namespace) => {
+        try {
+            const params = new URLSearchParams();
+            if (namespace) params.append('namespace', namespace);
+            const response = await remoteApi._fetch(remoteApi.buildUrl(`/api/liteTopic/quota?${params.toString()}`));
+            return await response.json();
+        } catch (error) {
+            console.error("Error fetching liteTopic quota:", error);
+            return {status: 1, errMsg: "Failed to fetch LiteTopic quota"};
+        }
+    },
+
+    queryLiteTopicCapability: async () => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl('/api/liteTopic/capability'));
+            return await response.json();
+        } catch (error) {
+            console.error("Error fetching liteTopic capability:", error);
+            return {status: 1, errMsg: "Failed to fetch LiteTopic capability"};
+        }
     }
 };
 

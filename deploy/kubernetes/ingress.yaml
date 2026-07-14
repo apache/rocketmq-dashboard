@@ -1,0 +1,56 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rocketmq-dashboard
+  namespace: rocketmq-dashboard
+  labels:
+    app.kubernetes.io/name: rocketmq-dashboard
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    # Uncomment the following annotation when using cert-manager for TLS certificates
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - dashboard.rocketmq.local
+      # Replace with your TLS secret name
+      secretName: rocketmq-dashboard-tls
+  rules:
+    - host: dashboard.rocketmq.local
+      http:
+        paths:
+          - path: /api/(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: rocketmq-dashboard-backend
+                port:
+                  number: 8082
+          - path: /(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: rocketmq-dashboard-frontend
+                port:
+                  number: 80

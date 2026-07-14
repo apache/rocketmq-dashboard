@@ -1,0 +1,72 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+==============================================================
+ Apache RocketMQ Dashboard has been deployed!
+==============================================================
+
+Release:   {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
+Version:   {{ .Chart.AppVersion }}
+
+Backend Service:
+  Name: {{ include "rocketmq-dashboard.fullname" . }}-backend
+  Type: {{ .Values.backend.service.type }}
+  Port: {{ .Values.backend.service.port }}
+
+Frontend Service:
+  Name: {{ include "rocketmq-dashboard.fullname" . }}-frontend
+  Type: {{ .Values.frontend.service.type }}
+  Port: {{ .Values.frontend.service.port }}
+
+RocketMQ Connection:
+  NameServer: {{ .Values.namesrvAddr }}
+  Proxy:      {{ .Values.proxyAddr }}
+
+{{- if .Values.ingress.enabled }}
+
+Ingress:
+{{- range .Values.ingress.hosts }}
+  Host: {{ .host }}
+{{- range .paths }}
+  Path: {{ .path }}
+{{- end }}
+{{- end }}
+
+{{- else if eq .Values.frontend.service.type "LoadBalancer" }}
+
+To access the dashboard, get the external IP of the frontend service:
+
+  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "rocketmq-dashboard.fullname" . }}-frontend -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+  echo "RocketMQ Dashboard: http://$SERVICE_IP"
+
+NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+      You can watch the status with:
+
+  kubectl get svc --namespace {{ .Release.Namespace }} -w {{ include "rocketmq-dashboard.fullname" . }}-frontend
+
+{{- else if eq .Values.frontend.service.type "ClusterIP" }}
+
+To access the dashboard, forward the frontend port to your local machine:
+
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "rocketmq-dashboard.fullname" . }}-frontend 8080:{{ .Values.frontend.service.port }}
+
+Then open: http://localhost:8080
+
+{{- end }}
+
+For more information, visit: https://github.com/apache/rocketmq-dashboard

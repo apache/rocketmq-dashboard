@@ -20,7 +20,7 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-
 import { AnimatePresence, motion } from 'framer-motion';
 import Login from '../pages/Login/login';
 import Ops from '../pages/Ops/ops';
-import Proxy from '../pages/Proxy/proxy';
+import ProxyCluster from '../pages/Proxy/ProxyCluster';
 import Cluster from '../pages/Cluster/cluster';
 import Topic from '../pages/Topic/topic';
 import Consumer from '../pages/Consumer/consumer';
@@ -37,6 +37,8 @@ import DashboardPage from '../pages/Dashboard/DashboardPage';
 import HomePage from '../pages/Home/HomePage';
 import GroupManagement from '../pages/GroupManagement/GroupManagement';
 import BrokerCluster from '../pages/BrokerCluster/BrokerCluster';
+import LiteTopic from '../pages/LiteTopic/LiteTopic';
+import SslSettings from '../pages/SslSettings/SslSettings';
 
 import StudioLayout from '../components/StudioLayout/StudioLayout';
 import { remoteApi } from '../api/remoteApi/remoteApi';
@@ -120,7 +122,7 @@ const AppRouter = () => {
                         path="/proxy"
                         element={
                             <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
-                                <Proxy />
+                                <ProxyCluster />
                             </motion.div>
                         }
                     />
@@ -129,6 +131,14 @@ const AppRouter = () => {
                         element={
                             <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
                                 <Topic />
+                            </motion.div>
+                        }
+                    />
+                    <Route
+                        path="/liteTopic"
+                        element={
+                            <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
+                                <LiteTopic />
                             </motion.div>
                         }
                     />
@@ -193,6 +203,14 @@ const AppRouter = () => {
                         element={
                             <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
                                 <LlmSettings />
+                            </motion.div>
+                        }
+                    />
+                    <Route
+                        path="/ssl-settings"
+                        element={
+                            <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
+                                <SslSettings />
                             </motion.div>
                         }
                     />

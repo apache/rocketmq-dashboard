@@ -1,0 +1,154 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+.litetopic-page {
+    padding: 0;
+}
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.page-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: #1a1a1a;
+    margin: 0;
+    display: flex;
+    align-items: center;
+}
+
+/* Quota Panel */
+.quota-card {
+    border-radius: 8px !important;
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.04) !important;
+}
+
+.quota-card .ant-card-body {
+    padding: 16px 20px !important;
+}
+
+.quota-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.quota-item {
+    text-align: center;
+}
+
+.quota-label {
+    font-size: 13px;
+    color: #595959;
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+
+.quota-detail {
+    font-size: 12px;
+    color: #8c8c8c;
+    margin-top: 4px;
+}
+
+/* Filter Card */
+.filter-card {
+    border-radius: 8px !important;
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.04) !important;
+}
+
+.filter-card .ant-card-body {
+    padding: 12px 16px !important;
+}
+
+/* Table Card */
+.table-card {
+    border-radius: 8px !important;
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.04) !important;
+}
+
+.table-card .ant-card-body {
+    padding: 16px !important;
+}
+
+/* Stat Cards in Session Detail */
+.stat-card {
+    background: #f6ffed !important;
+    border-radius: 8px !important;
+    text-align: center;
+    padding: 12px !important;
+}
+
+.stat-card .ant-card-body {
+    padding: 12px !important;
+}
+
+.stat-card-warning {
+    background: #fffbe6 !important;
+}
+
+.stat-label {
+    font-size: 12px;
+    color: #8c8c8c;
+    margin-bottom: 4px;
+}
+
+.stat-value {
+    font-size: 24px;
+    font-weight: 700;
+    color: #1a1a1a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.stat-value.warning {
+    color: #fa8c16;
+}
+
+.stat-value.danger {
+    color: #ff4d4f;
+}
+
+/* Session Detail */
+.session-detail-content {
+    padding: 0;
+}
+
+.info-descriptions .ant-descriptions-item-label {
+    font-weight: 500;
+    color: #595959;
+    background: #fafafa;
+}
+
+.section-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1a1a1a;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .page-header {
+        flex-direction: column;
+        gap: 12px;
+        align-items: flex-start;
+    }
+}

@@ -1,0 +1,158 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# -- Global settings
+global:
+  # -- Image pull secrets for private registries
+  imagePullSecrets: []
+
+# -- Backend (Spring Boot) configuration
+backend:
+  # -- Docker image for the backend
+  image:
+    repository: apache/rocketmq-dashboard
+    tag: latest
+    pullPolicy: Always
+
+  # -- Number of backend replicas
+  replicas: 2
+
+  # -- Service configuration for the backend
+  service:
+    type: ClusterIP
+    port: 8082
+
+  # -- Resource limits and requests for the backend
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+
+  # -- JVM options passed via JAVA_OPTS
+  javaOpts: "-Xms512m -Xmx1024m -XX:+UseG1GC"
+
+  # -- Health check probe paths
+  livenessProbe:
+    path: /ops/rocketMqStatus.query
+    initialDelaySeconds: 60
+    periodSeconds: 15
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+  readinessProbe:
+    path: /ops/rocketMqStatus.query
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+  # -- Node selector for backend pods
+  nodeSelector: {}
+
+  # -- Tolerations for backend pods
+  tolerations: []
+
+  # -- Affinity rules for backend pods
+  affinity: {}
+
+# -- Frontend (nginx) configuration
+frontend:
+  # -- Docker image for the frontend
+  image:
+    repository: apache/rocketmq-dashboard-web
+    tag: latest
+    pullPolicy: Always
+
+  # -- Number of frontend replicas
+  replicas: 2
+
+  # -- Service configuration for the frontend
+  service:
+    type: LoadBalancer
+    port: 80
+
+  # -- Resource limits and requests for the frontend
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "128Mi"
+      cpu: "100m"
+
+  # -- Node selector for frontend pods
+  nodeSelector: {}
+
+  # -- Tolerations for frontend pods
+  tolerations: []
+
+  # -- Affinity rules for frontend pods
+  affinity: {}
+
+# -- RocketMQ connection settings
+namesrvAddr: "rocketmq-namesrv:9876"
+proxyAddr: "rocketmq-proxy:8081"
+
+# -- Ingress configuration
+ingress:
+  # -- Enable ingress resource
+  enabled: false
+  # -- Ingress class name (e.g. nginx)
+  className: nginx
+  # -- Additional ingress annotations
+  annotations: {}
+    # nginx.ingress.kubernetes.io/rewrite-target: /$1
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  # -- Ingress hosts
+  hosts:
+    - host: dashboard.rocketmq.local
+      paths:
+        - path: /api/(.*)
+          pathType: ImplementationSpecific
+          service: backend
+        - path: /(.*)
+          pathType: ImplementationSpecific
+          service: frontend
+  # -- TLS configuration
+  tls: []
+    # - secretName: rocketmq-dashboard-tls
+    #   hosts:
+    #     - dashboard.rocketmq.local
+
+# -- Horizontal Pod Autoscaler configuration
+autoscaling:
+  # -- Enable HPA for the backend
+  enabled: false
+  # -- Minimum number of backend replicas
+  minReplicas: 2
+  # -- Maximum number of backend replicas
+  maxReplicas: 10
+  # -- Target CPU utilization percentage
+  targetCPUUtilizationPercentage: 70
+
+# -- Pod security context
+podSecurityContext: {}
+
+# -- Container security context
+securityContext: {}
+
+# -- Additional labels applied to all resources
+extraLabels: {}

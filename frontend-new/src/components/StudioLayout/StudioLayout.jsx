@@ -39,6 +39,7 @@ import {
     MenuFoldOutlined,
     MenuUnfoldOutlined,
     LockOutlined,
+    TagOutlined,
 } from '@ant-design/icons';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../../i18n/LanguageContext';
@@ -71,6 +72,7 @@ const StudioLayout = ({ children }) => {
     const instanceMenuItems = [
         { key: 'ops', icon: <CloudServerOutlined />, label: '实例列表' },
         { key: 'topic', icon: <AppstoreOutlined />, label: 'Topic管理' },
+        { key: 'liteTopic', icon: <TagOutlined />, label: 'LiteTopic管理' },
         { key: 'consumer', icon: <TeamOutlined />, label: 'Group管理' },
         { key: 'acl', icon: <SafetyCertificateOutlined />, label: 'ACL管理' },
         { key: 'message', icon: <SearchOutlined />, label: '消息查询' },

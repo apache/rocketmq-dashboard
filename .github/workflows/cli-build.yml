@@ -1,0 +1,193 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+name: CLI Native Binary Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. 5.0.0)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+env:
+  GRAALVM_VERSION: '23.1'
+  JAVA_VERSION: '21'
+  CLI_MODULE: rocketmq-dashboard-cli
+  NATIVE_IMAGE_CONFIG: rocketmq-dashboard-cli/src/main/resources/META-INF/native-image
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux builds
+          - os: linux
+            arch: amd64
+            runner: ubuntu-latest
+            target: x86_64-linux-gnu
+            graalvm-arch: amd64
+          - os: linux
+            arch: arm64
+            runner: ubuntu-latest
+            target: aarch64-linux-gnu
+            graalvm-arch: amd64
+          # macOS builds
+          - os: darwin
+            arch: amd64
+            runner: macos-latest
+            target: x86_64-apple-darwin
+            graalvm-arch: amd64
+          - os: darwin
+            arch: arm64
+            runner: macos-latest
+            target: aarch64-apple-darwin
+            graalvm-arch: aarch64
+          # Windows builds
+          - os: windows
+            arch: amd64
+            runner: windows-latest
+            target: x86_64-pc-windows
+            graalvm-arch: amd64
+          - os: windows
+            arch: arm64
+            runner: windows-latest
+            target: aarch64-pc-windows
+            graalvm-arch: amd64
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Set up GraalVM
+        uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cache Maven dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Install cross-compilation toolchain (Linux arm64)
+        if: matrix.os == 'linux' && matrix.arch == 'arm64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+
+      - name: Build project with Maven (skip tests for native build)
+        run: mvn -B package -DskipTests -pl ${{ env.CLI_MODULE }} -am
+
+      - name: Build native image (Linux/macOS)
+        if: matrix.os != 'windows'
+        env:
+          CROSS_TARGET: ${{ matrix.target }}
+        run: |
+          cd ${{ env.CLI_MODULE }}
+          native-image \
+            -H:ConfigurationFileDirectories=../${{ env.NATIVE_IMAGE_CONFIG }} \
+            -H:Name=rocketmq-dashboard-cli \
+            -H:Class=org.apache.rocketmq.dashboard.cli.DashboardCliApplication \
+            --target-build-directory=../target/native/${{ matrix.os }}-${{ matrix.arch }} \
+            -jar target/${{ env.CLI_MODULE }}-*.jar
+
+      - name: Build native image (Windows)
+        if: matrix.os == 'windows'
+        shell: cmd
+        run: |
+          cd ${{ env.CLI_MODULE }}
+          native-image ^
+            -H:ConfigurationFileDirectories=..\${{ env.NATIVE_IMAGE_CONFIG }} ^
+            -H:Name=rocketmq-dashboard-cli ^
+            -H:Class=org.apache.rocketmq.dashboard.cli.DashboardCliApplication ^
+            --target-build-directory=..\target\native\${{ matrix.os }}-${{ matrix.arch }} ^
+            -jar target\${{ env.CLI_MODULE }}-*.jar
+
+      - name: Package artifact (Unix)
+        if: matrix.os != 'windows'
+        run: |
+          ARTIFACT_DIR="target/native/${{ matrix.os }}-${{ matrix.arch }}"
+          chmod +x "${ARTIFACT_DIR}/rocketmq-dashboard-cli"
+          tar -czf "rocketmq-dashboard-cli-${{ matrix.os }}-${{ matrix.arch }}.tar.gz" \
+            -C "${ARTIFACT_DIR}" rocketmq-dashboard-cli
+
+      - name: Package artifact (Windows)
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          $artifactDir = "target\native\${{ matrix.os }}-${{ matrix.arch }}"
+          Compress-Archive -Path "$artifactDir\rocketmq-dashboard-cli.exe" `
+            -DestinationPath "rocketmq-dashboard-cli-${{ matrix.os }}-${{ matrix.arch }}.zip"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rocketmq-dashboard-cli-${{ matrix.os }}-${{ matrix.arch }}
+          path: rocketmq-dashboard-cli-${{ matrix.os }}-${{ matrix.arch }}.*
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Determine release tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+            if [ -z "$VERSION" ]; then
+              VERSION="dev-$(date +%Y%m%d%H%M%S)"
+            fi
+            echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: RocketMQ Dashboard CLI ${{ steps.tag.outputs.tag }}
+          draft: false
+          prerelease: ${{ contains(steps.tag.outputs.tag, 'rc') || contains(steps.tag.outputs.tag, 'beta') || contains(steps.tag.outputs.tag, 'alpha') }}
+          files: |
+            artifacts/**/*.tar.gz
+            artifacts/**/*.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
