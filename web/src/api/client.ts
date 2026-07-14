@@ -18,6 +18,27 @@
 import axios from 'axios';
 import { message } from 'antd';
 
+const SUCCESS_BUSINESS_CODES = new Set([0, 200]);
+
+interface BusinessResponse {
+  code?: unknown;
+  message?: unknown;
+}
+
+function isBusinessResponse(data: unknown): data is BusinessResponse {
+  return typeof data === 'object' && data !== null;
+}
+
+function getBusinessError(data: unknown): string | null {
+  if (!isBusinessResponse(data) || data.code === undefined) {
+    return null;
+  }
+  if (typeof data.code === 'number' && SUCCESS_BUSINESS_CODES.has(data.code)) {
+    return null;
+  }
+  return typeof data.message === 'string' && data.message.trim() ? data.message : '请求失败';
+}
+
 const client = axios.create({
   baseURL: '/api',
   timeout: 30000,
@@ -38,10 +59,10 @@ client.interceptors.request.use(
 // Response interceptor: check business code and handle 401
 client.interceptors.response.use(
   (response) => {
-    const data = response.data;
-    if (data.code !== undefined && data.code !== 0) {
-      message.error(data.message || '请求失败');
-      return Promise.reject(new Error(data.message || '请求失败'));
+    const errorMessage = getBusinessError(response.data);
+    if (errorMessage) {
+      message.error(errorMessage);
+      return Promise.reject(new Error(errorMessage));
     }
     return response;
   },
