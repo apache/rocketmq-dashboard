@@ -40,6 +40,29 @@ export interface DashboardData {
   clusters: ClusterOverview[];
 }
 
+export interface MetricSample {
+  timestamp: number;
+  value: string;
+}
+
+export interface MetricSeries {
+  labels: Record<string, string>;
+  values: MetricSample[];
+}
+
+export interface MetricData {
+  resultType: string;
+  series: MetricSeries[];
+  warnings: string[];
+}
+
+export interface MetricQuery {
+  metric: string;
+  start: number;
+  end: number;
+  step: string;
+}
+
 // ─── Dashboard ──────────────────────────────────────────────────
 export async function getDashboard() {
   const res = await client.get<{ data: DashboardData }>('/dashboard');
@@ -47,12 +70,7 @@ export async function getDashboard() {
 }
 
 // ─── Metrics ────────────────────────────────────────────────────
-export async function queryMetrics(query: {
-  metric: string;
-  start: number;
-  end: number;
-  step?: string;
-}) {
-  const res = await client.post<{ data: unknown }>('/metrics/query', query);
+export async function queryMetrics(query: MetricQuery) {
+  const res = await client.post<{ data: MetricData }>('/metrics/query', query);
   return res.data.data;
 }

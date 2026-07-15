@@ -16,53 +16,241 @@
  */
 package com.rocketmq.studio.cluster.metrics;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.util.StringUtils;
+import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
-import java.util.ArrayList;
+import java.io.IOException;
+import java.net.SocketTimeoutException;
+import java.net.URI;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.StreamSupport;
 
 @Slf4j
 @Component
 public class PrometheusMetricsSource implements MetricsSource {
 
+    private static final String QUERY_RANGE_PATH = "/api/v1/query_range";
+
+    private final RestClient restClient;
+    private final ObjectMapper objectMapper;
+    private final PrometheusProperties properties;
+
+    public PrometheusMetricsSource(RestClient.Builder restClientBuilder, ObjectMapper objectMapper,
+                                   PrometheusProperties properties) {
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(properties.getConnectTimeout());
+        requestFactory.setReadTimeout(properties.getReadTimeout());
+        this.restClient = restClientBuilder.requestFactory(requestFactory).build();
+        this.objectMapper = objectMapper;
+        this.properties = properties;
+    }
+
     @Override
     public MetricDataVO query(MetricQueryDTO query) {
-        log.info("Querying Prometheus: metric={}, start={}, end={}, step={}",
-                query.getMetric(), query.getStart(), query.getEnd(), query.getStep());
+        validateQuery(query);
+        URI queryRangeUri = queryRangeUri();
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("query", query.getMetric());
+        form.add("start", Long.toString(query.getStart()));
+        form.add("end", Long.toString(query.getEnd()));
+        form.add("step", query.getStep());
 
-        // Stub: generate sample data points
-        List<long[]> values = new ArrayList<>();
-        long stepSeconds = parseStep(query.getStep());
-        long start = query.getStart();
-        long end = query.getEnd();
+        log.debug("Querying Prometheus range: start={}, end={}, step={}",
+                query.getStart(), query.getEnd(), query.getStep());
 
-        for (long ts = start; ts <= end; ts += stepSeconds) {
-            values.add(new long[]{ts, (long) (Math.random() * 100)});
+        try {
+            JsonNode response = restClient.post()
+                    .uri(queryRangeUri)
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .headers(this::applyAuthentication)
+                    .body(form)
+                    .retrieve()
+                    .body(JsonNode.class);
+            return parseResponse(response);
+        } catch (PrometheusException exception) {
+            throw exception;
+        } catch (RestClientResponseException exception) {
+            throw responseException(exception);
+        } catch (ResourceAccessException exception) {
+            if (hasCause(exception, SocketTimeoutException.class)) {
+                throw new PrometheusException(HttpStatus.GATEWAY_TIMEOUT.value(),
+                        "Prometheus query timed out", exception);
+            }
+            throw new PrometheusException(HttpStatus.BAD_GATEWAY.value(),
+                    "Failed to connect to Prometheus", exception);
+        } catch (RestClientException exception) {
+            if (hasCause(exception, SocketTimeoutException.class)) {
+                throw new PrometheusException(HttpStatus.GATEWAY_TIMEOUT.value(),
+                        "Prometheus query timed out", exception);
+            }
+            throw new PrometheusException(HttpStatus.BAD_GATEWAY.value(),
+                    "Prometheus query failed", exception);
+        }
+    }
+
+    private void validateQuery(MetricQueryDTO query) {
+        if (query == null) {
+            throw new PrometheusException(HttpStatus.BAD_REQUEST.value(), "Metric query is required");
+        }
+        if (query.getEnd() < query.getStart()) {
+            throw new PrometheusException(HttpStatus.BAD_REQUEST.value(),
+                    "Metric query end must not be earlier than start");
+        }
+    }
+
+    private URI queryRangeUri() {
+        if (!StringUtils.hasText(properties.getBaseUrl())) {
+            throw new PrometheusException(HttpStatus.SERVICE_UNAVAILABLE.value(),
+                    "Prometheus base URL is not configured");
+        }
+        try {
+            String baseUrl = properties.getBaseUrl().strip();
+            while (baseUrl.endsWith("/")) {
+                baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
+            }
+            URI uri = URI.create(baseUrl + QUERY_RANGE_PATH);
+            if (!"http".equalsIgnoreCase(uri.getScheme()) && !"https".equalsIgnoreCase(uri.getScheme())) {
+                throw new IllegalArgumentException("Unsupported Prometheus URL scheme");
+            }
+            return uri;
+        } catch (IllegalArgumentException exception) {
+            throw new PrometheusException(HttpStatus.SERVICE_UNAVAILABLE.value(),
+                    "Prometheus base URL is invalid", exception);
+        }
+    }
+
+    private void applyAuthentication(HttpHeaders headers) {
+        if (StringUtils.hasText(properties.getBearerToken())) {
+            headers.setBearerAuth(properties.getBearerToken());
+            return;
+        }
+        boolean hasUsername = StringUtils.hasText(properties.getUsername());
+        boolean hasPassword = StringUtils.hasText(properties.getPassword());
+        if (hasUsername != hasPassword) {
+            throw new PrometheusException(HttpStatus.SERVICE_UNAVAILABLE.value(),
+                    "Prometheus basic authentication is incomplete");
+        }
+        if (hasUsername) {
+            headers.setBasicAuth(properties.getUsername(), properties.getPassword());
+        }
+    }
+
+    private MetricDataVO parseResponse(JsonNode response) {
+        if (response == null || !"success".equals(response.path("status").asText())) {
+            throw responseBodyException(response, HttpStatus.BAD_GATEWAY.value());
         }
 
+        JsonNode data = response.path("data");
+        JsonNode result = data.path("result");
+        if (!data.isObject() || !result.isArray() || !StringUtils.hasText(data.path("resultType").asText())) {
+            throw new PrometheusException(HttpStatus.BAD_GATEWAY.value(),
+                    "Prometheus returned a malformed response");
+        }
+
+        List<MetricDataVO.MetricSeriesVO> series = StreamSupport.stream(result.spliterator(), false)
+                .map(this::parseSeries)
+                .toList();
+        List<String> warnings = parseWarnings(response.path("warnings"));
+
         return MetricDataVO.builder()
-                .metric(query.getMetric())
-                .values(values)
+                .resultType(data.path("resultType").asText())
+                .series(series)
+                .warnings(warnings)
                 .build();
     }
 
-    private long parseStep(String step) {
-        if (step == null || step.isEmpty()) {
-            return 60;
+    private MetricDataVO.MetricSeriesVO parseSeries(JsonNode seriesNode) {
+        JsonNode metric = seriesNode.path("metric");
+        JsonNode values = seriesNode.path("values");
+        if (!metric.isObject() || !values.isArray()) {
+            throw new PrometheusException(HttpStatus.BAD_GATEWAY.value(),
+                    "Prometheus returned a malformed time series");
         }
+
+        Map<String, String> labels = new LinkedHashMap<>();
+        Iterator<Map.Entry<String, JsonNode>> fields = metric.fields();
+        fields.forEachRemaining(entry -> labels.put(entry.getKey(), entry.getValue().asText()));
+
+        List<MetricDataVO.MetricSampleVO> samples = StreamSupport.stream(values.spliterator(), false)
+                .map(this::parseSample)
+                .toList();
+        return MetricDataVO.MetricSeriesVO.builder()
+                .labels(labels)
+                .values(samples)
+                .build();
+    }
+
+    private MetricDataVO.MetricSampleVO parseSample(JsonNode sampleNode) {
+        if (!sampleNode.isArray() || sampleNode.size() != 2 || !sampleNode.get(0).isNumber()) {
+            throw new PrometheusException(HttpStatus.BAD_GATEWAY.value(),
+                    "Prometheus returned a malformed sample");
+        }
+        return MetricDataVO.MetricSampleVO.builder()
+                .timestamp(sampleNode.get(0).asDouble())
+                .value(sampleNode.get(1).asText())
+                .build();
+    }
+
+    private List<String> parseWarnings(JsonNode warningsNode) {
+        if (!warningsNode.isArray()) {
+            return List.of();
+        }
+        return StreamSupport.stream(warningsNode.spliterator(), false)
+                .map(JsonNode::asText)
+                .toList();
+    }
+
+    private PrometheusException responseException(RestClientResponseException exception) {
+        JsonNode response = null;
         try {
-            if (step.endsWith("s")) {
-                return Long.parseLong(step.substring(0, step.length() - 1));
-            } else if (step.endsWith("m")) {
-                return Long.parseLong(step.substring(0, step.length() - 1)) * 60;
-            } else if (step.endsWith("h")) {
-                return Long.parseLong(step.substring(0, step.length() - 1)) * 3600;
-            }
-            return Long.parseLong(step);
-        } catch (NumberFormatException e) {
-            log.warn("Failed to parse step '{}', defaulting to 60s", step);
-            return 60;
+            response = objectMapper.readTree(exception.getResponseBodyAsString());
+        } catch (IOException ignored) {
+            log.debug("Failed to parse Prometheus error response");
         }
+        int upstreamStatus = exception.getStatusCode().value();
+        int statusCode = switch (upstreamStatus) {
+            case 400, 422, 503 -> upstreamStatus;
+            default -> HttpStatus.BAD_GATEWAY.value();
+        };
+        return responseBodyException(response, statusCode);
+    }
+
+    private PrometheusException responseBodyException(JsonNode response, int statusCode) {
+        String errorType = response == null ? "" : response.path("errorType").asText();
+        String error = response == null ? "" : response.path("error").asText();
+        if (StringUtils.hasText(error)) {
+            String message = StringUtils.hasText(errorType)
+                    ? "Prometheus query failed (" + errorType + "): " + error
+                    : "Prometheus query failed: " + error;
+            return new PrometheusException(statusCode, message);
+        }
+        return new PrometheusException(statusCode, "Prometheus query failed");
+    }
+
+    private boolean hasCause(Throwable throwable, Class<? extends Throwable> causeType) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (causeType.isInstance(current)) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 }
