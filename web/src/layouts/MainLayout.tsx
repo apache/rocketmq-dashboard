@@ -23,8 +23,6 @@ import {
   Avatar,
   Dropdown,
   Input,
-  ConfigProvider,
-  theme,
   Modal,
 } from 'antd';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
@@ -49,6 +47,7 @@ import {
   Notebook,
 } from '@phosphor-icons/react';
 import { useLang } from '../i18n/LangContext';
+import { useTheme } from '../theme/ThemeContext';
 
 const { Sider, Content } = Layout;
 
@@ -57,7 +56,7 @@ const iconSize = 18;
 const MainLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const [darkMode, setDarkMode] = useState(false);
+  const { darkMode, toggleTheme } = useTheme();
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchText, setSearchText] = useState('');
   const { lang, setLang, t } = useLang();
@@ -152,20 +151,7 @@ const MainLayout = () => {
   const logoColor = darkMode ? '#e5e5e5' : '#1b1b1a';
 
   return (
-    <ConfigProvider
-      theme={{
-        algorithm: darkMode ? theme.darkAlgorithm : theme.defaultAlgorithm,
-        token: darkMode
-          ? {
-              colorBgBase: '#2a2a2e',
-              colorBgContainer: '#323236',
-              colorBgElevated: '#3a3a3e',
-              colorBorder: '#3a3a3e',
-              colorBorderSecondary: '#333337',
-            }
-          : undefined,
-      }}
-    >
+    <>
       <Layout style={{ minHeight: '100vh' }}>
         <Sider
           theme={darkMode ? 'dark' : 'light'}
@@ -282,7 +268,7 @@ const MainLayout = () => {
 
               {/* Theme toggle */}
               <div
-                onClick={() => setDarkMode(!darkMode)}
+                onClick={toggleTheme}
                 style={{
                   cursor: 'pointer',
                   display: 'flex',
@@ -393,7 +379,7 @@ const MainLayout = () => {
             ))}
         </div>
       </Modal>
-    </ConfigProvider>
+    </>
   );
 };
 
