@@ -17,6 +17,7 @@
 package com.rocketmq.studio.ops.audit;
 
 import com.rocketmq.studio.common.domain.PageResult;
+import com.rocketmq.studio.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -38,6 +39,7 @@ public class AuditService {
     public PageResult<AuditRecordVO> queryLogs(int page, int pageSize, String search,
                                              String operationType, String startDate,
                                              String endDate, String result) {
+        validatePagination(page, pageSize);
         log.info("Querying audit logs, page={}, pageSize={}, search={}, operationType={}, result={}",
                 page, pageSize, search, operationType, result);
 
@@ -47,8 +49,9 @@ public class AuditService {
         List<AuditRecordVO> allRecords = auditRepository.findAll(search, operationType, start, end, result);
         long total = allRecords.size();
 
-        int fromIndex = Math.min((page - 1) * pageSize, allRecords.size());
-        int toIndex = Math.min(fromIndex + pageSize, allRecords.size());
+        long offset = (long) (page - 1) * pageSize;
+        int fromIndex = (int) Math.min(offset, allRecords.size());
+        int toIndex = (int) Math.min((long) fromIndex + pageSize, allRecords.size());
         List<AuditRecordVO> pageRecords = allRecords.subList(fromIndex, toIndex);
 
         return PageResult.of(pageRecords, total, page, pageSize);
@@ -56,9 +59,21 @@ public class AuditService {
 
 
     public int cleanupLogs(int beforeDays) {
+        if (beforeDays <= 0) {
+            throw new BusinessException(400, "beforeDays must be greater than 0");
+        }
         log.info("Cleaning up audit logs older than {} days", beforeDays);
         LocalDateTime cutoff = LocalDateTime.now().minusDays(beforeDays);
         return auditRepository.deleteBefore(cutoff);
+    }
+
+    private void validatePagination(int page, int pageSize) {
+        if (page <= 0) {
+            throw new BusinessException(400, "page must be greater than 0");
+        }
+        if (pageSize <= 0) {
+            throw new BusinessException(400, "pageSize must be greater than 0");
+        }
     }
 
     private LocalDateTime parseDate(String dateStr, boolean startOfDay) {
