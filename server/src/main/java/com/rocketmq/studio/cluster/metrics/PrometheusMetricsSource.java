@@ -178,7 +178,13 @@ public class PrometheusMetricsSource implements MetricsSource {
     private MetricDataVO.MetricSeriesVO parseSeries(JsonNode seriesNode) {
         JsonNode metric = seriesNode.path("metric");
         JsonNode values = seriesNode.path("values");
-        if (!metric.isObject() || !values.isArray()) {
+        JsonNode histograms = seriesNode.path("histograms");
+        boolean hasValues = values.isArray();
+        boolean hasHistograms = histograms.isArray();
+        boolean hasSamples = hasValues || hasHistograms;
+        boolean invalidValues = !values.isMissingNode() && !hasValues;
+        boolean invalidHistograms = !histograms.isMissingNode() && !hasHistograms;
+        if (!metric.isObject() || invalidValues || invalidHistograms || !hasSamples) {
             throw new PrometheusException(HttpStatus.BAD_GATEWAY.value(),
                     "Prometheus returned a malformed time series");
         }
@@ -187,12 +193,16 @@ public class PrometheusMetricsSource implements MetricsSource {
         Iterator<Map.Entry<String, JsonNode>> fields = metric.fields();
         fields.forEachRemaining(entry -> labels.put(entry.getKey(), entry.getValue().asText()));
 
-        List<MetricDataVO.MetricSampleVO> samples = StreamSupport.stream(values.spliterator(), false)
-                .map(this::parseSample)
-                .toList();
+        List<MetricDataVO.MetricSampleVO> samples = hasValues
+                ? StreamSupport.stream(values.spliterator(), false).map(this::parseSample).toList()
+                : List.of();
+        List<MetricDataVO.MetricHistogramSampleVO> histogramSamples = hasHistograms
+                ? StreamSupport.stream(histograms.spliterator(), false).map(this::parseHistogramSample).toList()
+                : List.of();
         return MetricDataVO.MetricSeriesVO.builder()
                 .labels(labels)
                 .values(samples)
+                .histograms(histogramSamples)
                 .build();
     }
 
@@ -204,6 +214,18 @@ public class PrometheusMetricsSource implements MetricsSource {
         return MetricDataVO.MetricSampleVO.builder()
                 .timestamp(sampleNode.get(0).asDouble())
                 .value(sampleNode.get(1).asText())
+                .build();
+    }
+
+    private MetricDataVO.MetricHistogramSampleVO parseHistogramSample(JsonNode sampleNode) {
+        if (!sampleNode.isArray() || sampleNode.size() != 2
+                || !sampleNode.get(0).isNumber() || !sampleNode.get(1).isObject()) {
+            throw new PrometheusException(HttpStatus.BAD_GATEWAY.value(),
+                    "Prometheus returned a malformed histogram sample");
+        }
+        return MetricDataVO.MetricHistogramSampleVO.builder()
+                .timestamp(sampleNode.get(0).asDouble())
+                .histogram(sampleNode.get(1))
                 .build();
     }
 

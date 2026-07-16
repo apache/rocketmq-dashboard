@@ -107,6 +107,63 @@ class PrometheusMetricsSourceTest {
     }
 
     @Test
+    void queryShouldPreserveHistogramOnlySeries() {
+        server.createContext("/api/v1/query_range", exchange -> respond(exchange, 200, """
+                {
+                  "status": "success",
+                  "data": {
+                    "resultType": "matrix",
+                    "result": [{
+                      "metric": {"__name__": "rocketmq_rpc_latency"},
+                      "histograms": [[1784107658, {
+                        "count": "12",
+                        "sum": "3.5",
+                        "buckets": [[3, "-0.5", "0.5", "4"], [0, "0.5", "+Inf", "8"]]
+                      }]]
+                    }]
+                  }
+                }
+                """));
+
+        MetricDataVO.MetricSeriesVO series = source(Duration.ofSeconds(2)).query(query()).getSeries().get(0);
+
+        assertThat(series.getValues()).isEmpty();
+        assertThat(series.getHistograms()).hasSize(1);
+        assertThat(series.getHistograms().get(0).getTimestamp()).isEqualTo(1784107658D);
+        assertThat(series.getHistograms().get(0).getHistogram().path("count").asText()).isEqualTo("12");
+        assertThat(series.getHistograms().get(0).getHistogram().path("sum").asText()).isEqualTo("3.5");
+        assertThat(series.getHistograms().get(0).getHistogram().path("buckets")).hasSize(2);
+    }
+
+    @Test
+    void queryShouldPreserveFloatAndHistogramSamplesInSameSeries() {
+        server.createContext("/api/v1/query_range", exchange -> respond(exchange, 200, """
+                {
+                  "status": "success",
+                  "data": {
+                    "resultType": "matrix",
+                    "result": [{
+                      "metric": {"__name__": "request_duration_seconds"},
+                      "values": [[1784107658, "1.25"]],
+                      "histograms": [[1784107688, {
+                        "count": "2",
+                        "sum": "1.5",
+                        "buckets": [[3, "-0.5", "0.5", "2"]]
+                      }]]
+                    }]
+                  }
+                }
+                """));
+
+        MetricDataVO.MetricSeriesVO series = source(Duration.ofSeconds(2)).query(query()).getSeries().get(0);
+
+        assertThat(series.getValues()).hasSize(1);
+        assertThat(series.getValues().get(0).getValue()).isEqualTo("1.25");
+        assertThat(series.getHistograms()).hasSize(1);
+        assertThat(series.getHistograms().get(0).getHistogram().path("count").asText()).isEqualTo("2");
+    }
+
+    @Test
     void queryShouldApplyBasicAuthentication() {
         AtomicReference<String> authorization = new AtomicReference<>();
         server.createContext("/api/v1/query_range", exchange -> {

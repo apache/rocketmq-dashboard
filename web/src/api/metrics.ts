@@ -45,9 +45,21 @@ export interface MetricSample {
   value: string;
 }
 
+export interface MetricHistogram {
+  count: string;
+  sum: string;
+  buckets: [number, string, string, string][];
+}
+
+export interface MetricHistogramSample {
+  timestamp: number;
+  histogram: MetricHistogram;
+}
+
 export interface MetricSeries {
   labels: Record<string, string>;
   values: MetricSample[];
+  histograms: MetricHistogramSample[];
 }
 
 export interface MetricData {

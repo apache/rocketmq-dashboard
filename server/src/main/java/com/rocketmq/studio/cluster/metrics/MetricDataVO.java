@@ -16,6 +16,7 @@
  */
 package com.rocketmq.studio.cluster.metrics;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -40,6 +41,7 @@ public class MetricDataVO {
     public static class MetricSeriesVO {
         private Map<String, String> labels;
         private List<MetricSampleVO> values;
+        private List<MetricHistogramSampleVO> histograms;
     }
 
     @Data
@@ -49,5 +51,14 @@ public class MetricDataVO {
     public static class MetricSampleVO {
         private double timestamp;
         private String value;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class MetricHistogramSampleVO {
+        private double timestamp;
+        private JsonNode histogram;
     }
 }
