@@ -7,12 +7,12 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
-    "prepare": "cd .. && husky",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "prepare": "cd .. && husky"
   },
   "lint-staged": {
     "*.{ts,tsx}": [
