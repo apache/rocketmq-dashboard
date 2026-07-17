@@ -37,6 +37,23 @@ export interface AuditRecord {
   result: string;
 }
 
+export interface PageResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  size: number;
+}
+
+export interface AuditQuery {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  operationType?: string;
+  startDate?: string;
+  endDate?: string;
+  result?: string;
+}
+
 // ─── Alert Rules ────────────────────────────────────────────────
 export async function listAlertRules() {
   const res = await client.get<{ data: AlertRule[] }>('/alert-rules');
@@ -74,13 +91,14 @@ export async function clearAcknowledgedAlerts() {
 }
 
 // ─── Audit Logs ─────────────────────────────────────────────────
-export async function listAuditRecords(params?: Record<string, unknown>) {
-  const res = await client.get<{ data: { list: AuditRecord[]; total: number } }>('/audit-logs', {
+export async function listAuditRecords(params?: AuditQuery) {
+  const res = await client.get<{ data: PageResult<AuditRecord> }>('/audit-logs', {
     params,
   });
   return res.data.data;
 }
 
 export async function cleanupAuditLogs(beforeDays: number) {
-  await client.post('/audit-logs/cleanup', { beforeDays });
+  const res = await client.post<{ data: { deleted: number } }>('/audit-logs/cleanup', { beforeDays });
+  return res.data.data;
 }
