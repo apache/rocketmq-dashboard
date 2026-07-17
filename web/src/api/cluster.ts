@@ -155,15 +155,18 @@ export async function listK8sCerts() {
 }
 
 export async function createK8sCert(data: Partial<K8sCertInfo>) {
-  await client.post('/k8s-certs/create', data);
+  const res = await client.post<{ data: K8sCertInfo }>('/k8s-certs/create', data);
+  return res.data.data;
 }
 
 export async function updateK8sCert(data: Partial<K8sCertInfo>) {
-  await client.post('/k8s-certs/update', data);
+  const res = await client.post<{ data: K8sCertInfo }>('/k8s-certs/update', data);
+  return res.data.data;
 }
 
 export async function renewK8sCert(id: string) {
-  await client.post('/k8s-certs/renew', { id });
+  const res = await client.post<{ data: K8sCertInfo }>('/k8s-certs/renew', { id });
+  return res.data.data;
 }
 
 export async function deleteK8sCert(id: string) {
