@@ -70,7 +70,8 @@ export async function acknowledgeAlert(id: string) {
 }
 
 export async function clearAcknowledgedAlerts() {
-  await client.post('/system-alerts/clear-acknowledged');
+  const res = await client.post<{ data: { cleared: number } }>('/system-alerts/clear-acknowledged');
+  return res.data.data;
 }
 
 // ─── Audit Logs ─────────────────────────────────────────────────

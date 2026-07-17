@@ -50,6 +50,17 @@ export async function acknowledgeAlert(id: string): Promise<void> {
   return opsApi.acknowledgeAlert(id);
 }
 
+export async function clearAcknowledgedAlerts(): Promise<number> {
+  if (USE_MOCK) {
+    const acknowledged = mockSystemAlerts.filter((alert) => alert.acknowledged).length;
+    const remaining = mockSystemAlerts.filter((alert) => !alert.acknowledged);
+    mockSystemAlerts.splice(0, mockSystemAlerts.length, ...remaining);
+    return acknowledged;
+  }
+  const result = await opsApi.clearAcknowledgedAlerts();
+  return result.cleared;
+}
+
 export async function listAuditRecords(
   _params?: Record<string, unknown>,
 ): Promise<{ list: AuditRecord[]; total: number }> {
