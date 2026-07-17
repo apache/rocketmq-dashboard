@@ -44,15 +44,18 @@ export async function listAlertRules() {
 }
 
 export async function createAlertRule(data: Partial<AlertRule>) {
-  await client.post('/alert-rules/create', data);
+  const res = await client.post<{ data: AlertRule }>('/alert-rules/create', data);
+  return res.data.data;
 }
 
-export async function updateAlertRule(data: Partial<AlertRule>) {
-  await client.post('/alert-rules/update', data);
+export async function updateAlertRule(data: AlertRule) {
+  const res = await client.post<{ data: AlertRule }>('/alert-rules/update', data);
+  return res.data.data;
 }
 
 export async function toggleAlertRule(id: string, enabled: boolean) {
-  await client.post('/alert-rules/toggle', { id, enabled });
+  const res = await client.post<{ data: AlertRule }>('/alert-rules/toggle', { id, enabled });
+  return res.data.data;
 }
 
 export async function deleteAlertRule(id: string) {
