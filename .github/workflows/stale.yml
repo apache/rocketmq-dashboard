@@ -1,0 +1,30 @@
+name: Close Stale Issues and PRs
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # Run daily at 00:00 UTC
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v9
+        with:
+          days-before-stale: 7
+          days-before-close: 0
+          stale-issue-label: stale
+          stale-pr-label: stale
+          stale-issue-message: >
+            This issue has been automatically closed because there has been no activity
+            for 7 days. If you believe this issue is still relevant, please reopen it
+            with updated information.
+          stale-pr-message: >
+            This pull request has been automatically closed because there has been no activity
+            for 7 days. If you would like to continue working on this, please reopen the PR
+            with updated changes.
+          exempt-issue-labels: 'pinned,security'
+          exempt-pr-labels: 'pinned,security'
