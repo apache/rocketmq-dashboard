@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   Table,
   Card,
@@ -54,14 +54,16 @@ import {
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import { TOPIC_TYPE_MAP, CLUSTER_TYPE_MAP } from '../../constants/theme';
+import type { Topic, BrokerRoute, ConsumerGroupInfo } from '../../api/metadata';
 import {
-  topics as mockTopics,
-  topicRoutes,
-  defaultRoute,
-  topicConsumers,
-  defaultConsumers,
-} from '../../mock/topics';
-import type { Topic, BrokerRoute, ConsumerGroupInfo } from '../../mock/topics';
+  batchDeleteTopics,
+  createTopic,
+  deleteTopic,
+  getTopicConsumers,
+  getTopicRoutes,
+  listTopics,
+  sendTopicMessage,
+} from '../../services/topicService';
 
 const { Text } = Typography;
 
@@ -213,7 +215,10 @@ const TopicPage = () => {
   const { t } = useLang();
 
   // ─── State ─────────────────────────────────────────────────────
-  const [topics, setTopics] = useState<Topic[]>(mockTopics);
+  const [topics, setTopics] = useState<Topic[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [routesByTopic, setRoutesByTopic] = useState<Record<string, BrokerRoute[]>>({});
+  const [consumersByTopic, setConsumersByTopic] = useState<Record<string, ConsumerGroupInfo[]>>({});
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [searchText, setSearchText] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
@@ -228,6 +233,24 @@ const TopicPage = () => {
   const [sending, setSending] = useState(false);
   const [sendForm] = Form.useForm();
   const { modal } = App.useApp();
+
+  useEffect(() => {
+    let cancelled = false;
+    void listTopics()
+      .then((nextTopics) => {
+        if (!cancelled) setTopics(nextTopics);
+      })
+      .catch(() => {
+        if (!cancelled) message.error('Topic 列表加载失败，请稍后重试');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // ─── Filtered data ─────────────────────────────────────────────
   const filteredTopics = useMemo(
@@ -244,21 +267,30 @@ const TopicPage = () => {
   );
 
   // ─── Open detail modal ────────────────────────────────────────
-  const openDetail = (topic: Topic) => {
+  const openDetail = async (topic: Topic) => {
     setSelectedTopic(topic);
     setDetailModalOpen(true);
+    try {
+      const [routes, consumers] = await Promise.all([
+        getTopicRoutes(topic.name),
+        getTopicConsumers(topic.name),
+      ]);
+      setRoutesByTopic((previous) => ({ ...previous, [topic.name]: routes }));
+      setConsumersByTopic((previous) => ({ ...previous, [topic.name]: consumers }));
+    } catch {
+      message.error('Topic 详情加载失败，请稍后重试');
+    }
   };
 
   // ─── Route / consumer helpers ─────────────────────────────────
-  const getRoutes = (name: string): BrokerRoute[] => topicRoutes[name] || defaultRoute;
-  const getConsumers = (name: string): ConsumerGroupInfo[] =>
-    topicConsumers[name] || defaultConsumers;
+  const getRoutes = (name: string): BrokerRoute[] => routesByTopic[name] ?? [];
+  const getConsumers = (name: string): ConsumerGroupInfo[] => consumersByTopic[name] ?? [];
 
   const handleAction = (key: string, topic: Topic) => {
     if (key === 'detail') {
-      openDetail(topic);
+      void openDetail(topic);
     } else if (key === 'route') {
-      openDetail(topic);
+      void openDetail(topic);
     } else if (key === 'send') {
       setSendTopic(topic);
       sendForm.setFieldsValue({ topic: topic.name, tag: '', key: '', body: '', properties: [] });
@@ -270,7 +302,15 @@ const TopicPage = () => {
         okText: '删除',
         okType: 'danger',
         cancelText: '取消',
-        onOk: () => message.success(`Topic「${topic.name}」已删除`),
+        onOk: async () => {
+          try {
+            await deleteTopic(topic.name);
+            setTopics((previous) => previous.filter((item) => item.name !== topic.name));
+            message.success(`Topic「${topic.name}」已删除`);
+          } catch {
+            message.error('删除 Topic 失败，请稍后重试');
+          }
+        },
       });
     }
   };
@@ -457,7 +497,7 @@ const TopicPage = () => {
             <Card
               hoverable
               size="small"
-              onClick={() => openDetail(topic)}
+              onClick={() => void openDetail(topic)}
               styles={{ body: { padding: '16px 20px' } }}
               style={{ borderRadius: 8, border: '1px solid #f0f0f0' }}
             >
@@ -514,12 +554,17 @@ const TopicPage = () => {
   );
 
   // ─── Create modal submit ──────────────────────────────────────
-  const handleCreate = () => {
-    form.validateFields().then((values) => {
-      message.success(`Topic「${values.name}」创建成功`);
+  const handleCreate = async () => {
+    try {
+      const values = await form.validateFields();
+      const created = await createTopic(values);
+      setTopics((previous) => [created, ...previous]);
+      message.success(`Topic「${created.name}」创建成功`);
       setModalOpen(false);
       form.resetFields();
-    });
+    } catch {
+      message.error('创建 Topic 失败，请稍后重试');
+    }
   };
 
   // ─── Send message modal submit ────────────────────────────────
@@ -534,10 +579,14 @@ const TopicPage = () => {
           if (p.key) props[p.key] = p.value || '';
         });
       }
-      // Simulate send (mock always succeeds)
-      await new Promise((r) => setTimeout(r, 500));
-      const mockMsgId = `7F${Math.random().toString(16).slice(2, 18).toUpperCase()}`;
-      message.success(`消息发送成功！MsgId: ${mockMsgId}`);
+      const result = await sendTopicMessage({
+        topic: values.topic,
+        tag: values.tag || undefined,
+        key: values.key || undefined,
+        body: values.body,
+        properties: props,
+      });
+      message.success(`消息发送成功！MsgId: ${result.msgId}`);
       setSendModalOpen(false);
       sendForm.resetFields();
     } catch {
@@ -608,10 +657,16 @@ const TopicPage = () => {
                   okText: '删除',
                   okType: 'danger',
                   cancelText: '取消',
-                  onOk: () => {
-                    setTopics((prev) => prev.filter((t) => !selectedRowKeys.includes(t.name)));
-                    message.success(`已删除 ${selectedRowKeys.length} 个 Topic`);
-                    setSelectedRowKeys([]);
+                  onOk: async () => {
+                    try {
+                      const names = selectedRowKeys.map(String);
+                      await batchDeleteTopics(names);
+                      setTopics((previous) => previous.filter((topic) => !names.includes(topic.name)));
+                      message.success(`已删除 ${names.length} 个 Topic`);
+                      setSelectedRowKeys([]);
+                    } catch {
+                      message.error('批量删除 Topic 失败，请稍后重试');
+                    }
                   },
                 });
               }}
@@ -640,6 +695,7 @@ const TopicPage = () => {
           <Table<Topic>
             columns={columns}
             dataSource={filteredTopics}
+            loading={loading}
             rowKey="name"
             rowSelection={{
               selectedRowKeys,
@@ -652,7 +708,7 @@ const TopicPage = () => {
             }}
             size="small"
             onRow={(record) => ({
-              onClick: () => openDetail(record),
+              onClick: () => void openDetail(record),
               style: { cursor: 'pointer' },
             })}
           />
@@ -727,8 +783,8 @@ const TopicPage = () => {
           form={form}
           layout="vertical"
           initialValues={{
-            writeQueueNums: 8,
-            readQueueNums: 8,
+            writeQueues: 8,
+            readQueues: 8,
             perm: 'RW',
             type: 'NORMAL',
             namespace: 'default',
@@ -766,7 +822,7 @@ const TopicPage = () => {
             <Col span={12}>
               <Form.Item
                 label="写队列数"
-                name="writeQueueNums"
+                name="writeQueues"
                 rules={[{ required: true }]}
                 extra="每个 Broker 节点 8 个队列"
               >
@@ -776,7 +832,7 @@ const TopicPage = () => {
             <Col span={12}>
               <Form.Item
                 label="读队列数"
-                name="readQueueNums"
+                name="readQueues"
                 rules={[{ required: true }]}
                 extra="每个 Broker 节点 8 个队列"
               >

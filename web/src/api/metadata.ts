@@ -22,6 +22,12 @@ export interface Topic {
   updatedAt: string;
 }
 
+export interface TopicQuery {
+  clusterId?: string;
+  type?: string;
+  search?: string;
+}
+
 export interface BrokerRoute {
   brokerName: string;
   brokerAddr: string;
@@ -78,7 +84,7 @@ export interface SubscriptionEntry {
 }
 
 // ─── Topic API ──────────────────────────────────────────────────
-export async function listTopics(params?: { keyword?: string; type?: string; namespace?: string }) {
+export async function listTopics(params?: TopicQuery) {
   const res = await client.get<{ data: Topic[] }>('/topics', { params });
   return res.data.data;
 }
@@ -89,7 +95,8 @@ export async function createTopic(data: Partial<Topic>) {
 }
 
 export async function updateTopic(data: Partial<Topic>) {
-  await client.post('/topics/update', data);
+  const res = await client.post<{ data: Topic }>('/topics/update', data);
+  return res.data.data;
 }
 
 export async function deleteTopic(name: string) {
