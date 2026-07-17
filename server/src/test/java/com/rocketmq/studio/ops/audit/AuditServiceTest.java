@@ -17,6 +17,7 @@
 package com.rocketmq.studio.ops.audit;
 
 import com.rocketmq.studio.common.domain.PageResult;
+import com.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -30,6 +31,7 @@ import java.util.Collections;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -102,6 +104,35 @@ class AuditServiceTest {
                 .thenReturn(List.of(r1));
 
         PageResult<AuditRecordVO> result = auditService.queryLogs(5, 10, null, null, null, null, null);
+
+        assertThat(result.getItems()).isEmpty();
+        assertThat(result.getTotal()).isEqualTo(1);
+    }
+
+    @Test
+    void queryLogsShouldRejectNonPositivePage() {
+        assertThatThrownBy(() -> auditService.queryLogs(0, 10, null, null, null, null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("page must be greater than 0")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+    }
+
+    @Test
+    void queryLogsShouldRejectNonPositivePageSize() {
+        assertThatThrownBy(() -> auditService.queryLogs(1, 0, null, null, null, null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("pageSize must be greater than 0")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+    }
+
+    @Test
+    void queryLogsShouldAvoidOffsetOverflow() {
+        AuditRecordVO record = AuditRecordVO.builder().operationType("CREATE").build();
+        when(auditRepository.findAll(isNull(), isNull(), isNull(), isNull(), isNull()))
+                .thenReturn(List.of(record));
+
+        PageResult<AuditRecordVO> result = auditService.queryLogs(
+                Integer.MAX_VALUE, Integer.MAX_VALUE, null, null, null, null, null);
 
         assertThat(result.getItems()).isEmpty();
         assertThat(result.getTotal()).isEqualTo(1);
@@ -189,6 +220,18 @@ class AuditServiceTest {
         int result = auditService.cleanupLogs(90);
 
         assertThat(result).isZero();
+    }
+
+    @Test
+    void cleanupLogsShouldRejectNonPositiveRetention() {
+        assertThatThrownBy(() -> auditService.cleanupLogs(0))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("beforeDays must be greater than 0")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        assertThatThrownBy(() -> auditService.cleanupLogs(-1))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("beforeDays must be greater than 0");
     }
 
     @Test
