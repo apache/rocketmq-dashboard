@@ -359,7 +359,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'ops.description': { zh: '描述', en: 'Description' },
 
   // ─── Topic (detailed) ───
-  'topic.subtitle': { zh: '管理 Topic 的创建、配置与删除', en: 'Manage Topic creation, configuration and deletion' },
+  'topic.subtitle': {
+    zh: '管理 Topic 的创建、配置与删除',
+    en: 'Manage Topic creation, configuration and deletion',
+  },
   'topic.count': { zh: '共 {n} 个 Topic', en: '{n} Topics' },
   'topic.add': { zh: '添加主题', en: 'Add Topic' },
   'topic.config': { zh: '主题配置', en: 'Topic Config' },
@@ -396,7 +399,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'topic.filterAll': { zh: '全部类型', en: 'All Types' },
 
   // ─── Group / Consumer (detailed) ───
-  'group.subtitle': { zh: '管理消费者组的订阅与消费位点', en: 'Manage consumer group subscriptions and offsets' },
+  'group.subtitle': {
+    zh: '管理消费者组的订阅与消费位点',
+    en: 'Manage consumer group subscriptions and offsets',
+  },
   'group.count': { zh: '共 {n} 个消费组', en: '{n} Groups' },
   'group.name': { zh: '组名称', en: 'Group Name' },
   'group.consumeEnable': { zh: '启用消费', en: 'Consume Enabled' },
@@ -412,7 +418,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'group.systemFlag': { zh: '系统标志', en: 'System Flag' },
   'group.selectCluster': { zh: '请选择集群名称', en: 'Select Cluster' },
   'group.selectBrokers': { zh: '选择代理', en: 'Select Brokers' },
-  'group.selectDeleteBrokers': { zh: '请选择在哪个 Broker 删除消费者组', en: 'Select Broker to delete group from' },
+  'group.selectDeleteBrokers': {
+    zh: '请选择在哪个 Broker 删除消费者组',
+    en: 'Select Broker to delete group from',
+  },
   'group.deleteGroup': { zh: '删除消费者组', en: 'Delete Consumer Group' },
   'group.addConsumer': { zh: '添加消费者', en: 'Add Consumer' },
   'group.consumeDetail': { zh: '消费详情', en: 'Consume Detail' },
@@ -433,12 +442,18 @@ const translations: Record<string, Record<Lang, string>> = {
   'group.diffTotal': { zh: '差值', en: 'Diff Total' },
   'group.lastTimestamp': { zh: '上次时间', en: 'Last Timestamp' },
   'group.lastConsumeTime': { zh: '最后消费时间', en: 'Last Consume Time' },
-  'group.resetOffsetSuccess': { zh: '{name} 消费位点已重置到 {time}', en: '{name} offset reset to {time}' },
+  'group.resetOffsetSuccess': {
+    zh: '{name} 消费位点已重置到 {time}',
+    en: '{name} offset reset to {time}',
+  },
   'group.searchPlaceholder': { zh: '搜索消费组名称', en: 'Search group name' },
   'group.selectGroup': { zh: '请选择消费者组', en: 'Select Consumer Group' },
 
   // ─── Message (detailed) ───
-  'message.subtitle': { zh: '按 Topic、Key 或 Message ID 检索消息', en: 'Search by Topic, Key or Message ID' },
+  'message.subtitle': {
+    zh: '按 Topic、Key 或 Message ID 检索消息',
+    en: 'Search by Topic, Key or Message ID',
+  },
   'message.detail': { zh: '消息详情', en: 'Message Detail' },
   'message.body': { zh: '消息主体', en: 'Message Body' },
   'message.properties': { zh: '消息属性', en: 'Message Properties' },
@@ -456,7 +471,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'message.traceTopicHint': { zh: '消息轨迹主题', en: 'Trace Topic' },
   'message.onlyReturn64': { zh: '仅返回64条消息', en: 'Only return 64 messages' },
   'message.idTopicHint': { zh: '消息ID主题', en: 'Message ID Topic' },
-  'message.idAndGroupRequired': { zh: '消息ID和消费者组为必填项', en: 'Message ID and Consumer Group are required' },
+  'message.idAndGroupRequired': {
+    zh: '消息ID和消费者组为必填项',
+    en: 'Message ID and Consumer Group are required',
+  },
   'message.topicAndKeyRequired': { zh: 'Topic和Key为必填项', en: 'Topic and Key are required' },
   'message.idRequired': { zh: '消息ID为必填项', en: 'Message ID is required' },
   'message.resendSuccess': { zh: '重新发送成功', en: 'Resend successful' },
@@ -469,7 +487,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'message.noMatchResult': { zh: '没有查到符合条件的结果', en: 'No matching results' },
 
   // ─── DLQ (detailed) ───
-  'dlq.subtitle': { zh: '管理消费失败进入死信队列的消息', en: 'Manage messages in dead letter queue' },
+  'dlq.subtitle': {
+    zh: '管理消费失败进入死信队列的消息',
+    en: 'Manage messages in dead letter queue',
+  },
   'dlq.message': { zh: '死信消息', en: 'DLQ Message' },
   'dlq.consumerGroup': { zh: '消费者组', en: 'Consumer Group' },
 
@@ -503,12 +524,30 @@ const translations: Record<string, Record<Lang, string>> = {
   'broker.gcStats': { zh: 'JVM GC 统计', en: 'JVM GC Stats' },
   'broker.heapUsage': { zh: '堆内存使用', en: 'Heap Usage' },
   'broker.threadCount': { zh: '线程数', en: 'Thread Count' },
-  'broker.queryAccumulationFailed': { zh: '查询堆积数据失败', en: 'Failed to query accumulation data' },
-  'broker.queryTransactionFailed': { zh: '查询事务数据失败', en: 'Failed to query transaction data' },
-  'broker.queryStorageLatencyFailed': { zh: '查询存储延迟数据失败', en: 'Failed to query storage latency' },
-  'broker.queryNetworkFailed': { zh: '查询网络吞吐量数据失败', en: 'Failed to query network throughput' },
-  'broker.queryReplicaFailed': { zh: '查询副本同步数据失败', en: 'Failed to query replica sync data' },
-  'broker.queryHotTopicFailed': { zh: '查询热点 Topic 数据失败', en: 'Failed to query hot topic data' },
+  'broker.queryAccumulationFailed': {
+    zh: '查询堆积数据失败',
+    en: 'Failed to query accumulation data',
+  },
+  'broker.queryTransactionFailed': {
+    zh: '查询事务数据失败',
+    en: 'Failed to query transaction data',
+  },
+  'broker.queryStorageLatencyFailed': {
+    zh: '查询存储延迟数据失败',
+    en: 'Failed to query storage latency',
+  },
+  'broker.queryNetworkFailed': {
+    zh: '查询网络吞吐量数据失败',
+    en: 'Failed to query network throughput',
+  },
+  'broker.queryReplicaFailed': {
+    zh: '查询副本同步数据失败',
+    en: 'Failed to query replica sync data',
+  },
+  'broker.queryHotTopicFailed': {
+    zh: '查询热点 Topic 数据失败',
+    en: 'Failed to query hot topic data',
+  },
   'broker.queryJvmFailed': { zh: '查询 JVM 统计失败', en: 'Failed to query JVM stats' },
 
   // ─── Proxy Cluster ───
@@ -525,7 +564,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'proxy.addProxyNode': { zh: '添加 Proxy 节点', en: 'Add Proxy Node' },
   'proxy.address': { zh: 'Proxy 地址', en: 'Proxy Address' },
   'proxy.addressPlaceholder': { zh: '例：127.0.0.1:8081', en: 'e.g., 127.0.0.1:8081' },
-  'proxy.invalidAddress': { zh: '地址格式无效（例：127.0.0.1:8081）', en: 'Invalid format (e.g., 127.0.0.1:8081)' },
+  'proxy.invalidAddress': {
+    zh: '地址格式无效（例：127.0.0.1:8081）',
+    en: 'Invalid format (e.g., 127.0.0.1:8081)',
+  },
   'proxy.current': { zh: '当前', en: 'Current' },
   'proxy.connections': { zh: '连接数', en: 'Connections' },
   'proxy.memory': { zh: '内存', en: 'Memory' },
@@ -539,7 +581,10 @@ const translations: Record<string, Record<Lang, string>> = {
   // ─── SSL Settings ───
   'ssl.title': { zh: 'SSL/TLS 设置', en: 'SSL/TLS Settings' },
   'ssl.info': { zh: 'SSL/TLS 配置', en: 'SSL/TLS Configuration' },
-  'ssl.infoDesc': { zh: '配置 SSL/TLS 设置以实现安全通信，更改后需重启服务器。', en: 'Configure SSL/TLS for secure communication. Changes require server restart.' },
+  'ssl.infoDesc': {
+    zh: '配置 SSL/TLS 设置以实现安全通信，更改后需重启服务器。',
+    en: 'Configure SSL/TLS for secure communication. Changes require server restart.',
+  },
   'ssl.enabled': { zh: '启用 SSL/TLS', en: 'Enable SSL/TLS' },
   'ssl.protocol': { zh: 'SSL 协议', en: 'SSL Protocol' },
   'ssl.selectProtocol': { zh: '请选择协议', en: 'Select protocol' },
@@ -559,7 +604,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'ssl.truststorePath': { zh: 'TrustStore 路径', en: 'TrustStore Path' },
   'ssl.truststorePathPlaceholder': { zh: '请输入 TrustStore 路径', en: 'Enter TrustStore path' },
   'ssl.truststorePassword': { zh: 'TrustStore 密码', en: 'TrustStore Password' },
-  'ssl.truststorePasswordPlaceholder': { zh: '请输入 TrustStore 密码', en: 'Enter TrustStore password' },
+  'ssl.truststorePasswordPlaceholder': {
+    zh: '请输入 TrustStore 密码',
+    en: 'Enter TrustStore password',
+  },
   'ssl.uploadTruststore': { zh: '上传 TrustStore 文件', en: 'Upload TrustStore File' },
   'ssl.save': { zh: '保存', en: 'Save' },
   'ssl.upload': { zh: '上传', en: 'Upload' },
@@ -596,7 +644,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'ns.quotaSection': { zh: '配额配置', en: 'Quota Configuration' },
   'ns.confirmDelete': { zh: '确认删除此命名空间？', en: 'Delete this namespace?' },
   'ns.nameRequired': { zh: '请输入命名空间名称', en: 'Namespace name is required' },
-  'ns.namePattern': { zh: '仅支持字母、数字、连字符和下划线', en: 'Only letters, numbers, hyphens and underscores' },
+  'ns.namePattern': {
+    zh: '仅支持字母、数字、连字符和下划线',
+    en: 'Only letters, numbers, hyphens and underscores',
+  },
   'ns.namePlaceholder': { zh: '例：production-ns', en: 'e.g., production-ns' },
   'ns.displayNamePlaceholder': { zh: '例：Production', en: 'e.g., Production' },
   'ns.clusterPlaceholder': { zh: '例：DefaultCluster', en: 'e.g., DefaultCluster' },
@@ -609,7 +660,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'ns.deleteSuccess': { zh: '命名空间删除成功', en: 'Namespace deleted successfully' },
   'ns.deleteFailed': { zh: '删除命名空间失败', en: 'Failed to delete namespace' },
   'ns.notSupported': { zh: '不支持命名空间', en: 'Namespace Not Supported' },
-  'ns.notSupportedDesc': { zh: '当前集群架构不支持命名空间管理，请切换到 RocketMQ 5.0 Proxy 集群。', en: 'Current cluster does not support namespace management. Please switch to a RocketMQ 5.0 Proxy cluster.' },
+  'ns.notSupportedDesc': {
+    zh: '当前集群架构不支持命名空间管理，请切换到 RocketMQ 5.0 Proxy 集群。',
+    en: 'Current cluster does not support namespace management. Please switch to a RocketMQ 5.0 Proxy cluster.',
+  },
 
   // ─── Alert Management ───
   'alert.management': { zh: '告警管理', en: 'Alert Management' },
@@ -629,7 +683,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'alert.refresh': { zh: '刷新', en: 'Refresh' },
   'alert.add': { zh: '新增规则', en: 'Add Rule' },
   'alert.exportYaml': { zh: '导出 YAML', en: 'Export YAML' },
-  'alert.searchPlaceholder': { zh: '搜索告警名称、表达式...', en: 'Search alert name, expression...' },
+  'alert.searchPlaceholder': {
+    zh: '搜索告警名称、表达式...',
+    en: 'Search alert name, expression...',
+  },
   'alert.allGroups': { zh: '全部分组', en: 'All Groups' },
   'alert.allSeverity': { zh: '全部级别', en: 'All Severity' },
   'alert.allStatus': { zh: '全部状态', en: 'All Status' },
@@ -688,8 +745,14 @@ const translations: Record<string, Record<Lang, string>> = {
   'liteTopic.expiringSoon': { zh: '即将过期', en: 'Expiring Soon' },
   'liteTopic.expired': { zh: '已过期', en: 'Expired' },
   'liteTopic.unknown': { zh: '未知', en: 'Unknown' },
-  'liteTopic.notSupported': { zh: '当前集群不支持 LiteTopic，请升级到 RocketMQ 5.x', en: 'LiteTopic is not supported on the current cluster. Please upgrade to RocketMQ 5.x' },
-  'liteTopic.fetchListFailed': { zh: '获取 LiteTopic 列表失败', en: 'Failed to fetch LiteTopic list' },
+  'liteTopic.notSupported': {
+    zh: '当前集群不支持 LiteTopic，请升级到 RocketMQ 5.x',
+    en: 'LiteTopic is not supported on the current cluster. Please upgrade to RocketMQ 5.x',
+  },
+  'liteTopic.fetchListFailed': {
+    zh: '获取 LiteTopic 列表失败',
+    en: 'Failed to fetch LiteTopic list',
+  },
   'liteTopic.fetchQuotaFailed': { zh: '获取配额信息失败', en: 'Failed to fetch quota information' },
   'liteTopic.fetchSessionFailed': { zh: '获取会话详情失败', en: 'Failed to fetch session detail' },
   'liteTopic.extendTtlSuccess': { zh: 'TTL 延长成功', en: 'TTL extended successfully' },
@@ -721,8 +784,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'common.pleaseInputNumber': { zh: '请输入数字', en: 'Please input a number' },
   'common.pleaseSelect': { zh: '请选择', en: 'Please select' },
   'common.pleaseInput': { zh: '请输入', en: 'Please input' },
-  'common.endTimeLaterThanBegin': { zh: '结束时间应晚于开始时间', en: 'End time should be later than begin time' },
-  'common.export': { zh: '导出', en: 'Export' },
+  'common.endTimeLaterThanBegin': {
+    zh: '结束时间应晚于开始时间',
+    en: 'End time should be later than begin time',
+  },
   'common.synchronize': { zh: '同步', en: 'Synchronize' },
   'common.show': { zh: '显示', en: 'Show' },
   'common.hide': { zh: '隐藏', en: 'Hide' },
@@ -732,7 +797,6 @@ const translations: Record<string, Record<Lang, string>> = {
   'common.date': { zh: '日期', en: 'Date' },
   'common.begin': { zh: '开始', en: 'Begin' },
   'common.end': { zh: '结束', en: 'End' },
-  'common.searchPlaceholder': { zh: '搜索...', en: 'Search...' },
   'common.selectProxy': { zh: '选择代理', en: 'Select Proxy' },
   'common.enableProxy': { zh: '启用代理', en: 'Enable Proxy' },
   'common.proxyDisabled': { zh: '代理禁用', en: 'Proxy Disabled' },
