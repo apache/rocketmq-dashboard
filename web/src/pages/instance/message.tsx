@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import {
   Card,
   Table,
@@ -48,8 +48,8 @@ import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
-import { mockMessages, mockMessageTraces } from '../../mock/messages';
-import type { MessageRecord } from '../../mock/messages';
+import type { MessageRecord, TraceRecord } from '../../api/message';
+import { getMessageTrace, queryMessages } from '../../services/messageService';
 
 const { Paragraph, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -97,8 +97,8 @@ const formatSize = (bytes: number): string => {
   return `${bytes} B`;
 };
 
-const formatTimeMs = (iso: string): string => {
-  const d = new Date(iso);
+const formatTimeMs = (value: number | string): string => {
+  const d = new Date(value);
   const pad = (n: number, len = 2) => String(n).padStart(len, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
 };
@@ -121,25 +121,13 @@ const MessagePage = () => {
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>(getDefaultRange);
   const [keyInput, setKeyInput] = useState('');
   const [msgIdInput, setMsgIdInput] = useState('');
+  const [messages, setMessages] = useState<MessageRecord[]>([]);
+  const [queryLoading, setQueryLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalTab, setModalTab] = useState('content');
   const [selectedMsg, setSelectedMsg] = useState<MessageRecord | null>(null);
-
-  /* ─── Filtering ─── */
-  const filteredMessages = useMemo(() => {
-    switch (queryMode) {
-      case 'topic':
-        return selectedTopic ? mockMessages.filter((m) => m.topic === selectedTopic) : mockMessages;
-      case 'key':
-        return keyInput ? mockMessages.filter((m) => m.key.includes(keyInput)) : mockMessages;
-      case 'msgid':
-        return msgIdInput
-          ? mockMessages.filter((m) => m.msgId.toLowerCase().includes(msgIdInput.toLowerCase()))
-          : mockMessages;
-      default:
-        return mockMessages;
-    }
-  }, [queryMode, selectedTopic, keyInput, msgIdInput]);
+  const [traceData, setTraceData] = useState<TraceRecord | null>(null);
+  const [traceLoading, setTraceLoading] = useState(false);
 
   /* ─── Handlers ─── */
   const handleReset = () => {
@@ -147,16 +135,50 @@ const MessagePage = () => {
     setKeyInput('');
     setMsgIdInput('');
     setDateRange(getDefaultRange());
+    setMessages([]);
+  };
+
+  const handleQuery = async () => {
+    const params =
+      queryMode === 'topic'
+        ? {
+            topic: selectedTopic,
+            startTime: dateRange[0].valueOf(),
+            endTime: dateRange[1].valueOf(),
+          }
+        : queryMode === 'key'
+          ? { topic: selectedTopic, key: keyInput || undefined }
+          : { msgId: msgIdInput || undefined };
+
+    setQueryLoading(true);
+    try {
+      const result = await queryMessages(params);
+      setMessages(result);
+      message.success(`查询完成，共 ${result.length} 条`);
+    } catch {
+      message.error('消息查询失败，请稍后重试');
+    } finally {
+      setQueryLoading(false);
+    }
   };
 
   const handleResend = () => {
     message.success('消息重新发送成功（模拟）');
   };
 
-  const openDetail = (record: MessageRecord, tab = 'content') => {
+  const openDetail = async (record: MessageRecord, tab = 'content') => {
     setSelectedMsg(record);
     setModalTab(tab);
     setModalOpen(true);
+    setTraceData(null);
+    setTraceLoading(true);
+    try {
+      setTraceData(await getMessageTrace(record.msgId));
+    } catch {
+      message.error('消息轨迹加载失败，请稍后重试');
+    } finally {
+      setTraceLoading(false);
+    }
   };
 
   const handleDownload = (record: MessageRecord) => {
@@ -216,7 +238,7 @@ const MessagePage = () => {
       dataIndex: 'storeTime',
       key: 'storeTime',
       width: 185,
-      sorter: (a, b) => a.storeTime.localeCompare(b.storeTime),
+      sorter: (a, b) => new Date(a.storeTime).valueOf() - new Date(b.storeTime).valueOf(),
       render: (time: string) => (
         <span style={{ fontFamily: 'monospace', fontSize: 13, whiteSpace: 'nowrap' }}>
           {formatTimeMs(time)}
@@ -242,7 +264,7 @@ const MessagePage = () => {
             size="small"
             icon={<EyeOutlined />}
             style={{ borderColor: '#1677ff', color: '#1677ff' }}
-            onClick={() => openDetail(record, 'content')}
+            onClick={() => void openDetail(record, 'content')}
           >
             详情
           </Button>
@@ -250,7 +272,7 @@ const MessagePage = () => {
             size="small"
             icon={<NodeIndexOutlined />}
             style={{ borderColor: '#722ed1', color: '#722ed1' }}
-            onClick={() => openDetail(record, 'trace')}
+            onClick={() => void openDetail(record, 'trace')}
           >
             轨迹
           </Button>
@@ -275,13 +297,10 @@ const MessagePage = () => {
     },
   ];
 
-  /* ─── Modal Data ─── */
-  const traceData = selectedMsg ? mockMessageTraces[selectedMsg.msgId] : undefined;
-
   const consumerStatusColumns: ColumnsType<{
     group: string;
     deliveryStatus: string;
-    consumeTime: string;
+    consumeTime: number | string;
     retryCount: number;
   }> = [
     {
@@ -295,7 +314,7 @@ const MessagePage = () => {
       dataIndex: 'deliveryStatus',
       key: 'deliveryStatus',
       render: (status: string) => {
-        const s = DELIVERY_STATUS_MAP[status] || {
+        const s = DELIVERY_STATUS_MAP[status.toLowerCase()] || {
           label: status,
           color: 'default',
         };
@@ -384,7 +403,9 @@ const MessagePage = () => {
     {
       key: 'trace',
       label: '消息轨迹',
-      children: traceData?.nodes?.length ? (
+      children: traceLoading ? (
+        <Typography.Text type="secondary">正在加载轨迹数据…</Typography.Text>
+      ) : traceData?.nodes?.length ? (
         <Steps
           direction="vertical"
           size="small"
@@ -501,7 +522,7 @@ const MessagePage = () => {
               type="primary"
               icon={<SearchOutlined />}
               onClick={() => {
-                message.info(`查询完成，共 ${filteredMessages.length} 条`);
+                void handleQuery();
               }}
             >
               查询
@@ -517,7 +538,8 @@ const MessagePage = () => {
       <Card bodyStyle={{ padding: 0 }}>
         <Table
           columns={columns}
-          dataSource={filteredMessages}
+          dataSource={messages}
+          loading={queryLoading}
           rowKey="msgId"
           pagination={{
             pageSize: 50,
