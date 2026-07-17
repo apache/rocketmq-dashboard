@@ -13,15 +13,18 @@ export async function listClusters(): Promise<ClusterInfo[]> {
     return clusters.map((c) => ({
       id: c.id,
       name: c.name,
+      nsClusterName: c.nsClusterName,
       type: c.type,
+      endpoint: c.endpoint,
       status: c.status,
       version: c.version,
-      brokers: c.brokers.length,
-      proxies: c.proxies.length,
-      topics: c.topicCount,
-      groups: c.groupCount,
-      tpsIn: c.brokers.reduce((s, b) => s + b.tpsIn, 0),
-      tpsOut: c.brokers.reduce((s, b) => s + b.tpsOut, 0),
+      brokers: c.brokers.map((broker) => ({ ...broker })),
+      proxies: c.proxies.map((proxy) => ({ ...proxy })),
+      nameServers: c.nameServers.map((nameServer) => ({ ...nameServer })),
+      config: { ...c.config },
+      topicCount: c.topicCount,
+      groupCount: c.groupCount,
+      tpsHistory: [...c.tpsHistory],
     }));
   }
   return clusterApi.listClusters();
