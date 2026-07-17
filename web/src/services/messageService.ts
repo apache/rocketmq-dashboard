@@ -29,8 +29,8 @@ export async function listDLQGroups(): Promise<DLQGroup[]> {
 
 export async function resendDLQ(data: {
   groupName: string;
-  startTime: string;
-  endTime: string;
+  startTime: number;
+  endTime: number;
   targetTopic?: string;
 }): Promise<void> {
   if (USE_MOCK) return;

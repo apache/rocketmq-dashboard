@@ -72,8 +72,8 @@ export async function listDLQGroups() {
 
 export async function resendDLQ(data: {
   groupName: string;
-  startTime: string;
-  endTime: string;
+  startTime: number;
+  endTime: number;
   targetTopic?: string;
 }) {
   await client.post('/dlq/resend', data);
