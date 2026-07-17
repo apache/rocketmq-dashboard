@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Table,
   Tag,
@@ -33,7 +33,13 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import { EditOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import PageHeader from '../../components/PageHeader';
-import { mockK8sCerts, type K8sCertInfo } from '../../mock/clusters';
+import type { K8sCertInfo } from '../../api/cluster';
+import {
+  createK8sCert,
+  deleteK8sCert,
+  listK8sCerts,
+  updateK8sCert,
+} from '../../services/clusterService';
 
 const { Text } = Typography;
 
@@ -43,13 +49,83 @@ const formatDateTime = (iso: string): string => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 };
 
+const getErrorMessage = (error: unknown): string =>
+  error instanceof Error && error.message ? error.message : '请求失败，请稍后重试';
+
 const K8sCertsPage = () => {
-  const [certs, setCerts] = useState<K8sCertInfo[]>(mockK8sCerts);
+  const [certs, setCerts] = useState<K8sCertInfo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [certSearch, setCertSearch] = useState('');
   const [certTypeFilter, setCertTypeFilter] = useState<string>('');
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingCert, setEditingCert] = useState<K8sCertInfo | null>(null);
   const [editForm] = Form.useForm();
+
+  useEffect(() => {
+    let active = true;
+    listK8sCerts()
+      .then((data) => {
+        if (active) setCerts(data);
+      })
+      .catch((error: unknown) => {
+        if (active) message.error(getErrorMessage(error));
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const openCreateModal = () => {
+    setEditingCert(null);
+    editForm.resetFields();
+    editForm.setFieldsValue({ type: 'TLS', namespace: 'default' });
+    setEditModalOpen(true);
+  };
+
+  const closeEditModal = () => {
+    setEditModalOpen(false);
+    setEditingCert(null);
+    editForm.resetFields();
+  };
+
+  const saveCert = async () => {
+    const values = await editForm.validateFields();
+    const data = {
+      name: values.name,
+      namespace: values.namespace,
+      cluster: values.cluster,
+      type: values.type,
+      issuer: values.issuer,
+      san: values.san
+        ? String(values.san)
+            .split(',')
+            .map((value) => value.trim())
+            .filter(Boolean)
+        : [],
+    };
+
+    setSubmitting(true);
+    try {
+      if (editingCert) {
+        const updated = await updateK8sCert({ id: editingCert.id, ...data });
+        setCerts((prev) => prev.map((cert) => (cert.id === updated.id ? updated : cert)));
+        message.success(`证书「${updated.name}」已更新`);
+      } else {
+        const created = await createK8sCert(data);
+        setCerts((prev) => [...prev, created]);
+        message.success(`证书「${created.name}」已创建`);
+      }
+      closeEditModal();
+    } catch (error) {
+      message.error(getErrorMessage(error));
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const filteredCerts = certs.filter((cert) => {
     const matchSearch =
@@ -163,6 +239,8 @@ const K8sCertsPage = () => {
                 type: record.type,
                 issuer: record.issuer,
                 namespace: record.namespace,
+                cluster: record.cluster,
+                san: record.san.join(', '),
               });
               setEditModalOpen(true);
             }}
@@ -180,9 +258,15 @@ const K8sCertsPage = () => {
                 okText: '确认',
                 cancelText: '取消',
                 okButtonProps: { danger: true },
-                onOk: () => {
-                  setCerts((prev) => prev.filter((c) => c.id !== record.id));
-                  message.success(`证书已删除: ${record.name}`);
+                onOk: async () => {
+                  try {
+                    await deleteK8sCert(record.id);
+                    setCerts((prev) => prev.filter((c) => c.id !== record.id));
+                    message.success(`证书已删除: ${record.name}`);
+                  } catch (error) {
+                    message.error(getErrorMessage(error));
+                    throw error;
+                  }
                 },
               });
             }}
@@ -200,11 +284,7 @@ const K8sCertsPage = () => {
         title="K8s 证书管理"
         subtitle={`共 ${filteredCerts.length} 个证书`}
         extra={
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => message.info('添加证书功能开发中')}
-          >
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
             添加证书
           </Button>
         }
@@ -236,6 +316,7 @@ const K8sCertsPage = () => {
           columns={certColumns}
           dataSource={filteredCerts}
           rowKey="id"
+          loading={loading}
           pagination={{ pageSize: 20 }}
           size="small"
         />
@@ -243,39 +324,36 @@ const K8sCertsPage = () => {
 
       {/* Edit Cert Modal */}
       <Modal
-        title={`编辑证书 — ${editingCert?.name || ''}`}
+        title={editingCert ? `编辑证书 — ${editingCert.name}` : '添加证书'}
         open={editModalOpen}
-        onCancel={() => {
-          setEditModalOpen(false);
-          editForm.resetFields();
-        }}
-        onOk={() => {
-          editForm.validateFields().then((values) => {
-            if (!editingCert) return;
-            setCerts((prev) =>
-              prev.map((c) =>
-                c.id === editingCert.id
-                  ? { ...c, issuer: values.issuer, namespace: values.namespace }
-                  : c,
-              ),
-            );
-            message.success(`证书「${editingCert.name}」已更新`);
-            setEditModalOpen(false);
-            editForm.resetFields();
-          });
-        }}
+        onCancel={closeEditModal}
+        onOk={saveCert}
+        confirmLoading={submitting}
         okText="保存"
         cancelText="取消"
         width={520}
       >
         <Form form={editForm} layout="vertical" style={{ marginTop: 16 }}>
-          <Form.Item label="证书名称">
-            <Input value={editingCert?.name} disabled />
+          <Form.Item
+            label="证书名称"
+            name="name"
+            rules={[{ required: true, message: '请输入证书名称' }]}
+          >
+            <Input placeholder="例：rocketmq-tls" disabled={Boolean(editingCert)} />
           </Form.Item>
-          <Form.Item label="类型">
+          <Form.Item
+            label="K8s 集群名称"
+            name="cluster"
+            rules={[{ required: true, message: '请输入集群名称' }]}
+          >
+            <Input placeholder="例：prod-cluster" />
+          </Form.Item>
+          <Form.Item
+            label="类型"
+            name="type"
+            rules={[{ required: true, message: '请选择证书类型' }]}
+          >
             <Select
-              value={editingCert?.type}
-              disabled
               options={[
                 { value: 'TLS', label: 'TLS' },
                 { value: 'mTLS', label: 'mTLS' },
@@ -283,11 +361,22 @@ const K8sCertsPage = () => {
               ]}
             />
           </Form.Item>
-          <Form.Item label="签发者" name="issuer">
+          <Form.Item
+            label="签发者"
+            name="issuer"
+            rules={[{ required: true, message: '请输入签发者' }]}
+          >
             <Input placeholder="例：kubernetes-ca" />
           </Form.Item>
-          <Form.Item label="命名空间" name="namespace">
+          <Form.Item
+            label="命名空间"
+            name="namespace"
+            rules={[{ required: true, message: '请输入命名空间' }]}
+          >
             <Input placeholder="例：kube-system" />
+          </Form.Item>
+          <Form.Item label="SAN" name="san" tooltip="多个域名或 IP 使用英文逗号分隔">
+            <Input placeholder="例：broker.example.com, *.rocketmq.example.com" />
           </Form.Item>
         </Form>
       </Modal>
