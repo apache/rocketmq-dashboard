@@ -47,3 +47,9 @@ export const LangProvider = ({ children }: { children: ReactNode }) => {
 };
 
 export const useLang = () => useContext(LangContext);
+
+/**
+ * Alias for useLang – provides the same i18n context.
+ * Kept for backward compatibility with components that import `useLanguage`.
+ */
+export const useLanguage = useLang;
