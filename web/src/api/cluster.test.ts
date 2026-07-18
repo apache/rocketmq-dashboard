@@ -18,7 +18,7 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { createK8sCert, deleteK8sCert, listK8sCerts, updateK8sCert } from './cluster';
+import { createK8sCert, deleteK8sCert, listK8sCerts, renewK8sCert, updateK8sCert } from './cluster';
 import type { K8sCertInfo } from './cluster';
 
 const mock = new MockAdapter(client);
@@ -70,6 +70,16 @@ describe('K8s certificate API', () => {
     });
 
     await expect(updateK8sCert({ id: cert.id, issuer: 'vault' })).resolves.toEqual(updated);
+  });
+
+  it('renews a certificate using its id', async () => {
+    const renewed = { ...cert, daysRemaining: 365, status: 'valid' };
+    mock.onPost('/k8s-certs/renew').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({ id: cert.id });
+      return [200, { code: 200, message: 'success', data: renewed }];
+    });
+
+    await expect(renewK8sCert(cert.id)).resolves.toEqual(renewed);
   });
 
   it('sends the certificate id when deleting', async () => {
