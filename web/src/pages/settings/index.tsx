@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Button,
   Descriptions,
@@ -49,6 +49,8 @@ import type { ColumnsType } from 'antd/es/table';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import StatusBadge from '../../components/StatusBadge';
+import { getGeneralSettings, saveGeneralSettings } from '../../api/settings';
+import type { GeneralSettings } from '../../api/settings';
 
 const { Title, Text, Link: TypoLink } = Typography;
 
@@ -102,6 +104,38 @@ const typeTagColor: Record<string, string> = {
 
 const GeneralSettingsTab = () => {
   const [form] = Form.useForm();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getGeneralSettings()
+      .then((settings) => {
+        if (!cancelled) form.setFieldsValue(settings);
+      })
+      .catch(() => {
+        if (!cancelled) message.error('通用设置加载失败，请稍后重试');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [form]);
+
+  const handleFinish = async (values: GeneralSettings) => {
+    setSaving(true);
+    try {
+      await saveGeneralSettings(values);
+      message.success('设置已保存');
+    } catch {
+      message.error('设置保存失败，请稍后重试');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <Form
@@ -109,17 +143,7 @@ const GeneralSettingsTab = () => {
       layout="horizontal"
       labelCol={{ span: 4 }}
       wrapperCol={{ span: 14 }}
-      initialValues={{
-        theme: 'light',
-        compact: false,
-        desktopNotify: true,
-        notifySound: false,
-        sessionTimeout: 30,
-        requireLogin: true,
-        llmProvider: 'qwen',
-        model: 'qwen-max',
-      }}
-      onFinish={() => message.success('设置已保存')}
+      onFinish={handleFinish}
       style={{ maxWidth: 800 }}
     >
       {/* ── 外观 ── */}
@@ -208,7 +232,7 @@ const GeneralSettingsTab = () => {
 
       {/* ── Submit ── */}
       <Form.Item wrapperCol={{ offset: 4, span: 14 }}>
-        <Button type="primary" htmlType="submit">
+        <Button type="primary" htmlType="submit" loading={saving} disabled={loading}>
           保存设置
         </Button>
       </Form.Item>

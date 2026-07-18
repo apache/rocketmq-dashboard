@@ -19,13 +19,16 @@ import client from './client';
 
 // ─── Types ──────────────────────────────────────────────────────
 export interface GeneralSettings {
-  siteName: string;
-  language: string;
   theme: string;
-  autoRefreshInterval: number;
-  notificationChannels: string[];
+  compact: boolean;
+  desktopNotify: boolean;
+  notifySound: boolean;
+  sessionTimeout: number;
+  requireLogin: boolean;
   llmProvider: string;
-  llmModel: string;
+  apiKey: string;
+  model: string;
+  baseUrl: string;
 }
 
 export interface DataSource {
