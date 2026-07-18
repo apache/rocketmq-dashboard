@@ -24,6 +24,7 @@ import {
   Dropdown,
   Input,
   Modal,
+  message,
 } from 'antd';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
@@ -48,6 +49,8 @@ import {
 } from '@phosphor-icons/react';
 import { useLang } from '../i18n/LangContext';
 import { useTheme } from '../theme/ThemeContext';
+import { logout as requestLogout } from '../api/auth';
+import useAuthStore from '../stores/authStore';
 
 const { Sider, Content } = Layout;
 
@@ -60,6 +63,24 @@ const MainLayout = () => {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchText, setSearchText] = useState('');
   const { lang, setLang, t } = useLang();
+  const clearAuth = useAuthStore((state) => state.logout);
+
+  const handleUserMenuClick = async ({ key }: { key: string }) => {
+    if (key === 'profile') {
+      navigate('/settings');
+      return;
+    }
+    if (key !== 'logout') return;
+
+    try {
+      await requestLogout();
+    } catch {
+      message.warning('服务端退出失败，已清除本地登录状态');
+    } finally {
+      clearAuth();
+      navigate('/');
+    }
+  };
 
   const menuItems = [
     { key: '/', icon: <House size={iconSize} weight="duotone" />, label: t('nav.home') },
@@ -138,6 +159,7 @@ const MainLayout = () => {
   ];
 
   const userMenu = {
+    onClick: handleUserMenuClick,
     items: [
       { key: 'profile', icon: <UserGear size={14} />, label: t('user.profile') },
       { type: 'divider' as const },
