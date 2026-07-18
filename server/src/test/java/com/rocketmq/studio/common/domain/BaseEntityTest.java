@@ -20,12 +20,13 @@ import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 class BaseEntityTest {
 
     /** Concrete subclass for testing the abstract BaseEntity */
-    static class TestEntity extends BaseEntity {}
+    static class TestEntity extends BaseEntity { }
 
     @Test
     void setId_shouldSetAndGetId() {
