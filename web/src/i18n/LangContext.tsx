@@ -17,6 +17,7 @@
 
 import { createContext, useContext, useState, type ReactNode } from 'react';
 import translations, { type Lang } from './translations';
+import { getInitialLanguage, persistLanguage } from './languagePreference';
 
 interface LangContextType {
   lang: Lang;
@@ -31,7 +32,12 @@ const LangContext = createContext<LangContextType>({
 });
 
 export const LangProvider = ({ children }: { children: ReactNode }) => {
-  const [lang, setLang] = useState<Lang>('zh');
+  const [lang, setLangState] = useState<Lang>(getInitialLanguage);
+
+  const setLang = (nextLang: Lang) => {
+    setLangState(nextLang);
+    persistLanguage(nextLang);
+  };
 
   const t = (key: string, params?: Record<string, string | number>): string => {
     let text = translations[key]?.[lang] ?? key;
