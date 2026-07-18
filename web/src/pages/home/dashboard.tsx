@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Row, Col, Card, Statistic, Table, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Col, Row, Skeleton, Statistic, Table, Tag, Typography } from 'antd';
 import { ClusterOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { ListDashes, ArrowDown } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
@@ -17,12 +17,52 @@ const DashboardPage = () => {
   const navigate = useNavigate();
   const { t } = useLang();
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
-  useEffect(() => {
-    getDashboard().then(setDashboard).catch(console.error);
+  const loadDashboard = useCallback(async () => {
+    setLoading(true);
+    setLoadError(false);
+    try {
+      setDashboard(await getDashboard());
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  if (!dashboard) return null;
+  useEffect(() => {
+    void Promise.resolve().then(loadDashboard);
+  }, [loadDashboard]);
+
+  if (loading && !dashboard) {
+    return (
+      <div style={{ padding: 24 }}>
+        <PageHeader title={t('dashboard.title')} subtitle={t('dashboard.subtitle')} />
+        <Skeleton active paragraph={{ rows: 8 }} />
+      </div>
+    );
+  }
+
+  if (loadError || !dashboard) {
+    return (
+      <div style={{ padding: 24 }}>
+        <PageHeader title={t('dashboard.title')} subtitle={t('dashboard.subtitle')} />
+        <Alert
+          type="error"
+          showIcon
+          message="仪表盘加载失败"
+          description="无法获取集群概览，请检查网络连接后重试。"
+          action={
+            <Button size="small" onClick={() => void loadDashboard()} loading={loading}>
+              重试
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
 
   const { stats, clusters } = dashboard;
 
