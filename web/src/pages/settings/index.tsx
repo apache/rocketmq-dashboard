@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Button,
   Descriptions,
@@ -49,48 +49,17 @@ import type { ColumnsType } from 'antd/es/table';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import StatusBadge from '../../components/StatusBadge';
+import {
+  createDataSource,
+  deleteDataSource,
+  listDataSources,
+  testDataSource,
+  updateDataSource,
+} from '../../api/settings';
+import type { DataSource } from '../../api/settings';
+import { STATUS_MAP } from '../../constants/theme';
 
 const { Title, Text, Link: TypoLink } = Typography;
-
-// ─── Types ──────────────────────────────────────────────────────────────────
-
-interface DataSource {
-  key: string;
-  name: string;
-  type: 'Prometheus' | 'VictoriaMetrics' | 'Thanos';
-  url: string;
-  auth: string;
-  status: 'healthy' | 'error';
-}
-
-// ─── Mock Data ──────────────────────────────────────────────────────────────
-
-const mockDataSources: DataSource[] = [
-  {
-    key: '1',
-    name: 'Prometheus 生产监控',
-    type: 'Prometheus',
-    url: 'http://prometheus.prod:9090',
-    auth: 'Bearer Token',
-    status: 'healthy',
-  },
-  {
-    key: '2',
-    name: 'VictoriaMetrics 历史数据',
-    type: 'VictoriaMetrics',
-    url: 'http://vm.prod:8428',
-    auth: 'Basic Auth',
-    status: 'healthy',
-  },
-  {
-    key: '3',
-    name: '测试环境 Prometheus',
-    type: 'Prometheus',
-    url: 'http://prometheus.test:9090',
-    auth: 'None',
-    status: 'error',
-  },
-];
 
 const typeTagColor: Record<string, string> = {
   Prometheus: 'orange',
@@ -219,16 +188,88 @@ const GeneralSettingsTab = () => {
 // ─── Data Source Tab ────────────────────────────────────────────────────────
 
 const DataSourceTab = () => {
+  const [dataSources, setDataSources] = useState<DataSource[]>([]);
+  const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingDataSource, setEditingDataSource] = useState<DataSource | null>(null);
   const [dsForm] = Form.useForm();
   const [testing, setTesting] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleTestConnection = () => {
+  useEffect(() => {
+    let cancelled = false;
+    void listDataSources()
+      .then((sources) => {
+        if (!cancelled) setDataSources(sources);
+      })
+      .catch(() => {
+        if (!cancelled) message.error('数据源加载失败，请稍后重试');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleTestConnection = async (data: Pick<DataSource, 'type' | 'url' | 'auth'>) => {
     setTesting(true);
-    setTimeout(() => {
+    try {
+      const result = await testDataSource(data);
+      if (result.success) message.success(result.message);
+      else message.error(result.message);
+    } catch {
+      message.error('连接测试失败，请稍后重试');
+    } finally {
       setTesting(false);
-      message.success('连接成功');
-    }, 1200);
+    }
+  };
+
+  const openCreateModal = () => {
+    setEditingDataSource(null);
+    dsForm.resetFields();
+    dsForm.setFieldValue('auth', 'None');
+    setModalOpen(true);
+  };
+
+  const openEditModal = (dataSource: DataSource) => {
+    setEditingDataSource(dataSource);
+    dsForm.setFieldsValue(dataSource);
+    setModalOpen(true);
+  };
+
+  const handleSubmit = async () => {
+    try {
+      const values = await dsForm.validateFields();
+      setSubmitting(true);
+      const saved = editingDataSource
+        ? await updateDataSource({ ...editingDataSource, ...values })
+        : await createDataSource(values);
+      setDataSources((previous) =>
+        editingDataSource
+          ? previous.map((dataSource) => (dataSource.key === saved.key ? saved : dataSource))
+          : [...previous, saved],
+      );
+      message.success(editingDataSource ? '数据源已更新' : '数据源已添加');
+      setModalOpen(false);
+      dsForm.resetFields();
+    } catch {
+      message.error('保存数据源失败，请稍后重试');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (dataSource: DataSource) => {
+    try {
+      await deleteDataSource(dataSource.key);
+      setDataSources((previous) => previous.filter((item) => item.key !== dataSource.key));
+      message.success('数据源已删除');
+    } catch {
+      message.error('删除数据源失败，请稍后重试');
+    }
   };
 
   const columns: ColumnsType<DataSource> = [
@@ -245,25 +286,26 @@ const DataSourceTab = () => {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      render: (s: DataSource['status']) => <StatusBadge status={s} />,
+      render: (s: DataSource['status']) => <StatusBadge status={s as keyof typeof STATUS_MAP} />,
     },
     {
       title: '操作',
       key: 'action',
-      render: () => (
+      render: (_: unknown, record: DataSource) => (
         <Space size="small">
           <Button
             type="link"
             size="small"
             icon={<ApiOutlined />}
-            onClick={() => message.info('正在测试连接...')}
+            loading={testing}
+            onClick={() => void handleTestConnection(record)}
           >
             测试连接
           </Button>
-          <Button type="link" size="small" icon={<EditOutlined />}>
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openEditModal(record)}>
             编辑
           </Button>
-          <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+          <Button type="link" size="small" danger icon={<DeleteOutlined />} onClick={() => void handleDelete(record)}>
             删除
           </Button>
         </Space>
@@ -274,29 +316,30 @@ const DataSourceTab = () => {
   return (
     <>
       <Flex justify="flex-end" style={{ marginBottom: 16 }}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
           添加数据源
         </Button>
       </Flex>
 
       <Table<DataSource>
         columns={columns}
-        dataSource={mockDataSources}
+        dataSource={dataSources}
+        rowKey="key"
+        loading={loading}
         pagination={false}
         size="middle"
       />
 
       <Modal
-        title="添加数据源"
+        title={editingDataSource ? '编辑数据源' : '添加数据源'}
         open={modalOpen}
-        onCancel={() => setModalOpen(false)}
-        onOk={() => {
-          dsForm.validateFields().then(() => {
-            message.success('数据源已添加');
-            setModalOpen(false);
-            dsForm.resetFields();
-          });
+        onCancel={() => {
+          setModalOpen(false);
+          setEditingDataSource(null);
+          dsForm.resetFields();
         }}
+        onOk={() => void handleSubmit()}
+        confirmLoading={submitting}
         destroyOnClose
       >
         <Form form={dsForm} layout="vertical" preserve={false}>
@@ -344,7 +387,12 @@ const DataSourceTab = () => {
           <Button
             icon={<ApiOutlined />}
             loading={testing}
-            onClick={handleTestConnection}
+            onClick={() => {
+              void dsForm
+                .validateFields(['type', 'url', 'auth'])
+                .then((values) => handleTestConnection(values))
+                .catch(() => undefined);
+            }}
             style={{ marginTop: 8 }}
           >
             测试连接
