@@ -16,6 +16,11 @@
  */
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import {
+  getStoredThemePreference,
+  getSystemDarkMode,
+  persistThemePreference,
+} from './themePreference';
 
 interface ThemeContextType {
   darkMode: boolean;
@@ -23,41 +28,45 @@ interface ThemeContextType {
   toggleTheme: () => void;
 }
 
-const THEME_STORAGE_KEY = 'rocketmq-studio-theme';
-
 const ThemeContext = createContext<ThemeContextType>({
   darkMode: false,
   setDarkMode: () => {},
   toggleTheme: () => {},
 });
 
-/** Read initial theme preference from localStorage, fall back to system preference. */
-const getInitialDarkMode = (): boolean => {
-  try {
-    const stored = localStorage.getItem(THEME_STORAGE_KEY);
-    if (stored !== null) return stored === 'dark';
-  } catch {
-    // localStorage unavailable
-  }
-  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
-};
-
 export const ThemeProvider = ({ children }: { children: ReactNode }) => {
-  const [darkMode, setDarkMode] = useState<boolean>(getInitialDarkMode);
+  const [themeState, setThemeState] = useState(() => {
+    const preference = getStoredThemePreference();
+    return {
+      darkMode: preference ? preference === 'dark' : getSystemDarkMode(),
+      followsSystem: preference === null,
+    };
+  });
 
-  // Persist theme choice to localStorage
+  const setDarkMode = (darkMode: boolean) => {
+    persistThemePreference(darkMode);
+    setThemeState({ darkMode, followsSystem: false });
+  };
+
+  const toggleTheme = () => setDarkMode(!themeState.darkMode);
+
   useEffect(() => {
-    try {
-      localStorage.setItem(THEME_STORAGE_KEY, darkMode ? 'dark' : 'light');
-    } catch {
-      // localStorage unavailable
-    }
-  }, [darkMode]);
+    if (!themeState.followsSystem || !window.matchMedia) return;
 
-  const toggleTheme = () => setDarkMode((prev) => !prev);
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const updateTheme = (event: MediaQueryListEvent) => {
+      setThemeState((current) =>
+        current.followsSystem ? { ...current, darkMode: event.matches } : current,
+      );
+    };
+    mediaQuery.addEventListener('change', updateTheme);
+    return () => mediaQuery.removeEventListener('change', updateTheme);
+  }, [themeState.followsSystem]);
 
   return (
-    <ThemeContext.Provider value={{ darkMode, setDarkMode, toggleTheme }}>
+    <ThemeContext.Provider
+      value={{ darkMode: themeState.darkMode, setDarkMode, toggleTheme }}
+    >
       {children}
     </ThemeContext.Provider>
   );
