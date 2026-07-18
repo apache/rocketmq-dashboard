@@ -29,10 +29,12 @@ import {
   Flex,
   Divider,
   Select,
+  message,
 } from 'antd';
 import { ArrowUp, Sparkle, SlidersHorizontal, CaretDown } from '@phosphor-icons/react';
 import type { ColumnsType } from 'antd/es/table';
 import { useLang } from '../../i18n/LangContext';
+import { chatStream } from '../../api/ai';
 
 const { Text, Paragraph } = Typography;
 
@@ -96,86 +98,7 @@ const modelOptions = [
 
 /* ─── Mock Data ─── */
 
-const topicColumns: ColumnsType<TopicRow> = [
-  { title: 'Topic 名称', dataIndex: 'name', key: 'name' },
-  {
-    title: '类型',
-    dataIndex: 'type',
-    key: 'type',
-    render: (type: string) => {
-      const map: Record<string, { label: string; color: string }> = {
-        NORMAL: { label: '普通', color: 'default' },
-        FIFO: { label: '顺序', color: 'blue' },
-        DELAY: { label: '延迟', color: 'orange' },
-        TRANSACTION: { label: '事务', color: 'purple' },
-      };
-      const cfg = map[type] || { label: type, color: 'default' };
-      return <Tag color={cfg.color}>{cfg.label}</Tag>;
-    },
-  },
-  { title: '队列数', dataIndex: 'queues', key: 'queues', width: 80, align: 'center' },
-];
-
-const mockTopicData: TopicRow[] = [
-  { key: '1', name: 'order-create', type: 'TRANSACTION', queues: 16 },
-  { key: '2', name: 'payment-notify', type: 'NORMAL', queues: 12 },
-  { key: '3', name: 'user-login-event', type: 'NORMAL', queues: 8 },
-  { key: '4', name: 'inventory-sync', type: 'FIFO', queues: 8 },
-  { key: '5', name: 'promo-push', type: 'DELAY', queues: 4 },
-];
-
-const initialMessages: Message[] = [
-  {
-    id: 'm1',
-    role: 'user',
-    text: '查看生产集群-杭州的 Topic 列表',
-  },
-  {
-    id: 'm2',
-    role: 'ai',
-    toolCall: { name: 'list_topics', label: '🔧 list_topics' },
-    tableData: mockTopicData,
-    tableColumns: topicColumns,
-    summary: '生产集群-杭州 共有 128 个 Topic，以上为按吞吐量排序的前 5 个。',
-  },
-  {
-    id: 'm3',
-    role: 'user',
-    text: 'order-create 这个 Topic 最近 1 小时的堆积情况',
-  },
-  {
-    id: 'm4',
-    role: 'ai',
-    toolCall: { name: 'get_topic_lag', label: '🔧 get_topic_lag' },
-    stats: [
-      { title: '当前堆积', value: '2,340', color: '#1677ff' },
-      { title: '消费速率', value: '856', suffix: '/s', color: '#52c41a' },
-      { title: '预计追平', value: '2.7', suffix: 's', color: '#722ed1' },
-    ],
-    summary: 'order-create 消费状态良好，堆积量较低，消费速率稳定。',
-  },
-  {
-    id: 'm5',
-    role: 'user',
-    text: '帮我创建一个事务类型的 Topic，名称 order-refund',
-  },
-  {
-    id: 'm6',
-    role: 'ai',
-    toolCall: { name: 'create_topic', label: '🔧 create_topic (dry-run)' },
-    descriptions: [
-      { label: '名称', value: 'order-refund' },
-      { label: '类型', value: 'TRANSACTION' },
-      { label: '队列数', value: '16' },
-      { label: '集群', value: '生产集群-杭州' },
-    ],
-    summary: '已生成创建预览，确认后将执行创建操作。',
-    actions: [
-      { label: '确认创建', type: 'primary' },
-      { label: '取消', type: 'default' },
-    ],
-  },
-];
+const initialMessages: Message[] = [];
 
 /* ─── Quick Actions ─── */
 
@@ -352,6 +275,8 @@ const AiPage = () => {
   const [selectedModel, setSelectedModel] = useState('qwen3.7-max');
   const chatEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const conversationIdRef = useRef<string | null>(null);
 
   const scrollToBottom = useCallback(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -373,9 +298,17 @@ const AiPage = () => {
     return () => ta.removeEventListener('input', handler);
   }, []);
 
-  const handleSend = useCallback(() => {
+  useEffect(() => {
+    return () => abortControllerRef.current?.abort();
+  }, []);
+
+  const handleSend = useCallback(async () => {
     const text = inputValue.trim();
     if (!text || loading) return;
+
+    if (!conversationIdRef.current) {
+      conversationIdRef.current = `conversation-${Date.now()}`;
+    }
 
     const userMsg: Message = {
       id: `user-${Date.now()}`,
@@ -383,25 +316,59 @@ const AiPage = () => {
       text,
     };
 
-    setMessages((prev) => [...prev, userMsg]);
+    const responseId = `ai-${Date.now()}`;
+    setMessages((prev) => [...prev, userMsg, { id: responseId, role: 'ai', summary: '' }]);
     setInputValue('');
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
     setLoading(true);
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
-    // Mock AI response after brief delay
-    setTimeout(() => {
-      const aiMsg: Message = {
-        id: `ai-${Date.now()}`,
-        role: 'ai',
-        toolCall: { name: 'process_query', label: '🔧 process_query' },
-        summary: `已收到你的问题：「${text}」。AI 助手正在分析并调用相关 MCP 工具，结果将在此处展示。（当前为演示模式）`,
-      };
-      setMessages((prev) => [...prev, aiMsg]);
+    try {
+      await chatStream(
+        {
+          message: text,
+          mode: 'chat',
+          model: selectedModel,
+          conversationId: conversationIdRef.current,
+        },
+        (chunk) => {
+          setMessages((prev) =>
+            prev.map((item) =>
+              item.id === responseId
+                ? { ...item, summary: `${item.summary ?? ''}${chunk}` }
+                : item,
+            ),
+          );
+        },
+        controller.signal,
+      );
+    } catch (error) {
+      if (controller.signal.aborted) {
+        setMessages((prev) =>
+          prev.map((item) =>
+            item.id === responseId && !item.summary ? { ...item, summary: '回答已停止。' } : item,
+          ),
+        );
+      } else {
+        setMessages((prev) =>
+          prev.map((item) =>
+            item.id === responseId ? { ...item, summary: 'AI 服务暂时不可用，请稍后重试。' } : item,
+          ),
+        );
+        message.error(error instanceof Error ? error.message : 'AI 请求失败');
+      }
+    } finally {
+      if (abortControllerRef.current === controller) abortControllerRef.current = null;
       setLoading(false);
-    }, 1200);
-  }, [inputValue, loading]);
+    }
+  }, [inputValue, loading, selectedModel]);
+
+  const handleStop = useCallback(() => {
+    abortControllerRef.current?.abort();
+  }, []);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -609,6 +576,11 @@ const AiPage = () => {
                   >
                     <ArrowUp size={19} weight="bold" />
                   </button>
+                  {loading && (
+                    <Button size="small" onClick={handleStop}>
+                      停止
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>
