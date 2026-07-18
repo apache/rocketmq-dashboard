@@ -141,4 +141,35 @@ class MetadataServiceTest {
         assertThat(result).isEmpty();
         verify(metadataProvider).listConsumerGroups(null, "order");
     }
+
+    @Test
+    void listNamespacesShouldDeriveSortedUniqueNamespacesFromTopics() {
+        TopicVO tradeClusterA = new TopicVO();
+        tradeClusterA.setNamespace("trade");
+        tradeClusterA.setClusterId("cluster-a");
+        TopicVO duplicateTradeClusterA = new TopicVO();
+        duplicateTradeClusterA.setNamespace("trade");
+        duplicateTradeClusterA.setClusterId("cluster-a");
+        TopicVO tradeClusterB = new TopicVO();
+        tradeClusterB.setNamespace("trade");
+        tradeClusterB.setClusterId("cluster-b");
+        TopicVO userClusterA = new TopicVO();
+        userClusterA.setNamespace("user");
+        userClusterA.setClusterId("cluster-a");
+        TopicVO unnamed = new TopicVO();
+        unnamed.setNamespace(" ");
+
+        when(metadataProvider.listTopics(null, null, null))
+                .thenReturn(List.of(userClusterA, duplicateTradeClusterA, unnamed, tradeClusterB, tradeClusterA));
+
+        List<NamespaceVO> namespaces = metadataService.listNamespaces();
+
+        assertThat(namespaces)
+                .extracting(NamespaceVO::getName, NamespaceVO::getClusterId)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple("trade", "cluster-a"),
+                        org.assertj.core.groups.Tuple.tuple("trade", "cluster-b"),
+                        org.assertj.core.groups.Tuple.tuple("user", "cluster-a"));
+        verify(metadataProvider).listTopics(null, null, null);
+    }
 }

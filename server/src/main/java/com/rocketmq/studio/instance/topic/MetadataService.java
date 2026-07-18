@@ -24,7 +24,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -112,6 +116,24 @@ public class MetadataService {
 
 
     public List<NamespaceVO> listNamespaces() {
-        throw new UnsupportedOperationException("Not implemented");
+        return metadataProvider.listTopics(null, null, null).stream()
+                .filter(topic -> topic.getNamespace() != null && !topic.getNamespace().isBlank())
+                .map(topic -> {
+                    NamespaceVO namespace = new NamespaceVO();
+                    namespace.setName(topic.getNamespace());
+                    namespace.setClusterId(topic.getClusterId());
+                    return namespace;
+                })
+                .collect(Collectors.toMap(
+                        namespace -> new NamespaceKey(namespace.getName(), namespace.getClusterId()),
+                        Function.identity(),
+                        (first, ignored) -> first))
+                .values().stream()
+                .sorted(Comparator.comparing(NamespaceVO::getName)
+                        .thenComparing(namespace -> Objects.toString(namespace.getClusterId(), "")))
+                .toList();
+    }
+
+    private record NamespaceKey(String name, String clusterId) {
     }
 }
