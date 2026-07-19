@@ -17,6 +17,7 @@
 
 import axios from 'axios';
 import { message } from 'antd';
+import { clearAuthSession, TOKEN_STORAGE_KEY } from '../stores/authStorage';
 
 const SUCCESS_BUSINESS_CODES = new Set([0, 200]);
 
@@ -47,7 +48,7 @@ const client = axios.create({
 // Request interceptor: attach Authorization header
 client.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem(TOKEN_STORAGE_KEY);
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -68,7 +69,7 @@ client.interceptors.response.use(
   },
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('token');
+      clearAuthSession();
       window.location.href = '/';
     }
     return Promise.reject(error);
