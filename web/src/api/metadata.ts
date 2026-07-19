@@ -61,6 +61,10 @@ export interface ConsumerInstance {
   version: string;
 }
 
+export interface ConsumerGroupDetail extends ConsumerGroup {
+  instances: ConsumerInstance[];
+}
+
 export interface QueueProgress {
   broker: string;
   queueId: number;
@@ -132,9 +136,7 @@ export async function listConsumerGroups(params?: { keyword?: string }) {
 }
 
 export async function getConsumerGroup(name: string) {
-  const res = await client.get<{ data: ConsumerGroup & { instances: ConsumerInstance[] } }>(
-    `/groups/${name}`,
-  );
+  const res = await client.get<{ data: ConsumerGroupDetail }>(`/groups/${name}`);
   return res.data.data;
 }
 
@@ -149,14 +151,21 @@ export async function getConsumerSubscriptions(name: string) {
 }
 
 export async function createConsumerGroup(data: Partial<ConsumerGroup>) {
-  await client.post('/groups/create', data);
+  const res = await client.post<{ data: ConsumerGroup }>('/groups/create', data);
+  return res.data.data;
 }
 
 export async function deleteConsumerGroup(name: string) {
   await client.post('/groups/delete', { name });
 }
 
-export async function resetConsumerOffset(data: Record<string, unknown>) {
+export interface ResetConsumerOffsetRequest {
+  name: string;
+  timestamp: number;
+  topic?: string;
+}
+
+export async function resetConsumerOffset(data: ResetConsumerOffsetRequest) {
   await client.post('/groups/reset-offset', data);
 }
 
