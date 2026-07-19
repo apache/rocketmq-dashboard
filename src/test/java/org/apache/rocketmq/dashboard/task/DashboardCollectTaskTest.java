@@ -172,16 +172,15 @@ public class DashboardCollectTaskTest extends BaseTest {
             KVTable kvTable = new KVTable();
             kvTable.setTable(result);
             when(mqAdminExt.fetchBrokerRuntimeStats(anyString()))
-                    .thenThrow(new RuntimeException("fetchBrokerRuntimeStats exception"))
+                    .thenThrow(new RuntimeException("fetchBrokerRuntimeStats exception"),
+                            new RuntimeException("fetchBrokerRuntimeStats exception"),
+                            new RuntimeException("fetchBrokerRuntimeStats exception"))
                     .thenReturn(kvTable);
             when(rmqConfigure.isEnableDashBoardCollect()).thenReturn(true);
         }
-        // fetchBrokerRuntimeStats exception
-        try {
-            dashboardCollectTask.collectBroker();
-        } catch (Exception e) {
-            Assert.assertEquals(e.getMessage(), "fetchBrokerRuntimeStats exception");
-        }
+        // All retries of fetchBrokerRuntimeStats fail for this broker, so it is skipped for this
+        // round without throwing (collectBroker no longer aborts the whole cycle on a fetch failure).
+        dashboardCollectTask.collectBroker();
 
         for (int i = 0; i < taskExecuteNum; i++) {
             dashboardCollectTask.collectBroker();
@@ -197,6 +196,27 @@ public class DashboardCollectTaskTest extends BaseTest {
                         new TypeReference<Map<String, List<String>>>() {
                         });
         Assert.assertEquals(brokerData.get("broker-a" + ":" + MixAll.MASTER_ID).size(), taskExecuteNum + 2);
+    }
+
+    @Test
+    public void testCollectBrokerRetriesFetchBrokerRuntimeStatsOnTransientFailure() throws Exception {
+        when(rmqConfigure.isEnableDashBoardCollect()).thenReturn(true);
+        HashMap<String, String> result = new HashMap<>();
+        result.put("getTotalTps", "0.0 0.033330000333300004 0.03332972261338355");
+        KVTable kvTable = new KVTable();
+        kvTable.setTable(result);
+        // The first fetch fails transiently; fetchBrokerRuntimeStats is expected to retry and
+        // return the successful result. Before the fix, the retry's return value was ignored and
+        // the original exception was always rethrown, so collectBroker threw and collected nothing.
+        when(mqAdminExt.fetchBrokerRuntimeStats(anyString()))
+                .thenThrow(new RuntimeException("fetchBrokerRuntimeStats exception"))
+                .thenReturn(kvTable);
+
+        dashboardCollectTask.collectBroker();
+
+        LoadingCache<String, List<String>> map = dashboardCollectService.getBrokerMap();
+        Assert.assertEquals(1, map.size());
+        Assert.assertEquals(1, map.get("broker-a" + ":" + MixAll.MASTER_ID).size());
     }
 
     @After

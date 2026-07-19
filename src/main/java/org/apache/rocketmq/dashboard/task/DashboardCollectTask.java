@@ -156,9 +156,9 @@ public class DashboardCollectTask {
                 Throwables.throwIfUnchecked(e1);
                 throw new RuntimeException(e1);
             }
-            fetchBrokerRuntimeStats(brokerAddr, retryTime - 1);
-            Throwables.throwIfUnchecked(e);
-            throw new RuntimeException(e);
+            // Return the retry result so a successful retry actually takes effect. When all retries
+            // are exhausted this returns null, which the caller already handles by skipping the broker.
+            return fetchBrokerRuntimeStats(brokerAddr, retryTime - 1);
         }
     }
 
