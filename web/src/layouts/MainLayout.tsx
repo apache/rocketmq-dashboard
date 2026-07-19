@@ -15,13 +15,14 @@
  * limitations under the License.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Layout,
   Menu,
   Breadcrumb,
   Avatar,
   Dropdown,
+  Empty,
   Input,
   Modal,
 } from 'antd';
@@ -48,6 +49,11 @@ import {
 } from '@phosphor-icons/react';
 import { useLang } from '../i18n/LangContext';
 import { useTheme } from '../theme/ThemeContext';
+import {
+  filterNavigationEntries,
+  isNavigationSearchShortcut,
+  type NavigationSearchEntry,
+} from './navigationSearch';
 
 const { Sider, Content } = Layout;
 
@@ -60,6 +66,16 @@ const MainLayout = () => {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchText, setSearchText] = useState('');
   const { lang, setLang, t } = useLang();
+
+  useEffect(() => {
+    const openSearchWithShortcut = (event: KeyboardEvent) => {
+      if (!isNavigationSearchShortcut(event)) return;
+      event.preventDefault();
+      setSearchOpen(true);
+    };
+    window.addEventListener('keydown', openSearchWithShortcut);
+    return () => window.removeEventListener('keydown', openSearchWithShortcut);
+  }, []);
 
   const menuItems = [
     { key: '/', icon: <House size={iconSize} weight="duotone" />, label: t('nav.home') },
@@ -149,6 +165,10 @@ const MainLayout = () => {
   const siderBg = darkMode ? '#2a2a2e' : '#ffffff';
   const topBarBg = darkMode ? 'rgba(42,42,46,0.85)' : 'rgba(255,255,255,0.7)';
   const logoColor = darkMode ? '#e5e5e5' : '#1b1b1a';
+  const navigationEntries: NavigationSearchEntry[] = menuItems
+    .flatMap((item) => ('children' in item && item.children ? item.children : [item]))
+    .map((item) => ({ key: String(item.key), label: String(item.label), icon: item.icon }));
+  const searchResults = filterNavigationEntries(navigationEntries, searchText);
 
   return (
     <>
@@ -332,23 +352,21 @@ const MainLayout = () => {
             prefix={<MagnifyingGlass size={18} color="#9CA3AF" />}
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
+            onPressEnter={() => {
+              const firstResult = searchResults[0];
+              if (!firstResult) return;
+              navigate(firstResult.key);
+              setSearchOpen(false);
+              setSearchText('');
+            }}
             autoFocus
             allowClear
             style={{ fontSize: 16 }}
           />
         </div>
         <div style={{ maxHeight: 360, overflow: 'auto', padding: '8px 12px 12px' }}>
-          {menuItems
-            .flatMap((item) => {
-              if ('children' in item && item.children) return item.children;
-              return [item];
-            })
-            .filter((item) => {
-              if (!searchText) return true;
-              const label = String(item.label).toLowerCase();
-              return label.includes(searchText.toLowerCase());
-            })
-            .map((item) => (
+          {searchResults.length ? (
+            searchResults.map((item) => (
               <div
                 key={item.key}
                 onClick={() => {
@@ -376,7 +394,10 @@ const MainLayout = () => {
                 {item.icon}
                 <span>{item.label}</span>
               </div>
-            ))}
+            ))
+          ) : (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未找到匹配页面" />
+          )}
         </div>
       </Modal>
     </>
