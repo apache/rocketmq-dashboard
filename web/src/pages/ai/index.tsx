@@ -16,6 +16,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Card,
   Button,
@@ -33,6 +34,7 @@ import {
 import { ArrowUp, Sparkle, SlidersHorizontal, CaretDown } from '@phosphor-icons/react';
 import type { ColumnsType } from 'antd/es/table';
 import { useLang } from '../../i18n/LangContext';
+import { getChatDraft } from './chatDraft';
 
 const { Text, Paragraph } = Typography;
 
@@ -346,12 +348,15 @@ const AiMessage = ({ msg }: { msg: Message }) => (
 
 const AiPage = () => {
   const { t } = useLang();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState('qwen3.7-max');
   const chatEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const consumedDraftRef = useRef(false);
 
   const scrollToBottom = useCallback(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -360,6 +365,19 @@ const AiPage = () => {
   useEffect(() => {
     scrollToBottom();
   }, [messages, scrollToBottom]);
+
+  useEffect(() => {
+    const draft = getChatDraft(location.state);
+    if (!draft || consumedDraftRef.current) return;
+    consumedDraftRef.current = true;
+
+    void Promise.resolve().then(() => {
+      setInputValue(draft.prompt);
+      if (draft.model) setSelectedModel(draft.model);
+      navigate('/ai', { replace: true, state: null });
+      textareaRef.current?.focus();
+    });
+  }, [location.state, navigate]);
 
   /* ─── Auto-resize textarea ─── */
   useEffect(() => {
