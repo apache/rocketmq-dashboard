@@ -122,7 +122,7 @@ describe('AI API', () => {
       const result = await executeAiCommand(request);
       expect(result.result).toBe('Found 5 topics');
       expect(result.toolCalls).toHaveLength(1);
-      expect(result.toolCalls[0].name).toBe('listTopics');
+      expect((result.toolCalls[0] as { name: string }).name).toBe('listTopics');
     });
 
     it('should handle empty tool calls', async () => {
