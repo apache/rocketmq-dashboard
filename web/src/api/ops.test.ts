@@ -143,6 +143,16 @@ describe('Ops API - Alert Rules', () => {
     await createAlertRule({ name: 'TestAlert', metric: 'memory', operator: '>', threshold: 90 });
   });
 
+  it('updates an alert rule', async () => {
+    mock.onPost('/alert-rules/update').reply((config) => {
+      const body = JSON.parse(config.data);
+      expect(body.id).toBe('1');
+      expect(body.threshold).toBe(95);
+      return [200, { code: 200 }];
+    });
+    await updateAlertRule({ id: '1', threshold: 95 });
+  });
+
   it('toggles an alert rule', async () => {
     mock.onPost('/alert-rules/toggle').reply((config) => {
       const body = JSON.parse(config.data);
@@ -174,21 +184,19 @@ describe('Ops API - System Alerts & Audit', () => {
   });
 
   it('lists system alerts', async () => {
-    mock
-      .onGet('/system-alerts')
-      .reply(200, {
-        code: 200,
-        data: [
-          {
-            id: 'a1',
-            level: 'critical',
-            title: 'Disk Full',
-            description: 'Disk usage > 95%',
-            time: '2026-01-01',
-            acknowledged: false,
-          },
-        ],
-      });
+    mock.onGet('/system-alerts').reply(200, {
+      code: 200,
+      data: [
+        {
+          id: 'a1',
+          level: 'critical',
+          title: 'Disk Full',
+          description: 'Disk usage > 95%',
+          time: '2026-01-01',
+          acknowledged: false,
+        },
+      ],
+    });
     const result = await listSystemAlerts();
     expect(result[0].level).toBe('critical');
   });
@@ -207,26 +215,24 @@ describe('Ops API - System Alerts & Audit', () => {
   });
 
   it('lists audit records with params', async () => {
-    mock
-      .onGet('/audit-logs')
-      .reply(200, {
-        code: 200,
-        data: {
-          list: [
-            {
-              id: 'r1',
-              timestamp: '2026-01-01',
-              operator: 'admin',
-              operationType: 'CREATE',
-              target: 'topic',
-              detail: 'Created topic',
-              ipAddress: '127.0.0.1',
-              result: 'SUCCESS',
-            },
-          ],
-          total: 1,
-        },
-      });
+    mock.onGet('/audit-logs').reply(200, {
+      code: 200,
+      data: {
+        list: [
+          {
+            id: 'r1',
+            timestamp: '2026-01-01',
+            operator: 'admin',
+            operationType: 'CREATE',
+            target: 'topic',
+            detail: 'Created topic',
+            ipAddress: '127.0.0.1',
+            result: 'SUCCESS',
+          },
+        ],
+        total: 1,
+      },
+    });
     const result = await listAuditRecords({ page: 1 });
     expect(result.list).toHaveLength(1);
     expect(result.total).toBe(1);
