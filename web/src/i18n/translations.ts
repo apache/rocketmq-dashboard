@@ -771,10 +771,6 @@ const translations: Record<string, Record<Lang, string>> = {
   'liteTopic.extendTtlFailed': { zh: 'TTL 延长失败', en: 'Failed to extend TTL' },
   'liteTopic.total': { zh: '共 {total} 条记录', en: 'Total {total} records' },
 
-  // ─── Producer ───
-  'producer.title': { zh: '生产者', en: 'Producer' },
-  'producer.group': { zh: '生产组', en: 'Producer Group' },
-
   // ─── Common (additional) ───
   'common.loading': { zh: '加载中', en: 'Loading' },
   'common.refresh': { zh: '刷新', en: 'Refresh' },

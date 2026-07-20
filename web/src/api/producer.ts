@@ -29,7 +29,7 @@ export interface ProducerConnection {
 
 /** Fetch all topic names */
 export async function fetchTopicList(): Promise<string[]> {
-  const res = await client.get<{ data: { topicList: string[] } }>('/topics');
+  const res = await client.get<{ topicList: string[] }>('/topics');
   return (res.data?.topicList ?? []).sort();
 }
 
@@ -38,9 +38,8 @@ export async function queryProducerConnection(
   topic: string,
   producerGroup: string,
 ): Promise<ProducerConnection[]> {
-  const res = await client.get<{ data: { connectionSet: ProducerConnection[] } }>(
-    '/producer/connection',
-    { params: { topic, producerGroup } },
-  );
+  const res = await client.get<{ connectionSet: ProducerConnection[] }>('/producer/connection', {
+    params: { topic, producerGroup },
+  });
   return res.data?.connectionSet ?? [];
 }
