@@ -20,14 +20,21 @@ interface MiniBarProps {
   color?: string;
   height?: number;
   width?: number;
+  label?: string;
 }
 
-const MiniBar = ({ data, color = '#1677ff', height = 32, width = 120 }: MiniBarProps) => {
+const MiniBar = ({ data, color = '#1677ff', height = 32, width = 120, label }: MiniBarProps) => {
+  if (!data.length) {
+    return <span aria-label={label || '暂无趋势数据'} style={{ color: '#8c8c8c' }}>—</span>;
+  }
+
   const max = Math.max(...data, 1);
   const barWidth = Math.max(2, (width - (data.length - 1) * 2) / data.length);
 
   return (
     <div
+      role="img"
+      aria-label={label || `趋势数据：${data.join('、')}`}
       style={{
         display: 'inline-flex',
         alignItems: 'flex-end',
