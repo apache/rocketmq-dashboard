@@ -18,9 +18,20 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { executeAiCommand, listTools, type AiExecuteRequest, type McpTool } from './ai';
+import { chatStream, executeAiCommand, listTools, type AiExecuteRequest, type McpTool } from './ai';
 
 const mock = new MockAdapter(client);
+const encoder = new TextEncoder();
+
+function streamResponse(chunks: string[]): Response {
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      chunks.forEach((chunk) => controller.enqueue(encoder.encode(chunk)));
+      controller.close();
+    },
+  });
+  return new Response(body, { status: 200 });
+}
 
 describe('AI API', () => {
   beforeEach(() => {
@@ -35,6 +46,67 @@ describe('AI API', () => {
   afterEach(() => {
     mock.reset();
     vi.unstubAllGlobals();
+  });
+
+  describe('chatStream (SSE)', () => {
+    it('reassembles an event split across network chunks', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValue(
+            streamResponse([
+              'event: message\r\ndata: {"text":"hel',
+              'lo"}\r\n\r\nevent: done\r\ndata: [DONE]\r\n\r\n',
+            ]),
+          ),
+      );
+      const chunks: string[] = [];
+
+      await chatStream({ message: 'hello', mode: 'chat', model: 'stub' }, (text) =>
+        chunks.push(text),
+      );
+
+      expect(chunks).toEqual(['hello']);
+    });
+
+    it('dispatches multiple events delivered in one network chunk', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValue(
+            streamResponse([
+              'data: {"content":"first"}\n\ndata: {"content":"second"}\n\ndata: [DONE]\n\n',
+            ]),
+          ),
+      );
+      const chunks: string[] = [];
+
+      await chatStream({ message: 'hello', mode: 'chat', model: 'stub' }, (text) =>
+        chunks.push(text),
+      );
+
+      expect(chunks).toEqual(['first', 'second']);
+    });
+
+    it('supports multiline and raw SSE data at end of stream', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValue(
+            streamResponse(['data: {"content":\ndata: "hello"}\n\ndata: raw text']),
+          ),
+      );
+      const chunks: string[] = [];
+
+      await chatStream({ message: 'hello', mode: 'chat', model: 'stub' }, (text) =>
+        chunks.push(text),
+      );
+
+      expect(chunks).toEqual(['hello', 'raw text']);
+    });
   });
 
   describe('executeAiCommand', () => {
@@ -54,14 +126,13 @@ describe('AI API', () => {
     });
 
     it('should handle empty tool calls', async () => {
-      const request: AiExecuteRequest = {
+      mock.onPost('/ai/execute').reply(200, { data: { result: 'Hi!', toolCalls: [] } });
+
+      const result = await executeAiCommand({
         message: 'hello',
         mode: 'chat',
         model: 'gpt-4',
-      };
-      mock.onPost('/ai/execute').reply(200, { data: { result: 'Hi!', toolCalls: [] } });
-
-      const result = await executeAiCommand(request);
+      });
       expect(result.result).toBe('Hi!');
       expect(result.toolCalls).toEqual([]);
     });
