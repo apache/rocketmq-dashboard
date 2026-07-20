@@ -577,6 +577,12 @@ const translations: Record<string, Record<Lang, string>> = {
   'proxy.addFailed': { zh: '添加代理失败', en: 'Failed to add proxy' },
   'proxy.addrRequired': { zh: '请输入代理地址', en: 'Proxy address is required' },
   'proxy.noConfigData': { zh: '无配置数据', en: 'No config data' },
+  'proxy.version': { zh: '版本', en: 'Version' },
+  'proxy.status': { zh: '状态', en: 'Status' },
+  'proxy.healthy': { zh: '健康', en: 'Healthy' },
+  'proxy.unhealthy': { zh: '不健康', en: 'Unhealthy' },
+  'proxy.warning': { zh: '警告', en: 'Warning' },
+  'proxy.confirmRemove': { zh: '确认移除此节点？', en: 'Are you sure to remove this node?' },
 
   // ─── SSL Settings ───
   'ssl.title': { zh: 'SSL/TLS 设置', en: 'SSL/TLS Settings' },
