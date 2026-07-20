@@ -17,6 +17,7 @@
 
 import axios from 'axios';
 import { message } from 'antd';
+import { API_BASE_URL } from '../config';
 
 const SUCCESS_BUSINESS_CODES = new Set([0, 200]);
 
@@ -40,7 +41,7 @@ function getBusinessError(data: unknown): string | null {
 }
 
 const client = axios.create({
-  baseURL: '/api',
+  baseURL: API_BASE_URL,
   timeout: 30000,
 });
 
