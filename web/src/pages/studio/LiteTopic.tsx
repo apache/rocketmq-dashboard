@@ -615,7 +615,7 @@ const LiteTopicPage: React.FC = () => {
   if (!capabilitySupported) {
     return (
       <div style={{ padding: 0 }}>
-        <PageHeader title={t('liteTopic.title')} icon={Gauge} />
+        <PageHeader title={t('liteTopic.title')} />
         <Alert
           message={t('liteTopic.notSupported')}
           type="info"
@@ -633,7 +633,6 @@ const LiteTopicPage: React.FC = () => {
     <div style={{ padding: 0 }}>
       <PageHeader
         title={t('liteTopic.title')}
-        icon={Gauge}
         extra={
           <Button icon={<ArrowClockwise size={14} />} size="small" onClick={handleRefresh}>
             {t('common.refresh')}
