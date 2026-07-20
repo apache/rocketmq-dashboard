@@ -41,7 +41,7 @@ import {
   Plus,
   Trash,
   GearSix,
-  Dashboard,
+  Gauge,
   CheckCircle,
   XCircle,
   Warning,
@@ -303,7 +303,7 @@ const ProxyPage: React.FC = () => {
     <div style={{ padding: 0 }}>
       <PageHeader
         title={t('proxy.title')}
-        icon={Dashboard}
+
         extra={
           <Space>
             <Button type="primary" icon={<ArrowClockwise size={14} />} onClick={handleRefresh}>
@@ -324,7 +324,7 @@ const ProxyPage: React.FC = () => {
               <Statistic
                 title={t('proxy.totalNodes')}
                 value={clusterStats.totalNodes}
-                prefix={<Dashboard size={18} style={{ marginRight: 4 }} />}
+                prefix={<Gauge size={18} style={{ marginRight: 4 }} />}
                 valueStyle={{ color: '#1890ff' }}
               />
             </Card>

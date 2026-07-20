@@ -57,7 +57,7 @@ describe('Proxy API', () => {
 
   it('adds a proxy address with form-urlencoded content type', async () => {
     mock.onPost('/proxy/addProxyAddr.do').reply((config) => {
-      expect(config.headers['Content-Type']).toBe('application/x-www-form-urlencoded');
+      expect(config.headers?.['Content-Type']).toBe('application/x-www-form-urlencoded');
       expect(config.data).toBe('newProxyAddr=192.168.1.3%3A8081');
       return [200, { code: 200 }];
     });
