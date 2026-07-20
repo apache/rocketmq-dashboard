@@ -35,7 +35,6 @@ import {
 import {
   FloppyDisk,
   Lightning,
-  Robot,
   Cloud,
   Globe,
   Key,
@@ -458,7 +457,7 @@ const LlmSettingsPage: React.FC = () => {
     <div style={{ maxWidth: 960, margin: '0 auto', padding: '0 24px 40px' }}>
       <PageHeader
         title={t('llm.title')}
-        icon={Robot}
+
         extra={
           <Space>
             <Text type="secondary" style={{ fontSize: 13, marginRight: 8 }}>
