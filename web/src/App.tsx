@@ -33,6 +33,7 @@ import SystemAlertsPage from './pages/ops/systemAlerts';
 import AuditPage from './pages/ops/audit';
 import AiPage from './pages/ai';
 import SettingsPage from './pages/settings';
+import SslSettingsPage from './pages/studio/SslSettings';
 
 function App() {
   return (
@@ -54,6 +55,7 @@ function App() {
         <Route path="ops/audit" element={<AuditPage />} />
         <Route path="ai" element={<AiPage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="studio/ssl-settings" element={<SslSettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
