@@ -152,6 +152,28 @@ const MainLayout = () => {
 
   return (
     <>
+      <a
+        href="#main-content"
+        style={{
+          position: 'fixed',
+          top: 8,
+          left: 8,
+          zIndex: 1000,
+          padding: '8px 12px',
+          background: '#1677ff',
+          color: '#fff',
+          borderRadius: 6,
+          transform: 'translateY(-150%)',
+        }}
+        onFocus={(event) => {
+          event.currentTarget.style.transform = 'translateY(0)';
+        }}
+        onBlur={(event) => {
+          event.currentTarget.style.transform = 'translateY(-150%)';
+        }}
+      >
+        跳到主要内容
+      </a>
       <Layout style={{ minHeight: '100vh' }}>
         <Sider
           theme={darkMode ? 'dark' : 'light'}
@@ -300,6 +322,8 @@ const MainLayout = () => {
           </div>
 
           <Content
+            id="main-content"
+            tabIndex={-1}
             style={{
               padding: 0,
               background: 'transparent',
