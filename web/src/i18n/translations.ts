@@ -874,6 +874,20 @@ const translations: Record<string, Record<Lang, string>> = {
   'liteTopic.extendTtlSuccess': { zh: 'TTL 延长成功', en: 'TTL extended successfully' },
   'liteTopic.extendTtlFailed': { zh: 'TTL 延长失败', en: 'Failed to extend TTL' },
   'liteTopic.total': { zh: '共 {total} 条记录', en: 'Total {total} records' },
+  'liteTopic.defaultTtl': { zh: '默认 TTL', en: 'Default TTL' },
+  'liteTopic.maxTtl': { zh: '最大 TTL', en: 'Max TTL' },
+  'liteTopic.remainingQuota': { zh: '剩余配额', en: 'Remaining Quota' },
+  'liteTopic.consumerDensity': { zh: '消费者密度', en: 'Consumer Density' },
+  'liteTopic.newTtl': { zh: '新 TTL', en: 'New TTL' },
+  'liteTopic.newTtlPlaceholder': {
+    zh: '请输入新的 TTL 值（毫秒）',
+    en: 'Enter new TTL value (ms)',
+  },
+  'liteTopic.extendTtlModalTitle': { zh: '延长 TTL', en: 'Extend TTL' },
+  'liteTopic.popProgress': { zh: 'Pop 进度', en: 'Pop Progress' },
+  'liteTopic.sessionStatus': { zh: '会话状态', en: 'Session Status' },
+  'liteTopic.creationCount': { zh: '创建数量', en: 'Creation Count' },
+  'liteTopic.liteTopics': { zh: 'LiteTopic 列表', en: 'LiteTopics' },
 
   // ─── Common (additional) ───
   'common.loading': { zh: '加载中', en: 'Loading' },
