@@ -15,16 +15,15 @@
  * limitations under the License.
  */
 
-import { useState, useMemo } from 'react';
-import { Table, Card, Tag, Space, Input, Select, Flex, Typography } from 'antd';
+import { useEffect, useMemo, useState } from 'react';
+import { Table, Card, Tag, Space, Input, Select, Flex, Typography, message } from 'antd';
 import { MagnifyingGlass } from '@phosphor-icons/react';
 import type { ColumnsType } from 'antd/es/table';
 
 import PageHeader from '../../components/PageHeader';
-import { mockClients } from '../../mock/clients';
-import type { ClientConnection } from '../../mock/clients';
-import clusters from '../../mock/clusters';
 import { useLang } from '../../i18n/LangContext';
+import type { ClientConnection } from '../../api/connections';
+import { listConnections } from '../../services/connectionsService';
 
 const { Text } = Typography;
 
@@ -52,20 +51,44 @@ const languageConfig: Record<string, { color: string; label: string }> = {
    ═══════════════════════════════════════════ */
 const ClientsPage = () => {
   const { t } = useLang();
+  const [connections, setConnections] = useState<ClientConnection[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [clusterFilter, setClusterFilter] = useState<string>('ALL');
 
+  useEffect(() => {
+    let cancelled = false;
+
+    void listConnections()
+      .then((nextConnections) => {
+        if (!cancelled) setConnections(nextConnections);
+      })
+      .catch(() => {
+        if (!cancelled) message.error('客户端连接加载失败，请稍后重试');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   /* ─── Cluster options using nsClusterName ─── */
   const clusterOptions = useMemo(() => {
+    const clusterNames = [
+      ...new Set(connections.map((connection) => connection.clusterName)),
+    ].sort();
     return [
       { value: 'ALL', label: t('clients.allClusters') },
-      ...clusters.map((c) => ({ value: c.nsClusterName, label: c.nsClusterName })),
+      ...clusterNames.map((name) => ({ value: name, label: name })),
     ];
-  }, []);
+  }, [connections, t]);
 
   /* ─── Filtered data (search + cluster only, table handles column filters) ─── */
   const filtered = useMemo(() => {
-    let data = mockClients.filter(
+    let data = connections.filter(
       (c) => c.clientId.toLowerCase().includes(search.toLowerCase()) || c.address.includes(search),
     );
 
@@ -74,7 +97,7 @@ const ClientsPage = () => {
     }
 
     return data;
-  }, [search, clusterFilter]);
+  }, [connections, search, clusterFilter]);
 
   /* ═══════════════════════════════════════════
      Table Columns (with built-in filters)
@@ -85,7 +108,9 @@ const ClientsPage = () => {
       dataIndex: 'clusterName',
       key: 'clusterName',
       width: 130,
-      filters: clusters.map((c) => ({ text: c.nsClusterName, value: c.nsClusterName })),
+      filters: clusterOptions
+        .filter((option) => option.value !== 'ALL')
+        .map((option) => ({ text: option.label, value: option.value })),
       onFilter: (value, record) => record.clusterName === value,
       render: (name: string) => (
         <Tag color="blue" style={{ fontSize: 12 }}>
@@ -236,6 +261,7 @@ const ClientsPage = () => {
           columns={columns}
           dataSource={filtered}
           rowKey="clientId"
+          loading={loading}
           scroll={{ x: 1320 }}
           pagination={{
             pageSize: 20,

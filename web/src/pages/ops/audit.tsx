@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Card,
   Table,
@@ -32,11 +32,11 @@ import {
 } from 'antd';
 import { Trash } from '@phosphor-icons/react';
 import type { ColumnsType } from 'antd/es/table';
-import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import PageHeader from '../../components/PageHeader';
-import { mockAuditRecords, type AuditRecord } from '../../mock/audit';
 import { useLang } from '../../i18n/LangContext';
+import type { AuditRecord } from '../../api/ops';
+import { cleanupAuditLogs, listAuditRecords } from '../../services/opsService';
 
 const operationTypeColors: Record<string, string> = {
   创建Topic: 'blue',
@@ -60,7 +60,12 @@ const operationTypeOptions = [
 
 const AuditPage: React.FC = () => {
   const { t } = useLang();
-  const [records, setRecords] = useState<AuditRecord[]>([...mockAuditRecords] as AuditRecord[]);
+  const [records, setRecords] = useState<AuditRecord[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [loading, setLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [searchText, setSearchText] = useState('');
   const [selectedType, setSelectedType] = useState<string | undefined>(undefined);
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
@@ -68,42 +73,49 @@ const AuditPage: React.FC = () => {
   const [cleanupModalOpen, setCleanupModalOpen] = useState(false);
   const [cleanupDays, setCleanupDays] = useState(30);
 
-  const filteredRecords = useMemo(() => {
-    return records.filter((record) => {
-      if (searchText) {
-        const lower = searchText.toLowerCase();
-        if (
-          !record.operator.toLowerCase().includes(lower) &&
-          !record.target.toLowerCase().includes(lower)
-        ) {
-          return false;
-        }
-      }
-      if (selectedType && record.operationType !== selectedType) {
-        return false;
-      }
-      if (dateRange && dateRange[0] && dateRange[1]) {
-        const recordTime = dayjs(record.timestamp);
-        const start = dateRange[0].startOf('day');
-        const end = dateRange[1].endOf('day');
-        if (recordTime.isBefore(start) || recordTime.isAfter(end)) {
-          return false;
-        }
-      }
-      if (resultFilter !== 'all' && record.result !== resultFilter) {
-        return false;
-      }
-      return true;
-    });
-  }, [records, searchText, selectedType, dateRange, resultFilter]);
+  useEffect(() => {
+    let cancelled = false;
+    const startDate = dateRange?.[0]?.format('YYYY-MM-DD');
+    const endDate = dateRange?.[1]?.format('YYYY-MM-DD');
+
+    void listAuditRecords({
+      page,
+      pageSize,
+      search: searchText || undefined,
+      operationType: selectedType,
+      startDate,
+      endDate,
+      result: resultFilter === 'all' ? undefined : resultFilter,
+    })
+      .then((result) => {
+        if (cancelled) return;
+        setRecords(result.items);
+        setTotal(result.total);
+      })
+      .catch(() => {
+        if (!cancelled) message.error('审计日志加载失败，请稍后重试');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [page, pageSize, searchText, selectedType, dateRange, resultFilter, refreshKey]);
 
   const { Text } = Typography;
 
-  const handleCleanup = () => {
-    const cutoff = dayjs().subtract(cleanupDays, 'day');
-    setRecords((prev) => prev.filter((r) => dayjs(r.timestamp).isAfter(cutoff)));
-    message.success(t('audit.cleanupSuccess', { n: cleanupDays }));
-    setCleanupModalOpen(false);
+  const handleCleanup = async () => {
+    try {
+      await cleanupAuditLogs(cleanupDays);
+      setPage(1);
+      setRefreshKey((key) => key + 1);
+      message.success(t('audit.cleanupSuccess', { n: cleanupDays }));
+      setCleanupModalOpen(false);
+    } catch {
+      message.error('清理审计日志失败，请稍后重试');
+    }
   };
 
   const columns: ColumnsType<AuditRecord> = [
@@ -144,7 +156,7 @@ const AuditPage: React.FC = () => {
       dataIndex: 'result',
       width: 80,
       render: (result: string) =>
-        result === 'success' ? (
+        result.toUpperCase() === 'SUCCESS' ? (
           <Tag color="green">{t('common.success')}</Tag>
         ) : (
           <Tag color="red">{t('common.failure')}</Tag>
@@ -163,7 +175,10 @@ const AuditPage: React.FC = () => {
           <Input.Search
             placeholder={t('audit.searchPlaceholder')}
             value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
+            onChange={(e) => {
+              setPage(1);
+              setSearchText(e.target.value);
+            }}
             style={{ width: 240 }}
             allowClear
           />
@@ -172,21 +187,30 @@ const AuditPage: React.FC = () => {
             allowClear
             style={{ width: 180 }}
             value={selectedType}
-            onChange={setSelectedType}
+            onChange={(value) => {
+              setPage(1);
+              setSelectedType(value);
+            }}
             options={operationTypeOptions.map((opt) => ({ label: opt, value: opt }))}
           />
           <DatePicker.RangePicker
             value={dateRange as [Dayjs | null, Dayjs | null] | null}
-            onChange={(vals) => setDateRange(vals as [Dayjs | null, Dayjs | null] | null)}
+            onChange={(vals) => {
+              setPage(1);
+              setDateRange(vals as [Dayjs | null, Dayjs | null] | null);
+            }}
           />
           <Select
             value={resultFilter}
-            onChange={setResultFilter}
+            onChange={(value) => {
+              setPage(1);
+              setResultFilter(value);
+            }}
             style={{ width: 120 }}
             options={[
               { label: t('common.all'), value: 'all' },
-              { label: t('common.success'), value: 'success' },
-              { label: t('common.failure'), value: 'failure' },
+              { label: t('common.success'), value: 'SUCCESS' },
+              { label: t('common.failure'), value: 'FAILURE' },
             ]}
           />
         </Flex>
@@ -200,9 +224,19 @@ const AuditPage: React.FC = () => {
         <Table
           size="small"
           columns={columns}
-          dataSource={filteredRecords}
+          dataSource={records}
           rowKey="id"
-          pagination={{ pageSize: 20 }}
+          loading={loading}
+          pagination={{
+            current: page,
+            pageSize,
+            total,
+            showSizeChanger: true,
+            onChange: (nextPage, nextPageSize) => {
+              setPage(nextPage);
+              setPageSize(nextPageSize);
+            },
+          }}
         />
       </Card>
 

@@ -19,21 +19,24 @@ import client from './client';
 
 // ─── Types ──────────────────────────────────────────────────────
 export interface GeneralSettings {
-  siteName: string;
-  language: string;
   theme: string;
-  autoRefreshInterval: number;
-  notificationChannels: string[];
+  compact: boolean;
+  desktopNotify: boolean;
+  notifySound: boolean;
+  sessionTimeout: number;
+  requireLogin: boolean;
   llmProvider: string;
-  llmModel: string;
+  apiKey: string;
+  model: string;
+  baseUrl: string;
 }
 
 export interface DataSource {
-  id: string;
+  key: string;
   name: string;
   type: string;
   url: string;
-  isDefault: boolean;
+  auth: string;
   status: string;
 }
 
@@ -54,18 +57,20 @@ export async function listDataSources() {
 }
 
 export async function createDataSource(data: Partial<DataSource>) {
-  await client.post('/settings/datasources/create', data);
+  const res = await client.post<{ data: DataSource }>('/settings/datasources/create', data);
+  return res.data.data;
 }
 
 export async function updateDataSource(data: Partial<DataSource>) {
-  await client.post('/settings/datasources/update', data);
+  const res = await client.post<{ data: DataSource }>('/settings/datasources/update', data);
+  return res.data.data;
 }
 
-export async function deleteDataSource(id: string) {
-  await client.post('/settings/datasources/delete', { id });
+export async function deleteDataSource(key: string) {
+  await client.post('/settings/datasources/delete', undefined, { params: { key } });
 }
 
-export async function testDataSource(data: { type: string; url: string }) {
+export async function testDataSource(data: { type: string; url: string; auth?: string }) {
   const res = await client.post<{ data: { success: boolean; message: string } }>(
     '/settings/datasources/test',
     data,

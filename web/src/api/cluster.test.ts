@@ -18,7 +18,19 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { createK8sCert, deleteK8sCert, listK8sCerts, renewK8sCert, updateK8sCert } from './cluster';
+import {
+  createK8sCert,
+  createNameServer,
+  deleteK8sCert,
+  deleteNameServer,
+  listK8sCerts,
+  renewK8sCert,
+  restartNameServer,
+  restartProxy,
+  updateK8sCert,
+  updateNameServer,
+  upgradeNameServer,
+} from './cluster';
 import type { K8sCertInfo } from './cluster';
 
 const mock = new MockAdapter(client);
@@ -89,5 +101,40 @@ describe('K8s certificate API', () => {
     });
 
     await expect(deleteK8sCert(cert.id)).resolves.toBeUndefined();
+  });
+
+  it('sends NameServer operation payloads to their endpoints', async () => {
+    const target = { clusterId: 'cluster-1', addr: '127.0.0.1:9876' };
+    const requests = [
+      ['/nameservers/restart', target],
+      ['/nameservers/upgrade', { ...target, version: '5.4.0' }],
+      ['/nameservers/create', target],
+      ['/nameservers/update', { ...target, newAddr: '127.0.0.2:9876' }],
+      ['/nameservers/delete', target],
+    ] as const;
+    requests.forEach(([url, body]) => {
+      mock.onPost(url).reply((config) => {
+        expect(JSON.parse(config.data)).toEqual(body);
+        return [200, { code: 200, data: null }];
+      });
+    });
+
+    await expect(restartNameServer(target)).resolves.toBeUndefined();
+    await expect(upgradeNameServer({ ...target, version: '5.4.0' })).resolves.toBeUndefined();
+    await expect(createNameServer(target)).resolves.toBeUndefined();
+    await expect(
+      updateNameServer({ ...target, newAddr: '127.0.0.2:9876' }),
+    ).resolves.toBeUndefined();
+    await expect(deleteNameServer(target)).resolves.toBeUndefined();
+  });
+
+  it('sends the proxy restart target', async () => {
+    const target = { clusterId: 'cluster-1', addr: '127.0.0.1:8081' };
+    mock.onPost('/proxies/restart').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual(target);
+      return [200, { code: 200, data: null }];
+    });
+
+    await expect(restartProxy(target)).resolves.toBeUndefined();
   });
 });
