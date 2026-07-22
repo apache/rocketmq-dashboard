@@ -1652,17 +1652,83 @@ POST /api/metrics/query
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `metric` | `string` | 是 | 指标名称（如 `tps_in`、`tps_out`、`message_count`、`disk_usage`） |
+| `metric` | `string` | 是 | PromQL 表达式，最大 4096 个字符 |
 | `start` | `number` | 是 | 起始时间（Unix 时间戳，秒） |
 | `end` | `number` | 是 | 结束时间（Unix 时间戳，秒） |
-| `step` | `string` | 否 | 采样步长（如 `"60s"`、`"5m"`、`"1h"`） |
+| `step` | `string` | 是 | 查询分辨率，可以是持续时间或秒数（如 `"30s"`、`"5m"`、`"1h"`） |
 
-**Response `data`:** `MetricsResult`
+**Request 示例：**
+
+```json
+{
+  "metric": "sum(rate(rocketmq_messages_in_total[1m])) by (node_id)",
+  "start": 1784112606,
+  "end": 1784114406,
+  "step": "30s"
+}
+```
+
+**Response `data`:** `MetricData`
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `metric` | `string` | 指标名称 |
-| `values` | `[number, number][]` | 数据点数组，每项为 `[timestamp, value]` |
+| `resultType` | `string` | Prometheus 结果类型；范围查询通常为 `matrix` |
+| `series` | `MetricSeries[]` | 查询返回的时间序列 |
+| `warnings` | `string[]` | Prometheus 返回的非致命警告，没有警告时为空数组 |
+
+**MetricSeries：**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `labels` | `object` | 序列的完整标签集合，包括可能存在的 `__name__` |
+| `values` | `MetricSample[]` | 浮点样本；没有浮点样本时为空数组 |
+| `histograms` | `MetricHistogramSample[]` | Native Histogram 样本；没有 Histogram 样本时为空数组 |
+
+同一序列可能只有 `values`、只有 `histograms`，或同时包含两者。
+
+**MetricSample：**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `timestamp` | `number` | Unix 时间戳，可能包含小数秒 |
+| `value` | `string` | Prometheus 样本原始字符串，保留小数精度以及 `NaN`、`+Inf`、`-Inf` |
+
+**MetricHistogramSample：**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `timestamp` | `number` | Unix 时间戳，可能包含小数秒 |
+| `histogram` | `object` | Prometheus Native Histogram 原始对象，包含 `count`、`sum` 和 `buckets` |
+
+**Prometheus 配置：**
+
+```yaml
+studio:
+  metrics:
+    prometheus:
+      base-url: ${STUDIO_METRICS_PROMETHEUS_BASE_URL:}
+      connect-timeout: ${STUDIO_METRICS_PROMETHEUS_CONNECT_TIMEOUT:3s}
+      read-timeout: ${STUDIO_METRICS_PROMETHEUS_READ_TIMEOUT:10s}
+      username: ${STUDIO_METRICS_PROMETHEUS_USERNAME:}
+      password: ${STUDIO_METRICS_PROMETHEUS_PASSWORD:}
+      bearer-token: ${STUDIO_METRICS_PROMETHEUS_BEARER_TOKEN:}
+```
+
+- `base-url` 是 Prometheus 或 Prometheus-compatible 服务的 URL 前缀；服务会在其后追加 `/api/v1/query_range`。
+- 未配置 `base-url` 时，查询接口返回 HTTP 503。
+- `connect-timeout` 默认 3 秒，`read-timeout` 默认 10 秒。
+- Bearer Token 的优先级高于 Basic Auth；Basic Auth 必须同时配置 `username` 和 `password`。
+- 密码和 Token 等敏感配置应通过环境变量或其他外部化配置传入，不应提交到代码仓库。
+
+**错误响应：**
+
+| HTTP 状态 | 场景 |
+|-----------|------|
+| `400` | JSON 无法解析、字段类型错误、请求校验失败或 PromQL 参数错误 |
+| `422` | Prometheus 无法执行 PromQL 表达式 |
+| `502` | 无法连接 Prometheus，或 Prometheus 返回非法响应 |
+| `503` | Prometheus 未配置或暂时不可用 |
+| `504` | Prometheus 查询超时 |
 
 ---
 

@@ -16,20 +16,22 @@
  */
 package com.rocketmq.studio.cluster.metrics;
 
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
+import lombok.Getter;
+import lombok.Setter;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
 
-@Slf4j
-@Service
-@RequiredArgsConstructor
-public class MetricsService {
+import java.time.Duration;
 
-    private final MetricsSource metricsSource;
-
-    public MetricDataVO query(MetricQueryDTO query) {
-        log.debug("Querying metrics: start={}, end={}, step={}",
-                query.getStart(), query.getEnd(), query.getStep());
-        return metricsSource.query(query);
-    }
+@Getter
+@Setter
+@Component
+@ConfigurationProperties(prefix = "studio.metrics.prometheus")
+public class PrometheusProperties {
+    private String baseUrl;
+    private Duration connectTimeout = Duration.ofSeconds(3);
+    private Duration readTimeout = Duration.ofSeconds(10);
+    private String username;
+    private String password;
+    private String bearerToken;
 }

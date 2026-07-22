@@ -16,20 +16,19 @@
  */
 package com.rocketmq.studio.cluster.metrics;
 
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
+import lombok.Getter;
 
-@Slf4j
-@Service
-@RequiredArgsConstructor
-public class MetricsService {
+@Getter
+public class PrometheusException extends RuntimeException {
+    private final int statusCode;
 
-    private final MetricsSource metricsSource;
+    public PrometheusException(int statusCode, String message) {
+        super(message);
+        this.statusCode = statusCode;
+    }
 
-    public MetricDataVO query(MetricQueryDTO query) {
-        log.debug("Querying metrics: start={}, end={}, step={}",
-                query.getStart(), query.getEnd(), query.getStep());
-        return metricsSource.query(query);
+    public PrometheusException(int statusCode, String message, Throwable cause) {
+        super(message, cause);
+        this.statusCode = statusCode;
     }
 }
