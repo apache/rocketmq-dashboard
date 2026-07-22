@@ -30,8 +30,8 @@ const StatusBadge = ({ status, text, showDot = true }: StatusBadgeProps) => {
   const config = STATUS_MAP[status] || STATUS_MAP.offline;
   const label = text || config.label;
   return (
-    <Space size={4}>
-      {showDot && <Badge color={config.dot} />}
+    <Space size={4} role="status" aria-label={`状态：${label}`}>
+      {showDot && <Badge color={config.dot} aria-hidden="true" />}
       <Text style={{ color: config.color, fontSize: 13 }}>{label}</Text>
     </Space>
   );
