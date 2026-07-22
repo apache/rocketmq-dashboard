@@ -628,6 +628,18 @@ const translations: Record<string, Record<Lang, string>> = {
   'ssl.invalidCertFormat': { zh: '仅允许证书文件！', en: 'Only certificate files are allowed!' },
   'ssl.certRemoved': { zh: '证书文件已移除', en: 'Certificate file removed' },
 
+  // ─── Producer ───
+  'producer.title': { zh: '生产者连接', en: 'Producer Connection' },
+  'producer.language': { zh: '语言', en: 'Language' },
+  'producer.selectTopic': { zh: '请选择 Topic', en: 'Select a topic' },
+  'producer.inputGroup': { zh: '请输入生产者组', en: 'Input producer group' },
+  'producer.fetchTopicFailed': { zh: '获取 Topic 列表失败', en: 'Failed to fetch topic list' },
+  'producer.fetchConnectionFailed': {
+    zh: '获取生产者连接失败',
+    en: 'Failed to fetch producer connections',
+  },
+  'producer.noConnections': { zh: '暂无生产者连接', en: 'No producer connections found' },
+
   // ─── Namespace ───
   'ns.title': { zh: '命名空间管理', en: 'Namespace Management' },
   'ns.name': { zh: '命名空间', en: 'Namespace' },
@@ -767,10 +779,6 @@ const translations: Record<string, Record<Lang, string>> = {
   'liteTopic.extendTtlSuccess': { zh: 'TTL 延长成功', en: 'TTL extended successfully' },
   'liteTopic.extendTtlFailed': { zh: 'TTL 延长失败', en: 'Failed to extend TTL' },
   'liteTopic.total': { zh: '共 {total} 条记录', en: 'Total {total} records' },
-
-  // ─── Producer ───
-  'producer.title': { zh: '生产者', en: 'Producer' },
-  'producer.group': { zh: '生产组', en: 'Producer Group' },
 
   // ─── Common (additional) ───
   'common.loading': { zh: '加载中', en: 'Loading' },
