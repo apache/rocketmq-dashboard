@@ -66,6 +66,7 @@ const modelOptions = [
 const HomePage = () => {
   const [activeMode, setActiveMode] = useState('query');
   const [selectedModel, setSelectedModel] = useState('qwen3.7-max');
+  const [inputValue, setInputValue] = useState('');
   const [indicatorStyle, setIndicatorStyle] = useState({ width: 83, left: 6 });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const modeBarRef = useRef<HTMLDivElement>(null);
@@ -117,8 +118,13 @@ const HomePage = () => {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      navigate('/ai');
+      handlePromptSubmit();
     }
+  };
+
+  const handlePromptSubmit = () => {
+    const prompt = inputValue.trim();
+    navigate('/ai', { state: prompt ? { prompt, model: selectedModel } : null });
   };
 
   return (
@@ -321,6 +327,8 @@ const HomePage = () => {
                     ref={textareaRef}
                     className="chat-input"
                     placeholder="向 RocketMQ Bot 提问，全程加密、安全、可信"
+                    value={inputValue}
+                    onChange={(event) => setInputValue(event.target.value)}
                     onKeyDown={handleKeyDown}
                   />
                   <RobotOutlined
@@ -359,7 +367,7 @@ const HomePage = () => {
                       <div className="shrink-0 flex items-center gap-1">
                         <button
                           className="flex items-center justify-center w-9 h-9 rounded-full bg-gradient-to-r from-purple-500 to-violet-600 text-white shadow-lg hover:shadow-xl transition-all hover:scale-105"
-                          onClick={() => navigate('/ai')}
+                          onClick={handlePromptSubmit}
                         >
                           <ArrowUp size={19} weight="bold" />
                         </button>

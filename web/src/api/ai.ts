@@ -31,6 +31,13 @@ export interface AiExecuteRequest {
   tools?: string[];
 }
 
+export interface AiChatRequest {
+  message: string;
+  mode: string;
+  model: string;
+  conversationId?: string;
+}
+
 interface AiStreamPayload {
   content?: unknown;
   text?: unknown;
@@ -76,7 +83,7 @@ function emitEvent(event: string, onChunk: (text: string) => void): boolean {
 
 // ─── AI ─────────────────────────────────────────────────────────
 export async function chatStream(
-  data: AiExecuteRequest,
+  data: AiChatRequest,
   onChunk: (text: string) => void,
   signal?: AbortSignal,
 ) {
