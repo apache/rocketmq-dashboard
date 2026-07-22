@@ -25,8 +25,11 @@ export interface LoginRequest {
 
 export interface LoginResponse {
   token: string;
-  username: string;
-  role: string;
+  expiresIn: number;
+  user: {
+    username: string;
+    admin: boolean;
+  };
 }
 
 // ─── Auth ───────────────────────────────────────────────────────
