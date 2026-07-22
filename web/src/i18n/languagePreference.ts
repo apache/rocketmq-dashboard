@@ -15,32 +15,23 @@
  * limitations under the License.
  */
 
-import { Flex, Typography } from 'antd';
-import type { ReactNode } from 'react';
+import type { Lang } from './translations';
 
-const { Title, Text } = Typography;
+export const LANGUAGE_STORAGE_KEY = 'rocketmq-studio-language';
 
-interface PageHeaderProps {
-  title: string;
-  subtitle?: ReactNode;
-  extra?: ReactNode;
-  headingLevel?: 1 | 2 | 3 | 4 | 5;
+export function getInitialLanguage(): Lang {
+  try {
+    const stored = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+    return stored === 'en' || stored === 'zh' ? stored : 'zh';
+  } catch {
+    return 'zh';
+  }
 }
 
-const PageHeader = ({ title, subtitle, extra, headingLevel = 1 }: PageHeaderProps) => (
-  <Flex justify="space-between" align="center" style={{ marginBottom: 24 }}>
-    <Flex align="center" gap={12}>
-      <Title level={headingLevel} style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>
-        {title}
-      </Title>
-      {subtitle && (
-        <Text type="secondary" style={{ fontSize: 13 }}>
-          {subtitle}
-        </Text>
-      )}
-    </Flex>
-    {extra && <Flex gap={8}>{extra}</Flex>}
-  </Flex>
-);
-
-export default PageHeader;
+export function persistLanguage(lang: Lang): void {
+  try {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
+  } catch {
+    // Language selection still works when browser storage is unavailable.
+  }
+}

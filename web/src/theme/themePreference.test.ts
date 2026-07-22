@@ -15,32 +15,29 @@
  * limitations under the License.
  */
 
-import { Flex, Typography } from 'antd';
-import type { ReactNode } from 'react';
+import { afterEach, describe, expect, it } from 'vitest';
+import {
+  getStoredThemePreference,
+  persistThemePreference,
+  THEME_STORAGE_KEY,
+} from './themePreference';
 
-const { Title, Text } = Typography;
+describe('theme preference', () => {
+  afterEach(() => {
+    localStorage.clear();
+  });
 
-interface PageHeaderProps {
-  title: string;
-  subtitle?: ReactNode;
-  extra?: ReactNode;
-  headingLevel?: 1 | 2 | 3 | 4 | 5;
-}
+  it('uses no explicit preference for missing or invalid stored values', () => {
+    expect(getStoredThemePreference()).toBeNull();
+    localStorage.setItem(THEME_STORAGE_KEY, 'system');
+    expect(getStoredThemePreference()).toBeNull();
+  });
 
-const PageHeader = ({ title, subtitle, extra, headingLevel = 1 }: PageHeaderProps) => (
-  <Flex justify="space-between" align="center" style={{ marginBottom: 24 }}>
-    <Flex align="center" gap={12}>
-      <Title level={headingLevel} style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>
-        {title}
-      </Title>
-      {subtitle && (
-        <Text type="secondary" style={{ fontSize: 13 }}>
-          {subtitle}
-        </Text>
-      )}
-    </Flex>
-    {extra && <Flex gap={8}>{extra}</Flex>}
-  </Flex>
-);
+  it('persists manual light and dark theme choices', () => {
+    persistThemePreference(true);
+    expect(getStoredThemePreference()).toBe('dark');
 
-export default PageHeader;
+    persistThemePreference(false);
+    expect(getStoredThemePreference()).toBe('light');
+  });
+});

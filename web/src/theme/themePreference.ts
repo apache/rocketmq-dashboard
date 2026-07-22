@@ -15,32 +15,27 @@
  * limitations under the License.
  */
 
-import { Flex, Typography } from 'antd';
-import type { ReactNode } from 'react';
+export type ThemePreference = 'dark' | 'light';
 
-const { Title, Text } = Typography;
+export const THEME_STORAGE_KEY = 'rocketmq-studio-theme';
 
-interface PageHeaderProps {
-  title: string;
-  subtitle?: ReactNode;
-  extra?: ReactNode;
-  headingLevel?: 1 | 2 | 3 | 4 | 5;
+export function getStoredThemePreference(): ThemePreference | null {
+  try {
+    const stored = localStorage.getItem(THEME_STORAGE_KEY);
+    return stored === 'dark' || stored === 'light' ? stored : null;
+  } catch {
+    return null;
+  }
 }
 
-const PageHeader = ({ title, subtitle, extra, headingLevel = 1 }: PageHeaderProps) => (
-  <Flex justify="space-between" align="center" style={{ marginBottom: 24 }}>
-    <Flex align="center" gap={12}>
-      <Title level={headingLevel} style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>
-        {title}
-      </Title>
-      {subtitle && (
-        <Text type="secondary" style={{ fontSize: 13 }}>
-          {subtitle}
-        </Text>
-      )}
-    </Flex>
-    {extra && <Flex gap={8}>{extra}</Flex>}
-  </Flex>
-);
+export function getSystemDarkMode(): boolean {
+  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
+}
 
-export default PageHeader;
+export function persistThemePreference(darkMode: boolean): void {
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, darkMode ? 'dark' : 'light');
+  } catch {
+    // The active theme still changes when browser storage is unavailable.
+  }
+}

@@ -15,32 +15,24 @@
  * limitations under the License.
  */
 
-import { Flex, Typography } from 'antd';
-import type { ReactNode } from 'react';
+import { afterEach, describe, expect, it } from 'vitest';
+import { getInitialLanguage, LANGUAGE_STORAGE_KEY, persistLanguage } from './languagePreference';
 
-const { Title, Text } = Typography;
+describe('language preference', () => {
+  afterEach(() => {
+    localStorage.clear();
+  });
 
-interface PageHeaderProps {
-  title: string;
-  subtitle?: ReactNode;
-  extra?: ReactNode;
-  headingLevel?: 1 | 2 | 3 | 4 | 5;
-}
+  it('defaults to Chinese when no valid preference is stored', () => {
+    expect(getInitialLanguage()).toBe('zh');
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'fr');
+    expect(getInitialLanguage()).toBe('zh');
+  });
 
-const PageHeader = ({ title, subtitle, extra, headingLevel = 1 }: PageHeaderProps) => (
-  <Flex justify="space-between" align="center" style={{ marginBottom: 24 }}>
-    <Flex align="center" gap={12}>
-      <Title level={headingLevel} style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>
-        {title}
-      </Title>
-      {subtitle && (
-        <Text type="secondary" style={{ fontSize: 13 }}>
-          {subtitle}
-        </Text>
-      )}
-    </Flex>
-    {extra && <Flex gap={8}>{extra}</Flex>}
-  </Flex>
-);
+  it('persists a supported language for the next application load', () => {
+    persistLanguage('en');
 
-export default PageHeader;
+    expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe('en');
+    expect(getInitialLanguage()).toBe('en');
+  });
+});
