@@ -17,6 +17,8 @@
 
 import axios from 'axios';
 import { message } from 'antd';
+import { clearAuthSession, TOKEN_STORAGE_KEY } from '../stores/authStorage';
+import { API_BASE_URL } from '../config';
 
 const SUCCESS_BUSINESS_CODES = new Set([0, 200]);
 
@@ -40,14 +42,14 @@ function getBusinessError(data: unknown): string | null {
 }
 
 const client = axios.create({
-  baseURL: '/api',
+  baseURL: API_BASE_URL,
   timeout: 30000,
 });
 
 // Request interceptor: attach Authorization header
 client.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem(TOKEN_STORAGE_KEY);
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -68,7 +70,7 @@ client.interceptors.response.use(
   },
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('token');
+      clearAuthSession();
       window.location.href = '/';
     }
     return Promise.reject(error);

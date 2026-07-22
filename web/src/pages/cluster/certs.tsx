@@ -31,13 +31,14 @@ import {
   message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { EditOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import { EditOutlined, DeleteOutlined, PlusOutlined, SyncOutlined } from '@ant-design/icons';
 import PageHeader from '../../components/PageHeader';
 import type { K8sCertInfo } from '../../api/cluster';
 import {
   createK8sCert,
   deleteK8sCert,
   listK8sCerts,
+  renewK8sCert,
   updateK8sCert,
 } from '../../services/clusterService';
 
@@ -56,6 +57,7 @@ const K8sCertsPage = () => {
   const [certs, setCerts] = useState<K8sCertInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [renewingId, setRenewingId] = useState<string | null>(null);
   const [certSearch, setCertSearch] = useState('');
   const [certTypeFilter, setCertTypeFilter] = useState<string>('');
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -135,6 +137,20 @@ const K8sCertsPage = () => {
     const matchType = !certTypeFilter || cert.type === certTypeFilter;
     return matchSearch && matchType;
   });
+
+  const renewCert = async (cert: K8sCertInfo) => {
+    setRenewingId(cert.id);
+    try {
+      const renewed = await renewK8sCert(cert.id);
+      setCerts((prev) => prev.map((item) => (item.id === renewed.id ? renewed : item)));
+      message.success(`证书「${renewed.name}」已续期`);
+    } catch (error) {
+      message.error(getErrorMessage(error));
+      throw error;
+    } finally {
+      setRenewingId(null);
+    }
+  };
 
   const certColumns: ColumnsType<K8sCertInfo> = [
     {
@@ -225,7 +241,7 @@ const K8sCertsPage = () => {
     {
       title: '操作',
       key: 'action',
-      width: 200,
+      width: 270,
       render: (_: unknown, record: K8sCertInfo) => (
         <Flex gap={6}>
           <Button
@@ -246,6 +262,22 @@ const K8sCertsPage = () => {
             }}
           >
             编辑
+          </Button>
+          <Button
+            size="small"
+            icon={<SyncOutlined />}
+            loading={renewingId === record.id}
+            onClick={() => {
+              Modal.confirm({
+                title: '确认续期',
+                content: `确定要为证书 "${record.name}" 续期一年吗？`,
+                okText: '续期',
+                cancelText: '取消',
+                onOk: () => renewCert(record),
+              });
+            }}
+          >
+            续期
           </Button>
           <Button
             size="small"
