@@ -33,6 +33,7 @@ import SystemAlertsPage from './pages/ops/systemAlerts';
 import AuditPage from './pages/ops/audit';
 import AiPage from './pages/ai';
 import SettingsPage from './pages/settings';
+import SslSettingsPage from './pages/studio/SslSettings';
 import AlertManagementPage from './pages/studio/AlertManagement';
 import ProducerPage from './pages/studio/Producer';
 import OpsPage from './pages/studio/Ops';
@@ -59,6 +60,7 @@ function App() {
         <Route path="ops/audit" element={<AuditPage />} />
         <Route path="ai" element={<AiPage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="studio/ssl-settings" element={<SslSettingsPage />} />
         <Route path="studio/alert-management" element={<AlertManagementPage />} />
         <Route path="studio/producer" element={<ProducerPage />} />
         <Route path="studio/ops" element={<OpsPage />} />
