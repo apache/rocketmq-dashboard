@@ -357,6 +357,15 @@ const translations: Record<string, Record<Lang, string>> = {
   'ops.name': { zh: '名称', en: 'Name' },
   'ops.value': { zh: '值', en: 'Value' },
   'ops.description': { zh: '描述', en: 'Description' },
+  'ops.nameServerAddressList': { zh: 'NameServer 地址列表', en: 'NameServer Address List' },
+  'ops.isUseVIPChannel': { zh: '是否使用 VIP 通道', en: 'Is Use VIP Channel' },
+  'ops.useTLS': { zh: '使用 TLS', en: 'Use TLS' },
+  'ops.selectNamesrv': { zh: '请选择 NameServer 地址', en: 'Please select a NameServer address' },
+  'ops.inputNamesrvAddr': {
+    zh: '请输入新的 NameServer 地址',
+    en: 'Please input a new NameServer address',
+  },
+  'ops.fetchFailed': { zh: '获取运维数据失败', en: 'Failed to fetch ops data' },
 
   // ─── Topic (detailed) ───
   'topic.subtitle': {
