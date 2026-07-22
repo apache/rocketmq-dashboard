@@ -34,10 +34,14 @@ import AuditPage from './pages/ops/audit';
 import AiPage from './pages/ai';
 import SettingsPage from './pages/settings';
 import AlertManagementPage from './pages/studio/AlertManagement';
+import ProducerPage from './pages/studio/Producer';
+import OpsPage from './pages/studio/Ops';
+import LoginPage from './pages/login';
 
 function App() {
   return (
     <Routes>
+      <Route path="/login" element={<LoginPage />} />
       <Route path="/" element={<MainLayout />}>
         <Route index element={<HomePage />} />
         <Route path="instance" element={<InstancePage />} />
@@ -56,6 +60,8 @@ function App() {
         <Route path="ai" element={<AiPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="studio/alert-management" element={<AlertManagementPage />} />
+        <Route path="studio/producer" element={<ProducerPage />} />
+        <Route path="studio/ops" element={<OpsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

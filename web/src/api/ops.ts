@@ -84,3 +84,32 @@ export async function listAuditRecords(params?: Record<string, unknown>) {
 export async function cleanupAuditLogs(beforeDays: number) {
   await client.post('/audit-logs/cleanup', { beforeDays });
 }
+
+// ─── NameServer Operations ──────────────────────────────────────
+export interface OpsHomeData {
+  namesvrAddrList: string[];
+  useVIPChannel: boolean;
+  useTLS: boolean;
+  currentNamesrv: string;
+}
+
+export async function queryOpsHomePage(): Promise<OpsHomeData> {
+  const res = await client.get<{ data: OpsHomeData }>('/ops/homePage');
+  return res.data.data;
+}
+
+export async function updateNameSvrAddr(namesrvAddr: string): Promise<void> {
+  await client.post('/ops/updateNameSvrAddr', { namesrvAddr });
+}
+
+export async function addNameSvrAddr(namesrvAddr: string): Promise<void> {
+  await client.post('/ops/addNameSvrAddr', { namesrvAddr });
+}
+
+export async function updateIsVIPChannel(useVIPChannel: boolean): Promise<void> {
+  await client.post('/ops/updateIsVIPChannel', { useVIPChannel });
+}
+
+export async function updateUseTLS(useTLS: boolean): Promise<void> {
+  await client.post('/ops/updateUseTLS', { useTLS });
+}
