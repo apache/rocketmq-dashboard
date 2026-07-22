@@ -31,6 +31,49 @@ export interface AiExecuteRequest {
   tools?: string[];
 }
 
+interface AiStreamPayload {
+  content?: unknown;
+  text?: unknown;
+}
+
+function getEventBoundary(buffer: string): { index: number; length: number } | null {
+  const match = /\r\n\r\n|\n\n|\r\r/.exec(buffer);
+  return match ? { index: match.index, length: match[0].length } : null;
+}
+
+function getEventData(event: string): string | null {
+  const dataLines = event
+    .split(/\r\n|\r|\n/)
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => {
+      const value = line.slice(5);
+      return value.startsWith(' ') ? value.slice(1) : value;
+    });
+
+  return dataLines.length ? dataLines.join('\n') : null;
+}
+
+function emitEvent(event: string, onChunk: (text: string) => void): boolean {
+  const payload = getEventData(event);
+  if (payload === null) return false;
+  if (payload === '[DONE]') return true;
+
+  try {
+    const parsed = JSON.parse(payload) as AiStreamPayload;
+    const text =
+      typeof parsed.content === 'string'
+        ? parsed.content
+        : typeof parsed.text === 'string'
+          ? parsed.text
+          : null;
+    if (text !== null) onChunk(text);
+  } catch {
+    onChunk(payload);
+  }
+
+  return false;
+}
+
 // ─── AI ─────────────────────────────────────────────────────────
 export async function chatStream(
   data: AiExecuteRequest,
@@ -53,24 +96,24 @@ export async function chatStream(
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
+  let buffer = '';
+
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
-    const chunk = decoder.decode(value, { stream: true });
-    // SSE format: "data: ..."
-    const lines = chunk.split('\n').filter((l) => l.startsWith('data: '));
-    for (const line of lines) {
-      const payload = line.slice(6);
-      if (payload === '[DONE]') return;
-      try {
-        const parsed = JSON.parse(payload);
-        if (parsed.content) onChunk(parsed.content);
-      } catch {
-        // raw text chunk
-        onChunk(payload);
-      }
+
+    buffer += decoder.decode(value, { stream: true });
+    let boundary = getEventBoundary(buffer);
+    while (boundary) {
+      const event = buffer.slice(0, boundary.index);
+      buffer = buffer.slice(boundary.index + boundary.length);
+      if (emitEvent(event, onChunk)) return;
+      boundary = getEventBoundary(buffer);
     }
   }
+
+  buffer += decoder.decode();
+  if (buffer && emitEvent(buffer, onChunk)) return;
 }
 
 export async function executeAiCommand(data: AiExecuteRequest) {
