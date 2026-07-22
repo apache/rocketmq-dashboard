@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Card,
   Table,
@@ -34,8 +34,8 @@ import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
-import { mockDLQGroups } from '../../mock/dlq';
-import type { DLQGroup } from '../../mock/dlq';
+import type { DLQGroup } from '../../api/message';
+import { listDLQGroups, resendDLQ } from '../../services/messageService';
 
 const { Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -53,6 +53,9 @@ const formatDateTime = (iso: string): string => {
    ═══════════════════════════════════════════ */
 const DLQPage = () => {
   const { t } = useLang();
+  const [groups, setGroups] = useState<DLQGroup[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [search, setSearch] = useState('');
   const [retryModalOpen, setRetryModalOpen] = useState(false);
   const [retryGroup, setRetryGroup] = useState<DLQGroup | null>(null);
@@ -61,15 +64,35 @@ const DLQPage = () => {
     dayjs(),
   ]);
   const [retryTargetTopic, setRetryTargetTopic] = useState('');
+  const [retrySubmitting, setRetrySubmitting] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void listDLQGroups()
+      .then((nextGroups) => {
+        if (!cancelled) setGroups(nextGroups);
+      })
+      .catch(() => {
+        if (!cancelled) message.error('死信队列加载失败，请稍后重试');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey]);
 
   /* ─── Filtering ─── */
   const filtered = useMemo(() => {
-    if (!search) return mockDLQGroups;
-    return mockDLQGroups.filter(
+    if (!search) return groups;
+    return groups.filter(
       (g) =>
         g.groupName.includes(search) || g.dlqTopic.toLowerCase().includes(search.toLowerCase()),
     );
-  }, [search]);
+  }, [groups, search]);
 
   /* ─── Handlers ─── */
   const openRetryModal = (group: DLQGroup) => {
@@ -79,14 +102,30 @@ const DLQPage = () => {
     setRetryModalOpen(true);
   };
 
-  const handleRetry = () => {
+  const handleRetry = async () => {
     if (!retryTargetTopic) {
       message.warning('请输入目标 Topic');
       return;
     }
-    message.success(`已提交重投任务：${retryGroup?.groupName} → ${retryTargetTopic}（模拟）`);
-    setRetryModalOpen(false);
-    setRetryGroup(null);
+    if (!retryGroup) return;
+
+    setRetrySubmitting(true);
+    try {
+      await resendDLQ({
+        groupName: retryGroup.groupName,
+        startTime: retryRange[0].valueOf(),
+        endTime: retryRange[1].valueOf(),
+        targetTopic: retryTargetTopic,
+      });
+      setRefreshKey((key) => key + 1);
+      message.success(`已提交重投任务：${retryGroup.groupName} → ${retryTargetTopic}`);
+      setRetryModalOpen(false);
+      setRetryGroup(null);
+    } catch {
+      message.error('提交重投任务失败，请稍后重试');
+    } finally {
+      setRetrySubmitting(false);
+    }
   };
 
   const handleExport = (group: DLQGroup) => {
@@ -210,6 +249,7 @@ const DLQPage = () => {
           columns={columns}
           dataSource={filtered}
           rowKey="groupName"
+          loading={loading}
           pagination={{
             pageSize: 20,
             showSizeChanger: true,
@@ -235,6 +275,7 @@ const DLQPage = () => {
           setRetryGroup(null);
         }}
         onOk={handleRetry}
+        confirmLoading={retrySubmitting}
         okText="确认重投"
         cancelText="取消"
         width={520}

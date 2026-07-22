@@ -136,63 +136,64 @@ const SystemAlertsPage = () => {
 
       <Flex vertical gap={12}>
         {loading && <Card loading />}
-        {!loading && filtered.map((alert) => {
-          const cfg = alertLevelConfig[alert.level];
-          return (
-            <div
-              key={alert.id}
-              style={{
-                display: 'flex',
-                alignItems: 'flex-start',
-                gap: 12,
-                padding: '12px 16px',
-                borderRadius: 8,
-                background: cfg.bg,
-                borderLeft: `3px solid ${cfg.color}`,
-                opacity: alert.acknowledged ? 0.6 : 1,
-              }}
-            >
-              <div style={{ flex: 1 }}>
-                <Flex align="center" gap={8}>
-                  <Text strong style={{ fontSize: 13 }}>
-                    {alert.title}
+        {!loading &&
+          filtered.map((alert) => {
+            const cfg = alertLevelConfig[alert.level];
+            return (
+              <div
+                key={alert.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 12,
+                  padding: '12px 16px',
+                  borderRadius: 8,
+                  background: cfg.bg,
+                  borderLeft: `3px solid ${cfg.color}`,
+                  opacity: alert.acknowledged ? 0.6 : 1,
+                }}
+              >
+                <div style={{ flex: 1 }}>
+                  <Flex align="center" gap={8}>
+                    <Text strong style={{ fontSize: 13 }}>
+                      {alert.title}
+                    </Text>
+                    <Tag
+                      color={
+                        alert.level === 'error'
+                          ? 'error'
+                          : alert.level === 'warning'
+                            ? 'warning'
+                            : 'processing'
+                      }
+                      style={{ fontSize: 11, lineHeight: '18px', padding: '0 6px' }}
+                    >
+                      {cfg.label}
+                    </Tag>
+                  </Flex>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    {alert.description}
                   </Text>
-                  <Tag
-                    color={
-                      alert.level === 'error'
-                        ? 'error'
-                        : alert.level === 'warning'
-                          ? 'warning'
-                          : 'processing'
-                    }
-                    style={{ fontSize: 11, lineHeight: '18px', padding: '0 6px' }}
-                  >
-                    {cfg.label}
-                  </Tag>
+                </div>
+                <Flex align="center" gap={8} style={{ flexShrink: 0 }}>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    {alert.time}
+                  </Text>
+                  {!alert.acknowledged && (
+                    <Button
+                      size="small"
+                      type="link"
+                      icon={<CheckCircle size={14} />}
+                      onClick={() => handleAck(alert.id)}
+                      loading={acknowledgingId === alert.id}
+                    >
+                      {t('sysAlerts.acknowledge')}
+                    </Button>
+                  )}
                 </Flex>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  {alert.description}
-                </Text>
               </div>
-              <Flex align="center" gap={8} style={{ flexShrink: 0 }}>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  {alert.time}
-                </Text>
-                {!alert.acknowledged && (
-                  <Button
-                    size="small"
-                    type="link"
-                    icon={<CheckCircle size={14} />}
-                    onClick={() => handleAck(alert.id)}
-                    loading={acknowledgingId === alert.id}
-                  >
-                    {t('sysAlerts.acknowledge')}
-                  </Button>
-                )}
-              </Flex>
-            </div>
-          );
-        })}
+            );
+          })}
         {!loading && filtered.length === 0 && (
           <Card>
             <Flex justify="center" style={{ padding: 40 }}>

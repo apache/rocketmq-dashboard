@@ -13,11 +13,12 @@ export interface ClientConnection {
   clusterName: string;
 }
 
-export async function listConnections(params?: {
-  keyword?: string;
+export interface ClientConnectionQuery {
+  clusterId?: string;
   type?: string;
-  language?: string;
-}) {
+}
+
+export async function listConnections(params?: ClientConnectionQuery) {
   const res = await client.get<{ data: ClientConnection[] }>('/clients', { params });
   return res.data.data;
 }
