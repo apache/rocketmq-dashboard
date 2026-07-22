@@ -17,6 +17,10 @@
 package com.rocketmq.studio.cluster.metrics;
 
 import com.rocketmq.studio.common.domain.Result;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -30,8 +34,19 @@ public class MetricsController {
 
     private final MetricsService metricsService;
 
+    @Operation(summary = "Query Prometheus range metrics",
+            description = "Executes a PromQL range query against the configured Prometheus server")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Range query completed successfully",
+                useReturnTypeSchema = true),
+        @ApiResponse(responseCode = "400", description = "Invalid request or PromQL expression"),
+        @ApiResponse(responseCode = "422", description = "Prometheus could not execute the expression"),
+        @ApiResponse(responseCode = "502", description = "Prometheus connection or response failure"),
+        @ApiResponse(responseCode = "503", description = "Prometheus is unavailable or not configured"),
+        @ApiResponse(responseCode = "504", description = "Prometheus query timed out")
+    })
     @PostMapping("/query")
-    public Result<MetricDataVO> query(@RequestBody MetricQueryDTO query) {
+    public Result<MetricDataVO> query(@Valid @RequestBody MetricQueryDTO query) {
         return Result.ok(metricsService.query(query));
     }
 }
