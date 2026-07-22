@@ -2,6 +2,7 @@ import { USE_MOCK } from '../config';
 import * as metadataApi from '../api/metadata';
 import type {
   Topic,
+  TopicQuery,
   BrokerRoute,
   ConsumerGroupInfo,
   SendTopicMessageRequest,
@@ -9,19 +10,15 @@ import type {
 } from '../api/metadata';
 import { topics as mockTopics, topicRoutes, topicConsumers } from '../mock/topics';
 
-export async function listTopics(params?: {
-  keyword?: string;
-  type?: string;
-  namespace?: string;
-}): Promise<Topic[]> {
+export async function listTopics(params?: TopicQuery): Promise<Topic[]> {
   if (USE_MOCK) {
     let result = [...mockTopics];
-    if (params?.keyword) {
-      const kw = params.keyword.toLowerCase();
+    if (params?.search) {
+      const kw = params.search.toLowerCase();
       result = result.filter((t) => t.name.toLowerCase().includes(kw));
     }
     if (params?.type) result = result.filter((t) => t.type === params.type);
-    if (params?.namespace) result = result.filter((t) => t.namespace === params.namespace);
+    if (params?.clusterId) result = result.filter((t) => t.clusterId === params.clusterId);
     return result as unknown as Topic[];
   }
   return metadataApi.listTopics(params);
@@ -43,11 +40,12 @@ export async function createTopic(data: Partial<Topic>): Promise<Topic> {
   return metadataApi.createTopic(data);
 }
 
-export async function updateTopic(data: Partial<Topic>): Promise<void> {
+export async function updateTopic(data: Partial<Topic>): Promise<Topic> {
   if (USE_MOCK) {
     const idx = mockTopics.findIndex((t) => t.name === data.name);
-    if (idx >= 0) Object.assign(mockTopics[idx], data, { updatedAt: new Date().toISOString() });
-    return;
+    if (idx < 0) throw new Error(`Topic not found: ${data.name}`);
+    Object.assign(mockTopics[idx], data, { updatedAt: new Date().toISOString() });
+    return mockTopics[idx] as unknown as Topic;
   }
   return metadataApi.updateTopic(data);
 }
