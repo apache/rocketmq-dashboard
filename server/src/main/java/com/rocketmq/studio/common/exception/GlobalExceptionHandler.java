@@ -16,10 +16,14 @@
  */
 package com.rocketmq.studio.common.exception;
 
+import com.rocketmq.studio.cluster.metrics.PrometheusException;
 import com.rocketmq.studio.common.domain.Result;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -34,6 +38,30 @@ public class GlobalExceptionHandler {
     public Result<?> handleBusinessException(BusinessException ex) {
         log.warn("Business exception: {}", ex.getMessage());
         return Result.error(ex.getCode(), ex.getMessage());
+    }
+
+    @ExceptionHandler(PrometheusException.class)
+    public ResponseEntity<Result<?>> handlePrometheusException(PrometheusException ex) {
+        log.warn("Prometheus exception: status={}, message={}", ex.getStatusCode(), ex.getMessage());
+        return ResponseEntity.status(ex.getStatusCode())
+                .body(Result.error(ex.getStatusCode(), ex.getMessage()));
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Result<?> handleValidationException(MethodArgumentNotValidException ex) {
+        String message = ex.getBindingResult().getFieldErrors().stream()
+                .findFirst()
+                .map(error -> error.getDefaultMessage() == null ? "Invalid request" : error.getDefaultMessage())
+                .orElse("Invalid request");
+        return Result.error(HttpStatus.BAD_REQUEST.value(), message);
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Result<?> handleHttpMessageNotReadableException(HttpMessageNotReadableException ex) {
+        log.warn("Invalid request body");
+        return Result.error(HttpStatus.BAD_REQUEST.value(), "Invalid request body");
     }
 
     @ExceptionHandler(Exception.class)

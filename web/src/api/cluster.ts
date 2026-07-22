@@ -21,29 +21,23 @@ import client from './client';
 export interface ClusterInfo {
   id: string;
   name: string;
+  nsClusterName: string;
   type: string;
+  endpoint: string;
   status: string;
   version: string;
-  brokers: number;
-  proxies: number;
-  topics: number;
-  groups: number;
-  tpsIn: number;
-  tpsOut: number;
-}
-
-export interface ClusterDetail extends ClusterInfo {
-  brokerList: BrokerInfo[];
-  proxyList: ProxyInfo[];
-  nameServerList: NameServerInfo[];
+  brokers: BrokerInfo[];
+  proxies: ProxyInfo[];
+  nameServers: NameServerInfo[];
   config: ClusterConfig;
+  topicCount: number;
+  groupCount: number;
+  tpsHistory: number[];
 }
 
 export interface BrokerInfo {
   addr: string;
-  brokerName: string;
-  brokerId: number;
-  clusterName: string;
+  name: string;
   status: string;
   tpsIn: number;
   tpsOut: number;
@@ -53,7 +47,6 @@ export interface BrokerInfo {
 
 export interface ProxyInfo {
   addr: string;
-  clusterName: string;
   status: string;
   connections: number;
   grpcPort: number;
@@ -62,9 +55,7 @@ export interface ProxyInfo {
 
 export interface NameServerInfo {
   addr: string;
-  clusterName: string;
   status: string;
-  version: string;
 }
 
 export interface ClusterConfig {
@@ -72,10 +63,12 @@ export interface ClusterConfig {
   autoCreateTopicEnable: boolean;
   autoCreateSubscriptionGroup: boolean;
   maxMessageSize: number;
+  msgTraceTopicName: string;
   fileReservedTime: number;
   writeQueueNums: number;
   readQueueNums: number;
   brokerPermission: number;
+  deleteWhen: string;
 }
 
 export interface K8sCertInfo {
@@ -99,7 +92,7 @@ export async function listClusters() {
 }
 
 export async function getCluster(id: string) {
-  const res = await client.get<{ data: ClusterDetail }>(`/clusters/${id}`);
+  const res = await client.get<{ data: ClusterInfo }>(`/clusters/${id}`);
   return res.data.data;
 }
 
