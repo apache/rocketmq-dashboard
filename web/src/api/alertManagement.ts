@@ -14,22 +14,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.rocketmq.studio.cluster.metrics;
 
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
+import client from './client';
 
-@Slf4j
-@Service
-@RequiredArgsConstructor
-public class MetricsService {
+export interface AlertRuleData {
+  rules: string;
+}
 
-    private final MetricsSource metricsSource;
-
-    public MetricDataVO query(MetricQueryDTO query) {
-        log.debug("Querying metrics: start={}, end={}, step={}",
-                query.getStart(), query.getEnd(), query.getStep());
-        return metricsSource.query(query);
-    }
+export async function queryAlertRules(): Promise<AlertRuleData> {
+  const res = await client.get<{ data: AlertRuleData }>('/alert/rules');
+  return res.data.data;
 }

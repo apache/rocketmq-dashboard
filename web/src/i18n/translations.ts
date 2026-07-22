@@ -357,6 +357,51 @@ const translations: Record<string, Record<Lang, string>> = {
   'ops.name': { zh: '名称', en: 'Name' },
   'ops.value': { zh: '值', en: 'Value' },
   'ops.description': { zh: '描述', en: 'Description' },
+  'ops.nameServerAddressList': { zh: 'NameServer 地址列表', en: 'NameServer Address List' },
+  'ops.isUseVIPChannel': { zh: '是否使用 VIP 通道', en: 'Is Use VIP Channel' },
+  'ops.useTLS': { zh: '使用 TLS', en: 'Use TLS' },
+  'ops.selectNamesrv': { zh: '请选择 NameServer 地址', en: 'Please select a NameServer address' },
+  'ops.inputNamesrvAddr': {
+    zh: '请输入新的 NameServer 地址',
+    en: 'Please input a new NameServer address',
+  },
+  'ops.fetchFailed': { zh: '获取运维数据失败', en: 'Failed to fetch ops data' },
+
+  // ─── Alert Management ───
+  'alertMgmt.title': { zh: '告警规则管理', en: 'Alert Management' },
+  'alertMgmt.alertName': { zh: '告警名称', en: 'Alert Name' },
+  'alertMgmt.group': { zh: '规则组', en: 'Group' },
+  'alertMgmt.severity': { zh: '严重级别', en: 'Severity' },
+  'alertMgmt.team': { zh: '团队', en: 'Team' },
+  'alertMgmt.expression': { zh: '表达式 (PromQL)', en: 'Expression (PromQL)' },
+  'alertMgmt.forDuration': { zh: '持续时间', en: 'For Duration' },
+  'alertMgmt.summary': { zh: '摘要', en: 'Summary' },
+  'alertMgmt.description': { zh: '描述', en: 'Description' },
+  'alertMgmt.totalRules': { zh: '规则总数', en: 'Total Rules' },
+  'alertMgmt.enabled': { zh: '已启用', en: 'Enabled' },
+  'alertMgmt.disabled': { zh: '已禁用', en: 'Disabled' },
+  'alertMgmt.critical': { zh: '严重', en: 'Critical' },
+  'alertMgmt.warningCount': { zh: '警告', en: 'Warning' },
+  'alertMgmt.addRule': { zh: '添加规则', en: 'Add Rule' },
+  'alertMgmt.editRule': { zh: '编辑规则', en: 'Edit Rule' },
+  'alertMgmt.exportYaml': { zh: '导出 YAML', en: 'Export YAML' },
+  'alertMgmt.searchPlaceholder': {
+    zh: '搜索告警名称、表达式...',
+    en: 'Search alert name, expression...',
+  },
+  'alertMgmt.allGroups': { zh: '所有组', en: 'All Groups' },
+  'alertMgmt.allSeverity': { zh: '所有级别', en: 'All Severity' },
+  'alertMgmt.allStatus': { zh: '所有状态', en: 'All Status' },
+  'alertMgmt.fetchFailed': { zh: '获取告警规则失败', en: 'Failed to fetch alert rules' },
+  'alertMgmt.deleteSuccess': { zh: '告警规则已删除', en: 'Alert rule deleted' },
+  'alertMgmt.updateSuccess': { zh: '告警规则已更新', en: 'Alert rule updated' },
+  'alertMgmt.createSuccess': { zh: '告警规则已创建', en: 'Alert rule created' },
+  'alertMgmt.exportSuccess': { zh: '告警规则已导出', en: 'Alert rules exported' },
+  'alertMgmt.alertNameRequired': { zh: '告警名称为必填项', en: 'Alert name is required' },
+  'alertMgmt.groupRequired': { zh: '规则组为必填项', en: 'Group is required' },
+  'alertMgmt.expressionRequired': { zh: '表达式为必填项', en: 'Expression is required' },
+  'alertMgmt.forDurationRequired': { zh: '持续时间为必填项', en: 'Duration is required' },
+  'alertMgmt.summaryRequired': { zh: '摘要为必填项', en: 'Summary is required' },
 
   // ─── Topic (detailed) ───
   'topic.subtitle': {
@@ -678,6 +723,18 @@ const translations: Record<string, Record<Lang, string>> = {
   'ssl.invalidCertFormat': { zh: '仅允许证书文件！', en: 'Only certificate files are allowed!' },
   'ssl.certRemoved': { zh: '证书文件已移除', en: 'Certificate file removed' },
 
+  // ─── Producer ───
+  'producer.title': { zh: '生产者连接', en: 'Producer Connection' },
+  'producer.language': { zh: '语言', en: 'Language' },
+  'producer.selectTopic': { zh: '请选择 Topic', en: 'Select a topic' },
+  'producer.inputGroup': { zh: '请输入生产者组', en: 'Input producer group' },
+  'producer.fetchTopicFailed': { zh: '获取 Topic 列表失败', en: 'Failed to fetch topic list' },
+  'producer.fetchConnectionFailed': {
+    zh: '获取生产者连接失败',
+    en: 'Failed to fetch producer connections',
+  },
+  'producer.noConnections': { zh: '暂无生产者连接', en: 'No producer connections found' },
+
   // ─── Namespace ───
   'ns.title': { zh: '命名空间管理', en: 'Namespace Management' },
   'ns.name': { zh: '命名空间', en: 'Namespace' },
@@ -818,10 +875,6 @@ const translations: Record<string, Record<Lang, string>> = {
   'liteTopic.extendTtlFailed': { zh: 'TTL 延长失败', en: 'Failed to extend TTL' },
   'liteTopic.total': { zh: '共 {total} 条记录', en: 'Total {total} records' },
 
-  // ─── Producer ───
-  'producer.title': { zh: '生产者', en: 'Producer' },
-  'producer.group': { zh: '生产组', en: 'Producer Group' },
-
   // ─── Common (additional) ───
   'common.loading': { zh: '加载中', en: 'Loading' },
   'common.refresh': { zh: '刷新', en: 'Refresh' },
@@ -881,6 +934,8 @@ const translations: Record<string, Record<Lang, string>> = {
   'common.warning': { zh: '警告', en: 'Warning' },
   'common.na': { zh: 'N/A', en: 'N/A' },
   'common.default': { zh: '默认', en: 'Default' },
+
+  // ─── BrokerCluster ───
 };
 
 export default translations;
