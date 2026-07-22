@@ -7,7 +7,7 @@ export interface MessageRecord {
   tag: string;
   key: string;
   body: string;
-  storeTime: string;
+  storeTime: number | string;
   bornHost: string;
   storeHost: string;
   properties: Record<string, string>;
@@ -16,24 +16,30 @@ export interface MessageRecord {
 
 export interface TraceNode {
   title: string;
-  timestamp: string;
+  timestamp: number | string;
   costTime: number;
-  host: string;
-  status: string;
-  detail?: string;
+  status: 'error' | 'wait' | 'process' | 'finish';
+  description: string;
 }
 
 export interface ConsumerStatus {
   group: string;
-  clientAddr: string;
-  status: string;
-  consumeTps: number;
-  lastConsumedTime: string;
+  deliveryStatus: string;
+  consumeTime: number | string;
+  retryCount: number;
 }
 
 export interface TraceRecord {
   nodes: TraceNode[];
   consumerStatus: ConsumerStatus[];
+}
+
+export interface MessageQuery {
+  topic?: string;
+  key?: string;
+  msgId?: string;
+  startTime?: number;
+  endTime?: number;
 }
 
 // Matches mock/dlq.ts
@@ -47,14 +53,7 @@ export interface DLQGroup {
 }
 
 // ─── Messages ───────────────────────────────────────────────────
-export async function queryMessages(params: {
-  mode: string;
-  topic?: string;
-  key?: string;
-  msgId?: string;
-  startTime?: string;
-  endTime?: string;
-}) {
+export async function queryMessages(params: MessageQuery) {
   const res = await client.get<{ data: MessageRecord[] }>('/messages', { params });
   return res.data.data;
 }
@@ -72,8 +71,8 @@ export async function listDLQGroups() {
 
 export async function resendDLQ(data: {
   groupName: string;
-  startTime: string;
-  endTime: string;
+  startTime: number;
+  endTime: number;
   targetTopic?: string;
 }) {
   await client.post('/dlq/resend', data);

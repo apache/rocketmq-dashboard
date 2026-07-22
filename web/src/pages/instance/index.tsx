@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Table,
   Card,
@@ -34,80 +34,15 @@ import { useLang } from '../../i18n/LangContext';
 import { Plus, MagnifyingGlass } from '@phosphor-icons/react';
 import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import type { Instance } from '../../api/instance';
+import {
+  createInstance,
+  deleteInstance,
+  listInstances,
+  updateInstance,
+} from '../../services/instanceService';
 
 const { Text } = Typography;
-
-/* ─── Types ─── */
-interface Instance {
-  id: string;
-  name: string;
-  remark: string;
-  type: 'PROXY' | 'DIRECT';
-  endpoint: string;
-  topicCount: number;
-  consumerGroupCount: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-/* ─── Mock Data ─── */
-const mockInstances: Instance[] = [
-  {
-    id: '1',
-    name: 'rocketmq-trade',
-    remark: '核心交易链路，承载订单、支付等主要业务',
-    type: 'PROXY',
-    endpoint: 'proxy-hz.rocketmq.internal:8080',
-    topicCount: 128,
-    consumerGroupCount: 56,
-    createdAt: '2024-03-15 08:30:00',
-    updatedAt: '2026-06-20 14:15:00',
-  },
-  {
-    id: '2',
-    name: 'rocketmq-dr',
-    remark: '灾备集群，与 trade 集群互为双活',
-    type: 'PROXY',
-    endpoint: 'proxy-sh.rocketmq.internal:8080',
-    topicCount: 96,
-    consumerGroupCount: 42,
-    createdAt: '2024-05-10 10:00:00',
-    updatedAt: '2026-06-18 09:30:00',
-  },
-  {
-    id: '3',
-    name: 'rocketmq-debug',
-    remark: '开发测试环境，仅供内部调试使用',
-    type: 'PROXY',
-    endpoint: 'localhost:8081',
-    topicCount: 15,
-    consumerGroupCount: 8,
-    createdAt: '2025-01-20 14:00:00',
-    updatedAt: '2026-07-01 11:45:00',
-  },
-  {
-    id: '4',
-    name: 'rocketmq-legacy',
-    remark: '旧版集群，计划 Q3 完成迁移后下线',
-    type: 'DIRECT',
-    endpoint: 'namesrv-legacy:9876',
-    topicCount: 64,
-    consumerGroupCount: 30,
-    createdAt: '2022-08-01 09:00:00',
-    updatedAt: '2025-12-10 16:20:00',
-  },
-  {
-    id: '5',
-    name: 'rocketmq-staging',
-    remark: '预发布验证环境，与生产配置一致',
-    type: 'PROXY',
-    endpoint: 'proxy-staging:8080',
-    topicCount: 32,
-    consumerGroupCount: 18,
-    createdAt: '2024-11-05 11:30:00',
-    updatedAt: '2026-06-25 08:00:00',
-  },
-];
 
 /* ─── Helpers ─── */
 const typeLabel: Record<string, { text: string; color: string }> = {
@@ -120,7 +55,8 @@ const typeLabel: Record<string, { text: string; color: string }> = {
    ═══════════════════════════════════════════ */
 const InstancePage = () => {
   const { t } = useLang();
-  const [instances, setInstances] = useState<Instance[]>(mockInstances);
+  const [instances, setInstances] = useState<Instance[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('ALL');
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -128,6 +64,70 @@ const InstancePage = () => {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingInstance, setEditingInstance] = useState<Instance | null>(null);
   const [editForm] = Form.useForm();
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void listInstances()
+      .then((nextInstances) => {
+        if (!cancelled) setInstances(nextInstances);
+      })
+      .catch(() => {
+        if (!cancelled) message.error('实例列表加载失败，请稍后重试');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleCreate = async () => {
+    try {
+      const values = await addForm.validateFields();
+      setSubmitting(true);
+      const created = await createInstance(values);
+      setInstances((previous) => [...previous, created]);
+      message.success(`实例「${created.name}」添加成功`);
+      setAddModalOpen(false);
+      addForm.resetFields();
+    } catch {
+      message.error('添加实例失败，请稍后重试');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleUpdate = async () => {
+    if (!editingInstance) return;
+    try {
+      const values = await editForm.validateFields();
+      setSubmitting(true);
+      const updated = await updateInstance({ id: editingInstance.id, remark: values.remark || '' });
+      setInstances((previous) =>
+        previous.map((instance) => (instance.id === updated.id ? updated : instance)),
+      );
+      message.success(`实例「${updated.name}」备注已更新`);
+      setEditModalOpen(false);
+      editForm.resetFields();
+    } catch {
+      message.error('更新实例失败，请稍后重试');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (instance: Instance) => {
+    try {
+      await deleteInstance(instance.id);
+      setInstances((previous) => previous.filter((item) => item.id !== instance.id));
+      message.success('已删除');
+    } catch {
+      message.error('删除实例失败，请稍后重试');
+    }
+  };
 
   const filtered = instances
     .filter((i) => {
@@ -241,7 +241,7 @@ const InstancePage = () => {
                 content: '此操作不可恢复。',
                 okText: '删除',
                 okButtonProps: { danger: true },
-                onOk: () => message.success('已删除'),
+                onOk: () => handleDelete(record),
               })
             }
           >
@@ -304,6 +304,7 @@ const InstancePage = () => {
         <Table
           columns={columns}
           dataSource={filtered}
+          loading={loading}
           rowKey="id"
           pagination={false}
           size="small"
@@ -322,25 +323,8 @@ const InstancePage = () => {
           setAddModalOpen(false);
           addForm.resetFields();
         }}
-        onOk={() => {
-          addForm.validateFields().then((values) => {
-            const newInstance: Instance = {
-              id: String(Date.now()),
-              name: values.name,
-              remark: values.remark || '',
-              type: values.type,
-              endpoint: values.endpoint,
-              topicCount: 0,
-              consumerGroupCount: 0,
-              createdAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
-              updatedAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
-            };
-            setInstances((prev) => [...prev, newInstance]);
-            message.success(`实例「${values.name}」添加成功`);
-            setAddModalOpen(false);
-            addForm.resetFields();
-          });
-        }}
+        onOk={() => void handleCreate()}
+        confirmLoading={submitting}
         okText="连接"
         cancelText="取消"
         width={520}
@@ -387,25 +371,8 @@ const InstancePage = () => {
           setEditModalOpen(false);
           editForm.resetFields();
         }}
-        onOk={() => {
-          editForm.validateFields().then((values) => {
-            if (!editingInstance) return;
-            setInstances((prev) =>
-              prev.map((inst) =>
-                inst.id === editingInstance.id
-                  ? {
-                      ...inst,
-                      remark: values.remark || '',
-                      updatedAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
-                    }
-                  : inst,
-              ),
-            );
-            message.success(`实例「${editingInstance.name}」备注已更新`);
-            setEditModalOpen(false);
-            editForm.resetFields();
-          });
-        }}
+        onOk={() => void handleUpdate()}
+        confirmLoading={submitting}
         okText="保存"
         cancelText="取消"
         width={520}

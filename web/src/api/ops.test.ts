@@ -150,7 +150,7 @@ describe('Ops API - Alert Rules', () => {
       expect(body.threshold).toBe(95);
       return [200, { code: 200 }];
     });
-    await updateAlertRule({ id: '1', threshold: 95 });
+    await updateAlertRule({ id: '1', threshold: 95 } as never);
   });
 
   it('toggles an alert rule', async () => {
@@ -234,7 +234,7 @@ describe('Ops API - System Alerts & Audit', () => {
       },
     });
     const result = await listAuditRecords({ page: 1 });
-    expect(result.list).toHaveLength(1);
+    expect(result.items).toHaveLength(1);
     expect(result.total).toBe(1);
   });
 

@@ -37,6 +37,23 @@ export interface AuditRecord {
   result: string;
 }
 
+export interface PageResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  size: number;
+}
+
+export interface AuditQuery {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  operationType?: string;
+  startDate?: string;
+  endDate?: string;
+  result?: string;
+}
+
 // ─── Alert Rules ────────────────────────────────────────────────
 export async function listAlertRules() {
   const res = await client.get<{ data: AlertRule[] }>('/alert-rules');
@@ -44,15 +61,18 @@ export async function listAlertRules() {
 }
 
 export async function createAlertRule(data: Partial<AlertRule>) {
-  await client.post('/alert-rules/create', data);
+  const res = await client.post<{ data: AlertRule }>('/alert-rules/create', data);
+  return res.data.data;
 }
 
-export async function updateAlertRule(data: Partial<AlertRule>) {
-  await client.post('/alert-rules/update', data);
+export async function updateAlertRule(data: AlertRule) {
+  const res = await client.post<{ data: AlertRule }>('/alert-rules/update', data);
+  return res.data.data;
 }
 
 export async function toggleAlertRule(id: string, enabled: boolean) {
-  await client.post('/alert-rules/toggle', { id, enabled });
+  const res = await client.post<{ data: AlertRule }>('/alert-rules/toggle', { id, enabled });
+  return res.data.data;
 }
 
 export async function deleteAlertRule(id: string) {
@@ -70,19 +90,23 @@ export async function acknowledgeAlert(id: string) {
 }
 
 export async function clearAcknowledgedAlerts() {
-  await client.post('/system-alerts/clear-acknowledged');
+  const res = await client.post<{ data: { cleared: number } }>('/system-alerts/clear-acknowledged');
+  return res.data.data;
 }
 
 // ─── Audit Logs ─────────────────────────────────────────────────
-export async function listAuditRecords(params?: Record<string, unknown>) {
-  const res = await client.get<{ data: { list: AuditRecord[]; total: number } }>('/audit-logs', {
+export async function listAuditRecords(params?: AuditQuery) {
+  const res = await client.get<{ data: PageResult<AuditRecord> }>('/audit-logs', {
     params,
   });
   return res.data.data;
 }
 
 export async function cleanupAuditLogs(beforeDays: number) {
-  await client.post('/audit-logs/cleanup', { beforeDays });
+  const res = await client.post<{ data: { deleted: number } }>('/audit-logs/cleanup', {
+    beforeDays,
+  });
+  return res.data.data;
 }
 
 // ─── NameServer Operations ──────────────────────────────────────

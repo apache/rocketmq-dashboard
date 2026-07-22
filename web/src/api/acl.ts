@@ -10,8 +10,13 @@ export interface AclRule {
   actions: string[];
   decision: string;
   scope: string;
-  aclVersion: string;
+  aclVersion: number;
   createdAt: string;
+}
+
+export interface AclRuleQuery {
+  clusterId?: string;
+  principal?: string;
 }
 
 export interface AclUser {
@@ -24,17 +29,14 @@ export interface AclUser {
   createdAt: string;
 }
 
-export async function listAclRules(params?: {
-  keyword?: string;
-  version?: string;
-  decision?: string;
-}) {
+export async function listAclRules(params?: AclRuleQuery) {
   const res = await client.get<{ data: AclRule[] }>('/acl/rules', { params });
   return res.data.data;
 }
 
 export async function createAclRule(data: Partial<AclRule>) {
-  await client.post('/acl/rules/create', data);
+  const res = await client.post<{ data: AclRule }>('/acl/rules/create', data);
+  return res.data.data;
 }
 
 export async function deleteAclRule(id: string) {
@@ -47,7 +49,8 @@ export async function listAclUsers(params?: { keyword?: string }) {
 }
 
 export async function createAclUser(data: Partial<AclUser>) {
-  await client.post('/acl/users/create', data);
+  const res = await client.post<{ data: AclUser }>('/acl/users/create', data);
+  return res.data.data;
 }
 
 export async function deleteAclUser(id: string) {
