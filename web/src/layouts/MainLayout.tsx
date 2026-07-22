@@ -16,15 +16,7 @@
  */
 
 import { useState } from 'react';
-import {
-  Layout,
-  Menu,
-  Breadcrumb,
-  Avatar,
-  Dropdown,
-  Input,
-  Modal,
-} from 'antd';
+import { Layout, Menu, Breadcrumb, Avatar, Dropdown, Input, Modal } from 'antd';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   House,

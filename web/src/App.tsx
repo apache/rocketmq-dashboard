@@ -33,10 +33,12 @@ import SystemAlertsPage from './pages/ops/systemAlerts';
 import AuditPage from './pages/ops/audit';
 import AiPage from './pages/ai';
 import SettingsPage from './pages/settings';
+import LoginPage from './pages/login';
 
 function App() {
   return (
     <Routes>
+      <Route path="/login" element={<LoginPage />} />
       <Route path="/" element={<MainLayout />}>
         <Route index element={<HomePage />} />
         <Route path="instance" element={<InstancePage />} />
