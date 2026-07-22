@@ -34,10 +34,19 @@ import AuditPage from './pages/ops/audit';
 import AiPage from './pages/ai';
 import SettingsPage from './pages/settings';
 import ProxyPage from './pages/studio/Proxy';
+import LiteTopicPage from './pages/studio/LiteTopic';
+import GroupManagementPage from './pages/studio/GroupManagement';
+import BrokerClusterPage from './pages/studio/BrokerCluster';
+import SslSettingsPage from './pages/studio/SslSettings';
+import AlertManagementPage from './pages/studio/AlertManagement';
+import ProducerPage from './pages/studio/Producer';
+import OpsPage from './pages/studio/Ops';
+import LoginPage from './pages/login';
 
 function App() {
   return (
     <Routes>
+      <Route path="/login" element={<LoginPage />} />
       <Route path="/" element={<MainLayout />}>
         <Route index element={<HomePage />} />
         <Route path="instance" element={<InstancePage />} />
@@ -56,6 +65,13 @@ function App() {
         <Route path="ai" element={<AiPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="studio/proxy" element={<ProxyPage />} />
+        <Route path="studio/lite-topic" element={<LiteTopicPage />} />
+        <Route path="studio/group-management" element={<GroupManagementPage />} />
+        <Route path="studio/broker-cluster" element={<BrokerClusterPage />} />
+        <Route path="studio/ssl-settings" element={<SslSettingsPage />} />
+        <Route path="studio/alert-management" element={<AlertManagementPage />} />
+        <Route path="studio/producer" element={<ProducerPage />} />
+        <Route path="studio/ops" element={<OpsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
