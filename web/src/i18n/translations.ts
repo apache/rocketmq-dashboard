@@ -875,6 +875,31 @@ const translations: Record<string, Record<Lang, string>> = {
   'common.warning': { zh: '警告', en: 'Warning' },
   'common.na': { zh: 'N/A', en: 'N/A' },
   'common.default': { zh: '默认', en: 'Default' },
+
+  // ─── BrokerCluster ───
+  'brokerCluster.title': { zh: 'RocketMQ 集群', en: 'RocketMQ Cluster' },
+  'brokerCluster.k8sCluster': { zh: 'K8s 集群名称', en: 'K8s Cluster' },
+  'brokerCluster.brokerName': { zh: 'Broker 名称', en: 'Broker Name' },
+  'brokerCluster.status': { zh: '运行状态', en: 'Status' },
+  'brokerCluster.statusRunning': { zh: '运行中', en: 'Running' },
+  'brokerCluster.statusReadonly': { zh: '只读', en: 'Readonly' },
+  'brokerCluster.statusMaintenance': { zh: '维护中', en: 'Maintenance' },
+  'brokerCluster.version': { zh: '版本', en: 'Version' },
+  'brokerCluster.diskUsage': { zh: '磁盘使用率', en: 'Disk Usage' },
+  'brokerCluster.tpsIn': { zh: 'TPS 入流量', en: 'TPS In' },
+  'brokerCluster.tpsOut': { zh: 'TPS 出流量', en: 'TPS Out' },
+  'brokerCluster.config': { zh: '配置', en: 'Config' },
+  'brokerCluster.restart': { zh: '重启', en: 'Restart' },
+  'brokerCluster.manual': { zh: '手动', en: 'Manual' },
+  'brokerCluster.createCluster': { zh: '新建集群', en: 'Create Cluster' },
+  'brokerCluster.nsName': { zh: 'NameServer 名称', en: 'NameServer Name' },
+  'brokerCluster.nsManagement': { zh: 'NameServer 管理', en: 'NameServer Management' },
+  'brokerCluster.brokerManagement': { zh: 'Broker 管理', en: 'Broker Management' },
+  'brokerCluster.proxyName': { zh: 'Proxy 名称', en: 'Proxy Name' },
+  'brokerCluster.proxyManagement': { zh: 'Proxy 管理', en: 'Proxy Management' },
+  'brokerCluster.httpAddr': { zh: 'HTTP 地址', en: 'HTTP Address' },
+  'brokerCluster.grpcAddr': { zh: 'gRPC 地址', en: 'gRPC Address' },
+  'brokerCluster.connections': { zh: '连接数', en: 'Connections' },
 };
 
 export default translations;
