@@ -33,6 +33,7 @@ import SystemAlertsPage from './pages/ops/systemAlerts';
 import AuditPage from './pages/ops/audit';
 import AiPage from './pages/ai';
 import SettingsPage from './pages/settings';
+import GroupManagementPage from './pages/studio/GroupManagement';
 import BrokerClusterPage from './pages/studio/BrokerCluster';
 import SslSettingsPage from './pages/studio/SslSettings';
 import AlertManagementPage from './pages/studio/AlertManagement';
@@ -61,6 +62,7 @@ function App() {
         <Route path="ops/audit" element={<AuditPage />} />
         <Route path="ai" element={<AiPage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="studio/group-management" element={<GroupManagementPage />} />
         <Route path="studio/broker-cluster" element={<BrokerClusterPage />} />
         <Route path="studio/ssl-settings" element={<SslSettingsPage />} />
         <Route path="studio/alert-management" element={<AlertManagementPage />} />
