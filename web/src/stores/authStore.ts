@@ -16,6 +16,7 @@
  */
 
 import { create } from 'zustand';
+import { clearAuthSession, persistAuthSession, readAuthSession } from './authStorage';
 
 interface AuthState {
   user: string | null;
@@ -24,15 +25,17 @@ interface AuthState {
   logout: () => void;
 }
 
+const initialSession = readAuthSession();
+
 const useAuthStore = create<AuthState>((set) => ({
-  user: null,
-  token: null,
+  user: initialSession.user,
+  token: initialSession.token,
   login: (token: string, user: string) => {
-    localStorage.setItem('token', token);
+    persistAuthSession(token, user);
     set({ token, user });
   },
   logout: () => {
-    localStorage.removeItem('token');
+    clearAuthSession();
     set({ token: null, user: null });
   },
 }));
