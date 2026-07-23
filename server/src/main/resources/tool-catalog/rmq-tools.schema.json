@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rocketmq.apache.org/schemas/rmq-tools.schema.json",
+  "title": "RocketMQ Studio tool catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "minimumClientVersion",
+    "tools"
+  ],
+  "properties": {
+    "version": {
+      "$ref": "#/$defs/semanticVersion"
+    },
+    "minimumClientVersion": {
+      "$ref": "#/$defs/semanticVersion"
+    },
+    "tools": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/tool"
+      }
+    }
+  },
+  "$defs": {
+    "semanticVersion": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+    },
+    "toolName": {
+      "type": "string",
+      "pattern": "^rmq\\.[a-z][a-z0-9]*(\\.[a-z][a-z0-9]*)*$"
+    },
+    "cli": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resource",
+        "verb"
+      ],
+      "properties": {
+        "resource": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "verb": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        }
+      }
+    },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "cli",
+        "description",
+        "riskLevel",
+        "permission",
+        "requiredCapabilities",
+        "inputSchema",
+        "outputSchema",
+        "viewHint",
+        "deprecated"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/toolName"
+        },
+        "cli": {
+          "$ref": "#/$defs/cli"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "riskLevel": {
+          "enum": [
+            "L1",
+            "L2",
+            "L3"
+          ]
+        },
+        "permission": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*$"
+        },
+        "requiredCapabilities": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]*$"
+          }
+        },
+        "inputSchema": {
+          "type": "object"
+        },
+        "outputSchema": {
+          "type": "object"
+        },
+        "viewHint": {
+          "enum": [
+            "object",
+            "table",
+            "text",
+            "timeline",
+            "topology"
+          ]
+        },
+        "deprecated": {
+          "type": "boolean"
+        },
+        "replacement": {
+          "$ref": "#/$defs/toolName"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "replacement"
+            ]
+          },
+          "then": {
+            "properties": {
+              "deprecated": {
+                "const": true
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
