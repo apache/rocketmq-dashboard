@@ -13,7 +13,26 @@ springdoc:
   swagger-ui:
     path: /swagger-ui.html
 
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState
+
 studio:
+  security:
+    user-file: ${STUDIO_SECURITY_USER_FILE:}
+    session-ttl: ${STUDIO_SECURITY_SESSION_TTL:24h}
+    max-sessions-per-user: ${STUDIO_SECURITY_MAX_SESSIONS_PER_USER:5}
+    max-users: ${STUDIO_SECURITY_MAX_USERS:1000}
+    registry-check-interval: ${STUDIO_SECURITY_REGISTRY_CHECK_INTERVAL:1s}
+    max-concurrent-password-checks: ${STUDIO_SECURITY_MAX_PASSWORD_CHECKS:8}
   metrics:
     prometheus:
       base-url: ${STUDIO_METRICS_PROMETHEUS_BASE_URL:}
