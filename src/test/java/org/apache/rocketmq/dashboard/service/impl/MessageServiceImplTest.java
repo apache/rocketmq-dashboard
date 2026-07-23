@@ -222,6 +222,35 @@ public class MessageServiceImplTest {
     }
 
     @Test
+    public void testQueryMessageByTopicDeduplicatesByMsgId() throws Exception {
+        // Simulate the route returning the same logical queue under different broker
+        // names (stale route after a brokerName change, proxy re-registration), so
+        // the same physical message is pulled twice.
+        Set<MessageQueue> messageQueues = new HashSet<>();
+        messageQueues.add(new MessageQueue(TOPIC, "broker-1", 0));
+        messageQueues.add(new MessageQueue(TOPIC, "broker-1-replica", 0));
+
+        when(defaultMQPullConsumer.fetchSubscribeMessageQueues(TOPIC)).thenReturn(messageQueues);
+
+        PullResult dupResult = createPullResult(PullStatus.FOUND,
+                Collections.singletonList(createMessageExt("dup-id", TOPIC, "body", 1500)),
+                0, 10);
+        PullResult emptyResult = createPullResult(PullStatus.NO_NEW_MSG, Collections.emptyList(), 10, 10);
+
+        when(defaultMQPullConsumer.pull(any(MessageQueue.class), anyString(), anyLong(), anyInt()))
+                .thenReturn(dupResult).thenReturn(emptyResult)
+                .thenReturn(dupResult).thenReturn(emptyResult);
+
+        long beginTime = 1000;
+        long endTime = 3000;
+        List<MessageView> result = messageService.queryMessageByTopic(TOPIC, beginTime, endTime);
+
+        // The same message must appear only once even if pulled from duplicate queues.
+        assertEquals(1, result.size());
+        assertEquals("dup-id", result.get(0).getMsgId());
+    }
+
+    @Test
     public void testQueryMessageByTopicWithOutOfRangeTimestamps() throws Exception {
         // Setup message queues
         Set<MessageQueue> messageQueues = new HashSet<>();

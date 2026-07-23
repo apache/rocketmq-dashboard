@@ -65,7 +65,9 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -178,6 +180,15 @@ public class MessageServiceImpl implements MessageService {
                     }
                 }
             }
+            // Dedup by msgId: the same queue may be returned under
+            // different broker names (stale route, proxy re-registration),
+            // so the same message can be pulled twice.
+            Map<String, MessageView> dedupMap = new LinkedHashMap<>();
+            for (MessageView mv : messageViewList) {
+                dedupMap.putIfAbsent(mv.getMsgId(), mv);
+            }
+            messageViewList = new ArrayList<>(dedupMap.values());
+
             Collections.sort(messageViewList, new Comparator<MessageView>() {
                 @Override
                 public int compare(MessageView o1, MessageView o2) {
