@@ -24,17 +24,29 @@ export interface LoginRequest {
 }
 
 export interface LoginResponse {
-  token: string;
   username: string;
-  role: string;
+  type: string; // e.g., "ADMIN", "ORDINARY"
+  contextPath: string;
+  token?: string; // JWT token (optional, for token-based auth)
+  role?: string; // User role (optional, derived from type)
 }
 
-// ─── Auth ───────────────────────────────────────────────────────
+// ─── Auth API ───────────────────────────────────────────────────
+// Backend: LoginController at /login
+// POST /login/login.do    → login (session-based, sets cookie)
+// POST /login/logout.do   → logout
+// GET  /login/check.query → check if logged in
+
 export async function login(username: string, password: string) {
-  const res = await client.post<{ data: LoginResponse }>('/auth/login', { username, password });
-  return res.data.data;
+  const res = await client.post<LoginResponse>('/login/login.do', { username, password });
+  return res.data;
 }
 
 export async function logout() {
-  await client.post('/auth/logout');
+  await client.post('/login/logout.do');
+}
+
+export async function checkLogin() {
+  const res = await client.get<{ logined: boolean; loginRequired: boolean }>('/login/check.query');
+  return res.data;
 }

@@ -41,8 +41,8 @@ const LoginPage = () => {
     setLoading(true);
     try {
       const data = await loginApi(values.username, values.password);
-      authLogin(data.token, data.username);
-      localStorage.setItem('userrole', data.role);
+      authLogin(data.token ?? '', data.username);
+      localStorage.setItem('userrole', data.role ?? data.type);
       message.success(t('login.success'));
       navigate('/', { replace: true });
     } catch (err: unknown) {

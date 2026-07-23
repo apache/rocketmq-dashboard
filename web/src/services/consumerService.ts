@@ -25,11 +25,6 @@ export async function listConsumerGroups(params?: ConsumerGroupQuery): Promise<C
   return metadataApi.listConsumerGroups(params);
 }
 
-export async function getConsumerProgress(name: string): Promise<QueueProgress[]> {
-  if (USE_MOCK) return (mockQueueProgress[name] as unknown as QueueProgress[]) ?? [];
-  return metadataApi.getConsumerProgress(name);
-}
-
 export async function getConsumerGroup(name: string): Promise<ConsumerGroupDetail> {
   if (USE_MOCK) {
     const group = mockConsumerGroups.find((item) => item.name === name);
@@ -37,6 +32,11 @@ export async function getConsumerGroup(name: string): Promise<ConsumerGroupDetai
     return group as unknown as ConsumerGroupDetail;
   }
   return metadataApi.getConsumerGroup(name);
+}
+
+export async function getConsumerProgress(name: string): Promise<QueueProgress[]> {
+  if (USE_MOCK) return (mockQueueProgress[name] as unknown as QueueProgress[]) ?? [];
+  return metadataApi.getConsumerProgress(name);
 }
 
 export async function getConsumerSubscriptions(name: string): Promise<SubscriptionEntry[]> {
