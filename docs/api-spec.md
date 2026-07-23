@@ -111,6 +111,7 @@
 | 68 | POST | `/api/ai/execute` | 执行 AI 指令 |
 | 69 | GET | `/api/ai/tools` | 可用工具列表 |
 | 70 | POST | `/api/metrics/query` | 查询监控指标数据 |
+| 71 | GET | `/api/clusters/:id/capabilities` | 获取集群有效能力 |
 
 ## 通用响应格式
 
@@ -421,7 +422,159 @@ GET /api/clusters/:id
 
 **Response `data`:** `ClusterInfo`（同 4.1 的单条记录）
 
-### 4.3 更新集群配置
+### 4.3 获取集群有效能力
+
+```
+GET /api/clusters/:id/capabilities
+```
+
+**Path Parameters:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `id` | `string` | 是 | 集群 ID |
+
+该接口返回当前 Studio 接入路径上的**有效能力（effective capability）**，不是 RocketMQ 产品的理论功能表。某项能力只有在当前集群 access path 上，Studio 实际能够安全完成对应操作时，才可视为可用；不能把某个 RocketMQ 版本中存在该功能直接等同于 Studio 已支持，也不能仅凭版本号进行乐观推断。
+
+**成功响应示例（v4 direct 集群）：**
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "schemaVersion": "v1",
+    "clusterId": "cluster-1",
+    "accessType": "v4-namesrv",
+    "source": "configured-default",
+    "capabilities": {
+      "metadata-read": {
+        "state": "unknown",
+        "reason": null
+      },
+      "metadata-write": {
+        "state": "unknown",
+        "reason": null
+      },
+      "namespace": {
+        "state": "unknown",
+        "reason": null
+      },
+      "typed-topic": {
+        "state": "unknown",
+        "reason": null
+      },
+      "lite-topic": {
+        "state": "unsupported",
+        "reason": "Capability is not available on the v4 direct path"
+      },
+      "remoting-admin": {
+        "state": "unknown",
+        "reason": null
+      },
+      "grpc-admin": {
+        "state": "unsupported",
+        "reason": "Capability is not available on the v4 direct path"
+      },
+      "pop-consume": {
+        "state": "unsupported",
+        "reason": "Capability is not available on the v4 direct path"
+      },
+      "batch-consume": {
+        "state": "unsupported",
+        "reason": "Capability is not available on the v4 direct path"
+      },
+      "acl-1": {
+        "state": "unknown",
+        "reason": null
+      },
+      "acl-2": {
+        "state": "unknown",
+        "reason": null
+      },
+      "client-runtime-detail": {
+        "state": "unknown",
+        "reason": null
+      },
+      "prometheus-metrics": {
+        "state": "unknown",
+        "reason": null
+      }
+    }
+  }
+}
+```
+
+**Response `data` 字段：**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `schemaVersion` | `string` | 能力契约版本，当前固定为 `v1` |
+| `clusterId` | `string` | 集群 ID |
+| `accessType` | `string` | Studio 使用的集群接入路径，映射见下表 |
+| `source` | `string` | 能力判断来源，v1 固定为 `configured-default` |
+| `capabilities` | `object` | 以 13 个 capability wire key 为键的完整能力状态映射 |
+| `capabilities.<wire-key>.state` | `string` | 三态结果：`supported` / `unsupported` / `unknown` |
+| `capabilities.<wire-key>.reason` | `string \| null` | 状态原因；无可提供的原因时为 `null` |
+
+**`state` 精确语义：**
+
+| 值 | 说明 |
+|----|------|
+| `supported` | 已由当前 Studio adapter 或运行时 probe 实际验证可用。注意：v1 的 `configured-default` 不会主动返回 `supported` |
+| `unsupported` | 当前接入路径已知不兼容或不可用，`reason` 解释具体原因 |
+| `unknown` | 尚未验证或无法安全判断；不能将其当成 `unsupported`，也不能将其当成 `supported` |
+
+**`source` 与 v1 边界：**
+
+`configured-default` 表示 v1 只根据已保存的 `ClusterType` 产生确定性、保守的默认值。本版不执行 live probe，也不存在 probe/config merge 语义；live probe 和 probe/config merge 属于后续切片，不属于 v1 configured defaults。
+
+**`accessType` 映射：**
+
+| 已保存的 `ClusterType` | `accessType` |
+|------------------------|--------------|
+| `V4_DIRECT` | `v4-namesrv` |
+| `V5_PROXY_LOCAL` | `v5-proxy-local` |
+| `V5_PROXY_CLUSTER` | `v5-proxy-cluster` |
+| `null` / 未配置 | `unknown` |
+
+**Capability 目录：**
+
+| Wire key | 含义 |
+|----------|------|
+| `metadata-read` | Studio 通过当前路径安全读取 Topic、消费组等元数据的能力 |
+| `metadata-write` | Studio 通过当前路径安全创建、更新或删除元数据的能力 |
+| `namespace` | Studio 通过当前路径处理 RocketMQ namespace 语义的能力 |
+| `typed-topic` | Studio 通过当前路径识别和管理带类型 Topic 的能力 |
+| `lite-topic` | Studio 通过当前路径识别和管理 Lite Topic 的能力 |
+| `remoting-admin` | Studio 通过 RocketMQ Remoting 管理通道执行管理操作的能力 |
+| `grpc-admin` | Studio 通过 gRPC 管理通道执行管理操作的能力 |
+| `pop-consume` | RocketMQ 5.x Pop 消费能力 |
+| `batch-consume` | 较新的 RocketMQ 5.x 批量消费/运行时诊断语义；不是历史的 batch-send（批量发送）API |
+| `acl-1` | Studio 通过当前路径处理 ACL 1.0 语义的能力 |
+| `acl-2` | Studio 通过当前路径处理 ACL 2.0 语义的能力 |
+| `client-runtime-detail` | Studio 通过当前路径获取客户端运行时详情用于诊断的能力 |
+| `prometheus-metrics` | Studio 通过当前路径安全访问 Prometheus 指标的能力 |
+
+**安全边界：**
+
+响应明确不包含 `endpoint`、NameServer/Proxy 地址、`username`、`password`、`token`、access key、secret key、`credentials` 等任何连接或凭证字段。
+
+**缺失集群的兼容行为：**
+
+请求不存在的集群时，当前响应的 HTTP status 为 `400`（不是 `404`），但响应 body 中的业务 `code` 为 `404`。例如请求 `GET /api/clusters/missing/capabilities`：
+
+```json
+{
+  "code": 404,
+  "message": "Cluster not found: missing",
+  "data": null
+}
+```
+
+这是与当前全局 `BusinessException` handler 保持兼容的 v1 行为，本原子切片不改变该行为。
+
+### 4.4 更新集群配置
 
 ```
 POST /api/clusters/config/update
@@ -443,7 +596,7 @@ POST /api/clusters/config/update
 
 **Response `data`:** `null`
 
-### 4.4 重启 Broker
+### 4.5 重启 Broker
 
 ```
 POST /api/clusters/:clusterId/brokers/:name/restart
@@ -458,7 +611,7 @@ POST /api/clusters/:clusterId/brokers/:name/restart
 
 **Response `data`:** `{ success: boolean, message: string }`
 
-### 4.5 创建 NameServer
+### 4.6 创建 NameServer
 
 ```
 POST /api/nameservers/create
@@ -473,7 +626,7 @@ POST /api/nameservers/create
 
 **Response `data`:** `NameServerInfo`
 
-### 4.6 更新 NameServer
+### 4.7 更新 NameServer
 
 ```
 POST /api/nameservers/update
@@ -489,7 +642,7 @@ POST /api/nameservers/update
 
 **Response `data`:** `NameServerInfo`
 
-### 4.7 重启 NameServer
+### 4.8 重启 NameServer
 
 ```
 POST /api/nameservers/restart
@@ -503,7 +656,7 @@ POST /api/nameservers/restart
 
 **Response `data`:** `{ success: boolean }`
 
-### 4.8 升级 NameServer
+### 4.9 升级 NameServer
 
 ```
 POST /api/nameservers/upgrade
@@ -517,7 +670,7 @@ POST /api/nameservers/upgrade
 
 **Response `data`:** `{ success: boolean }`
 
-### 4.9 删除 NameServer
+### 4.10 删除 NameServer
 
 ```
 POST /api/nameservers/delete
@@ -531,7 +684,7 @@ POST /api/nameservers/delete
 
 **Response `data`:** `{ success: boolean }`
 
-### 4.10 重启 Proxy
+### 4.11 重启 Proxy
 
 ```
 POST /api/proxies/restart
@@ -545,7 +698,7 @@ POST /api/proxies/restart
 
 **Response `data`:** `{ success: boolean }`
 
-### 4.11 获取 K8s 证书列表
+### 4.12 获取 K8s 证书列表
 
 ```
 GET /api/k8s-certs
@@ -567,7 +720,7 @@ GET /api/k8s-certs
 | `daysRemaining` | `number` | 剩余天数 |
 | `san` | `string[]` | Subject Alternative Name 列表 |
 
-### 4.12 添加 K8s 证书
+### 4.13 添加 K8s 证书
 
 ```
 POST /api/k8s-certs/create
@@ -585,7 +738,7 @@ POST /api/k8s-certs/create
 
 **Response `data`:** `K8sCertInfo`
 
-### 4.13 更新 K8s 证书
+### 4.14 更新 K8s 证书
 
 ```
 POST /api/k8s-certs/update
@@ -604,7 +757,7 @@ POST /api/k8s-certs/update
 
 **Response `data`:** `K8sCertInfo`
 
-### 4.14 续期 K8s 证书
+### 4.15 续期 K8s 证书
 
 ```
 POST /api/k8s-certs/renew
@@ -618,7 +771,7 @@ POST /api/k8s-certs/renew
 
 **Response `data`:** `K8sCertInfo`
 
-### 4.15 删除 K8s 证书
+### 4.16 删除 K8s 证书
 
 ```
 POST /api/k8s-certs/delete
