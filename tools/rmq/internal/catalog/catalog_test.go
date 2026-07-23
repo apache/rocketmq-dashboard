@@ -19,6 +19,7 @@ package catalog
 
 import (
 	"encoding/json"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -159,23 +160,37 @@ func TestCatalogLookupsPreserveEmptyCapabilitiesAsJSONArray(t *testing.T) {
 
 func TestGeneratedFilesArePinnedToLF(t *testing.T) {
 	paths := []string{
-		"server/src/main/resources/tool-catalog/rmq-tools.yaml",
-		"tools/rmq/internal/catalog/generated.go",
-		"docs/rmqctl-reference.md",
+		"/server/src/main/resources/tool-catalog/rmq-tools.yaml",
+		"/tools/rmq/internal/catalog/generated.go",
+		"/docs/rmqctl-reference.md",
 	}
-	args := append([]string{"check-attr", "text", "eol", "--"}, paths...)
-	cmd := exec.Command("git", args...)
-	cmd.Dir = filepath.Clean(filepath.Join(moduleRoot(t), "..", ".."))
-	output, err := cmd.CombinedOutput()
+	repositoryRoot := filepath.Clean(filepath.Join(moduleRoot(t), "..", ".."))
+	content, err := os.ReadFile(filepath.Join(repositoryRoot, ".gitattributes"))
 	if err != nil {
-		t.Fatalf("git check-attr: %v\n%s", err, output)
+		t.Fatalf("read .gitattributes: %v", err)
+	}
+
+	matches := make(map[string]int, len(paths))
+	expected := make(map[string]struct{}, len(paths))
+	for _, path := range paths {
+		expected[path] = struct{}{}
+	}
+	for lineNumber, line := range strings.Split(string(content), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 || strings.HasPrefix(fields[0], "#") {
+			continue
+		}
+		if _, ok := expected[fields[0]]; !ok {
+			continue
+		}
+		if !slices.Equal(fields, []string{fields[0], "text", "eol=lf"}) {
+			t.Fatalf(".gitattributes line %d has invalid LF rule: %q", lineNumber+1, line)
+		}
+		matches[fields[0]]++
 	}
 	for _, path := range paths {
-		for _, attribute := range []string{"text: set", "eol: lf"} {
-			want := path + ": " + attribute
-			if !strings.Contains(string(output), want) {
-				t.Fatalf("git check-attr output missing %q:\n%s", want, output)
-			}
+		if matches[path] != 1 {
+			t.Fatalf(".gitattributes has %d exact LF rules for %s, want 1", matches[path], path)
 		}
 	}
 }

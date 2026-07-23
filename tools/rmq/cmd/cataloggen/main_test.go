@@ -104,6 +104,18 @@ func TestGenerateRejectsNullReplacementWithoutWriting(t *testing.T) {
 	assertFilesDoNotExist(t, goOutput, docsOutput)
 }
 
+func TestGenerateRejectsEmptyReplacementWithoutWriting(t *testing.T) {
+	source := mutateYAMLField(t, []byte(validCatalogYAML), []any{"tools", 0, "replacement"}, "replace", `""`)
+	err, goOutput, docsOutput := generateFixture(t, source, false)
+	if err == nil {
+		t.Fatal("generate() accepted an explicitly empty replacement")
+	}
+	if !strings.Contains(err.Error(), `field "tools[0].replacement" must not be empty`) {
+		t.Fatalf("generate() error = %q", err)
+	}
+	assertFilesDoNotExist(t, goOutput, docsOutput)
+}
+
 func TestGenerateRejectsWrongRequiredFieldTypesWithoutWriting(t *testing.T) {
 	tests := []struct {
 		name  string

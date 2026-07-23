@@ -328,6 +328,9 @@ func validateToolDocument(tool *yaml.Node, path string) error {
 		if err := requireYAMLString(replacement, replacementPath); err != nil {
 			return err
 		}
+		if replacement.Value == "" {
+			return fmt.Errorf(`field %q must not be empty`, replacementPath)
+		}
 	}
 	return nil
 }
