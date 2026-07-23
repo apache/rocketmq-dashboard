@@ -226,30 +226,36 @@ class LoginAttemptLimiterTest {
             (users, prefixes) -> observedSizes.set(users + ":" + prefixes));
         fail(limiter, "bob", "192.0.2.1", 4);
         fail(limiter, "alice", "192.0.3.1", 1);
-        limiter.beforeAttempt("alice", "192.0.3.1");
+        limiter.beforeAttempt("bob", "192.0.2.1");
         fail(limiter, "carol", "192.0.4.1", 1);
 
-        fail(limiter, "bob", "192.0.2.1", 4);
+        LoginAttemptLimiter.Decision fifthFailure =
+            limiter.beforeAttempt("bob", "192.0.2.1");
+        assertThat(fifthFailure.allowed()).isTrue();
+        limiter.recordFailure(fifthFailure.key());
 
-        assertThat(limiter.beforeAttempt("bob", "192.0.2.1").allowed()).isTrue();
+        assertThat(limiter.beforeAttempt("bob", "192.0.2.1").allowed()).isFalse();
         assertThat(observedSizes.get()).isEqualTo("2:2");
     }
 
     @Test
-    void cleanupExaminesExpiredEntriesWithinPerOperationBudget() {
+    void cleanupExaminesExactlySixtyFourExpiredEntriesAndKeepsMapsBounded() {
         MutableClock clock = new MutableClock();
         AtomicInteger examined = new AtomicInteger();
         AtomicReference<String> observedSizes = new AtomicReference<>();
         LoginAttemptLimiter limiter = new LoginAttemptLimiter(
-            clock, 100, 100, 1, value -> examined.accumulateAndGet(value, Math::max),
+            clock, 128, 128, 1, examined::set,
             (users, prefixes) -> observedSizes.set(users + ":" + prefixes));
-        fail(limiter, "alice", "192.0.2.1", 1);
+        for (int index = 0; index < 256; index++) {
+            fail(limiter, "user" + index, "10.0." + index + ".1", 1);
+        }
         clock.advance(Duration.ofSeconds(61));
+        examined.set(-1);
 
-        fail(limiter, "bob", "192.0.3.1", 1);
+        limiter.beforeAttempt("probe", "203.0.113.1");
 
-        assertThat(examined.get()).isBetween(1, 64);
-        assertThat(observedSizes.get()).isEqualTo("1:1");
+        assertThat(examined.get()).isEqualTo(64);
+        assertThat(observedSizes.get()).isEqualTo("64:128");
     }
 
     private static LoginAttemptLimiter limiter(Clock clock) {
