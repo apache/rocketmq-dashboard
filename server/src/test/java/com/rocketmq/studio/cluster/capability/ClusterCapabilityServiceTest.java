@@ -18,10 +18,17 @@ package com.rocketmq.studio.cluster.capability;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.rocketmq.studio.cluster.broker.ClusterRepository;
+import com.rocketmq.studio.cluster.broker.ClusterVO;
 import com.rocketmq.studio.cluster.capability.ClusterCapabilityVO.CapabilityState;
 import com.rocketmq.studio.cluster.capability.ClusterCapabilityVO.CapabilityStatus;
 import com.rocketmq.studio.common.domain.enums.ClusterType;
+import com.rocketmq.studio.common.exception.BusinessException;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -30,13 +37,29 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+@ExtendWith(MockitoExtension.class)
 class ClusterCapabilityServiceTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Mock
+    private ClusterRepository clusterRepository;
+
+    private ClusterCapabilityService service;
+
+    @BeforeEach
+    void setUp() {
+        service = new ClusterCapabilityService(clusterRepository);
+    }
 
     @Test
     void shouldNormalizePartialCapabilityMapAndExposeItAsImmutable() {
@@ -176,7 +199,98 @@ class ClusterCapabilityServiceTest {
                         "super-secret-value");
     }
 
+    @Test
+    void shouldResolveExactConservativeDefaultsForV4DirectCluster() {
+        String unsupportedReason = "Capability is not available on the v4 direct path";
+        Set<ClusterCapability> expectedUnsupported = Set.of(
+                ClusterCapability.GRPC_ADMIN,
+                ClusterCapability.LITE_TOPIC,
+                ClusterCapability.POP_CONSUME,
+                ClusterCapability.BATCH_CONSUME);
+        ClusterVO cluster = newCluster("cluster-v4", ClusterType.V4_DIRECT);
+        when(clusterRepository.findById("cluster-v4")).thenReturn(Optional.of(cluster));
+
+        ClusterCapabilityVO result = service.getCapabilities("cluster-v4");
+
+        assertThat(result.getClusterId()).isEqualTo("cluster-v4");
+        assertThat(result.getAccessType()).isEqualTo("v4-namesrv");
+        assertThat(result.getSource()).isEqualTo("configured-default");
+        for (ClusterCapability capability : expectedUnsupported) {
+            assertThat(result.getCapabilities().get(capability).getState())
+                    .isEqualTo(CapabilityState.UNSUPPORTED);
+            assertThat(result.getCapabilities().get(capability).getReason())
+                    .isEqualTo(unsupportedReason);
+        }
+        Set<ClusterCapability> actualUnsupported = result.getCapabilities().entrySet().stream()
+                .filter(entry -> entry.getValue().getState() == CapabilityState.UNSUPPORTED)
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toSet());
+        assertThat(actualUnsupported).containsExactlyInAnyOrderElementsOf(expectedUnsupported);
+        for (ClusterCapability capability : ClusterCapability.values()) {
+            if (!expectedUnsupported.contains(capability)) {
+                assertThat(result.getCapabilities().get(capability).getState())
+                        .isEqualTo(CapabilityState.UNKNOWN);
+            }
+        }
+        assertThat(result.getCapabilities().get(ClusterCapability.REMOTING_ADMIN).getState())
+                .isEqualTo(CapabilityState.UNKNOWN);
+        assertThat(result.getCapabilities().values())
+                .noneMatch(status -> status.getState() == CapabilityState.SUPPORTED);
+    }
+
+    @Test
+    void shouldKeepAllV5ConfiguredDefaultsUnknown() {
+        ClusterVO localCluster = newCluster("cluster-v5-local", ClusterType.V5_PROXY_LOCAL);
+        ClusterVO proxyCluster = newCluster("cluster-v5-cluster", ClusterType.V5_PROXY_CLUSTER);
+        when(clusterRepository.findById("cluster-v5-local")).thenReturn(Optional.of(localCluster));
+        when(clusterRepository.findById("cluster-v5-cluster")).thenReturn(Optional.of(proxyCluster));
+
+        ClusterCapabilityVO localResult = service.getCapabilities("cluster-v5-local");
+        ClusterCapabilityVO clusterResult = service.getCapabilities("cluster-v5-cluster");
+
+        assertThat(localResult.getAccessType()).isEqualTo("v5-proxy-local");
+        assertThat(clusterResult.getAccessType()).isEqualTo("v5-proxy-cluster");
+        assertAllCapabilitiesUnknown(localResult);
+        assertAllCapabilitiesUnknown(clusterResult);
+    }
+
+    @Test
+    void shouldKeepAllCapabilitiesUnknownWhenClusterTypeIsNull() {
+        ClusterVO cluster = newCluster("cluster-unknown-type", null);
+        when(clusterRepository.findById("cluster-unknown-type")).thenReturn(Optional.of(cluster));
+
+        ClusterCapabilityVO result = service.getCapabilities("cluster-unknown-type");
+
+        assertThat(result.getAccessType()).isEqualTo("unknown");
+        assertAllCapabilitiesUnknown(result);
+        verify(clusterRepository).findById("cluster-unknown-type");
+    }
+
+    @Test
+    void shouldThrowExactNotFoundErrorForMissingCluster() {
+        when(clusterRepository.findById("missing")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.getCapabilities("missing"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Cluster not found: missing")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
+        verify(clusterRepository).findById("missing");
+    }
+
     private ClusterCapabilityVO newCapabilityVO(ClusterType clusterType) {
         return new ClusterCapabilityVO("cluster-a", clusterType, Collections.emptyMap());
+    }
+
+    private ClusterVO newCluster(String id, ClusterType clusterType) {
+        ClusterVO cluster = ClusterVO.builder().type(clusterType).build();
+        cluster.setId(id);
+        return cluster;
+    }
+
+    private void assertAllCapabilitiesUnknown(ClusterCapabilityVO capabilityVO) {
+        assertThat(capabilityVO.getCapabilities()).hasSize(ClusterCapability.values().length);
+        assertThat(capabilityVO.getCapabilities().values())
+                .allMatch(status -> status.getState() == CapabilityState.UNKNOWN)
+                .noneMatch(status -> status.getState() == CapabilityState.SUPPORTED);
     }
 }
