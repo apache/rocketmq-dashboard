@@ -16,6 +16,8 @@
  */
 package com.rocketmq.studio.cluster.broker;
 
+import com.rocketmq.studio.cluster.capability.ClusterCapabilityService;
+import com.rocketmq.studio.cluster.capability.ClusterCapabilityVO;
 import com.rocketmq.studio.cluster.config.UpdateConfigDTO;
 
 import com.rocketmq.studio.common.domain.Result;
@@ -36,6 +38,7 @@ import java.util.Map;
 public class ClusterController {
 
     private final ClusterService clusterService;
+    private final ClusterCapabilityService clusterCapabilityService;
 
     @GetMapping
     public Result<List<ClusterVO>> listClusters() {
@@ -45,6 +48,11 @@ public class ClusterController {
     @GetMapping("/{id}")
     public Result<ClusterVO> getCluster(@PathVariable String id) {
         return Result.ok(clusterService.getCluster(id));
+    }
+
+    @GetMapping("/{id}/capabilities")
+    public Result<ClusterCapabilityVO> getCapabilities(@PathVariable String id) {
+        return Result.ok(clusterCapabilityService.getCapabilities(id));
     }
 
     @PostMapping("/config/update")

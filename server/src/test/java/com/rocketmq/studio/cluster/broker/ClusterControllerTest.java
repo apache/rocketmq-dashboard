@@ -16,6 +16,10 @@
  */
 package com.rocketmq.studio.cluster.broker;
 
+import com.rocketmq.studio.cluster.capability.ClusterCapability;
+import com.rocketmq.studio.cluster.capability.ClusterCapabilityService;
+import com.rocketmq.studio.cluster.capability.ClusterCapabilityVO;
+import com.rocketmq.studio.cluster.capability.ClusterCapabilityVO.CapabilityStatus;
 import com.rocketmq.studio.cluster.config.ClusterConfigVO;
 import com.rocketmq.studio.cluster.config.UpdateConfigDTO;
 
@@ -23,6 +27,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rocketmq.studio.common.domain.enums.ClusterStatus;
 import com.rocketmq.studio.common.domain.enums.ClusterType;
 import com.rocketmq.studio.common.domain.enums.FlushDiskType;
+import com.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -33,8 +38,13 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -53,6 +63,9 @@ class ClusterControllerTest {
 
     @MockBean
     private ClusterService clusterService;
+
+    @MockBean
+    private ClusterCapabilityService clusterCapabilityService;
 
     @Test
     void listClustersShouldReturnAllClusters() throws Exception {
@@ -105,6 +118,69 @@ class ClusterControllerTest {
                 .andExpect(jsonPath("$.data.type").value("V5_PROXY_CLUSTER"))
                 .andExpect(jsonPath("$.data.config.flushDiskType").value("SYNC_FLUSH"))
                 .andExpect(jsonPath("$.data.config.writeQueueNums").value(8));
+    }
+
+    @Test
+    void getCapabilitiesShouldReturnNormalizedCapabilityContractWithoutSecrets() throws Exception {
+        String unavailableReason = "Capability is not available on the v4 direct path";
+        ClusterCapabilityVO capabilities = new ClusterCapabilityVO(
+                "cluster-1",
+                ClusterType.V4_DIRECT,
+                Map.of(
+                        ClusterCapability.LITE_TOPIC,
+                        CapabilityStatus.unsupported(unavailableReason)
+                )
+        );
+        when(clusterCapabilityService.getCapabilities("cluster-1")).thenReturn(capabilities);
+
+        String responseBody = mockMvc.perform(get("/api/clusters/cluster-1/capabilities"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.message").value("success"))
+                .andExpect(jsonPath("$.data.schemaVersion").value("v1"))
+                .andExpect(jsonPath("$.data.clusterId").value("cluster-1"))
+                .andExpect(jsonPath("$.data.accessType").value("v4-namesrv"))
+                .andExpect(jsonPath("$.data.source").value("configured-default"))
+                .andExpect(jsonPath("$.data.capabilities").isMap())
+                .andExpect(jsonPath("$.data.capabilities.length()").value(13))
+                .andExpect(jsonPath("$.data.capabilities['lite-topic'].state").value("unsupported"))
+                .andExpect(jsonPath("$.data.capabilities['lite-topic'].reason").value(unavailableReason))
+                .andExpect(jsonPath("$.data.capabilities['metadata-read'].state").value("unknown"))
+                .andExpect(jsonPath("$.data.endpoint").doesNotExist())
+                .andExpect(jsonPath("$.data.credentials").doesNotExist())
+                .andReturn()
+                .getResponse()
+                .getContentAsString()
+                .toLowerCase(Locale.ROOT);
+
+        for (String sensitiveTerm : List.of(
+                "endpoint",
+                "nameserveraddress",
+                "proxyaddress",
+                "username",
+                "password",
+                "token",
+                "accesskey",
+                "secretkey",
+                "credential",
+                "super-secret-value")) {
+            assertFalse(responseBody.contains(sensitiveTerm), "Response leaked sensitive term: " + sensitiveTerm);
+        }
+        verify(clusterCapabilityService).getCapabilities("cluster-1");
+    }
+
+    @Test
+    void getCapabilitiesShouldPreserveBusinessErrorEnvelopeForMissingCluster() throws Exception {
+        when(clusterCapabilityService.getCapabilities("missing"))
+                .thenThrow(new BusinessException(404, "Cluster not found: missing"));
+
+        mockMvc.perform(get("/api/clusters/missing/capabilities"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(404))
+                .andExpect(jsonPath("$.message").value("Cluster not found: missing"))
+                .andExpect(jsonPath("$.data").doesNotExist());
+
+        verify(clusterCapabilityService).getCapabilities("missing");
     }
 
     @Test
