@@ -39,6 +39,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
@@ -447,6 +448,83 @@ class InMemoryStudioSessionStoreTest {
 
         assertThat(cleanupCounts).containsExactly(1);
         assertThat(backing).isEmpty();
+    }
+
+    @Test
+    void indexedExpiryRemovalStaysLogarithmicWithThousandsOfActiveSessions() {
+        Map<TokenDigest, Session> backing = new HashMap<>();
+        AtomicInteger comparisons = new AtomicInteger();
+        InMemoryStudioSessionStore store = new InMemoryStudioSessionStore(
+            properties(2),
+            Clock.fixed(START, ZoneOffset.UTC),
+            new CountingTokenGenerator(),
+            new UuidSequence(),
+            backing,
+            ignored -> {
+            },
+            comparisons::addAndGet
+        );
+        List<IssuedSession> unrelated = new ArrayList<>();
+        for (int index = 0; index < 4096; index++) {
+            unrelated.add(store.issue(user("unrelated-" + index), 1));
+        }
+        IssuedSession middle = unrelated.get(unrelated.size() / 2);
+
+        comparisons.set(0);
+        store.revoke(middle.session().id());
+
+        assertThat(comparisons.get()).isLessThan(100);
+        assertThat(store.resolve(middle.token())).isEmpty();
+
+        IssuedSession capFirst = store.issue(user("cap-user"), 1);
+        IssuedSession capSecond = store.issue(user("cap-user"), 1);
+        comparisons.set(0);
+        IssuedSession capThird = store.issue(user("cap-user"), 1);
+
+        assertThat(comparisons.get()).isLessThan(100);
+        assertThat(store.resolve(capFirst.token())).isEmpty();
+        assertThat(store.resolve(capSecond.token())).contains(capSecond.session());
+        assertThat(store.resolve(capThird.token())).contains(capThird.session());
+        assertThat(store.resolve(unrelated.get(0).token()))
+            .contains(unrelated.get(0).session());
+        assertThat(store.resolve(unrelated.get(2047).token()))
+            .contains(unrelated.get(2047).session());
+        assertThat(store.resolve(unrelated.get(4095).token()))
+            .contains(unrelated.get(4095).session());
+    }
+
+    @Test
+    void comparisonObserverCannotReenterAndMutateTheStore() {
+        AtomicReference<InMemoryStudioSessionStore> storeReference = new AtomicReference<>();
+        AtomicReference<UUID> protectedSessionId = new AtomicReference<>();
+        AtomicInteger reentryAttempts = new AtomicInteger();
+        InMemoryStudioSessionStore store = new InMemoryStudioSessionStore(
+            properties(5),
+            Clock.fixed(START, ZoneOffset.UTC),
+            new CountingTokenGenerator(),
+            new UuidSequence(),
+            new HashMap<>(),
+            ignored -> {
+            },
+            ignored -> {
+                InMemoryStudioSessionStore observedStore = storeReference.get();
+                UUID observedId = protectedSessionId.get();
+                if (observedStore != null
+                    && observedId != null
+                    && reentryAttempts.compareAndSet(0, 1)) {
+                    observedStore.revoke(observedId);
+                }
+            }
+        );
+        storeReference.set(store);
+        IssuedSession protectedSession = store.issue(user("protected-user"), 1);
+        protectedSessionId.set(protectedSession.session().id());
+
+        IssuedSession second = store.issue(user("second-user"), 1);
+
+        assertThat(reentryAttempts).hasValue(1);
+        assertThat(store.resolve(protectedSession.token())).contains(protectedSession.session());
+        assertThat(store.resolve(second.token())).contains(second.session());
     }
 
     @Test

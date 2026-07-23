@@ -32,10 +32,11 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.NavigableSet;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.PriorityQueue;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.IntConsumer;
@@ -52,23 +53,21 @@ public final class InMemoryStudioSessionStore implements StudioSessionStore {
     private static final int TOKEN_LENGTH = 43;
     private static final int TOKEN_ATTEMPTS = 3;
     private static final String ISSUE_FAILURE = "Unable to issue session";
-    private static final Comparator<ExpiryEntry> EXPIRY_ORDER =
-        Comparator.comparing(ExpiryEntry::expiresAt)
-            .thenComparingLong(ExpiryEntry::sequence);
-
     private final StudioSecurityProperties properties;
     private final Clock clock;
     private final TokenBytesGenerator tokenBytesGenerator;
     private final Supplier<UUID> uuidSupplier;
     private final Map<TokenDigest, Session> sessions;
     private final IntConsumer cleanupObserver;
+    private final IntConsumer comparisonObserver;
     private final ReentrantLock lock = new ReentrantLock();
     private final Map<UUID, TokenDigest> digestsById = new HashMap<>();
     private final Map<String, ArrayDeque<UUID>> sessionsByUser = new HashMap<>();
     private final Map<UUID, ExpiryEntry> expiryById = new HashMap<>();
-    private final PriorityQueue<ExpiryEntry> expiryQueue = new PriorityQueue<>(EXPIRY_ORDER);
+    private final NavigableSet<ExpiryEntry> expiryEntries;
 
     private long nextSequence;
+    private boolean comparisonCallbackActive;
 
     public InMemoryStudioSessionStore(StudioSecurityProperties properties, Clock clock) {
         this(
@@ -90,6 +89,27 @@ public final class InMemoryStudioSessionStore implements StudioSessionStore {
         Map<TokenDigest, Session> sessions,
         IntConsumer cleanupObserver
     ) {
+        this(
+            properties,
+            clock,
+            tokenBytesGenerator,
+            uuidSupplier,
+            sessions,
+            cleanupObserver,
+            ignored -> {
+            }
+        );
+    }
+
+    InMemoryStudioSessionStore(
+        StudioSecurityProperties properties,
+        Clock clock,
+        TokenBytesGenerator tokenBytesGenerator,
+        Supplier<UUID> uuidSupplier,
+        Map<TokenDigest, Session> sessions,
+        IntConsumer cleanupObserver,
+        IntConsumer comparisonObserver
+    ) {
         this.properties = Objects.requireNonNull(properties, "properties");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.tokenBytesGenerator = Objects.requireNonNull(
@@ -99,11 +119,17 @@ public final class InMemoryStudioSessionStore implements StudioSessionStore {
         this.uuidSupplier = Objects.requireNonNull(uuidSupplier, "uuidSupplier");
         this.sessions = Objects.requireNonNull(sessions, "sessions");
         this.cleanupObserver = Objects.requireNonNull(cleanupObserver, "cleanupObserver");
+        this.comparisonObserver = Objects.requireNonNull(
+            comparisonObserver,
+            "comparisonObserver"
+        );
+        this.expiryEntries = new TreeSet<>(this::compareExpiryEntries);
         initializeInjectedSessions();
     }
 
     @Override
     public IssuedSession issue(User user, long registryRevision) {
+        rejectComparisonCallbackReentry();
         validateUser(user);
         lock.lock();
         try {
@@ -117,6 +143,7 @@ public final class InMemoryStudioSessionStore implements StudioSessionStore {
 
     @Override
     public Optional<Session> resolve(String rawToken) {
+        rejectComparisonCallbackReentry();
         lock.lock();
         try {
             Instant now = clock.instant();
@@ -141,6 +168,7 @@ public final class InMemoryStudioSessionStore implements StudioSessionStore {
 
     @Override
     public void revoke(UUID sessionId) {
+        rejectComparisonCallbackReentry();
         if (sessionId == null) {
             return;
         }
@@ -154,6 +182,7 @@ public final class InMemoryStudioSessionStore implements StudioSessionStore {
 
     @Override
     public void revokeByUser(String username) {
+        rejectComparisonCallbackReentry();
         if (username == null) {
             return;
         }
@@ -264,7 +293,7 @@ public final class InMemoryStudioSessionStore implements StudioSessionStore {
             session.sequence()
         );
         expiryById.put(session.id(), expiryEntry);
-        expiryQueue.add(expiryEntry);
+        expiryEntries.add(expiryEntry);
         nextSequence = candidateSequence + 1;
         return new IssuedSession(rawToken, session);
     }
@@ -281,7 +310,7 @@ public final class InMemoryStudioSessionStore implements StudioSessionStore {
     private void cleanup(Instant now) {
         int examined = 0;
         while (examined < CLEANUP_LIMIT) {
-            ExpiryEntry entry = expiryQueue.peek();
+            ExpiryEntry entry = expiryEntries.isEmpty() ? null : expiryEntries.first();
             if (entry == null) {
                 break;
             }
@@ -290,7 +319,7 @@ public final class InMemoryStudioSessionStore implements StudioSessionStore {
             if (!stale && current.expiresAt().isAfter(now)) {
                 break;
             }
-            expiryQueue.remove();
+            expiryEntries.pollFirst();
             examined++;
             expiryById.remove(entry.sessionId(), entry);
             if (!stale) {
@@ -310,7 +339,7 @@ public final class InMemoryStudioSessionStore implements StudioSessionStore {
         digestsById.remove(session.id(), digest);
         ExpiryEntry expiryEntry = expiryById.remove(session.id());
         if (expiryEntry != null) {
-            expiryQueue.remove(expiryEntry);
+            expiryEntries.remove(expiryEntry);
         }
         removeUserIndex(session.username(), session.id());
     }
@@ -325,7 +354,7 @@ public final class InMemoryStudioSessionStore implements StudioSessionStore {
         digestsById.remove(sessionId);
         ExpiryEntry expiryEntry = expiryById.remove(sessionId);
         if (expiryEntry != null) {
-            expiryQueue.remove(expiryEntry);
+            expiryEntries.remove(expiryEntry);
             removeUserIndex(expiryEntry.username(), sessionId);
         }
     }
@@ -386,7 +415,7 @@ public final class InMemoryStudioSessionStore implements StudioSessionStore {
             if (expiryById.put(session.id(), expiryEntry) != null) {
                 throw new IllegalArgumentException("Invalid injected session state");
             }
-            expiryQueue.add(expiryEntry);
+            expiryEntries.add(expiryEntry);
         }
         long highestSequence = entries.get(entries.size() - 1).getValue().sequence();
         nextSequence = highestSequence == Long.MAX_VALUE
@@ -396,6 +425,31 @@ public final class InMemoryStudioSessionStore implements StudioSessionStore {
 
     private static IllegalStateException issueFailure() {
         return new IllegalStateException(ISSUE_FAILURE);
+    }
+
+    private int compareExpiryEntries(ExpiryEntry left, ExpiryEntry right) {
+        observeExpiryComparison();
+        int expiryComparison = left.expiresAt().compareTo(right.expiresAt());
+        return expiryComparison != 0
+            ? expiryComparison
+            : Long.compare(left.sequence(), right.sequence());
+    }
+
+    private void observeExpiryComparison() {
+        comparisonCallbackActive = true;
+        try {
+            comparisonObserver.accept(1);
+        } catch (RuntimeException ignored) {
+            // This package-private observer is test-only and cannot disrupt store invariants.
+        } finally {
+            comparisonCallbackActive = false;
+        }
+    }
+
+    private void rejectComparisonCallbackReentry() {
+        if (lock.isHeldByCurrentThread() && comparisonCallbackActive) {
+            throw new IllegalStateException("Session expiry observer cannot access the store");
+        }
     }
 
     private record ExpiryEntry(
