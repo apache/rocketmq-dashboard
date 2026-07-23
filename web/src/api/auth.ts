@@ -27,6 +27,8 @@ export interface LoginResponse {
   username: string;
   type: string; // e.g., "ADMIN", "ORDINARY"
   contextPath: string;
+  token?: string; // JWT token (optional, for token-based auth)
+  role?: string; // User role (optional, derived from type)
 }
 
 // ─── Auth API ───────────────────────────────────────────────────
