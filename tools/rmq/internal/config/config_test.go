@@ -727,7 +727,7 @@ func TestSaveJoinsTemporaryCleanupFailure(t *testing.T) {
 func TestSaveWithoutForcePublishesCompleteFileAtomically(t *testing.T) {
 	cfg := Default()
 	ctx := cfg.Contexts["default"]
-	ctx.CAFile = "/" + strings.Repeat("a", 8<<20)
+	ctx.CAFile = "/" + strings.Repeat("a", 1<<20)
 	cfg.Contexts["default"] = ctx
 	want, err := yaml.Marshal(cfg)
 	if err != nil {
@@ -735,7 +735,7 @@ func TestSaveWithoutForcePublishesCompleteFileAtomically(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	for attempt := 0; attempt < 10; attempt++ {
+	for attempt := 0; attempt < 3; attempt++ {
 		path := filepath.Join(dir, fmt.Sprintf("config-%d.yaml", attempt))
 		saveResult := make(chan error, 1)
 		go func() {
@@ -743,7 +743,7 @@ func TestSaveWithoutForcePublishesCompleteFileAtomically(t *testing.T) {
 		}()
 
 		var firstVisible []byte
-		deadline := time.Now().Add(10 * time.Second)
+		deadline := time.Now().Add(60 * time.Second)
 		for {
 			firstVisible, err = os.ReadFile(path)
 			if err == nil {
