@@ -68,17 +68,68 @@ class SettingsServiceTest {
     }
 
     @Test
-    void saveGeneralSettingsShouldDelegateToRepository() {
-        GeneralSettingsVO settings = GeneralSettingsVO.builder()
+    void saveGeneralSettingsShouldPreserveExistingApiKeyWhenOmitted() {
+        GeneralSettingsVO existing = GeneralSettingsVO.builder()
+                .apiKey("sk-existing")
+                .build();
+        GeneralSettingsVO update = GeneralSettingsVO.builder()
                 .theme("light")
                 .compact(false)
                 .sessionTimeout(60)
                 .build();
-        doNothing().when(settingsRepository).saveGeneralSettings(settings);
+        when(settingsRepository.loadGeneralSettings()).thenReturn(existing);
 
-        settingsService.saveGeneralSettings(settings);
+        settingsService.saveGeneralSettings(update);
 
-        verify(settingsRepository).saveGeneralSettings(settings);
+        assertThat(update.getApiKey()).isEqualTo("sk-existing");
+        verify(settingsRepository).saveGeneralSettings(update);
+    }
+
+    @Test
+    void saveGeneralSettingsShouldReplaceExistingApiKey() {
+        GeneralSettingsVO existing = GeneralSettingsVO.builder()
+                .apiKey("sk-existing")
+                .build();
+        GeneralSettingsVO update = GeneralSettingsVO.builder()
+                .apiKey("sk-new")
+                .build();
+        when(settingsRepository.loadGeneralSettings()).thenReturn(existing);
+
+        settingsService.saveGeneralSettings(update);
+
+        assertThat(update.getApiKey()).isEqualTo("sk-new");
+        verify(settingsRepository).saveGeneralSettings(update);
+    }
+
+    @Test
+    void saveGeneralSettingsShouldClearApiKeyOnlyWhenExplicitlyRequested() {
+        GeneralSettingsVO existing = GeneralSettingsVO.builder()
+                .apiKey("sk-existing")
+                .build();
+        GeneralSettingsVO update = GeneralSettingsVO.builder()
+                .clearApiKey(true)
+                .build();
+        when(settingsRepository.loadGeneralSettings()).thenReturn(existing);
+
+        settingsService.saveGeneralSettings(update);
+
+        assertThat(update.getApiKey()).isEmpty();
+        assertThat(update.isClearApiKey()).isFalse();
+        verify(settingsRepository).saveGeneralSettings(update);
+    }
+
+    @Test
+    void saveGeneralSettingsShouldLetClearTakePrecedenceOverReplacementApiKey() {
+        GeneralSettingsVO update = GeneralSettingsVO.builder()
+                .apiKey("sk-new")
+                .clearApiKey(true)
+                .build();
+
+        settingsService.saveGeneralSettings(update);
+
+        assertThat(update.getApiKey()).isEmpty();
+        assertThat(update.isClearApiKey()).isFalse();
+        verify(settingsRepository).saveGeneralSettings(update);
     }
 
     @Test

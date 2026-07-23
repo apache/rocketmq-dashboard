@@ -16,36 +16,58 @@
  */
 package com.rocketmq.studio.settings;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
-import org.springframework.util.StringUtils;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class GeneralSettingsVO {
+public class GeneralSettingsUpdateDTO {
+    @NotBlank
     private String theme;
-    private boolean compact;
-    private boolean desktopNotify;
-    private boolean notifySound;
-    private int sessionTimeout;
-    private boolean requireLogin;
+    @NotNull
+    private Boolean compact;
+    @NotNull
+    private Boolean desktopNotify;
+    @NotNull
+    private Boolean notifySound;
+    @NotNull
+    @Min(5)
+    @Max(1440)
+    private Integer sessionTimeout;
+    @NotNull
+    private Boolean requireLogin;
+    @NotBlank
     private String llmProvider;
-    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     @ToString.Exclude
     private String apiKey;
-    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private boolean clearApiKey;
+    @NotBlank
     private String model;
+    @NotNull
     private String baseUrl;
 
-    @JsonProperty(value = "apiKeyConfigured", access = JsonProperty.Access.READ_ONLY)
-    public boolean isApiKeyConfigured() {
-        return StringUtils.hasText(apiKey);
+    public GeneralSettingsVO toSettings() {
+        return GeneralSettingsVO.builder()
+                .theme(theme)
+                .compact(compact)
+                .desktopNotify(desktopNotify)
+                .notifySound(notifySound)
+                .sessionTimeout(sessionTimeout)
+                .requireLogin(requireLogin)
+                .llmProvider(llmProvider)
+                .apiKey(apiKey)
+                .clearApiKey(clearApiKey)
+                .model(model)
+                .baseUrl(baseUrl)
+                .build();
     }
 }

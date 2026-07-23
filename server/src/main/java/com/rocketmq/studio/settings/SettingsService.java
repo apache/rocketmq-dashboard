@@ -19,6 +19,7 @@ package com.rocketmq.studio.settings;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 
@@ -36,8 +37,15 @@ public class SettingsService {
     }
 
 
-    public void saveGeneralSettings(GeneralSettingsVO settings) {
+    public synchronized void saveGeneralSettings(GeneralSettingsVO settings) {
         log.info("Saving general settings");
+        GeneralSettingsVO currentSettings = settingsRepository.loadGeneralSettings();
+        if (settings.isClearApiKey()) {
+            settings.setApiKey("");
+        } else if (!StringUtils.hasText(settings.getApiKey()) && currentSettings != null) {
+            settings.setApiKey(currentSettings.getApiKey());
+        }
+        settings.setClearApiKey(false);
         settingsRepository.saveGeneralSettings(settings);
     }
 
