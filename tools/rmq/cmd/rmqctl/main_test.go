@@ -17,8 +17,11 @@ package main
 
 import (
 	"bytes"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/apache/rocketmq-dashboard/tools/rmq/internal/config"
 )
 
 func TestRunSeparatesSuccessAndErrorStreams(t *testing.T) {
@@ -77,4 +80,71 @@ func TestRunUsageErrorIsNonzero(t *testing.T) {
 	if stdout.Len() != 0 || stderr.Len() == 0 {
 		t.Fatalf("stdout = %q, stderr = %q", stdout.String(), stderr.String())
 	}
+}
+
+func TestRunUsesFreshRootForEveryInvocation(t *testing.T) {
+	t.Run("output", func(t *testing.T) {
+		var firstOut, firstErr bytes.Buffer
+		if code := run([]string{"version", "--output", "json"}, &firstOut, &firstErr); code != 0 {
+			t.Fatalf("first run = %d, stderr = %q", code, firstErr.String())
+		}
+
+		var secondOut, secondErr bytes.Buffer
+		if code := run([]string{"version"}, &secondOut, &secondErr); code != 0 {
+			t.Fatalf("second run = %d, stderr = %q", code, secondErr.String())
+		}
+		if !strings.HasPrefix(secondOut.String(), "VERSION  COMMIT") {
+			t.Fatalf("second stdout inherited JSON output: %q", secondOut.String())
+		}
+	})
+
+	t.Run("config", func(t *testing.T) {
+		dir := t.TempDir()
+		envPath := filepath.Join(dir, "environment.yaml")
+		explicitPath := filepath.Join(dir, "explicit.yaml")
+		cfg := config.Default()
+		cfg.Contexts["environment"] = cfg.Contexts["default"]
+		if err := config.UseContext(&cfg, "environment"); err != nil {
+			t.Fatal(err)
+		}
+		if err := config.Save(envPath, cfg, false); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("RMQCTL_CONFIG", envPath)
+
+		var firstOut, firstErr bytes.Buffer
+		if code := run([]string{"--config", explicitPath, "config", "init", "--force"}, &firstOut, &firstErr); code != 0 {
+			t.Fatalf("first run = %d, stderr = %q", code, firstErr.String())
+		}
+
+		var secondOut, secondErr bytes.Buffer
+		if code := run([]string{"config", "current-context"}, &secondOut, &secondErr); code != 0 {
+			t.Fatalf("second run = %d, stderr = %q", code, secondErr.String())
+		}
+		if secondOut.String() != "environment\n" {
+			t.Fatalf("second stdout inherited explicit config path: %q", secondOut.String())
+		}
+	})
+
+	t.Run("force", func(t *testing.T) {
+		dir := t.TempDir()
+		firstPath := filepath.Join(dir, "first.yaml")
+		existingPath := filepath.Join(dir, "existing.yaml")
+		if err := config.Save(existingPath, config.Default(), false); err != nil {
+			t.Fatal(err)
+		}
+
+		var firstOut, firstErr bytes.Buffer
+		if code := run([]string{"--config", firstPath, "config", "init", "--force"}, &firstOut, &firstErr); code != 0 {
+			t.Fatalf("first run = %d, stderr = %q", code, firstErr.String())
+		}
+
+		var secondOut, secondErr bytes.Buffer
+		if code := run([]string{"--config", existingPath, "config", "init"}, &secondOut, &secondErr); code == 0 {
+			t.Fatal("second run inherited --force")
+		}
+		if !strings.Contains(secondErr.String(), "config already exists") {
+			t.Fatalf("second stderr = %q", secondErr.String())
+		}
+	})
 }

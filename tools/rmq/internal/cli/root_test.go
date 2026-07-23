@@ -19,6 +19,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -412,6 +413,15 @@ func (errorWriter) Write([]byte) (int, error) {
 	return 0, errors.New("injected write failure")
 }
 
+type shortWriter struct{}
+
+func (shortWriter) Write(contents []byte) (int, error) {
+	if len(contents) == 0 {
+		return 0, nil
+	}
+	return len(contents) - 1, nil
+}
+
 func TestInjectedWriterErrorsAreReturned(t *testing.T) {
 	var stderr bytes.Buffer
 	root := NewRoot(Options{Out: errorWriter{}, ErrOut: &stderr})
@@ -419,6 +429,19 @@ func TestInjectedWriterErrorsAreReturned(t *testing.T) {
 	err := root.Execute()
 	if err == nil || !strings.Contains(err.Error(), "injected write failure") {
 		t.Fatalf("Execute() error = %v", err)
+	}
+}
+
+func TestCurrentContextReturnsShortWrite(t *testing.T) {
+	path := initializedConfig(t)
+	root := NewRoot(Options{
+		Out:        shortWriter{},
+		ErrOut:     &bytes.Buffer{},
+		ConfigPath: path,
+	})
+	root.SetArgs([]string{"config", "current-context"})
+	if err := root.Execute(); !errors.Is(err, io.ErrShortWrite) {
+		t.Fatalf("Execute() error = %v, want io.ErrShortWrite", err)
 	}
 }
 

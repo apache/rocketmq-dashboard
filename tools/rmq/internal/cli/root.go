@@ -40,7 +40,8 @@ type Options struct {
 
 type pathResolver func() (string, error)
 
-// NewRoot constructs the local rmqctl command tree.
+// NewRoot constructs the local rmqctl command tree. The returned command tree
+// is one-shot; callers must construct a fresh root for each Execute call.
 func NewRoot(options Options) *cobra.Command {
 	out := options.Out
 	if out == nil {
@@ -239,10 +240,20 @@ func newConfigCurrentContextCommand(resolvePath pathResolver) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			_, err = fmt.Fprintln(cmd.OutOrStdout(), cfg.CurrentContext)
-			return err
+			return writeText(cmd.OutOrStdout(), cfg.CurrentContext+"\n")
 		},
 	}
+}
+
+func writeText(writer io.Writer, text string) error {
+	written, err := io.WriteString(writer, text)
+	if err != nil {
+		return err
+	}
+	if written != len(text) {
+		return io.ErrShortWrite
+	}
+	return nil
 }
 
 func newExplainCommand() *cobra.Command {
