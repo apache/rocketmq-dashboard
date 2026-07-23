@@ -27,7 +27,33 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"go.yaml.in/yaml/v3"
 )
+
+type ciWorkflow struct {
+	Jobs map[string]ciJob `yaml:"jobs"`
+}
+
+type ciJob struct {
+	Defaults ciDefaults `yaml:"defaults"`
+	Steps    []ciStep   `yaml:"steps"`
+}
+
+type ciDefaults struct {
+	Run ciRunDefaults `yaml:"run"`
+}
+
+type ciRunDefaults struct {
+	WorkingDirectory string `yaml:"working-directory"`
+}
+
+type ciStep struct {
+	Uses             string         `yaml:"uses"`
+	Run              string         `yaml:"run"`
+	With             map[string]any `yaml:"with"`
+	WorkingDirectory string         `yaml:"working-directory"`
+}
 
 func TestGeneratedCatalogMatchesCanonicalMetadata(t *testing.T) {
 	if Version != "1.0.0" {
@@ -193,6 +219,63 @@ func TestGeneratedFilesArePinnedToLF(t *testing.T) {
 			t.Fatalf(".gitattributes has %d exact LF rules for %s, want 1", matches[path], path)
 		}
 	}
+}
+
+func TestCIHasGoCLIFoundationJob(t *testing.T) {
+	repositoryRoot := filepath.Clean(filepath.Join(moduleRoot(t), "..", ".."))
+	content, err := os.ReadFile(filepath.Join(repositoryRoot, ".github", "workflows", "ci.yml"))
+	if err != nil {
+		t.Fatalf("read CI workflow: %v", err)
+	}
+
+	var workflow ciWorkflow
+	if err := yaml.Unmarshal(content, &workflow); err != nil {
+		t.Fatalf("parse CI workflow: %v", err)
+	}
+
+	requiredCommands := []string{
+		"go test -race ./...",
+		"go vet ./...",
+		"go run ./cmd/cataloggen -check",
+		"go build ./cmd/rmqctl",
+	}
+	for _, job := range workflow.Jobs {
+		hasCheckout := false
+		hasSetupGo := false
+		commands := make(map[string]bool, len(requiredCommands))
+		runStepsUseModule := true
+
+		for _, step := range job.Steps {
+			switch step.Uses {
+			case "actions/checkout@v4":
+				hasCheckout = true
+			case "actions/setup-go@v6":
+				hasSetupGo = step.With["go-version"] == "1.26.x" &&
+					step.With["cache-dependency-path"] == "tools/rmq/go.sum"
+			}
+
+			if step.Run == "" {
+				continue
+			}
+			if job.Defaults.Run.WorkingDirectory != "tools/rmq" &&
+				step.WorkingDirectory != "tools/rmq" {
+				runStepsUseModule = false
+			}
+			for _, line := range strings.Split(step.Run, "\n") {
+				commands[strings.TrimSpace(line)] = true
+			}
+		}
+
+		hasRequiredCommands := true
+		for _, command := range requiredCommands {
+			hasRequiredCommands = hasRequiredCommands && commands[command]
+		}
+		if hasCheckout && hasSetupGo && runStepsUseModule && hasRequiredCommands {
+			return
+		}
+	}
+
+	t.Fatal("CI workflow has no single Go job with the required actions, module working directory, and verification commands")
 }
 
 func TestGeneratedFilesHaveNoDrift(t *testing.T) {
