@@ -96,7 +96,7 @@ public class LlmConfigService {
         if (isBlank(normalized.getModel())) {
             return LlmOperationResultVO.failure("Model is required");
         }
-        return LlmOperationResultVO.success("Connection successful");
+        return LlmOperationResultVO.success("Configuration accepted");
     }
 
     public synchronized LlmModelsResultVO listModels() {

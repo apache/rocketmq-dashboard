@@ -91,7 +91,7 @@ class LlmControllerTest {
     @Test
     void testConfigShouldReturnOperationResult() throws Exception {
         when(llmConfigService.testConfig(any(LlmConfigVO.class)))
-                .thenReturn(LlmOperationResultVO.success("Connection successful"));
+                .thenReturn(LlmOperationResultVO.success("Configuration accepted"));
 
         mockMvc.perform(post("/api/llm/config/test")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -101,7 +101,7 @@ class LlmControllerTest {
                                 .build())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value(0))
-                .andExpect(jsonPath("$.msg").value("Connection successful"));
+                .andExpect(jsonPath("$.msg").value("Configuration accepted"));
     }
 
     @Test

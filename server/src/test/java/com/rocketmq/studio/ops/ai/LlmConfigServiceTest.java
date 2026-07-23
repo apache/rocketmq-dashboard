@@ -109,7 +109,7 @@ class LlmConfigServiceTest {
                 .build());
 
         assertThat(result.getStatus()).isZero();
-        assertThat(result.getMsg()).isEqualTo("Connection successful");
+        assertThat(result.getMsg()).isEqualTo("Configuration accepted");
     }
 
     @Test
