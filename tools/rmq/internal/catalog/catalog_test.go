@@ -36,8 +36,10 @@ type ciWorkflow struct {
 }
 
 type ciJob struct {
-	Defaults ciDefaults `yaml:"defaults"`
-	Steps    []ciStep   `yaml:"steps"`
+	Defaults        ciDefaults `yaml:"defaults"`
+	Steps           []ciStep   `yaml:"steps"`
+	If              any        `yaml:"if"`
+	ContinueOnError any        `yaml:"continue-on-error"`
 }
 
 type ciDefaults struct {
@@ -302,6 +304,56 @@ func TestGoCLIFoundationJobRequiresExecutableIndependentSteps(t *testing.T) {
 	}
 }
 
+func TestGoCLIFoundationJobMustRunAndEnforceFailures(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*ciJob)
+		want   bool
+	}{
+		{
+			name: "current valid job",
+			want: true,
+		},
+		{
+			name: "explicit continue-on-error false",
+			mutate: func(job *ciJob) {
+				job.ContinueOnError = false
+			},
+			want: true,
+		},
+		{
+			name: "job if false",
+			mutate: func(job *ciJob) {
+				job.If = false
+			},
+		},
+		{
+			name: "job continue-on-error true",
+			mutate: func(job *ciJob) {
+				job.ContinueOnError = true
+			},
+		},
+		{
+			name: "job continue-on-error expression",
+			mutate: func(job *ciJob) {
+				job.ContinueOnError = "${{ matrix.experimental }}"
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			job := validGoCLIFoundationJob()
+			if test.mutate != nil {
+				test.mutate(&job)
+			}
+			if got := supportsGoCLIFoundation(job); got != test.want {
+				t.Fatalf("supportsGoCLIFoundation() = %t, want %t", got, test.want)
+			}
+		})
+	}
+}
+
 func TestGeneratedFilesHaveNoDrift(t *testing.T) {
 	cmd := exec.Command("go", "run", "./cmd/cataloggen", "-check")
 	cmd.Dir = moduleRoot(t)
@@ -324,6 +376,10 @@ func assertJSONArray(t *testing.T, lookup string, capabilities []string) {
 }
 
 func supportsGoCLIFoundation(job ciJob) bool {
+	if job.If != nil || !enforcesCIFailures(job.ContinueOnError) {
+		return false
+	}
+
 	requiredCommands := []string{
 		"go test -race ./...",
 		"go vet ./...",
@@ -368,14 +424,15 @@ func supportsGoCLIFoundation(job ciJob) bool {
 }
 
 func isRequiredCIStep(step ciStep) bool {
-	if step.If != nil {
-		return false
-	}
-	if step.ContinueOnError == nil {
+	return step.If == nil && enforcesCIFailures(step.ContinueOnError)
+}
+
+func enforcesCIFailures(continueOnError any) bool {
+	if continueOnError == nil {
 		return true
 	}
-	continueOnError, ok := step.ContinueOnError.(bool)
-	return ok && !continueOnError
+	value, ok := continueOnError.(bool)
+	return ok && !value
 }
 
 func validGoCLIFoundationJob() ciJob {
