@@ -53,6 +53,8 @@ type ciStep struct {
 	Run              string         `yaml:"run"`
 	With             map[string]any `yaml:"with"`
 	WorkingDirectory string         `yaml:"working-directory"`
+	If               any            `yaml:"if"`
+	ContinueOnError  any            `yaml:"continue-on-error"`
 }
 
 func TestGeneratedCatalogMatchesCanonicalMetadata(t *testing.T) {
@@ -243,28 +245,60 @@ func TestCIHasGoCLIFoundationJob(t *testing.T) {
 }
 
 func TestGoCLIFoundationJobRejectsRunStepOutsideModule(t *testing.T) {
-	job := ciJob{
-		Defaults: ciDefaults{
-			Run: ciRunDefaults{WorkingDirectory: "tools/rmq"},
-		},
-		Steps: []ciStep{
-			{Uses: "actions/checkout@v4"},
-			{
-				Uses: "actions/setup-go@v6",
-				With: map[string]any{
-					"go-version":            "1.26.x",
-					"cache-dependency-path": "tools/rmq/go.sum",
-				},
-			},
-			{Run: "go test -race ./..."},
-			{Run: "go vet ./..."},
-			{Run: "go run ./cmd/cataloggen -check"},
-			{Run: "go build ./cmd/rmqctl", WorkingDirectory: "server"},
-		},
-	}
+	job := validGoCLIFoundationJob()
+	job.Steps[len(job.Steps)-1].WorkingDirectory = "server"
 
 	if supportsGoCLIFoundation(job) {
 		t.Fatal("Go CLI foundation job accepted a run step that overrides the module working directory")
+	}
+}
+
+func TestGoCLIFoundationJobRequiresExecutableIndependentSteps(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*ciJob)
+		want   bool
+	}{
+		{
+			name: "current valid job",
+			want: true,
+		},
+		{
+			name: "checkout if false",
+			mutate: func(job *ciJob) {
+				job.Steps[0].If = false
+			},
+		},
+		{
+			name: "setup continue-on-error true",
+			mutate: func(job *ciJob) {
+				job.Steps[1].ContinueOnError = true
+			},
+		},
+		{
+			name: "command continue-on-error expression",
+			mutate: func(job *ciJob) {
+				job.Steps[2].ContinueOnError = "${{ matrix.experimental }}"
+			},
+		},
+		{
+			name: "command in dead shell block",
+			mutate: func(job *ciJob) {
+				job.Steps[2].Run = "if false; then\n  go test -race ./...\nfi"
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			job := validGoCLIFoundationJob()
+			if test.mutate != nil {
+				test.mutate(&job)
+			}
+			if got := supportsGoCLIFoundation(job); got != test.want {
+				t.Fatalf("supportsGoCLIFoundation() = %t, want %t", got, test.want)
+			}
+		})
 	}
 }
 
@@ -302,12 +336,13 @@ func supportsGoCLIFoundation(job ciJob) bool {
 	runStepsUseModule := true
 
 	for _, step := range job.Steps {
-		switch step.Uses {
-		case "actions/checkout@v4":
+		switch {
+		case step.Uses == "actions/checkout@v4" && isRequiredCIStep(step):
 			hasCheckout = true
-		case "actions/setup-go@v6":
-			hasSetupGo = step.With["go-version"] == "1.26.x" &&
-				step.With["cache-dependency-path"] == "tools/rmq/go.sum"
+		case step.Uses == "actions/setup-go@v6" && isRequiredCIStep(step):
+			hasSetupGo = hasSetupGo ||
+				step.With["go-version"] == "1.26.x" &&
+					step.With["cache-dependency-path"] == "tools/rmq/go.sum"
 		}
 
 		if step.Run == "" {
@@ -320,8 +355,8 @@ func supportsGoCLIFoundation(job ciJob) bool {
 		if effectiveWorkingDirectory != "tools/rmq" {
 			runStepsUseModule = false
 		}
-		for _, line := range strings.Split(step.Run, "\n") {
-			commands[strings.TrimSpace(line)] = true
+		if isRequiredCIStep(step) {
+			commands[strings.TrimSpace(step.Run)] = true
 		}
 	}
 
@@ -330,6 +365,39 @@ func supportsGoCLIFoundation(job ciJob) bool {
 		hasRequiredCommands = hasRequiredCommands && commands[command]
 	}
 	return hasCheckout && hasSetupGo && runStepsUseModule && hasRequiredCommands
+}
+
+func isRequiredCIStep(step ciStep) bool {
+	if step.If != nil {
+		return false
+	}
+	if step.ContinueOnError == nil {
+		return true
+	}
+	continueOnError, ok := step.ContinueOnError.(bool)
+	return ok && !continueOnError
+}
+
+func validGoCLIFoundationJob() ciJob {
+	return ciJob{
+		Defaults: ciDefaults{
+			Run: ciRunDefaults{WorkingDirectory: "tools/rmq"},
+		},
+		Steps: []ciStep{
+			{Uses: "actions/checkout@v4"},
+			{
+				Uses: "actions/setup-go@v6",
+				With: map[string]any{
+					"go-version":            "1.26.x",
+					"cache-dependency-path": "tools/rmq/go.sum",
+				},
+			},
+			{Run: "go test -race ./..."},
+			{Run: "go vet ./..."},
+			{Run: "go run ./cmd/cataloggen -check"},
+			{Run: "go build ./cmd/rmqctl"},
+		},
+	}
 }
 
 func moduleRoot(t *testing.T) string {
