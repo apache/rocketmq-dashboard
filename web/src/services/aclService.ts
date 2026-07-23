@@ -57,6 +57,7 @@ export async function deleteAclRule(id: string): Promise<void> {
     if (idx >= 0) aclRulesState.splice(idx, 1);
     return;
   }
+  // Backend uses subject + resource params, not id
   return aclApi.deleteAclRule(id);
 }
 
@@ -84,5 +85,6 @@ export async function deleteAclUser(id: string): Promise<void> {
     if (idx >= 0) aclUsersState.splice(idx, 1);
     return;
   }
+  // Backend uses username param, not id
   return aclApi.deleteAclUser(id);
 }
