@@ -120,7 +120,7 @@ public class AlertService {
 
     private List<PrometheusAlertRule> defaultPrometheusRules() {
         List<PrometheusAlertRule> rules = new ArrayList<>();
-        rules.add(rule("rocketmq-broker.rules", "RocketMQBrokerDown", "up == 0", "1m",
+        rules.add(rule("rocketmq-broker.rules", "RocketMQBrokerDown", "up{job=~\".*rocketmq.*\"} == 0", "1m",
                 "critical", "broker", "RocketMQ broker is down",
                 "A RocketMQ broker scrape target has been unavailable for more than 1 minute."));
         rules.add(rule("rocketmq-consumer.rules", "RocketMQConsumerLagHigh",

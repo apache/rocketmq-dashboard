@@ -79,6 +79,7 @@ class AlertServiceTest {
         assertThat(result)
                 .contains("groups:")
                 .contains("# Rule 1: RocketMQBrokerDown")
+                .contains("up{job=~\".*rocketmq.*\"} == 0")
                 .contains("rocketmq_consumer_lag_messages > 100000")
                 .contains("rocketmq_producer_send_to_back_rt > 1000")
                 .contains("severity: critical");
