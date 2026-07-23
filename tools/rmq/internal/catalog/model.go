@@ -79,7 +79,10 @@ func Names() []string {
 
 func cloneTool(tool Tool) Tool {
 	cloned := tool
-	cloned.RequiredCapabilities = append([]string(nil), tool.RequiredCapabilities...)
+	if tool.RequiredCapabilities != nil {
+		cloned.RequiredCapabilities = make([]string, len(tool.RequiredCapabilities))
+		copy(cloned.RequiredCapabilities, tool.RequiredCapabilities)
+	}
 	cloned.InputSchema = cloneMap(tool.InputSchema)
 	cloned.OutputSchema = cloneMap(tool.OutputSchema)
 	return cloned

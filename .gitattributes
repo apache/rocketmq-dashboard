@@ -1,0 +1,3 @@
+/server/src/main/resources/tool-catalog/rmq-tools.yaml text eol=lf
+/tools/rmq/internal/catalog/generated.go text eol=lf
+/docs/rmqctl-reference.md text eol=lf

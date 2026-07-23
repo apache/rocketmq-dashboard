@@ -18,11 +18,13 @@
 package catalog
 
 import (
+	"encoding/json"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -135,12 +137,67 @@ func TestCatalogLookupsUseStableAlphabeticalOrder(t *testing.T) {
 	}
 }
 
+func TestCatalogLookupsPreserveEmptyCapabilitiesAsJSONArray(t *testing.T) {
+	all := All()
+	if len(all) == 0 {
+		t.Fatal("All() returned no tools")
+	}
+	assertJSONArray(t, "All", all[0].RequiredCapabilities)
+
+	found, ok := Find(all[0].Name)
+	if !ok {
+		t.Fatalf("Find(%q) did not find the tool", all[0].Name)
+	}
+	assertJSONArray(t, "Find", found.RequiredCapabilities)
+
+	byResource := FindByResource(all[0].CLI.Resource)
+	if len(byResource) == 0 {
+		t.Fatalf("FindByResource(%q) returned no tools", all[0].CLI.Resource)
+	}
+	assertJSONArray(t, "FindByResource", byResource[0].RequiredCapabilities)
+}
+
+func TestGeneratedFilesArePinnedToLF(t *testing.T) {
+	paths := []string{
+		"server/src/main/resources/tool-catalog/rmq-tools.yaml",
+		"tools/rmq/internal/catalog/generated.go",
+		"docs/rmqctl-reference.md",
+	}
+	args := append([]string{"check-attr", "text", "eol", "--"}, paths...)
+	cmd := exec.Command("git", args...)
+	cmd.Dir = filepath.Clean(filepath.Join(moduleRoot(t), "..", ".."))
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git check-attr: %v\n%s", err, output)
+	}
+	for _, path := range paths {
+		for _, attribute := range []string{"text: set", "eol: lf"} {
+			want := path + ": " + attribute
+			if !strings.Contains(string(output), want) {
+				t.Fatalf("git check-attr output missing %q:\n%s", want, output)
+			}
+		}
+	}
+}
+
 func TestGeneratedFilesHaveNoDrift(t *testing.T) {
 	cmd := exec.Command("go", "run", "./cmd/cataloggen", "-check")
 	cmd.Dir = moduleRoot(t)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("catalog drift: %v\n%s", err, output)
+	}
+}
+
+func assertJSONArray(t *testing.T, lookup string, capabilities []string) {
+	t.Helper()
+
+	encoded, err := json.Marshal(capabilities)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(encoded) != "[]" {
+		t.Fatalf("%s capabilities JSON = %s, want []", lookup, encoded)
 	}
 }
 

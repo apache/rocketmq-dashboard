@@ -158,7 +158,13 @@ func generate(opts options) error {
 	if opts.check {
 		for _, output := range outputs {
 			current, err := os.ReadFile(output.path)
-			if err != nil || !bytes.Equal(current, output.content) {
+			if err != nil {
+				if os.IsNotExist(err) {
+					return fmt.Errorf("stale generated file: %s", output.path)
+				}
+				return fmt.Errorf("read generated file %s: %w", output.path, err)
+			}
+			if !bytes.Equal(current, output.content) {
 				return fmt.Errorf("stale generated file: %s", output.path)
 			}
 		}
@@ -174,21 +180,197 @@ func generate(opts options) error {
 }
 
 func decodeCatalog(source []byte) (sourceCatalog, error) {
-	var catalog sourceCatalog
-	decoder := yaml.NewDecoder(bytes.NewReader(source))
-	decoder.KnownFields(true)
-	if err := decoder.Decode(&catalog); err != nil {
+	nodeDecoder := yaml.NewDecoder(bytes.NewReader(source))
+	var document yaml.Node
+	if err := nodeDecoder.Decode(&document); err != nil {
+		return sourceCatalog{}, err
+	}
+	if err := rejectTrailingDocuments(nodeDecoder); err != nil {
+		return sourceCatalog{}, err
+	}
+	if err := validateCatalogDocument(&document); err != nil {
 		return sourceCatalog{}, err
 	}
 
-	var trailing any
-	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-		if err == nil {
-			return sourceCatalog{}, errors.New("multiple YAML documents are not allowed")
-		}
+	var catalog sourceCatalog
+	typedDecoder := yaml.NewDecoder(bytes.NewReader(source))
+	typedDecoder.KnownFields(true)
+	if err := typedDecoder.Decode(&catalog); err != nil {
 		return sourceCatalog{}, err
 	}
 	return catalog, nil
+}
+
+func rejectTrailingDocuments(decoder *yaml.Decoder) error {
+	var trailing yaml.Node
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("multiple YAML documents are not allowed")
+		}
+		return err
+	}
+	return nil
+}
+
+func validateCatalogDocument(document *yaml.Node) error {
+	if document.Kind != yaml.DocumentNode || len(document.Content) != 1 {
+		return errors.New("catalog must be a YAML document")
+	}
+	root := document.Content[0]
+	if err := requireNodeKind(root, yaml.MappingNode, "catalog", "a mapping"); err != nil {
+		return err
+	}
+
+	version, err := requiredMappingValue(root, "version", "version")
+	if err != nil {
+		return err
+	}
+	if err := requireYAMLString(version, "version"); err != nil {
+		return err
+	}
+
+	minimumClientVersion, err := requiredMappingValue(root, "minimumClientVersion", "minimumClientVersion")
+	if err != nil {
+		return err
+	}
+	if err := requireYAMLString(minimumClientVersion, "minimumClientVersion"); err != nil {
+		return err
+	}
+
+	tools, err := requiredMappingValue(root, "tools", "tools")
+	if err != nil {
+		return err
+	}
+	if err := requireNodeKind(tools, yaml.SequenceNode, "tools", "a sequence"); err != nil {
+		return err
+	}
+	for i, tool := range tools.Content {
+		path := fmt.Sprintf("tools[%d]", i)
+		if err := validateToolDocument(tool, path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateToolDocument(tool *yaml.Node, path string) error {
+	if err := requireNodeKind(tool, yaml.MappingNode, path, "a mapping"); err != nil {
+		return err
+	}
+
+	stringFields := []string{"name", "description", "riskLevel", "permission", "viewHint"}
+	for _, field := range stringFields {
+		fieldPath := path + "." + field
+		value, err := requiredMappingValue(tool, field, fieldPath)
+		if err != nil {
+			return err
+		}
+		if err := requireYAMLString(value, fieldPath); err != nil {
+			return err
+		}
+	}
+
+	cli, err := requiredMappingValue(tool, "cli", path+".cli")
+	if err != nil {
+		return err
+	}
+	if err := requireNodeKind(cli, yaml.MappingNode, path+".cli", "a mapping"); err != nil {
+		return err
+	}
+	for _, field := range []string{"resource", "verb"} {
+		fieldPath := path + ".cli." + field
+		value, err := requiredMappingValue(cli, field, fieldPath)
+		if err != nil {
+			return err
+		}
+		if err := requireYAMLString(value, fieldPath); err != nil {
+			return err
+		}
+	}
+
+	capabilities, err := requiredMappingValue(tool, "requiredCapabilities", path+".requiredCapabilities")
+	if err != nil {
+		return err
+	}
+	if err := requireNodeKind(capabilities, yaml.SequenceNode, path+".requiredCapabilities", "a sequence"); err != nil {
+		return err
+	}
+	for _, capability := range capabilities.Content {
+		if err := requireYAMLString(capability, path+".requiredCapabilities[]"); err != nil {
+			return err
+		}
+	}
+
+	for _, field := range []string{"inputSchema", "outputSchema"} {
+		fieldPath := path + "." + field
+		schema, err := requiredMappingValue(tool, field, fieldPath)
+		if err != nil {
+			return err
+		}
+		if err := requireNodeKind(schema, yaml.MappingNode, fieldPath, "a mapping"); err != nil {
+			return err
+		}
+	}
+
+	deprecated, err := requiredMappingValue(tool, "deprecated", path+".deprecated")
+	if err != nil {
+		return err
+	}
+	if deprecated.Kind != yaml.ScalarNode || deprecated.ShortTag() != "!!bool" {
+		return fmt.Errorf(`field %q must be a bool`, path+".deprecated")
+	}
+
+	if replacement, exists := mappingValue(tool, "replacement"); exists {
+		replacementPath := path + ".replacement"
+		if isNullNode(replacement) {
+			return fmt.Errorf(`optional field %q must not be null`, replacementPath)
+		}
+		if err := requireYAMLString(replacement, replacementPath); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func requiredMappingValue(mapping *yaml.Node, key, path string) (*yaml.Node, error) {
+	value, exists := mappingValue(mapping, key)
+	if !exists {
+		return nil, fmt.Errorf(`required field %q is missing`, path)
+	}
+	if isNullNode(value) {
+		return nil, fmt.Errorf(`required field %q must not be null`, path)
+	}
+	return value, nil
+}
+
+func mappingValue(mapping *yaml.Node, key string) (*yaml.Node, bool) {
+	if mapping.Kind != yaml.MappingNode {
+		return nil, false
+	}
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		if mapping.Content[i].Value == key {
+			return mapping.Content[i+1], true
+		}
+	}
+	return nil, false
+}
+
+func isNullNode(node *yaml.Node) bool {
+	return node == nil || node.ShortTag() == "!!null"
+}
+
+func requireYAMLString(node *yaml.Node, path string) error {
+	if node.Kind != yaml.ScalarNode || node.ShortTag() != "!!str" {
+		return fmt.Errorf(`field %q must be a string`, path)
+	}
+	return nil
+}
+
+func requireNodeKind(node *yaml.Node, kind yaml.Kind, path, description string) error {
+	if node.Kind != kind {
+		return fmt.Errorf(`field %q must be %s`, path, description)
+	}
+	return nil
 }
 
 func validateCatalog(catalog *sourceCatalog) error {
@@ -243,8 +425,8 @@ func validateCatalog(catalog *sourceCatalog) error {
 		if err := validateCapabilities(tool); err != nil {
 			return err
 		}
-		if tool.Name != "rmq.cluster.list" && !schemaRequires(tool.InputSchema, "cluster") {
-			return fmt.Errorf("%s inputSchema must require cluster", tool.Name)
+		if err := validateSchemas(tool); err != nil {
+			return err
 		}
 		if _, err := json.Marshal(tool.InputSchema); err != nil {
 			return fmt.Errorf("%s inputSchema is not JSON-compatible: %w", tool.Name, err)
@@ -271,6 +453,45 @@ func validateCapabilities(tool *sourceTool) error {
 			return fmt.Errorf("%s capability %q is duplicated", tool.Name, capability)
 		}
 		seen[capability] = struct{}{}
+	}
+	return nil
+}
+
+func validateSchemas(tool *sourceTool) error {
+	if tool.InputSchema == nil {
+		return fmt.Errorf("%s inputSchema must be a mapping", tool.Name)
+	}
+	if tool.OutputSchema == nil {
+		return fmt.Errorf("%s outputSchema must be a mapping", tool.Name)
+	}
+	schemaType, ok := tool.InputSchema["type"].(string)
+	if !ok || schemaType != "object" {
+		return fmt.Errorf("%s inputSchema type must be string object", tool.Name)
+	}
+
+	requiredValue, hasRequired := tool.InputSchema["required"]
+	if !hasRequired {
+		if tool.Name != "rmq.cluster.list" {
+			return fmt.Errorf("%s inputSchema must require cluster", tool.Name)
+		}
+		return nil
+	}
+	required, ok := requiredValue.([]any)
+	if !ok {
+		return fmt.Errorf("%s inputSchema required must be an array of strings", tool.Name)
+	}
+	hasCluster := false
+	for _, property := range required {
+		propertyName, ok := property.(string)
+		if !ok {
+			return fmt.Errorf("%s inputSchema required must be an array of strings", tool.Name)
+		}
+		if propertyName == "cluster" {
+			hasCluster = true
+		}
+	}
+	if tool.Name != "rmq.cluster.list" && !hasCluster {
+		return fmt.Errorf("%s inputSchema must require cluster", tool.Name)
 	}
 	return nil
 }
@@ -308,19 +529,6 @@ func validIdentifiers(value string, prerelease bool) bool {
 		}
 	}
 	return true
-}
-
-func schemaRequires(schema map[string]any, property string) bool {
-	required, ok := schema["required"].([]any)
-	if !ok {
-		return false
-	}
-	for _, item := range required {
-		if item == property {
-			return true
-		}
-	}
-	return false
 }
 
 func renderGo(catalog sourceCatalog, digest string) ([]byte, error) {
