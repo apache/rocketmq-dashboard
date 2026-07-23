@@ -27,6 +27,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -36,6 +37,11 @@ import (
 const apiVersion = "rmq.apache.org/v1alpha1"
 
 var tokenEnvPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+type stagedConfig struct {
+	path string
+	info os.FileInfo
+}
 
 // Config is the on-disk rmqctl configuration.
 type Config struct {
@@ -148,10 +154,7 @@ func Save(path string, cfg Config, force bool) error {
 func ensureParentDirectory(parent string) error {
 	info, err := os.Stat(parent)
 	if err == nil {
-		if !info.IsDir() {
-			return errors.New("config parent is not a directory")
-		}
-		return nil
+		return validateParentDirectory(info)
 	}
 	if !os.IsNotExist(err) {
 		return fmt.Errorf("inspect config directory: %w", err)
@@ -164,68 +167,120 @@ func ensureParentDirectory(parent string) error {
 	if err != nil {
 		return fmt.Errorf("inspect config directory: %w", err)
 	}
+	return validateParentDirectory(info)
+}
+
+func validateParentDirectory(info os.FileInfo) error {
 	if !info.IsDir() {
 		return errors.New("config parent is not a directory")
 	}
+	if runtime.GOOS != "windows" &&
+		info.Mode().Perm()&0022 != 0 &&
+		info.Mode()&os.ModeSticky == 0 {
+		return errors.New("config parent directory is group/world-writable without a sticky bit")
+	}
 	return nil
 }
 
-func writeExclusive(path string, contents []byte) error {
-	tempPath, err := writeTemp(path, contents)
+func writeExclusive(path string, contents []byte) (returnErr error) {
+	staged, err := writeTemp(path, contents)
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tempPath)
+	defer func() {
+		returnErr = errors.Join(returnErr, removeTemporaryConfig(staged.path))
+	}()
 
-	if err := os.Link(tempPath, path); err != nil {
+	if err := os.Link(staged.path, path); err != nil {
 		return fmt.Errorf("publish config without replacing existing target: %w", err)
 	}
-	if err := os.Remove(tempPath); err != nil {
-		return fmt.Errorf("remove temporary config after publication: %w", err)
+	if err := verifyPublishedConfig(staged.info, path); err != nil {
+		return errors.Join(err, removeInvalidPublication(path))
 	}
 	return nil
 }
 
-func writeAtomic(path string, contents []byte) error {
-	tempPath, err := writeTemp(path, contents)
+func writeAtomic(path string, contents []byte) (returnErr error) {
+	staged, err := writeTemp(path, contents)
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tempPath)
+	defer func() {
+		returnErr = errors.Join(returnErr, removeTemporaryConfig(staged.path))
+	}()
 
-	if err := os.Rename(tempPath, path); err != nil {
+	if err := os.Rename(staged.path, path); err != nil {
 		return fmt.Errorf("replace config: %w", err)
+	}
+	if err := verifyPublishedConfig(staged.info, path); err != nil {
+		return errors.Join(err, removeInvalidPublication(path))
 	}
 	return nil
 }
 
-func writeTemp(path string, contents []byte) (_ string, returnErr error) {
+func writeTemp(path string, contents []byte) (_ stagedConfig, returnErr error) {
 	parent := filepath.Dir(path)
 	file, err := os.CreateTemp(parent, "."+filepath.Base(path)+".tmp-*")
 	if err != nil {
-		return "", fmt.Errorf("create temporary config: %w", err)
+		return stagedConfig{}, fmt.Errorf("create temporary config: %w", err)
 	}
 	tempPath := file.Name()
+	closed := false
 	defer func() {
 		if returnErr != nil {
-			_ = file.Close()
-			_ = os.Remove(tempPath)
+			if !closed {
+				if err := file.Close(); err != nil {
+					returnErr = errors.Join(returnErr, fmt.Errorf("close temporary config during cleanup: %w", err))
+				}
+			}
+			returnErr = errors.Join(returnErr, removeTemporaryConfig(tempPath))
 		}
 	}()
 
 	if err := file.Chmod(0600); err != nil {
-		return "", fmt.Errorf("secure temporary config: %w", err)
+		return stagedConfig{}, fmt.Errorf("secure temporary config: %w", err)
 	}
 	if _, err := file.Write(contents); err != nil {
-		return "", fmt.Errorf("write temporary config: %w", err)
+		return stagedConfig{}, fmt.Errorf("write temporary config: %w", err)
 	}
 	if err := file.Sync(); err != nil {
-		return "", fmt.Errorf("sync temporary config: %w", err)
+		return stagedConfig{}, fmt.Errorf("sync temporary config: %w", err)
 	}
-	if err := file.Close(); err != nil {
-		return "", fmt.Errorf("close temporary config: %w", err)
+	info, err := file.Stat()
+	if err != nil {
+		return stagedConfig{}, fmt.Errorf("inspect temporary config: %w", err)
 	}
-	return tempPath, nil
+	err = file.Close()
+	closed = true
+	if err != nil {
+		return stagedConfig{}, fmt.Errorf("close temporary config: %w", err)
+	}
+	return stagedConfig{path: tempPath, info: info}, nil
+}
+
+func verifyPublishedConfig(expected os.FileInfo, path string) error {
+	actual, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("config publication integrity check failed: inspect target: %w", err)
+	}
+	if !os.SameFile(expected, actual) {
+		return errors.New("config publication integrity check failed: target identity does not match staged file")
+	}
+	return nil
+}
+
+func removeTemporaryConfig(path string) error {
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove temporary config: %w", err)
+	}
+	return nil
+}
+
+func removeInvalidPublication(path string) error {
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove invalid published config: %w", err)
+	}
+	return nil
 }
 
 // Validate checks configuration structure and endpoint safety.

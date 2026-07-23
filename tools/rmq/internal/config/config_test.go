@@ -532,6 +532,187 @@ func TestSaveCreatesPrivateLeafDirectory(t *testing.T) {
 	}
 }
 
+func TestSaveParentSafetyGate(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX directory mode gate")
+	}
+
+	const (
+		tokenEnv      = "RMQCTL_PARENT_GATE_TOKEN"
+		sentinelToken = "must-not-appear-in-parent-gate-error"
+	)
+	t.Setenv(tokenEnv, sentinelToken)
+	cfg := Default()
+	ctx := cfg.Contexts["default"]
+	ctx.TokenEnv = tokenEnv
+	cfg.Contexts["default"] = ctx
+
+	tests := []struct {
+		name    string
+		mode    os.FileMode
+		wantErr bool
+	}{
+		{name: "rejects non-sticky 0777", mode: 0777, wantErr: true},
+		{name: "accepts 0755", mode: 0755},
+		{name: "accepts 0700", mode: 0700},
+		{name: "accepts sticky 01777", mode: 0777 | os.ModeSticky},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			parent := filepath.Join(t.TempDir(), "parent")
+			if err := os.Mkdir(parent, 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(parent, test.mode); err != nil {
+				t.Fatal(err)
+			}
+			before, err := os.Stat(parent)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if test.mode&os.ModeSticky != 0 && before.Mode()&os.ModeSticky == 0 {
+				t.Skip("filesystem does not preserve the sticky bit")
+			}
+
+			path := filepath.Join(parent, "config.yaml")
+			err = Save(path, cfg, false)
+			if test.wantErr {
+				if err == nil {
+					t.Fatal("Save() error = nil, want unsafe-parent rejection")
+				}
+				if strings.Contains(err.Error(), sentinelToken) {
+					t.Fatal("Save() error contains token value")
+				}
+			} else if err != nil {
+				t.Fatalf("Save() error = %v", err)
+			}
+
+			after, err := os.Stat(parent)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if after.Mode().Perm() != before.Mode().Perm() ||
+				after.Mode()&os.ModeSticky != before.Mode()&os.ModeSticky {
+				t.Fatalf("parent mode changed from %v to %v", before.Mode(), after.Mode())
+			}
+			entries, err := os.ReadDir(parent)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if test.wantErr {
+				if len(entries) != 0 {
+					t.Fatalf("unsafe parent contains publication artifacts: %v", entries)
+				}
+			} else if len(entries) != 1 || entries[0].Name() != filepath.Base(path) {
+				t.Fatalf("safe parent contents = %v, want only config", entries)
+			}
+		})
+	}
+}
+
+func TestSaveDetectsTemporaryPathSwap(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires unlinking an open file")
+	}
+
+	for _, force := range []bool{false, true} {
+		t.Run(fmt.Sprintf("force=%t", force), func(t *testing.T) {
+			cfg := Default()
+			ctx := cfg.Contexts["default"]
+			ctx.CAFile = "/" + strings.Repeat("a", 32<<20)
+			cfg.Contexts["default"] = ctx
+
+			dir := t.TempDir()
+			if err := os.Chmod(dir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(dir, "config.yaml")
+			saveResult := make(chan error, 1)
+			go func() {
+				saveResult <- Save(path, cfg, force)
+			}()
+
+			tempPath := waitForTemporaryConfig(t, dir, path, saveResult)
+			if err := os.Remove(tempPath); err != nil {
+				t.Fatalf("remove original temporary config: %v", err)
+			}
+			const substituted = "attacker substituted this file"
+			file, err := os.OpenFile(tempPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+			if err != nil {
+				t.Fatalf("create substituted temporary config: %v", err)
+			}
+			if _, err := file.WriteString(substituted); err != nil {
+				_ = file.Close()
+				t.Fatal(err)
+			}
+			if err := file.Close(); err != nil {
+				t.Fatal(err)
+			}
+
+			err = <-saveResult
+			if err == nil {
+				t.Fatal("Save() error = nil, want publication integrity rejection")
+			}
+			if !strings.Contains(err.Error(), "publication integrity") {
+				t.Fatalf("Save() error = %q, want publication integrity error", err)
+			}
+			if got, err := os.ReadFile(path); err == nil {
+				if string(got) == substituted {
+					t.Fatal("Save() left substituted target published")
+				}
+				t.Fatalf("unexpected published target %q", got)
+			} else if !os.IsNotExist(err) {
+				t.Fatalf("inspect target: %v", err)
+			}
+		})
+	}
+}
+
+func TestSaveJoinsTemporaryCleanupFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires unlinking an open file")
+	}
+
+	cfg := Default()
+	ctx := cfg.Contexts["default"]
+	ctx.CAFile = "/" + strings.Repeat("a", 8<<20)
+	cfg.Contexts["default"] = ctx
+
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "config.yaml")
+	saveResult := make(chan error, 1)
+	go func() {
+		saveResult <- Save(path, cfg, false)
+	}()
+
+	tempPath := waitForTemporaryConfig(t, dir, path, saveResult)
+	if err := os.Remove(tempPath); err != nil {
+		t.Fatalf("remove original temporary config: %v", err)
+	}
+	if err := os.Mkdir(tempPath, 0700); err != nil {
+		t.Fatalf("replace temporary config with directory: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.RemoveAll(tempPath)
+	})
+	if err := os.WriteFile(filepath.Join(tempPath, "child"), []byte("block cleanup"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	err := <-saveResult
+	if err == nil {
+		t.Fatal("Save() error = nil, want publish and cleanup errors")
+	}
+	for _, message := range []string{"publish config", "remove temporary config"} {
+		if !strings.Contains(err.Error(), message) {
+			t.Fatalf("Save() error = %q, want %q", err, message)
+		}
+	}
+}
+
 func TestSaveWithoutForcePublishesCompleteFileAtomically(t *testing.T) {
 	cfg := Default()
 	ctx := cfg.Contexts["default"]
@@ -794,4 +975,30 @@ func cloneConfig(cfg Config) Config {
 		clone.Contexts[name] = ctx
 	}
 	return clone
+}
+
+func waitForTemporaryConfig(t *testing.T, dir, target string, saveResult <-chan error) string {
+	t.Helper()
+	tempPrefix := "." + filepath.Base(target) + ".tmp-"
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, entry := range entries {
+			if strings.HasPrefix(entry.Name(), tempPrefix) {
+				return filepath.Join(dir, entry.Name())
+			}
+		}
+		select {
+		case err := <-saveResult:
+			t.Fatalf("Save() completed before temporary config could be swapped: %v", err)
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for temporary config")
+		}
+		runtime.Gosched()
+	}
 }
