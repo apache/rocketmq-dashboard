@@ -65,6 +65,7 @@ public final class InMemoryStudioSessionStore implements StudioSessionStore {
     private final ReentrantLock lock = new ReentrantLock();
     private final Map<UUID, TokenDigest> digestsById = new HashMap<>();
     private final Map<String, ArrayDeque<UUID>> sessionsByUser = new HashMap<>();
+    private final Map<UUID, ExpiryEntry> expiryById = new HashMap<>();
     private final PriorityQueue<ExpiryEntry> expiryQueue = new PriorityQueue<>(EXPIRY_ORDER);
 
     private long nextSequence;
@@ -145,15 +146,7 @@ public final class InMemoryStudioSessionStore implements StudioSessionStore {
         }
         lock.lock();
         try {
-            TokenDigest digest = digestsById.get(sessionId);
-            if (digest != null) {
-                Session session = sessions.get(digest);
-                if (session != null && session.id().equals(sessionId)) {
-                    removeActive(digest, session);
-                } else {
-                    digestsById.remove(sessionId);
-                }
-            }
+            removeById(sessionId);
         } finally {
             lock.unlock();
         }
@@ -166,15 +159,12 @@ public final class InMemoryStudioSessionStore implements StudioSessionStore {
         }
         lock.lock();
         try {
-            ArrayDeque<UUID> sessionIds = sessionsByUser.remove(username);
+            ArrayDeque<UUID> sessionIds = sessionsByUser.get(username);
             if (sessionIds == null) {
                 return;
             }
-            for (UUID sessionId : sessionIds) {
-                TokenDigest digest = digestsById.remove(sessionId);
-                if (digest != null) {
-                    sessions.remove(digest);
-                }
+            for (UUID sessionId : new ArrayList<>(sessionIds)) {
+                removeById(sessionId);
             }
         } finally {
             lock.unlock();
@@ -266,12 +256,15 @@ public final class InMemoryStudioSessionStore implements StudioSessionStore {
             session.username(),
             ignored -> new ArrayDeque<>()
         ).addLast(session.id());
-        expiryQueue.add(new ExpiryEntry(
+        ExpiryEntry expiryEntry = new ExpiryEntry(
             candidateDigest,
             session.id(),
+            session.username(),
             session.expiresAt(),
             session.sequence()
-        ));
+        );
+        expiryById.put(session.id(), expiryEntry);
+        expiryQueue.add(expiryEntry);
         nextSequence = candidateSequence + 1;
         return new IssuedSession(rawToken, session);
     }
@@ -280,15 +273,7 @@ public final class InMemoryStudioSessionStore implements StudioSessionStore {
         ArrayDeque<UUID> userSessions = sessionsByUser.get(username);
         while (userSessions != null
             && userSessions.size() >= properties.maxSessionsPerUser()) {
-            UUID oldestId = userSessions.peekFirst();
-            TokenDigest oldestDigest = digestsById.get(oldestId);
-            Session oldest = oldestDigest == null ? null : sessions.get(oldestDigest);
-            if (oldest == null) {
-                userSessions.removeFirst();
-                digestsById.remove(oldestId);
-            } else {
-                removeActive(oldestDigest, oldest);
-            }
+            removeById(userSessions.peekFirst());
             userSessions = sessionsByUser.get(username);
         }
     }
@@ -307,8 +292,12 @@ public final class InMemoryStudioSessionStore implements StudioSessionStore {
             }
             expiryQueue.remove();
             examined++;
+            expiryById.remove(entry.sessionId(), entry);
             if (!stale) {
                 removeActive(entry.digest(), current);
+            } else {
+                digestsById.remove(entry.sessionId(), entry.digest());
+                removeUserIndex(entry.username(), entry.sessionId());
             }
         }
         cleanupObserver.accept(examined);
@@ -319,11 +308,34 @@ public final class InMemoryStudioSessionStore implements StudioSessionStore {
             return;
         }
         digestsById.remove(session.id(), digest);
-        ArrayDeque<UUID> userSessions = sessionsByUser.get(session.username());
+        ExpiryEntry expiryEntry = expiryById.remove(session.id());
+        if (expiryEntry != null) {
+            expiryQueue.remove(expiryEntry);
+        }
+        removeUserIndex(session.username(), session.id());
+    }
+
+    private void removeById(UUID sessionId) {
+        TokenDigest digest = digestsById.get(sessionId);
+        Session session = digest == null ? null : sessions.get(digest);
+        if (session != null && session.id().equals(sessionId)) {
+            removeActive(digest, session);
+            return;
+        }
+        digestsById.remove(sessionId);
+        ExpiryEntry expiryEntry = expiryById.remove(sessionId);
+        if (expiryEntry != null) {
+            expiryQueue.remove(expiryEntry);
+            removeUserIndex(expiryEntry.username(), sessionId);
+        }
+    }
+
+    private void removeUserIndex(String username, UUID sessionId) {
+        ArrayDeque<UUID> userSessions = sessionsByUser.get(username);
         if (userSessions != null) {
-            userSessions.remove(session.id());
+            userSessions.remove(sessionId);
             if (userSessions.isEmpty()) {
-                sessionsByUser.remove(session.username());
+                sessionsByUser.remove(username);
             }
         }
     }
@@ -364,12 +376,17 @@ public final class InMemoryStudioSessionStore implements StudioSessionStore {
                 session.username(),
                 ignored -> new ArrayDeque<>()
             ).addLast(session.id());
-            expiryQueue.add(new ExpiryEntry(
+            ExpiryEntry expiryEntry = new ExpiryEntry(
                 digest,
                 session.id(),
+                session.username(),
                 session.expiresAt(),
                 session.sequence()
-            ));
+            );
+            if (expiryById.put(session.id(), expiryEntry) != null) {
+                throw new IllegalArgumentException("Invalid injected session state");
+            }
+            expiryQueue.add(expiryEntry);
         }
         long highestSequence = entries.get(entries.size() - 1).getValue().sequence();
         nextSequence = highestSequence == Long.MAX_VALUE
@@ -384,6 +401,7 @@ public final class InMemoryStudioSessionStore implements StudioSessionStore {
     private record ExpiryEntry(
         TokenDigest digest,
         UUID sessionId,
+        String username,
         Instant expiresAt,
         long sequence
     ) {

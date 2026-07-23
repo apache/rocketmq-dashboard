@@ -60,5 +60,18 @@ public interface StudioSessionStore {
             Objects.requireNonNull(issuedAt, "issuedAt");
             Objects.requireNonNull(expiresAt, "expiresAt");
         }
+
+        @Override
+        public String toString() {
+            return "Session[id=" + id
+                + ", username=" + username
+                + ", role=" + role
+                + ", userFingerprint=<redacted>"
+                + ", registryRevision=" + registryRevision
+                + ", issuedAt=" + issuedAt
+                + ", expiresAt=" + expiresAt
+                + ", sequence=" + sequence
+                + "]";
+        }
     }
 }

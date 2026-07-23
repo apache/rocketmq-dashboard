@@ -404,22 +404,48 @@ class InMemoryStudioSessionStoreTest {
     }
 
     @Test
-    void staleRevocationEntriesCountAgainstTheCleanupBudget() {
+    void deliberateBackingMapCorruptionLeavesBoundedDefensiveStaleCleanup() {
         MutableClock clock = new MutableClock(START);
         Map<TokenDigest, Session> backing = new HashMap<>();
         List<Integer> cleanupCounts = new ArrayList<>();
         InMemoryStudioSessionStore store = cleanupStore(clock, backing, cleanupCounts);
-        List<IssuedSession> issued = new ArrayList<>();
         for (int index = 0; index < 70; index++) {
-            issued.add(store.issue(user("revoked-" + index), 1));
+            store.issue(user("injected-stale-" + index), 1);
         }
-        issued.forEach(session -> store.revoke(session.session().id()));
+        backing.clear();
         cleanupCounts.clear();
 
         store.resolve("A".repeat(43));
         store.resolve("B".repeat(43));
 
         assertThat(cleanupCounts).containsExactly(64, 6);
+        assertThat(backing).isEmpty();
+    }
+
+    @Test
+    void revocationChurnEagerlyUnlinksExpiryEntriesBehindAnEarlierLiveHead() {
+        MutableClock clock = new MutableClock(START);
+        Map<TokenDigest, Session> backing = new HashMap<>();
+        List<Integer> cleanupCounts = new ArrayList<>();
+        InMemoryStudioSessionStore store = cleanupStore(clock, backing, cleanupCounts);
+        IssuedSession retained = store.issue(user("retained-user"), 1);
+        List<IssuedSession> revoked = new ArrayList<>();
+        for (int index = 0; index < 300; index++) {
+            IssuedSession issued = store.issue(user("churn-user"), 1);
+            revoked.add(issued);
+            store.revoke(issued.session().id());
+        }
+
+        assertThat(backing).hasSize(1).containsValue(retained.session());
+        assertThat(revoked).allSatisfy(
+            item -> assertThat(store.resolve(item.token())).isEmpty()
+        );
+        cleanupCounts.clear();
+        clock.advance(Duration.ofMinutes(5));
+
+        assertThat(store.resolve("A".repeat(43))).isEmpty();
+
+        assertThat(cleanupCounts).containsExactly(1);
         assertThat(backing).isEmpty();
     }
 
@@ -607,21 +633,28 @@ class InMemoryStudioSessionStoreTest {
     }
 
     @Test
-    void sessionRecordsRejectNullComponentsAndDoNotExposeTheTokenInText() {
+    void sessionRecordsRejectNullComponentsAndRedactTokenAndFingerprintInText() {
         UUID id = UUID.randomUUID();
+        String fingerprintMarker = "unique-fingerprint-marker";
+        String rawTokenMarker = "unique-raw-token-marker";
         Session session = new Session(
             id,
             "record-user",
             Role.USER,
-            "fingerprint",
+            fingerprintMarker,
             1,
             START,
             START.plusSeconds(300),
             1
         );
-        IssuedSession issued = new IssuedSession("secret-token-marker", session);
+        IssuedSession issued = new IssuedSession(rawTokenMarker, session);
 
-        assertThat(issued.toString()).doesNotContain("secret-token-marker");
+        assertThat(session.toString())
+            .doesNotContain(rawTokenMarker, fingerprintMarker)
+            .contains("userFingerprint=<redacted>");
+        assertThat(issued.toString())
+            .doesNotContain(rawTokenMarker, fingerprintMarker)
+            .contains("userFingerprint=<redacted>");
         assertThatThrownBy(() -> new IssuedSession(null, session))
             .isInstanceOf(NullPointerException.class);
         assertThatThrownBy(() -> new IssuedSession("token", null))
