@@ -45,9 +45,9 @@ import {
 const { Text } = Typography;
 
 /* ─── Helpers ─── */
-const typeLabel: Record<string, { text: string; color: string }> = {
-  PROXY: { text: 'Proxy 模式', color: 'blue' },
-  DIRECT: { text: 'Direct 模式', color: 'orange' },
+const typeLabel: Record<string, { textKey: string; color: string }> = {
+  PROXY: { textKey: 'instance.proxyMode', color: 'blue' },
+  DIRECT: { textKey: 'instance.directMode', color: 'orange' },
 };
 
 /* ═══════════════════════════════════════════
@@ -169,8 +169,8 @@ const InstancePage = () => {
       width: 130,
       sorter: (a, b) => a.type.localeCompare(b.type),
       render: (type: string) => {
-        const t = typeLabel[type] || { text: type, color: 'default' };
-        return <Tag color={t.color}>{t.text}</Tag>;
+        const cfg = typeLabel[type] || { textKey: type, color: 'default' };
+        return <Tag color={cfg.color}>{t(cfg.textKey)}</Tag>;
       },
     },
     {
