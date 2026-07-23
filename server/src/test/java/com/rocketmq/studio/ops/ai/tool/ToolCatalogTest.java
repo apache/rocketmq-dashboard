@@ -22,6 +22,8 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -86,6 +88,23 @@ class ToolCatalogTest {
         assertThatThrownBy(() -> ToolCatalog.load(incompatible, canonicalSchema()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("major versions must match");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void definitionsAreDeeplyImmutableAfterStartupValidation() {
+        ToolDefinition capabilities = ToolCatalog.load(canonicalCatalog(), canonicalSchema())
+                .find("rmq.capabilities")
+                .orElseThrow();
+        Map<String, Object> properties =
+                (Map<String, Object>) capabilities.inputSchema().get("properties");
+        List<String> required =
+                (List<String>) capabilities.inputSchema().get("required");
+
+        assertThatThrownBy(() -> properties.put("endpoint", Map.of("type", "string")))
+                .isInstanceOf(UnsupportedOperationException.class);
+        assertThatThrownBy(() -> required.add("endpoint"))
+                .isInstanceOf(UnsupportedOperationException.class);
     }
 
     private static Resource canonicalCatalog() {

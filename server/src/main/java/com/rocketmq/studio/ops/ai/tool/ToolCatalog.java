@@ -80,7 +80,7 @@ public class ToolCatalog {
 
     static ToolCatalog load(Resource catalogResource, Resource schemaResource) {
         try {
-            byte[] catalogBytes = catalogResource.getInputStream().readAllBytes();
+            byte[] catalogBytes = catalogResource.getContentAsByteArray();
             String catalogYaml = new String(catalogBytes, StandardCharsets.UTF_8);
             String schemaJson = schemaResource.getContentAsString(StandardCharsets.UTF_8);
 

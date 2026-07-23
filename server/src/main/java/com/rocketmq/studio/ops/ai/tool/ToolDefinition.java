@@ -16,6 +16,8 @@
  */
 package com.rocketmq.studio.ops.ai.tool;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,12 +37,37 @@ public record ToolDefinition(
 
     public ToolDefinition {
         requiredCapabilities = List.copyOf(requiredCapabilities);
-        inputSchema = Map.copyOf(new LinkedHashMap<>(inputSchema));
-        outputSchema = Map.copyOf(new LinkedHashMap<>(outputSchema));
+        inputSchema = immutableMap(inputSchema);
+        outputSchema = immutableMap(outputSchema);
     }
 
     public String getName() {
         return name;
+    }
+
+    private static Map<String, Object> immutableMap(Map<String, Object> source) {
+        Map<String, Object> copy = new LinkedHashMap<>();
+        source.forEach((key, value) -> copy.put(key, immutableValue(value)));
+        return Collections.unmodifiableMap(copy);
+    }
+
+    private static Object immutableValue(Object value) {
+        if (value instanceof Map<?, ?> nestedMap) {
+            Map<String, Object> copy = new LinkedHashMap<>();
+            nestedMap.forEach((key, nestedValue) -> {
+                if (!(key instanceof String stringKey)) {
+                    throw new IllegalArgumentException("JSON Schema keys must be strings");
+                }
+                copy.put(stringKey, immutableValue(nestedValue));
+            });
+            return Collections.unmodifiableMap(copy);
+        }
+        if (value instanceof List<?> nestedList) {
+            List<Object> copy = new ArrayList<>(nestedList.size());
+            nestedList.forEach(item -> copy.add(immutableValue(item)));
+            return Collections.unmodifiableList(copy);
+        }
+        return value;
     }
 
     public record Cli(String resource, String verb) {
