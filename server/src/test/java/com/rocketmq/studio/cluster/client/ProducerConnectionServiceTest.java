@@ -45,6 +45,7 @@ class ProducerConnectionServiceTest {
                 .clientId("producer-1")
                 .type(ClientType.Producer)
                 .groupOrTopic("order-topic")
+                .producerGroup("pg-order")
                 .address("10.0.0.1:38888")
                 .language(ClientLanguage.Java)
                 .version("5.1.0")
@@ -53,6 +54,7 @@ class ProducerConnectionServiceTest {
                 .clientId("producer-2")
                 .type(ClientType.Producer)
                 .groupOrTopic("payment-topic")
+                .producerGroup("pg-payment")
                 .address("10.0.0.2:38888")
                 .language(ClientLanguage.Go)
                 .version("5.0.0")
@@ -75,7 +77,8 @@ class ProducerConnectionServiceTest {
         ClientConnectionVO producer = ClientConnectionVO.builder()
                 .clientId("producer-1")
                 .type(ClientType.Producer)
-                .groupOrTopic("pg-order")
+                .groupOrTopic("order-topic")
+                .producerGroup("pg-order")
                 .address("10.0.0.1:38888")
                 .language(ClientLanguage.Java)
                 .version("5.1.0")
@@ -86,5 +89,23 @@ class ProducerConnectionServiceTest {
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getClientId()).isEqualTo("producer-1");
+    }
+
+    @Test
+    void listConnectionsShouldRequireProducerGroupWhenBothFiltersAreProvided() {
+        ClientConnectionVO producer = ClientConnectionVO.builder()
+                .clientId("producer-1")
+                .type(ClientType.Producer)
+                .groupOrTopic("order-topic")
+                .producerGroup("pg-order")
+                .address("10.0.0.1:38888")
+                .language(ClientLanguage.Java)
+                .version("5.1.0")
+                .build();
+        when(clientService.listConnections(null, ClientType.Producer.name())).thenReturn(List.of(producer));
+
+        List<ProducerConnectionVO> result = producerConnectionService.listConnections("order-topic", "wrong-group");
+
+        assertThat(result).isEmpty();
     }
 }

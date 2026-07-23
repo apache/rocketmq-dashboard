@@ -39,11 +39,11 @@ public class ProducerConnectionService {
     }
 
     private boolean matchesFilter(ClientConnectionVO connection, String topic, String producerGroup) {
-        if (hasText(topic)) {
-            return topic.equals(connection.getGroupOrTopic());
+        if (hasText(topic) && !topic.equals(connection.getGroupOrTopic())) {
+            return false;
         }
-        if (hasText(producerGroup)) {
-            return producerGroup.equals(connection.getGroupOrTopic());
+        if (hasText(producerGroup) && !producerGroup.equals(connection.getProducerGroup())) {
+            return false;
         }
         return true;
     }
