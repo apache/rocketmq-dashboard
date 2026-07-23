@@ -18,13 +18,18 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
+
+	"go.yaml.in/yaml/v3"
 )
 
 func TestDefault(t *testing.T) {
@@ -284,6 +289,39 @@ func TestValidateEncodedHashIsRejectedAsPath(t *testing.T) {
 	}
 }
 
+func TestValidateServerPorts(t *testing.T) {
+	for _, server := range []string{
+		"https://example.com",
+		"https://example.com:1",
+		"https://example.com:443",
+		"https://example.com:65535",
+		"https://[::1]:65535",
+	} {
+		t.Run("accepts "+server, func(t *testing.T) {
+			cfg := configWithContext(Context{Server: server, Output: "table"})
+			if err := Validate(cfg); err != nil {
+				t.Fatalf("Validate() error = %v", err)
+			}
+		})
+	}
+
+	for _, server := range []string{
+		"https://example.com:",
+		"https://example.com:0",
+		"https://example.com:65536",
+		"https://example.com:99999",
+		"https://example.com:bad",
+		"https://[::1]:",
+	} {
+		t.Run("rejects "+server, func(t *testing.T) {
+			cfg := configWithContext(Context{Server: server, Output: "table"})
+			if err := Validate(cfg); err == nil {
+				t.Fatal("Validate() error = nil, want rejection")
+			}
+		})
+	}
+}
+
 func TestValidateCAFile(t *testing.T) {
 	cfg := configWithContext(Context{
 		Server: "https://rmq.example.com",
@@ -414,6 +452,192 @@ func TestSaveOverwriteSemanticsAndAtomicPermissions(t *testing.T) {
 		}
 	}
 
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != filepath.Base(path) {
+		t.Fatalf("temporary files left behind: %v", entries)
+	}
+}
+
+func TestSavePreservesExistingParentPermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix permission semantics")
+	}
+
+	tests := map[string]func(t *testing.T, path string) error{
+		"successful save": func(_ *testing.T, path string) error {
+			return Save(path, Default(), false)
+		},
+		"force false existing target": func(t *testing.T, path string) error {
+			t.Helper()
+			if err := os.WriteFile(path, []byte("existing"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			return Save(path, Default(), false)
+		},
+		"non-regular target": func(t *testing.T, path string) error {
+			t.Helper()
+			if err := os.Mkdir(path, 0700); err != nil {
+				t.Fatal(err)
+			}
+			return Save(path, Default(), true)
+		},
+	}
+
+	for name, action := range tests {
+		t.Run(name, func(t *testing.T) {
+			parent := filepath.Join(t.TempDir(), "existing-parent")
+			if err := os.Mkdir(parent, 0755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(parent, 0755); err != nil {
+				t.Fatal(err)
+			}
+
+			err := action(t, filepath.Join(parent, "config.yaml"))
+			if name == "successful save" && err != nil {
+				t.Fatalf("Save() error = %v", err)
+			}
+			if name != "successful save" && err == nil {
+				t.Fatal("Save() error = nil, want rejection")
+			}
+
+			info, err := os.Stat(parent)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if gotMode := info.Mode().Perm(); gotMode != 0755 {
+				t.Fatalf("parent permissions = %04o, want unchanged 0755", gotMode)
+			}
+		})
+	}
+}
+
+func TestSaveCreatesPrivateLeafDirectory(t *testing.T) {
+	parent := filepath.Join(t.TempDir(), "missing", "leaf")
+	path := filepath.Join(parent, "config.yaml")
+	if err := Save(path, Default(), false); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	if runtime.GOOS != "windows" {
+		info, err := os.Stat(parent)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if gotMode := info.Mode().Perm(); gotMode&0077 != 0 {
+			t.Fatalf("leaf directory permissions = %04o, want no group/other bits", gotMode)
+		}
+	}
+}
+
+func TestSaveWithoutForcePublishesCompleteFileAtomically(t *testing.T) {
+	cfg := Default()
+	ctx := cfg.Contexts["default"]
+	ctx.CAFile = "/" + strings.Repeat("a", 8<<20)
+	cfg.Contexts["default"] = ctx
+	want, err := yaml.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	for attempt := 0; attempt < 10; attempt++ {
+		path := filepath.Join(dir, fmt.Sprintf("config-%d.yaml", attempt))
+		saveResult := make(chan error, 1)
+		go func() {
+			saveResult <- Save(path, cfg, false)
+		}()
+
+		var firstVisible []byte
+		deadline := time.Now().Add(10 * time.Second)
+		for {
+			firstVisible, err = os.ReadFile(path)
+			if err == nil {
+				break
+			}
+			if !os.IsNotExist(err) {
+				t.Fatalf("ReadFile() error = %v", err)
+			}
+			if time.Now().After(deadline) {
+				t.Fatal("timed out waiting for config publication")
+			}
+			runtime.Gosched()
+		}
+		if err := <-saveResult; err != nil {
+			t.Fatalf("Save() error = %v", err)
+		}
+		if !bytes.Equal(firstVisible, want) {
+			t.Fatalf("first visible config had %d bytes, want complete %d bytes", len(firstVisible), len(want))
+		}
+	}
+}
+
+func TestSaveWithoutForceDoesNotReplaceConcurrentPublisher(t *testing.T) {
+	cfg := Default()
+	ctx := cfg.Contexts["default"]
+	ctx.CAFile = "/" + strings.Repeat("a", 16<<20)
+	cfg.Contexts["default"] = ctx
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	saveResult := make(chan error, 1)
+	go func() {
+		saveResult <- Save(path, cfg, false)
+	}()
+
+	tempPrefix := "." + filepath.Base(path) + ".tmp-"
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		foundTemp := false
+		for _, entry := range entries {
+			if strings.HasPrefix(entry.Name(), tempPrefix) {
+				foundTemp = true
+				break
+			}
+		}
+		if foundTemp {
+			break
+		}
+		select {
+		case err := <-saveResult:
+			t.Fatalf("Save() completed before atomic publication could be contested: %v", err)
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for temporary config")
+		}
+		runtime.Gosched()
+	}
+
+	const competitor = "concurrent publisher"
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		t.Fatalf("create competing config: %v", err)
+	}
+	if _, err := file.WriteString(competitor); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := <-saveResult; err == nil {
+		t.Fatal("Save() error = nil, want no-replace publication failure")
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != competitor {
+		t.Fatalf("competing config changed to %q", got)
+	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatal(err)

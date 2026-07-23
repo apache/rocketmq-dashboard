@@ -27,7 +27,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
+	"strconv"
 	"strings"
 
 	"go.yaml.in/yaml/v3"
@@ -120,25 +120,8 @@ func Save(path string, cfg Config, force bool) error {
 	}
 
 	parent := filepath.Dir(path)
-	if _, err := os.Stat(parent); err != nil {
-		if !os.IsNotExist(err) {
-			return fmt.Errorf("inspect config directory: %w", err)
-		}
-	}
-	if err := os.MkdirAll(parent, 0700); err != nil {
-		return fmt.Errorf("create config directory: %w", err)
-	}
-	parentInfo, err := os.Stat(parent)
-	if err != nil {
-		return fmt.Errorf("inspect config directory: %w", err)
-	}
-	if !parentInfo.IsDir() {
-		return errors.New("config parent is not a directory")
-	}
-	if runtime.GOOS != "windows" && parentInfo.Mode().Perm()&0077 != 0 {
-		if err := os.Chmod(parent, 0700); err != nil {
-			return fmt.Errorf("secure config directory: %w", err)
-		}
+	if err := ensureParentDirectory(parent); err != nil {
+		return err
 	}
 
 	info, err := os.Lstat(path)
@@ -162,40 +145,65 @@ func Save(path string, cfg Config, force bool) error {
 	return writeAtomic(path, contents)
 }
 
-func writeExclusive(path string, contents []byte) (returnErr error) {
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return fmt.Errorf("create config: %w", err)
-	}
-	defer func() {
-		if returnErr != nil {
-			_ = os.Remove(path)
+func ensureParentDirectory(parent string) error {
+	info, err := os.Stat(parent)
+	if err == nil {
+		if !info.IsDir() {
+			return errors.New("config parent is not a directory")
 		}
-	}()
+		return nil
+	}
+	if !os.IsNotExist(err) {
+		return fmt.Errorf("inspect config directory: %w", err)
+	}
 
-	if err := file.Chmod(0600); err != nil {
-		_ = file.Close()
-		return fmt.Errorf("secure config file: %w", err)
+	if err := os.MkdirAll(parent, 0700); err != nil {
+		return fmt.Errorf("create config directory: %w", err)
 	}
-	if _, err := file.Write(contents); err != nil {
-		_ = file.Close()
-		return fmt.Errorf("write config: %w", err)
+	info, err = os.Stat(parent)
+	if err != nil {
+		return fmt.Errorf("inspect config directory: %w", err)
 	}
-	if err := file.Sync(); err != nil {
-		_ = file.Close()
-		return fmt.Errorf("sync config: %w", err)
-	}
-	if err := file.Close(); err != nil {
-		return fmt.Errorf("close config: %w", err)
+	if !info.IsDir() {
+		return errors.New("config parent is not a directory")
 	}
 	return nil
 }
 
-func writeAtomic(path string, contents []byte) (returnErr error) {
+func writeExclusive(path string, contents []byte) error {
+	tempPath, err := writeTemp(path, contents)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tempPath)
+
+	if err := os.Link(tempPath, path); err != nil {
+		return fmt.Errorf("publish config without replacing existing target: %w", err)
+	}
+	if err := os.Remove(tempPath); err != nil {
+		return fmt.Errorf("remove temporary config after publication: %w", err)
+	}
+	return nil
+}
+
+func writeAtomic(path string, contents []byte) error {
+	tempPath, err := writeTemp(path, contents)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tempPath)
+
+	if err := os.Rename(tempPath, path); err != nil {
+		return fmt.Errorf("replace config: %w", err)
+	}
+	return nil
+}
+
+func writeTemp(path string, contents []byte) (_ string, returnErr error) {
 	parent := filepath.Dir(path)
 	file, err := os.CreateTemp(parent, "."+filepath.Base(path)+".tmp-*")
 	if err != nil {
-		return fmt.Errorf("create temporary config: %w", err)
+		return "", fmt.Errorf("create temporary config: %w", err)
 	}
 	tempPath := file.Name()
 	defer func() {
@@ -206,21 +214,18 @@ func writeAtomic(path string, contents []byte) (returnErr error) {
 	}()
 
 	if err := file.Chmod(0600); err != nil {
-		return fmt.Errorf("secure temporary config: %w", err)
+		return "", fmt.Errorf("secure temporary config: %w", err)
 	}
 	if _, err := file.Write(contents); err != nil {
-		return fmt.Errorf("write temporary config: %w", err)
+		return "", fmt.Errorf("write temporary config: %w", err)
 	}
 	if err := file.Sync(); err != nil {
-		return fmt.Errorf("sync temporary config: %w", err)
+		return "", fmt.Errorf("sync temporary config: %w", err)
 	}
 	if err := file.Close(); err != nil {
-		return fmt.Errorf("close temporary config: %w", err)
+		return "", fmt.Errorf("close temporary config: %w", err)
 	}
-	if err := os.Rename(tempPath, path); err != nil {
-		return fmt.Errorf("replace config: %w", err)
-	}
-	return nil
+	return tempPath, nil
 }
 
 // Validate checks configuration structure and endpoint safety.
@@ -277,6 +282,15 @@ func validateContext(ctx Context) error {
 	}
 	if endpoint.Path != "" && endpoint.Path != "/" {
 		return errors.New("server path must be empty or root")
+	}
+	if strings.HasSuffix(endpoint.Host, ":") {
+		return errors.New("server port must not be empty")
+	}
+	if port := endpoint.Port(); port != "" {
+		number, err := strconv.ParseUint(port, 10, 16)
+		if err != nil || number == 0 {
+			return errors.New("server port must be an integer from 1 through 65535")
+		}
 	}
 
 	if endpoint.Scheme == "http" && !isLoopbackHost(endpoint.Hostname()) {
