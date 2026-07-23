@@ -33,7 +33,17 @@ describe('Producer API', () => {
     vi.unstubAllGlobals();
   });
 
-  it('fetches topic list sorted alphabetically', async () => {
+  it('fetches Studio topic records sorted alphabetically', async () => {
+    mock.onGet('/topics').reply(200, {
+      code: 200,
+      data: [{ name: 'order-events' }, { name: 'user-signup' }, { name: 'batch-process' }],
+    });
+
+    const result = await fetchTopicList();
+    expect(result).toEqual(['batch-process', 'order-events', 'user-signup']);
+  });
+
+  it('keeps compatibility with legacy topicList responses', async () => {
     mock.onGet('/topics').reply(200, {
       topicList: ['order-events', 'user-signup', 'batch-process'],
     });
