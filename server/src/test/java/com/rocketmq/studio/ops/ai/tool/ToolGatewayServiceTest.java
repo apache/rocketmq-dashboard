@@ -153,6 +153,25 @@ class ToolGatewayServiceTest {
     }
 
     @Test
+    void rejectsCapabilitiesExecutionWhenClusterTypeIsMissing() {
+        when(clusterService.getCluster("unknown")).thenReturn(cluster("unknown", null));
+
+        assertThatThrownBy(() -> gateway.execute(
+                "rmq.capabilities", Map.of("cluster", "unknown")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Cluster type is unavailable");
+    }
+
+    @Test
+    void rejectsClusterListEntriesWithMissingTypeUsingAStableError() {
+        when(clusterService.listClusters()).thenReturn(List.of(cluster("unknown", null)));
+
+        assertThatThrownBy(() -> gateway.execute("rmq.cluster.list", Map.of()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Cluster type is unavailable");
+    }
+
+    @Test
     void rejectsCapabilitiesWithoutRequiredClusterBeforeHandlerRuns() {
         assertThatThrownBy(() -> gateway.execute("rmq.capabilities", Map.of()))
                 .isInstanceOf(BusinessException.class)
@@ -203,6 +222,51 @@ class ToolGatewayServiceTest {
         assertThatThrownBy(() -> gateway(catalog, clusterListHandler))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("missing handler");
+    }
+
+    @Test
+    void failsStartupWhenToolSchemaContainsAnUnresolvedReference() throws IOException {
+        String yaml = canonicalCatalogText().replace(
+                """
+                            inputSchema:
+                              type: object
+                              additionalProperties: false
+                        """,
+                """
+                            inputSchema:
+                              $ref: '#/missing'
+                        """);
+        ToolCatalog invalidCatalog = ToolCatalog.load(
+                new ByteArrayResource(yaml.getBytes(StandardCharsets.UTF_8)),
+                new ClassPathResource("tool-catalog/rmq-tools.schema.json"));
+
+        assertThatThrownBy(() -> gateway(
+                invalidCatalog, clusterListHandler, capabilitiesHandler))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("input schema")
+                .hasMessageContaining("rmq.cluster.list");
+    }
+
+    @Test
+    void failsStartupWhenToolSchemaViolatesTheJsonSchemaMetaSchema() throws IOException {
+        String yaml = canonicalCatalogText().replace(
+                """
+                            inputSchema:
+                              type: object
+                        """,
+                """
+                            inputSchema:
+                              type: unsupported
+                        """);
+        ToolCatalog invalidCatalog = ToolCatalog.load(
+                new ByteArrayResource(yaml.getBytes(StandardCharsets.UTF_8)),
+                new ClassPathResource("tool-catalog/rmq-tools.schema.json"));
+
+        assertThatThrownBy(() -> gateway(
+                invalidCatalog, clusterListHandler, capabilitiesHandler))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("input schema")
+                .hasMessageContaining("rmq.cluster.list");
     }
 
     @Test

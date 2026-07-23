@@ -22,6 +22,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 @Component
@@ -42,12 +43,13 @@ public class CapabilitiesToolHandler implements ToolHandler {
     public Object execute(Map<String, Object> input) {
         String clusterId = (String) input.get("cluster");
         ClusterVO cluster = clusterService.getCluster(clusterId);
+        List<String> capabilities = capabilityResolver.resolve(cluster);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("cluster", cluster.getId());
         result.put("type", cluster.getType().name());
         result.put("version", cluster.getVersion());
-        result.put("capabilities", capabilityResolver.resolve(cluster));
+        result.put("capabilities", capabilities);
         return result;
     }
 }

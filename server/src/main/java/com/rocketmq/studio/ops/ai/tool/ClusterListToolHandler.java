@@ -48,9 +48,17 @@ public class ClusterListToolHandler implements ToolHandler {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("id", cluster.getId());
         result.put("name", cluster.getName());
-        result.put("type", cluster.getType().name());
-        result.put("status", cluster.getStatus().name());
+        result.put("type", requiredEnumName(cluster.getType(), "type", cluster.getId()));
+        result.put("status", requiredEnumName(cluster.getStatus(), "status", cluster.getId()));
         result.put("version", cluster.getVersion());
         return result;
+    }
+
+    private static String requiredEnumName(Enum<?> value, String field, String clusterId) {
+        if (value == null) {
+            throw new IllegalStateException(
+                    "Cluster " + field + " is unavailable: " + clusterId);
+        }
+        return value.name();
     }
 }

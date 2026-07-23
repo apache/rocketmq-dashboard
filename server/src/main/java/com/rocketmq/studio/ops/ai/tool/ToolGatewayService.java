@@ -20,8 +20,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.networknt.schema.Error;
 import com.networknt.schema.Schema;
+import com.networknt.schema.SchemaLocation;
 import com.networknt.schema.SchemaRegistry;
 import com.networknt.schema.SpecificationVersion;
+import com.networknt.schema.dialect.Dialects;
 import com.rocketmq.studio.common.exception.BusinessException;
 import com.rocketmq.studio.ops.ai.AiToolVO;
 import org.springframework.stereotype.Service;
@@ -33,7 +35,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 @Service
 public class ToolGatewayService {
@@ -59,8 +60,12 @@ public class ToolGatewayService {
 
         SchemaRegistry registry = SchemaRegistry.withDefaultDialect(
                 SpecificationVersion.DRAFT_2020_12);
-        this.inputSchemas = compileSchemas(catalog, registry, true);
-        this.outputSchemas = compileSchemas(catalog, registry, false);
+        SchemaRegistry metaSchemaRegistry = SchemaRegistry.withDialect(
+                Dialects.getDraft202012());
+        Schema metaSchema = metaSchemaRegistry.getSchema(
+                SchemaLocation.of(Dialects.getDraft202012().getId()));
+        this.inputSchemas = compileSchemas(catalog, registry, metaSchema, true);
+        this.outputSchemas = compileSchemas(catalog, registry, metaSchema, false);
     }
 
     public List<AiToolVO> discover(String clusterId) {
@@ -164,11 +169,31 @@ public class ToolGatewayService {
     private Map<String, Schema> compileSchemas(
             ToolCatalog catalog,
             SchemaRegistry registry,
+            Schema metaSchema,
             boolean input) {
-        return catalog.list().stream().collect(Collectors.toUnmodifiableMap(
-                ToolDefinition::name,
-                definition -> registry.getSchema(objectMapper.valueToTree(
-                        input ? definition.inputSchema() : definition.outputSchema()))));
+        String schemaKind = input ? "input" : "output";
+        Map<String, Schema> compiled = new LinkedHashMap<>();
+        for (ToolDefinition definition : catalog.list()) {
+            JsonNode schemaNode = objectMapper.valueToTree(
+                    input ? definition.inputSchema() : definition.outputSchema());
+            List<Error> metaSchemaErrors = sortedErrors(metaSchema.validate(schemaNode));
+            if (!metaSchemaErrors.isEmpty()) {
+                throw new IllegalStateException(
+                        "Tool " + schemaKind + " schema is invalid for "
+                                + definition.name() + ": " + metaSchemaErrors);
+            }
+
+            try {
+                Schema schema = registry.getSchema(schemaNode);
+                schema.initializeValidators();
+                compiled.put(definition.name(), schema);
+            } catch (RuntimeException ex) {
+                throw new IllegalStateException(
+                        "Tool " + schemaKind + " schema is invalid for "
+                                + definition.name(), ex);
+            }
+        }
+        return Collections.unmodifiableMap(compiled);
     }
 
     private static boolean requiresCluster(ToolDefinition definition) {
