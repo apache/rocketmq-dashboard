@@ -16,49 +16,48 @@
  */
 package com.rocketmq.studio.ops.ai;
 
-import lombok.extern.slf4j.Slf4j;
+import com.rocketmq.studio.ops.ai.tool.ToolCatalog;
+import com.rocketmq.studio.ops.ai.tool.ToolGatewayService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-@Slf4j
 @Component
+@RequiredArgsConstructor
 public class McpServerImpl implements McpServerRegistry {
+
+    private final ToolGatewayService toolGatewayService;
+    private final ToolCatalog toolCatalog;
 
     @Override
     public List<AiToolVO> listTools() {
-        log.debug("Listing available MCP tools (stub)");
+        return toolGatewayService.discover(null);
+    }
 
-        Map<String, Object> queryParams = new HashMap<>();
-        queryParams.put("type", "object");
-        queryParams.put("properties", Collections.singletonMap("query",
-                Collections.singletonMap("type", "string")));
+    @Override
+    public List<AiToolVO> listTools(String clusterId) {
+        return toolGatewayService.discover(clusterId);
+    }
 
-        Map<String, Object> brokerParams = new HashMap<>();
-        brokerParams.put("type", "object");
-        brokerParams.put("properties", Collections.singletonMap("brokerName",
-                Collections.singletonMap("type", "string")));
+    @Override
+    public Object execute(String name, Map<String, Object> input) {
+        return toolGatewayService.execute(name, input);
+    }
 
-        return Arrays.asList(
-                AiToolVO.builder()
-                        .name("query_metrics")
-                        .description("Query RocketMQ metrics from Prometheus")
-                        .parameters(queryParams)
-                        .build(),
-                AiToolVO.builder()
-                        .name("list_brokers")
-                        .description("List all RocketMQ brokers in the cluster")
-                        .parameters(Collections.emptyMap())
-                        .build(),
-                AiToolVO.builder()
-                        .name("diagnose_broker")
-                        .description("Diagnose issues with a specific broker")
-                        .parameters(brokerParams)
-                        .build()
-        );
+    @Override
+    public String catalogVersion() {
+        return toolCatalog.getVersion();
+    }
+
+    @Override
+    public String catalogDigest() {
+        return toolCatalog.getDigest();
+    }
+
+    @Override
+    public String minimumClientVersion() {
+        return toolCatalog.getMinimumClientVersion();
     }
 }

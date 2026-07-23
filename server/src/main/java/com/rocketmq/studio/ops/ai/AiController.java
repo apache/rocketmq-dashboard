@@ -19,14 +19,19 @@ package com.rocketmq.studio.ops.ai;
 import com.rocketmq.studio.common.domain.Result;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/ai")
@@ -46,7 +51,25 @@ public class AiController {
     }
 
     @GetMapping("/tools")
-    public Result<List<AiToolVO>> listTools() {
-        return Result.ok(aiService.listTools());
+    public ResponseEntity<Result<List<AiToolVO>>> listTools(
+            @RequestParam(required = false) String cluster) {
+        List<AiToolVO> tools = cluster == null
+                ? aiService.listTools()
+                : aiService.listTools(cluster);
+        return ResponseEntity.ok()
+                .header("X-RMQ-Catalog-Version", aiService.catalogVersion())
+                .header("X-RMQ-Catalog-Digest", aiService.catalogDigest())
+                .header("X-RMQ-Minimum-Client-Version", aiService.minimumClientVersion())
+                .body(Result.ok(tools));
+    }
+
+    @PostMapping("/tools/{name}/execute")
+    public Result<Object> executeTool(
+            @PathVariable String name,
+            @RequestBody(required = false) Map<String, Object> input) {
+        Map<String, Object> normalizedInput = input == null
+                ? Collections.emptyMap()
+                : input;
+        return Result.ok(aiService.executeTool(name, normalizedInput));
     }
 }

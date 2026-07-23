@@ -181,4 +181,26 @@ class AiServiceTest {
         assertThat(result.get(0).getParameters()).isNotNull();
         assertThat(result.get(0).getParameters()).isInstanceOf(Map.class);
     }
+
+    @Test
+    void listToolsForClusterDelegatesClusterSelection() {
+        when(mcpServerRegistry.listTools("cluster-001")).thenReturn(Collections.emptyList());
+
+        List<AiToolVO> result = aiService.listTools("cluster-001");
+
+        assertThat(result).isEmpty();
+        verify(mcpServerRegistry).listTools("cluster-001");
+    }
+
+    @Test
+    void executeToolDelegatesStructuredInput() {
+        Map<String, Object> input = Map.of("cluster", "cluster-001");
+        Map<String, Object> output = Map.of("cluster", "cluster-001");
+        when(mcpServerRegistry.execute("rmq.capabilities", input)).thenReturn(output);
+
+        Object result = aiService.executeTool("rmq.capabilities", input);
+
+        assertThat(result).isSameAs(output);
+        verify(mcpServerRegistry).execute("rmq.capabilities", input);
+    }
 }

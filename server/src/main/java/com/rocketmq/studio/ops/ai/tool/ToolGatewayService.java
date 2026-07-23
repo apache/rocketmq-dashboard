@@ -181,6 +181,13 @@ public class ToolGatewayService {
                 .name(definition.name())
                 .description(definition.description())
                 .parameters(definition.inputSchema())
+                .riskLevel(definition.riskLevel())
+                .permission(definition.permission())
+                .requiredCapabilities(definition.requiredCapabilities())
+                .outputSchema(definition.outputSchema())
+                .viewHint(definition.viewHint())
+                .deprecated(definition.deprecated())
+                .replacement(definition.replacement())
                 .build();
     }
 
