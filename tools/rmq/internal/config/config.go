@@ -260,7 +260,7 @@ func validateContext(ctx Context) error {
 	if err != nil {
 		return fmt.Errorf("server must be a valid absolute URL: %w", err)
 	}
-	if !endpoint.IsAbs() || endpoint.Host == "" || endpoint.Opaque != "" {
+	if !endpoint.IsAbs() || endpoint.Host == "" || endpoint.Hostname() == "" || endpoint.Opaque != "" {
 		return errors.New("server must be an absolute URL with a host")
 	}
 	if endpoint.Scheme != "http" && endpoint.Scheme != "https" {
@@ -269,7 +269,7 @@ func validateContext(ctx Context) error {
 	if endpoint.User != nil {
 		return errors.New("server must not contain user information")
 	}
-	if endpoint.Fragment != "" {
+	if strings.Contains(ctx.Server, "#") {
 		return errors.New("server must not contain a fragment")
 	}
 	if endpoint.RawQuery != "" || endpoint.ForceQuery {

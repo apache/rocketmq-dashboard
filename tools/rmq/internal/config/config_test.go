@@ -243,9 +243,18 @@ func TestValidateServer(t *testing.T) {
 		"http://[::2]",
 		"http://[::ffff:127.0.0.1]",
 		"https://user:pass@example.com",
+		"https://@example.com",
+		"https://:443",
+		"https://:",
 		"https://example.com/#fragment",
+		"https://example.com/#",
+		"https://example.com#",
 		"https://example.com/?query=yes",
+		"https://example.com?",
+		"https://example.com/?",
 		"https://example.com/api",
+		"https://example.com/%23",
+		"https://example.com:bad",
 		"ftp://example.com",
 		"example.com",
 		"/relative",
@@ -258,6 +267,20 @@ func TestValidateServer(t *testing.T) {
 				t.Fatal("Validate() error = nil, want rejection")
 			}
 		})
+	}
+}
+
+func TestValidateEncodedHashIsRejectedAsPath(t *testing.T) {
+	cfg := configWithContext(Context{
+		Server: "https://example.com/%23",
+		Output: "table",
+	})
+	err := Validate(cfg)
+	if err == nil {
+		t.Fatal("Validate() error = nil, want rejection")
+	}
+	if !strings.Contains(err.Error(), "path") {
+		t.Fatalf("Validate() error = %q, want path rejection", err)
 	}
 }
 
