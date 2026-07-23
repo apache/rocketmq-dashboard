@@ -1,0 +1,550 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package config
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"reflect"
+	"runtime"
+	"strings"
+	"testing"
+)
+
+func TestDefault(t *testing.T) {
+	want := Config{
+		APIVersion:     "rmq.apache.org/v1alpha1",
+		CurrentContext: "default",
+		Contexts: map[string]Context{
+			"default": {
+				Server:   "http://127.0.0.1:8888",
+				Output:   "table",
+				TokenEnv: "RMQCTL_TOKEN",
+			},
+		},
+	}
+	got := Default()
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Default() = %#v, want %#v", got, want)
+	}
+
+	contextType := reflect.TypeOf(Context{})
+	for _, forbidden := range []string{"Token", "Secret", "Password"} {
+		if _, ok := contextType.FieldByName(forbidden); ok {
+			t.Fatalf("Context must not contain a %q value field", forbidden)
+		}
+	}
+}
+
+func TestDefaultPath(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := DefaultPath()
+	if err != nil {
+		t.Fatalf("DefaultPath() error = %v", err)
+	}
+	want := filepath.Join(home, ".rmqctl", "config.yaml")
+	if got != want {
+		t.Fatalf("DefaultPath() = %q, want %q", got, want)
+	}
+}
+
+func TestSaveLoadRoundTripAndModes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nested", "config.yaml")
+	want := Default()
+	want.Contexts["production"] = Context{
+		Server:   "https://rmq.example.com",
+		Cluster:  "prod",
+		Output:   "json",
+		TokenEnv: "PROD_RMQ_TOKEN",
+		CAFile:   "/etc/ssl/certs/rmq.pem",
+	}
+	want.CurrentContext = "production"
+
+	if err := Save(path, want, false); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Load() = %#v, want %#v", got, want)
+	}
+
+	if runtime.GOOS != "windows" {
+		parentInfo, err := os.Stat(filepath.Dir(path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if gotMode := parentInfo.Mode().Perm(); gotMode&0077 != 0 {
+			t.Fatalf("parent permissions = %04o, want no group/other bits", gotMode)
+		}
+		fileInfo, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if gotMode := fileInfo.Mode().Perm(); gotMode&0077 != 0 {
+			t.Fatalf("file permissions = %04o, want no group/other bits", gotMode)
+		}
+	}
+}
+
+func TestLoadRejectsUnknownFieldsAndMultipleDocuments(t *testing.T) {
+	tests := map[string]string{
+		"unknown top-level field": `
+apiVersion: rmq.apache.org/v1alpha1
+currentContext: default
+contexts:
+  default:
+    server: http://127.0.0.1:8888
+    output: table
+unexpected: true
+`,
+		"unknown context field": `
+apiVersion: rmq.apache.org/v1alpha1
+currentContext: default
+contexts:
+  default:
+    server: http://127.0.0.1:8888
+    output: table
+    unexpected: true
+`,
+		"multiple documents": `
+apiVersion: rmq.apache.org/v1alpha1
+currentContext: default
+contexts:
+  default:
+    server: http://127.0.0.1:8888
+    output: table
+---
+apiVersion: rmq.apache.org/v1alpha1
+currentContext: default
+contexts:
+  default:
+    server: http://127.0.0.1:8888
+    output: table
+`,
+	}
+
+	for name, contents := range tests {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			if err := os.WriteFile(path, []byte(contents), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Load(path); err == nil {
+				t.Fatal("Load() error = nil, want rejection")
+			}
+		})
+	}
+}
+
+func TestValidateStructure(t *testing.T) {
+	valid := Default()
+	tests := map[string]Config{
+		"wrong apiVersion": func() Config {
+			cfg := cloneConfig(valid)
+			cfg.APIVersion = "v1"
+			return cfg
+		}(),
+		"empty contexts": func() Config {
+			cfg := cloneConfig(valid)
+			cfg.Contexts = map[string]Context{}
+			return cfg
+		}(),
+		"empty context name": func() Config {
+			cfg := cloneConfig(valid)
+			cfg.Contexts[""] = cfg.Contexts["default"]
+			return cfg
+		}(),
+		"missing current context": func() Config {
+			cfg := cloneConfig(valid)
+			cfg.CurrentContext = "missing"
+			return cfg
+		}(),
+	}
+	for name, cfg := range tests {
+		t.Run(name, func(t *testing.T) {
+			if err := Validate(cfg); err == nil {
+				t.Fatal("Validate() error = nil, want rejection")
+			}
+		})
+	}
+}
+
+func TestValidateOutputFormats(t *testing.T) {
+	for _, output := range []string{"table", "json", "yaml"} {
+		t.Run("accepts "+output, func(t *testing.T) {
+			cfg := configWithContext(Context{
+				Server: "https://rmq.example.com",
+				Output: output,
+			})
+			if err := Validate(cfg); err != nil {
+				t.Fatalf("Validate() error = %v", err)
+			}
+		})
+	}
+	for _, output := range []string{"", "text", "JSON"} {
+		t.Run("rejects "+output, func(t *testing.T) {
+			cfg := configWithContext(Context{
+				Server: "https://rmq.example.com",
+				Output: output,
+			})
+			if err := Validate(cfg); err == nil {
+				t.Fatal("Validate() error = nil, want rejection")
+			}
+		})
+	}
+}
+
+func TestValidateServer(t *testing.T) {
+	valid := []string{
+		"http://localhost",
+		"http://localhost:8888/",
+		"http://127.0.0.1",
+		"http://127.42.9.3:8888",
+		"http://[::1]",
+		"http://[::1]:8888/",
+		"https://rmq.example.com",
+		"https://10.0.0.1:443/",
+	}
+	for _, server := range valid {
+		t.Run("accepts "+server, func(t *testing.T) {
+			cfg := configWithContext(Context{Server: server, Output: "table"})
+			if err := Validate(cfg); err != nil {
+				t.Fatalf("Validate() error = %v", err)
+			}
+		})
+	}
+
+	invalid := []string{
+		"http://example.com",
+		"http://10.0.0.1",
+		"http://128.0.0.1",
+		"http://[::2]",
+		"http://[::ffff:127.0.0.1]",
+		"https://user:pass@example.com",
+		"https://example.com/#fragment",
+		"https://example.com/?query=yes",
+		"https://example.com/api",
+		"ftp://example.com",
+		"example.com",
+		"/relative",
+		"https:///missing-host",
+	}
+	for _, server := range invalid {
+		t.Run("rejects "+server, func(t *testing.T) {
+			cfg := configWithContext(Context{Server: server, Output: "table"})
+			if err := Validate(cfg); err == nil {
+				t.Fatal("Validate() error = nil, want rejection")
+			}
+		})
+	}
+}
+
+func TestValidateCAFile(t *testing.T) {
+	cfg := configWithContext(Context{
+		Server: "https://rmq.example.com",
+		Output: "yaml",
+		CAFile: "/etc/ssl/certs/custom.pem",
+	})
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+}
+
+func TestValidateTokenEnv(t *testing.T) {
+	for _, name := range []string{"", "_TOKEN", "TOKEN", "RMQ_TOKEN_2", "a"} {
+		t.Run("accepts "+name, func(t *testing.T) {
+			cfg := configWithContext(Context{
+				Server:   "https://rmq.example.com",
+				Output:   "table",
+				TokenEnv: name,
+			})
+			if err := Validate(cfg); err != nil {
+				t.Fatalf("Validate() error = %v", err)
+			}
+		})
+	}
+	for _, name := range []string{"2TOKEN", "RMQ-TOKEN", "RMQ TOKEN", "令牌", "TOKEN=value"} {
+		t.Run("rejects "+name, func(t *testing.T) {
+			cfg := configWithContext(Context{
+				Server:   "https://rmq.example.com",
+				Output:   "table",
+				TokenEnv: name,
+			})
+			if err := Validate(cfg); err == nil {
+				t.Fatal("Validate() error = nil, want rejection")
+			}
+		})
+	}
+}
+
+func TestTokenValueNeverLeaks(t *testing.T) {
+	const (
+		envName  = "RMQCTL_SENTINEL_TOKEN"
+		sentinel = "do-not-leak-super-secret-value"
+	)
+	t.Setenv(envName, sentinel)
+	cfg := configWithContext(Context{
+		Server:   "https://rmq.example.com",
+		Output:   "json",
+		TokenEnv: envName,
+	})
+
+	jsonBytes, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(jsonBytes), sentinel) {
+		t.Fatal("JSON contains token value")
+	}
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := Save(path, cfg, false); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	yamlBytes, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(yamlBytes), sentinel) {
+		t.Fatal("YAML file contains token value")
+	}
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got := loaded.Contexts["default"].TokenEnv; got != envName {
+		t.Fatalf("TokenEnv = %q, want %q", got, envName)
+	}
+
+	bad := cloneConfig(cfg)
+	bad.Contexts["default"] = Context{
+		Server:   "http://example.com",
+		Output:   "table",
+		TokenEnv: envName,
+	}
+	if err := Validate(bad); err == nil {
+		t.Fatal("Validate() error = nil, want rejection")
+	} else if strings.Contains(err.Error(), sentinel) {
+		t.Fatal("validation error contains token value")
+	}
+}
+
+func TestSaveOverwriteSemanticsAndAtomicPermissions(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	original := []byte("original contents")
+	if err := os.WriteFile(path, original, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := Default()
+	if err := Save(path, cfg, false); err == nil {
+		t.Fatal("Save(force=false) error = nil, want existing-file rejection")
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(original) {
+		t.Fatalf("existing contents changed to %q", got)
+	}
+
+	if err := Save(path, cfg, true); err != nil {
+		t.Fatalf("Save(force=true) error = %v", err)
+	}
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if !reflect.DeepEqual(loaded, cfg) {
+		t.Fatalf("Load() = %#v, want %#v", loaded, cfg)
+	}
+	if runtime.GOOS != "windows" {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if gotMode := info.Mode().Perm(); gotMode != 0600 {
+			t.Fatalf("forced file permissions = %04o, want 0600", gotMode)
+		}
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != filepath.Base(path) {
+		t.Fatalf("temporary files left behind: %v", entries)
+	}
+}
+
+func TestSetUseAndCurrent(t *testing.T) {
+	cfg := Default()
+	production := Context{
+		Server:   "https://rmq.example.com",
+		Cluster:  "prod",
+		Output:   "yaml",
+		TokenEnv: "PROD_TOKEN",
+	}
+	if err := SetContext(&cfg, "production", production); err != nil {
+		t.Fatalf("SetContext() error = %v", err)
+	}
+	if got := cfg.Contexts["production"]; !reflect.DeepEqual(got, production) {
+		t.Fatalf("stored context = %#v, want %#v", got, production)
+	}
+	if err := UseContext(&cfg, "production"); err != nil {
+		t.Fatalf("UseContext() error = %v", err)
+	}
+	got, err := Current(cfg)
+	if err != nil {
+		t.Fatalf("Current() error = %v", err)
+	}
+	if !reflect.DeepEqual(got, production) {
+		t.Fatalf("Current() = %#v, want %#v", got, production)
+	}
+}
+
+func TestSetContextSupportsNilMap(t *testing.T) {
+	cfg := Config{
+		APIVersion:     "rmq.apache.org/v1alpha1",
+		CurrentContext: "first",
+	}
+	first := Context{Server: "https://rmq.example.com", Output: "table"}
+	if err := SetContext(&cfg, "first", first); err != nil {
+		t.Fatalf("SetContext() error = %v", err)
+	}
+	if got := cfg.Contexts["first"]; !reflect.DeepEqual(got, first) {
+		t.Fatalf("stored context = %#v, want %#v", got, first)
+	}
+}
+
+func TestMutationsDoNotPartiallyApplyOnFailure(t *testing.T) {
+	t.Run("SetContext", func(t *testing.T) {
+		cfg := Default()
+		before := cloneConfig(cfg)
+		err := SetContext(&cfg, "bad", Context{
+			Server: "http://example.com",
+			Output: "table",
+		})
+		if err == nil {
+			t.Fatal("SetContext() error = nil, want rejection")
+		}
+		if !reflect.DeepEqual(cfg, before) {
+			t.Fatalf("config mutated: got %#v, want %#v", cfg, before)
+		}
+	})
+
+	t.Run("UseContext", func(t *testing.T) {
+		cfg := Default()
+		before := cloneConfig(cfg)
+		if err := UseContext(&cfg, "missing"); err == nil {
+			t.Fatal("UseContext() error = nil, want rejection")
+		}
+		if !reflect.DeepEqual(cfg, before) {
+			t.Fatalf("config mutated: got %#v, want %#v", cfg, before)
+		}
+	})
+
+	t.Run("Current validates", func(t *testing.T) {
+		cfg := Default()
+		cfg.Contexts["default"] = Context{
+			Server: "http://example.com",
+			Output: "table",
+		}
+		if _, err := Current(cfg); err == nil {
+			t.Fatal("Current() error = nil, want validation error")
+		}
+	})
+}
+
+func TestSaveRejectsDirectoryAndNonRegularTargets(t *testing.T) {
+	cfg := Default()
+
+	t.Run("directory", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "config.yaml")
+		if err := os.Mkdir(path, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := Save(path, cfg, true); err == nil {
+			t.Fatal("Save() error = nil, want directory rejection")
+		}
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !info.IsDir() {
+			t.Fatal("target directory was replaced")
+		}
+	})
+
+	t.Run("symlink", func(t *testing.T) {
+		dir := t.TempDir()
+		realPath := filepath.Join(dir, "real.yaml")
+		linkPath := filepath.Join(dir, "link.yaml")
+		original := []byte("original")
+		if err := os.WriteFile(realPath, original, 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(realPath, linkPath); err != nil {
+			t.Skipf("symlink unavailable: %v", err)
+		}
+		if err := Save(linkPath, cfg, true); err == nil {
+			t.Fatal("Save() error = nil, want symlink rejection")
+		}
+		got, err := os.ReadFile(realPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != string(original) {
+			t.Fatalf("symlink target changed to %q", got)
+		}
+		info, err := os.Lstat(linkPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode()&os.ModeSymlink == 0 {
+			t.Fatal("symlink was replaced")
+		}
+	})
+}
+
+func configWithContext(ctx Context) Config {
+	return Config{
+		APIVersion:     "rmq.apache.org/v1alpha1",
+		CurrentContext: "default",
+		Contexts: map[string]Context{
+			"default": ctx,
+		},
+	}
+}
+
+func cloneConfig(cfg Config) Config {
+	clone := cfg
+	clone.Contexts = make(map[string]Context, len(cfg.Contexts))
+	for name, ctx := range cfg.Contexts {
+		clone.Contexts[name] = ctx
+	}
+	return clone
+}
