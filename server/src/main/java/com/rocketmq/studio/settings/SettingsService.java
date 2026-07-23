@@ -21,6 +21,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -50,6 +51,7 @@ public class SettingsService {
 
     public DataSourceVO createDataSource(DataSourceVO dataSource) {
         log.info("Creating data source: {}", dataSource.getName());
+        dataSource.setKey(UUID.randomUUID().toString());
         return settingsRepository.saveDataSource(dataSource);
     }
 

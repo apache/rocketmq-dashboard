@@ -108,18 +108,28 @@ class SettingsServiceTest {
     }
 
     @Test
-    void createDataSourceShouldDelegateToRepository() {
+    void createDataSourceShouldAssignKeyBeforeSaving() {
         DataSourceVO input = DataSourceVO.builder().name("New DS").type("rocketmq")
                 .url("new-host:9876").build();
-        DataSourceVO saved = DataSourceVO.builder().key("ds-new").name("New DS").type("rocketmq")
-                .url("new-host:9876").status("connected").build();
-        when(settingsRepository.saveDataSource(any(DataSourceVO.class))).thenReturn(saved);
+        when(settingsRepository.saveDataSource(any(DataSourceVO.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
         DataSourceVO result = settingsService.createDataSource(input);
 
-        assertThat(result.getKey()).isEqualTo("ds-new");
+        assertThat(result.getKey()).isNotBlank();
         assertThat(result.getName()).isEqualTo("New DS");
-        assertThat(result.getStatus()).isEqualTo("connected");
+        verify(settingsRepository).saveDataSource(input);
+    }
+
+    @Test
+    void createDataSourceShouldReplaceClientProvidedKey() {
+        DataSourceVO input = DataSourceVO.builder().key("existing-key").name("New DS").build();
+        when(settingsRepository.saveDataSource(any(DataSourceVO.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        DataSourceVO result = settingsService.createDataSource(input);
+
+        assertThat(result.getKey()).isNotBlank().isNotEqualTo("existing-key");
         verify(settingsRepository).saveDataSource(input);
     }
 
