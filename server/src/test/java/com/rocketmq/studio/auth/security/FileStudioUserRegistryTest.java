@@ -22,6 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.FileTime;
 import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermission;
@@ -537,6 +538,149 @@ class FileStudioUserRegistryTest {
         assertThat(othersReadable.revision()).isGreaterThan(groupReadable.revision());
     }
 
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("untrustedParentPermissions")
+    void rejectsParentPermissionChangesImmediately(
+        String description,
+        PosixFilePermission unsafePermission
+    ) throws IOException {
+        Path parent = Files.createDirectory(tempDir.resolve("trusted-parent-marker"));
+        assumePosix(parent);
+        Set<PosixFilePermission> trustedPermissions = Set.of(
+            PosixFilePermission.OWNER_READ,
+            PosixFilePermission.OWNER_WRITE,
+            PosixFilePermission.OWNER_EXECUTE
+        );
+        Files.setPosixFilePermissions(parent, trustedPermissions);
+        Path userFile = parent.resolve("users.json");
+        Files.writeString(userFile, validUsersJson(), StandardCharsets.UTF_8);
+        securePermissions(userFile);
+        AtomicLong clock = new AtomicLong();
+        FileStudioUserRegistry registry = registry(properties(userFile.toString()), clock);
+        Snapshot available = registry.snapshot();
+
+        LoggerCapture capture = attachLogger();
+        try {
+            Files.setPosixFilePermissions(
+                parent,
+                Set.of(
+                    PosixFilePermission.OWNER_READ,
+                    PosixFilePermission.OWNER_WRITE,
+                    PosixFilePermission.OWNER_EXECUTE,
+                    unsafePermission
+                )
+            );
+            Snapshot unavailable = registry.snapshot();
+
+            assertThat(unavailable.available()).isFalse();
+            assertThat(unavailable.users()).isEmpty();
+            assertThat(unavailable.revision()).isGreaterThan(available.revision());
+            assertThat(capture.messages())
+                .anyMatch(message -> message.contains("reason=UNTRUSTED_PARENT"))
+                .noneMatch(message -> message.contains("trusted-parent-marker"));
+        } finally {
+            capture.close();
+            Files.setPosixFilePermissions(parent, trustedPermissions);
+        }
+    }
+
+    static Stream<Arguments> untrustedParentPermissions() {
+        return Stream.of(
+            Arguments.of("group-writable parent", PosixFilePermission.GROUP_WRITE),
+            Arguments.of("other-writable parent", PosixFilePermission.OTHERS_WRITE)
+        );
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("trustedParentPermissions")
+    void acceptsReadAndExecutePermissionsOnParent(
+        String description,
+        PosixFilePermission allowedPermission
+    ) throws IOException {
+        Path parent = Files.createDirectory(tempDir.resolve("shared-parent"));
+        assumePosix(parent);
+        Files.setPosixFilePermissions(
+            parent,
+            Set.of(
+                PosixFilePermission.OWNER_READ,
+                PosixFilePermission.OWNER_WRITE,
+                PosixFilePermission.OWNER_EXECUTE,
+                allowedPermission
+            )
+        );
+        Path userFile = parent.resolve("users.json");
+        Files.writeString(
+            userFile,
+            validUsersJson(userJson("alice", ADMIN_HASH, "USER")),
+            StandardCharsets.UTF_8
+        );
+        securePermissions(userFile);
+
+        Snapshot snapshot = registry(userFile).snapshot();
+
+        assertThat(snapshot.available()).isTrue();
+        assertThat(snapshot.users()).containsOnlyKeys("alice");
+    }
+
+    static Stream<Arguments> trustedParentPermissions() {
+        return Stream.of(
+            Arguments.of("group-readable parent", PosixFilePermission.GROUP_READ),
+            Arguments.of("group-executable parent", PosixFilePermission.GROUP_EXECUTE),
+            Arguments.of("other-readable parent", PosixFilePermission.OTHERS_READ),
+            Arguments.of("other-executable parent", PosixFilePermission.OTHERS_EXECUTE)
+        );
+    }
+
+    @Test
+    void rejectsAtomicRegistrySubstitutionDuringBoundedRead() throws IOException {
+        String attackerMarker = "ATTACKER-USER-MARKER-43";
+        Path userFile = write(
+            "users.json",
+            validUsersJson(userJson("victim", ADMIN_HASH, "USER"))
+        );
+        Path attackerFile = write(
+            "attacker.json",
+            validUsersJson(userJson(attackerMarker, USER_HASH, "ADMIN"))
+        );
+        AtomicLong clock = new AtomicLong();
+        AtomicInteger reads = new AtomicInteger();
+        FileStudioUserRegistry registry = new FileStudioUserRegistry(
+            properties(userFile.toString()),
+            clock::get,
+            currentOwner(userFile),
+            (path, maximumBytes) -> {
+                if (reads.incrementAndGet() == 2) {
+                    Files.move(
+                        attackerFile,
+                        path,
+                        StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING
+                    );
+                }
+                return FileStudioUserRegistry.readBounded(path, maximumBytes);
+            }
+        );
+        Snapshot initial = registry.snapshot();
+        clock.addAndGet(Duration.ofMillis(250).toNanos());
+        LoggerCapture capture = attachLogger();
+        try {
+            Snapshot raced = registry.snapshot();
+
+            assertThat(raced.available()).isFalse();
+            assertThat(raced.users()).isEmpty();
+            assertThat(raced.revision()).isGreaterThan(initial.revision());
+            assertThat(capture.messages())
+                .noneMatch(message -> message.contains(attackerMarker));
+
+            Snapshot stableReplacement = registry.snapshot();
+            assertThat(stableReplacement.available()).isTrue();
+            assertThat(stableReplacement.users()).containsOnlyKeys(attackerMarker);
+            assertThat(stableReplacement.revision()).isGreaterThan(raced.revision());
+        } finally {
+            capture.close();
+        }
+    }
+
     @Test
     void invalidOperatingSystemPathDoesNotPreventConstructionOrSnapshot() {
         String invalidPath = "users\u0000-secret-path-marker.json";
@@ -546,6 +690,17 @@ class FileStudioUserRegistryTest {
 
         assertThat(snapshot.available()).isFalse();
         assertThat(snapshot.revision()).isEqualTo(1);
+        assertThat(snapshot.users()).isEmpty();
+    }
+
+    @Test
+    void rootPathWithoutParentIsSafelyUnavailable() {
+        FileStudioUserRegistry registry =
+            new FileStudioUserRegistry(properties(tempDir.getRoot().toString()));
+
+        Snapshot snapshot = registry.snapshot();
+
+        assertThat(snapshot.available()).isFalse();
         assertThat(snapshot.users()).isEmpty();
     }
 

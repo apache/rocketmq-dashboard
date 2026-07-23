@@ -75,6 +75,10 @@ public final class FileStudioUserRegistry implements StudioUserRegistry {
         PosixFilePermission.OTHERS_WRITE,
         PosixFilePermission.OTHERS_EXECUTE
     );
+    private static final Set<PosixFilePermission> FORBIDDEN_PARENT_POSIX_PERMISSIONS = Set.of(
+        PosixFilePermission.GROUP_WRITE,
+        PosixFilePermission.OTHERS_WRITE
+    );
     private static final String SHA_256 = "SHA-256";
     private static final ObjectMapper STRICT_MAPPER = createStrictMapper();
 
@@ -168,11 +172,24 @@ public final class FileStudioUserRegistry implements StudioUserRegistry {
                 attributes.size(),
                 attributes.lastModifiedTime()
             );
-            SecurityState securityState = readSecurityState(path);
-            if (securityState.failureReason() != null) {
-                return StatResult.securityFailure(path, fileSignal, securityState);
+            SecurityState fileSecurity = readSecurityState(path);
+            SecurityState parentSecurity = readParentSecurityState(path);
+            String combinedSecurityIdentity = opaqueStateIdentity(
+                "FILE_AND_PARENT",
+                fileSecurity.identity(),
+                parentSecurity.identity()
+            );
+            FailureReason securityFailure = fileSecurity.failureReason() != null
+                ? fileSecurity.failureReason() : parentSecurity.failureReason();
+            if (securityFailure != null) {
+                return StatResult.securityFailure(
+                    path,
+                    fileSignal,
+                    securityFailure,
+                    combinedSecurityIdentity
+                );
             }
-            return StatResult.success(path, fileSignal, securityState.identity());
+            return StatResult.success(path, fileSignal, combinedSecurityIdentity);
         } catch (InvalidPathException e) {
             return StatResult.failure(FailureReason.INVALID_PATH);
         } catch (NoSuchFileException e) {
@@ -193,15 +210,18 @@ public final class FileStudioUserRegistry implements StudioUserRegistry {
         }
 
         try {
-            SecurityState securityState = validateFileSecurity(stat.path());
-            if (securityState.failureReason() != null) {
-                return RefreshOutcome.unavailable(
-                    securityState.failureReason(),
-                    securityState.identity()
-                );
+            StatResult beforeRead = guardedStat();
+            if (beforeRead.failureReason() != null
+                || !stat.fastSignal().equals(beforeRead.fastSignal())) {
+                return sourceChanged(stat.fastSignal(), beforeRead.fastSignal());
             }
 
-            byte[] bytes = boundedFileReader.read(stat.path(), MAX_FILE_BYTES);
+            byte[] bytes = boundedFileReader.read(beforeRead.path(), MAX_FILE_BYTES);
+            StatResult afterRead = guardedStat();
+            if (afterRead.failureReason() != null
+                || !beforeRead.fastSignal().equals(afterRead.fastSignal())) {
+                return sourceChanged(beforeRead.fastSignal(), afterRead.fastSignal());
+            }
             String digest = sha256Hex(bytes);
             if (bytes.length > MAX_FILE_BYTES) {
                 return RefreshOutcome.unavailable(FailureReason.FILE_TOO_LARGE, digest);
@@ -220,22 +240,15 @@ public final class FileStudioUserRegistry implements StudioUserRegistry {
         }
     }
 
-    private SecurityState validateFileSecurity(Path path) throws IOException {
-        BasicFileAttributes current = Files.readAttributes(
-            path,
-            BasicFileAttributes.class,
-            LinkOption.NOFOLLOW_LINKS
+    private RefreshOutcome sourceChanged(FastSignal before, FastSignal after) {
+        return RefreshOutcome.unavailable(
+            FailureReason.SOURCE_CHANGED,
+            opaqueStateIdentity(
+                "SOURCE_CHANGED",
+                fastSignalIdentity(before),
+                fastSignalIdentity(after)
+            )
         );
-        if (current.isSymbolicLink()) {
-            return SecurityState.failure(FailureReason.SYMLINK);
-        }
-        if (!current.isRegularFile()) {
-            return SecurityState.failure(FailureReason.NOT_REGULAR);
-        }
-        if (!Files.isReadable(path)) {
-            return SecurityState.failure(FailureReason.UNREADABLE);
-        }
-        return readSecurityState(path);
     }
 
     private SecurityState readSecurityState(Path path) throws IOException {
@@ -264,6 +277,45 @@ public final class FileStudioUserRegistry implements StudioUserRegistry {
             return new SecurityState(FailureReason.INSECURE_PERMISSIONS, identity);
         }
         return SecurityState.available(identity);
+    }
+
+    private SecurityState readParentSecurityState(Path path) {
+        try {
+            Path parent = path.toAbsolutePath().normalize().getParent();
+            if (parent == null) {
+                return SecurityState.failure(FailureReason.UNTRUSTED_PARENT);
+            }
+            BasicFileAttributes basic = Files.readAttributes(
+                parent,
+                BasicFileAttributes.class,
+                LinkOption.NOFOLLOW_LINKS
+            );
+            String basicIdentity = basicPathStateIdentity("PARENT", basic);
+            if (basic.isSymbolicLink() || !basic.isDirectory()) {
+                return new SecurityState(FailureReason.UNTRUSTED_PARENT, basicIdentity);
+            }
+            if (!Files.getFileStore(parent)
+                .supportsFileAttributeView(PosixFileAttributeView.class)) {
+                return SecurityState.available(basicIdentity);
+            }
+
+            PosixFileAttributes posix = Files.readAttributes(
+                parent,
+                PosixFileAttributes.class,
+                LinkOption.NOFOLLOW_LINKS
+            );
+            String identity = parentSecurityStateIdentity(posix);
+            if (posix.isSymbolicLink()
+                || !posix.isDirectory()
+                || !Objects.equals(posix.owner().getName(), expectedOwnerName)
+                || posix.permissions().stream()
+                    .anyMatch(FORBIDDEN_PARENT_POSIX_PERMISSIONS::contains)) {
+                return new SecurityState(FailureReason.UNTRUSTED_PARENT, identity);
+            }
+            return SecurityState.available(identity);
+        } catch (IOException | RuntimeException e) {
+            return SecurityState.failure(FailureReason.UNTRUSTED_PARENT);
+        }
     }
 
     private RefreshOutcome parse(byte[] bytes, String digest) {
@@ -405,10 +457,65 @@ public final class FileStudioUserRegistry implements StudioUserRegistry {
         return toHex(digest.digest());
     }
 
-    private static String opaqueStateIdentity(String value) {
+    private static String parentSecurityStateIdentity(PosixFileAttributes attributes) {
+        MessageDigest digest = sha256();
+        updateBasicIdentity(digest, "POSIX_PARENT", attributes);
+        updateCanonical(digest, attributes.owner().getName());
+        attributes.permissions().stream()
+            .sorted()
+            .map(PosixFilePermission::name)
+            .forEach(permission -> updateCanonical(digest, permission));
+        return toHex(digest.digest());
+    }
+
+    private static String basicPathStateIdentity(
+        String category,
+        BasicFileAttributes attributes
+    ) {
+        MessageDigest digest = sha256();
+        updateBasicIdentity(digest, category, attributes);
+        return toHex(digest.digest());
+    }
+
+    private static void updateBasicIdentity(
+        MessageDigest digest,
+        String category,
+        BasicFileAttributes attributes
+    ) {
+        updateCanonical(digest, category);
+        updateCanonical(digest, String.valueOf(attributes.fileKey()));
+        updateCanonical(digest, Long.toString(attributes.size()));
+        updateCanonical(digest, attributes.lastModifiedTime().toString());
+        updateCanonical(digest, Boolean.toString(attributes.isDirectory()));
+        updateCanonical(digest, Boolean.toString(attributes.isRegularFile()));
+        updateCanonical(digest, Boolean.toString(attributes.isSymbolicLink()));
+    }
+
+    private static String fastSignalIdentity(FastSignal signal) {
+        MessageDigest digest = sha256();
+        updateCanonical(digest, "FAST_SIGNAL");
+        updateCanonical(
+            digest,
+            signal.failureReason() == null ? "AVAILABLE" : signal.failureReason().name()
+        );
+        updateCanonical(digest, signal.stateIdentity());
+        FileSignal fileSignal = signal.fileSignal();
+        if (fileSignal == null) {
+            updateCanonical(digest, "NO_FILE");
+        } else {
+            updateCanonical(digest, String.valueOf(fileSignal.fileKey()));
+            updateCanonical(digest, Long.toString(fileSignal.size()));
+            updateCanonical(digest, fileSignal.lastModifiedTime().toString());
+        }
+        return toHex(digest.digest());
+    }
+
+    private static String opaqueStateIdentity(String... values) {
         MessageDigest digest = sha256();
         updateCanonical(digest, "FILE_STATE");
-        updateCanonical(digest, value);
+        for (String value : values) {
+            updateCanonical(digest, value);
+        }
         return toHex(digest.digest());
     }
 
@@ -457,6 +564,8 @@ public final class FileStudioUserRegistry implements StudioUserRegistry {
         STAT_FAILED,
         WRONG_OWNER,
         INSECURE_PERMISSIONS,
+        UNTRUSTED_PARENT,
+        SOURCE_CHANGED,
         FILE_TOO_LARGE,
         READ_FAILED,
         INVALID_JSON,
@@ -498,12 +607,13 @@ public final class FileStudioUserRegistry implements StudioUserRegistry {
         private static StatResult securityFailure(
             Path path,
             FileSignal signal,
-            SecurityState securityState
+            FailureReason failureReason,
+            String stateIdentity
         ) {
             return new StatResult(
                 path,
-                new FastSignal(signal, securityState.failureReason(), securityState.identity()),
-                securityState.failureReason()
+                new FastSignal(signal, failureReason, stateIdentity),
+                failureReason
             );
         }
     }
