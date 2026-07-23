@@ -39,7 +39,6 @@ import GroupManagement from '../pages/GroupManagement/GroupManagement';
 import BrokerCluster from '../pages/BrokerCluster/BrokerCluster';
 import LiteTopic from '../pages/LiteTopic/LiteTopic';
 import SslSettings from '../pages/SslSettings/SslSettings';
-import Namespace from '../pages/Namespace/Namespace';
 
 import StudioLayout from '../components/StudioLayout/StudioLayout';
 import { remoteApi } from '../api/remoteApi/remoteApi';
@@ -207,14 +206,7 @@ const AppRouter = () => {
                             </motion.div>
                         }
                     />
-                    <Route
-                        path="/namespace"
-                        element={
-                            <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
-                                <Namespace />
-                            </motion.div>
-                        }
-                    />
+
                     <Route
                         path="/ssl-settings"
                         element={

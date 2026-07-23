@@ -108,10 +108,5 @@ public class MetadataService {
         adminClient.resetOffset(name, timestamp, topic);
     }
 
-    // ── NamespaceVO ───────────────────────────────────────────────────
 
-
-    public List<NamespaceVO> listNamespaces() {
-        throw new UnsupportedOperationException("Not implemented");
-    }
 }
