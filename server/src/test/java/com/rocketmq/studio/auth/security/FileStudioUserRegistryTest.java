@@ -17,6 +17,7 @@
 package com.rocketmq.studio.auth.security;
 
 import java.io.IOException;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
@@ -173,6 +174,42 @@ class FileStudioUserRegistryTest {
         java.util.Arrays.fill(bytes, prefix.length, bytes.length, (byte) ' ');
         Path userFile = tempDir.resolve("over-limit.json");
         Files.write(userFile, bytes);
+        securePermissions(userFile);
+
+        assertUnavailable(userFile);
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("nonUtf8RegistryEncodings")
+    void rejectsNonUtf8RegistryEncoding(String description, byte[] bytes) throws IOException {
+        Path userFile = tempDir.resolve("non-utf8-users.json");
+        Files.write(userFile, bytes);
+        securePermissions(userFile);
+
+        assertUnavailable(userFile);
+    }
+
+    static Stream<Arguments> nonUtf8RegistryEncodings() {
+        String json = validUsersJson(userJson("alice", ADMIN_HASH, "ADMIN"));
+        return Stream.of(
+            Arguments.of("UTF-16 with BOM", json.getBytes(StandardCharsets.UTF_16)),
+            Arguments.of("UTF-32 with BOM", utf32WithBom(json))
+        );
+    }
+
+    @Test
+    void rejectsMalformedUtf8RegistryContent() throws IOException {
+        byte[] prefix = "{\"schemaVersion\":\"v1\",\"users\":[{\"username\":\""
+            .getBytes(StandardCharsets.UTF_8);
+        byte[] suffix = ("\",\"passwordHash\":\"" + ADMIN_HASH + "\",\"role\":\"USER\"}]}")
+            .getBytes(StandardCharsets.UTF_8);
+        byte[] malformed = new byte[prefix.length + 2 + suffix.length];
+        System.arraycopy(prefix, 0, malformed, 0, prefix.length);
+        malformed[prefix.length] = (byte) 0xc3;
+        malformed[prefix.length + 1] = 0x28;
+        System.arraycopy(suffix, 0, malformed, prefix.length + 2, suffix.length);
+        Path userFile = tempDir.resolve("malformed-utf8-users.json");
+        Files.write(userFile, malformed);
         securePermissions(userFile);
 
         assertUnavailable(userFile);
@@ -474,6 +511,30 @@ class FileStudioUserRegistryTest {
         assertThat(unavailable.available()).isFalse();
         assertThat(unavailable.users()).isEmpty();
         assertThat(unavailable.revision()).isGreaterThan(available.revision());
+    }
+
+    @Test
+    void advancesRevisionWhenInsecurePosixPermissionStateChanges() throws IOException {
+        Path userFile = write("users.json", validUsersJson());
+        assumePosix(userFile);
+        AtomicLong clock = new AtomicLong();
+        FileStudioUserRegistry registry = registry(properties(userFile.toString()), clock);
+        registry.snapshot();
+        Files.setPosixFilePermissions(
+            userFile,
+            Set.of(PosixFilePermission.OWNER_READ, PosixFilePermission.GROUP_READ)
+        );
+        Snapshot groupReadable = registry.snapshot();
+
+        Files.setPosixFilePermissions(
+            userFile,
+            Set.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OTHERS_READ)
+        );
+        Snapshot othersReadable = registry.snapshot();
+
+        assertThat(groupReadable.available()).isFalse();
+        assertThat(othersReadable.available()).isFalse();
+        assertThat(othersReadable.revision()).isGreaterThan(groupReadable.revision());
     }
 
     @Test
@@ -845,6 +906,17 @@ class FileStudioUserRegistryTest {
     private static String userJson(String username, String passwordHash, String role) {
         return "{\"username\":\"" + username + "\",\"passwordHash\":\"" + passwordHash
             + "\",\"role\":\"" + role + "\"}";
+    }
+
+    private static byte[] utf32WithBom(String value) {
+        byte[] content = value.getBytes(Charset.forName("UTF-32BE"));
+        byte[] withBom = new byte[content.length + 4];
+        withBom[0] = 0x00;
+        withBom[1] = 0x00;
+        withBom[2] = (byte) 0xfe;
+        withBom[3] = (byte) 0xff;
+        System.arraycopy(content, 0, withBom, 4, content.length);
+        return withBom;
     }
 
     private record LoggerCapture(Logger logger, ListAppender<ILoggingEvent> appender)

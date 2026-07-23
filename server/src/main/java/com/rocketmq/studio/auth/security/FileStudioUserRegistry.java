@@ -21,6 +21,7 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.channels.Channels;
 import java.nio.channels.SeekableByteChannel;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
@@ -162,16 +163,16 @@ public final class FileStudioUserRegistry implements StudioUserRegistry {
             if (!Files.isReadable(path)) {
                 return StatResult.failure(FailureReason.UNREADABLE);
             }
-            FailureReason securityFailure = validatePosixSecurity(path);
-            if (securityFailure != null) {
-                return StatResult.failure(securityFailure);
-            }
             FileSignal fileSignal = new FileSignal(
                 attributes.fileKey(),
                 attributes.size(),
                 attributes.lastModifiedTime()
             );
-            return StatResult.success(path, fileSignal);
+            SecurityState securityState = readSecurityState(path);
+            if (securityState.failureReason() != null) {
+                return StatResult.securityFailure(path, fileSignal, securityState);
+            }
+            return StatResult.success(path, fileSignal, securityState.identity());
         } catch (InvalidPathException e) {
             return StatResult.failure(FailureReason.INVALID_PATH);
         } catch (NoSuchFileException e) {
@@ -187,16 +188,16 @@ public final class FileStudioUserRegistry implements StudioUserRegistry {
         if (stat.failureReason() != null) {
             return RefreshOutcome.unavailable(
                 stat.failureReason(),
-                "state:" + stat.failureReason().name()
+                stat.fastSignal().stateIdentity()
             );
         }
 
         try {
-            FailureReason securityFailure = validateFileSecurity(stat.path());
-            if (securityFailure != null) {
+            SecurityState securityState = validateFileSecurity(stat.path());
+            if (securityState.failureReason() != null) {
                 return RefreshOutcome.unavailable(
-                    securityFailure,
-                    "state:" + securityFailure.name()
+                    securityState.failureReason(),
+                    securityState.identity()
                 );
             }
 
@@ -209,37 +210,37 @@ public final class FileStudioUserRegistry implements StudioUserRegistry {
         } catch (AccessDeniedException | SecurityException e) {
             return RefreshOutcome.unavailable(
                 FailureReason.UNREADABLE,
-                "state:" + FailureReason.UNREADABLE.name()
+                opaqueStateIdentity(FailureReason.UNREADABLE.name())
             );
         } catch (IOException | RuntimeException e) {
             return RefreshOutcome.unavailable(
                 FailureReason.READ_FAILED,
-                "state:" + FailureReason.READ_FAILED.name()
+                opaqueStateIdentity(FailureReason.READ_FAILED.name())
             );
         }
     }
 
-    private FailureReason validateFileSecurity(Path path) throws IOException {
+    private SecurityState validateFileSecurity(Path path) throws IOException {
         BasicFileAttributes current = Files.readAttributes(
             path,
             BasicFileAttributes.class,
             LinkOption.NOFOLLOW_LINKS
         );
         if (current.isSymbolicLink()) {
-            return FailureReason.SYMLINK;
+            return SecurityState.failure(FailureReason.SYMLINK);
         }
         if (!current.isRegularFile()) {
-            return FailureReason.NOT_REGULAR;
+            return SecurityState.failure(FailureReason.NOT_REGULAR);
         }
         if (!Files.isReadable(path)) {
-            return FailureReason.UNREADABLE;
+            return SecurityState.failure(FailureReason.UNREADABLE);
         }
-        return validatePosixSecurity(path);
+        return readSecurityState(path);
     }
 
-    private FailureReason validatePosixSecurity(Path path) throws IOException {
+    private SecurityState readSecurityState(Path path) throws IOException {
         if (!Files.getFileStore(path).supportsFileAttributeView(PosixFileAttributeView.class)) {
-            return null;
+            return SecurityState.available(opaqueStateIdentity("NON_POSIX"));
         }
 
         PosixFileAttributes attributes = Files.readAttributes(
@@ -247,23 +248,32 @@ public final class FileStudioUserRegistry implements StudioUserRegistry {
             PosixFileAttributes.class,
             LinkOption.NOFOLLOW_LINKS
         );
+        String identity = posixSecurityStateIdentity(
+            attributes.owner().getName(),
+            attributes.permissions()
+        );
         if (attributes.isSymbolicLink()) {
-            return FailureReason.SYMLINK;
+            return new SecurityState(FailureReason.SYMLINK, identity);
         }
         if (!Objects.equals(attributes.owner().getName(), expectedOwnerName)) {
-            return FailureReason.WRONG_OWNER;
+            return new SecurityState(FailureReason.WRONG_OWNER, identity);
         }
         Set<PosixFilePermission> permissions = attributes.permissions();
         if (!permissions.contains(PosixFilePermission.OWNER_READ)
             || permissions.stream().anyMatch(FORBIDDEN_POSIX_PERMISSIONS::contains)) {
-            return FailureReason.INSECURE_PERMISSIONS;
+            return new SecurityState(FailureReason.INSECURE_PERMISSIONS, identity);
         }
-        return null;
+        return SecurityState.available(identity);
     }
 
     private RefreshOutcome parse(byte[] bytes, String digest) {
         try {
-            RegistryDocument document = STRICT_MAPPER.readValue(bytes, RegistryDocument.class);
+            String json = StandardCharsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .decode(ByteBuffer.wrap(bytes))
+                .toString();
+            RegistryDocument document = STRICT_MAPPER.readValue(json, RegistryDocument.class);
             if (!"v1".equals(document.schemaVersion())) {
                 return RefreshOutcome.unavailable(FailureReason.INVALID_SCHEMA, digest);
             }
@@ -381,6 +391,27 @@ public final class FileStudioUserRegistry implements StudioUserRegistry {
         return toHex(digest.digest());
     }
 
+    private static String posixSecurityStateIdentity(
+        String owner,
+        Set<PosixFilePermission> permissions
+    ) {
+        MessageDigest digest = sha256();
+        updateCanonical(digest, "POSIX");
+        updateCanonical(digest, owner);
+        permissions.stream()
+            .sorted()
+            .map(PosixFilePermission::name)
+            .forEach(permission -> updateCanonical(digest, permission));
+        return toHex(digest.digest());
+    }
+
+    private static String opaqueStateIdentity(String value) {
+        MessageDigest digest = sha256();
+        updateCanonical(digest, "FILE_STATE");
+        updateCanonical(digest, value);
+        return toHex(digest.digest());
+    }
+
     private static void updateCanonical(MessageDigest digest, String value) {
         byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
         digest.update(ByteBuffer.allocate(Integer.BYTES).putInt(bytes.length).array());
@@ -444,16 +475,46 @@ public final class FileStudioUserRegistry implements StudioUserRegistry {
     private record FileSignal(Object fileKey, long size, FileTime lastModifiedTime) {
     }
 
-    private record FastSignal(FileSignal fileSignal, FailureReason failureReason) {
+    private record FastSignal(
+        FileSignal fileSignal,
+        FailureReason failureReason,
+        String stateIdentity
+    ) {
     }
 
     private record StatResult(Path path, FastSignal fastSignal, FailureReason failureReason) {
-        private static StatResult success(Path path, FileSignal signal) {
-            return new StatResult(path, new FastSignal(signal, null), null);
+        private static StatResult success(Path path, FileSignal signal, String stateIdentity) {
+            return new StatResult(path, new FastSignal(signal, null, stateIdentity), null);
         }
 
         private static StatResult failure(FailureReason reason) {
-            return new StatResult(null, new FastSignal(null, reason), reason);
+            return new StatResult(
+                null,
+                new FastSignal(null, reason, opaqueStateIdentity(reason.name())),
+                reason
+            );
+        }
+
+        private static StatResult securityFailure(
+            Path path,
+            FileSignal signal,
+            SecurityState securityState
+        ) {
+            return new StatResult(
+                path,
+                new FastSignal(signal, securityState.failureReason(), securityState.identity()),
+                securityState.failureReason()
+            );
+        }
+    }
+
+    private record SecurityState(FailureReason failureReason, String identity) {
+        private static SecurityState available(String identity) {
+            return new SecurityState(null, identity);
+        }
+
+        private static SecurityState failure(FailureReason reason) {
+            return new SecurityState(reason, opaqueStateIdentity(reason.name()));
         }
     }
 
@@ -488,7 +549,7 @@ public final class FileStudioUserRegistry implements StudioUserRegistry {
             return new CachedState(
                 true,
                 new Snapshot(0, false, Map.of()),
-                new FastSignal(null, null),
+                new FastSignal(null, null, opaqueStateIdentity("UNINITIALIZED")),
                 null,
                 null,
                 0
