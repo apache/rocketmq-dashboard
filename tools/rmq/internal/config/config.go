@@ -152,22 +152,111 @@ func Save(path string, cfg Config, force bool) error {
 }
 
 func ensureParentDirectory(parent string) error {
-	info, err := os.Stat(parent)
-	if err == nil {
-		return validateParentDirectory(info)
+	absolute, err := filepath.Abs(parent)
+	if err != nil {
+		return fmt.Errorf("resolve config directory: %w", err)
 	}
-	if !os.IsNotExist(err) {
-		return fmt.Errorf("inspect config directory: %w", err)
+	resolvedChains := make(map[string]struct{})
+	for _, component := range ancestorPaths(absolute) {
+		info, err := os.Lstat(component)
+		if err == nil {
+			if err := validateExistingDirectoryComponent(component, info, resolvedChains); err != nil {
+				return err
+			}
+			continue
+		}
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("inspect config directory component %q: %w", component, err)
+		}
+		if err := createDirectoryComponent(component); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ancestorPaths(path string) []string {
+	path = filepath.Clean(path)
+	var reversed []string
+	for {
+		reversed = append(reversed, path)
+		parent := filepath.Dir(path)
+		if parent == path {
+			break
+		}
+		path = parent
+	}
+	paths := make([]string, len(reversed))
+	for index := range reversed {
+		paths[index] = reversed[len(reversed)-1-index]
+	}
+	return paths
+}
+
+func validateExistingDirectoryComponent(path string, info os.FileInfo, resolvedChains map[string]struct{}) error {
+	if info.Mode()&os.ModeSymlink == 0 {
+		if err := validateParentDirectory(info); err != nil {
+			return fmt.Errorf("validate config directory component %q: %w", path, err)
+		}
+		return nil
 	}
 
-	if err := os.MkdirAll(parent, 0700); err != nil {
-		return fmt.Errorf("create config directory: %w", err)
-	}
-	info, err = os.Stat(parent)
+	resolved, err := filepath.EvalSymlinks(path)
 	if err != nil {
-		return fmt.Errorf("inspect config directory: %w", err)
+		return fmt.Errorf("resolve config directory symlink %q: %w", path, err)
 	}
-	return validateParentDirectory(info)
+	if err := validateExistingDirectoryChain(resolved, resolvedChains); err != nil {
+		return err
+	}
+	targetInfo, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("inspect config directory symlink target %q: %w", path, err)
+	}
+	if err := validateParentDirectory(targetInfo); err != nil {
+		return fmt.Errorf("validate config directory symlink target %q: %w", path, err)
+	}
+	return nil
+}
+
+func validateExistingDirectoryChain(path string, resolvedChains map[string]struct{}) error {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("resolve config directory chain: %w", err)
+	}
+	absolute = filepath.Clean(absolute)
+	if _, ok := resolvedChains[absolute]; ok {
+		return nil
+	}
+	resolvedChains[absolute] = struct{}{}
+
+	for _, component := range ancestorPaths(absolute) {
+		info, err := os.Lstat(component)
+		if err != nil {
+			return fmt.Errorf("inspect resolved config directory component %q: %w", component, err)
+		}
+		if err := validateExistingDirectoryComponent(component, info, resolvedChains); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func createDirectoryComponent(path string) error {
+	err := os.Mkdir(path, 0700)
+	if err != nil && !os.IsExist(err) {
+		return fmt.Errorf("create config directory component %q: %w", path, err)
+	}
+	info, inspectErr := os.Lstat(path)
+	if inspectErr != nil {
+		return fmt.Errorf("inspect created config directory component %q: %w", path, inspectErr)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("config directory component %q appeared as a symlink", path)
+	}
+	if err := validateParentDirectory(info); err != nil {
+		return fmt.Errorf("validate created config directory component %q: %w", path, err)
+	}
+	return nil
 }
 
 func validateParentDirectory(info os.FileInfo) error {

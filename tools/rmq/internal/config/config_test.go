@@ -532,6 +532,187 @@ func TestSaveCreatesPrivateLeafDirectory(t *testing.T) {
 	}
 }
 
+func TestSaveRejectsUnsafeAncestorBeforeCreatingDescendants(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX directory mode gate")
+	}
+
+	const (
+		tokenEnv      = "RMQCTL_ANCESTOR_GATE_TOKEN"
+		sentinelToken = "must-not-appear-in-ancestor-gate-error"
+	)
+	t.Setenv(tokenEnv, sentinelToken)
+	cfg := Default()
+	ctx := cfg.Contexts["default"]
+	ctx.TokenEnv = tokenEnv
+	cfg.Contexts["default"] = ctx
+
+	safe := filepath.Join(t.TempDir(), "safe")
+	unsafe := filepath.Join(safe, "unsafe")
+	if err := os.Mkdir(safe, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(unsafe, 0777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(safe, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(unsafe, 0777); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.Stat(unsafe)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	leaf := filepath.Join(unsafe, "new-leaf")
+	err = Save(filepath.Join(leaf, "config.yaml"), cfg, false)
+	if err == nil {
+		t.Fatal("Save() error = nil, want unsafe-ancestor rejection")
+	}
+	if strings.Contains(err.Error(), sentinelToken) {
+		t.Fatal("Save() error contains token value")
+	}
+	if _, err := os.Lstat(leaf); !os.IsNotExist(err) {
+		t.Fatalf("new leaf was created or returned unexpected error: %v", err)
+	}
+	after, err := os.Stat(unsafe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Mode() != before.Mode() {
+		t.Fatalf("unsafe ancestor mode changed from %v to %v", before.Mode(), after.Mode())
+	}
+}
+
+func TestSaveCreatesPrivateDirectoriesBelowSafeAncestor(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX directory mode checks")
+	}
+
+	ancestor := filepath.Join(t.TempDir(), "safe-ancestor")
+	if err := os.Mkdir(ancestor, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(ancestor, 0755); err != nil {
+		t.Fatal(err)
+	}
+	created := []string{
+		filepath.Join(ancestor, "one"),
+		filepath.Join(ancestor, "one", "two"),
+		filepath.Join(ancestor, "one", "two", "three"),
+	}
+	path := filepath.Join(created[len(created)-1], "config.yaml")
+	if err := Save(path, Default(), false); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	for _, directory := range created {
+		info, err := os.Lstat(directory)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			t.Fatalf("created component %q mode = %v, want real directory", directory, info.Mode())
+		}
+		if gotMode := info.Mode().Perm(); gotMode&0077 != 0 {
+			t.Fatalf("created component %q permissions = %04o, want no group/other bits", directory, gotMode)
+		}
+	}
+	ancestorInfo, err := os.Stat(ancestor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotMode := ancestorInfo.Mode().Perm(); gotMode != 0755 {
+		t.Fatalf("existing ancestor permissions = %04o, want unchanged 0755", gotMode)
+	}
+}
+
+func TestSaveAllowsStickyAncestorWithMissingLeaf(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX directory mode gate")
+	}
+
+	ancestor := filepath.Join(t.TempDir(), "sticky-ancestor")
+	if err := os.Mkdir(ancestor, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(ancestor, 0777|os.ModeSticky); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.Stat(ancestor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before.Mode()&os.ModeSticky == 0 {
+		t.Skip("filesystem does not preserve the sticky bit")
+	}
+
+	leaf := filepath.Join(ancestor, "new-leaf")
+	if err := Save(filepath.Join(leaf, "config.yaml"), Default(), false); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	leafInfo, err := os.Stat(leaf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotMode := leafInfo.Mode().Perm(); gotMode&0077 != 0 {
+		t.Fatalf("new leaf permissions = %04o, want no group/other bits", gotMode)
+	}
+	after, err := os.Stat(ancestor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Mode() != before.Mode() {
+		t.Fatalf("sticky ancestor mode changed from %v to %v", before.Mode(), after.Mode())
+	}
+}
+
+func TestSaveRejectsUnsafeResolvedSymlinkAncestor(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX directory mode gate")
+	}
+
+	root := t.TempDir()
+	lexicalSafe := filepath.Join(root, "lexical-safe")
+	unsafe := filepath.Join(root, "unsafe")
+	resolvedSafe := filepath.Join(unsafe, "resolved-safe")
+	for _, directory := range []string{lexicalSafe, unsafe, resolvedSafe} {
+		if err := os.Mkdir(directory, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Chmod(lexicalSafe, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(unsafe, 0777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(resolvedSafe, 0755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(lexicalSafe, "resolved")
+	if err := os.Symlink(resolvedSafe, link); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+
+	leaf := filepath.Join(resolvedSafe, "new-leaf")
+	err := Save(filepath.Join(link, "new-leaf", "config.yaml"), Default(), false)
+	if err == nil {
+		t.Fatal("Save() error = nil, want unsafe resolved-ancestor rejection")
+	}
+	if _, err := os.Lstat(leaf); !os.IsNotExist(err) {
+		t.Fatalf("resolved leaf was created or returned unexpected error: %v", err)
+	}
+	unsafeInfo, err := os.Stat(unsafe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotMode := unsafeInfo.Mode().Perm(); gotMode != 0777 {
+		t.Fatalf("unsafe resolved ancestor permissions = %04o, want unchanged 0777", gotMode)
+	}
+}
+
 func TestSaveParentSafetyGate(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX directory mode gate")
