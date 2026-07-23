@@ -195,7 +195,7 @@ func writeExclusive(path string, contents []byte) (returnErr error) {
 		return fmt.Errorf("publish config without replacing existing target: %w", err)
 	}
 	if err := verifyPublishedConfig(staged.info, path); err != nil {
-		return errors.Join(err, removeInvalidPublication(path))
+		return err
 	}
 	return nil
 }
@@ -213,7 +213,7 @@ func writeAtomic(path string, contents []byte) (returnErr error) {
 		return fmt.Errorf("replace config: %w", err)
 	}
 	if err := verifyPublishedConfig(staged.info, path); err != nil {
-		return errors.Join(err, removeInvalidPublication(path))
+		return err
 	}
 	return nil
 }
@@ -272,13 +272,6 @@ func verifyPublishedConfig(expected os.FileInfo, path string) error {
 func removeTemporaryConfig(path string) error {
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove temporary config: %w", err)
-	}
-	return nil
-}
-
-func removeInvalidPublication(path string) error {
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("remove invalid published config: %w", err)
 	}
 	return nil
 }

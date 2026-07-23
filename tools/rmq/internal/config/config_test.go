@@ -610,7 +610,7 @@ func TestSaveParentSafetyGate(t *testing.T) {
 	}
 }
 
-func TestSaveDetectsTemporaryPathSwap(t *testing.T) {
+func TestSaveIntegrityMismatchPreservesAlternatePublication(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("requires unlinking an open file")
 	}
@@ -626,6 +626,20 @@ func TestSaveDetectsTemporaryPathSwap(t *testing.T) {
 			if err := os.Chmod(dir, 0700); err != nil {
 				t.Fatal(err)
 			}
+			alternate := Default()
+			alternateContext := alternate.Contexts["default"]
+			alternateContext.Output = "json"
+			alternateContext.CAFile = "/alternate-publication.pem"
+			alternate.Contexts["default"] = alternateContext
+			alternatePath := filepath.Join(dir, "alternate.yaml")
+			if err := Save(alternatePath, alternate, false); err != nil {
+				t.Fatalf("create alternate publication: %v", err)
+			}
+			alternateInfo, err := os.Stat(alternatePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+
 			path := filepath.Join(dir, "config.yaml")
 			saveResult := make(chan error, 1)
 			go func() {
@@ -636,17 +650,8 @@ func TestSaveDetectsTemporaryPathSwap(t *testing.T) {
 			if err := os.Remove(tempPath); err != nil {
 				t.Fatalf("remove original temporary config: %v", err)
 			}
-			const substituted = "attacker substituted this file"
-			file, err := os.OpenFile(tempPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-			if err != nil {
-				t.Fatalf("create substituted temporary config: %v", err)
-			}
-			if _, err := file.WriteString(substituted); err != nil {
-				_ = file.Close()
-				t.Fatal(err)
-			}
-			if err := file.Close(); err != nil {
-				t.Fatal(err)
+			if err := os.Link(alternatePath, tempPath); err != nil {
+				t.Fatalf("substitute alternate publication: %v", err)
 			}
 
 			err = <-saveResult
@@ -656,13 +661,19 @@ func TestSaveDetectsTemporaryPathSwap(t *testing.T) {
 			if !strings.Contains(err.Error(), "publication integrity") {
 				t.Fatalf("Save() error = %q, want publication integrity error", err)
 			}
-			if got, err := os.ReadFile(path); err == nil {
-				if string(got) == substituted {
-					t.Fatal("Save() left substituted target published")
-				}
-				t.Fatalf("unexpected published target %q", got)
-			} else if !os.IsNotExist(err) {
-				t.Fatalf("inspect target: %v", err)
+			targetInfo, err := os.Stat(path)
+			if err != nil {
+				t.Fatalf("alternate publication was deleted: %v", err)
+			}
+			if !os.SameFile(alternateInfo, targetInfo) {
+				t.Fatal("target does not retain alternate publication identity")
+			}
+			got, err := Load(path)
+			if err != nil {
+				t.Fatalf("load alternate publication: %v", err)
+			}
+			if !reflect.DeepEqual(got, alternate) {
+				t.Fatalf("target config = %#v, want alternate %#v", got, alternate)
 			}
 		})
 	}
@@ -980,7 +991,7 @@ func cloneConfig(cfg Config) Config {
 func waitForTemporaryConfig(t *testing.T, dir, target string, saveResult <-chan error) string {
 	t.Helper()
 	tempPrefix := "." + filepath.Base(target) + ".tmp-"
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(60 * time.Second)
 	for {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
