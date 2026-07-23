@@ -23,6 +23,7 @@ import com.networknt.schema.InputFormat;
 import com.networknt.schema.Schema;
 import com.networknt.schema.SchemaRegistry;
 import com.networknt.schema.SpecificationVersion;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Component;
@@ -54,6 +55,7 @@ public class ToolCatalog {
     private final List<ToolDefinition> definitions;
     private final Map<String, ToolDefinition> definitionsByName;
 
+    @Autowired
     public ToolCatalog(ResourceLoader resourceLoader) {
         ToolCatalog loaded = load(
                 resourceLoader.getResource(CATALOG_RESOURCE),
