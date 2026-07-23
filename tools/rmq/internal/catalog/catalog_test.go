@@ -233,49 +233,39 @@ func TestCIHasGoCLIFoundationJob(t *testing.T) {
 		t.Fatalf("parse CI workflow: %v", err)
 	}
 
-	requiredCommands := []string{
-		"go test -race ./...",
-		"go vet ./...",
-		"go run ./cmd/cataloggen -check",
-		"go build ./cmd/rmqctl",
-	}
 	for _, job := range workflow.Jobs {
-		hasCheckout := false
-		hasSetupGo := false
-		commands := make(map[string]bool, len(requiredCommands))
-		runStepsUseModule := true
-
-		for _, step := range job.Steps {
-			switch step.Uses {
-			case "actions/checkout@v4":
-				hasCheckout = true
-			case "actions/setup-go@v6":
-				hasSetupGo = step.With["go-version"] == "1.26.x" &&
-					step.With["cache-dependency-path"] == "tools/rmq/go.sum"
-			}
-
-			if step.Run == "" {
-				continue
-			}
-			if job.Defaults.Run.WorkingDirectory != "tools/rmq" &&
-				step.WorkingDirectory != "tools/rmq" {
-				runStepsUseModule = false
-			}
-			for _, line := range strings.Split(step.Run, "\n") {
-				commands[strings.TrimSpace(line)] = true
-			}
-		}
-
-		hasRequiredCommands := true
-		for _, command := range requiredCommands {
-			hasRequiredCommands = hasRequiredCommands && commands[command]
-		}
-		if hasCheckout && hasSetupGo && runStepsUseModule && hasRequiredCommands {
+		if supportsGoCLIFoundation(job) {
 			return
 		}
 	}
 
 	t.Fatal("CI workflow has no single Go job with the required actions, module working directory, and verification commands")
+}
+
+func TestGoCLIFoundationJobRejectsRunStepOutsideModule(t *testing.T) {
+	job := ciJob{
+		Defaults: ciDefaults{
+			Run: ciRunDefaults{WorkingDirectory: "tools/rmq"},
+		},
+		Steps: []ciStep{
+			{Uses: "actions/checkout@v4"},
+			{
+				Uses: "actions/setup-go@v6",
+				With: map[string]any{
+					"go-version":            "1.26.x",
+					"cache-dependency-path": "tools/rmq/go.sum",
+				},
+			},
+			{Run: "go test -race ./..."},
+			{Run: "go vet ./..."},
+			{Run: "go run ./cmd/cataloggen -check"},
+			{Run: "go build ./cmd/rmqctl", WorkingDirectory: "server"},
+		},
+	}
+
+	if supportsGoCLIFoundation(job) {
+		t.Fatal("Go CLI foundation job accepted a run step that overrides the module working directory")
+	}
 }
 
 func TestGeneratedFilesHaveNoDrift(t *testing.T) {
@@ -297,6 +287,49 @@ func assertJSONArray(t *testing.T, lookup string, capabilities []string) {
 	if string(encoded) != "[]" {
 		t.Fatalf("%s capabilities JSON = %s, want []", lookup, encoded)
 	}
+}
+
+func supportsGoCLIFoundation(job ciJob) bool {
+	requiredCommands := []string{
+		"go test -race ./...",
+		"go vet ./...",
+		"go run ./cmd/cataloggen -check",
+		"go build ./cmd/rmqctl",
+	}
+	hasCheckout := false
+	hasSetupGo := false
+	commands := make(map[string]bool, len(requiredCommands))
+	runStepsUseModule := true
+
+	for _, step := range job.Steps {
+		switch step.Uses {
+		case "actions/checkout@v4":
+			hasCheckout = true
+		case "actions/setup-go@v6":
+			hasSetupGo = step.With["go-version"] == "1.26.x" &&
+				step.With["cache-dependency-path"] == "tools/rmq/go.sum"
+		}
+
+		if step.Run == "" {
+			continue
+		}
+		effectiveWorkingDirectory := step.WorkingDirectory
+		if effectiveWorkingDirectory == "" {
+			effectiveWorkingDirectory = job.Defaults.Run.WorkingDirectory
+		}
+		if effectiveWorkingDirectory != "tools/rmq" {
+			runStepsUseModule = false
+		}
+		for _, line := range strings.Split(step.Run, "\n") {
+			commands[strings.TrimSpace(line)] = true
+		}
+	}
+
+	hasRequiredCommands := true
+	for _, command := range requiredCommands {
+		hasRequiredCommands = hasRequiredCommands && commands[command]
+	}
+	return hasCheckout && hasSetupGo && runStepsUseModule && hasRequiredCommands
 }
 
 func moduleRoot(t *testing.T) string {
