@@ -1,0 +1,38 @@
+web/src/pages/settings/index.tsx
+  s_4884e99c338e65::t_dece8f4c156c6f 21,54,76,79-80,86-89,103,107-110,200-205,208-218
+  s_4884e99c338e65::t_9e903d6cf140aa 219
+web/src/api/generalSettings.test.ts
+  s_4884e99c338e65::t_dece8f4c156c6f 22,33,37-47,66-92,94,98
+web/src/api/settings.ts
+  s_4884e99c338e65::t_dece8f4c156c6f 29,34-38,54-58
+server/src/main/java/com/rocketmq/studio/settings/GeneralSettingsVO.java
+  s_4884e99c338e65::t_dece8f4c156c6f 19,24-25,39-40,42-43,46-50
+server/src/main/java/com/rocketmq/studio/settings/SettingsController.java
+  s_4884e99c338e65::t_dece8f4c156c6f 20,44-45
+server/src/main/java/com/rocketmq/studio/settings/GeneralSettingsUpdateDTO.java
+  s_4884e99c338e65::t_dece8f4c156c6f 1-73
+server/src/test/java/com/rocketmq/studio/settings/SettingsServiceTest.java
+  s_4884e99c338e65::t_dece8f4c156c6f 71-75,80-126,128,130-132
+server/src/main/java/com/rocketmq/studio/settings/SettingsService.java
+  s_4884e99c338e65::t_dece8f4c156c6f 22,40,42-48
+docs/api-spec.md
+  s_4884e99c338e65::t_dece8f4c156c6f 1486,1496-1510
+server/src/test/java/com/rocketmq/studio/settings/SettingsControllerTest.java
+  s_4884e99c338e65::t_dece8f4c156c6f 33,36,82-84,94-108,113-156
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "a6616826620099f968fce17a075235542fed571b",
+  "prompts": {},
+  "sessions": {
+    "s_4884e99c338e65": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8dd4-ca01-7ce3-a219-1972df092368",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "yx9o <yangx_soft@163.com>"
+    }
+  }
+}
