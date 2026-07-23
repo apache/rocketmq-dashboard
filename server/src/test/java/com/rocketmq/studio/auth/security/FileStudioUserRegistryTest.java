@@ -30,6 +30,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -38,6 +39,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
 import ch.qos.logback.classic.Level;
@@ -629,6 +631,145 @@ class FileStudioUserRegistryTest {
             Arguments.of("other-readable parent", PosixFilePermission.OTHERS_READ),
             Arguments.of("other-executable parent", PosixFilePermission.OTHERS_EXECUTE)
         );
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("untrustedAncestorPermissions")
+    void rejectsUntrustedAncestorBeforeAbaReaderCanRun(
+        String description,
+        PosixFilePermission unsafePermission
+    ) throws IOException {
+        String attackerMarker = "ANCESTOR-ABA-ATTACKER-MARKER-47";
+        Path unsafeAncestor = Files.createDirectory(tempDir.resolve("unsafe-ancestor"));
+        assumePosix(unsafeAncestor);
+        Files.setPosixFilePermissions(
+            unsafeAncestor,
+            Set.of(
+                PosixFilePermission.OWNER_READ,
+                PosixFilePermission.OWNER_WRITE,
+                PosixFilePermission.OWNER_EXECUTE,
+                unsafePermission
+            )
+        );
+        Path trustedChild = Files.createDirectory(unsafeAncestor.resolve("trusted-child"));
+        Path attackerChild = Files.createDirectory(unsafeAncestor.resolve("attacker-child"));
+        Path savedChild = unsafeAncestor.resolve("saved-child");
+        Path userFile = trustedChild.resolve("users.json");
+        Files.writeString(
+            userFile,
+            validUsersJson(userJson("victim", ADMIN_HASH, "USER")),
+            StandardCharsets.UTF_8
+        );
+        securePermissions(userFile);
+        Path attackerFile = attackerChild.resolve("users.json");
+        Files.writeString(
+            attackerFile,
+            validUsersJson(userJson(attackerMarker, USER_HASH, "ADMIN")),
+            StandardCharsets.UTF_8
+        );
+        securePermissions(attackerFile);
+        AtomicInteger reads = new AtomicInteger();
+        FileStudioUserRegistry registry = new FileStudioUserRegistry(
+            properties(userFile.toString()),
+            System::nanoTime,
+            currentOwner(userFile),
+            (path, maximumBytes) -> {
+                reads.incrementAndGet();
+                Files.move(trustedChild, savedChild, StandardCopyOption.ATOMIC_MOVE);
+                try {
+                    Files.move(attackerChild, trustedChild, StandardCopyOption.ATOMIC_MOVE);
+                    try {
+                        return FileStudioUserRegistry.readBounded(path, maximumBytes);
+                    } finally {
+                        Files.move(trustedChild, attackerChild, StandardCopyOption.ATOMIC_MOVE);
+                    }
+                } finally {
+                    Files.move(savedChild, trustedChild, StandardCopyOption.ATOMIC_MOVE);
+                }
+            }
+        );
+
+        LoggerCapture capture = attachLogger();
+        try {
+            Snapshot snapshot = registry.snapshot();
+
+            assertThat(snapshot.available()).isFalse();
+            assertThat(snapshot.users()).isEmpty();
+            assertThat(reads).hasValue(0);
+            assertThat(capture.messages())
+                .anyMatch(message -> message.contains("reason=UNTRUSTED_PARENT"))
+                .noneMatch(message -> message.contains(attackerMarker))
+                .noneMatch(message -> message.contains("unsafe-ancestor"));
+        } finally {
+            capture.close();
+        }
+    }
+
+    static Stream<Arguments> untrustedAncestorPermissions() {
+        return Stream.of(
+            Arguments.of("group-writable ancestor", PosixFilePermission.GROUP_WRITE),
+            Arguments.of("other-writable ancestor", PosixFilePermission.OTHERS_WRITE)
+        );
+    }
+
+    @Test
+    void canonicalizesRawAncestorSymlinkBeforeReading() throws IOException {
+        Path canonicalParent = Files.createDirectory(tempDir.resolve("canonical-parent"));
+        Path userFile = canonicalParent.resolve("users.json");
+        Files.writeString(
+            userFile,
+            validUsersJson(userJson("alice", ADMIN_HASH, "USER")),
+            StandardCharsets.UTF_8
+        );
+        securePermissions(userFile);
+        Path rawParent = tempDir.resolve("raw-parent-link");
+        try {
+            Files.createSymbolicLink(rawParent, canonicalParent);
+        } catch (UnsupportedOperationException | IOException e) {
+            Assumptions.abort("Symbolic links are unavailable");
+        }
+        AtomicReference<Path> readPath = new AtomicReference<>();
+        FileStudioUserRegistry registry = new FileStudioUserRegistry(
+            properties(rawParent.resolve("users.json").toString()),
+            System::nanoTime,
+            currentOwner(userFile),
+            (path, maximumBytes) -> {
+                readPath.set(path);
+                return FileStudioUserRegistry.readBounded(path, maximumBytes);
+            }
+        );
+
+        Snapshot snapshot = registry.snapshot();
+
+        assertThat(snapshot.available()).isTrue();
+        assertThat(snapshot.users()).containsOnlyKeys("alice");
+        assertThat(readPath).hasValue(canonicalParent.toRealPath().resolve("users.json"));
+    }
+
+    @Test
+    void acceptsAncestorsOwnedByProcessAndFilesystemRoot() throws IOException {
+        Path userFile = write(
+            "mixed-owner-chain-users.json",
+            validUsersJson(userJson("alice", ADMIN_HASH, "USER"))
+        );
+        assumePosix(userFile);
+        String processOwner = currentOwner(userFile);
+        String rootOwner = currentOwner(userFile.toRealPath().getRoot());
+        Assumptions.assumeFalse(
+            Objects.equals(processOwner, rootOwner),
+            "Process and filesystem-root owners are identical"
+        );
+        FileStudioUserRegistry registry = new FileStudioUserRegistry(
+            properties(userFile.toString()),
+            System::nanoTime,
+            processOwner,
+            FileStudioUserRegistry::readBounded
+        );
+
+        Snapshot snapshot = registry.snapshot();
+
+        assertThat(snapshot.available()).isTrue();
+        assertThat(snapshot.users()).containsOnlyKeys("alice");
     }
 
     @Test

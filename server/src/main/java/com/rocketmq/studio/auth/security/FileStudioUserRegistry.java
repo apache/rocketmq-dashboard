@@ -75,7 +75,7 @@ public final class FileStudioUserRegistry implements StudioUserRegistry {
         PosixFilePermission.OTHERS_WRITE,
         PosixFilePermission.OTHERS_EXECUTE
     );
-    private static final Set<PosixFilePermission> FORBIDDEN_PARENT_POSIX_PERMISSIONS = Set.of(
+    private static final Set<PosixFilePermission> FORBIDDEN_DIRECTORY_POSIX_PERMISSIONS = Set.of(
         PosixFilePermission.GROUP_WRITE,
         PosixFilePermission.OTHERS_WRITE
     );
@@ -152,7 +152,24 @@ public final class FileStudioUserRegistry implements StudioUserRegistry {
             return StatResult.failure(FailureReason.NOT_CONFIGURED);
         }
         try {
-            Path path = Path.of(configuredPath);
+            Path configured = Path.of(configuredPath).toAbsolutePath().normalize();
+            Path fileName = configured.getFileName();
+            Path rawParent = configured.getParent();
+            if (fileName == null || rawParent == null) {
+                return StatResult.failure(FailureReason.UNTRUSTED_PARENT);
+            }
+            Path canonicalParent = rawParent.toRealPath();
+            Path path = canonicalParent.resolve(fileName);
+            SecurityState ancestrySecurity = readAncestrySecurityState(canonicalParent);
+            if (ancestrySecurity.failureReason() != null) {
+                return StatResult.securityFailure(
+                    path,
+                    null,
+                    ancestrySecurity.failureReason(),
+                    ancestrySecurity.identity()
+                );
+            }
+
             BasicFileAttributes attributes = Files.readAttributes(
                 path,
                 BasicFileAttributes.class,
@@ -173,19 +190,16 @@ public final class FileStudioUserRegistry implements StudioUserRegistry {
                 attributes.lastModifiedTime()
             );
             SecurityState fileSecurity = readSecurityState(path);
-            SecurityState parentSecurity = readParentSecurityState(path);
             String combinedSecurityIdentity = opaqueStateIdentity(
-                "FILE_AND_PARENT",
+                "FILE_AND_ANCESTRY",
                 fileSecurity.identity(),
-                parentSecurity.identity()
+                ancestrySecurity.identity()
             );
-            FailureReason securityFailure = fileSecurity.failureReason() != null
-                ? fileSecurity.failureReason() : parentSecurity.failureReason();
-            if (securityFailure != null) {
+            if (fileSecurity.failureReason() != null) {
                 return StatResult.securityFailure(
                     path,
                     fileSignal,
-                    securityFailure,
+                    fileSecurity.failureReason(),
                     combinedSecurityIdentity
                 );
             }
@@ -279,42 +293,80 @@ public final class FileStudioUserRegistry implements StudioUserRegistry {
         return SecurityState.available(identity);
     }
 
-    private SecurityState readParentSecurityState(Path path) {
+    private SecurityState readAncestrySecurityState(Path canonicalParent) {
+        MessageDigest digest = sha256();
+        updateCanonical(digest, "CANONICAL_ANCESTRY");
         try {
-            Path parent = path.toAbsolutePath().normalize().getParent();
-            if (parent == null) {
+            Path root = canonicalParent.getRoot();
+            if (root == null) {
                 return SecurityState.failure(FailureReason.UNTRUSTED_PARENT);
             }
-            BasicFileAttributes basic = Files.readAttributes(
-                parent,
-                BasicFileAttributes.class,
-                LinkOption.NOFOLLOW_LINKS
-            );
-            String basicIdentity = basicPathStateIdentity("PARENT", basic);
-            if (basic.isSymbolicLink() || !basic.isDirectory()) {
-                return new SecurityState(FailureReason.UNTRUSTED_PARENT, basicIdentity);
-            }
-            if (!Files.getFileStore(parent)
-                .supportsFileAttributeView(PosixFileAttributeView.class)) {
-                return SecurityState.available(basicIdentity);
-            }
+            String rootOwnerName = readOwnerName(root);
+            Path current = canonicalParent;
+            int depth = 0;
+            boolean trusted = true;
+            while (current != null) {
+                updateCanonical(digest, Integer.toString(depth));
+                BasicFileAttributes basic = Files.readAttributes(
+                    current,
+                    BasicFileAttributes.class,
+                    LinkOption.NOFOLLOW_LINKS
+                );
+                if (basic.isSymbolicLink() || !basic.isDirectory()) {
+                    updateBasicIdentity(digest, "INVALID_ANCESTOR", basic);
+                    trusted = false;
+                } else if (Files.getFileStore(current)
+                    .supportsFileAttributeView(PosixFileAttributeView.class)) {
+                    PosixFileAttributes posix = Files.readAttributes(
+                        current,
+                        PosixFileAttributes.class,
+                        LinkOption.NOFOLLOW_LINKS
+                    );
+                    updatePosixDirectoryIdentity(digest, posix);
+                    String ownerName = posix.owner().getName();
+                    // The Studio UID and filesystem-root owner define the trusted boundary.
+                    boolean trustedOwner = Objects.equals(ownerName, expectedOwnerName)
+                        || Objects.equals(ownerName, rootOwnerName);
+                    if (posix.isSymbolicLink()
+                        || !posix.isDirectory()
+                        || !trustedOwner
+                        || posix.permissions().stream()
+                            .anyMatch(FORBIDDEN_DIRECTORY_POSIX_PERMISSIONS::contains)) {
+                        trusted = false;
+                    }
+                } else {
+                    updateBasicIdentity(digest, "BASIC_ANCESTOR", basic);
+                }
 
-            PosixFileAttributes posix = Files.readAttributes(
-                parent,
-                PosixFileAttributes.class,
-                LinkOption.NOFOLLOW_LINKS
-            );
-            String identity = parentSecurityStateIdentity(posix);
-            if (posix.isSymbolicLink()
-                || !posix.isDirectory()
-                || !Objects.equals(posix.owner().getName(), expectedOwnerName)
-                || posix.permissions().stream()
-                    .anyMatch(FORBIDDEN_PARENT_POSIX_PERMISSIONS::contains)) {
-                return new SecurityState(FailureReason.UNTRUSTED_PARENT, identity);
+                depth++;
+                if (current.equals(root)) {
+                    updateCanonical(digest, Integer.toString(depth));
+                    String identity = toHex(digest.digest());
+                    return trusted
+                        ? SecurityState.available(identity)
+                        : new SecurityState(FailureReason.UNTRUSTED_PARENT, identity);
+                }
+                current = current.getParent();
             }
-            return SecurityState.available(identity);
+            updateCanonical(digest, "ROOT_NOT_REACHED");
+            return new SecurityState(
+                FailureReason.UNTRUSTED_PARENT,
+                toHex(digest.digest())
+            );
         } catch (IOException | RuntimeException e) {
-            return SecurityState.failure(FailureReason.UNTRUSTED_PARENT);
+            updateCanonical(digest, "ANCESTRY_READ_FAILED");
+            return new SecurityState(
+                FailureReason.UNTRUSTED_PARENT,
+                toHex(digest.digest())
+            );
+        }
+    }
+
+    private static String readOwnerName(Path path) {
+        try {
+            return Files.getOwner(path, LinkOption.NOFOLLOW_LINKS).getName();
+        } catch (IOException | RuntimeException e) {
+            return null;
         }
     }
 
@@ -457,24 +509,16 @@ public final class FileStudioUserRegistry implements StudioUserRegistry {
         return toHex(digest.digest());
     }
 
-    private static String parentSecurityStateIdentity(PosixFileAttributes attributes) {
-        MessageDigest digest = sha256();
-        updateBasicIdentity(digest, "POSIX_PARENT", attributes);
+    private static void updatePosixDirectoryIdentity(
+        MessageDigest digest,
+        PosixFileAttributes attributes
+    ) {
+        updateBasicIdentity(digest, "POSIX_ANCESTOR", attributes);
         updateCanonical(digest, attributes.owner().getName());
         attributes.permissions().stream()
             .sorted()
             .map(PosixFilePermission::name)
             .forEach(permission -> updateCanonical(digest, permission));
-        return toHex(digest.digest());
-    }
-
-    private static String basicPathStateIdentity(
-        String category,
-        BasicFileAttributes attributes
-    ) {
-        MessageDigest digest = sha256();
-        updateBasicIdentity(digest, category, attributes);
-        return toHex(digest.digest());
     }
 
     private static void updateBasicIdentity(
