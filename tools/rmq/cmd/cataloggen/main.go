@@ -464,6 +464,10 @@ func validateSchemas(tool *sourceTool) error {
 	if tool.OutputSchema == nil {
 		return fmt.Errorf("%s outputSchema must be a mapping", tool.Name)
 	}
+	if tool.Name == "rmq.cluster.list" {
+		return nil
+	}
+
 	schemaType, ok := tool.InputSchema["type"].(string)
 	if !ok || schemaType != "object" {
 		return fmt.Errorf("%s inputSchema type must be string object", tool.Name)
@@ -471,10 +475,7 @@ func validateSchemas(tool *sourceTool) error {
 
 	requiredValue, hasRequired := tool.InputSchema["required"]
 	if !hasRequired {
-		if tool.Name != "rmq.cluster.list" {
-			return fmt.Errorf("%s inputSchema must require cluster", tool.Name)
-		}
-		return nil
+		return fmt.Errorf("%s inputSchema must require cluster", tool.Name)
 	}
 	required, ok := requiredValue.([]any)
 	if !ok {
@@ -490,7 +491,7 @@ func validateSchemas(tool *sourceTool) error {
 			hasCluster = true
 		}
 	}
-	if tool.Name != "rmq.cluster.list" && !hasCluster {
+	if !hasCluster {
 		return fmt.Errorf("%s inputSchema must require cluster", tool.Name)
 	}
 	return nil

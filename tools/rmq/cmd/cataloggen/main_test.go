@@ -137,7 +137,34 @@ func TestGenerateRejectsWrongRequiredFieldTypesWithoutWriting(t *testing.T) {
 	}
 }
 
+func TestGenerateAcceptsEmptyClusterListInputSchema(t *testing.T) {
+	canonicalPath := filepath.Clean(filepath.Join("..", "..", defaultCatalogPath))
+	source, err := os.ReadFile(canonicalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clusterListIndex := yamlToolIndex(t, source, "rmq.cluster.list")
+	source = mutateYAMLField(
+		t,
+		source,
+		[]any{"tools", clusterListIndex, "inputSchema"},
+		"replace",
+		"{}",
+	)
+
+	err, goOutput, docsOutput := generateFixture(t, source, false)
+	if err != nil {
+		t.Fatalf("generate() rejected canonical-compatible cluster-list schema: %v", err)
+	}
+	for _, path := range []string{goOutput, docsOutput} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("generated output %s: %v", path, err)
+		}
+	}
+}
+
 func TestGenerateRejectsInvalidInputSchemaShapeWithoutWriting(t *testing.T) {
+	remoteCatalog := strings.Replace(validCatalogYAML, "rmq.cluster.list", "rmq.capabilities", 2)
 	tests := []struct {
 		name  string
 		path  []any
@@ -169,7 +196,7 @@ func TestGenerateRejectsInvalidInputSchemaShapeWithoutWriting(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			source := mutateYAMLField(t, []byte(validCatalogYAML), test.path, test.mode, test.value)
+			source := mutateYAMLField(t, []byte(remoteCatalog), test.path, test.mode, test.value)
 			err, goOutput, docsOutput := generateFixture(t, source, false)
 			if err == nil {
 				t.Fatal("generate() accepted an invalid input schema type")
@@ -422,6 +449,24 @@ func yamlNodeAtPath(t *testing.T, node *yaml.Node, path []any) *yaml.Node {
 		}
 	}
 	return current
+}
+
+func yamlToolIndex(t *testing.T, source []byte, name string) int {
+	t.Helper()
+
+	var document yaml.Node
+	if err := yaml.Unmarshal(source, &document); err != nil {
+		t.Fatal(err)
+	}
+	tools := yamlNodeAtPath(t, document.Content[0], []any{"tools"})
+	for i, tool := range tools.Content {
+		nameNode := yamlNodeAtPath(t, tool, []any{"name"})
+		if nameNode.Value == name {
+			return i
+		}
+	}
+	t.Fatalf("tool %q not found", name)
+	return 0
 }
 
 func yamlMappingValueIndex(t *testing.T, node *yaml.Node, key string) int {
