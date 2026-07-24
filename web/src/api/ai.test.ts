@@ -148,6 +148,27 @@ describe('AI API', () => {
       );
     });
 
+    it('throws the stable authentication error when HTTP 401 navigation fails', async () => {
+      persistAuthSession('secret-expired-token', 'studio-admin');
+      const navigate = vi.fn(() => {
+        throw new Error('navigation unavailable');
+      });
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 401 })));
+
+      const rejection = await chatStream(
+        { message: 'hello', mode: 'chat', model: 'stub' },
+        vi.fn(),
+        undefined,
+        navigate,
+      ).catch((error: unknown) => error);
+
+      expect(readAuthSession()).toEqual({ token: null, user: null });
+      expect(navigate).toHaveBeenCalledOnce();
+      expect(navigate).toHaveBeenCalledWith('/');
+      expect(rejection).toBeInstanceOf(Error);
+      expect((rejection as Error).message).toBe('Authentication required');
+    });
+
     it('preserves the existing error and session behavior for non-401 failures', async () => {
       persistAuthSession('valid-token', 'studio-admin');
       const navigate = vi.fn();

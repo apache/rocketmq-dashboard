@@ -60,4 +60,23 @@ describe('auth session storage', () => {
     expect(navigate).toHaveBeenCalledOnce();
     expect(navigate).toHaveBeenCalledWith('/');
   });
+
+  it('still clears the persisted session without throwing when navigation fails', () => {
+    persistAuthSession('token-1', 'studio-admin');
+    const navigate = vi.fn(() => {
+      throw new Error('navigation unavailable');
+    });
+    let thrown: unknown;
+
+    try {
+      handleUnauthorized(navigate);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(readAuthSession()).toEqual({ token: null, user: null });
+    expect(navigate).toHaveBeenCalledOnce();
+    expect(navigate).toHaveBeenCalledWith('/');
+    expect(thrown).toBeUndefined();
+  });
 });

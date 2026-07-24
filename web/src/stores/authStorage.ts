@@ -57,5 +57,9 @@ export function handleUnauthorized(
   navigate: (url: string) => void = (url) => window.location.assign(url),
 ): void {
   clearAuthSession();
-  navigate('/');
+  try {
+    navigate('/');
+  } catch {
+    // Authentication cleanup must not be replaced by a routing failure.
+  }
 }
