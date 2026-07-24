@@ -962,6 +962,33 @@ class FileStudioUserRegistryTest {
     }
 
     @Test
+    void unrelatedSiblingChangeDoesNotForceRegistryReadBeforeInterval() throws IOException {
+        Path userFile = write("users.json", validUsersJson());
+        AtomicLong clock = new AtomicLong();
+        AtomicInteger reads = new AtomicInteger();
+        FileStudioUserRegistry registry = new FileStudioUserRegistry(
+            properties(userFile.toString()),
+            clock::get,
+            currentOwner(userFile),
+            (path, maximumBytes) -> {
+                reads.incrementAndGet();
+                return FileStudioUserRegistry.readBounded(path, maximumBytes);
+            }
+        );
+        Snapshot initial = registry.snapshot();
+
+        Files.writeString(
+            tempDir.resolve("unrelated.txt"),
+            "unrelated",
+            StandardCharsets.UTF_8
+        );
+        Snapshot unchanged = registry.snapshot();
+
+        assertThat(unchanged).isSameAs(initial);
+        assertThat(reads).hasValue(1);
+    }
+
+    @Test
     void differentInvalidBytesWithSameSignalAdvanceRevision() throws IOException {
         String invalidA = "{\"schemaVersion\":\"v1\",\"users\":[A]}";
         String invalidB = "{\"schemaVersion\":\"v1\",\"users\":[B]}";

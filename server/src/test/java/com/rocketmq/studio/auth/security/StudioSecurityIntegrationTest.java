@@ -342,6 +342,19 @@ class StudioSecurityIntegrationTest {
             .isEqualTo(Access.PUBLIC);
     }
 
+    @Test
+    void malformedRequestPathFailsClosedAsAdmin() {
+        MockHttpServletRequest request = new MockHttpServletRequest() {
+            @Override
+            public String getRequestURI() {
+                throw new IllegalArgumentException("malformed request path");
+            }
+        };
+        request.setMethod(HttpMethod.GET.name());
+
+        assertThat(policy.access(request)).isEqualTo(Access.ADMIN);
+    }
+
     @ParameterizedTest
     @MethodSource("protectedHealthLookalikesAndMethods")
     void healthLookalikesNonGetsAndOtherActuatorEndpointsStayProtected(

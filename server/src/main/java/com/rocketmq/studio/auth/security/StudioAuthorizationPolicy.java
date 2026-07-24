@@ -169,10 +169,13 @@ public final class StudioAuthorizationPolicy {
 
     public Access access(HttpServletRequest request) {
         Objects.requireNonNull(request, "request");
-        if (CorsUtils.isPreFlightRequest(request) || isPublicHealthProbe(request)) {
+        if (CorsUtils.isPreFlightRequest(request)) {
             return Access.PUBLIC;
         }
         try {
+            if (isPublicHealthProbe(request)) {
+                return Access.PUBLIC;
+            }
             HttpMethod method = HttpMethod.valueOf(request.getMethod());
             PathContainer path = requestPath(request).pathWithinApplication();
             return compiledRoutes.stream()

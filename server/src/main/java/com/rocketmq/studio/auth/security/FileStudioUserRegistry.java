@@ -347,7 +347,7 @@ public final class FileStudioUserRegistry implements StudioUserRegistry {
                         trusted = false;
                     }
                 } else {
-                    updateBasicIdentity(digest, "BASIC_ANCESTOR", basic);
+                    updateDirectoryIdentity(digest, "BASIC_ANCESTOR", basic);
                 }
 
                 depth++;
@@ -525,12 +525,24 @@ public final class FileStudioUserRegistry implements StudioUserRegistry {
         MessageDigest digest,
         PosixFileAttributes attributes
     ) {
-        updateBasicIdentity(digest, "POSIX_ANCESTOR", attributes);
+        updateDirectoryIdentity(digest, "POSIX_ANCESTOR", attributes);
         updateCanonical(digest, attributes.owner().getName());
         attributes.permissions().stream()
             .sorted()
             .map(PosixFilePermission::name)
             .forEach(permission -> updateCanonical(digest, permission));
+    }
+
+    private static void updateDirectoryIdentity(
+        MessageDigest digest,
+        String category,
+        BasicFileAttributes attributes
+    ) {
+        updateCanonical(digest, category);
+        updateCanonical(digest, String.valueOf(attributes.fileKey()));
+        updateCanonical(digest, Boolean.toString(attributes.isDirectory()));
+        updateCanonical(digest, Boolean.toString(attributes.isRegularFile()));
+        updateCanonical(digest, Boolean.toString(attributes.isSymbolicLink()));
     }
 
     private static void updateBasicIdentity(
