@@ -17,44 +17,130 @@
 
 package com.rocketmq.studio.auth;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
+import java.util.Objects;
+import java.util.regex.Pattern;
+
+import com.rocketmq.studio.auth.security.LoginAttemptLimiter;
+import com.rocketmq.studio.auth.security.LoginAttemptLimiter.Decision;
+import com.rocketmq.studio.auth.security.LoginAttemptLimiter.Permit;
+import com.rocketmq.studio.auth.security.StudioLoginException;
+import com.rocketmq.studio.auth.security.StudioSecurityProperties;
+import com.rocketmq.studio.auth.security.StudioSessionStore;
+import com.rocketmq.studio.auth.security.StudioSessionStore.IssuedSession;
+import com.rocketmq.studio.auth.security.StudioUserRegistry;
+import com.rocketmq.studio.auth.security.StudioUserRegistry.Snapshot;
+import com.rocketmq.studio.auth.security.StudioUserRegistry.User;
 import com.rocketmq.studio.common.exception.BusinessException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-
-import java.util.UUID;
 
 @Slf4j
 @Service
 public class AuthService {
+    private static final Pattern VALID_USERNAME = Pattern.compile("[A-Za-z0-9._@-]{1,128}");
+    private static final int BCRYPT_PASSWORD_BYTE_LIMIT = 72;
+    private static final String INVALID_LOGIN_REQUEST = "Invalid login request";
+    private static final String DUMMY_PASSWORD_HASH =
+        "{bcrypt}$2y$12$OB.XpBh3tjrEibKmHgXiseb3N5PRL3kYONspvnp3jXtIkYNKI5tv.";
+
+    private final StudioUserRegistry registry;
+    private final PasswordEncoder passwordEncoder;
+    private final StudioSessionStore sessions;
+    private final LoginAttemptLimiter limiter;
+    private final StudioSecurityProperties properties;
+
+    public AuthService(
+        StudioUserRegistry registry,
+        PasswordEncoder passwordEncoder,
+        StudioSessionStore sessions,
+        LoginAttemptLimiter limiter,
+        StudioSecurityProperties properties
+    ) {
+        this.registry = Objects.requireNonNull(registry);
+        this.passwordEncoder = Objects.requireNonNull(passwordEncoder);
+        this.sessions = Objects.requireNonNull(sessions);
+        this.limiter = Objects.requireNonNull(limiter);
+        this.properties = Objects.requireNonNull(properties);
+    }
 
     public LoginVO login(LoginDTO request) {
-        log.info("Login attempt for user: {}", request.getUsername());
+        return login(request, "unknown");
+    }
 
-        if (request.getUsername() == null || request.getUsername().isBlank()) {
-            throw new BusinessException(400, "Username is required");
+    public LoginVO login(LoginDTO request, String remoteAddress) {
+        Credentials credentials = validate(request);
+        String username = credentials.username();
+        Decision decision = limiter.beforeAttempt(username, remoteAddress);
+        if (!decision.allowed()) {
+            throw StudioLoginException.rateLimited(decision.retryAfterSeconds());
         }
-        if (request.getPassword() == null || request.getPassword().isBlank()) {
-            throw new BusinessException(400, "Password is required");
-        }
 
-        // Mock authentication — accept any non-empty credentials
-        String token = "mock-jwt-" + UUID.randomUUID();
-        boolean isAdmin = "admin".equals(request.getUsername());
+        Permit permit = limiter.acquirePasswordPermit();
+        try {
+            if (!permit.acquired()) {
+                throw StudioLoginException.rateLimited(1);
+            }
+            Snapshot snapshot = readSnapshot();
+            User user = snapshot.available() ? snapshot.users().get(username) : null;
+            String passwordHash = user == null ? DUMMY_PASSWORD_HASH : user.passwordHash();
+            boolean matches = passwordEncoder.matches(credentials.password(), passwordHash);
+            if (!matches || user == null || !snapshot.available()) {
+                limiter.recordFailure(decision.key());
+                log.info("Studio login rejected for username {}", username);
+                throw StudioLoginException.invalidCredentials();
+            }
 
-        LoginVO response = LoginVO.builder()
-                .token(token)
-                .expiresIn(86400)
+            IssuedSession issued = sessions.issue(user, snapshot.revision());
+            limiter.recordSuccess(decision.key());
+            log.info("Studio login succeeded for username {}", user.username());
+            return LoginVO.builder()
+                .token(issued.token())
+                .expiresIn(Math.toIntExact(properties.sessionTtl().toSeconds()))
                 .user(LoginVO.UserInfo.builder()
-                        .username(request.getUsername())
-                        .admin(isAdmin)
-                        .build())
+                    .username(user.username())
+                    .admin(user.role() == StudioUserRegistry.Role.ADMIN)
+                    .build())
                 .build();
-
-        log.info("User {} logged in successfully, admin={}", request.getUsername(), isAdmin);
-        return response;
+        } finally {
+            permit.close();
+        }
     }
 
     public void logout() {
         log.info("User logged out");
+    }
+
+    private static Credentials validate(LoginDTO request) {
+        if (request == null
+            || request.getUsername() == null
+            || !VALID_USERNAME.matcher(request.getUsername()).matches()) {
+            log.info("Studio login rejected before credential verification");
+            throw new BusinessException(400, INVALID_LOGIN_REQUEST);
+        }
+        String password = request.getPassword();
+        if (password == null
+            || password.isBlank()
+            || password.length() > BCRYPT_PASSWORD_BYTE_LIMIT
+            || password.getBytes(StandardCharsets.UTF_8).length > BCRYPT_PASSWORD_BYTE_LIMIT) {
+            log.info("Studio login rejected before credential verification for username {}",
+                request.getUsername());
+            throw new BusinessException(400, INVALID_LOGIN_REQUEST);
+        }
+        return new Credentials(request.getUsername(), password);
+    }
+
+    private Snapshot readSnapshot() {
+        try {
+            return registry.snapshot();
+        } catch (RuntimeException exception) {
+            log.warn("Studio user registry is unavailable during login");
+            return new Snapshot(0, false, Map.of());
+        }
+    }
+
+    private record Credentials(String username, String password) {
     }
 }

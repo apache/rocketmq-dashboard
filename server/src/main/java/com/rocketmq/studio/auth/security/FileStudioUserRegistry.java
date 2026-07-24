@@ -101,6 +101,18 @@ public final class FileStudioUserRegistry implements StudioUserRegistry {
         );
     }
 
+    public FileStudioUserRegistry(
+        StudioSecurityProperties properties,
+        LongSupplier nanoTime
+    ) {
+        this(
+            properties,
+            nanoTime,
+            currentProcessOwner(),
+            FileStudioUserRegistry::readBounded
+        );
+    }
+
     FileStudioUserRegistry(
         StudioSecurityProperties properties,
         LongSupplier nanoTime,
