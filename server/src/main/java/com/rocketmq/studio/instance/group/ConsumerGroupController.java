@@ -19,6 +19,7 @@ package com.rocketmq.studio.instance.group;
 import com.rocketmq.studio.instance.topic.MetadataService;
 
 import com.rocketmq.studio.common.domain.Result;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -80,11 +81,8 @@ public class ConsumerGroupController {
     }
 
     @PostMapping("/reset-offset")
-    public Result<Void> resetOffset(@RequestBody Map<String, Object> request) {
-        String name = (String) request.get("name");
-        long timestamp = ((Number) request.get("timestamp")).longValue();
-        String topic = (String) request.get("topic");
-        metadataService.resetOffset(name, timestamp, topic);
+    public Result<Void> resetOffset(@Valid @RequestBody ResetConsumerOffsetDTO request) {
+        metadataService.resetOffset(request.getName(), request.getTimestamp(), request.getTopic());
         return Result.ok();
     }
 }
