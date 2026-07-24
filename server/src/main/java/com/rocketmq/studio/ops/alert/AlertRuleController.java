@@ -17,6 +17,7 @@
 package com.rocketmq.studio.ops.alert;
 
 import com.rocketmq.studio.common.domain.Result;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -25,7 +26,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/alert-rules")
@@ -50,15 +50,13 @@ public class AlertRuleController {
     }
 
     @PostMapping("/toggle")
-    public Result<AlertRuleVO> toggleRule(@RequestBody Map<String, Object> request) {
-        String id = (String) request.get("id");
-        boolean enabled = (Boolean) request.get("enabled");
-        return Result.ok(alertService.toggleRule(id, enabled));
+    public Result<AlertRuleVO> toggleRule(@Valid @RequestBody ToggleAlertRuleDTO request) {
+        return Result.ok(alertService.toggleRule(request.getId(), request.getEnabled()));
     }
 
     @PostMapping("/delete")
-    public Result<Void> deleteRule(@RequestBody Map<String, String> request) {
-        alertService.deleteRule(request.get("id"));
+    public Result<Void> deleteRule(@Valid @RequestBody DeleteAlertRuleDTO request) {
+        alertService.deleteRule(request.getId());
         return Result.ok();
     }
 }
