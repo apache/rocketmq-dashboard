@@ -1,0 +1,54 @@
+# Install as the TLS terminator's /etc/nginx/conf.d/default.conf after replacing
+# studio.example.com. Mount the certificate and key at the fixed paths below.
+#
+# The access log deliberately records $uri, not $request_uri or $args, and never
+# records Authorization. Query strings and bearer tokens therefore stay out of logs.
+log_format studio_no_secrets
+    '$remote_addr - $remote_user [$time_local] '
+    '"$request_method $uri $server_protocol" $status $body_bytes_sent';
+
+upstream rocketmq_studio_private {
+    server rocketmq-server:8888;
+}
+
+server {
+    listen 80;
+    server_name studio.example.com;
+    access_log /var/log/nginx/studio-access.log studio_no_secrets;
+
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name studio.example.com;
+
+    ssl_certificate /etc/nginx/tls/tls.crt;
+    ssl_certificate_key /etc/nginx/tls/tls.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_tickets off;
+
+    access_log /var/log/nginx/studio-access.log studio_no_secrets;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    location / {
+        root /usr/share/nginx/html;
+        index index.html;
+        try_files $uri $uri/ /index.html;
+        add_header Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()" always;
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    }
+
+    location /api/ {
+        proxy_pass http://rocketmq_studio_private;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port 443;
+    }
+}

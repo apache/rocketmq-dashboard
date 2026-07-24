@@ -17,11 +17,13 @@
 
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { persistAuthSession, readAuthSession } from '../stores/authStorage';
 import client from './client';
 import { chatStream, executeAiCommand, listTools, type AiExecuteRequest, type McpTool } from './ai';
 
 const mock = new MockAdapter(client);
 const encoder = new TextEncoder();
+const storage = new Map<string, string>();
 
 function streamResponse(chunks: string[]): Response {
   const body = new ReadableStream<Uint8Array>({
@@ -36,11 +38,18 @@ function streamResponse(chunks: string[]): Response {
 describe('AI API', () => {
   beforeEach(() => {
     mock.reset();
+    storage.clear();
     vi.stubGlobal('localStorage', {
-      getItem: vi.fn().mockReturnValue('test-token'),
-      setItem: vi.fn(),
-      removeItem: vi.fn(),
+      getItem: vi.fn((key: string) => storage.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => storage.set(key, value)),
+      removeItem: vi.fn((key: string) => storage.delete(key)),
+      clear: vi.fn(() => storage.clear()),
+      key: vi.fn((index: number) => [...storage.keys()][index] ?? null),
+      get length() {
+        return storage.size;
+      },
     });
+    localStorage.setItem('token', 'test-token');
   });
 
   afterEach(() => {
@@ -106,6 +115,74 @@ describe('AI API', () => {
       );
 
       expect(chunks).toEqual(['hello', 'raw text']);
+    });
+
+    it('clears the session, redirects once, and throws a stable error for HTTP 401', async () => {
+      const token = 'secret-expired-token';
+      persistAuthSession(token, 'studio-admin');
+      const navigate = vi.fn();
+      const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 401 }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const rejection = await chatStream(
+        { message: 'hello', mode: 'chat', model: 'stub' },
+        vi.fn(),
+        undefined,
+        navigate,
+      ).catch((error: unknown) => error);
+
+      expect(rejection).toBeInstanceOf(Error);
+      expect((rejection as Error).message).toBe('Authentication required');
+      expect((rejection as Error).message).not.toContain(token);
+      expect(readAuthSession()).toEqual({ token: null, user: null });
+      expect(navigate).toHaveBeenCalledOnce();
+      expect(navigate).toHaveBeenCalledWith('/');
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/ai/chat',
+        expect.objectContaining({
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        }),
+      );
+    });
+
+    it('throws the stable authentication error when HTTP 401 navigation fails', async () => {
+      persistAuthSession('secret-expired-token', 'studio-admin');
+      const navigate = vi.fn(() => {
+        throw new Error('navigation unavailable');
+      });
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 401 })));
+
+      const rejection = await chatStream(
+        { message: 'hello', mode: 'chat', model: 'stub' },
+        vi.fn(),
+        undefined,
+        navigate,
+      ).catch((error: unknown) => error);
+
+      expect(readAuthSession()).toEqual({ token: null, user: null });
+      expect(navigate).toHaveBeenCalledOnce();
+      expect(navigate).toHaveBeenCalledWith('/');
+      expect(rejection).toBeInstanceOf(Error);
+      expect((rejection as Error).message).toBe('Authentication required');
+    });
+
+    it('preserves the existing error and session behavior for non-401 failures', async () => {
+      persistAuthSession('valid-token', 'studio-admin');
+      const navigate = vi.fn();
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(new Response(null, { status: 403, statusText: 'Forbidden' })),
+      );
+
+      await expect(
+        chatStream({ message: 'hello', mode: 'chat', model: 'stub' }, vi.fn(), undefined, navigate),
+      ).rejects.toThrow('AI chat failed: Forbidden');
+
+      expect(readAuthSession()).toEqual({ token: 'valid-token', user: 'studio-admin' });
+      expect(navigate).not.toHaveBeenCalled();
     });
   });
 

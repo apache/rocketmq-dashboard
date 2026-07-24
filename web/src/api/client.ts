@@ -15,9 +15,14 @@
  * limitations under the License.
  */
 
-import axios from 'axios';
+import axios, {
+  AxiosError,
+  AxiosHeaders,
+  type AxiosResponse,
+  type InternalAxiosRequestConfig,
+} from 'axios';
 import { message } from 'antd';
-import { clearAuthSession, TOKEN_STORAGE_KEY } from '../stores/authStorage';
+import { handleUnauthorized, TOKEN_STORAGE_KEY } from '../stores/authStorage';
 import { API_BASE_URL } from '../config';
 
 const SUCCESS_BUSINESS_CODES = new Set([0, 200]);
@@ -41,40 +46,90 @@ function getBusinessError(data: unknown): string | null {
   return typeof data.message === 'string' && data.message.trim() ? data.message : '请求失败';
 }
 
-const client = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 30000,
-});
+function readProperty(source: unknown, key: string): unknown {
+  if ((typeof source !== 'object' || source === null) && typeof source !== 'function') {
+    return undefined;
+  }
+  try {
+    return Reflect.get(source, key);
+  } catch {
+    return undefined;
+  }
+}
 
-// Request interceptor: attach Authorization header
-client.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem(TOKEN_STORAGE_KEY);
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error),
-);
+function numericStatus(source: unknown): number | undefined {
+  const value = readProperty(source, 'status');
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
 
-// Response interceptor: check business code and handle 401
-client.interceptors.response.use(
-  (response) => {
-    const errorMessage = getBusinessError(response.data);
-    if (errorMessage) {
-      message.error(errorMessage);
-      return Promise.reject(new Error(errorMessage));
-    }
-    return response;
-  },
-  (error) => {
-    if (error.response?.status === 401) {
-      clearAuthSession();
-      window.location.href = '/';
-    }
-    return Promise.reject(error);
-  },
-);
+function safeErrorStatus(error: unknown): number | undefined {
+  return numericStatus(readProperty(error, 'response')) ?? numericStatus(error);
+}
+
+function fixedSafeError(error: unknown): AxiosError {
+  const status = safeErrorStatus(error);
+  const safeConfig = {
+    headers: new AxiosHeaders(),
+  } as InternalAxiosRequestConfig;
+  const safeResponse: AxiosResponse | undefined =
+    status === undefined
+      ? undefined
+      : {
+          data: undefined,
+          status,
+          statusText: '',
+          headers: new AxiosHeaders(),
+          config: safeConfig,
+        };
+  return new AxiosError(
+    status === undefined ? 'Request failed' : `Request failed with status code ${status}`,
+    undefined,
+    safeConfig,
+    undefined,
+    safeResponse,
+  );
+}
+
+export function createApiClient(navigate?: (url: string) => void) {
+  const client = axios.create({
+    baseURL: API_BASE_URL,
+    timeout: 30000,
+  });
+
+  // Request interceptor: attach Authorization header
+  client.interceptors.request.use(
+    (config) => {
+      const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      return config;
+    },
+    (error) => Promise.reject(fixedSafeError(error)),
+  );
+
+  // Response interceptor: check business code and handle 401
+  client.interceptors.response.use(
+    (response) => {
+      const errorMessage = getBusinessError(response.data);
+      if (errorMessage) {
+        message.error(errorMessage);
+        return Promise.reject(new Error(errorMessage));
+      }
+      return response;
+    },
+    (error) => {
+      const safeError = fixedSafeError(error);
+      if (safeError.response?.status === 401) {
+        handleUnauthorized(navigate);
+      }
+      return Promise.reject(safeError);
+    },
+  );
+
+  return client;
+}
+
+const client = createApiClient();
 
 export default client;

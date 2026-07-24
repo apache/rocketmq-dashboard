@@ -6,15 +6,34 @@
 
 RocketMQ Studio is a unified management platform for RocketMQ, supporting multi-cluster, multi-architecture, and multi-cloud environments. It provides instance management, cluster operations, Topic / Consumer Group CRUD, ACL permission control, message query and tracing, dead letter queue handling, monitoring alerts, audit logs, and an AI assistant.
 
-## Quick Start
+## Secure Quick Start
 
 ```bash
-cd deploy && docker compose up -d --build
+cd deploy
+# First create a strict cost-12 bcrypt user registry and populate the private
+# named volume with the ephemeral helper in deploy/README.md.
+docker compose up -d --build
 ```
 
-Visit **http://127.0.0.1:6789** after startup.
+The credential-volume bootstrap is required; an empty volume intentionally
+fails closed and no default account exists. Follow the
+[deployment guide](deploy/README.md) before the first `up`. Compose mounts the
+private registry directory read-only while configuring the exact
+`/run/secrets/studio-users.json` file, so atomic helper replacements remain
+visible to the running server. Then visit **http://127.0.0.1:6789**. The web
+listener is loopback-only and the backend has no host port.
 
-**Studio ports:** Frontend 6789 (Nginx), Backend 8888 (Spring Boot)
+For a remote host, keep the listener private and open an SSH tunnel:
+
+```bash
+ssh -L 6789:127.0.0.1:6789 deploy-user@studio.example.com
+```
+
+For browser access over a network, terminate HTTPS with
+[`deploy/nginx/rocketmq-studio-tls.conf.example`](deploy/nginx/rocketmq-studio-tls.conf.example);
+do not expose the loopback HTTP listener. See
+[`docs/security.md`](docs/security.md) for the registry schema, roles, session
+limits, health probes, and proxy trust model.
 
 **RocketMQ ports:** NameServer 9876, Broker 10911, Proxy Remoting 8080, Proxy gRPC 8081
 

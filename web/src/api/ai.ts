@@ -16,6 +16,7 @@
  */
 
 import client from './client';
+import { handleUnauthorized, TOKEN_STORAGE_KEY } from '../stores/authStorage';
 
 // ─── Types ──────────────────────────────────────────────────────
 export interface McpTool {
@@ -86,16 +87,22 @@ export async function chatStream(
   data: AiChatRequest,
   onChunk: (text: string) => void,
   signal?: AbortSignal,
+  navigate?: (url: string) => void,
 ) {
   const response = await fetch('/api/ai/chat', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+      Authorization: `Bearer ${localStorage.getItem(TOKEN_STORAGE_KEY) || ''}`,
     },
     body: JSON.stringify(data),
     signal,
   });
+
+  if (response.status === 401) {
+    handleUnauthorized(navigate);
+    throw new Error('Authentication required');
+  }
 
   if (!response.ok || !response.body) {
     throw new Error(`AI chat failed: ${response.statusText}`);

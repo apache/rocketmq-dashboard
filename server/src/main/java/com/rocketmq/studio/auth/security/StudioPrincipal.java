@@ -14,16 +14,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package com.rocketmq.studio.auth.security;
 
-package com.rocketmq.studio;
+import java.util.Objects;
+import java.util.UUID;
 
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration;
+import com.rocketmq.studio.auth.security.StudioUserRegistry.Role;
 
-@SpringBootApplication(exclude = UserDetailsServiceAutoConfiguration.class)
-public class StudioApplication {
-    public static void main(String[] args) {
-        SpringApplication.run(StudioApplication.class, args);
+public record StudioPrincipal(UUID sessionId, String username, Role role) {
+    public StudioPrincipal {
+        Objects.requireNonNull(sessionId, "sessionId");
+        Objects.requireNonNull(username, "username");
+        Objects.requireNonNull(role, "role");
     }
 }

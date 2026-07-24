@@ -52,3 +52,14 @@ export function clearAuthSession(): void {
     // The caller still clears the in-memory store.
   }
 }
+
+export function handleUnauthorized(
+  navigate: (url: string) => void = (url) => window.location.assign(url),
+): void {
+  clearAuthSession();
+  try {
+    navigate('/');
+  } catch {
+    // Authentication cleanup must not be replaced by a routing failure.
+  }
+}

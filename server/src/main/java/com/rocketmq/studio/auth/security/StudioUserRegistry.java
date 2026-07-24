@@ -14,39 +14,38 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package com.rocketmq.studio.auth.security;
 
-package com.rocketmq.studio.auth;
+import java.util.Map;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+public interface StudioUserRegistry {
+    Snapshot snapshot();
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class LoginVO {
-    private String token;
-    private int expiresIn;
-    private UserInfo user;
-
-    @Override
-    public String toString() {
-        return "LoginVO(token=<redacted>, expiresIn=" + expiresIn + ", user=" + user + ")";
+    enum Role {
+        USER,
+        ADMIN
     }
 
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class UserInfo {
-        private String username;
-        private boolean admin;
+    record User(String username, String passwordHash, Role role, String fingerprint) {
+        @Override
+        public String toString() {
+            return "User[username=<redacted>, passwordHash=<redacted>, role=" + role
+                + ", fingerprint=<redacted>]";
+        }
+    }
+
+    record Snapshot(long revision, boolean available, Map<String, User> users) {
+        public Snapshot {
+            users = Map.copyOf(users);
+            if (!available) {
+                users = Map.of();
+            }
+        }
 
         @Override
         public String toString() {
-            return "UserInfo(username=<redacted>, admin=" + admin + ")";
+            return "Snapshot[revision=" + revision + ", available=" + available
+                + ", users=<redacted>]";
         }
     }
 }

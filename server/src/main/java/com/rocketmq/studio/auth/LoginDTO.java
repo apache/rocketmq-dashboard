@@ -17,10 +17,58 @@
 
 package com.rocketmq.studio.auth;
 
+import java.io.IOException;
+
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonToken;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.JsonMappingException;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import jakarta.validation.GroupSequence;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 @Data
+@GroupSequence({LoginDTO.class, LoginDTO.ContentChecks.class})
 public class LoginDTO {
+    @NotNull
+    @Size(min = 1, max = 128)
+    @Pattern(regexp = "[A-Za-z0-9._@-]{1,128}", groups = ContentChecks.class)
+    @JsonDeserialize(using = StrictLoginStringDeserializer.class)
     private String username;
+
+    @NotNull
+    @Size(min = 1, max = 72)
+    @NotBlank(groups = ContentChecks.class)
+    @JsonDeserialize(using = StrictLoginStringDeserializer.class)
     private String password;
+
+    @Override
+    public String toString() {
+        return "LoginDTO(username=<redacted>, password=<redacted>)";
+    }
+
+    public interface ContentChecks {
+    }
+
+    public static final class StrictLoginStringDeserializer extends JsonDeserializer<String> {
+        @Override
+        public String deserialize(
+            JsonParser parser,
+            DeserializationContext context
+        ) throws IOException {
+            JsonToken token = parser.currentToken();
+            if (token == JsonToken.VALUE_NULL) {
+                return null;
+            }
+            if (token != JsonToken.VALUE_STRING) {
+                throw JsonMappingException.from(parser, "Invalid login request");
+            }
+            return parser.getText();
+        }
+    }
 }
