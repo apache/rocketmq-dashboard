@@ -53,24 +53,33 @@ cannot mount the required file subpath and Studio never synthesizes credentials.
 
 ### Atomic replacement
 
-Never edit the live file in place. Write and validate a temporary file in the
-same directory, set mode `0600`, then use a same-filesystem atomic rename:
+Never edit the live file in place. Copy from an already validated immutable
+snapshot into a temporary file in the same directory, set mode `0600`, then use
+a same-filesystem atomic rename:
 
 ```bash
 umask 077
 registry_dir=/run/secrets
-temporary="$registry_dir/.studio-users.json.tmp.$$"
+temporary=$(mktemp /run/secrets/.studio-users.json.tmp.XXXXXX)
 trap 'rm -f -- "$temporary"' EXIT HUP INT TERM
-cp /operator-controlled/studio-users.json "$temporary"
+cp /private-snapshot/studio-users.json "$temporary"
 chmod 600 "$temporary"
 mv -f -- "$temporary" "$registry_dir/studio-users.json"
 trap - EXIT HUP INT TERM
 ```
 
-The deployment helper follows this pattern inside an ephemeral copy of the
-just-loaded server image. Do not print, pass as a command-line argument, or
-commit the registry content. Registry changes are detected periodically; a
-change invalidates sessions tied to the previous registry revision.
+The random `mktemp` name prevents concurrent helper processes from selecting
+the same PID-based path. `deploy.sh` additionally serializes the account-level
+Podman resource namespace with an owner-checked remote lock and uses per-run
+image and staging names.
+
+Before any build or network connection, `deploy.sh` opens every source ancestor
+and the registry itself with no-follow semantics, validates ownership and mode
+with `fstat`, and copies from the held file descriptor into a private `0600`
+snapshot. It never reopens the operator pathname for transfer. Do not print,
+pass as a command-line argument, or commit the registry content. Registry
+changes are detected periodically; a change invalidates sessions tied to the
+previous registry revision.
 
 ## Authorization policy
 
@@ -136,9 +145,10 @@ this loopback HTTP listener on a public interface.
 For a network-accessible deployment, terminate HTTPS with
 `deploy/nginx/rocketmq-studio-tls.conf.example`. Replace its example hostname,
 mount the certificate at `/etc/nginx/tls/tls.crt` and key at
-`/etc/nginx/tls/tls.key`, and keep the Studio upstream on the private container
-network. HSTS is emitted only by the HTTPS server. The example log format omits
-query strings and `Authorization`.
+`/etc/nginx/tls/tls.key`, use an image containing the built Studio static
+assets, and join the same private container network as `rocketmq-server`.
+Keep the Studio upstream private. HSTS is emitted only by the HTTPS server. The
+example log format omits query strings and `Authorization`.
 
 Only the trusted TLS terminator may set forwarding headers. It must overwrite,
 not append untrusted client values for `X-Forwarded-For`,

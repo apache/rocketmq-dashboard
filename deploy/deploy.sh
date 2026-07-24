@@ -10,6 +10,7 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 TARGET=""
+RUN_ID=""
 REMOTE=""
 REMOTE_PATH="${REMOTE_PATH:-}"
 REMOTE_PATH_QUOTED=""
@@ -20,12 +21,13 @@ REMOTE_REGISTRY_STAGE_QUOTED=""
 NETWORK=""
 NETWORK_QUOTED=""
 PUBLIC_PORT="${PUBLIC_PORT:-}"
-LOCAL_REGISTRY=""
+LOCAL_REGISTRY_SNAPSHOT=""
 LOCAL_TMP_DIR=""
 REMOTE_ARTIFACTS_CREATED=0
+REMOTE_LOCK_HELD=0
 
-SERVER_IMAGE="rocketmq-server:latest"
-WEB_IMAGE="rocketmq-web:latest"
+SERVER_IMAGE=""
+WEB_IMAGE=""
 STUDIO_USERS_VOLUME="rocketmq-studio-users"
 
 log() {
@@ -71,44 +73,153 @@ validate_port() {
   (( value >= 1 && value <= 65535 )) || err "PUBLIC_PORT 必须在 1-65535 范围内"
 }
 
-file_mode() {
-  local path=$1
-  local mode
-  if mode=$(stat -f '%Lp' -- "$path" 2>/dev/null); then
-    printf '%s' "$mode"
-    return
-  fi
-  stat -c '%a' -- "$path"
+snapshot_registry_path() {
+  local source=$1
+  local destination=$2
+
+  python3 - "$source" "$destination" <<'PYTHON'
+import os
+import shutil
+import stat
+import sys
+
+
+class SnapshotError(Exception):
+    pass
+
+
+def validate_directory(directory_fd, current_uid, root_uid):
+    metadata = os.fstat(directory_fd)
+    if not stat.S_ISDIR(metadata.st_mode):
+        raise SnapshotError("registry ancestry contains a non-directory")
+    if metadata.st_uid not in (current_uid, root_uid):
+        raise SnapshotError("registry ancestry has an untrusted owner")
+    if stat.S_IMODE(metadata.st_mode) & 0o022:
+        raise SnapshotError("registry ancestry is group/world-writable")
+
+
+def open_registry(source):
+    if not os.path.isabs(source):
+        raise SnapshotError("registry path must be absolute")
+    if os.path.normpath(source) != source or source == os.path.sep:
+        raise SnapshotError("registry path must not contain empty, . or .. segments")
+    if not hasattr(os, "O_NOFOLLOW"):
+        raise SnapshotError("this platform does not support no-follow file opens")
+
+    components = source.split(os.path.sep)[1:]
+    if not components or not components[-1]:
+        raise SnapshotError("registry path must name a file")
+
+    current_uid = os.getuid()
+    root_fd = os.open(
+        os.path.sep,
+        os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW,
+    )
+    directory_fd = root_fd
+    try:
+        root_uid = os.fstat(root_fd).st_uid
+        validate_directory(root_fd, current_uid, root_uid)
+        for component in components[:-1]:
+            next_fd = os.open(
+                component,
+                os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW,
+                dir_fd=directory_fd,
+            )
+            try:
+                validate_directory(next_fd, current_uid, root_uid)
+            except Exception:
+                os.close(next_fd)
+                raise
+            if directory_fd != root_fd:
+                os.close(directory_fd)
+            directory_fd = next_fd
+
+        source_fd = os.open(
+            components[-1],
+            os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW,
+            dir_fd=directory_fd,
+        )
+        metadata = os.fstat(source_fd)
+        mode = stat.S_IMODE(metadata.st_mode)
+        if not stat.S_ISREG(metadata.st_mode):
+            os.close(source_fd)
+            raise SnapshotError("registry must be a regular file")
+        if metadata.st_uid != current_uid:
+            os.close(source_fd)
+            raise SnapshotError("registry must be owned by the current user")
+        if not mode & stat.S_IRUSR:
+            os.close(source_fd)
+            raise SnapshotError("registry owner must have read permission")
+        if mode & 0o077:
+            os.close(source_fd)
+            raise SnapshotError("registry group/other permissions must be empty")
+        return source_fd
+    finally:
+        if directory_fd != root_fd:
+            os.close(directory_fd)
+        os.close(root_fd)
+
+
+def snapshot(source, destination):
+    source_fd = open_registry(source)
+    destination_fd = -1
+    destination_created = False
+    try:
+        destination_fd = os.open(
+            destination,
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | os.O_CLOEXEC
+            | os.O_NOFOLLOW,
+            0o600,
+        )
+        destination_created = True
+        os.fchmod(destination_fd, 0o600)
+        with os.fdopen(source_fd, "rb", closefd=False) as source_stream:
+            with os.fdopen(
+                destination_fd,
+                "wb",
+                closefd=False,
+            ) as destination_stream:
+                shutil.copyfileobj(
+                    source_stream,
+                    destination_stream,
+                    length=64 * 1024,
+                )
+                destination_stream.flush()
+                os.fsync(destination_fd)
+    except Exception:
+        if destination_created:
+            try:
+                os.unlink(destination)
+            except FileNotFoundError:
+                pass
+        raise
+    finally:
+        os.close(source_fd)
+        if destination_fd >= 0:
+            os.close(destination_fd)
+
+
+try:
+    snapshot(sys.argv[1], sys.argv[2])
+except (OSError, SnapshotError) as error:
+    print(f"registry snapshot failed: {error}", file=sys.stderr)
+    raise SystemExit(1)
+PYTHON
 }
 
-resolve_registry_file() {
+snapshot_registry() {
   local configured=${STUDIO_SECURITY_USER_FILE_LOCAL:-}
-  local parent
-  local filename
-  local mode
-  local mode_number
 
   [[ -n "$configured" ]] \
     || err "server/all 部署必须设置 STUDIO_SECURITY_USER_FILE_LOCAL"
-  [[ ! -L "$configured" ]] || err "用户注册表不得为符号链接"
-  [[ -f "$configured" ]] || err "用户注册表必须是存在的普通文件"
-  [[ -r "$configured" ]] || err "用户注册表不可读"
-  [[ -O "$configured" ]] || err "用户注册表必须由当前用户所有"
-
-  parent=$(cd "$(dirname "$configured")" && pwd -P) \
-    || err "无法解析用户注册表父目录"
-  filename=$(basename "$configured")
-  LOCAL_REGISTRY="$parent/$filename"
-
-  [[ ! -L "$LOCAL_REGISTRY" ]] || err "解析后的用户注册表不得为符号链接"
-  [[ -f "$LOCAL_REGISTRY" ]] || err "解析后的用户注册表不是普通文件"
-
-  mode=$(file_mode "$LOCAL_REGISTRY") || err "无法读取用户注册表权限"
-  [[ "$mode" =~ ^[0-7]{3,4}$ ]] || err "无法解析用户注册表权限"
-  mode_number=$((8#$mode))
-  (( (mode_number & 0400) != 0 )) || err "用户注册表必须允许所有者读取"
-  (( (mode_number & 0077) == 0 )) \
-    || err "用户注册表权限不安全；组和其他用户不得拥有任何权限"
+  LOCAL_REGISTRY_SNAPSHOT="$LOCAL_TMP_DIR/studio-users.json"
+  info "在构建和联网前创建不可变用户注册表快照..."
+  snapshot_registry_path "$configured" "$LOCAL_REGISTRY_SNAPSHOT" \
+    || err "无法安全快照 Studio 用户注册表"
+  log "Studio 用户注册表已安全快照"
 }
 
 load_config() {
@@ -119,6 +230,26 @@ load_config() {
     source "$SCRIPT_DIR/.env"
     set +a
   fi
+}
+
+reset_internal_state() {
+  TARGET=""
+  RUN_ID=""
+  REMOTE=""
+  REMOTE_PATH_QUOTED=""
+  REMOTE_TARBALL=""
+  REMOTE_TARBALL_QUOTED=""
+  REMOTE_REGISTRY_STAGE=""
+  REMOTE_REGISTRY_STAGE_QUOTED=""
+  NETWORK=""
+  NETWORK_QUOTED=""
+  LOCAL_REGISTRY_SNAPSHOT=""
+  LOCAL_TMP_DIR=""
+  REMOTE_ARTIFACTS_CREATED=0
+  REMOTE_LOCK_HELD=0
+  SERVER_IMAGE=""
+  WEB_IMAGE=""
+  STUDIO_USERS_VOLUME="rocketmq-studio-users"
 }
 
 configure() {
@@ -148,33 +279,98 @@ configure() {
   validate_name "Studio 用户卷名称" "$STUDIO_USERS_VOLUME"
 
   REMOTE="$REMOTE_USER@$REMOTE_HOST"
-  REMOTE_TARBALL="$REMOTE_PATH/rocketmq-studio-images.tar.gz"
-  REMOTE_REGISTRY_STAGE="$REMOTE_PATH/.studio-users.json.staging"
-
   REMOTE_PATH_QUOTED=$(quote_remote_arg "$REMOTE_PATH")
-  REMOTE_TARBALL_QUOTED=$(quote_remote_arg "$REMOTE_TARBALL")
-  REMOTE_REGISTRY_STAGE_QUOTED=$(quote_remote_arg "$REMOTE_REGISTRY_STAGE")
   NETWORK_QUOTED=$(quote_remote_arg "$NETWORK")
 
   if [[ "$TARGET" == "all" || "$TARGET" == "server" ]]; then
-    resolve_registry_file
+    [[ -n "${STUDIO_SECURITY_USER_FILE_LOCAL:-}" ]] \
+      || err "server/all 部署必须设置 STUDIO_SECURITY_USER_FILE_LOCAL"
   fi
 }
 
-check_prereqs() {
-  info "检查前置条件..."
+check_local_prereqs() {
+  info "检查本地前置条件..."
   command -v docker >/dev/null 2>&1 || err "docker 未安装"
   command -v ssh >/dev/null 2>&1 || err "ssh 未安装"
   command -v scp >/dev/null 2>&1 || err "scp 未安装"
+  command -v python3 >/dev/null 2>&1 || err "python3 未安装"
+  log "本地前置条件通过"
+}
+
+check_connectivity() {
+  info "检查 Docker 引擎和远程连接..."
   docker info >/dev/null 2>&1 || err "Docker 引擎不可用"
   ssh -o ConnectTimeout=5 -o BatchMode=yes "$REMOTE" true >/dev/null 2>&1 \
     || err "无法 SSH 连接到 ${REMOTE}（请确认免密登录已配置）"
-  log "前置条件通过"
+  log "Docker 引擎和远程连接通过"
 }
 
 prepare_local_temp() {
   LOCAL_TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/rocketmq-studio-deploy.XXXXXX") \
     || err "无法创建本地临时目录"
+  RUN_ID=$(python3 -c 'import secrets; print(secrets.token_hex(12))') \
+    || err "无法生成安全的部署运行标识"
+  [[ "$RUN_ID" =~ ^[a-f0-9]{24}$ ]] || err "部署运行标识格式无效"
+
+  SERVER_IMAGE="rocketmq-server:deploy-$RUN_ID"
+  WEB_IMAGE="rocketmq-web:deploy-$RUN_ID"
+  REMOTE_TARBALL="$REMOTE_PATH/.rocketmq-studio-images-$RUN_ID.tar.gz"
+  REMOTE_REGISTRY_STAGE="$REMOTE_PATH/.studio-users-$RUN_ID.json.staging"
+
+  REMOTE_TARBALL_QUOTED=$(quote_remote_arg "$REMOTE_TARBALL")
+  REMOTE_REGISTRY_STAGE_QUOTED=$(quote_remote_arg "$REMOTE_REGISTRY_STAGE")
+}
+
+acquire_remote_lock() {
+  local run_id_quoted
+  run_id_quoted=$(quote_remote_arg "$RUN_ID")
+
+  info "获取远程独占部署锁..."
+  ssh "$REMOTE" \
+    "REMOTE_PATH=$REMOTE_PATH_QUOTED RUN_ID=$run_id_quoted sh -s" <<'REMOTE_SCRIPT' \
+    || err "远程已有部署在运行；如确认是陈旧锁，请按部署文档安全恢复"
+set -eu
+# studio-deploy-lock-acquire
+umask 077
+LOCK_DIR=${HOME:?}/.rocketmq-studio-deploy.lock
+install -d -m 700 -- "$REMOTE_PATH"
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+  printf 'deployment lock is already held\n' >&2
+  exit 73
+fi
+if ! printf '%s\n' "$RUN_ID" >"$LOCK_DIR/owner"; then
+  rmdir "$LOCK_DIR" 2>/dev/null || true
+  exit 1
+fi
+REMOTE_SCRIPT
+  REMOTE_LOCK_HELD=1
+  log "远程部署锁已获取"
+}
+
+release_remote_lock() {
+  local run_id_quoted
+  (( REMOTE_LOCK_HELD == 1 )) || return 0
+  run_id_quoted=$(quote_remote_arg "$RUN_ID")
+
+  ssh "$REMOTE" \
+    "RUN_ID=$run_id_quoted sh -s" <<'REMOTE_SCRIPT'
+set -eu
+# studio-deploy-lock-release
+LOCK_DIR=${HOME:?}/.rocketmq-studio-deploy.lock
+owner=$(cat "$LOCK_DIR/owner" 2>/dev/null) \
+  || {
+    printf 'deployment lock owner is missing\n' >&2
+    exit 1
+  }
+[ "$owner" = "$RUN_ID" ] \
+  || {
+    printf 'deployment lock ownership changed\n' >&2
+    exit 1
+  }
+rm -f -- "$LOCK_DIR/owner"
+rmdir "$LOCK_DIR"
+REMOTE_SCRIPT
+  REMOTE_LOCK_HELD=0
 }
 
 build_server() {
@@ -203,18 +399,15 @@ transfer_images_and_registry() {
   info "导出部署镜像..."
   docker save "${images[@]}" | gzip >"$tarball"
 
-  info "创建受限远程暂存目录..."
-  ssh "$REMOTE" "install -d -m 700 -- $REMOTE_PATH_QUOTED"
-  REMOTE_ARTIFACTS_CREATED=1
-
   info "传输镜像与部署配置..."
+  REMOTE_ARTIFACTS_CREATED=1
   scp "$tarball" "$REMOTE:$REMOTE_TARBALL"
   scp "$SCRIPT_DIR/docker-compose.yml" "$REMOTE:$REMOTE_PATH/"
   scp "$SCRIPT_DIR/nginx.conf" "$REMOTE:$REMOTE_PATH/"
 
   if [[ "$TARGET" == "all" || "$TARGET" == "server" ]]; then
     info "暂存 Studio 用户注册表..."
-    scp -p "$LOCAL_REGISTRY" "$REMOTE:$REMOTE_REGISTRY_STAGE"
+    scp -p "$LOCAL_REGISTRY_SNAPSHOT" "$REMOTE:$REMOTE_REGISTRY_STAGE"
     ssh "$REMOTE" "chmod 600 -- $REMOTE_REGISTRY_STAGE_QUOTED"
   fi
   log "传输完成"
@@ -254,7 +447,7 @@ podman run --rm \
     set -eu
     umask 077
     destination=/run/secrets/studio-users.json
-    temporary=/run/secrets/.studio-users.json.tmp.$$
+    temporary=$(mktemp /run/secrets/.studio-users.json.tmp.XXXXXX)
     trap '\''rm -f -- "$temporary"'\'' EXIT HUP INT TERM
     cp /run/staging/studio-users.json "$temporary"
     chmod 600 "$temporary"
@@ -317,24 +510,80 @@ REMOTE_SCRIPT
 }
 
 verify_remote() {
-  local status
-  local http_code
+  local target_quoted
+  target_quoted=$(quote_remote_arg "$TARGET")
 
-  info "验证远程容器和回环入口..."
-  status=$(ssh "$REMOTE" "podman ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'")
-  printf '%s\n' "$status"
+  info "验证容器状态、后端 readiness 和回环入口..."
+  ssh "$REMOTE" \
+    "TARGET=$target_quoted PUBLIC_PORT='$PUBLIC_PORT' sh -s" <<'REMOTE_SCRIPT' \
+    || err "远程容器或后端 readiness 验证失败"
+set -eu
+# studio-deploy-readiness-check
+
+container_is_running() {
+  [ "$(podman inspect --format '{{.State.Running}}' "$1" 2>/dev/null)" = "true" ]
+}
+
+container_is_running rocketmq-server \
+  || {
+    printf 'rocketmq-server is not running\n' >&2
+    exit 1
+  }
+if [ "$TARGET" = "all" ] || [ "$TARGET" = "web" ]; then
+  container_is_running rocketmq-web \
+    || {
+      printf 'rocketmq-web is not running\n' >&2
+      exit 1
+    }
+fi
+
+attempt=1
+while [ "$attempt" -le 30 ]; do
+  container_is_running rocketmq-server \
+    || {
+      printf 'rocketmq-server exited before becoming ready\n' >&2
+      exit 1
+    }
+  readiness=$(
+    podman exec rocketmq-server \
+      curl -fsS --connect-timeout 1 --max-time 1 \
+      http://127.0.0.1:8888/actuator/health/readiness 2>/dev/null
+  ) || readiness=""
+  if printf '%s' "$readiness" \
+      | grep -Eq '^[[:space:]]*\{[[:space:]]*"status"[[:space:]]*:[[:space:]]*"UP"([[:space:]]*[,}])'; then
+    break
+  fi
+  if [ "$attempt" -eq 30 ]; then
+    printf 'rocketmq-server readiness did not become UP\n' >&2
+    exit 1
+  fi
+  attempt=$((attempt + 1))
+  sleep 1
+done
+
+if [ "$TARGET" = "all" ] || [ "$TARGET" = "web" ]; then
+  http_code=$(
+    curl -sS -o /dev/null -w '%{http_code}' --max-time 10 \
+      "http://127.0.0.1:$PUBLIC_PORT/"
+  ) || {
+    printf 'loopback web entry is unreachable\n' >&2
+    exit 1
+  }
+  if [ "$http_code" != "200" ]; then
+    printf 'loopback web entry returned HTTP %s\n' "$http_code" >&2
+    exit 1
+  fi
+fi
+
+podman ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+REMOTE_SCRIPT
+  log "远程容器运行且后端 readiness 为 UP"
 
   if [[ "$TARGET" == "all" || "$TARGET" == "web" ]]; then
-    http_code=$(ssh "$REMOTE" \
-      "curl -sS -o /dev/null -w '%{http_code}' --max-time 10 'http://127.0.0.1:$PUBLIC_PORT'") \
-      || err "远程回环入口不可达"
-    [[ "$http_code" == "200" ]] || err "远程回环入口返回 HTTP $http_code"
-    log "远程回环入口响应正常 (HTTP $http_code)"
+    printf '\n通过本地 SSH 隧道访问（保持该命令运行）：\n'
+    printf '  ssh -L %s:127.0.0.1:%s %s\n' "$PUBLIC_PORT" "$PUBLIC_PORT" "$REMOTE"
+    printf '然后仅在本机打开：http://127.0.0.1:%s\n' "$PUBLIC_PORT"
   fi
-
-  printf '\n通过本地 SSH 隧道访问（保持该命令运行）：\n'
-  printf '  ssh -L %s:127.0.0.1:%s %s\n' "$PUBLIC_PORT" "$PUBLIC_PORT" "$REMOTE"
-  printf '然后仅在本机打开：http://127.0.0.1:%s\n' "$PUBLIC_PORT"
 }
 
 cleanup() {
@@ -350,6 +599,23 @@ cleanup() {
       >/dev/null 2>&1 || true
   fi
 
+  if (( REMOTE_LOCK_HELD == 1 )) \
+      && [[ -n "$REMOTE" ]] \
+      && [[ -n "$RUN_ID" ]]; then
+    release_remote_lock >/dev/null 2>&1 || true
+  fi
+
+  if command -v docker >/dev/null 2>&1; then
+    if [[ "$TARGET" == "all" || "$TARGET" == "server" ]] \
+        && [[ "$SERVER_IMAGE" =~ ^rocketmq-server:deploy-[a-f0-9]{24}$ ]]; then
+      docker image rm "$SERVER_IMAGE" >/dev/null 2>&1 || true
+    fi
+    if [[ "$TARGET" == "all" || "$TARGET" == "web" ]] \
+        && [[ "$WEB_IMAGE" =~ ^rocketmq-web:deploy-[a-f0-9]{24}$ ]]; then
+      docker image rm "$WEB_IMAGE" >/dev/null 2>&1 || true
+    fi
+  fi
+
   if [[ -n "$LOCAL_TMP_DIR" ]] \
       && [[ -d "$LOCAL_TMP_DIR" ]] \
       && [[ "$(basename "$LOCAL_TMP_DIR")" == rocketmq-studio-deploy.* ]]; then
@@ -360,7 +626,16 @@ cleanup() {
 }
 
 main() {
+  if [[ "${1:-}" == "snapshot-registry" ]]; then
+    [[ "$#" -eq 3 ]] \
+      || err "用法: $0 snapshot-registry SOURCE_ABSOLUTE_PATH DESTINATION"
+    command -v python3 >/dev/null 2>&1 || err "python3 未安装"
+    snapshot_registry_path "$2" "$3"
+    return
+  fi
+
   load_config
+  reset_internal_state
   configure "${1:-all}"
   trap cleanup EXIT
 
@@ -369,8 +644,13 @@ main() {
   printf '  目标: %s | 远程: %s:%s\n' "$TARGET" "$REMOTE" "$REMOTE_PATH"
   printf '═══════════════════════════════════════════\n\n'
 
-  check_prereqs
+  check_local_prereqs
   prepare_local_temp
+  if [[ "$TARGET" == "all" || "$TARGET" == "server" ]]; then
+    snapshot_registry
+  fi
+  check_connectivity
+  acquire_remote_lock
 
   case "$TARGET" in
     server) build_server ;;
@@ -394,6 +674,7 @@ main() {
 
   remove_remote_staging
   verify_remote
+  release_remote_lock
   log "部署完成；未公开任何远程 HTTP 或后端端口"
 }
 
