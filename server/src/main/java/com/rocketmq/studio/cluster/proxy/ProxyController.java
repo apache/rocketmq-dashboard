@@ -18,6 +18,7 @@ package com.rocketmq.studio.cluster.proxy;
 
 import com.rocketmq.studio.cluster.broker.ClusterService;
 import com.rocketmq.studio.common.domain.Result;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -34,7 +35,7 @@ public class ProxyController {
     private final ClusterService clusterService;
 
     @PostMapping("/restart")
-    public Result<Map<String, Boolean>> restartProxy(@RequestBody RestartProxyDTO command) {
+    public Result<Map<String, Boolean>> restartProxy(@Valid @RequestBody RestartProxyDTO command) {
         boolean success = clusterService.restartProxy(command);
         return Result.ok(Map.of("success", success));
     }
