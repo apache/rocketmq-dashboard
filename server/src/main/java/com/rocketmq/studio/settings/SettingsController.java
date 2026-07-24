@@ -17,6 +17,7 @@
 package com.rocketmq.studio.settings;
 
 import com.rocketmq.studio.common.domain.Result;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -40,8 +41,8 @@ public class SettingsController {
     }
 
     @PostMapping("/general/save")
-    public Result<Void> saveGeneralSettings(@RequestBody GeneralSettingsVO settings) {
-        settingsService.saveGeneralSettings(settings);
+    public Result<Void> saveGeneralSettings(@Valid @RequestBody GeneralSettingsUpdateDTO request) {
+        settingsService.saveGeneralSettings(request.toSettings());
         return Result.ok();
     }
 

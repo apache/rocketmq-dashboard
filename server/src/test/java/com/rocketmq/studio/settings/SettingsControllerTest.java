@@ -30,8 +30,10 @@ import java.util.Collections;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -77,26 +79,81 @@ class SettingsControllerTest {
                 .andExpect(jsonPath("$.data.sessionTimeout", is(30)))
                 .andExpect(jsonPath("$.data.requireLogin", is(true)))
                 .andExpect(jsonPath("$.data.llmProvider", is("openai")))
+                .andExpect(jsonPath("$.data.apiKey").doesNotExist())
+                .andExpect(jsonPath("$.data.apiKeyConfigured", is(true)))
+                .andExpect(jsonPath("$.data.clearApiKey").doesNotExist())
                 .andExpect(jsonPath("$.data.model", is("gpt-4")));
     }
 
     @Test
     void saveGeneralSettingsShouldReturnSuccess() throws Exception {
-        GeneralSettingsVO settings = GeneralSettingsVO.builder()
-                .theme("light")
-                .compact(false)
-                .sessionTimeout(60)
-                .build();
         doNothing().when(settingsService).saveGeneralSettings(any(GeneralSettingsVO.class));
 
         mockMvc.perform(post("/api/settings/general/save")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(settings)))
+                        .content("""
+                                {
+                                  "theme": "light",
+                                  "compact": false,
+                                  "desktopNotify": true,
+                                  "notifySound": false,
+                                  "sessionTimeout": 60,
+                                  "requireLogin": true,
+                                  "llmProvider": "openai",
+                                  "apiKey": "sk-new",
+                                  "apiKeyConfigured": false,
+                                  "model": "gpt-4",
+                                  "baseUrl": ""
+                                }
+                                """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code", is(200)))
                 .andExpect(jsonPath("$.data").doesNotExist());
 
-        verify(settingsService).saveGeneralSettings(any(GeneralSettingsVO.class));
+        verify(settingsService).saveGeneralSettings(argThat(settings ->
+                "sk-new".equals(settings.getApiKey()) && settings.isApiKeyConfigured()));
+    }
+
+    @Test
+    void saveGeneralSettingsShouldAcceptExplicitApiKeyClearWithoutBindingResponseState() throws Exception {
+        doNothing().when(settingsService).saveGeneralSettings(any(GeneralSettingsVO.class));
+
+        mockMvc.perform(post("/api/settings/general/save")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "theme": "light",
+                                  "compact": false,
+                                  "desktopNotify": true,
+                                  "notifySound": false,
+                                  "sessionTimeout": 60,
+                                  "requireLogin": true,
+                                  "llmProvider": "openai",
+                                  "clearApiKey": true,
+                                  "apiKeyConfigured": true,
+                                  "model": "gpt-4",
+                                  "baseUrl": ""
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        verify(settingsService).saveGeneralSettings(argThat(settings ->
+                settings.isClearApiKey() && !settings.isApiKeyConfigured()));
+    }
+
+    @Test
+    void saveGeneralSettingsShouldRejectIncompleteReplacement() throws Exception {
+        mockMvc.perform(post("/api/settings/general/save")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "theme": "light",
+                                  "apiKey": "sk-new"
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(settingsService);
     }
 
     @Test
