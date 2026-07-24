@@ -25,6 +25,7 @@ LOCAL_REGISTRY_SNAPSHOT=""
 LOCAL_TMP_DIR=""
 REMOTE_ARTIFACTS_CREATED=0
 REMOTE_LOCK_HELD=0
+REMOTE_IMAGES_POSSIBLY_LOADED=0
 
 SERVER_IMAGE=""
 WEB_IMAGE=""
@@ -247,6 +248,7 @@ reset_internal_state() {
   LOCAL_TMP_DIR=""
   REMOTE_ARTIFACTS_CREATED=0
   REMOTE_LOCK_HELD=0
+  REMOTE_IMAGES_POSSIBLY_LOADED=0
   SERVER_IMAGE=""
   WEB_IMAGE=""
   STUDIO_USERS_VOLUME="rocketmq-studio-users"
@@ -326,6 +328,9 @@ acquire_remote_lock() {
   run_id_quoted=$(quote_remote_arg "$RUN_ID")
 
   info "获取远程独占部署锁..."
+  # SSH can lose its transport after the remote mkdir/owner write succeeds.
+  # Treat acquisition as ambiguous until an owner-token release proves otherwise.
+  REMOTE_LOCK_HELD=1
   ssh "$REMOTE" \
     "REMOTE_PATH=$REMOTE_PATH_QUOTED RUN_ID=$run_id_quoted sh -s" <<'REMOTE_SCRIPT' \
     || err "远程已有部署在运行；如确认是陈旧锁，请按部署文档安全恢复"
@@ -339,11 +344,11 @@ if ! mkdir "$LOCK_DIR" 2>/dev/null; then
   exit 73
 fi
 if ! printf '%s\n' "$RUN_ID" >"$LOCK_DIR/owner"; then
+  rm -f -- "$LOCK_DIR/owner"
   rmdir "$LOCK_DIR" 2>/dev/null || true
   exit 1
 fi
 REMOTE_SCRIPT
-  REMOTE_LOCK_HELD=1
   log "远程部署锁已获取"
 }
 
@@ -415,6 +420,7 @@ transfer_images_and_registry() {
 
 load_images_and_prepare_network() {
   info "远程加载镜像并准备私有网络..."
+  REMOTE_IMAGES_POSSIBLY_LOADED=1
   ssh "$REMOTE" \
     "REMOTE_TARBALL=$REMOTE_TARBALL_QUOTED NETWORK=$NETWORK_QUOTED sh -s" <<'REMOTE_SCRIPT'
 set -eu
@@ -423,6 +429,42 @@ podman network exists "$NETWORK" 2>/dev/null \
   || podman network create "$NETWORK" >/dev/null
 REMOTE_SCRIPT
   log "镜像与网络准备完成"
+}
+
+cleanup_remote_images() {
+  local server_image_quoted
+  local web_image_quoted
+  (( REMOTE_IMAGES_POSSIBLY_LOADED == 1 )) || return 0
+  server_image_quoted=$(quote_remote_arg "$SERVER_IMAGE")
+  web_image_quoted=$(quote_remote_arg "$WEB_IMAGE")
+
+  ssh "$REMOTE" \
+    "SERVER_IMAGE=$server_image_quoted WEB_IMAGE=$web_image_quoted sh -s" <<'REMOTE_SCRIPT'
+set -eu
+# studio-deploy-image-cleanup
+remove_if_inactive() {
+  image=$1
+  podman image exists "$image" 2>/dev/null || return 0
+  for container in $(podman ps -aq); do
+    configured_image=$(
+      podman container inspect --format '{{.Config.Image}}' "$container" 2>/dev/null
+    ) || configured_image=""
+    image_name=$(
+      podman container inspect --format '{{.ImageName}}' "$container" 2>/dev/null
+    ) || image_name=""
+    if [ "$configured_image" = "$image" ] \
+        || [ "$image_name" = "$image" ] \
+        || [ "$image_name" = "localhost/$image" ]; then
+      return 0
+    fi
+  done
+  podman image rm "$image" >/dev/null 2>&1 || true
+}
+
+remove_if_inactive "$SERVER_IMAGE"
+remove_if_inactive "$WEB_IMAGE"
+REMOTE_SCRIPT
+  REMOTE_IMAGES_POSSIBLY_LOADED=0
 }
 
 populate_registry_volume() {
@@ -468,6 +510,12 @@ start_server() {
   ssh "$REMOTE" \
     "NETWORK=$NETWORK_QUOTED STUDIO_VOLUME=$volume_quoted SERVER_IMAGE=$image_quoted sh -s" <<'REMOTE_SCRIPT'
 set -eu
+old_image_id=$(
+  podman container inspect --format '{{.Image}}' rocketmq-server 2>/dev/null
+) || old_image_id=""
+old_image_name=$(
+  podman container inspect --format '{{.ImageName}}' rocketmq-server 2>/dev/null
+) || old_image_name=""
 podman rm -f rocketmq-server >/dev/null 2>&1 || true
 podman run -d \
   --name rocketmq-server \
@@ -476,6 +524,15 @@ podman run -d \
   -e STUDIO_SECURITY_USER_FILE=/run/secrets/studio-users.json \
   -v "$STUDIO_VOLUME:/run/secrets:ro" \
   "$SERVER_IMAGE" >/dev/null
+# studio-deploy-prune-replaced-image
+current_image_id=$(
+  podman image inspect --format '{{.Id}}' "$SERVER_IMAGE" 2>/dev/null
+) || current_image_id=""
+if [ -n "$old_image_name" ] && [ "$old_image_name" != "$SERVER_IMAGE" ]; then
+  podman image rm "$old_image_name" >/dev/null 2>&1 || true
+elif [ -n "$old_image_id" ] && [ "$old_image_id" != "$current_image_id" ]; then
+  podman image rm "$old_image_id" >/dev/null 2>&1 || true
+fi
 REMOTE_SCRIPT
   log "rocketmq-server 已启动"
 }
@@ -488,6 +545,12 @@ start_web() {
   ssh "$REMOTE" \
     "NETWORK=$NETWORK_QUOTED PUBLIC_PORT='$PUBLIC_PORT' WEB_IMAGE=$image_quoted sh -s" <<'REMOTE_SCRIPT'
 set -eu
+old_image_id=$(
+  podman container inspect --format '{{.Image}}' rocketmq-web 2>/dev/null
+) || old_image_id=""
+old_image_name=$(
+  podman container inspect --format '{{.ImageName}}' rocketmq-web 2>/dev/null
+) || old_image_name=""
 podman rm -f rocketmq-web >/dev/null 2>&1 || true
 podman run -d \
   --name rocketmq-web \
@@ -495,6 +558,15 @@ podman run -d \
   --restart unless-stopped \
   -p "127.0.0.1:${PUBLIC_PORT:-6789}:80" \
   "$WEB_IMAGE" >/dev/null
+# studio-deploy-prune-replaced-image
+current_image_id=$(
+  podman image inspect --format '{{.Id}}' "$WEB_IMAGE" 2>/dev/null
+) || current_image_id=""
+if [ -n "$old_image_name" ] && [ "$old_image_name" != "$WEB_IMAGE" ]; then
+  podman image rm "$old_image_name" >/dev/null 2>&1 || true
+elif [ -n "$old_image_id" ] && [ "$old_image_id" != "$current_image_id" ]; then
+  podman image rm "$old_image_id" >/dev/null 2>&1 || true
+fi
 REMOTE_SCRIPT
   log "rocketmq-web 已启动"
 }
@@ -599,6 +671,12 @@ cleanup() {
       >/dev/null 2>&1 || true
   fi
 
+  if (( REMOTE_IMAGES_POSSIBLY_LOADED == 1 )) \
+      && (( REMOTE_LOCK_HELD == 1 )) \
+      && [[ -n "$REMOTE" ]]; then
+    cleanup_remote_images >/dev/null 2>&1 || true
+  fi
+
   if (( REMOTE_LOCK_HELD == 1 )) \
       && [[ -n "$REMOTE" ]] \
       && [[ -n "$RUN_ID" ]]; then
@@ -674,6 +752,7 @@ main() {
 
   remove_remote_staging
   verify_remote
+  cleanup_remote_images
   release_remote_lock
   log "部署完成；未公开任何远程 HTTP 或后端端口"
 }
