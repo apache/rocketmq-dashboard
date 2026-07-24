@@ -24,7 +24,11 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.List;
+
+import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -38,6 +42,32 @@ class MetricsControllerTest {
 
     @MockBean
     private MetricsService metricsService;
+
+    @MockBean
+    private MetricProfileService metricProfileService;
+
+    @Test
+    void listProfilesShouldReturnVersionAwareMappings() throws Exception {
+        MetricProfileVO profile = MetricProfileVO.builder()
+                .id("rocketmq5-native")
+                .name("RocketMQ 5.x Native")
+                .metrics(List.of(MetricProfileVO.MetricMappingVO.builder()
+                        .semanticMetric("message_in_tps")
+                        .prometheusMetric("rocketmq_messages_in_total")
+                        .promql("sum(rate(rocketmq_messages_in_total[1m])) by (cluster, node_id)")
+                        .labels(List.of("cluster", "node_id"))
+                        .build()))
+                .build();
+        when(metricProfileService.listProfiles()).thenReturn(List.of(profile));
+
+        mockMvc.perform(get("/api/metrics/profiles"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data[0].id").value("rocketmq5-native"))
+                .andExpect(jsonPath("$.data[0].metrics[0].semanticMetric").value("message_in_tps"))
+                .andExpect(jsonPath("$.data[0].metrics[0].prometheusMetric")
+                        .value("rocketmq_messages_in_total"));
+    }
 
     @Test
     void queryShouldReturnBadRequestWhenFieldTypeIsInvalid() throws Exception {
