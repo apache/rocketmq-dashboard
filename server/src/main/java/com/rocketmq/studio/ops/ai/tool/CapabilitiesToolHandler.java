@@ -14,50 +14,42 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.rocketmq.studio.ops.ai;
+package com.rocketmq.studio.ops.ai.tool;
 
-import com.rocketmq.studio.ops.ai.tool.ToolCatalog;
-import com.rocketmq.studio.ops.ai.tool.ToolGatewayService;
+import com.rocketmq.studio.cluster.broker.ClusterService;
+import com.rocketmq.studio.cluster.broker.ClusterVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 @Component
 @RequiredArgsConstructor
-public class McpServerImpl implements McpServerRegistry {
+public class CapabilitiesToolHandler implements ToolHandler {
 
-    private final ToolGatewayService toolGatewayService;
-    private final ToolCatalog toolCatalog;
+    private static final String NAME = "rmq.capabilities";
+
+    private final ClusterService clusterService;
+    private final CapabilityResolver capabilityResolver;
 
     @Override
-    public List<AiToolVO> listTools() {
-        return toolGatewayService.discover(null);
+    public String name() {
+        return NAME;
     }
 
     @Override
-    public List<AiToolVO> listTools(String clusterId) {
-        return toolGatewayService.discover(clusterId);
-    }
+    public Object execute(Map<String, Object> input) {
+        String clusterId = (String) input.get("cluster");
+        ClusterVO cluster = clusterService.getCluster(clusterId);
+        List<String> capabilities = capabilityResolver.resolve(cluster);
 
-    @Override
-    public Object execute(String name, Map<String, Object> input) {
-        return toolGatewayService.execute(name, input);
-    }
-
-    @Override
-    public String catalogVersion() {
-        return toolCatalog.getVersion();
-    }
-
-    @Override
-    public String catalogDigest() {
-        return toolCatalog.getDigest();
-    }
-
-    @Override
-    public String minimumClientVersion() {
-        return toolCatalog.getMinimumClientVersion();
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("cluster", cluster.getId());
+        result.put("type", cluster.getType().name());
+        result.put("version", cluster.getVersion());
+        result.put("capabilities", capabilities);
+        return result;
     }
 }
