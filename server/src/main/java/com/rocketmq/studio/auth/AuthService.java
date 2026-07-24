@@ -122,8 +122,8 @@ public class AuthService {
         }
         String password = request.getPassword();
         if (password == null
-            || password.isBlank()
             || password.length() > BCRYPT_PASSWORD_BYTE_LIMIT
+            || password.isBlank()
             || password.getBytes(StandardCharsets.UTF_8).length > BCRYPT_PASSWORD_BYTE_LIMIT) {
             log.info("Studio login rejected before credential verification for username {}",
                 request.getUsername());

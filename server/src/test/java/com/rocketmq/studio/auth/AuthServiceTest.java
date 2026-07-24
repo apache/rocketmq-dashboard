@@ -358,6 +358,7 @@ class AuthServiceTest {
             Arguments.of("non-ASCII username", dto("álîce", "guess")),
             Arguments.of("username over 128 characters", dto("a".repeat(129), "guess")),
             Arguments.of("blank password", dto("alice", "   ")),
+            Arguments.of("blank password over 72 characters", dto("alice", " ".repeat(73))),
             Arguments.of("password over 72 characters", dto("alice", "a".repeat(73))),
             Arguments.of("password within 72 chars but over 72 UTF-8 bytes",
                 dto("alice", new String(Character.toChars(0x5bc6)).repeat(25)))
