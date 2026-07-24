@@ -15,10 +15,8 @@ services:
     volumes:
       - type: volume
         source: studio-users
-        target: /run/secrets/studio-users.json
+        target: /run/secrets
         read_only: true
-        volume:
-          subpath: studio-users.json
 
   rocketmq-web:
     build:

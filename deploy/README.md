@@ -19,11 +19,12 @@ chmod 600 "$STUDIO_SECURITY_USER_FILE_LOCAL"
 
 ## 本机 Docker Compose
 
-需要 Docker Compose **2.35 或更高版本**（本文流程已在 2.40.2 验证）；
-`deploy/docker-compose.yml` 使用了命名卷的 `volume.subpath` 精确文件挂载。
+需要 Docker Compose 和 Python 3。`deploy/docker-compose.yml` 将私有命名卷
+只读挂载到 `/run/secrets`，并通过
+`STUDIO_SECURITY_USER_FILE=/run/secrets/studio-users.json` 精确选择注册表文件。
 基础 Compose 不包含宿主机凭据路径。
 
-还需要 Python 3。`deploy.sh snapshot-registry` 会从受信任目录链逐级以
+`deploy.sh snapshot-registry` 会从受信任目录链逐级以
 no-follow 方式打开目录，再从持有的父目录 descriptor 打开注册表；它通过
 `fstat` 检查普通文件、当前 UID 所有权和权限，并从持续持有的 descriptor
 复制到 `0600` 快照。因此构建期间替换原路径或 symlink 不会改变后续输入。
@@ -66,9 +67,10 @@ rmdir -- "$registry_snapshot_dir"
 trap - EXIT HUP INT TERM
 ```
 
-Compose 将命名卷中的 `studio-users.json` 作为精确文件只读挂载到
-`/run/secrets/studio-users.json`。后端仅暴露在 Compose 私有网络，Web 仅绑定
-`127.0.0.1:6789`。启动后访问：
+Compose 将命名卷目录只读挂载到 `/run/secrets`，后端仍只读取精确配置的
+`/run/secrets/studio-users.json`。目录挂载让临时 helper 在卷中以同目录原子
+rename 替换文件后，运行中的后端可以解析到新 inode 并热加载更新。后端仅暴露
+在 Compose 私有网络，Web 仅绑定 `127.0.0.1:6789`。启动后访问：
 
 ```text
 http://127.0.0.1:6789

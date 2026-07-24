@@ -17,9 +17,11 @@ docker compose up -d --build
 
 The credential-volume bootstrap is required; an empty volume intentionally
 fails closed and no default account exists. Follow the
-[deployment guide](deploy/README.md) before the first `up`, then visit
-**http://127.0.0.1:6789**. The web listener is loopback-only and the backend has
-no host port.
+[deployment guide](deploy/README.md) before the first `up`. Compose mounts the
+private registry directory read-only while configuring the exact
+`/run/secrets/studio-users.json` file, so atomic helper replacements remain
+visible to the running server. Then visit **http://127.0.0.1:6789**. The web
+listener is loopback-only and the backend has no host port.
 
 For a remote host, keep the listener private and open an SSH tunnel:
 

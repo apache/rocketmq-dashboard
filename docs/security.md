@@ -47,9 +47,11 @@ On a POSIX filesystem, the registry must:
   other-writable and must be owned by the Studio user or filesystem root.
 
 The Compose and Podman procedures use a private named volume, install
-`studio-users.json` with mode `0600`, and mount it read-only. The base Compose
-file contains no host-path bind. An empty volume contains no account: Compose
-cannot mount the required file subpath and Studio never synthesizes credentials.
+`studio-users.json` with mode `0600`, and mount the private registry directory
+read-only. `STUDIO_SECURITY_USER_FILE=/run/secrets/studio-users.json` selects
+the exact file. The base Compose file contains no host-path bind. An empty
+volume contains no account: Studio starts fail-closed and unready, and never
+synthesizes credentials.
 
 ### Atomic replacement
 
@@ -71,7 +73,9 @@ trap - EXIT HUP INT TERM
 The random `mktemp` name prevents concurrent helper processes from selecting
 the same PID-based path. `deploy.sh` additionally serializes the account-level
 Podman resource namespace with an owner-checked remote lock and uses per-run
-image and staging names.
+image and staging names. Mounting the containing directory lets the running
+server resolve the replacement inode after the atomic rename and observe
+registry changes.
 
 Before any build or network connection, `deploy.sh` opens every source ancestor
 and the registry itself with no-follow semantics, validates ownership and mode
