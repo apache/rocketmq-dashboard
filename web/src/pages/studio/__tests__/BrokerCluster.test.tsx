@@ -56,12 +56,12 @@ const renderWithProviders = (ui: React.ReactElement) => {
 describe('BrokerCluster Page', () => {
   it('should render the page title', () => {
     renderWithProviders(<BrokerCluster />);
-    expect(screen.getByText('RocketMQ 集群')).toBeInTheDocument();
+    expect(screen.getByText('Broker 集群')).toBeInTheDocument();
   });
 
   it('should render create cluster button', () => {
     renderWithProviders(<BrokerCluster />);
-    expect(screen.getByText('新建集群')).toBeInTheDocument();
+    expect(screen.getByText('创建集群')).toBeInTheDocument();
   });
 
   it('should render reset button', () => {

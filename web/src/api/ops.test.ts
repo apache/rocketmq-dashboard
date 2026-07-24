@@ -218,7 +218,7 @@ describe('Ops API - System Alerts & Audit', () => {
     mock.onGet('/audit-logs').reply(200, {
       code: 200,
       data: {
-        list: [
+        items: [
           {
             id: 'r1',
             timestamp: '2026-01-01',
@@ -231,11 +231,15 @@ describe('Ops API - System Alerts & Audit', () => {
           },
         ],
         total: 1,
+        page: 1,
+        size: 20,
       },
     });
     const result = await listAuditRecords({ page: 1 });
     expect(result.items).toHaveLength(1);
     expect(result.total).toBe(1);
+    expect(result.page).toBe(1);
+    expect(result.size).toBe(20);
   });
 
   it('cleans up audit logs', async () => {
