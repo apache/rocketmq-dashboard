@@ -18,6 +18,8 @@
 package com.rocketmq.studio.auth;
 
 import java.util.Arrays;
+import java.util.List;
+import java.util.UUID;
 import java.util.stream.Stream;
 
 import ch.qos.logback.classic.Logger;
@@ -26,6 +28,8 @@ import ch.qos.logback.classic.spi.IThrowableProxy;
 import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rocketmq.studio.auth.security.StudioLoginException;
+import com.rocketmq.studio.auth.security.StudioPrincipal;
+import com.rocketmq.studio.auth.security.StudioUserRegistry.Role;
 import com.rocketmq.studio.cluster.metrics.PrometheusException;
 import com.rocketmq.studio.common.exception.BusinessException;
 import jakarta.validation.GroupSequence;
@@ -42,6 +46,9 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.test.context.TestSecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -417,14 +424,27 @@ class AuthControllerTest {
 
     @Test
     void logoutShouldReturnSuccess() throws Exception {
-        doNothing().when(authService).logout();
+        UUID sessionId = UUID.fromString("ac0431cc-2d1f-491f-b622-7ee12b537870");
+        StudioPrincipal principal = new StudioPrincipal(sessionId, "testuser", Role.USER);
+        UsernamePasswordAuthenticationToken authentication =
+            UsernamePasswordAuthenticationToken.authenticated(
+                principal,
+                null,
+                List.of(new SimpleGrantedAuthority("ROLE_USER"))
+            );
+        doNothing().when(authService).logout(sessionId);
 
-        mockMvc.perform(post("/api/auth/logout"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.message").value("success"));
+        TestSecurityContextHolder.setAuthentication(authentication);
+        try {
+            mockMvc.perform(post("/api/auth/logout"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(200))
+                    .andExpect(jsonPath("$.message").value("success"));
+        } finally {
+            TestSecurityContextHolder.clearContext();
+        }
 
-        verify(authService).logout();
+        verify(authService).logout(sessionId);
     }
 
     private static org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder

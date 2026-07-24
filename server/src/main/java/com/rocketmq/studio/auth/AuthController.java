@@ -17,6 +17,7 @@
 
 package com.rocketmq.studio.auth;
 
+import com.rocketmq.studio.auth.security.StudioPrincipal;
 import com.rocketmq.studio.common.domain.Result;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -24,6 +25,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -52,8 +54,8 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
-    public Result<Void> logout() {
-        authService.logout();
+    public Result<Void> logout(@AuthenticationPrincipal StudioPrincipal principal) {
+        authService.logout(principal.sessionId());
         return Result.ok();
     }
 }

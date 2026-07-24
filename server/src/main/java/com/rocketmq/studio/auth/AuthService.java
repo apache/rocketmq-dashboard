@@ -20,6 +20,7 @@ package com.rocketmq.studio.auth;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.regex.Pattern;
 
 import com.rocketmq.studio.auth.security.LoginAttemptLimiter;
@@ -107,7 +108,8 @@ public class AuthService {
         }
     }
 
-    public void logout() {
+    public void logout(UUID sessionId) {
+        sessions.revoke(sessionId);
         log.info("User logged out");
     }
 
