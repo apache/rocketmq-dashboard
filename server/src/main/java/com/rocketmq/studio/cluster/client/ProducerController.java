@@ -16,29 +16,23 @@
  */
 package com.rocketmq.studio.cluster.client;
 
-import com.rocketmq.studio.common.domain.enums.ClientLanguage;
-import com.rocketmq.studio.common.domain.enums.ClientType;
-import com.rocketmq.studio.common.domain.enums.Protocol;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.time.LocalDateTime;
+@RestController
+@RequestMapping("/api/producer")
+@RequiredArgsConstructor
+public class ProducerController {
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class ClientConnectionVO {
-    private String clientId;
-    private ClientType type;
-    private String groupOrTopic;
-    private String producerGroup;
-    private Protocol protocol;
-    private String address;
-    private ClientLanguage language;
-    private String version;
-    private LocalDateTime connectedAt;
-    private String clusterName;
+    private final ProducerConnectionService producerConnectionService;
+
+    @GetMapping("/connection")
+    public ProducerConnectionResultVO listConnections(
+            @RequestParam(required = false) String topic,
+            @RequestParam(required = false) String producerGroup) {
+        return new ProducerConnectionResultVO(producerConnectionService.listConnections(topic, producerGroup));
+    }
 }

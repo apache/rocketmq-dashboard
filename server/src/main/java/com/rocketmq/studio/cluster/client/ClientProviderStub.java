@@ -36,6 +36,7 @@ public class ClientProviderStub implements ClientProvider {
                     .clientId("producer-001")
                     .type(ClientType.Producer)
                     .groupOrTopic("order-topic")
+                    .producerGroup("pg-order")
                     .protocol(Protocol.gRPC)
                     .address("192.168.1.10:56789")
                     .language(ClientLanguage.Java)
