@@ -18,6 +18,7 @@
 import { useEffect, useState } from 'react';
 import {
   Button,
+  Checkbox,
   Descriptions,
   Divider,
   Flex,
@@ -50,7 +51,7 @@ import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import StatusBadge from '../../components/StatusBadge';
 import { getGeneralSettings, saveGeneralSettings } from '../../api/settings';
-import type { GeneralSettings } from '../../api/settings';
+import type { GeneralSettingsUpdate } from '../../api/settings';
 import {
   createDataSource,
   deleteDataSource,
@@ -72,15 +73,20 @@ const typeTagColor: Record<string, string> = {
 // ─── General Settings Tab ───────────────────────────────────────────────────
 
 const GeneralSettingsTab = () => {
-  const [form] = Form.useForm();
+  const [form] = Form.useForm<GeneralSettingsUpdate>();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [apiKeyConfigured, setApiKeyConfigured] = useState(false);
+  const clearApiKey = Form.useWatch('clearApiKey', form);
 
   useEffect(() => {
     let cancelled = false;
     void getGeneralSettings()
       .then((settings) => {
-        if (!cancelled) form.setFieldsValue(settings);
+        if (!cancelled) {
+          setApiKeyConfigured(settings.apiKeyConfigured);
+          form.setFieldsValue({ ...settings, apiKey: undefined, clearApiKey: false });
+        }
       })
       .catch(() => {
         if (!cancelled) message.error('通用设置加载失败，请稍后重试');
@@ -94,10 +100,14 @@ const GeneralSettingsTab = () => {
     };
   }, [form]);
 
-  const handleFinish = async (values: GeneralSettings) => {
+  const handleFinish = async (values: GeneralSettingsUpdate) => {
     setSaving(true);
     try {
       await saveGeneralSettings(values);
+      setApiKeyConfigured(
+        values.clearApiKey ? false : apiKeyConfigured || Boolean(values.apiKey?.trim()),
+      );
+      form.setFieldsValue({ apiKey: undefined, clearApiKey: false });
       message.success('设置已保存');
     } catch {
       message.error('设置保存失败，请稍后重试');
@@ -187,9 +197,25 @@ const GeneralSettingsTab = () => {
         />
       </Form.Item>
 
-      <Form.Item label="API Key" name="apiKey">
-        <Input.Password placeholder="sk-..." />
+      <Form.Item
+        label="API Key"
+        name="apiKey"
+        extra={apiKeyConfigured ? '已配置；留空将保留现有密钥' : '尚未配置'}
+      >
+        <Input.Password placeholder="sk-..." disabled={clearApiKey} />
       </Form.Item>
+
+      {apiKeyConfigured && (
+        <Form.Item name="clearApiKey" valuePropName="checked" wrapperCol={{ offset: 4, span: 14 }}>
+          <Checkbox
+            onChange={(event) => {
+              if (event.target.checked) form.setFieldValue('apiKey', undefined);
+            }}
+          >
+            清除已保存的 API Key
+          </Checkbox>
+        </Form.Item>
+      )}
 
       <Form.Item label="模型名称" name="model">
         <Input placeholder="qwen-max" />

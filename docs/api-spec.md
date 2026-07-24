@@ -1483,7 +1483,7 @@ GET /api/settings/general
 | `sessionTimeout` | `number` | 会话超时（分钟，5-1440） |
 | `requireLogin` | `boolean` | 是否需要登录 |
 | `llmProvider` | `string` | LLM 提供商: `openai` / `azure` / `ollama` / `qwen` |
-| `apiKey` | `string` | API Key |
+| `apiKeyConfigured` | `boolean` | 是否已配置 API Key；响应不会返回密钥内容 |
 | `model` | `string` | 模型名称 |
 | `baseUrl` | `string` | Base URL |
 
@@ -1493,7 +1493,21 @@ GET /api/settings/general
 POST /api/settings/general/save
 ```
 
-**Request Body:** 同 14.1 响应格式
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `theme` | `string` | 是 | 主题: `light` / `dark` / `system` |
+| `compact` | `boolean` | 是 | 紧凑模式 |
+| `desktopNotify` | `boolean` | 是 | 桌面通知 |
+| `notifySound` | `boolean` | 是 | 通知声音 |
+| `sessionTimeout` | `number` | 是 | 会话超时（分钟，5-1440） |
+| `requireLogin` | `boolean` | 是 | 是否需要登录 |
+| `llmProvider` | `string` | 是 | LLM 提供商 |
+| `apiKey` | `string` | 否 | 新 API Key；省略或传空值时保留现有密钥 |
+| `clearApiKey` | `boolean` | 否 | 传 `true` 时显式清除现有密钥，优先级高于 `apiKey` |
+| `model` | `string` | 是 | 模型名称 |
+| `baseUrl` | `string` | 是 | Base URL |
 
 **Response `data`:** `null`
 
