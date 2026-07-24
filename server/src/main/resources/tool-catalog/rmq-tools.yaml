@@ -74,3 +74,125 @@ tools:
             type: string
     viewHint: object
     deprecated: false
+  - name: rmq.topic.list
+    cli:
+      resource: topic
+      verb: list
+    description: List RocketMQ topics in one Studio cluster.
+    riskLevel: L1
+    permission: topic:read
+    requiredCapabilities:
+      - REMOTING
+    inputSchema:
+      type: object
+      required:
+        - cluster
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        type:
+          type: string
+          minLength: 1
+        search:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: array
+      items:
+        type: object
+        required:
+          - name
+          - namespace
+          - clusterId
+          - type
+          - writeQueues
+          - readQueues
+          - perm
+          - messageCount
+          - tps
+          - consumerGroupCount
+        additionalProperties: false
+        properties:
+          name:
+            type: string
+          namespace:
+            type: string
+          clusterId:
+            type: string
+          type:
+            type: string
+          writeQueues:
+            type: integer
+          readQueues:
+            type: integer
+          perm:
+            type: string
+          messageCount:
+            type: integer
+          tps:
+            type: number
+          consumerGroupCount:
+            type: integer
+    viewHint: table
+    deprecated: false
+  - name: rmq.group.list
+    cli:
+      resource: group
+      verb: list
+    description: List RocketMQ consumer groups in one Studio cluster.
+    riskLevel: L1
+    permission: group:read
+    requiredCapabilities:
+      - REMOTING
+    inputSchema:
+      type: object
+      required:
+        - cluster
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        search:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: array
+      items:
+        type: object
+        required:
+          - name
+          - namespace
+          - clusterId
+          - subscriptionMode
+          - consumeType
+          - onlineInstances
+          - totalLag
+          - subscribedTopics
+          - retryMaxTimes
+        additionalProperties: false
+        properties:
+          name:
+            type: string
+          namespace:
+            type: string
+          clusterId:
+            type: string
+          subscriptionMode:
+            type: string
+          consumeType:
+            type: string
+          onlineInstances:
+            type: integer
+          totalLag:
+            type: integer
+          subscribedTopics:
+            type: array
+            items:
+              type: string
+          retryMaxTimes:
+            type: integer
+    viewHint: table
+    deprecated: false
