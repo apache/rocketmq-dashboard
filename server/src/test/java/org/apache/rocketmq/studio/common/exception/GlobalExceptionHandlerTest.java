@@ -23,6 +23,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -56,12 +57,25 @@ class GlobalExceptionHandlerTest {
                 .andExpect(jsonPath("$.message").value("failure-400"));
     }
 
+    @Test
+    void returnsBadRequestWhenRequiredRequestParamIsMissing() throws Exception {
+        mockMvc.perform(get("/test/required-param"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("key is required"));
+    }
+
     @RestController
     static class FailingController {
 
         @GetMapping("/test/business/{code}")
         Result<Void> fail(@PathVariable int code) {
             throw new BusinessException(code, "failure-" + code);
+        }
+
+        @GetMapping("/test/required-param")
+        Result<String> requiredParam(@RequestParam String key) {
+            return Result.ok(key);
         }
     }
 }
