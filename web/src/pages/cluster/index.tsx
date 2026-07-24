@@ -363,7 +363,7 @@ const ClusterPage = () => {
           <Button
             type="primary"
             icon={<PlusOutlined />}
-            onClick={() => message.info('新建集群功能开发中')}
+            onClick={() => message.info(t('cluster.createClusterWip'))}
           >
             {t('cluster.createCluster')}
           </Button>
@@ -380,51 +380,51 @@ const ClusterPage = () => {
 
         {selectedCluster && (
           <Modal
-            title={`配置 - ${selectedCluster.name}`}
+            title={t('cluster.configTitle', { name: selectedCluster.name })}
             open={configModalOpen}
             onCancel={() => setConfigModalOpen(false)}
             onOk={() => {
               configForm.validateFields().then(() => {
-                message.success('配置已更新');
+                message.success(t('cluster.configUpdated'));
                 setConfigModalOpen(false);
               });
             }}
             width={560}
           >
             <Form form={configForm} layout="vertical">
-              <Form.Item label="刷盘方式" name="flushDiskType">
+              <Form.Item label={t('cluster.flushDiskType')} name="flushDiskType">
                 <Radio.Group>
-                  <Radio value="SYNC_FLUSH">同步刷盘</Radio>
-                  <Radio value="ASYNC_FLUSH">异步刷盘</Radio>
+                  <Radio value="SYNC_FLUSH">{t('cluster.syncFlush')}</Radio>
+                  <Radio value="ASYNC_FLUSH">{t('cluster.asyncFlush')}</Radio>
                 </Radio.Group>
               </Form.Item>
               <Form.Item
-                label="自动创建 Topic"
+                label={t('cluster.autoCreateTopic')}
                 name="autoCreateTopicEnable"
                 valuePropName="checked"
               >
                 <Switch />
               </Form.Item>
               <Form.Item
-                label="自动创建订阅组"
+                label={t('cluster.autoCreateSubGroup')}
                 name="autoCreateSubscriptionGroup"
                 valuePropName="checked"
               >
                 <Switch />
               </Form.Item>
-              <Form.Item label="最大消息大小 (MB)" name="maxMessageSizeMB">
+              <Form.Item label={t('cluster.maxMessageSize')} name="maxMessageSizeMB">
                 <InputNumber min={1} max={128} style={{ width: '100%' }} />
               </Form.Item>
-              <Form.Item label="文件保留时长 (小时)" name="fileReservedTime">
+              <Form.Item label={t('cluster.fileReservedTime')} name="fileReservedTime">
                 <InputNumber min={1} max={720} style={{ width: '100%' }} />
               </Form.Item>
-              <Form.Item label="写队列数" name="writeQueueNums">
+              <Form.Item label={t('cluster.writeQueues')} name="writeQueueNums">
                 <InputNumber min={1} max={256} style={{ width: '100%' }} />
               </Form.Item>
-              <Form.Item label="读队列数" name="readQueueNums">
+              <Form.Item label={t('cluster.readQueues')} name="readQueueNums">
                 <InputNumber min={1} max={256} style={{ width: '100%' }} />
               </Form.Item>
-              <Form.Item label="Broker 权限" name="brokerPermission">
+              <Form.Item label={t('cluster.brokerPermission')} name="brokerPermission">
                 <InputNumber min={0} max={7} style={{ width: '100%' }} />
               </Form.Item>
             </Form>
@@ -468,9 +468,9 @@ const ClusterPage = () => {
         render: (status: string) => {
           const map: Record<string, { color: string; label: string }> = {
             healthy: { color: 'green', label: t('cluster.running') },
-            warning: { color: 'gold', label: '告警' },
-            error: { color: 'red', label: '异常' },
-            offline: { color: 'default', label: '离线' },
+            warning: { color: 'gold', label: t('cluster.warning') },
+            error: { color: 'red', label: t('cluster.error') },
+            offline: { color: 'default', label: t('cluster.offline') },
           };
           const cfg = map[status] ?? { color: 'default', label: status };
           return <Tag color={cfg.color}>{cfg.label}</Tag>;
@@ -530,9 +530,9 @@ const ClusterPage = () => {
         render: (status: string) => {
           const map: Record<string, { color: string; label: string }> = {
             healthy: { color: 'green', label: t('cluster.running') },
-            warning: { color: 'gold', label: '告警' },
-            error: { color: 'red', label: '异常' },
-            offline: { color: 'default', label: '离线' },
+            warning: { color: 'gold', label: t('cluster.warning') },
+            error: { color: 'red', label: t('cluster.error') },
+            offline: { color: 'default', label: t('cluster.offline') },
           };
           const cfg = map[status] ?? { color: 'default', label: status };
           return <Tag color={cfg.color}>{cfg.label}</Tag>;
@@ -661,9 +661,9 @@ const ClusterPage = () => {
         render: (status: string) => {
           const map: Record<string, { color: string; label: string }> = {
             healthy: { color: 'green', label: t('cluster.running') },
-            warning: { color: 'gold', label: '告警' },
-            error: { color: 'red', label: '异常' },
-            offline: { color: 'default', label: '离线' },
+            warning: { color: 'gold', label: t('cluster.warning') },
+            error: { color: 'red', label: t('cluster.error') },
+            offline: { color: 'default', label: t('cluster.offline') },
           };
           const cfg = map[status] ?? { color: 'default', label: status };
           return <Tag color={cfg.color}>{cfg.label}</Tag>;
@@ -704,7 +704,7 @@ const ClusterPage = () => {
               size="small"
               icon={<EyeOutlined />}
               style={{ borderColor: '#1677ff', color: '#1677ff' }}
-              onClick={() => message.info(`查看详情: ${record.addr}`)}
+              onClick={() => message.info(t('cluster.viewDetail', { addr: record.addr }))}
             >
               {t('common.detail')}
             </Button>
@@ -715,10 +715,11 @@ const ClusterPage = () => {
               onClick={() => {
                 Modal.confirm({
                   title: t('cluster.confirmRestart'),
-                  content: `确定要重启 Proxy "${record.addr}" 吗？`,
-                  okText: '确认',
-                  cancelText: '取消',
-                  onOk: () => message.success(`Proxy 重启已提交: ${record.addr}`),
+                  content: t('cluster.restartProxyConfirm', { addr: record.addr }),
+                  okText: t('common.confirm'),
+                  cancelText: t('common.cancel'),
+                  onOk: () =>
+                    message.success(t('cluster.restartProxySubmitted', { addr: record.addr })),
                 });
               }}
             >
@@ -744,7 +745,7 @@ const ClusterPage = () => {
           <Button
             type="primary"
             icon={<PlusOutlined />}
-            onClick={() => message.info('新建集群功能开发中')}
+            onClick={() => message.info(t('cluster.createClusterWip'))}
           >
             {t('cluster.createCluster')}
           </Button>

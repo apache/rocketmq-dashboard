@@ -349,7 +349,7 @@ const TopicPage = () => {
       sorter: (a, b) => a.type.localeCompare(b.type),
       render: (type: string) => {
         const cfg = TOPIC_TYPE_MAP[type];
-        return cfg ? <Tag color={cfg.color}>{cfg.label}</Tag> : <Tag>{type}</Tag>;
+        return cfg ? <Tag color={cfg.color}>{t(cfg.labelKey)}</Tag> : <Tag>{type}</Tag>;
       },
     },
     {
@@ -458,7 +458,9 @@ const TopicPage = () => {
           {topic.name}
         </Descriptions.Item>
         <Descriptions.Item label="类型">
-          <Tag color={typeInfo?.color}>{typeInfo?.label}</Tag>
+          <Tag color={typeInfo?.color}>
+            {typeInfo?.labelKey ? t(typeInfo.labelKey) : topic.type}
+          </Tag>
         </Descriptions.Item>
         <Descriptions.Item label="命名空间">
           <Tag>{topic.namespace}</Tag>
@@ -466,7 +468,7 @@ const TopicPage = () => {
         <Descriptions.Item label="集群" span={2}>
           <Space>
             <Text>{topic.clusterId}</Text>
-            {clusterType && <Tag color={clusterType.color}>{clusterType.label}</Tag>}
+            {clusterType && <Tag color={clusterType.color}>{t(clusterType.labelKey)}</Tag>}
           </Space>
         </Descriptions.Item>
         <Descriptions.Item label="写队列数">{topic.writeQueues}</Descriptions.Item>
@@ -506,7 +508,9 @@ const TopicPage = () => {
                 <Text strong style={{ fontSize: 15 }}>
                   {topic.name}
                 </Text>
-                <Tag color={typeInfo?.color}>{typeInfo?.label}</Tag>
+                <Tag color={typeInfo?.color}>
+                  {typeInfo?.labelKey ? t(typeInfo.labelKey) : topic.type}
+                </Tag>
               </Flex>
 
               {/* Namespace + cluster tags */}
@@ -514,7 +518,7 @@ const TopicPage = () => {
                 <Tag style={{ fontSize: 11 }}>{topic.namespace}</Tag>
                 {clusterType && (
                   <Tag color={clusterType.color} style={{ fontSize: 11 }}>
-                    {clusterType.label}
+                    {t(clusterType.labelKey)}
                   </Tag>
                 )}
               </Space>
