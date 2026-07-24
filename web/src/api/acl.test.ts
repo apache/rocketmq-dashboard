@@ -18,7 +18,15 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { createAclRule, createAclUser, listAclRules } from './acl';
+import {
+  createAclRule,
+  createAclUser,
+  deleteAclRule,
+  deleteAclUser,
+  listAclRules,
+  updateAclRule,
+  updateAclUser,
+} from './acl';
 
 const mock = new MockAdapter(client);
 
@@ -70,5 +78,50 @@ describe('ACL API contract', () => {
 
     await expect(createAclRule({ principal: rule.principal })).resolves.toEqual(rule);
     await expect(createAclUser({ username: user.username })).resolves.toEqual(user);
+  });
+
+  it('uses backend update and delete endpoints for rules and users', async () => {
+    const rule = {
+      id: 'rule-1',
+      principal: 'orders',
+      resource: 'orders-*',
+      resourceType: 'Topic',
+      resourcePattern: 'PREFIX',
+      actions: ['SUB'],
+      decision: 'DENY',
+      scope: 'cluster',
+      aclVersion: 2,
+      createdAt: '2026-07-17T00:00:00Z',
+    };
+    const user = {
+      id: 'user-1',
+      username: 'orders',
+      accessKey: 'ak',
+      secretKey: 'sk',
+      admin: true,
+      clusters: ['cluster-a'],
+      createdAt: '2026-07-17T00:00:00Z',
+    };
+    mock.onPost('/acl/rules/update').reply((config) => {
+      expect(JSON.parse(config.data)).toMatchObject({ id: rule.id, decision: 'DENY' });
+      return [200, { code: 200, data: rule }];
+    });
+    mock.onPost('/acl/users/update').reply((config) => {
+      expect(JSON.parse(config.data)).toMatchObject({ id: user.id, admin: true });
+      return [200, { code: 200, data: user }];
+    });
+    mock.onPost('/acl/rules/delete').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({ id: rule.id });
+      return [200, { code: 200 }];
+    });
+    mock.onPost('/acl/users/delete').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({ id: user.id });
+      return [200, { code: 200 }];
+    });
+
+    await expect(updateAclRule({ id: rule.id, decision: 'DENY' })).resolves.toEqual(rule);
+    await expect(updateAclUser({ id: user.id, admin: true })).resolves.toEqual(user);
+    await expect(deleteAclRule(rule.id)).resolves.toBeUndefined();
+    await expect(deleteAclUser(user.id)).resolves.toBeUndefined();
   });
 });

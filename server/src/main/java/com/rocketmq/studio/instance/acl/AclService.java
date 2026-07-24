@@ -16,6 +16,7 @@
  */
 package com.rocketmq.studio.instance.acl;
 
+import com.rocketmq.studio.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -45,6 +46,16 @@ public class AclService {
         return aclRepository.saveRule(rule);
     }
 
+    public AclRuleVO updateRule(AclRuleVO rule) {
+        if (isBlank(rule.getId())) {
+            throw new BusinessException(400, "ACL rule id is required");
+        }
+        log.info("Updating ACL rule id={}, principal={}", rule.getId(), rule.getPrincipal());
+        if (rule.getCreatedAt() == null) {
+            rule.setCreatedAt(LocalDateTime.now());
+        }
+        return aclRepository.saveRule(rule);
+    }
 
     public void deleteRule(String id) {
         log.info("Deleting ACL rule id={}", id);
@@ -67,9 +78,23 @@ public class AclService {
         return aclRepository.saveUser(user);
     }
 
+    public AclUserVO updateUser(AclUserVO user) {
+        if (isBlank(user.getId())) {
+            throw new BusinessException(400, "ACL user id is required");
+        }
+        log.info("Updating ACL user id={}, username={}", user.getId(), user.getUsername());
+        if (user.getCreatedAt() == null) {
+            user.setCreatedAt(LocalDateTime.now());
+        }
+        return aclRepository.saveUser(user);
+    }
 
     public void deleteUser(String id) {
         log.info("Deleting ACL user id={}", id);
         aclRepository.deleteUser(id);
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
     }
 }
