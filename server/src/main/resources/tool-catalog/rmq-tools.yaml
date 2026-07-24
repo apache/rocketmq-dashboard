@@ -74,3 +74,110 @@ tools:
             type: string
     viewHint: object
     deprecated: false
+  - name: rmq.dashboard.summary
+    cli:
+      resource: dashboard
+      verb: summary
+    description: Get the Studio dashboard summary for one RocketMQ cluster.
+    riskLevel: L1
+    permission: dashboard:read
+    requiredCapabilities: []
+    inputSchema:
+      type: object
+      required:
+        - cluster
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - cluster
+        - stats
+      additionalProperties: false
+      properties:
+        cluster:
+          type: object
+          required:
+            - id
+            - name
+            - type
+            - status
+            - brokers
+            - proxies
+            - topics
+            - groups
+            - tpsIn
+            - tpsOut
+            - version
+            - throughput
+          additionalProperties: false
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            type:
+              type: string
+            status:
+              type: string
+            brokers:
+              type: integer
+            proxies:
+              type: integer
+            topics:
+              type: integer
+            groups:
+              type: integer
+            tpsIn:
+              type: integer
+            tpsOut:
+              type: integer
+            version:
+              type: string
+            throughput:
+              type: array
+              items:
+                type: integer
+        stats:
+          type: object
+          required:
+            - totalClusters
+            - healthyClusters
+            - totalBrokers
+            - totalProxies
+            - totalNameServers
+            - totalTopics
+            - totalConsumerGroups
+            - totalMessagesToday
+            - messagesPerSecond
+            - tpsIn
+            - tpsOut
+          additionalProperties: false
+          properties:
+            totalClusters:
+              type: integer
+            healthyClusters:
+              type: integer
+            totalBrokers:
+              type: integer
+            totalProxies:
+              type: integer
+            totalNameServers:
+              type: integer
+            totalTopics:
+              type: integer
+            totalConsumerGroups:
+              type: integer
+            totalMessagesToday:
+              type: integer
+            messagesPerSecond:
+              type: integer
+            tpsIn:
+              type: integer
+            tpsOut:
+              type: integer
+    viewHint: object
+    deprecated: false

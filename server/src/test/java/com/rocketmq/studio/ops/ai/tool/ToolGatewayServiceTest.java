@@ -23,6 +23,10 @@ import com.rocketmq.studio.common.domain.enums.ClusterStatus;
 import com.rocketmq.studio.common.domain.enums.ClusterType;
 import com.rocketmq.studio.common.exception.BusinessException;
 import com.rocketmq.studio.ops.ai.AiToolVO;
+import com.rocketmq.studio.ops.dashboard.ClusterOverviewVO;
+import com.rocketmq.studio.ops.dashboard.DashboardDataVO;
+import com.rocketmq.studio.ops.dashboard.DashboardService;
+import com.rocketmq.studio.ops.dashboard.DashboardStatsVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ByteArrayResource;
@@ -43,19 +47,24 @@ class ToolGatewayServiceTest {
 
     private ToolCatalog catalog;
     private ClusterService clusterService;
+    private DashboardService dashboardService;
     private CapabilityResolver capabilityResolver;
     private ClusterListToolHandler clusterListHandler;
     private CapabilitiesToolHandler capabilitiesHandler;
+    private DashboardSummaryToolHandler dashboardSummaryHandler;
     private ToolGatewayService gateway;
 
     @BeforeEach
     void setUp() {
         catalog = canonicalCatalog();
         clusterService = mock(ClusterService.class);
+        dashboardService = mock(DashboardService.class);
         capabilityResolver = new CapabilityResolver(clusterService);
         clusterListHandler = new ClusterListToolHandler(clusterService);
         capabilitiesHandler = new CapabilitiesToolHandler(clusterService, capabilityResolver);
-        gateway = gateway(catalog, clusterListHandler, capabilitiesHandler);
+        dashboardSummaryHandler = new DashboardSummaryToolHandler(dashboardService);
+        gateway = gateway(
+                catalog, clusterListHandler, capabilitiesHandler, dashboardSummaryHandler);
     }
 
     @Test
@@ -72,7 +81,10 @@ class ToolGatewayServiceTest {
 
         assertThat(gateway.discover("cluster-v5"))
                 .extracting(AiToolVO::getName)
-                .containsExactly("rmq.cluster.list", "rmq.capabilities");
+                .containsExactly(
+                        "rmq.cluster.list",
+                        "rmq.capabilities",
+                        "rmq.dashboard.summary");
     }
 
     @Test
@@ -111,6 +123,73 @@ class ToolGatewayServiceTest {
                         "POP",
                         "REMOTING",
                         "ROCKETMQ_5")));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void executesDashboardSummaryWithADataMinimizingProjection() {
+        when(dashboardService.getDashboard()).thenReturn(DashboardDataVO.builder()
+                .stats(DashboardStatsVO.builder()
+                        .totalClusters(1)
+                        .healthyClusters(1)
+                        .totalBrokers(2)
+                        .totalProxies(1)
+                        .totalNameServers(1)
+                        .totalTopics(3)
+                        .totalConsumerGroups(4)
+                        .totalMessagesToday(500L)
+                        .messagesPerSecond(6L)
+                        .tpsIn(7L)
+                        .tpsOut(8L)
+                        .build())
+                .clusters(List.of(ClusterOverviewVO.builder()
+                        .id("cluster-v5")
+                        .name("test")
+                        .type(ClusterType.V5_PROXY_CLUSTER)
+                        .status(ClusterStatus.healthy)
+                        .brokers(2)
+                        .proxies(1)
+                        .topics(3)
+                        .groups(4)
+                        .tpsIn(7)
+                        .tpsOut(8)
+                        .version("5.2.0")
+                        .throughput(List.of(1, 2, 3))
+                        .build()))
+                .build());
+
+        Object output = gateway.execute(
+                "rmq.dashboard.summary", Map.of("cluster", "cluster-v5"));
+
+        Map<String, Object> result = (Map<String, Object>) output;
+        assertThat(result).containsOnlyKeys("cluster", "stats");
+        Map<String, Object> cluster = (Map<String, Object>) result.get("cluster");
+        assertThat(cluster).containsEntry("id", "cluster-v5");
+        assertThat(cluster).containsEntry("name", "test");
+        assertThat(cluster).containsEntry("type", "V5_PROXY_CLUSTER");
+        assertThat(cluster).containsEntry("status", "healthy");
+        assertThat(cluster).containsEntry("brokers", 2);
+        assertThat(cluster).containsEntry("proxies", 1);
+        assertThat(cluster).containsEntry("topics", 3);
+        assertThat(cluster).containsEntry("groups", 4);
+        assertThat(cluster).containsEntry("tpsIn", 7);
+        assertThat(cluster).containsEntry("tpsOut", 8);
+        assertThat(cluster).containsEntry("version", "5.2.0");
+        assertThat(cluster).containsEntry("throughput", List.of(1, 2, 3));
+        assertThat(cluster).doesNotContainKeys("endpoint");
+        assertThat((Map<String, Object>) result.get("stats")).containsAllEntriesOf(Map.of(
+                "totalMessagesToday", 500L,
+                "messagesPerSecond", 6L,
+                "tpsIn", 7L,
+                "tpsOut", 8L));
+    }
+
+    @Test
+    void rejectsDashboardSummaryWithoutRequiredClusterBeforeHandlerRuns() {
+        assertThatThrownBy(() -> gateway.execute("rmq.dashboard.summary", Map.of()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("input validation failed");
+        verifyNoInteractions(dashboardService);
     }
 
     @Test
@@ -201,7 +280,8 @@ class ToolGatewayServiceTest {
         ToolCatalog l2Catalog = ToolCatalog.load(
                 new ByteArrayResource(yaml.getBytes(StandardCharsets.UTF_8)),
                 new ClassPathResource("tool-catalog/rmq-tools.schema.json"));
-        ToolGatewayService l2Gateway = gateway(l2Catalog, clusterListHandler, capabilitiesHandler);
+        ToolGatewayService l2Gateway = gateway(
+                l2Catalog, clusterListHandler, capabilitiesHandler, dashboardSummaryHandler);
 
         assertThatThrownBy(() -> l2Gateway.execute("rmq.cluster.list", Map.of()))
                 .isInstanceOf(BusinessException.class)
@@ -212,7 +292,11 @@ class ToolGatewayServiceTest {
     @Test
     void failsStartupForDuplicateHandlerNames() {
         assertThatThrownBy(() -> gateway(
-                catalog, clusterListHandler, clusterListHandler, capabilitiesHandler))
+                catalog,
+                clusterListHandler,
+                clusterListHandler,
+                capabilitiesHandler,
+                dashboardSummaryHandler))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("duplicate handler");
     }
@@ -241,7 +325,10 @@ class ToolGatewayServiceTest {
                 new ClassPathResource("tool-catalog/rmq-tools.schema.json"));
 
         assertThatThrownBy(() -> gateway(
-                invalidCatalog, clusterListHandler, capabilitiesHandler))
+                invalidCatalog,
+                clusterListHandler,
+                capabilitiesHandler,
+                dashboardSummaryHandler))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("input schema")
                 .hasMessageContaining("rmq.cluster.list");
@@ -263,7 +350,10 @@ class ToolGatewayServiceTest {
                 new ClassPathResource("tool-catalog/rmq-tools.schema.json"));
 
         assertThatThrownBy(() -> gateway(
-                invalidCatalog, clusterListHandler, capabilitiesHandler))
+                invalidCatalog,
+                clusterListHandler,
+                capabilitiesHandler,
+                dashboardSummaryHandler))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("input schema")
                 .hasMessageContaining("rmq.cluster.list");
@@ -283,7 +373,10 @@ class ToolGatewayServiceTest {
             }
         };
         ToolGatewayService invalidGateway = gateway(
-                catalog, invalidClusterListHandler, capabilitiesHandler);
+                catalog,
+                invalidClusterListHandler,
+                capabilitiesHandler,
+                dashboardSummaryHandler);
 
         assertThatThrownBy(() -> invalidGateway.execute("rmq.cluster.list", Map.of()))
                 .isInstanceOf(IllegalStateException.class)
