@@ -18,7 +18,8 @@
 import MockAdapter from 'axios-mock-adapter';
 import { message } from 'antd';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import client from './client';
+import { persistAuthSession, readAuthSession } from '../stores/authStorage';
+import client, { createApiClient } from './client';
 
 vi.mock('antd', () => ({
   message: {
@@ -105,5 +106,37 @@ describe('API client response contract', () => {
     });
 
     await client.get('/clusters');
+  });
+
+  it('clears the session and redirects once for an HTTP 401 response', async () => {
+    persistAuthSession('expired-token', 'studio-admin');
+    const navigate = vi.fn();
+    const unauthorizedClient = createApiClient(navigate);
+    const unauthorizedMock = new MockAdapter(unauthorizedClient);
+    unauthorizedMock.onGet('/protected').reply(401);
+
+    await expect(unauthorizedClient.get('/protected')).rejects.toMatchObject({
+      response: { status: 401 },
+    });
+
+    expect(readAuthSession()).toEqual({ token: null, user: null });
+    expect(navigate).toHaveBeenCalledOnce();
+    expect(navigate).toHaveBeenCalledWith('/');
+    unauthorizedMock.restore();
+  });
+
+  it('preserves the original non-401 error without clearing or redirecting', async () => {
+    persistAuthSession('valid-token', 'studio-admin');
+    const navigate = vi.fn();
+    const nonUnauthorizedClient = createApiClient(navigate);
+    const originalError = Object.assign(new Error('upstream failed'), {
+      response: { status: 500 },
+    });
+    nonUnauthorizedClient.defaults.adapter = async () => Promise.reject(originalError);
+
+    await expect(nonUnauthorizedClient.get('/protected')).rejects.toBe(originalError);
+
+    expect(readAuthSession()).toEqual({ token: 'valid-token', user: 'studio-admin' });
+    expect(navigate).not.toHaveBeenCalled();
   });
 });

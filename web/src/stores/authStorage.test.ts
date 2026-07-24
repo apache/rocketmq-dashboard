@@ -15,9 +15,10 @@
  * limitations under the License.
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   clearAuthSession,
+  handleUnauthorized,
   persistAuthSession,
   readAuthSession,
   TOKEN_STORAGE_KEY,
@@ -47,5 +48,16 @@ describe('auth session storage', () => {
 
     expect(localStorage.getItem(TOKEN_STORAGE_KEY)).toBeNull();
     expect(localStorage.getItem(USER_STORAGE_KEY)).toBeNull();
+  });
+
+  it('clears the persisted session and navigates home when unauthorized', () => {
+    persistAuthSession('token-1', 'studio-admin');
+    const navigate = vi.fn();
+
+    handleUnauthorized(navigate);
+
+    expect(readAuthSession()).toEqual({ token: null, user: null });
+    expect(navigate).toHaveBeenCalledOnce();
+    expect(navigate).toHaveBeenCalledWith('/');
   });
 });

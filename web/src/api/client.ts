@@ -17,7 +17,7 @@
 
 import axios from 'axios';
 import { message } from 'antd';
-import { clearAuthSession, TOKEN_STORAGE_KEY } from '../stores/authStorage';
+import { handleUnauthorized, TOKEN_STORAGE_KEY } from '../stores/authStorage';
 import { API_BASE_URL } from '../config';
 
 const SUCCESS_BUSINESS_CODES = new Set([0, 200]);
@@ -41,40 +41,45 @@ function getBusinessError(data: unknown): string | null {
   return typeof data.message === 'string' && data.message.trim() ? data.message : '请求失败';
 }
 
-const client = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 30000,
-});
+export function createApiClient(navigate?: (url: string) => void) {
+  const client = axios.create({
+    baseURL: API_BASE_URL,
+    timeout: 30000,
+  });
 
-// Request interceptor: attach Authorization header
-client.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem(TOKEN_STORAGE_KEY);
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error),
-);
+  // Request interceptor: attach Authorization header
+  client.interceptors.request.use(
+    (config) => {
+      const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      return config;
+    },
+    (error) => Promise.reject(error),
+  );
 
-// Response interceptor: check business code and handle 401
-client.interceptors.response.use(
-  (response) => {
-    const errorMessage = getBusinessError(response.data);
-    if (errorMessage) {
-      message.error(errorMessage);
-      return Promise.reject(new Error(errorMessage));
-    }
-    return response;
-  },
-  (error) => {
-    if (error.response?.status === 401) {
-      clearAuthSession();
-      window.location.href = '/';
-    }
-    return Promise.reject(error);
-  },
-);
+  // Response interceptor: check business code and handle 401
+  client.interceptors.response.use(
+    (response) => {
+      const errorMessage = getBusinessError(response.data);
+      if (errorMessage) {
+        message.error(errorMessage);
+        return Promise.reject(new Error(errorMessage));
+      }
+      return response;
+    },
+    (error) => {
+      if (error.response?.status === 401) {
+        handleUnauthorized(navigate);
+      }
+      return Promise.reject(error);
+    },
+  );
+
+  return client;
+}
+
+const client = createApiClient();
 
 export default client;
