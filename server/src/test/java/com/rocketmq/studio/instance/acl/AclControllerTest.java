@@ -28,11 +28,13 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -138,6 +140,30 @@ class AclControllerTest {
     }
 
     @Test
+    void deleteRuleShouldPassValidatedRequest() throws Exception {
+        mockMvc.perform(post("/api/acl/rules/delete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("id", "rule-1"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.message").value("success"));
+
+        verify(aclService).deleteRule("rule-1");
+    }
+
+    @Test
+    void deleteRuleShouldRejectBlankId() throws Exception {
+        mockMvc.perform(post("/api/acl/rules/delete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("id", " "))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("id is required"));
+
+        verifyNoInteractions(aclService);
+    }
+
+    @Test
     void listUsersShouldReturnAllUsers() throws Exception {
         AclUserVO user = AclUserVO.builder()
                 .username("admin")
@@ -178,5 +204,29 @@ class AclControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.id").value("user-1"))
                 .andExpect(jsonPath("$.data.admin").value(false));
+    }
+
+    @Test
+    void deleteUserShouldPassValidatedRequest() throws Exception {
+        mockMvc.perform(post("/api/acl/users/delete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("id", "user-1"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.message").value("success"));
+
+        verify(aclService).deleteUser("user-1");
+    }
+
+    @Test
+    void deleteUserShouldRejectMissingId() throws Exception {
+        mockMvc.perform(post("/api/acl/users/delete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of())))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("id is required"));
+
+        verifyNoInteractions(aclService);
     }
 }
