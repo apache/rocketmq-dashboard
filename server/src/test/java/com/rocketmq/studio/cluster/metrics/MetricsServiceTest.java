@@ -26,9 +26,11 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -102,16 +104,26 @@ class MetricsServiceTest {
     void queryShouldHandleVariousStepSizes() {
         MetricQueryDTO query15s = MetricQueryDTO.builder().metric("cpu").start(1L).end(2L).step("15s").build();
         MetricQueryDTO query1h = MetricQueryDTO.builder().metric("cpu").start(1L).end(2L).step("1h").build();
+        MetricQueryDTO queryCombined = MetricQueryDTO.builder().metric("cpu").start(1L).end(7_201L)
+                .step("1h30m").build();
+        MetricQueryDTO queryNumeric = MetricQueryDTO.builder().metric("cpu").start(1L).end(2L)
+                .step("0.5").build();
         MetricDataVO data = emptyMetricData();
         when(metricsSource.query(any(MetricQueryDTO.class))).thenReturn(data);
 
         MetricDataVO result15s = metricsService.query(query15s);
         MetricDataVO result1h = metricsService.query(query1h);
+        MetricDataVO resultCombined = metricsService.query(queryCombined);
+        MetricDataVO resultNumeric = metricsService.query(queryNumeric);
 
         assertThat(result15s).isNotNull();
         assertThat(result1h).isNotNull();
+        assertThat(resultCombined).isNotNull();
+        assertThat(resultNumeric).isNotNull();
         verify(metricsSource).query(query15s);
         verify(metricsSource).query(query1h);
+        verify(metricsSource).query(queryCombined);
+        verify(metricsSource).query(queryNumeric);
     }
 
     @Test
@@ -151,6 +163,58 @@ class MetricsServiceTest {
         }
     }
 
+    @Test
+    void queryShouldRejectInvalidWindow() {
+        MetricQueryDTO query = MetricQueryDTO.builder()
+                .metric("rocketmq_messages_in_total")
+                .start(1700003600L)
+                .end(1700000000L)
+                .step("1m")
+                .build();
+
+        assertBadRequest(query, "Metric query end must be later than start");
+        verifyNoInteractions(metricsSource);
+    }
+
+    @Test
+    void queryShouldRejectOversizedWindow() {
+        MetricQueryDTO query = MetricQueryDTO.builder()
+                .metric("rocketmq_messages_in_total")
+                .start(1700000000L)
+                .end(1702678401L)
+                .step("1h")
+                .build();
+
+        assertBadRequest(query, "Metric query range must not exceed 31 days");
+        verifyNoInteractions(metricsSource);
+    }
+
+    @Test
+    void queryShouldRejectInvalidStep() {
+        MetricQueryDTO query = MetricQueryDTO.builder()
+                .metric("rocketmq_messages_in_total")
+                .start(1700000000L)
+                .end(1700003600L)
+                .step("five minutes")
+                .build();
+
+        assertBadRequest(query, "Metric query step is invalid");
+        verifyNoInteractions(metricsSource);
+    }
+
+    @Test
+    void queryShouldRejectTooManySamples() {
+        MetricQueryDTO query = MetricQueryDTO.builder()
+                .metric("rocketmq_messages_in_total")
+                .start(1700000000L)
+                .end(1700011001L)
+                .step("1s")
+                .build();
+
+        assertBadRequest(query, "Metric query returns too many samples; increase step or reduce range");
+        verifyNoInteractions(metricsSource);
+    }
+
     private MetricDataVO emptyMetricData() {
         return MetricDataVO.builder()
                 .resultType("matrix")
@@ -176,5 +240,14 @@ class MetricsServiceTest {
                 .timestamp(timestamp)
                 .value(value)
                 .build();
+    }
+
+    private void assertBadRequest(MetricQueryDTO query, String message) {
+        assertThatExceptionOfType(PrometheusException.class)
+                .isThrownBy(() -> metricsService.query(query))
+                .satisfies(exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(400);
+                    assertThat(exception.getMessage()).isEqualTo(message);
+                });
     }
 }
