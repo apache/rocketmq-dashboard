@@ -17,6 +17,7 @@
 
 package com.rocketmq.studio.instance.acl;
 
+import com.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -28,6 +29,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -83,6 +85,34 @@ class AclServiceTest {
         assertThat(result.getPrincipal()).isEqualTo("user1");
         assertThat(result.getResource()).isEqualTo("topic-1");
         verify(aclRepository).saveRule(any(AclRuleVO.class));
+    }
+
+    @Test
+    void createRuleShouldRequirePrincipal() {
+        AclRuleVO input = AclRuleVO.builder()
+                .principal(" ")
+                .resource("topic-1")
+                .build();
+
+        assertThatThrownBy(() -> aclService.createRule(input))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400))
+                .hasMessage("ACL principal is required");
+        verify(aclRepository, never()).saveRule(any(AclRuleVO.class));
+    }
+
+    @Test
+    void createRuleShouldRequireResource() {
+        AclRuleVO input = AclRuleVO.builder()
+                .principal("user1")
+                .resource(" ")
+                .build();
+
+        assertThatThrownBy(() -> aclService.createRule(input))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400))
+                .hasMessage("ACL resource is required");
+        verify(aclRepository, never()).saveRule(any(AclRuleVO.class));
     }
 
     @Test
@@ -156,6 +186,20 @@ class AclServiceTest {
         assertThat(result.getCreatedAt()).isNotNull();
         assertThat(result.getUsername()).isEqualTo("newuser");
         verify(aclRepository).saveUser(any(AclUserVO.class));
+    }
+
+    @Test
+    void createUserShouldRequireUsername() {
+        AclUserVO input = AclUserVO.builder()
+                .username(" ")
+                .admin(false)
+                .build();
+
+        assertThatThrownBy(() -> aclService.createUser(input))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400))
+                .hasMessage("ACL username is required");
+        verify(aclRepository, never()).saveUser(any(AclUserVO.class));
     }
 
     @Test
