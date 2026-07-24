@@ -26,6 +26,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -92,6 +93,36 @@ class AclServiceTest {
     }
 
     @Test
+    void updateRuleShouldRequireId() {
+        AclRuleVO input = AclRuleVO.builder()
+                .principal("user1")
+                .resource("topic-1")
+                .build();
+
+        assertThatThrownBy(() -> aclService.updateRule(input))
+                .hasMessage("ACL rule id is required");
+    }
+
+    @Test
+    void updateRuleShouldSaveExistingRule() {
+        AclRuleVO input = AclRuleVO.builder()
+                .id("rule-1")
+                .principal("user1")
+                .resource("topic-1")
+                .decision("DENY")
+                .build();
+
+        when(aclRepository.saveRule(any(AclRuleVO.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        AclRuleVO result = aclService.updateRule(input);
+
+        assertThat(result.getId()).isEqualTo("rule-1");
+        assertThat(result.getCreatedAt()).isNotNull();
+        assertThat(result.getDecision()).isEqualTo("DENY");
+        verify(aclRepository).saveRule(any(AclRuleVO.class));
+    }
+
+    @Test
     void listUsersShouldReturnAllUsers() {
         List<AclUserVO> users = List.of(
                 AclUserVO.builder().username("admin").admin(true).build(),
@@ -132,5 +163,35 @@ class AclServiceTest {
         aclService.deleteUser("user-1");
 
         verify(aclRepository).deleteUser("user-1");
+    }
+
+    @Test
+    void updateUserShouldRequireId() {
+        AclUserVO input = AclUserVO.builder()
+                .username("newuser")
+                .build();
+
+        assertThatThrownBy(() -> aclService.updateUser(input))
+                .hasMessage("ACL user id is required");
+    }
+
+    @Test
+    void updateUserShouldSaveExistingUser() {
+        AclUserVO input = AclUserVO.builder()
+                .id("user-1")
+                .username("newuser")
+                .accessKey("ak")
+                .secretKey("sk")
+                .admin(true)
+                .build();
+
+        when(aclRepository.saveUser(any(AclUserVO.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        AclUserVO result = aclService.updateUser(input);
+
+        assertThat(result.getId()).isEqualTo("user-1");
+        assertThat(result.getCreatedAt()).isNotNull();
+        assertThat(result.isAdmin()).isTrue();
+        verify(aclRepository).saveUser(any(AclUserVO.class));
     }
 }

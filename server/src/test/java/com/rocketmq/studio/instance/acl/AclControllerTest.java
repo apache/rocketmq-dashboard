@@ -117,6 +117,27 @@ class AclControllerTest {
     }
 
     @Test
+    void updateRuleShouldReturnUpdatedRule() throws Exception {
+        AclRuleVO input = AclRuleVO.builder()
+                .id("rule-1")
+                .principal("user1")
+                .resource("topic-1")
+                .resourceType("TOPIC")
+                .decision("DENY")
+                .build();
+
+        when(aclService.updateRule(any(AclRuleVO.class))).thenReturn(input);
+
+        mockMvc.perform(post("/api/acl/rules/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(input)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.id").value("rule-1"))
+                .andExpect(jsonPath("$.data.decision").value("DENY"));
+    }
+
+    @Test
     void listUsersShouldReturnAllUsers() throws Exception {
         AclUserVO user = AclUserVO.builder()
                 .username("admin")
@@ -136,5 +157,26 @@ class AclControllerTest {
                 .andExpect(jsonPath("$.data[0].id").value("user-1"))
                 .andExpect(jsonPath("$.data[0].username").value("admin"))
                 .andExpect(jsonPath("$.data[0].admin").value(true));
+    }
+
+    @Test
+    void updateUserShouldReturnUpdatedUser() throws Exception {
+        AclUserVO input = AclUserVO.builder()
+                .id("user-1")
+                .username("admin")
+                .accessKey("ak123")
+                .secretKey("sk456")
+                .admin(false)
+                .build();
+
+        when(aclService.updateUser(any(AclUserVO.class))).thenReturn(input);
+
+        mockMvc.perform(post("/api/acl/users/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(input)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.id").value("user-1"))
+                .andExpect(jsonPath("$.data.admin").value(false));
     }
 }

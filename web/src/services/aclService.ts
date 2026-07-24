@@ -51,6 +51,19 @@ export async function createAclRule(data: Partial<AclRule>): Promise<AclRule> {
   return aclApi.createAclRule(data);
 }
 
+export async function updateAclRule(data: Partial<AclRule>): Promise<AclRule> {
+  if (USE_MOCK) {
+    const idx = aclRulesState.findIndex((rule) => rule.id === data.id);
+    if (idx < 0) throw new Error(`ACL rule not found: ${data.id}`);
+    aclRulesState[idx] = {
+      ...aclRulesState[idx],
+      ...data,
+    };
+    return aclRulesState[idx];
+  }
+  return aclApi.updateAclRule(data);
+}
+
 export async function deleteAclRule(id: string): Promise<void> {
   if (USE_MOCK) {
     const idx = aclRulesState.findIndex((rule) => rule.id === id);
@@ -76,6 +89,19 @@ export async function createAclUser(data: Partial<AclUser>): Promise<AclUser> {
     return user;
   }
   return aclApi.createAclUser(data);
+}
+
+export async function updateAclUser(data: Partial<AclUser>): Promise<AclUser> {
+  if (USE_MOCK) {
+    const idx = aclUsersState.findIndex((user) => user.id === data.id);
+    if (idx < 0) throw new Error(`ACL user not found: ${data.id}`);
+    aclUsersState[idx] = {
+      ...aclUsersState[idx],
+      ...data,
+    };
+    return aclUsersState[idx];
+  }
+  return aclApi.updateAclUser(data);
 }
 
 export async function deleteAclUser(id: string): Promise<void> {

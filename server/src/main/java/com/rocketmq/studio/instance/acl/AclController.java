@@ -47,6 +47,11 @@ public class AclController {
         return Result.ok(aclService.createRule(rule));
     }
 
+    @PostMapping("/rules/update")
+    public Result<AclRuleVO> updateRule(@RequestBody AclRuleVO rule) {
+        return Result.ok(aclService.updateRule(rule));
+    }
+
     @PostMapping("/rules/delete")
     public Result<Void> deleteRule(@RequestBody Map<String, String> request) {
         aclService.deleteRule(request.get("id"));
@@ -61,6 +66,11 @@ public class AclController {
     @PostMapping("/users/create")
     public Result<AclUserVO> createUser(@RequestBody AclUserVO user) {
         return Result.ok(aclService.createUser(user));
+    }
+
+    @PostMapping("/users/update")
+    public Result<AclUserVO> updateUser(@RequestBody AclUserVO user) {
+        return Result.ok(aclService.updateUser(user));
     }
 
     @PostMapping("/users/delete")
