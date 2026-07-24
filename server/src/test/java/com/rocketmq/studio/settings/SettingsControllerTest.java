@@ -204,6 +204,23 @@ class SettingsControllerTest {
     }
 
     @Test
+    void createDataSourceShouldRejectMissingUrl() throws Exception {
+        mockMvc.perform(post("/api/settings/datasources/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "New DS",
+                                  "type": "prometheus"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is(400)))
+                .andExpect(jsonPath("$.message", is("url is required")));
+
+        verifyNoInteractions(settingsService);
+    }
+
+    @Test
     void updateDataSourceShouldReturnUpdatedSource() throws Exception {
         DataSourceVO input = DataSourceVO.builder().key("ds-1").name("Updated DS").type("rocketmq")
                 .url("updated:9876").build();
@@ -216,6 +233,24 @@ class SettingsControllerTest {
                 .andExpect(jsonPath("$.code", is(200)))
                 .andExpect(jsonPath("$.data.key", is("ds-1")))
                 .andExpect(jsonPath("$.data.name", is("Updated DS")));
+    }
+
+    @Test
+    void updateDataSourceShouldRejectMissingName() throws Exception {
+        mockMvc.perform(post("/api/settings/datasources/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "key": "ds-1",
+                                  "type": "rocketmq",
+                                  "url": "updated:9876"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is(400)))
+                .andExpect(jsonPath("$.message", is("name is required")));
+
+        verifyNoInteractions(settingsService);
     }
 
     @Test
@@ -249,5 +284,21 @@ class SettingsControllerTest {
                 .andExpect(jsonPath("$.code", is(200)))
                 .andExpect(jsonPath("$.data.success", is(true)))
                 .andExpect(jsonPath("$.data.message", is("Connection successful")));
+    }
+
+    @Test
+    void testDataSourceShouldRejectMissingType() throws Exception {
+        mockMvc.perform(post("/api/settings/datasources/test")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "url": "localhost:9876"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is(400)))
+                .andExpect(jsonPath("$.message", is("type is required")));
+
+        verifyNoInteractions(settingsService);
     }
 }
