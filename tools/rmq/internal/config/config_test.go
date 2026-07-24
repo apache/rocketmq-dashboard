@@ -1047,46 +1047,16 @@ func TestSaveWithoutForcePublishesCompleteFileAtomically(t *testing.T) {
 	}
 }
 
-func TestSaveWithoutForceDoesNotReplaceConcurrentPublisher(t *testing.T) {
-	cfg := Default()
-	ctx := cfg.Contexts["default"]
-	ctx.CAFile = "/" + strings.Repeat("a", 16<<20)
-	cfg.Contexts["default"] = ctx
-
+func TestWriteExclusiveDoesNotReplaceConcurrentPublisher(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
-	saveResult := make(chan error, 1)
+	writeResult := make(chan error, 1)
+	contents := bytes.Repeat([]byte("a"), 16<<20)
 	go func() {
-		saveResult <- Save(path, cfg, false)
+		writeResult <- writeExclusive(path, contents)
 	}()
 
-	tempPrefix := "." + filepath.Base(path) + ".tmp-"
-	deadline := time.Now().Add(10 * time.Second)
-	for {
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			t.Fatal(err)
-		}
-		foundTemp := false
-		for _, entry := range entries {
-			if strings.HasPrefix(entry.Name(), tempPrefix) {
-				foundTemp = true
-				break
-			}
-		}
-		if foundTemp {
-			break
-		}
-		select {
-		case err := <-saveResult:
-			t.Fatalf("Save() completed before atomic publication could be contested: %v", err)
-		default:
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("timed out waiting for temporary config")
-		}
-		runtime.Gosched()
-	}
+	waitForTemporaryConfig(t, dir, path, writeResult)
 
 	const competitor = "concurrent publisher"
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
@@ -1101,8 +1071,8 @@ func TestSaveWithoutForceDoesNotReplaceConcurrentPublisher(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := <-saveResult; err == nil {
-		t.Fatal("Save() error = nil, want no-replace publication failure")
+	if err := <-writeResult; err == nil {
+		t.Fatal("writeExclusive() error = nil, want no-replace publication failure")
 	}
 	got, err := os.ReadFile(path)
 	if err != nil {
@@ -1285,7 +1255,7 @@ func waitForTemporaryConfig(t *testing.T, dir, target string, saveResult <-chan 
 		}
 		select {
 		case err := <-saveResult:
-			t.Fatalf("Save() completed before temporary config could be swapped: %v", err)
+			t.Fatalf("publication completed before temporary config could be swapped: %v", err)
 		default:
 		}
 		if time.Now().After(deadline) {
