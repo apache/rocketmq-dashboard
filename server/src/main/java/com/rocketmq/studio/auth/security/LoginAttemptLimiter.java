@@ -52,6 +52,7 @@ public final class LoginAttemptLimiter {
     private final Map<String, Tracker> userTrackers;
     private final Map<String, Tracker> prefixTrackers;
     private final Semaphore passwordPermits;
+    private long lastEffectiveNow = Long.MIN_VALUE;
 
     public LoginAttemptLimiter(StudioSecurityProperties properties, Clock clock) {
         this(clock, properties.maxUsers(), properties.maxUsers(),
@@ -78,9 +79,9 @@ public final class LoginAttemptLimiter {
 
     public Decision beforeAttempt(String username, String remoteAddress) {
         Key key = key(username, remoteAddress);
-        long now = clock.millis();
         lock.lock();
         try {
+            long now = effectiveNow();
             int examined = cleanupExpired(now);
             Tracker userTracker = userTrackers.get(key.usernamePrefixDigest());
             Tracker prefixTracker = prefixTrackers.get(key.prefixDigest());
@@ -88,7 +89,7 @@ public final class LoginAttemptLimiter {
             long prefixLock = activeLock(prefixTracker, now);
             observe(examined);
             long lockUntil = Math.max(userLock, prefixLock);
-            if (lockUntil == 0) {
+            if (lockUntil == Long.MIN_VALUE) {
                 return new Decision(true, 0, key);
             }
             return new Decision(false, retryAfterSeconds(lockUntil, now), key);
@@ -106,9 +107,9 @@ public final class LoginAttemptLimiter {
 
     public void recordFailure(Key key) {
         Objects.requireNonNull(key);
-        long now = clock.millis();
         lock.lock();
         try {
+            long now = effectiveNow();
             int examined = cleanupExpired(now);
             Tracker userTracker = userTrackers.computeIfAbsent(
                 key.usernamePrefixDigest(), ignored -> new Tracker());
@@ -126,9 +127,9 @@ public final class LoginAttemptLimiter {
 
     public void recordSuccess(Key key) {
         Objects.requireNonNull(key);
-        long now = clock.millis();
         lock.lock();
         try {
+            long now = effectiveNow();
             int examined = cleanupExpired(now);
             userTrackers.remove(key.usernamePrefixDigest());
             observe(examined);
@@ -139,28 +140,39 @@ public final class LoginAttemptLimiter {
 
     private static long activeLock(Tracker tracker, long now) {
         if (tracker == null || tracker.lockUntilMillis <= now) {
-            return 0;
+            return Long.MIN_VALUE;
         }
         return tracker.lockUntilMillis;
     }
 
     private static void addFailure(Tracker tracker, int limit, long now) {
         pruneFailures(tracker, now);
+        while (tracker.failures.size() >= limit) {
+            tracker.failures.removeFirst();
+        }
         tracker.failures.addLast(now);
         if (tracker.failures.size() >= limit) {
-            tracker.lockUntilMillis = Math.max(tracker.lockUntilMillis, now + WINDOW_MILLIS);
+            tracker.lockUntilMillis = Math.max(
+                tracker.lockUntilMillis,
+                saturatedAdd(now, WINDOW_MILLIS)
+            );
         }
     }
 
     private static void pruneFailures(Tracker tracker, long now) {
-        long cutoff = now - WINDOW_MILLIS;
+        if (now < Long.MIN_VALUE + WINDOW_MILLIS) {
+            return;
+        }
+        long cutoff = saturatedSubtract(now, WINDOW_MILLIS);
         while (!tracker.failures.isEmpty() && tracker.failures.peekFirst() <= cutoff) {
             tracker.failures.removeFirst();
         }
     }
 
     private static int retryAfterSeconds(long lockUntilMillis, long now) {
-        return (int) ((lockUntilMillis - now + 999L) / 1_000L);
+        long remainingMillis = saturatedSubtract(lockUntilMillis, now);
+        long roundedSeconds = saturatedAdd(remainingMillis, 999L) / 1_000L;
+        return (int) Math.min(Integer.MAX_VALUE, roundedSeconds);
     }
 
     private static Key key(String username, String remoteAddress) {
@@ -176,16 +188,41 @@ public final class LoginAttemptLimiter {
     }
 
     private static String addressPrefix(String address) {
+        if (address == null || address.length() > 45) {
+            return "unknown";
+        }
         int[] ipv4 = parseIpv4(address);
         if (ipv4 != null) {
-            return "v4:" + ipv4[0] + "." + ipv4[1] + "." + ipv4[2];
+            return ipv4Prefix(ipv4);
         }
         int[] ipv6 = parseIpv6(address);
         if (ipv6 != null) {
+            if (isIpv4Mapped(ipv6)) {
+                int[] mappedIpv4 = {
+                    ipv6[6] >>> 8,
+                    ipv6[6] & 0xff,
+                    ipv6[7] >>> 8,
+                    ipv6[7] & 0xff
+                };
+                return ipv4Prefix(mappedIpv4);
+            }
             return String.format("v6:%04x:%04x:%04x:%04x",
                 ipv6[0], ipv6[1], ipv6[2], ipv6[3]);
         }
         return "unknown";
+    }
+
+    private static String ipv4Prefix(int[] ipv4) {
+        return "v4:" + ipv4[0] + "." + ipv4[1] + "." + ipv4[2];
+    }
+
+    private static boolean isIpv4Mapped(int[] ipv6) {
+        return ipv6[0] == 0
+            && ipv6[1] == 0
+            && ipv6[2] == 0
+            && ipv6[3] == 0
+            && ipv6[4] == 0
+            && ipv6[5] == 0xffff;
     }
 
     private static int[] parseIpv4(String address) {
@@ -312,6 +349,31 @@ public final class LoginAttemptLimiter {
         }
     }
 
+    private long effectiveNow() {
+        lastEffectiveNow = Math.max(lastEffectiveNow, clock.millis());
+        return lastEffectiveNow;
+    }
+
+    private static long saturatedAdd(long value, long addend) {
+        if (addend > 0 && value > Long.MAX_VALUE - addend) {
+            return Long.MAX_VALUE;
+        }
+        if (addend < 0 && value < Long.MIN_VALUE - addend) {
+            return Long.MIN_VALUE;
+        }
+        return value + addend;
+    }
+
+    private static long saturatedSubtract(long value, long subtrahend) {
+        if (subtrahend > 0 && value < Long.MIN_VALUE + subtrahend) {
+            return Long.MIN_VALUE;
+        }
+        if (subtrahend < 0 && value > Long.MAX_VALUE + subtrahend) {
+            return Long.MAX_VALUE;
+        }
+        return value - subtrahend;
+    }
+
     private int cleanupExpired(long now) {
         int examined = cleanupMap(userTrackers, now, CLEANUP_LIMIT);
         return examined + cleanupMap(prefixTrackers, now, CLEANUP_LIMIT - examined);
@@ -342,14 +404,48 @@ public final class LoginAttemptLimiter {
         }
     }
 
-    public record Key(String usernamePrefixDigest, String prefixDigest) {
-        public Key {
-            Objects.requireNonNull(usernamePrefixDigest);
-            Objects.requireNonNull(prefixDigest);
+    public static final class Key {
+        private final String usernamePrefixDigest;
+        private final String prefixDigest;
+
+        private Key(String usernamePrefixDigest, String prefixDigest) {
+            this.usernamePrefixDigest = Objects.requireNonNull(usernamePrefixDigest);
+            this.prefixDigest = Objects.requireNonNull(prefixDigest);
             if (!SHA256_DIGEST.matcher(usernamePrefixDigest).matches()
                 || !SHA256_DIGEST.matcher(prefixDigest).matches()) {
                 throw new IllegalArgumentException("key values must be SHA-256 digests");
             }
+        }
+
+        public String usernamePrefixDigest() {
+            return usernamePrefixDigest;
+        }
+
+        public String prefixDigest() {
+            return prefixDigest;
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            if (this == other) {
+                return true;
+            }
+            if (!(other instanceof Key key)) {
+                return false;
+            }
+            return usernamePrefixDigest.equals(key.usernamePrefixDigest)
+                && prefixDigest.equals(key.prefixDigest);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(usernamePrefixDigest, prefixDigest);
+        }
+
+        @Override
+        public String toString() {
+            return "Key[usernamePrefixDigest=" + usernamePrefixDigest
+                + ", prefixDigest=" + prefixDigest + "]";
         }
     }
 
@@ -375,6 +471,6 @@ public final class LoginAttemptLimiter {
 
     private static final class Tracker {
         private final ArrayDeque<Long> failures = new ArrayDeque<>();
-        private long lockUntilMillis;
+        private long lockUntilMillis = Long.MIN_VALUE;
     }
 }

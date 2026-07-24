@@ -16,15 +16,20 @@
  */
 package com.rocketmq.studio.auth.security;
 
+import java.lang.reflect.Modifier;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -33,7 +38,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class LoginAttemptLimiterTest {
     @Test
@@ -96,6 +100,44 @@ class LoginAttemptLimiterTest {
     }
 
     @Test
+    void clockRollbackDoesNotShortenLockOrDisorderFailures() {
+        MutableClock clock = new MutableClock();
+        clock.setMillis(100_000L);
+        LoginAttemptLimiter limiter = limiter(clock);
+        LoginAttemptLimiter.Key key = fail(limiter, "alice", "192.0.2.4", 4);
+
+        clock.setMillis(0);
+        limiter.recordFailure(key);
+        clock.setMillis(100_000L);
+
+        assertThat(limiter.beforeAttempt("alice", "192.0.2.4"))
+            .extracting(LoginAttemptLimiter.Decision::allowed,
+                LoginAttemptLimiter.Decision::retryAfterSeconds)
+            .containsExactly(false, 60);
+    }
+
+    @Test
+    void timeArithmeticSaturatesAtLongBoundaries() {
+        MutableClock upperClock = new MutableClock();
+        upperClock.setMillis(Long.MAX_VALUE - 30_000L);
+        LoginAttemptLimiter upperLimiter = limiter(upperClock);
+        fail(upperLimiter, "upper", "192.0.2.4", 5);
+        assertThat(upperLimiter.beforeAttempt("upper", "192.0.2.4"))
+            .extracting(LoginAttemptLimiter.Decision::allowed,
+                LoginAttemptLimiter.Decision::retryAfterSeconds)
+            .containsExactly(false, 30);
+
+        MutableClock lowerClock = new MutableClock();
+        lowerClock.setMillis(Long.MIN_VALUE);
+        LoginAttemptLimiter lowerLimiter = limiter(lowerClock);
+        fail(lowerLimiter, "lower", "192.0.3.4", 5);
+        assertThat(lowerLimiter.beforeAttempt("lower", "192.0.3.4"))
+            .extracting(LoginAttemptLimiter.Decision::allowed,
+                LoginAttemptLimiter.Decision::retryAfterSeconds)
+            .containsExactly(false, 60);
+    }
+
+    @Test
     void successClearsUsernameFailuresButNotPrefixFailures() {
         LoginAttemptLimiter limiter = limiter(new MutableClock());
         LoginAttemptLimiter.Key aliceKey = fail(limiter, "alice", "192.0.2.4", 5);
@@ -121,6 +163,31 @@ class LoginAttemptLimiterTest {
         assertThat(key(limiter, "alice", "2001:db8:abcd:12::1").prefixDigest())
             .isEqualTo(key(limiter, "bob", "2001:0db8:abcd:0012:ffff::1").prefixDigest())
             .isNotEqualTo(key(limiter, "bob", "2001:db8:abcd:13::1").prefixDigest());
+    }
+
+    @Test
+    void normalizesRfc4291MappedIpv6ToNativeIpv4Slash24() {
+        LoginAttemptLimiter limiter = limiter(new MutableClock());
+        String nativePrefix = key(limiter, "alice", "192.0.2.128").prefixDigest();
+
+        assertThat(List.of(
+            key(limiter, "alice", "::ffff:192.0.2.128").prefixDigest(),
+            key(limiter, "alice", "::ffff:c000:280").prefixDigest(),
+            key(limiter, "alice", "0:0:0:0:0:ffff:c000:0280").prefixDigest()
+        )).containsOnly(nativePrefix);
+        assertThat(key(limiter, "alice", "64:ff9b::c000:280").prefixDigest())
+            .isNotEqualTo(nativePrefix);
+        assertThat(key(limiter, "alice", "2001:db8::ffff:c000:280").prefixDigest())
+            .isNotEqualTo(nativePrefix);
+    }
+
+    @Test
+    void addressesLongerThanMaximumLiteralLengthUseUnknownPrefix() {
+        LoginAttemptLimiter limiter = limiter(new MutableClock());
+        String unknown = key(limiter, "alice", null).prefixDigest();
+
+        assertThat(key(limiter, "alice", ".".repeat(46)).prefixDigest()).isEqualTo(unknown);
+        assertThat(key(limiter, "alice", ":".repeat(46)).prefixDigest()).isEqualTo(unknown);
     }
 
     @Test
@@ -159,14 +226,15 @@ class LoginAttemptLimiterTest {
 
         assertThat(key.usernamePrefixDigest()).matches("[0-9a-f]{64}");
         assertThat(key.prefixDigest()).matches("[0-9a-f]{64}");
+        assertThat(key).isEqualTo(key(limiter, "secret-user", "192.0.2.99"));
         assertThat(key.toString())
             .doesNotContain("secret-user", "192.0.2", "unknown", "invalid");
     }
 
     @Test
-    void keyRejectsValuesThatAreNotSha256Digests() {
-        assertThatThrownBy(() -> new LoginAttemptLimiter.Key("raw-user", "raw-prefix"))
-            .isInstanceOf(IllegalArgumentException.class);
+    void keyConstructionIsRestrictedToTheLimiter() {
+        assertThat(LoginAttemptLimiter.Key.class.getDeclaredConstructors())
+            .allMatch(constructor -> Modifier.isPrivate(constructor.getModifiers()));
     }
 
     @Test
@@ -258,6 +326,63 @@ class LoginAttemptLimiterTest {
         assertThat(observedSizes.get()).isEqualTo("64:128");
     }
 
+    @Test
+    void tenThousandRepeatedCompletionsKeepTrackerDequesAtThresholds() throws Exception {
+        LoginAttemptLimiter limiter = limiter(new MutableClock());
+        LoginAttemptLimiter.Key key = key(limiter, "alice", "192.0.2.4");
+
+        for (int completion = 0; completion < 10_000; completion++) {
+            limiter.recordFailure(key);
+        }
+
+        assertTrackerFailureCounts(limiter, 5, 20);
+    }
+
+    @Test
+    void concurrentCompletionsKeepTrackerDequesAtThresholds() throws Exception {
+        LoginAttemptLimiter limiter = limiter(new MutableClock());
+        LoginAttemptLimiter.Key key = key(limiter, "alice", "192.0.2.4");
+        ExecutorService executor = Executors.newFixedThreadPool(8);
+        try {
+            List<Callable<Void>> completions = new ArrayList<>();
+            for (int worker = 0; worker < 8; worker++) {
+                completions.add(() -> {
+                    for (int completion = 0; completion < 2_000; completion++) {
+                        limiter.recordFailure(key);
+                    }
+                    return null;
+                });
+            }
+            for (Future<Void> completion : executor.invokeAll(completions)) {
+                completion.get();
+            }
+
+            assertTrackerFailureCounts(limiter, 5, 20);
+        } finally {
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+        }
+    }
+
+    private static void assertTrackerFailureCounts(
+        LoginAttemptLimiter limiter,
+        int expectedUserFailures,
+        int expectedPrefixFailures
+    ) throws Exception {
+        assertThat(trackerFailureCount(limiter, "userTrackers")).isEqualTo(expectedUserFailures);
+        assertThat(trackerFailureCount(limiter, "prefixTrackers")).isEqualTo(expectedPrefixFailures);
+    }
+
+    private static int trackerFailureCount(LoginAttemptLimiter limiter, String mapFieldName)
+        throws Exception {
+        var mapField = LoginAttemptLimiter.class.getDeclaredField(mapFieldName);
+        mapField.setAccessible(true);
+        Object tracker = ((Map<?, ?>) mapField.get(limiter)).values().iterator().next();
+        var failuresField = tracker.getClass().getDeclaredField("failures");
+        failuresField.setAccessible(true);
+        return ((ArrayDeque<?>) failuresField.get(tracker)).size();
+    }
+
     private static LoginAttemptLimiter limiter(Clock clock) {
         return new LoginAttemptLimiter(properties(2), clock);
     }
@@ -317,6 +442,10 @@ class LoginAttemptLimiterTest {
 
         private void advance(Duration duration) {
             instant = instant.plus(duration);
+        }
+
+        private void setMillis(long millis) {
+            instant = Instant.ofEpochMilli(millis);
         }
     }
 }
