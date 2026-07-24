@@ -28,6 +28,14 @@ export interface TopicQuery {
   search?: string;
 }
 
+export interface Namespace {
+  name: string;
+  clusterId?: string;
+  id?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface BrokerRoute {
   brokerName: string;
   brokerAddr: string;
@@ -106,6 +114,11 @@ export interface ResetConsumerOffsetRequest {
 // ─── Topic API ──────────────────────────────────────────────────
 export async function listTopics(params?: TopicQuery) {
   const res = await client.get<{ data: Topic[] }>('/topics', { params });
+  return res.data.data;
+}
+
+export async function listNamespaces() {
+  const res = await client.get<{ data: Namespace[] }>('/namespaces');
   return res.data.data;
 }
 
