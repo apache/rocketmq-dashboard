@@ -125,13 +125,48 @@ class LoginAttemptLimiterTest {
         assertThat(upperLimiter.beforeAttempt("upper", "192.0.2.4"))
             .extracting(LoginAttemptLimiter.Decision::allowed,
                 LoginAttemptLimiter.Decision::retryAfterSeconds)
-            .containsExactly(false, 30);
+            .containsExactly(false, 60);
 
         MutableClock lowerClock = new MutableClock();
         lowerClock.setMillis(Long.MIN_VALUE);
         LoginAttemptLimiter lowerLimiter = limiter(lowerClock);
         fail(lowerLimiter, "lower", "192.0.3.4", 5);
         assertThat(lowerLimiter.beforeAttempt("lower", "192.0.3.4"))
+            .extracting(LoginAttemptLimiter.Decision::allowed,
+                LoginAttemptLimiter.Decision::retryAfterSeconds)
+            .containsExactly(false, 60);
+    }
+
+    @Test
+    void usernameLockFailsClosedAtExactClockCeiling() {
+        MutableClock clock = new MutableClock();
+        clock.setMillis(Long.MAX_VALUE);
+        LoginAttemptLimiter limiter = limiter(clock);
+        fail(limiter, "alice", "192.0.2.4", 5);
+
+        assertThat(limiter.beforeAttempt("alice", "192.0.2.4"))
+            .extracting(LoginAttemptLimiter.Decision::allowed,
+                LoginAttemptLimiter.Decision::retryAfterSeconds)
+            .containsExactly(false, 60);
+    }
+
+    @Test
+    void prefixLockFailsClosedAtClockCeilingAfterUsernameSuccess() {
+        MutableClock clock = new MutableClock();
+        clock.setMillis(Long.MAX_VALUE);
+        LoginAttemptLimiter limiter = limiter(clock);
+        LoginAttemptLimiter.Key lastKey = null;
+        for (int failure = 0; failure < 20; failure++) {
+            LoginAttemptLimiter.Decision decision =
+                limiter.beforeAttempt("user" + failure, "192.0.2.4");
+            assertThat(decision.allowed()).isTrue();
+            lastKey = decision.key();
+            limiter.recordFailure(lastKey);
+        }
+
+        limiter.recordSuccess(lastKey);
+
+        assertThat(limiter.beforeAttempt("new-user", "192.0.2.99"))
             .extracting(LoginAttemptLimiter.Decision::allowed,
                 LoginAttemptLimiter.Decision::retryAfterSeconds)
             .containsExactly(false, 60);

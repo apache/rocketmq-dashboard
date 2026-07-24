@@ -88,6 +88,9 @@ public final class LoginAttemptLimiter {
             long userLock = activeLock(userTracker, now);
             long prefixLock = activeLock(prefixTracker, now);
             observe(examined);
+            if (hasSaturatedLock(userTracker) || hasSaturatedLock(prefixTracker)) {
+                return new Decision(false, (int) (WINDOW_MILLIS / 1_000L), key);
+            }
             long lockUntil = Math.max(userLock, prefixLock);
             if (lockUntil == Long.MIN_VALUE) {
                 return new Decision(true, 0, key);
@@ -152,6 +155,7 @@ public final class LoginAttemptLimiter {
         }
         tracker.failures.addLast(now);
         if (tracker.failures.size() >= limit) {
+            tracker.saturatedLock |= now > Long.MAX_VALUE - WINDOW_MILLIS;
             tracker.lockUntilMillis = Math.max(
                 tracker.lockUntilMillis,
                 saturatedAdd(now, WINDOW_MILLIS)
@@ -173,6 +177,10 @@ public final class LoginAttemptLimiter {
         long remainingMillis = saturatedSubtract(lockUntilMillis, now);
         long roundedSeconds = saturatedAdd(remainingMillis, 999L) / 1_000L;
         return (int) Math.min(Integer.MAX_VALUE, roundedSeconds);
+    }
+
+    private static boolean hasSaturatedLock(Tracker tracker) {
+        return tracker != null && tracker.saturatedLock;
     }
 
     private static Key key(String username, String remoteAddress) {
@@ -386,7 +394,9 @@ public final class LoginAttemptLimiter {
             Tracker tracker = iterator.next().getValue();
             examined++;
             pruneFailures(tracker, now);
-            if (tracker.failures.isEmpty() && tracker.lockUntilMillis <= now) {
+            if (tracker.failures.isEmpty()
+                && !tracker.saturatedLock
+                && tracker.lockUntilMillis <= now) {
                 iterator.remove();
             }
         }
@@ -472,5 +482,6 @@ public final class LoginAttemptLimiter {
     private static final class Tracker {
         private final ArrayDeque<Long> failures = new ArrayDeque<>();
         private long lockUntilMillis = Long.MIN_VALUE;
+        private boolean saturatedLock;
     }
 }
