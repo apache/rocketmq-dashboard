@@ -87,13 +87,13 @@ public class AuthService {
                 && DUMMY_PASSWORD_HASH.equals(user.passwordHash());
             if (!matches || user == null || !snapshot.available() || dummyHashCollision) {
                 limiter.recordFailure(decision.key());
-                log.info("Studio login rejected for username {}", username);
+                log.info("Studio login rejected");
                 throw StudioLoginException.invalidCredentials();
             }
 
             IssuedSession issued = sessions.issue(user, snapshot.revision());
             limiter.recordSuccess(decision.key());
-            log.info("Studio login succeeded for username {}", user.username());
+            log.info("Studio login succeeded");
             return LoginVO.builder()
                 .token(issued.token())
                 .expiresIn(Math.toIntExact(properties.sessionTtl().toSeconds()))
@@ -123,8 +123,7 @@ public class AuthService {
             || password.length() > BCRYPT_PASSWORD_BYTE_LIMIT
             || password.isBlank()
             || password.getBytes(StandardCharsets.UTF_8).length > BCRYPT_PASSWORD_BYTE_LIMIT) {
-            log.info("Studio login rejected before credential verification for username {}",
-                request.getUsername());
+            log.info("Studio login rejected before credential verification");
             throw new BusinessException(400, INVALID_LOGIN_REQUEST);
         }
         return new Credentials(request.getUsername(), password);

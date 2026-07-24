@@ -302,6 +302,7 @@ class AuthServiceTest {
         appender.start();
         logger.addAppender(appender);
         String invalidUsername = "invalid\nraw-username-marker";
+        String validUsername = "valid-username-marker";
         String password = "password-marker";
         try {
             assertThatThrownBy(() ->
@@ -309,7 +310,7 @@ class AuthServiceTest {
                 .isInstanceOf(BusinessException.class);
 
             reset(registry, passwordEncoder, sessions, limiter, permit);
-            User admin = user("Admin", Role.ADMIN);
+            User admin = user(validUsername, Role.ADMIN);
             when(limiter.beforeAttempt(any(), any()))
                 .thenReturn(new LoginAttemptLimiter.Decision(true, 0, attemptKey));
             when(limiter.acquirePasswordPermit()).thenReturn(permit);
@@ -319,7 +320,8 @@ class AuthServiceTest {
             when(sessions.issue(admin, REVISION)).thenReturn(issued(admin));
 
             assertThatCode(() ->
-                authService.login(dto("Admin", password), REMOTE_ADDRESS)).doesNotThrowAnyException();
+                authService.login(dto(validUsername, password), REMOTE_ADDRESS))
+                .doesNotThrowAnyException();
         } finally {
             logger.detachAppender(appender);
             appender.stop();
@@ -331,6 +333,7 @@ class AuthServiceTest {
         assertThat(messages)
             .doesNotContain(invalidUsername)
             .doesNotContain("raw-username-marker")
+            .doesNotContain(validUsername)
             .doesNotContain(password)
             .doesNotContain(USER_HASH)
             .doesNotContain("opaque-session-token");
