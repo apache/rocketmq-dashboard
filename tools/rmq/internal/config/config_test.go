@@ -113,6 +113,38 @@ func TestSaveLoadRoundTripAndModes(t *testing.T) {
 	}
 }
 
+func TestSaveLoadRelativePath(t *testing.T) {
+	originalDirectory, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	workingDirectory := t.TempDir()
+	if err := os.Chdir(workingDirectory); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(originalDirectory); err != nil {
+			t.Errorf("restore working directory: %v", err)
+		}
+	})
+
+	path := filepath.Join("relative", "config.yaml")
+	want := Default()
+	if err := Save(path, want, false); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Load() = %#v, want %#v", got, want)
+	}
+	if _, err := os.Stat(filepath.Join(workingDirectory, path)); err != nil {
+		t.Fatalf("relative canonical target: %v", err)
+	}
+}
+
 func TestLoadRejectsUnknownFieldsAndMultipleDocuments(t *testing.T) {
 	tests := map[string]string{
 		"unknown top-level field": `
@@ -710,6 +742,74 @@ func TestSaveRejectsUnsafeResolvedSymlinkAncestor(t *testing.T) {
 	}
 	if gotMode := unsafeInfo.Mode().Perm(); gotMode != 0777 {
 		t.Fatalf("unsafe resolved ancestor permissions = %04o, want unchanged 0777", gotMode)
+	}
+}
+
+func TestSaveLoadCanonicalizesPathBeforeSymlinkTraversal(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires Unix symlink traversal semantics")
+	}
+
+	root := t.TempDir()
+	safe := filepath.Join(root, "safe")
+	safeUnsafe := filepath.Join(safe, "unsafe")
+	resolved := filepath.Join(root, "resolved")
+	resolvedSubdir := filepath.Join(resolved, "subdir")
+	resolvedUnsafe := filepath.Join(resolved, "unsafe")
+	for _, directory := range []string{safe, safeUnsafe, resolved, resolvedSubdir, resolvedUnsafe} {
+		if err := os.Mkdir(directory, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, directory := range []string{safe, safeUnsafe, resolvedSubdir, resolvedUnsafe} {
+		if err := os.Chmod(directory, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Chmod(resolved, 0777); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(safe, "link")
+	if err := os.Symlink(resolvedSubdir, link); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+
+	separator := string(filepath.Separator)
+	inputPath := link + separator + ".." + separator + "unsafe" + separator + "config.yaml"
+	lexicalTarget := filepath.Join(safeUnsafe, "config.yaml")
+	resolvedTarget := filepath.Join(resolvedUnsafe, "config.yaml")
+	want := Default()
+	want.Contexts["default"] = Context{
+		Server:   "https://rmq.example.com",
+		Cluster:  "canonical",
+		Output:   "json",
+		TokenEnv: "CANONICAL_TOKEN",
+	}
+
+	if err := Save(inputPath, want, false); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	got, err := Load(inputPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Load() = %#v, want %#v", got, want)
+	}
+	if _, err := os.Stat(lexicalTarget); err != nil {
+		t.Fatalf("canonical lexical target was not created: %v", err)
+	}
+	if _, err := os.Lstat(resolvedTarget); !os.IsNotExist(err) {
+		t.Fatalf("symlink-resolved target was created or returned unexpected error: %v", err)
+	}
+	for _, directory := range []string{safe, safeUnsafe} {
+		info, err := os.Stat(directory)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if gotMode := info.Mode().Perm(); gotMode != 0755 {
+			t.Fatalf("canonical ancestor %q permissions = %04o, want 0755", directory, gotMode)
+		}
 	}
 }
 

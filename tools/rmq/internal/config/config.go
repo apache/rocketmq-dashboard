@@ -84,8 +84,23 @@ func DefaultPath() (string, error) {
 	return filepath.Join(home, ".rmqctl", "config.yaml"), nil
 }
 
+func canonicalPath(path string) (string, error) {
+	if path == "" {
+		return "", errors.New("config path must not be empty")
+	}
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("canonicalize config path: %w", err)
+	}
+	return absolute, nil
+}
+
 // Load decodes and validates exactly one YAML document from path.
 func Load(path string) (Config, error) {
+	path, err := canonicalPath(path)
+	if err != nil {
+		return Config{}, err
+	}
 	file, err := os.Open(path)
 	if err != nil {
 		return Config{}, fmt.Errorf("open config: %w", err)
@@ -117,6 +132,10 @@ func Load(path string) (Config, error) {
 // Save validates and writes cfg to path. Existing files require force.
 func Save(path string, cfg Config, force bool) error {
 	if err := Validate(cfg); err != nil {
+		return err
+	}
+	path, err := canonicalPath(path)
+	if err != nil {
 		return err
 	}
 
