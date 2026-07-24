@@ -36,13 +36,14 @@ public class InstanceService {
 
     public List<InstanceVO> listInstances(InstanceType type, String search) {
         log.debug("Listing instances, type={}, search={}", type, search);
+        String normalizedSearch = search == null || search.isBlank() ? null : search.trim();
 
-        if (type != null && search != null && !search.isBlank()) {
-            return instanceRepository.findByTypeAndSearch(type, search);
+        if (type != null && normalizedSearch != null) {
+            return instanceRepository.findByTypeAndSearch(type, normalizedSearch);
         } else if (type != null) {
             return instanceRepository.findByType(type);
-        } else if (search != null && !search.isBlank()) {
-            return instanceRepository.search(search);
+        } else if (normalizedSearch != null) {
+            return instanceRepository.search(normalizedSearch);
         }
         return instanceRepository.findAll();
     }
