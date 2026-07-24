@@ -16,6 +16,8 @@
  */
 package com.rocketmq.studio.cluster.k8s;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -28,10 +30,12 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class UpdateCertDTO {
+    @NotBlank(message = "id is required")
     private String id;
     private String name;
     private String namespace;
     private String cluster;
+    @Pattern(regexp = "TLS|mTLS|ServiceAccount", message = "type must be one of TLS, mTLS, ServiceAccount")
     private String type;
     private String issuer;
     private List<String> san;
