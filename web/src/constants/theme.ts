@@ -29,29 +29,41 @@ export const THEME_COLORS = {
   clusterV5Cluster: '#722ed1',
 } as const;
 
-export const CLUSTER_TYPE_MAP: Record<string, { label: string; color: TagProps['color'] }> = {
-  V4_DIRECT: { label: 'V4 直连', color: 'orange' },
-  V5_PROXY_LOCAL: { label: 'V5 Proxy 单节点', color: 'blue' },
-  V5_PROXY_CLUSTER: { label: 'V5 Proxy 集群', color: 'purple' },
+/**
+ * Cluster type map — labels are i18n keys, resolved at render time via t().
+ */
+export const CLUSTER_TYPE_MAP: Record<string, { labelKey: string; color: TagProps['color'] }> = {
+  V4_DIRECT: { labelKey: 'theme.clusterV4', color: 'orange' },
+  V5_PROXY_LOCAL: { labelKey: 'theme.clusterV5Local', color: 'blue' },
+  V5_PROXY_CLUSTER: { labelKey: 'theme.clusterV5Cluster', color: 'purple' },
 };
 
-export const STATUS_MAP: Record<string, { label: string; color: string; dot: string }> = {
-  healthy: { label: '运行中', color: '#52c41a', dot: '#52c41a' },
-  warning: { label: '告警', color: '#faad14', dot: '#faad14' },
-  error: { label: '异常', color: '#ff4d4f', dot: '#ff4d4f' },
-  offline: { label: '离线', color: '#d9d9d9', dot: '#d9d9d9' },
-  connecting: { label: '连接中', color: '#1677ff', dot: '#1677ff' },
+/**
+ * Status map — labels are i18n keys, resolved at render time via t().
+ */
+export const STATUS_MAP: Record<string, { labelKey: string; color: string; dot: string }> = {
+  healthy: { labelKey: 'theme.healthy', color: '#52c41a', dot: '#52c41a' },
+  warning: { labelKey: 'theme.warning', color: '#faad14', dot: '#faad14' },
+  error: { labelKey: 'theme.error', color: '#ff4d4f', dot: '#ff4d4f' },
+  offline: { labelKey: 'theme.offline', color: '#d9d9d9', dot: '#d9d9d9' },
+  connecting: { labelKey: 'theme.connecting', color: '#1677ff', dot: '#1677ff' },
 };
 
-export const TOPIC_TYPE_MAP: Record<string, { label: string; color: TagProps['color'] }> = {
-  NORMAL: { label: '普通', color: 'default' },
-  FIFO: { label: '顺序', color: 'blue' },
-  DELAY: { label: '延迟', color: 'orange' },
-  TRANSACTION: { label: '事务', color: 'purple' },
-  LITE: { label: 'LiteTopic', color: 'magenta' },
+/**
+ * Topic type map — labels are i18n keys, resolved at render time via t().
+ */
+export const TOPIC_TYPE_MAP: Record<string, { labelKey: string; color: TagProps['color'] }> = {
+  NORMAL: { labelKey: 'theme.topicNormal', color: 'default' },
+  FIFO: { labelKey: 'theme.topicFifo', color: 'blue' },
+  DELAY: { labelKey: 'theme.topicDelay', color: 'orange' },
+  TRANSACTION: { labelKey: 'theme.topicTransaction', color: 'purple' },
+  LITE: { labelKey: 'theme.topicLite', color: 'magenta' },
 };
 
-export const PROTOCOL_MAP: Record<string, { label: string; color: TagProps['color'] }> = {
-  REMOTING: { label: 'Remoting', color: 'geekblue' },
-  GRPC: { label: 'gRPC', color: 'green' },
+/**
+ * Protocol map — labels are i18n keys, resolved at render time via t().
+ */
+export const PROTOCOL_MAP: Record<string, { labelKey: string; color: TagProps['color'] }> = {
+  REMOTING: { labelKey: 'theme.protocolRemoting', color: 'geekblue' },
+  GRPC: { labelKey: 'theme.protocolGrpc', color: 'green' },
 };

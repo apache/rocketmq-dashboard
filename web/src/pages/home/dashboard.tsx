@@ -123,7 +123,7 @@ const DashboardPage = () => {
       key: 'type',
       render: (type: string) => {
         const info = CLUSTER_TYPE_MAP[type];
-        return info ? <Tag color={info.color}>{info.label}</Tag> : type;
+        return info ? <Tag color={info.color}>{t(info.labelKey)}</Tag> : type;
       },
     },
     {

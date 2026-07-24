@@ -177,8 +177,8 @@ const ConsumerPage = () => {
       width: 110,
       sorter: (a, b) => a.subscriptionDataType.localeCompare(b.subscriptionDataType),
       render: (type: string) => {
-        const config = TOPIC_TYPE_MAP[type] || { label: type, color: 'default' };
-        return <Tag color={config.color}>{config.label}</Tag>;
+        const config = TOPIC_TYPE_MAP[type] || { labelKey: type, color: 'default' };
+        return <Tag color={config.color}>{t(config.labelKey)}</Tag>;
       },
     },
     {
@@ -374,8 +374,8 @@ const ConsumerPage = () => {
       key: 'protocol',
       width: 100,
       render: (protocol: string) => {
-        const config = PROTOCOL_MAP[protocol] || { label: protocol, color: 'default' };
-        return <Tag color={config.color}>{config.label}</Tag>;
+        const config = PROTOCOL_MAP[protocol] || { labelKey: protocol, color: 'default' };
+        return <Tag color={config.color}>{t(config.labelKey)}</Tag>;
       },
     },
     {
@@ -710,8 +710,9 @@ const ConsumerPage = () => {
                             TOPIC_TYPE_MAP[selectedGroup.subscriptionDataType]?.color || 'default'
                           }
                         >
-                          {TOPIC_TYPE_MAP[selectedGroup.subscriptionDataType]?.label ||
-                            selectedGroup.subscriptionDataType}
+                          {TOPIC_TYPE_MAP[selectedGroup.subscriptionDataType]
+                            ? t(TOPIC_TYPE_MAP[selectedGroup.subscriptionDataType].labelKey)
+                            : selectedGroup.subscriptionDataType}
                         </Tag>
                       </Descriptions.Item>
                       <Descriptions.Item label="消费延迟">
