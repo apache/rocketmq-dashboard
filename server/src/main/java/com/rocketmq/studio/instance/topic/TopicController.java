@@ -17,6 +17,7 @@
 package com.rocketmq.studio.instance.topic;
 
 import com.rocketmq.studio.common.domain.Result;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -27,7 +28,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/topics")
@@ -55,8 +55,8 @@ public class TopicController {
     }
 
     @PostMapping("/delete")
-    public Result<Void> deleteTopic(@RequestBody Map<String, String> request) {
-        metadataService.deleteTopic(request.get("name"));
+    public Result<Void> deleteTopic(@Valid @RequestBody DeleteTopicDTO request) {
+        metadataService.deleteTopic(request.getName());
         return Result.ok();
     }
 
