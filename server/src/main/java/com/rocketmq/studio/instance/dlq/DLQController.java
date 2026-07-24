@@ -17,6 +17,7 @@
 package com.rocketmq.studio.instance.dlq;
 
 import com.rocketmq.studio.common.domain.Result;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -26,7 +27,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/dlq")
@@ -41,12 +41,9 @@ public class DLQController {
     }
 
     @PostMapping("/resend")
-    public Result<Void> resendMessages(@RequestBody Map<String, Object> request) {
-        String groupName = (String) request.get("groupName");
-        Long startTime = request.get("startTime") != null ? ((Number) request.get("startTime")).longValue() : null;
-        Long endTime = request.get("endTime") != null ? ((Number) request.get("endTime")).longValue() : null;
-        String targetTopic = (String) request.get("targetTopic");
-        dlqService.resendMessages(groupName, startTime, endTime, targetTopic);
+    public Result<Void> resendMessages(@Valid @RequestBody DLQResendRequestDTO request) {
+        dlqService.resendMessages(
+                request.getGroupName(), request.getStartTime(), request.getEndTime(), request.getTargetTopic());
         return Result.ok();
     }
 }

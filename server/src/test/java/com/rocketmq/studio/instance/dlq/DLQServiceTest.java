@@ -26,7 +26,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -86,5 +88,37 @@ class DLQServiceTest {
         dlqService.resendMessages("group-1", null, null, "target-topic");
 
         verify(dlqProvider).resendMessages("group-1", null, null, "target-topic");
+    }
+
+    @Test
+    void resendMessagesShouldRejectBlankGroupName() {
+        assertThatThrownBy(() -> dlqService.resendMessages(" ", 1000L, 2000L, "target-topic"))
+                .hasMessage("groupName is required");
+
+        verifyNoInteractions(dlqProvider);
+    }
+
+    @Test
+    void resendMessagesShouldRejectPartialTimeRange() {
+        assertThatThrownBy(() -> dlqService.resendMessages("group-1", 1000L, null, "target-topic"))
+                .hasMessage("startTime and endTime must be provided together");
+
+        verifyNoInteractions(dlqProvider);
+    }
+
+    @Test
+    void resendMessagesShouldRejectNonPositiveTimeRange() {
+        assertThatThrownBy(() -> dlqService.resendMessages("group-1", 0L, 2000L, "target-topic"))
+                .hasMessage("startTime and endTime must be positive");
+
+        verifyNoInteractions(dlqProvider);
+    }
+
+    @Test
+    void resendMessagesShouldRejectReversedTimeRange() {
+        assertThatThrownBy(() -> dlqService.resendMessages("group-1", 2000L, 1000L, "target-topic"))
+                .hasMessage("endTime must not be earlier than startTime");
+
+        verifyNoInteractions(dlqProvider);
     }
 }

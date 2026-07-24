@@ -16,9 +16,12 @@
  */
 package com.rocketmq.studio.instance.dlq;
 
+import com.rocketmq.studio.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 
@@ -35,7 +38,29 @@ public class DLQService {
     }
 
     public void resendMessages(String groupName, Long startTime, Long endTime, String targetTopic) {
+        validateResendRequest(groupName, startTime, endTime);
         log.info("Resending DLQ messages: group={}, targetTopic={}", groupName, targetTopic);
         dlqProvider.resendMessages(groupName, startTime, endTime, targetTopic);
+    }
+
+    private void validateResendRequest(String groupName, Long startTime, Long endTime) {
+        if (!StringUtils.hasText(groupName)) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "groupName is required");
+        }
+        if ((startTime == null) != (endTime == null)) {
+            throw new BusinessException(
+                    HttpStatus.BAD_REQUEST.value(), "startTime and endTime must be provided together");
+        }
+        if (startTime == null) {
+            return;
+        }
+        if (startTime <= 0 || endTime <= 0) {
+            throw new BusinessException(
+                    HttpStatus.BAD_REQUEST.value(), "startTime and endTime must be positive");
+        }
+        if (endTime < startTime) {
+            throw new BusinessException(
+                    HttpStatus.BAD_REQUEST.value(), "endTime must not be earlier than startTime");
+        }
     }
 }
