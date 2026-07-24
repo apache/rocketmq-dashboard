@@ -19,6 +19,7 @@ package com.rocketmq.studio.instance;
 
 import com.rocketmq.studio.common.domain.Result;
 import com.rocketmq.studio.common.domain.enums.InstanceType;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -28,7 +29,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/instances")
@@ -55,8 +55,8 @@ public class InstanceController {
     }
 
     @PostMapping("/delete")
-    public Result<Void> deleteInstance(@RequestBody Map<String, String> body) {
-        instanceService.deleteInstance(body.get("id"));
+    public Result<Void> deleteInstance(@Valid @RequestBody InstanceDeleteRequestDTO request) {
+        instanceService.deleteInstance(request.getId());
         return Result.ok();
     }
 }
