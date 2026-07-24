@@ -16,29 +16,15 @@
  */
 package com.rocketmq.studio.cluster.client;
 
-import com.rocketmq.studio.common.domain.enums.ClientLanguage;
-import com.rocketmq.studio.common.domain.enums.ClientType;
-import com.rocketmq.studio.common.domain.enums.Protocol;
 import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
-@Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ClientConnectionVO {
-    private String clientId;
-    private ClientType type;
-    private String groupOrTopic;
-    private String producerGroup;
-    private Protocol protocol;
-    private String address;
-    private ClientLanguage language;
-    private String version;
-    private LocalDateTime connectedAt;
-    private String clusterName;
+public class ProducerConnectionResultVO {
+    private List<ProducerConnectionVO> connectionSet;
 }
