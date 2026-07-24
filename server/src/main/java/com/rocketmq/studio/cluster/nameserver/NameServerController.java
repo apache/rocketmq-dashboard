@@ -19,6 +19,7 @@ package com.rocketmq.studio.cluster.nameserver;
 import com.rocketmq.studio.cluster.broker.ClusterService;
 
 import com.rocketmq.studio.common.domain.Result;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -35,30 +36,30 @@ public class NameServerController {
     private final ClusterService clusterService;
 
     @PostMapping("/create")
-    public Result<NameServerVO> createNameServer(@RequestBody CreateNameServerDTO command) {
+    public Result<NameServerVO> createNameServer(@Valid @RequestBody CreateNameServerDTO command) {
         return Result.ok(clusterService.createNameServer(command));
     }
 
     @PostMapping("/update")
-    public Result<Void> updateNameServer(@RequestBody UpdateNameServerDTO command) {
+    public Result<Void> updateNameServer(@Valid @RequestBody UpdateNameServerDTO command) {
         clusterService.updateNameServer(command);
         return Result.ok();
     }
 
     @PostMapping("/restart")
-    public Result<Map<String, Boolean>> restartNameServer(@RequestBody RestartNameServerDTO command) {
+    public Result<Map<String, Boolean>> restartNameServer(@Valid @RequestBody RestartNameServerDTO command) {
         boolean success = clusterService.restartNameServer(command);
         return Result.ok(Map.of("success", success));
     }
 
     @PostMapping("/upgrade")
-    public Result<Map<String, Boolean>> upgradeNameServer(@RequestBody UpgradeNameServerDTO command) {
+    public Result<Map<String, Boolean>> upgradeNameServer(@Valid @RequestBody UpgradeNameServerDTO command) {
         boolean success = clusterService.upgradeNameServer(command);
         return Result.ok(Map.of("success", success));
     }
 
     @PostMapping("/delete")
-    public Result<Map<String, Boolean>> deleteNameServer(@RequestBody DeleteNameServerDTO command) {
+    public Result<Map<String, Boolean>> deleteNameServer(@Valid @RequestBody DeleteNameServerDTO command) {
         boolean success = clusterService.deleteNameServer(command);
         return Result.ok(Map.of("success", success));
     }
