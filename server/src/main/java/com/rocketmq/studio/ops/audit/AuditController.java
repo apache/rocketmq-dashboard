@@ -18,6 +18,7 @@ package com.rocketmq.studio.ops.audit;
 
 import com.rocketmq.studio.common.domain.PageResult;
 import com.rocketmq.studio.common.domain.Result;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -49,8 +50,8 @@ public class AuditController {
     }
 
     @PostMapping("/cleanup")
-    public Result<Map<String, Integer>> cleanupLogs(@RequestBody Map<String, Integer> request) {
-        int beforeDays = request.getOrDefault("beforeDays", 30);
+    public Result<Map<String, Integer>> cleanupLogs(@Valid @RequestBody(required = false) AuditCleanupDTO request) {
+        int beforeDays = request == null || request.getBeforeDays() == null ? 30 : request.getBeforeDays();
         int deleted = auditService.cleanupLogs(beforeDays);
         return Result.ok(Map.of("deleted", deleted));
     }
