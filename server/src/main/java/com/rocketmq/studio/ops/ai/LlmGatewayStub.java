@@ -16,18 +16,24 @@
  */
 package com.rocketmq.studio.ops.ai;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class LlmGatewayStub implements LlmGateway {
 
+    private final ObjectMapper objectMapper;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     @Override
@@ -40,7 +46,7 @@ public class LlmGatewayStub implements LlmGateway {
                 for (String token : tokens) {
                     emitter.send(SseEmitter.event()
                             .name("message")
-                            .data("{\"text\": \"" + token + " \"}"));
+                            .data(serializeToken(token)));
                     Thread.sleep(100);
                 }
                 emitter.send(SseEmitter.event().name("done").data("[DONE]"));
@@ -52,6 +58,10 @@ public class LlmGatewayStub implements LlmGateway {
         });
 
         return emitter;
+    }
+
+    String serializeToken(String token) throws JsonProcessingException {
+        return objectMapper.writeValueAsString(Map.of("text", token + " "));
     }
 
     @Override
