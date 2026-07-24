@@ -247,7 +247,7 @@ describe('API client response contract', () => {
     }
   });
 
-  it('returns a safe AxiosError copy when readonly headers cannot be redacted', async () => {
+  it('returns a fixed minimal AxiosError when readonly headers cannot be redacted', async () => {
     const token = 'secret-readonly-token';
     persistAuthSession(token, 'studio-admin');
     const readonlyClient = createApiClient();
@@ -301,22 +301,21 @@ describe('API client response contract', () => {
     expect(rejectedError).toMatchObject({
       name: 'AxiosError',
       message: 'Request failed with status code 500',
-      code: AxiosError.ERR_BAD_RESPONSE,
       status: 500,
     });
+    expect(rejectedError.code).toBeUndefined();
     expect(rejectedError.config === unsafeConfig).toBe(false);
-    expect(rejectedError.request).not.toBe(unsafeRequest);
+    expect(rejectedError.config).toEqual({ headers: expect.any(AxiosHeaders) });
+    expect(rejectedError.config?.headers.toJSON()).toEqual({});
+    expect(rejectedError.request).toBeUndefined();
     expect(rejectedError.response).not.toBe(unsafeResponse);
-    expect(rejectedError.response).toMatchObject({
-      data: { code: 500, message: 'upstream failed' },
+    expect(rejectedError.response).toEqual({
+      data: undefined,
       status: 500,
-      statusText: 'Internal Server Error',
+      statusText: '',
+      headers: expect.any(AxiosHeaders),
+      config: rejectedError.config,
     });
-    expect(rejectedError.config?.headers.get('Authorization')).toBeUndefined();
-    expect(rejectedError.config?.headers.get('X-Trace-Id')).toBe('trace-readonly');
-    expect((rejectedError.response?.headers as AxiosHeaders).get('X-Response-Id')).toBe(
-      'response-2',
-    );
     expect(Object.prototype.hasOwnProperty.call(rejectedError, 'cause')).toBe(false);
     expect(
       JSON.stringify({
@@ -360,14 +359,223 @@ describe('API client response contract', () => {
     expect(axios.isAxiosError(rejectedError)).toBe(true);
     expect(rejectedError).toMatchObject({
       name: 'AxiosError',
-      message: 'proxy request failed',
-      code: AxiosError.ERR_NETWORK,
+      message: 'Request failed with status code 500',
       status: 500,
     });
+    expect(rejectedError.code).toBeUndefined();
     expect(rejectedError.config === unsafeConfig).toBe(false);
-    expect(rejectedError.config?.url).toBe('/proxy-protected');
+    expect(rejectedError.config).toEqual({ headers: expect.any(AxiosHeaders) });
+    expect(rejectedError.config?.headers.toJSON()).toEqual({});
+    expect(rejectedError.config?.url).toBeUndefined();
+    expect(rejectedError.request).toBeUndefined();
+    expect(rejectedError.response).toEqual({
+      data: undefined,
+      status: 500,
+      statusText: '',
+      headers: expect.any(AxiosHeaders),
+      config: rejectedError.config,
+    });
     expect(JSON.stringify(rejectedError.toJSON())).not.toContain(token);
     expect(Object.prototype.hasOwnProperty.call(rejectedError, 'cause')).toBe(false);
+  });
+
+  it('falls back when a proxy hides authorization from header enumeration', async () => {
+    const token = 'secret-hostile-proxy-token';
+    persistAuthSession(token, 'studio-admin');
+    const proxyClient = createApiClient();
+    let originalError: AxiosError | undefined;
+
+    proxyClient.defaults.adapter = async (config) => {
+      const hostileHeaders = new Proxy(Object.create(null) as Record<PropertyKey, unknown>, {
+        ownKeys: () => [],
+        get: (_target, key) => {
+          if (key === 'authorization') {
+            return `Bearer ${token}`;
+          }
+          return undefined;
+        },
+        getOwnPropertyDescriptor: () => undefined,
+      });
+      Object.defineProperty(config, 'headers', {
+        value: hostileHeaders,
+        writable: true,
+        configurable: true,
+      });
+      originalError = new AxiosError('Request failed', AxiosError.ERR_BAD_RESPONSE, config);
+      originalError.status = 500;
+      return Promise.reject(originalError);
+    };
+
+    const rejectedError = (await proxyClient
+      .get('/hostile-proxy')
+      .catch((error: unknown) => error)) as AxiosError;
+
+    expect(rejectedError).not.toBe(originalError);
+    expect(axios.isAxiosError(rejectedError)).toBe(true);
+    expect(rejectedError.status).toBe(500);
+    expect(Reflect.get(rejectedError.config?.headers ?? {}, 'Authorization')).toBeUndefined();
+    expect(Reflect.get(rejectedError.config?.headers ?? {}, 'authorization')).toBeUndefined();
+    expect(
+      JSON.stringify({
+        json: rejectedError.toJSON(),
+        config: rejectedError.config,
+        request: rejectedError.request,
+        response: rejectedError.response,
+      }),
+    ).not.toContain(token);
+  });
+
+  it.each(['message', 'config', 'response data', 'response headers'] as const)(
+    'falls back when mutable error %s echoes the deleted credential',
+    async (surface) => {
+      const token = `secret-mutable-${surface.replace(' ', '-')}-token`;
+      persistAuthSession(token, 'studio-admin');
+      const reflectedClient = createApiClient();
+      let originalError: AxiosError | undefined;
+
+      reflectedClient.defaults.adapter = async (config) => {
+        const response: AxiosResponse = {
+          data: { code: 500, message: 'failed' },
+          status: 500,
+          statusText: 'Internal Server Error',
+          headers: new AxiosHeaders({ 'X-Response-Id': 'response-3' }),
+          config,
+        };
+        originalError = new AxiosError(
+          'Request failed with status code 500',
+          AxiosError.ERR_BAD_RESPONSE,
+          config,
+          undefined,
+          response,
+        );
+        if (surface === 'message') {
+          originalError.message = `upstream echoed ${token}`;
+          originalError.stack = `AxiosError: ${token}`;
+        } else if (surface === 'config') {
+          Object.assign(config as InternalAxiosRequestConfig & Record<string, unknown>, {
+            debugCredential: token,
+          });
+        } else if (surface === 'response data') {
+          response.data = { nested: { credential: token } };
+        } else {
+          response.headers = new AxiosHeaders({ 'X-Debug-Credential': token });
+        }
+        return Promise.reject(originalError);
+      };
+
+      const rejectedError = (await reflectedClient
+        .get('/mutable-reflected-credential')
+        .catch((error: unknown) => error)) as AxiosError;
+
+      expect(rejectedError).not.toBe(originalError);
+      expect(rejectedError).toMatchObject({
+        name: 'AxiosError',
+        message: 'Request failed with status code 500',
+        status: 500,
+      });
+      expect(rejectedError.code).toBeUndefined();
+      expect(rejectedError.config).toEqual({ headers: expect.any(AxiosHeaders) });
+      expect(rejectedError.request).toBeUndefined();
+      expect(rejectedError.response).toEqual({
+        data: undefined,
+        status: 500,
+        statusText: '',
+        headers: expect.any(AxiosHeaders),
+        config: rejectedError.config,
+      });
+      expect(JSON.stringify(rejectedError.toJSON())).not.toContain(token);
+    },
+  );
+
+  it('uses a fixed minimal fallback when the credential is echoed outside authorization', async () => {
+    const token = 'secret-reflected-token';
+    persistAuthSession(token, 'studio-admin');
+    const reflectedClient = createApiClient();
+    let originalError: AxiosError | undefined;
+
+    reflectedClient.defaults.adapter = async (config) => {
+      Object.assign(config as InternalAxiosRequestConfig & Record<string, unknown>, {
+        debugCredential: token,
+      });
+      Object.defineProperty(config, 'headers', {
+        value: Object.freeze({
+          ...config.headers.toJSON(),
+          Authorization: `Bearer ${token}`,
+          'X-Debug-Credential': token,
+        }),
+        writable: false,
+        configurable: false,
+      });
+      const unsafeRequest = {
+        headers: Object.freeze({
+          Authorization: `Bearer ${token}`,
+          'X-Debug-Credential': token,
+        }),
+      };
+      const unsafeResponse: AxiosResponse = {
+        data: { nested: { credential: token } },
+        status: 500,
+        statusText: `failed ${token}`,
+        headers: new AxiosHeaders({ 'X-Debug-Credential': token }),
+        config,
+        request: unsafeRequest,
+      };
+      originalError = new AxiosError(
+        `upstream echoed ${token}`,
+        `ERR_${token}`,
+        config,
+        unsafeRequest,
+        unsafeResponse,
+      );
+      originalError.name = token;
+      originalError.stack = `AxiosError: ${token}`;
+      Object.assign(originalError, {
+        cause: new Error(token),
+        debugCredential: token,
+      });
+      return Promise.reject(originalError);
+    };
+
+    const rejectedError = (await reflectedClient
+      .get('/reflected-credential')
+      .catch((error: unknown) => error)) as AxiosError & {
+      debugCredential?: string;
+    };
+
+    expect(rejectedError).not.toBe(originalError);
+    expect(axios.isAxiosError(rejectedError)).toBe(true);
+    expect(rejectedError).toMatchObject({
+      name: 'AxiosError',
+      message: 'Request failed with status code 500',
+      status: 500,
+    });
+    expect(rejectedError.code).toBeUndefined();
+    expect(rejectedError.config).toEqual({ headers: expect.any(AxiosHeaders) });
+    expect(rejectedError.config?.headers.toJSON()).toEqual({});
+    expect(rejectedError.config?.url).toBeUndefined();
+    expect(rejectedError.config?.method).toBeUndefined();
+    expect(rejectedError.request).toBeUndefined();
+    expect(rejectedError.response).toEqual({
+      data: undefined,
+      status: 500,
+      statusText: '',
+      headers: expect.any(AxiosHeaders),
+      config: rejectedError.config,
+    });
+    expect(Object.prototype.hasOwnProperty.call(rejectedError, 'cause')).toBe(false);
+    expect(rejectedError.debugCredential).toBeUndefined();
+    expect(
+      JSON.stringify({
+        message: rejectedError.message,
+        stack: rejectedError.stack,
+        json: rejectedError.toJSON(),
+        config: rejectedError.config,
+        request: rejectedError.request,
+        response: rejectedError.response,
+        code: rejectedError.code,
+        name: rejectedError.name,
+      }),
+    ).not.toContain(token);
   });
 
   it('redacts case-insensitive authorization headers from request interceptor errors', async () => {

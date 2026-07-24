@@ -27,9 +27,12 @@ import { API_BASE_URL } from '../config';
 
 const SUCCESS_BUSINESS_CODES = new Set([0, 200]);
 const MAX_HEADER_NAMES = 256;
-const MAX_SAFE_COPY_DEPTH = 4;
-const MAX_SAFE_COPY_ENTRIES = 256;
-const OMIT_VALUE = Symbol('omit-value');
+const MAX_CREDENTIAL_LENGTH = 8192;
+const MAX_CREDENTIAL_VALUES = 8;
+const MAX_SCAN_DEPTH = 5;
+const MAX_SCAN_ENTRIES = 512;
+const MAX_SCAN_STRING_LENGTH = 65536;
+const AUTHORIZATION_NAMES = ['Authorization', 'authorization'] as const;
 
 interface BusinessResponse {
   code?: unknown;
@@ -74,36 +77,256 @@ function readProperty(source: unknown, key: string): unknown {
   return tryReadProperty(source, key).value;
 }
 
-function deleteAuthorizationHeader(headers: unknown): boolean {
-  if (!isObject(headers)) {
-    return headers === null || headers === undefined;
+function isNativeHeaders(value: object): value is Headers {
+  return typeof Headers !== 'undefined' && value instanceof Headers;
+}
+
+function isPlainObject(value: object): boolean {
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function isMissingHeaderValue(value: unknown): boolean {
+  return value === null || value === undefined;
+}
+
+function collectCredentialValue(value: unknown, credentials: Set<string>): boolean {
+  if (isMissingHeaderValue(value)) {
+    return true;
+  }
+  const values = Array.isArray(value) ? value : [value];
+  if (values.length > MAX_CREDENTIAL_VALUES) {
+    return false;
   }
 
-  try {
-    const deleteHeader = Reflect.get(headers, 'delete');
-    if (typeof deleteHeader === 'function') {
-      deleteHeader.call(headers, 'Authorization');
-    }
-
-    const names = Object.getOwnPropertyNames(headers);
-    if (names.length > MAX_HEADER_NAMES) {
+  for (const item of values) {
+    if (typeof item !== 'string' || item.length > MAX_CREDENTIAL_LENGTH) {
       return false;
     }
-    for (const key of names) {
-      if (key.toLowerCase() === 'authorization' && !Reflect.deleteProperty(headers, key)) {
+    if (item.length > 0) {
+      credentials.add(item);
+    }
+    const bearerMatch = /^Bearer[ \t]+([^\r\n]+)$/i.exec(item);
+    const bearerToken = bearerMatch?.[1].trim();
+    if (bearerToken) {
+      if (bearerToken.length > MAX_CREDENTIAL_LENGTH) {
+        return false;
+      }
+      credentials.add(bearerToken);
+    }
+    if (credentials.size > MAX_CREDENTIAL_VALUES) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function sanitizeAuthorizationHeader(headers: object, credentials: Set<string>): boolean {
+  try {
+    const isMethodHeaders = headers instanceof AxiosHeaders || isNativeHeaders(headers);
+    if (!isMethodHeaders && !isPlainObject(headers)) {
+      return false;
+    }
+
+    const get = Reflect.get(headers, 'get');
+    const has = Reflect.get(headers, 'has');
+    const deleteHeader = Reflect.get(headers, 'delete');
+    if (
+      isMethodHeaders &&
+      (typeof get !== 'function' || typeof has !== 'function' || typeof deleteHeader !== 'function')
+    ) {
+      return false;
+    }
+
+    for (const name of AUTHORIZATION_NAMES) {
+      if (
+        (typeof get === 'function' &&
+          !collectCredentialValue(get.call(headers, name), credentials)) ||
+        !collectCredentialValue(Reflect.get(headers, name), credentials)
+      ) {
         return false;
       }
     }
 
-    const hasHeader = Reflect.get(headers, 'has');
-    if (typeof hasHeader === 'function' && hasHeader.call(headers, 'Authorization')) {
+    const keys = Reflect.ownKeys(headers);
+    if (keys.length > MAX_HEADER_NAMES) {
       return false;
     }
-    const remainingNames = Object.getOwnPropertyNames(headers);
+    for (const key of keys) {
+      const descriptor = Reflect.getOwnPropertyDescriptor(headers, key);
+      if (!descriptor || !('value' in descriptor)) {
+        return false;
+      }
+      if (
+        typeof key === 'string' &&
+        key.toLowerCase() === 'authorization' &&
+        !collectCredentialValue(descriptor.value, credentials)
+      ) {
+        return false;
+      }
+    }
+
+    if (typeof deleteHeader === 'function') {
+      for (const name of AUTHORIZATION_NAMES) {
+        deleteHeader.call(headers, name);
+      }
+    }
+    for (const key of keys) {
+      if (
+        typeof key === 'string' &&
+        key.toLowerCase() === 'authorization' &&
+        !Reflect.deleteProperty(headers, key)
+      ) {
+        return false;
+      }
+    }
+
+    const postGet = Reflect.get(headers, 'get');
+    const postHas = Reflect.get(headers, 'has');
+    if ((isMethodHeaders || typeof get === 'function') && typeof postGet !== 'function') {
+      return false;
+    }
+    if ((isMethodHeaders || typeof has === 'function') && typeof postHas !== 'function') {
+      return false;
+    }
+    for (const name of AUTHORIZATION_NAMES) {
+      if (
+        (typeof postGet === 'function' && !isMissingHeaderValue(postGet.call(headers, name))) ||
+        (typeof postHas === 'function' && postHas.call(headers, name) !== false) ||
+        !isMissingHeaderValue(Reflect.get(headers, name))
+      ) {
+        return false;
+      }
+    }
+
+    const remainingKeys = Reflect.ownKeys(headers);
     return (
-      remainingNames.length <= MAX_HEADER_NAMES &&
-      remainingNames.every((key) => key.toLowerCase() !== 'authorization')
+      remainingKeys.length <= MAX_HEADER_NAMES &&
+      remainingKeys.every((key) => typeof key !== 'string' || key.toLowerCase() !== 'authorization')
     );
+  } catch {
+    return false;
+  }
+}
+
+interface ScanState {
+  credentials: Set<string>;
+  remaining: number;
+  seen: Set<object>;
+}
+
+function scanFailure(): never {
+  throw new Error('Unsafe retained error surface');
+}
+
+function scanString(value: string, state: ScanState): void {
+  if (
+    value.length > MAX_SCAN_STRING_LENGTH ||
+    [...state.credentials].some((credential) => credential.length > 0 && value.includes(credential))
+  ) {
+    scanFailure();
+  }
+}
+
+function scanRetainedValue(value: unknown, state: ScanState, depth = 0): void {
+  if (typeof value === 'string') {
+    scanString(value, state);
+    return;
+  }
+  if (
+    value === null ||
+    value === undefined ||
+    typeof value === 'number' ||
+    typeof value === 'boolean' ||
+    typeof value === 'bigint' ||
+    typeof value === 'symbol' ||
+    typeof value === 'function'
+  ) {
+    return;
+  }
+  if (depth > MAX_SCAN_DEPTH || !isObject(value)) {
+    scanFailure();
+  }
+  if (state.seen.has(value)) {
+    return;
+  }
+  state.seen.add(value);
+
+  if (isNativeHeaders(value)) {
+    let count = 0;
+    value.forEach((headerValue, key) => {
+      if (++count > MAX_HEADER_NAMES || --state.remaining < 0) {
+        scanFailure();
+      }
+      scanString(key, state);
+      scanString(headerValue, state);
+    });
+    return;
+  }
+  if (!(value instanceof AxiosHeaders) && !Array.isArray(value) && !isPlainObject(value)) {
+    scanFailure();
+  }
+  const keys = Reflect.ownKeys(value);
+  if ((state.remaining -= keys.length) < 0) {
+    scanFailure();
+  }
+  for (const key of keys) {
+    scanString(String(key), state);
+    const descriptor = Reflect.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !('value' in descriptor)) {
+      scanFailure();
+    }
+    scanRetainedValue(descriptor.value, state, depth + 1);
+  }
+}
+
+function scanReadString(source: unknown, key: string, state: ScanState): void {
+  const property = tryReadProperty(source, key);
+  if (!property.ok) {
+    scanFailure();
+  }
+  if (typeof property.value === 'string') {
+    scanString(property.value, state);
+  }
+}
+
+function scanRetainedError(
+  error: object,
+  response: unknown,
+  configs: readonly unknown[],
+  headers: readonly object[],
+  credentials: Set<string>,
+): boolean {
+  if (credentials.size === 0) {
+    return true;
+  }
+
+  try {
+    const state: ScanState = {
+      credentials,
+      remaining: MAX_SCAN_ENTRIES,
+      seen: new Set(),
+    };
+    for (const key of ['message', 'stack', 'name', 'code']) {
+      scanReadString(error, key, state);
+    }
+    for (const config of configs) {
+      if (config !== null && config !== undefined) {
+        scanRetainedValue(config, state);
+      }
+    }
+    for (const headerContainer of headers) {
+      scanRetainedValue(headerContainer, state);
+    }
+    if (response !== null && response !== undefined) {
+      const dataRead = tryReadProperty(response, 'data');
+      if (!dataRead.ok) {
+        scanFailure();
+      }
+      scanRetainedValue(dataRead.value, state);
+      scanReadString(response, 'statusText', state);
+    }
+    return true;
   } catch {
     return false;
   }
@@ -122,10 +345,13 @@ function redactErrorHeadersInPlace(error: unknown): boolean {
     const ownerReads = [
       tryReadProperty(error, 'config'),
       tryReadProperty(error, 'request'),
+      { ok: true, value: response },
       tryReadProperty(response, 'config'),
       tryReadProperty(response, 'request'),
     ];
-    const visited = new Set<object>();
+    const credentials = new Set<string>();
+    const visitedHeaders = new Set<object>();
+    const headerContainers: object[] = [];
 
     for (const ownerRead of ownerReads) {
       if (!ownerRead.ok) {
@@ -146,213 +372,67 @@ function redactErrorHeadersInPlace(error: unknown): boolean {
       if (!isObject(headers)) {
         return false;
       }
-      if (!visited.has(headers)) {
-        visited.add(headers);
-        if (!deleteAuthorizationHeader(headers)) {
+      if (!visitedHeaders.has(headers)) {
+        visitedHeaders.add(headers);
+        headerContainers.push(headers);
+        if (!sanitizeAuthorizationHeader(headers, credentials)) {
           return false;
         }
       }
     }
-    return true;
+    return scanRetainedError(
+      error,
+      response,
+      [ownerReads[0].value, ownerReads[3].value],
+      headerContainers,
+      credentials,
+    );
   } catch {
     return false;
   }
 }
 
-interface SafeCopyState {
-  remaining: number;
-  seen: Set<object>;
+function finiteNumericProperty(source: unknown, key: string): number | undefined {
+  const property = tryReadProperty(source, key);
+  return property.ok && typeof property.value === 'number' && Number.isFinite(property.value)
+    ? property.value
+    : undefined;
 }
 
-function copySafeValue(
-  value: unknown,
-  state: SafeCopyState,
-  depth: number,
-): unknown | typeof OMIT_VALUE {
-  if (
-    value === null ||
-    typeof value === 'string' ||
-    typeof value === 'number' ||
-    typeof value === 'boolean'
-  ) {
-    return value;
-  }
-  if (value === undefined) {
-    return undefined;
-  }
-  if (!isObject(value) || depth >= MAX_SAFE_COPY_DEPTH || state.seen.has(value)) {
-    return OMIT_VALUE;
-  }
-
-  try {
-    state.seen.add(value);
-    if (Array.isArray(value)) {
-      if (value.length > state.remaining) {
-        return OMIT_VALUE;
-      }
-      const copy: unknown[] = [];
-      for (const item of value) {
-        state.remaining -= 1;
-        const copied = copySafeValue(item, state, depth + 1);
-        if (copied !== OMIT_VALUE) {
-          copy.push(copied);
-        }
-      }
-      return copy;
-    }
-
-    const prototype = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null) {
-      return OMIT_VALUE;
-    }
-    const names = Object.getOwnPropertyNames(value);
-    if (names.length > state.remaining) {
-      return OMIT_VALUE;
-    }
-    const copy: Record<string, unknown> = Object.create(null);
-    for (const key of names) {
-      state.remaining -= 1;
-      if (key.toLowerCase() === 'authorization') {
-        continue;
-      }
-      const descriptor = Object.getOwnPropertyDescriptor(value, key);
-      if (!descriptor || !('value' in descriptor)) {
-        continue;
-      }
-      const copied = copySafeValue(descriptor.value, state, depth + 1);
-      if (copied !== OMIT_VALUE) {
-        copy[key] = copied;
-      }
-    }
-    return copy;
-  } catch {
-    return OMIT_VALUE;
-  } finally {
-    state.seen.delete(value);
-  }
+function safeErrorStatus(error: unknown): number | undefined {
+  const responseRead = tryReadProperty(error, 'response');
+  const responseStatus = responseRead.ok
+    ? finiteNumericProperty(responseRead.value, 'status')
+    : undefined;
+  return responseStatus ?? finiteNumericProperty(error, 'status');
 }
 
-function copyHeaders(headers: unknown): AxiosHeaders {
-  const copy = new AxiosHeaders();
-  if (!isObject(headers)) {
-    return copy;
-  }
-
-  try {
-    const forEachHeader = Reflect.get(headers, 'forEach');
-    if (typeof forEachHeader === 'function') {
-      let count = 0;
-      forEachHeader.call(headers, (value: unknown, key: unknown) => {
-        count += 1;
-        if (count > MAX_HEADER_NAMES) {
-          throw new Error('Header copy limit exceeded');
-        }
-        if (typeof key === 'string' && key.toLowerCase() !== 'authorization') {
-          copy.set(key, String(value));
-        }
-      });
-      return copy;
-    }
-
-    const names = Object.getOwnPropertyNames(headers);
-    if (names.length > MAX_HEADER_NAMES) {
-      return new AxiosHeaders();
-    }
-    for (const key of names) {
-      if (key.toLowerCase() === 'authorization') {
-        continue;
-      }
-      const descriptor = Object.getOwnPropertyDescriptor(headers, key);
-      if (!descriptor || !('value' in descriptor)) {
-        continue;
-      }
-      const value = descriptor.value;
-      if (
-        typeof value === 'string' ||
-        typeof value === 'number' ||
-        typeof value === 'boolean' ||
-        value === null
-      ) {
-        copy.set(key, value);
-      } else if (Array.isArray(value) && value.every((item) => typeof item === 'string')) {
-        copy.set(key, value);
-      }
-    }
-  } catch {
-    return new AxiosHeaders();
-  }
-  return copy;
-}
-
-function copyConfig(config: unknown): InternalAxiosRequestConfig {
-  const state: SafeCopyState = {
-    remaining: MAX_SAFE_COPY_ENTRIES,
-    seen: new Set(),
-  };
-  const copied = copySafeValue(config, state, 0);
-  const result =
-    copied !== OMIT_VALUE && isObject(copied) && !Array.isArray(copied)
-      ? (copied as Record<string, unknown>)
-      : Object.create(null);
-  result.headers = copyHeaders(readProperty(config, 'headers'));
-  return result as unknown as InternalAxiosRequestConfig;
-}
-
-function copyResponse(
-  response: unknown,
-  errorConfig: unknown,
-  safeErrorConfig: InternalAxiosRequestConfig,
-): AxiosResponse | undefined {
-  if (!isObject(response)) {
-    return undefined;
-  }
-
-  const responseConfig = readProperty(response, 'config');
-  const safeResponseConfig =
-    responseConfig === errorConfig ? safeErrorConfig : copyConfig(responseConfig);
-  const dataState: SafeCopyState = {
-    remaining: MAX_SAFE_COPY_ENTRIES,
-    seen: new Set(),
-  };
-  const copiedData = copySafeValue(readProperty(response, 'data'), dataState, 0);
-  const status = readProperty(response, 'status');
-  const statusText = readProperty(response, 'statusText');
-
-  return {
-    data: copiedData === OMIT_VALUE ? undefined : copiedData,
-    status: typeof status === 'number' ? status : 0,
-    statusText: typeof statusText === 'string' ? statusText : '',
-    headers: copyHeaders(readProperty(response, 'headers')),
-    config: safeResponseConfig,
-  };
-}
-
-function safeErrorCopy(error: unknown): AxiosError {
-  const config = readProperty(error, 'config');
-  const safeConfig = copyConfig(config);
-  const safeResponse = copyResponse(readProperty(error, 'response'), config, safeConfig);
-  const messageValue = readProperty(error, 'message');
-  const codeValue = readProperty(error, 'code');
-  const nameValue = readProperty(error, 'name');
-  const statusValue = readProperty(error, 'status');
-  const safeError = new AxiosError(
-    typeof messageValue === 'string' ? messageValue : 'Request failed',
-    typeof codeValue === 'string' ? codeValue : undefined,
+function fixedSafeError(error: unknown): AxiosError {
+  const status = safeErrorStatus(error);
+  const safeConfig = {
+    headers: new AxiosHeaders(),
+  } as InternalAxiosRequestConfig;
+  const safeResponse: AxiosResponse | undefined =
+    status === undefined
+      ? undefined
+      : {
+          data: undefined,
+          status,
+          statusText: '',
+          headers: new AxiosHeaders(),
+          config: safeConfig,
+        };
+  return new AxiosError(
+    status === undefined ? 'Request failed' : `Request failed with status code ${status}`,
+    undefined,
     safeConfig,
     undefined,
     safeResponse,
   );
-  if (typeof nameValue === 'string') {
-    safeError.name = nameValue;
-  }
-  if (!safeResponse && typeof statusValue === 'number') {
-    safeError.status = statusValue;
-  }
-  return safeError;
 }
 
 function sanitizeAuthorizationError(error: unknown): unknown {
-  return redactErrorHeadersInPlace(error) ? error : safeErrorCopy(error);
+  return redactErrorHeadersInPlace(error) ? error : fixedSafeError(error);
 }
 
 function responseStatus(error: unknown): number | undefined {
