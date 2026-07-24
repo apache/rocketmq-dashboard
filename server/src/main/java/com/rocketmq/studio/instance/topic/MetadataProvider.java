@@ -23,6 +23,7 @@ import com.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import java.util.List;
 
 public interface MetadataProvider {
+    List<NamespaceVO> listNamespaces();
     List<TopicVO> listTopics(String clusterId, String type, String search);
     List<ConsumerGroupVO> listConsumerGroups(String clusterId, String search);
     List<BrokerRouteVO> getTopicRoutes(String name);

@@ -112,6 +112,6 @@ public class MetadataService {
 
 
     public List<NamespaceVO> listNamespaces() {
-        throw new UnsupportedOperationException("Not implemented");
+        return metadataProvider.listNamespaces();
     }
 }

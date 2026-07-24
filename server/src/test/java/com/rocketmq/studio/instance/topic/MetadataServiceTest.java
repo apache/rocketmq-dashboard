@@ -69,6 +69,21 @@ class MetadataServiceTest {
     }
 
     @Test
+    void listNamespacesShouldReturnNamespacesFromProvider() {
+        NamespaceVO namespace = new NamespaceVO();
+        namespace.setName("trade");
+        namespace.setClusterId("cluster-1");
+
+        when(metadataProvider.listNamespaces()).thenReturn(List.of(namespace));
+
+        List<NamespaceVO> result = metadataService.listNamespaces();
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getName()).isEqualTo("trade");
+        verify(metadataProvider).listNamespaces();
+    }
+
+    @Test
     void createTopicShouldDelegateToAdminClient() {
         TopicVO input = new TopicVO();
         input.setName("new-topic");

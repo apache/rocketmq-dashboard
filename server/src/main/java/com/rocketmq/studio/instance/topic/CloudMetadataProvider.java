@@ -29,6 +29,15 @@ import java.util.List;
 @Component
 public class CloudMetadataProvider implements MetadataProvider {
 
+    private static final String DEFAULT_NAMESPACE = "default";
+
+    @Override
+    public List<NamespaceVO> listNamespaces() {
+        NamespaceVO namespace = new NamespaceVO();
+        namespace.setName(DEFAULT_NAMESPACE);
+        return List.of(namespace);
+    }
+
     @Override
     public List<TopicVO> listTopics(String clusterId, String type, String search) {
         throw new UnsupportedOperationException("Not implemented");

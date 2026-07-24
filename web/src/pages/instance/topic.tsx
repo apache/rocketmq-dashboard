@@ -61,6 +61,7 @@ import {
   deleteTopic,
   getTopicConsumers,
   getTopicRoutes,
+  listNamespaces,
   listTopics,
   sendTopicMessage,
 } from '../../services/topicService';
@@ -73,15 +74,23 @@ const CLUSTER_NAME_MAP: Record<string, { name: string; type: string }> = {
   'rmq-cn-v4-prod-02': { name: 'rmq-cn-v4-prod-02', type: 'V4_DIRECT' },
 };
 
-// ─── Namespace options ────────────────────────────────────────────
-const NAMESPACE_OPTIONS = [
+const DEFAULT_NAMESPACE = 'default';
+const DEFAULT_NAMESPACE_OPTIONS = [
   { label: '全部', value: '' },
-  { label: 'trade', value: 'trade' },
-  { label: 'user', value: 'user' },
-  { label: 'message', value: 'message' },
-  { label: 'supply', value: 'supply' },
-  { label: 'ai', value: 'ai' },
+  { label: DEFAULT_NAMESPACE, value: DEFAULT_NAMESPACE },
 ];
+
+const buildNamespaceOptions = (namespaces: { name: string }[]) => {
+  const names = new Set([DEFAULT_NAMESPACE]);
+  namespaces.forEach((namespace) => {
+    if (namespace.name) names.add(namespace.name);
+  });
+
+  return [
+    { label: '全部', value: '' },
+    ...[...names].map((name) => ({ label: name, value: name })),
+  ];
+};
 
 const TYPE_OPTIONS = [
   { label: '全部', value: '' },
@@ -223,6 +232,7 @@ const TopicPage = () => {
   const [searchText, setSearchText] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [nsFilter, setNsFilter] = useState('');
+  const [namespaceOptions, setNamespaceOptions] = useState(DEFAULT_NAMESPACE_OPTIONS);
   const [viewMode, setViewMode] = useState<string>('列表');
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
@@ -236,12 +246,22 @@ const TopicPage = () => {
 
   useEffect(() => {
     let cancelled = false;
-    void listTopics()
-      .then((nextTopics) => {
-        if (!cancelled) setTopics(nextTopics);
-      })
-      .catch(() => {
-        if (!cancelled) message.error('Topic 列表加载失败，请稍后重试');
+    void Promise.allSettled([listTopics(), listNamespaces()])
+      .then(([topicsResult, namespacesResult]) => {
+        if (cancelled) return;
+
+        if (topicsResult.status === 'fulfilled') {
+          setTopics(topicsResult.value);
+        } else {
+          message.error('Topic 列表加载失败，请稍后重试');
+        }
+
+        if (namespacesResult.status === 'fulfilled') {
+          setNamespaceOptions(buildNamespaceOptions(namespacesResult.value));
+        } else {
+          setNamespaceOptions(DEFAULT_NAMESPACE_OPTIONS);
+          message.warning('命名空间加载失败，已使用默认命名空间');
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -633,7 +653,7 @@ const TopicPage = () => {
             placeholder="命名空间"
             value={nsFilter}
             onChange={setNsFilter}
-            options={NAMESPACE_OPTIONS}
+            options={namespaceOptions}
             style={{ width: 140 }}
           />
           <Segmented
@@ -810,7 +830,7 @@ const TopicPage = () => {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item label="命名空间" name="namespace" rules={[{ required: true }]}>
-                <Select disabled options={[{ label: 'default', value: 'default' }]} />
+                <Select options={namespaceOptions.filter((option) => option.value)} />
               </Form.Item>
             </Col>
             <Col span={12}>

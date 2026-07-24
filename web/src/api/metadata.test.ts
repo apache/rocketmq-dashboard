@@ -18,7 +18,7 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { createTopic, deleteTopic, listTopics, sendTopicMessage } from './metadata';
+import { createTopic, deleteTopic, listNamespaces, listTopics, sendTopicMessage } from './metadata';
 
 const mock = new MockAdapter(client);
 
@@ -41,6 +41,13 @@ describe('topic metadata API', () => {
     });
 
     await expect(listTopics(params)).resolves.toEqual([]);
+  });
+
+  it('loads namespaces from the backend contract', async () => {
+    const namespaces = [{ name: 'trade', clusterId: 'cluster-a' }];
+    mock.onGet('/namespaces').reply(200, { code: 200, data: namespaces });
+
+    await expect(listNamespaces()).resolves.toEqual(namespaces);
   });
 
   it('persists topic creation, deletion, and sending through API endpoints', async () => {

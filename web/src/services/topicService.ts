@@ -1,14 +1,35 @@
 import { USE_MOCK } from '../config';
 import * as metadataApi from '../api/metadata';
 import type {
-  Topic,
-  TopicQuery,
   BrokerRoute,
   ConsumerGroupInfo,
+  Namespace,
   SendTopicMessageRequest,
   SendTopicMessageResult,
+  Topic,
+  TopicQuery,
 } from '../api/metadata';
 import { topics as mockTopics, topicRoutes, topicConsumers } from '../mock/topics';
+
+const DEFAULT_NAMESPACE = 'default';
+
+const namespaceFromTopic = (topic: Topic): Namespace => ({
+  name: topic.namespace || DEFAULT_NAMESPACE,
+  clusterId: topic.clusterId,
+});
+
+export async function listNamespaces(): Promise<Namespace[]> {
+  if (USE_MOCK) {
+    const namespaces = new Map<string, Namespace>();
+    namespaces.set(DEFAULT_NAMESPACE, { name: DEFAULT_NAMESPACE });
+    (mockTopics as unknown as Topic[]).forEach((topic) => {
+      const namespace = namespaceFromTopic(topic);
+      namespaces.set(namespace.name, namespace);
+    });
+    return [...namespaces.values()];
+  }
+  return metadataApi.listNamespaces();
+}
 
 export async function listTopics(params?: TopicQuery): Promise<Topic[]> {
   if (USE_MOCK) {
