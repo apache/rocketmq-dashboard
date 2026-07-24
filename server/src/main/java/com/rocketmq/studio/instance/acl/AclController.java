@@ -17,6 +17,7 @@
 package com.rocketmq.studio.instance.acl;
 
 import com.rocketmq.studio.common.domain.Result;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -26,7 +27,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/acl")
@@ -53,8 +53,8 @@ public class AclController {
     }
 
     @PostMapping("/rules/delete")
-    public Result<Void> deleteRule(@RequestBody Map<String, String> request) {
-        aclService.deleteRule(request.get("id"));
+    public Result<Void> deleteRule(@Valid @RequestBody AclDeleteRequestDTO request) {
+        aclService.deleteRule(request.getId());
         return Result.ok();
     }
 
@@ -74,8 +74,8 @@ public class AclController {
     }
 
     @PostMapping("/users/delete")
-    public Result<Void> deleteUser(@RequestBody Map<String, String> request) {
-        aclService.deleteUser(request.get("id"));
+    public Result<Void> deleteUser(@Valid @RequestBody AclDeleteRequestDTO request) {
+        aclService.deleteUser(request.getId());
         return Result.ok();
     }
 }
