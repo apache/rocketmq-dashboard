@@ -43,5 +43,10 @@ public class LoginVO {
     public static class UserInfo {
         private String username;
         private boolean admin;
+
+        @Override
+        public String toString() {
+            return "UserInfo(username=<redacted>, admin=" + admin + ")";
+        }
     }
 }

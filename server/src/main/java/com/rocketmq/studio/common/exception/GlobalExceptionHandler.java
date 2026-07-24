@@ -24,12 +24,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.HttpMediaTypeNotAcceptableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -99,6 +104,47 @@ public class GlobalExceptionHandler {
             .body(Result.error(HttpStatus.BAD_REQUEST.value(), "Invalid request body"));
     }
 
+    @ExceptionHandler(HttpMediaTypeNotAcceptableException.class)
+    public ResponseEntity<Void> handleHttpMediaTypeNotAcceptableException(
+        HttpMediaTypeNotAcceptableException ex,
+        HttpServletRequest request
+    ) {
+        if (isLoginRequest(request)) {
+            return loginEmpty(HttpStatus.NOT_ACCEPTABLE);
+        }
+        return ResponseEntity.status(HttpStatus.NOT_ACCEPTABLE).build();
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<Void> handleHttpMediaTypeNotSupportedException(
+        HttpMediaTypeNotSupportedException ex,
+        HttpServletRequest request
+    ) {
+        if (isLoginRequest(request)) {
+            return loginEmpty(HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+        }
+        return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE).build();
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<Void> handleHttpRequestMethodNotSupportedException(
+        HttpRequestMethodNotSupportedException ex,
+        HttpServletRequest request
+    ) {
+        if (isLoginRequest(request)) {
+            return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
+                .cacheControl(CacheControl.noStore())
+                .allow(HttpMethod.POST)
+                .build();
+        }
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).build();
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<Void> handleNoResourceFoundException(NoResourceFoundException ex) {
+        return ResponseEntity.notFound().build();
+    }
+
     @ExceptionHandler(StudioLoginException.class)
     public ResponseEntity<Result<?>> handleStudioLoginException(StudioLoginException ex) {
         if (ex.status() == HttpStatus.UNAUTHORIZED) {
@@ -146,5 +192,11 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(status)
             .cacheControl(CacheControl.noStore())
             .body(Result.error(status.value(), message));
+    }
+
+    private static ResponseEntity<Void> loginEmpty(HttpStatus status) {
+        return ResponseEntity.status(status)
+            .cacheControl(CacheControl.noStore())
+            .build();
     }
 }

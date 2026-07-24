@@ -27,6 +27,11 @@ public interface StudioUserRegistry {
     }
 
     record User(String username, String passwordHash, Role role, String fingerprint) {
+        @Override
+        public String toString() {
+            return "User[username=<redacted>, passwordHash=<redacted>, role=" + role
+                + ", fingerprint=<redacted>]";
+        }
     }
 
     record Snapshot(long revision, boolean available, Map<String, User> users) {
@@ -35,6 +40,12 @@ public interface StudioUserRegistry {
             if (!available) {
                 users = Map.of();
             }
+        }
+
+        @Override
+        public String toString() {
+            return "Snapshot[revision=" + revision + ", available=" + available
+                + ", users=<redacted>]";
         }
     }
 }

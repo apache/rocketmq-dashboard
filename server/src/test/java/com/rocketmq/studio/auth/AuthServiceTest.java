@@ -350,6 +350,17 @@ class AuthServiceTest {
                 .admin(false)
                 .build())
             .build();
+        User registryUser = new User(
+            "registry-username-marker",
+            "registry-password-hash-marker",
+            Role.ADMIN,
+            "registry-fingerprint-marker"
+        );
+        Snapshot registrySnapshot = new Snapshot(
+            REVISION,
+            true,
+            Map.of("registry-map-key-marker", registryUser)
+        );
 
         Class<?> credentialsType = Stream.of(AuthService.class.getDeclaredClasses())
             .filter(type -> type.getSimpleName().equals("Credentials"))
@@ -366,7 +377,19 @@ class AuthServiceTest {
             .isEqualTo("LoginDTO(username=<redacted>, password=<redacted>)");
         assertThat(response.toString())
             .contains("token=<redacted>")
-            .doesNotContain("raw-token-marker");
+            .doesNotContain("raw-token-marker")
+            .doesNotContain("canonical-user");
+        assertThat(response.getUser().toString())
+            .doesNotContain("canonical-user");
+        assertThat(registryUser.toString())
+            .doesNotContain("registry-username-marker")
+            .doesNotContain("registry-password-hash-marker")
+            .doesNotContain("registry-fingerprint-marker");
+        assertThat(registrySnapshot.toString())
+            .doesNotContain("registry-map-key-marker")
+            .doesNotContain("registry-username-marker")
+            .doesNotContain("registry-password-hash-marker")
+            .doesNotContain("registry-fingerprint-marker");
         assertThat(credentials.toString())
             .isEqualTo("Credentials[username=<redacted>, password=<redacted>]");
     }

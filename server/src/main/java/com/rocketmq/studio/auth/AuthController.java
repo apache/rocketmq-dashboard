@@ -22,6 +22,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.CacheControl;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -35,7 +36,11 @@ public class AuthController {
 
     private final AuthService authService;
 
-    @PostMapping("/login")
+    @PostMapping(
+        value = "/login",
+        consumes = MediaType.APPLICATION_JSON_VALUE,
+        produces = MediaType.APPLICATION_JSON_VALUE
+    )
     public ResponseEntity<Result<LoginVO>> login(
         @Valid @RequestBody LoginDTO request,
         HttpServletRequest servletRequest

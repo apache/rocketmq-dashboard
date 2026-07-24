@@ -17,15 +17,21 @@
 
 package com.rocketmq.studio.auth;
 
+import java.util.Arrays;
 import java.util.stream.Stream;
 
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.classic.spi.IThrowableProxy;
 import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rocketmq.studio.auth.security.StudioLoginException;
 import com.rocketmq.studio.cluster.metrics.PrometheusException;
 import com.rocketmq.studio.common.exception.BusinessException;
+import jakarta.validation.GroupSequence;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -46,9 +52,11 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.slf4j.Logger.ROOT_LOGGER_NAME;
 import static org.slf4j.LoggerFactory.getLogger;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -105,6 +113,63 @@ class AuthControllerTest {
         verify(authService).login(any(LoginDTO.class), eq("203.0.113.9"));
     }
 
+    @Test
+    void loginRejectsUnacceptableResponseMediaTypeBeforeService() throws Exception {
+        mockMvc.perform(validLogin().accept(MediaType.TEXT_PLAIN))
+                .andExpect(status().isNotAcceptable())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(content().string(""));
+
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    void loginRejectsUnsupportedRequestMediaTypeBeforeService() throws Exception {
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .accept(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"testuser\",\"password\":\"testpass\"}"))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(content().string(""));
+
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    void loginRejectsMissingRequestMediaTypeBeforeService() throws Exception {
+        mockMvc.perform(post("/api/auth/login")
+                        .accept(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"testuser\",\"password\":\"testpass\"}"))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(content().string(""));
+
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    void loginRejectsGetBeforeServiceAndAdvertisesPost() throws Exception {
+        mockMvc.perform(get("/api/auth/login").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(header().string(HttpHeaders.ALLOW, "POST"))
+                .andExpect(content().string(""));
+
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    void loginTrailingSlashRemainsNotFound() throws Exception {
+        mockMvc.perform(post("/api/auth/login/")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"testuser\",\"password\":\"testpass\"}"))
+                .andExpect(status().isNotFound());
+
+        verifyNoInteractions(authService);
+    }
+
     @ParameterizedTest
     @MethodSource("invalidLoginBodies")
     void loginRejectsInvalidCredentialsWithFixedSafeBadRequest(String body) throws Exception {
@@ -119,6 +184,50 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.data").doesNotExist());
 
         verify(authService, never()).login(any(LoginDTO.class), any());
+    }
+
+    @ParameterizedTest
+    @MethodSource("nonStringLoginBodies")
+    void loginRejectsNonStringCredentialScalarsBeforeService(String body) throws Exception {
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("Invalid login request"));
+
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    void loginValidationChecksLengthsBeforeCredentialContents() throws Exception {
+        GroupSequence sequence = LoginDTO.class.getAnnotation(GroupSequence.class);
+
+        assertThat(sequence).isNotNull();
+        assertThat(Arrays.stream(sequence.value()).map(Class::getSimpleName))
+                .containsExactly("LoginDTO", "ContentChecks");
+        assertThat(LoginDTO.class.getDeclaredField("username").getAnnotation(Size.class))
+                .satisfies(size -> {
+                    assertThat(size.min()).isEqualTo(1);
+                    assertThat(size.max()).isEqualTo(128);
+                });
+        assertThat(LoginDTO.class.getDeclaredField("password").getAnnotation(Size.class))
+                .satisfies(size -> {
+                    assertThat(size.min()).isEqualTo(1);
+                    assertThat(size.max()).isEqualTo(72);
+                });
+        assertThat(LoginDTO.class.getDeclaredField("username").getAnnotation(Pattern.class))
+                .satisfies(pattern -> {
+                    assertThat(pattern.regexp()).isEqualTo("[A-Za-z0-9._@-]{1,128}");
+                    assertThat(Arrays.stream(pattern.groups()).map(Class::getSimpleName))
+                            .containsExactly("ContentChecks");
+                });
+        assertThat(LoginDTO.class.getDeclaredField("password").getAnnotation(NotBlank.class))
+                .satisfies(notBlank ->
+                        assertThat(Arrays.stream(notBlank.groups()).map(Class::getSimpleName))
+                                .containsExactly("ContentChecks"));
     }
 
     @Test
@@ -241,6 +350,10 @@ class AuthControllerTest {
         String password = "password-log-marker";
         String token = "token-log-marker";
         String exceptionMessage = "underlying-log-marker";
+        String unacceptableUsername = "accept-username-marker";
+        String unacceptablePassword = "accept-password-marker";
+        String overlongUsernameMarker = "overlong-username-marker";
+        String overlongPasswordMarker = "overlong-password-marker";
         LoginVO response = LoginVO.builder()
                 .token(token)
                 .expiresIn(300)
@@ -262,6 +375,20 @@ class AuthControllerTest {
                                     + "\",\"password\":\"" + password + "\"}"))
                     .andExpect(status().isOk());
 
+            mockMvc.perform(post("/api/auth/login")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .accept(MediaType.TEXT_PLAIN)
+                            .content("{\"username\":\"" + unacceptableUsername
+                                    + "\",\"password\":\"" + unacceptablePassword + "\"}"))
+                    .andExpect(status().isNotAcceptable());
+
+            mockMvc.perform(post("/api/auth/login")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"username\":\"" + overlongUsernameMarker
+                                    + "a".repeat(129) + "\",\"password\":\""
+                                    + overlongPasswordMarker + "a".repeat(73) + "\"}"))
+                    .andExpect(status().isBadRequest());
+
             reset(authService);
             when(authService.login(any(LoginDTO.class), any()))
                     .thenThrow(new IllegalStateException(exceptionMessage));
@@ -273,13 +400,17 @@ class AuthControllerTest {
         }
 
         String messages = appender.list.stream()
-                .map(ILoggingEvent::getFormattedMessage)
+                .map(AuthControllerTest::eventText)
                 .reduce("", (left, right) -> left + "\n" + right);
         assertThat(messages)
                 .doesNotContain(username)
                 .doesNotContain(password)
                 .doesNotContain(token)
-                .doesNotContain(exceptionMessage);
+                .doesNotContain(exceptionMessage)
+                .doesNotContain(unacceptableUsername)
+                .doesNotContain(unacceptablePassword)
+                .doesNotContain(overlongUsernameMarker)
+                .doesNotContain(overlongPasswordMarker);
     }
 
     @Test
@@ -309,7 +440,42 @@ class AuthControllerTest {
                 "{\"username\":\" \",\"password\":\"\"}",
                 "{\"username\":\"álîce\",\"password\":\"testpass\"}",
                 "{\"username\":\"" + "a".repeat(129) + "\",\"password\":\"testpass\"}",
-                "{\"username\":\"testuser\",\"password\":\"" + "a".repeat(73) + "\"}"
+                "{\"username\":\"testuser\",\"password\":\"" + "a".repeat(73) + "\"}",
+                "{\"username\":\"testuser\",\"password\":\"" + " ".repeat(73) + "\"}"
         );
+    }
+
+    private static Stream<String> nonStringLoginBodies() {
+        return Stream.of(
+                "{\"username\":123,\"password\":\"testpass\"}",
+                "{\"username\":true,\"password\":\"testpass\"}",
+                "{\"username\":[],\"password\":\"testpass\"}",
+                "{\"username\":{},\"password\":\"testpass\"}",
+                "{\"username\":\"testuser\",\"password\":123}",
+                "{\"username\":\"testuser\",\"password\":false}",
+                "{\"username\":\"testuser\",\"password\":[]}",
+                "{\"username\":\"testuser\",\"password\":{}}"
+        );
+    }
+
+    private static String eventText(ILoggingEvent event) {
+        return event.getFormattedMessage() + throwableText(event.getThrowableProxy());
+    }
+
+    private static String throwableText(IThrowableProxy throwable) {
+        if (throwable == null) {
+            return "";
+        }
+        StringBuilder text = new StringBuilder()
+                .append('\n')
+                .append(throwable.getClassName())
+                .append(": ")
+                .append(throwable.getMessage());
+        Arrays.stream(throwable.getStackTraceElementProxyArray())
+                .forEach(element -> text.append('\n').append(element));
+        Arrays.stream(throwable.getSuppressed())
+                .forEach(suppressed -> text.append(throwableText(suppressed)));
+        text.append(throwableText(throwable.getCause()));
+        return text.toString();
     }
 }
