@@ -215,7 +215,9 @@ public final class StudioBearerAuthenticationFilter extends OncePerRequestFilter
 
     private void reject(HttpServletResponse response) throws IOException {
         SecurityContextHolder.clearContext();
-        responses.unauthorized(response);
+        if (!response.isCommitted()) {
+            responses.unauthorized(response);
+        }
     }
 
     private record AuthorizationHeader(boolean present, String token) {

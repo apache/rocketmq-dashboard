@@ -28,6 +28,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -57,6 +58,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -500,6 +502,51 @@ class StudioSecurityIntegrationTest {
         assertThat(response.getStatus()).isEqualTo(401);
         assertThat(response.getHeader(HttpHeaders.WWW_AUTHENTICATE)).isEqualTo("Bearer");
         assertThat(response.getContentAsString()).isEqualTo(UNAUTHORIZED_JSON);
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+        value = DispatcherType.class,
+        names = {"ASYNC", "ERROR"}
+    )
+    void revokedTokenLeavesCommittedResponseUntouchedOnRedispatch(
+        DispatcherType dispatcherType
+    ) throws Exception {
+        String marker = "event: marker\ndata: before-revoke\n\n";
+        String token = login(USERNAME, PASSWORD);
+        Session session = sessions.resolve(token).orElseThrow();
+        sessions.revoke(session.id());
+        AtomicBoolean chainReached = new AtomicBoolean();
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setStatus(200);
+        response.setContentType(MediaType.TEXT_EVENT_STREAM_VALUE);
+        response.getOutputStream().print(marker);
+        response.flushBuffer();
+        SecurityContextHolder.getContext().setAuthentication(
+            org.springframework.security.authentication
+                .UsernamePasswordAuthenticationToken.authenticated(
+                    "stale",
+                    null,
+                    List.of()
+                )
+        );
+
+        assertThat(response.isCommitted()).isTrue();
+        try {
+            bearerFilter().doFilter(
+                dispatchRequest(dispatcherType, token),
+                response,
+                (request, servletResponse) -> chainReached.set(true)
+            );
+        } finally {
+            assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+            SecurityContextHolder.clearContext();
+        }
+
+        assertThat(chainReached).isFalse();
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(response.getContentAsString()).isEqualTo(marker);
+        assertThat(response.getContentType()).isEqualTo(MediaType.TEXT_EVENT_STREAM_VALUE);
     }
 
     @Test
