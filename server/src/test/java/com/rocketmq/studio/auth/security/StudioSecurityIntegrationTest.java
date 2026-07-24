@@ -67,6 +67,9 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.actuate.health.Health;
+import org.springframework.boot.actuate.health.HealthIndicator;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
@@ -78,6 +81,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -173,6 +177,9 @@ class StudioSecurityIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private ApplicationContext applicationContext;
 
     @Autowired
     private MutableClock clock;
@@ -280,16 +287,123 @@ class StudioSecurityIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
+        "/actuator/health",
         "/actuator/health/liveness",
         "/actuator/health/readiness"
     })
-    void healthProbesArePublicAndIgnoreAuthorization(String path) throws Exception {
+    void healthEndpointsArePublicAndIgnoreAuthorization(String path) throws Exception {
         mockMvc.perform(get(path).header(
                 HttpHeaders.AUTHORIZATION,
-                "Bearer malformed-public-probe"
+                "Bearer malformed-public-health"
             ))
             .andExpect(status().isOk())
             .andExpect(cookie().doesNotExist("JSESSIONID"));
+    }
+
+    @Test
+    void healthSubtreeUsesContextPathAwareBoundarySemantics() throws Exception {
+        mockMvc.perform(get("/studio/actuator/health/readiness")
+                .contextPath("/studio")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer malformed-public-health"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("UP"));
+
+        mockMvc.perform(get("/actuator/health/not-a-component")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer malformed-public-health"))
+            .andExpect(status().isNotFound());
+        mockMvc.perform(get("/actuator/health/studioSecurity")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer malformed-public-health"))
+            .andExpect(status().isNotFound());
+        assertThat(access(HttpMethod.GET, "/actuator/health/studioSecurity"))
+            .isEqualTo(Access.PUBLIC);
+    }
+
+    @ParameterizedTest
+    @MethodSource("protectedHealthLookalikesAndMethods")
+    void healthLookalikesNonGetsAndOtherActuatorEndpointsStayProtected(
+        MockHttpServletRequestBuilder request
+    ) throws Exception {
+        assertUnauthorized(request);
+    }
+
+    @Test
+    void applicationContextHasNoDefaultUserDetailsService() {
+        assertThat(applicationContext.getBeansOfType(UserDetailsService.class)).isEmpty();
+    }
+
+    @Test
+    void validRegistryMakesStudioSecurityAndReadinessHealthy() throws Exception {
+        assertThat(applicationContext.getBeansOfType(HealthIndicator.class))
+            .containsKey("studioSecurityHealthIndicator");
+
+        MvcResult liveness = assertHealthStatus("/actuator/health/liveness", 200, "UP");
+        MvcResult readiness = assertHealthStatus("/actuator/health/readiness", 200, "UP");
+        assertSafeHealthResponse(liveness);
+        assertSafeHealthResponse(readiness);
+
+        Health health = studioSecurityHealthIndicator().health();
+        assertThat(health.getStatus().getCode()).isEqualTo("UP");
+        assertThat(health.getDetails()).containsExactlyEntriesOf(
+            java.util.Map.of("userRegistry", "available")
+        );
+    }
+
+    @Test
+    void invalidRegistryOnlyMakesReadinessUnavailableAndRecoversWithoutSleeping()
+        throws Exception {
+        String invalidContent = "{\"schemaVersion\":\"v1\",\"users\":[secret-invalid";
+        writeRaw(invalidContent);
+        refreshRegistry();
+
+        assertHealthStatus("/actuator/health/liveness", 200, "UP");
+        MvcResult readiness = assertHealthStatus(
+            "/actuator/health/readiness",
+            503,
+            "OUT_OF_SERVICE"
+        );
+        MvcResult root = assertHealthStatus(
+            "/actuator/health",
+            503,
+            "OUT_OF_SERVICE"
+        );
+        assertSafeHealthResponse(readiness, invalidContent);
+        assertSafeHealthResponse(root, invalidContent);
+        Health unavailable = studioSecurityHealthIndicator().health();
+        assertThat(unavailable.getStatus().getCode()).isEqualTo("OUT_OF_SERVICE");
+        assertThat(unavailable.getDetails()).containsExactlyEntriesOf(
+            java.util.Map.of("userRegistry", "unavailable")
+        );
+
+        writeUsers(
+            userJson(USERNAME, USER_HASH, "USER"),
+            userJson(ADMIN_USERNAME, ADMIN_HASH, "ADMIN")
+        );
+        refreshRegistry();
+
+        assertHealthStatus("/actuator/health/liveness", 200, "UP");
+        assertHealthStatus("/actuator/health/readiness", 200, "UP");
+        assertHealthStatus("/actuator/health", 200, "UP");
+    }
+
+    @Test
+    void missingRegistryOnlyMakesReadinessUnavailableWithoutLeakingFilePath()
+        throws Exception {
+        Files.delete(USER_FILE);
+        refreshRegistry();
+
+        assertHealthStatus("/actuator/health/liveness", 200, "UP");
+        MvcResult readiness = assertHealthStatus(
+            "/actuator/health/readiness",
+            503,
+            "OUT_OF_SERVICE"
+        );
+        MvcResult root = assertHealthStatus(
+            "/actuator/health",
+            503,
+            "OUT_OF_SERVICE"
+        );
+        assertSafeHealthResponse(readiness, USER_FILE.toString());
+        assertSafeHealthResponse(root, USER_FILE.toString());
     }
 
     @Test
@@ -790,6 +904,51 @@ class StudioSecurityIntegrationTest {
             .andExpect(content().string(FORBIDDEN_JSON));
     }
 
+    private MvcResult assertHealthStatus(
+        String path,
+        int expectedStatus,
+        String expectedHealth
+    ) throws Exception {
+        return mockMvc.perform(get(path))
+            .andExpect(status().is(expectedStatus))
+            .andExpect(header().string(
+                HttpHeaders.CONTENT_TYPE,
+                org.hamcrest.Matchers.containsString("json")
+            ))
+            .andExpect(jsonPath("$.status").value(expectedHealth))
+            .andExpect(cookie().doesNotExist("JSESSIONID"))
+            .andReturn();
+    }
+
+    private void assertSafeHealthResponse(MvcResult result, String... additionalSecrets)
+        throws Exception {
+        String body = result.getResponse().getContentAsString();
+        assertThat(body)
+            .doesNotContain(
+                USER_FILE.toString(),
+                USERNAME,
+                USER_HASH,
+                ADMIN_USERNAME,
+                ADMIN_HASH,
+                "passwordHash",
+                "parse",
+                "PARSE",
+                "reason",
+                "REASON",
+                "INVALID_JSON"
+            );
+        if (additionalSecrets.length > 0) {
+            assertThat(body).doesNotContain(additionalSecrets);
+        }
+    }
+
+    private HealthIndicator studioSecurityHealthIndicator() {
+        return applicationContext.getBean(
+            "studioSecurityHealthIndicator",
+            HealthIndicator.class
+        );
+    }
+
     private String login(String username, String password) throws Exception {
         String body = mockMvc.perform(post("/api/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -932,6 +1091,16 @@ class StudioSecurityIntegrationTest {
             "Bearer " + VALID_TOKEN_SHAPE + "\r\nInjected: marker",
             "Bearer " + "A".repeat(4096),
             "Token " + VALID_TOKEN_SHAPE
+        );
+    }
+
+    private static Stream<MockHttpServletRequestBuilder> protectedHealthLookalikesAndMethods() {
+        return Stream.of(
+            get("/actuator/healthy"),
+            get("/actuator/healthiness"),
+            get("/actuator/info"),
+            post("/actuator/health"),
+            post("/actuator/health/readiness")
         );
     }
 

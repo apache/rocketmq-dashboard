@@ -23,7 +23,7 @@ management:
         liveness:
           include: livenessState
         readiness:
-          include: readinessState
+          include: readinessState,studioSecurity
 
 studio:
   security:

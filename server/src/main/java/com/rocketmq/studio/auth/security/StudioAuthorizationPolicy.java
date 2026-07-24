@@ -35,8 +35,10 @@ import org.springframework.web.util.pattern.PathPatternParser;
 
 @Component
 public final class StudioAuthorizationPolicy {
-    private static final String LIVENESS_PATH = "/actuator/health/liveness";
-    private static final String READINESS_PATH = "/actuator/health/readiness";
+    private static final PathPattern HEALTH_PATH = new PathPatternParser()
+        .parse("/actuator/health");
+    private static final PathPattern HEALTH_SUBTREE_PATH = new PathPatternParser()
+        .parse("/actuator/health/**");
     private static final List<Route> ROUTES = List.of(
         route(HttpMethod.POST, "/api/ai/chat", Access.USER),
         route(HttpMethod.POST, "/api/ai/execute", Access.ADMIN),
@@ -173,10 +175,8 @@ public final class StudioAuthorizationPolicy {
         if (!HttpMethod.GET.matches(request.getMethod())) {
             return false;
         }
-        String contextPath = request.getContextPath();
-        String requestUri = request.getRequestURI();
-        return requestUri.equals(contextPath + LIVENESS_PATH)
-            || requestUri.equals(contextPath + READINESS_PATH);
+        PathContainer path = requestPath(request).pathWithinApplication();
+        return HEALTH_PATH.matches(path) || HEALTH_SUBTREE_PATH.matches(path);
     }
 
     private static Route route(HttpMethod method, String mvcPattern, Access access) {
