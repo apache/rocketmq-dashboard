@@ -18,6 +18,7 @@
 package com.rocketmq.studio.ops;
 
 import com.rocketmq.studio.common.domain.Result;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -38,26 +39,26 @@ public class OpsController {
     }
 
     @PostMapping("/updateNameSvrAddr")
-    public Result<Void> updateNameSvrAddr(@RequestBody OpsNameServerDTO request) {
+    public Result<Void> updateNameSvrAddr(@Valid @RequestBody OpsNameServerDTO request) {
         opsService.updateNameServer(request.getNamesrvAddr());
         return Result.ok();
     }
 
     @PostMapping("/addNameSvrAddr")
-    public Result<Void> addNameSvrAddr(@RequestBody OpsNameServerDTO request) {
+    public Result<Void> addNameSvrAddr(@Valid @RequestBody OpsNameServerDTO request) {
         opsService.addNameServer(request.getNamesrvAddr());
         return Result.ok();
     }
 
     @PostMapping("/updateIsVIPChannel")
-    public Result<Void> updateIsVIPChannel(@RequestBody OpsVipChannelDTO request) {
-        opsService.updateVipChannel(request.isUseVIPChannel());
+    public Result<Void> updateIsVIPChannel(@Valid @RequestBody OpsVipChannelDTO request) {
+        opsService.updateVipChannel(request.getUseVIPChannel());
         return Result.ok();
     }
 
     @PostMapping("/updateUseTLS")
-    public Result<Void> updateUseTLS(@RequestBody OpsTlsDTO request) {
-        opsService.updateUseTLS(request.isUseTLS());
+    public Result<Void> updateUseTLS(@Valid @RequestBody OpsTlsDTO request) {
+        opsService.updateUseTLS(request.getUseTLS());
         return Result.ok();
     }
 }

@@ -17,9 +17,11 @@
 
 package com.rocketmq.studio.ops;
 
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 @Data
 public class OpsTlsDTO {
-    private boolean useTLS;
+    @NotNull(message = "useTLS is required")
+    private Boolean useTLS;
 }
