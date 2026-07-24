@@ -34,10 +34,10 @@ public class GlobalExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(BusinessException.class)
-    @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public Result<?> handleBusinessException(BusinessException ex) {
+    public ResponseEntity<Result<?>> handleBusinessException(BusinessException ex) {
         log.warn("Business exception: {}", ex.getMessage());
-        return Result.error(ex.getCode(), ex.getMessage());
+        return ResponseEntity.status(ex.getCode())
+                .body(Result.error(ex.getCode(), ex.getMessage()));
     }
 
     @ExceptionHandler(PrometheusException.class)

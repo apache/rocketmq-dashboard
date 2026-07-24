@@ -14,28 +14,28 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.rocketmq.studio.ops.ai;
+package com.rocketmq.studio;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import com.rocketmq.studio.ops.ai.tool.ToolCatalog;
+import com.rocketmq.studio.ops.ai.tool.ToolGatewayService;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
 
-import java.util.List;
+import static org.assertj.core.api.Assertions.assertThat;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class AiToolVO {
-    private String name;
-    private String description;
-    private Object parameters;
-    private String riskLevel;
-    private String permission;
-    private List<String> requiredCapabilities;
-    private Object outputSchema;
-    private String viewHint;
-    private boolean deprecated;
-    private String replacement;
+@SpringBootTest
+class StudioApplicationTest {
+
+    @Autowired
+    private ToolCatalog toolCatalog;
+
+    @Autowired
+    private ToolGatewayService toolGatewayService;
+
+    @Test
+    void applicationContextLoadsWithToolGateway() {
+        assertThat(toolCatalog.getVersion()).isEqualTo("1.0.0");
+        assertThat(toolGatewayService.discover(null)).isNotEmpty();
+    }
 }
