@@ -32,8 +32,10 @@ public class ProducerConnectionService {
 
     public List<ProducerConnectionVO> listConnections(String topic, String producerGroup) {
         log.info("Listing producer connections, topic={}, producerGroup={}", topic, producerGroup);
+        String normalizedTopic = normalizeFilter(topic);
+        String normalizedProducerGroup = normalizeFilter(producerGroup);
         return clientService.listConnections(null, ClientType.Producer.name()).stream()
-                .filter(connection -> matchesFilter(connection, topic, producerGroup))
+                .filter(connection -> matchesFilter(connection, normalizedTopic, normalizedProducerGroup))
                 .map(this::toProducerConnection)
                 .toList();
     }
@@ -59,5 +61,9 @@ public class ProducerConnectionService {
 
     private boolean hasText(String value) {
         return value != null && !value.trim().isEmpty();
+    }
+
+    private String normalizeFilter(String value) {
+        return hasText(value) ? value.trim() : null;
     }
 }
