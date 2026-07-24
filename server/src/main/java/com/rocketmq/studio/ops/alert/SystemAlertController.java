@@ -17,6 +17,7 @@
 package com.rocketmq.studio.ops.alert;
 
 import com.rocketmq.studio.common.domain.Result;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -42,8 +43,8 @@ public class SystemAlertController {
     }
 
     @PostMapping("/acknowledge")
-    public Result<SystemAlertVO> acknowledgeAlert(@RequestBody Map<String, String> request) {
-        return Result.ok(alertService.acknowledgeAlert(request.get("id")));
+    public Result<SystemAlertVO> acknowledgeAlert(@Valid @RequestBody AcknowledgeSystemAlertDTO request) {
+        return Result.ok(alertService.acknowledgeAlert(request.getId()));
     }
 
     @PostMapping("/clear-acknowledged")
