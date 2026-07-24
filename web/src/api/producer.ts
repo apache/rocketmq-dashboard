@@ -25,12 +25,22 @@ export interface ProducerConnection {
   versionDesc: string;
 }
 
+interface TopicRecord {
+  name: string;
+}
+
+interface TopicListResponse {
+  data?: TopicRecord[];
+  topicList?: string[];
+}
+
 // ─── API ────────────────────────────────────────────────────────
 
 /** Fetch all topic names */
 export async function fetchTopicList(): Promise<string[]> {
-  const res = await client.get<{ topicList: string[] }>('/topics');
-  return (res.data?.topicList ?? []).sort();
+  const res = await client.get<TopicListResponse>('/topics');
+  const topics = res.data.data?.map((topic) => topic.name) ?? res.data.topicList ?? [];
+  return topics.sort();
 }
 
 /** Query producer connections by topic and group */
