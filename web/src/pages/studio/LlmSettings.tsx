@@ -153,6 +153,8 @@ interface TestResult {
   msg: string;
 }
 
+const MASKED_API_KEY = '••••••••';
+
 const LlmSettingsPage: React.FC = () => {
   const { t } = useLang();
   const { message } = App.useApp();
@@ -164,7 +166,7 @@ const LlmSettingsPage: React.FC = () => {
   const [enabled, setEnabled] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState('openai');
   const [apiKeyMasked, setApiKeyMasked] = useState(true);
-  const [savedApiKey, setSavedApiKey] = useState('');
+  const [apiKeyConfigured, setApiKeyConfigured] = useState(false);
   const [modelOptions, setModelOptions] = useState<{ value: string; label: string }[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
 
@@ -183,9 +185,14 @@ const LlmSettingsPage: React.FC = () => {
           const provider = config.provider || 'openai';
           setSelectedProvider(provider);
           setEnabled(config.enabled || false);
-          if (config.apiKey) {
-            setSavedApiKey(config.apiKey);
-            form.setFieldsValue({ apiKey: maskApiKey(config.apiKey) });
+          if (config.apiKeyConfigured) {
+            setApiKeyConfigured(true);
+            setApiKeyMasked(true);
+            form.setFieldsValue({ apiKey: MASKED_API_KEY });
+          } else {
+            setApiKeyConfigured(false);
+            setApiKeyMasked(false);
+            form.setFieldsValue({ apiKey: '' });
           }
           form.setFieldsValue({
             provider,
@@ -241,11 +248,6 @@ const LlmSettingsPage: React.FC = () => {
       });
   }
 
-  const maskApiKey = (key: string) => {
-    if (!key || key.length < 8) return key ? '••••••••' : '';
-    return key.slice(0, 4) + '••••••••' + key.slice(-4);
-  };
-
   const currentProvider = PROVIDERS.find((p) => p.key === selectedProvider) || PROVIDERS[0];
 
   const handleProviderChange = useCallback(
@@ -258,17 +260,23 @@ const LlmSettingsPage: React.FC = () => {
           apiBase: provider.defaultBaseUrl,
           model: provider.defaultModel,
         });
+        if (value !== selectedProvider) {
+          form.setFieldsValue({ apiKey: '' });
+          setApiKeyConfigured(false);
+          setApiKeyMasked(false);
+        }
         if (!provider.requireApiKey) {
           form.setFieldsValue({ apiKey: '' });
-          setSavedApiKey('');
+          setApiKeyConfigured(false);
+          setApiKeyMasked(false);
         }
       }
     },
-    [form],
+    [form, selectedProvider],
   );
 
   const handleApiKeyFocus = () => {
-    if (apiKeyMasked && savedApiKey) {
+    if (apiKeyMasked && apiKeyConfigured) {
       form.setFieldsValue({ apiKey: '' });
       setApiKeyMasked(false);
     }
@@ -276,11 +284,14 @@ const LlmSettingsPage: React.FC = () => {
 
   const handleApiKeyBlur = () => {
     const val = form.getFieldValue('apiKey');
-    if (!val && savedApiKey) {
-      form.setFieldsValue({ apiKey: maskApiKey(savedApiKey) });
+    if (!val && apiKeyConfigured) {
+      form.setFieldsValue({ apiKey: MASKED_API_KEY });
       setApiKeyMasked(true);
     }
   };
+
+  const effectiveApiKey = (value: unknown) =>
+    apiKeyMasked && apiKeyConfigured ? '' : String(value || '');
 
   const handleTestConnection = () => {
     setTestLoading(true);
@@ -290,7 +301,7 @@ const LlmSettingsPage: React.FC = () => {
       .then((values) => {
         const testConfig: LlmConfig = {
           ...values,
-          apiKey: apiKeyMasked && savedApiKey ? savedApiKey : values.apiKey || '',
+          apiKey: effectiveApiKey(values.apiKey),
           enabled: true,
         };
         testLlmConnection(testConfig)
@@ -302,8 +313,11 @@ const LlmSettingsPage: React.FC = () => {
               saveLlmConfig(testConfig)
                 .then(() => {
                   if (testConfig.apiKey) {
-                    setSavedApiKey(testConfig.apiKey);
-                    form.setFieldsValue({ apiKey: maskApiKey(testConfig.apiKey) });
+                    setApiKeyConfigured(true);
+                    form.setFieldsValue({ apiKey: MASKED_API_KEY });
+                    setApiKeyMasked(true);
+                  } else if (apiKeyConfigured) {
+                    form.setFieldsValue({ apiKey: MASKED_API_KEY });
                     setApiKeyMasked(true);
                   }
                 })
@@ -341,7 +355,7 @@ const LlmSettingsPage: React.FC = () => {
       .then((values) => {
         const config: LlmConfig = {
           ...values,
-          apiKey: apiKeyMasked && savedApiKey ? savedApiKey : values.apiKey || '',
+          apiKey: effectiveApiKey(values.apiKey),
           enabled,
         };
         saveLlmConfig(config)
@@ -349,8 +363,11 @@ const LlmSettingsPage: React.FC = () => {
             if (result && result.status === 0) {
               message.success(t('llm.saveSuccess'));
               if (config.apiKey) {
-                setSavedApiKey(config.apiKey);
-                form.setFieldsValue({ apiKey: maskApiKey(config.apiKey) });
+                setApiKeyConfigured(true);
+                form.setFieldsValue({ apiKey: MASKED_API_KEY });
+                setApiKeyMasked(true);
+              } else if (apiKeyConfigured) {
+                form.setFieldsValue({ apiKey: MASKED_API_KEY });
                 setApiKeyMasked(true);
               }
             } else {

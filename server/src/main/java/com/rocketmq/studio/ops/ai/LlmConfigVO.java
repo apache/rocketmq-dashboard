@@ -17,10 +17,13 @@
 
 package com.rocketmq.studio.ops.ai;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
+import org.springframework.util.StringUtils;
 
 @Data
 @Builder
@@ -28,6 +31,8 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class LlmConfigVO {
     private String provider;
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+    @ToString.Exclude
     private String apiKey;
     private String apiBase;
     private String model;
@@ -37,4 +42,9 @@ public class LlmConfigVO {
     private String deploymentName;
     private String apiVersion;
     private String awsRegion;
+
+    @JsonProperty(value = "apiKeyConfigured", access = JsonProperty.Access.READ_ONLY)
+    public boolean isApiKeyConfigured() {
+        return StringUtils.hasText(apiKey);
+    }
 }

@@ -38,6 +38,16 @@ const sampleConfig: LlmConfig = {
   enabled: true,
 };
 
+const storedConfig: LlmConfig = {
+  provider: 'openai',
+  apiKeyConfigured: true,
+  apiBase: 'https://api.openai.com/v1',
+  model: 'gpt-4o',
+  maxTokens: 4096,
+  temperature: 0.7,
+  enabled: true,
+};
+
 describe('LLM API', () => {
   beforeEach(() => {
     mock.reset();
@@ -50,11 +60,13 @@ describe('LLM API', () => {
   });
 
   it('fetches LLM config', async () => {
-    mock.onGet('/llm/config').reply(200, sampleConfig);
+    mock.onGet('/llm/config').reply(200, storedConfig);
 
     const result = await getLlmConfig();
-    expect(result).toEqual(sampleConfig);
+    expect(result).toEqual(storedConfig);
     expect(result.provider).toBe('openai');
+    expect(result.apiKey).toBeUndefined();
+    expect(result.apiKeyConfigured).toBe(true);
     expect(result.enabled).toBe(true);
   });
 

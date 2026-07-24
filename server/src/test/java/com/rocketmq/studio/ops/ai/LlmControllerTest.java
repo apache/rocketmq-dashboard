@@ -64,6 +64,8 @@ class LlmControllerTest {
         mockMvc.perform(get("/api/llm/config"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.provider").value("openai"))
+                .andExpect(jsonPath("$.apiKey").doesNotExist())
+                .andExpect(jsonPath("$.apiKeyConfigured").value(true))
                 .andExpect(jsonPath("$.apiBase").value("https://api.openai.com/v1"))
                 .andExpect(jsonPath("$.model").value("gpt-4o"))
                 .andExpect(jsonPath("$.enabled").value(true));
