@@ -71,6 +71,43 @@ class AlertServiceTest {
     }
 
     @Test
+    void exportPrometheusRulesYamlShouldReturnDefaultRulesWhenRepositoryIsEmpty() {
+        when(alertRepository.findAllRules()).thenReturn(Collections.emptyList());
+
+        String result = alertService.exportPrometheusRulesYaml();
+
+        assertThat(result)
+                .contains("groups:")
+                .contains("# Rule 1: RocketMQBrokerDown")
+                .contains("up{job=~\".*rocketmq.*\"} == 0")
+                .contains("rocketmq_consumer_lag_messages > 100000")
+                .contains("rocketmq_producer_send_to_back_rt > 1000")
+                .contains("severity: critical");
+    }
+
+    @Test
+    void exportPrometheusRulesYamlShouldConvertConfiguredRules() {
+        AlertRuleVO rule = AlertRuleVO.builder()
+                .name("High Lag Alert")
+                .metric("rocketmq_consumer_lag_messages")
+                .operator(">")
+                .threshold(5000)
+                .duration("3m")
+                .description("Lag too high")
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+
+        String result = alertService.exportPrometheusRulesYaml();
+
+        assertThat(result)
+                .contains("rocketmq-consumer.rules")
+                .contains("# Rule 1: HighLagAlert")
+                .contains("expr: rocketmq_consumer_lag_messages > 5000")
+                .contains("for: 3m")
+                .contains("description: \"Lag too high\"");
+    }
+
+    @Test
     void createRuleShouldAssignId() {
         AlertRuleVO input = AlertRuleVO.builder().name("New Rule").metric("tps")
                 .operator(">").threshold(1000.0).build();
