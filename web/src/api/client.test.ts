@@ -67,6 +67,48 @@ function captureAdapterRejection(apiClient: AxiosInstance): () => unknown {
   return () => capturedError;
 }
 
+function expectFixedSafeAxiosError(
+  rejectedError: AxiosError,
+  originalError: unknown,
+  status: number | undefined,
+  token: string,
+): void {
+  expect(rejectedError).not.toBe(originalError);
+  expect(axios.isAxiosError(rejectedError)).toBe(true);
+  expect(rejectedError).toMatchObject({
+    name: 'AxiosError',
+    message: status === undefined ? 'Request failed' : `Request failed with status code ${status}`,
+  });
+  expect(rejectedError.status).toBe(status);
+  expect(rejectedError.code).toBeUndefined();
+  expect(rejectedError.config).toEqual({ headers: expect.any(AxiosHeaders) });
+  expect(rejectedError.config?.headers.toJSON()).toEqual({});
+  expect(rejectedError.request).toBeUndefined();
+  if (status === undefined) {
+    expect(rejectedError.response).toBeUndefined();
+  } else {
+    expect(rejectedError.response).toEqual({
+      data: undefined,
+      status,
+      statusText: '',
+      headers: expect.any(AxiosHeaders),
+      config: rejectedError.config,
+    });
+  }
+  expect(
+    JSON.stringify({
+      message: rejectedError.message,
+      stack: rejectedError.stack,
+      json: rejectedError.toJSON(),
+      config: rejectedError.config,
+      request: rejectedError.request,
+      response: rejectedError.response,
+      code: rejectedError.code,
+      name: rejectedError.name,
+    }),
+  ).not.toContain(token);
+}
+
 describe('API client response contract', () => {
   beforeEach(() => {
     mock.reset();
@@ -134,7 +176,7 @@ describe('API client response contract', () => {
     await client.get('/clusters');
   });
 
-  it('clears the session and redirects once for an HTTP 401 response', async () => {
+  it('returns a fixed error, clears the session, and redirects once for HTTP 401', async () => {
     const token = 'secret-expired-token';
     persistAuthSession(token, 'studio-admin');
     const navigate = vi.fn();
@@ -145,19 +187,16 @@ describe('API client response contract', () => {
 
     const rejectedError = (await unauthorizedClient
       .get('/protected')
-      .catch((error: unknown) => error)) as Error & { toJSON?: () => unknown };
+      .catch((error: unknown) => error)) as AxiosError;
 
-    expect(rejectedError).toBe(getAdapterError());
-    expect(rejectedError).toMatchObject({ response: { status: 401 } });
-    expect(JSON.stringify(rejectedError.toJSON?.() ?? rejectedError)).not.toContain(token);
-    expect(`${rejectedError.message}\n${rejectedError.stack ?? ''}`).not.toContain(token);
+    expectFixedSafeAxiosError(rejectedError, getAdapterError(), 401, token);
     expect(readAuthSession()).toEqual({ token: null, user: null });
     expect(navigate).toHaveBeenCalledOnce();
     expect(navigate).toHaveBeenCalledWith('/');
     unauthorizedMock.restore();
   });
 
-  it('rejects the original HTTP 401 error when navigation fails', async () => {
+  it('returns a fixed HTTP 401 error when navigation fails', async () => {
     const token = 'secret-expired-token';
     persistAuthSession(token, 'studio-admin');
     const navigate = vi.fn(() => {
@@ -168,19 +207,18 @@ describe('API client response contract', () => {
     unauthorizedMock.onGet('/protected').reply(401);
     const getAdapterError = captureAdapterRejection(unauthorizedClient);
 
-    const rejectedError = await unauthorizedClient
+    const rejectedError = (await unauthorizedClient
       .get('/protected')
-      .catch((error: unknown) => error);
+      .catch((error: unknown) => error)) as AxiosError;
     unauthorizedMock.restore();
 
     expect(readAuthSession()).toEqual({ token: null, user: null });
     expect(navigate).toHaveBeenCalledOnce();
     expect(navigate).toHaveBeenCalledWith('/');
-    expect(rejectedError).toBe(getAdapterError());
-    expect(rejectedError).toMatchObject({ response: { status: 401 } });
+    expectFixedSafeAxiosError(rejectedError, getAdapterError(), 401, token);
   });
 
-  it('preserves the original non-401 error without clearing or redirecting', async () => {
+  it('returns a fixed non-401 error without clearing or redirecting', async () => {
     const token = 'secret-valid-token';
     persistAuthSession(token, 'studio-admin');
     const navigate = vi.fn();
@@ -191,20 +229,15 @@ describe('API client response contract', () => {
 
     const rejectedError = (await nonUnauthorizedClient
       .get('/protected', { headers: { 'X-Trace-Id': 'trace-1' } })
-      .catch((error: unknown) => error)) as Error & { toJSON?: () => unknown };
+      .catch((error: unknown) => error)) as AxiosError;
 
-    expect(rejectedError).toBe(getAdapterError());
-    expect(rejectedError).toMatchObject({ response: { status: 500 } });
-    const serializedError = JSON.stringify(rejectedError.toJSON?.() ?? rejectedError);
-    expect(serializedError).not.toContain(token);
-    expect(serializedError).toContain('trace-1');
-    expect(`${rejectedError.message}\n${rejectedError.stack ?? ''}`).not.toContain(token);
+    expectFixedSafeAxiosError(rejectedError, getAdapterError(), 500, token);
     expect(readAuthSession()).toEqual({ token, user: 'studio-admin' });
     expect(navigate).not.toHaveBeenCalled();
     nonUnauthorizedMock.restore();
   });
 
-  it('redacts every request copy created by the official fetch adapter', async () => {
+  it('returns a fixed error for the official fetch adapter', async () => {
     const token = 'secret-fetch-token';
     persistAuthSession(token, 'studio-admin');
     const fetchClient = createApiClient();
@@ -228,26 +261,14 @@ describe('API client response contract', () => {
           headers: { 'X-Trace-Id': 'trace-fetch' },
         })
         .catch((error: unknown) => error)) as AxiosError;
-      const request = rejectedError.request as Request;
-      const responseRequest = rejectedError.response?.request as Request;
 
-      expect(rejectedError).toBe(getAdapterError());
-      expect(rejectedError.status).toBe(500);
-      expect(rejectedError.response?.status).toBe(500);
-      expect(rejectedError.config?.headers.get('Authorization')).toBeUndefined();
-      expect(rejectedError.config?.headers.get('X-Trace-Id')).toBe('trace-fetch');
-      expect(request.headers.get('Authorization')).toBeNull();
-      expect(request.headers.get('X-Trace-Id')).toBe('trace-fetch');
-      expect(responseRequest).toBe(request);
-      expect(responseRequest.headers.get('Authorization')).toBeNull();
-      expect(JSON.stringify(rejectedError.toJSON())).not.toContain(token);
-      expect(`${rejectedError.message}\n${rejectedError.stack ?? ''}`).not.toContain(token);
+      expectFixedSafeAxiosError(rejectedError, getAdapterError(), 500, token);
     } finally {
       vi.stubGlobal('fetch', originalFetch);
     }
   });
 
-  it('returns a fixed minimal AxiosError when readonly headers cannot be redacted', async () => {
+  it('returns a fixed minimal AxiosError for readonly headers', async () => {
     const token = 'secret-readonly-token';
     persistAuthSession(token, 'studio-admin');
     const readonlyClient = createApiClient();
@@ -327,7 +348,7 @@ describe('API client response contract', () => {
     ).not.toContain(token);
   });
 
-  it('uses a safe AxiosError fallback when proxy-backed config blocks header reads', async () => {
+  it('returns a fixed AxiosError when proxy-backed config blocks header reads', async () => {
     const token = 'secret-proxy-token';
     persistAuthSession(token, 'studio-admin');
     const proxyClient = createApiClient();
@@ -379,7 +400,7 @@ describe('API client response contract', () => {
     expect(Object.prototype.hasOwnProperty.call(rejectedError, 'cause')).toBe(false);
   });
 
-  it('falls back when a proxy hides authorization from header enumeration', async () => {
+  it('returns a fixed error when a proxy hides authorization from enumeration', async () => {
     const token = 'secret-hostile-proxy-token';
     persistAuthSession(token, 'studio-admin');
     const proxyClient = createApiClient();
@@ -425,8 +446,107 @@ describe('API client response contract', () => {
     ).not.toContain(token);
   });
 
+  it('replaces errors when a proxy hides uppercase authorization from ownKeys', async () => {
+    const token = 'secret-hidden-uppercase-token';
+    persistAuthSession(token, 'studio-admin');
+    const proxyClient = createApiClient();
+    let originalError: AxiosError | undefined;
+
+    proxyClient.defaults.adapter = async (config) => {
+      const hostileHeaders = new Proxy(Object.create(null) as Record<PropertyKey, unknown>, {
+        ownKeys: () => [],
+        get: (_target, key) => (key === 'AUTHORIZATION' ? `Bearer ${token}` : undefined),
+        getOwnPropertyDescriptor: () => undefined,
+      });
+      Object.defineProperty(config, 'headers', {
+        value: hostileHeaders,
+        writable: true,
+        configurable: true,
+      });
+      originalError = new AxiosError('Request failed', AxiosError.ERR_BAD_RESPONSE, config);
+      originalError.status = 500;
+      return Promise.reject(originalError);
+    };
+
+    const rejectedError = (await proxyClient
+      .get('/hidden-uppercase')
+      .catch((error: unknown) => error)) as AxiosError;
+
+    expectFixedSafeAxiosError(rejectedError, originalError, 500, token);
+  });
+
+  it('replaces errors when request rawHeaders retain the credential', async () => {
+    const token = 'secret-raw-headers-token';
+    persistAuthSession(token, 'studio-admin');
+    const rawHeadersClient = createApiClient();
+    let originalError: AxiosError | undefined;
+
+    rawHeadersClient.defaults.adapter = async (config) => {
+      const request = {
+        rawHeaders: ['Authorization', `Bearer ${token}`],
+      };
+      const response: AxiosResponse = {
+        data: { code: 500, message: 'failed' },
+        status: 500,
+        statusText: 'Internal Server Error',
+        headers: new AxiosHeaders(),
+        config,
+        request,
+      };
+      originalError = new AxiosError(
+        'Request failed with status code 500',
+        AxiosError.ERR_BAD_RESPONSE,
+        config,
+        request,
+        response,
+      );
+      return Promise.reject(originalError);
+    };
+
+    const rejectedError = (await rawHeadersClient
+      .get('/raw-headers')
+      .catch((error: unknown) => error)) as AxiosError;
+
+    expectFixedSafeAxiosError(rejectedError, originalError, 500, token);
+  });
+
+  it('replaces errors when a config function property retains the credential', async () => {
+    const token = 'secret-function-property-token';
+    persistAuthSession(token, 'studio-admin');
+    const functionPropertyClient = createApiClient();
+    let originalError: AxiosError | undefined;
+
+    functionPropertyClient.defaults.adapter = async (config) => {
+      const transformRequest = Object.assign(() => config.data, {
+        debugCredential: token,
+      });
+      config.transformRequest = [transformRequest];
+      const response: AxiosResponse = {
+        data: { code: 500, message: 'failed' },
+        status: 500,
+        statusText: 'Internal Server Error',
+        headers: new AxiosHeaders(),
+        config,
+      };
+      originalError = new AxiosError(
+        'Request failed with status code 500',
+        AxiosError.ERR_BAD_RESPONSE,
+        config,
+        undefined,
+        response,
+      );
+      return Promise.reject(originalError);
+    };
+
+    const rejectedError = (await functionPropertyClient
+      .get('/function-property')
+      .catch((error: unknown) => error)) as AxiosError;
+
+    expectFixedSafeAxiosError(rejectedError, originalError, 500, token);
+  });
+
   it.each(['message', 'config', 'response data', 'response headers'] as const)(
-    'falls back when mutable error %s echoes the deleted credential',
+    'returns a fixed error when mutable error %s contains a credential',
     async (surface) => {
       const token = `secret-mutable-${surface.replace(' ', '-')}-token`;
       persistAuthSession(token, 'studio-admin');
@@ -487,7 +607,7 @@ describe('API client response contract', () => {
     },
   );
 
-  it('uses a fixed minimal fallback when the credential is echoed outside authorization', async () => {
+  it('returns a fixed minimal error when the credential appears across the original error', async () => {
     const token = 'secret-reflected-token';
     persistAuthSession(token, 'studio-admin');
     const reflectedClient = createApiClient();
@@ -578,7 +698,7 @@ describe('API client response contract', () => {
     ).not.toContain(token);
   });
 
-  it('redacts case-insensitive authorization headers from request interceptor errors', async () => {
+  it('returns a fixed error for request interceptor rejections', async () => {
     const token = 'secret-request-token';
     const requestClient = createApiClient();
     requestClient.interceptors.response.eject(0);
@@ -601,11 +721,10 @@ describe('API client response contract', () => {
     });
     requestClient.interceptors.request.use(() => Promise.reject(originalError));
 
-    const rejectedError = await requestClient.get('/protected').catch((error: unknown) => error);
+    const rejectedError = (await requestClient
+      .get('/protected')
+      .catch((error: unknown) => error)) as AxiosError;
 
-    expect(rejectedError).toBe(originalError);
-    const serializedError = JSON.stringify(originalError.toJSON?.() ?? originalError);
-    expect(serializedError).not.toContain(token);
-    expect(serializedError).toContain('trace-2');
+    expectFixedSafeAxiosError(rejectedError, originalError, undefined, token);
   });
 });
