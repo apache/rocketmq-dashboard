@@ -17,19 +17,26 @@
 
 package com.rocketmq.studio.instance.group;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rocketmq.studio.instance.topic.MetadataService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -39,6 +46,9 @@ class ConsumerGroupControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @MockBean
     private MetadataService metadataService;
@@ -75,5 +85,93 @@ class ConsumerGroupControllerTest {
                 .andExpect(jsonPath("$.data.threads[0].threadName").value("ConsumeMessageThread_1"))
                 .andExpect(jsonPath("$.data.threads[0].stackTrace[0]")
                         .value("org.apache.rocketmq.client.impl.consumer.ConsumeMessageConcurrentlyService.run"));
+    }
+
+    @Test
+    void resetOffsetShouldPassValidatedRequest() throws Exception {
+        Map<String, Object> body = Map.of(
+                "name", "cg-orders",
+                "topic", "orders",
+                "timestamp", 1784246400000L
+        );
+
+        mockMvc.perform(post("/api/groups/reset-offset")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.message").value("success"));
+
+        verify(metadataService).resetOffset(eq("cg-orders"), eq(1784246400000L), eq("orders"));
+    }
+
+    @Test
+    void resetOffsetShouldRejectMissingName() throws Exception {
+        Map<String, Object> body = Map.of(
+                "topic", "orders",
+                "timestamp", 1784246400000L
+        );
+
+        mockMvc.perform(post("/api/groups/reset-offset")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("name is required"));
+
+        verifyNoInteractions(metadataService);
+    }
+
+    @Test
+    void resetOffsetShouldRejectMissingTimestamp() throws Exception {
+        Map<String, Object> body = Map.of(
+                "name", "cg-orders",
+                "topic", "orders"
+        );
+
+        mockMvc.perform(post("/api/groups/reset-offset")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("timestamp is required"));
+
+        verifyNoInteractions(metadataService);
+    }
+
+    @Test
+    void resetOffsetShouldRejectNonPositiveTimestamp() throws Exception {
+        Map<String, Object> body = Map.of(
+                "name", "cg-orders",
+                "topic", "orders",
+                "timestamp", 0L
+        );
+
+        mockMvc.perform(post("/api/groups/reset-offset")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("timestamp must be positive"));
+
+        verifyNoInteractions(metadataService);
+    }
+
+    @Test
+    void resetOffsetShouldRejectInvalidTimestampType() throws Exception {
+        Map<String, Object> body = Map.of(
+                "name", "cg-orders",
+                "topic", "orders",
+                "timestamp", "invalid"
+        );
+
+        mockMvc.perform(post("/api/groups/reset-offset")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("Invalid request body"));
+
+        verifyNoInteractions(metadataService);
     }
 }
