@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Table,
   Card,
@@ -40,8 +40,49 @@ import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
-import { aclRules, aclUsers } from '../../mock/acl';
-import type { AclRule, AclUser } from '../../mock/acl';
+import {
+  createAclRule,
+  createAclUser,
+  deleteAclRule,
+  deleteAclUser,
+  listAclRules,
+  listAclUsers,
+  updateAclRule,
+  updateAclUser,
+} from '../../services/aclService';
+import type { AclRule, AclUser } from '../../api/acl';
+
+type AclRuleFormValues = Pick<
+  AclRule,
+  'principal' | 'resource' | 'resourceType' | 'resourcePattern' | 'actions' | 'decision' | 'scope'
+>;
+type AclUserFormValues = Pick<AclUser, 'username' | 'accessKey' | 'secretKey' | 'admin'>;
+
+const normalizeRule = (rule: AclRule): AclRule => ({
+  ...rule,
+  principal: rule.principal ?? '',
+  resource: rule.resource ?? '',
+  resourceType: rule.resourceType ?? '',
+  resourcePattern: rule.resourcePattern ?? '',
+  actions: rule.actions ?? [],
+  decision: rule.decision ?? '',
+  scope: rule.scope ?? '',
+  aclVersion: rule.aclVersion ?? '2.0',
+  createdAt: rule.createdAt ?? new Date().toISOString(),
+});
+
+const normalizeUser = (user: AclUser): AclUser => ({
+  ...user,
+  username: user.username ?? '',
+  accessKey: user.accessKey ?? '',
+  secretKey: user.secretKey ?? '',
+  admin: user.admin ?? false,
+  clusters: user.clusters ?? [],
+  createdAt: user.createdAt ?? new Date().toISOString(),
+});
+
+const isFormValidationError = (error: unknown) =>
+  typeof error === 'object' && error !== null && 'errorFields' in error;
 
 /* ═══════════════════════════════════════════
    ACL Management Page
@@ -50,8 +91,12 @@ const AclPage = () => {
   const { t } = useLang();
 
   /* ─── State ─── */
-  const [rules, setRules] = useState<AclRule[]>(aclRules);
-  const [users, setUsers] = useState<AclUser[]>(aclUsers);
+  const [rules, setRules] = useState<AclRule[]>([]);
+  const [users, setUsers] = useState<AclUser[]>([]);
+  const [rulesLoading, setRulesLoading] = useState(true);
+  const [usersLoading, setUsersLoading] = useState(true);
+  const [ruleSubmitting, setRuleSubmitting] = useState(false);
+  const [userSubmitting, setUserSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState('rules');
 
   // Rule filters
@@ -72,13 +117,37 @@ const AclPage = () => {
   // Secret key reveal
   const [revealedKeys, setRevealedKeys] = useState<Set<string>>(new Set());
 
+  useEffect(() => {
+    let mounted = true;
+
+    Promise.all([listAclRules(), listAclUsers()])
+      .then(([nextRules, nextUsers]) => {
+        if (!mounted) return;
+        setRules(nextRules.map(normalizeRule));
+        setUsers(nextUsers.map(normalizeUser));
+      })
+      .catch(() => {
+        if (mounted) message.error(t('common.fetchDataFailed'));
+      })
+      .finally(() => {
+        if (!mounted) return;
+        setRulesLoading(false);
+        setUsersLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [t]);
+
   /* ─── Filtered rules ─── */
   const filteredRules = rules.filter((r) => {
+    const aclVersion = String(r.aclVersion);
     const matchSearch =
       !ruleSearch ||
       r.principal.toLowerCase().includes(ruleSearch.toLowerCase()) ||
       r.resource.toLowerCase().includes(ruleSearch.toLowerCase());
-    const matchVersion = ruleVersionFilter === 'all' || r.aclVersion === ruleVersionFilter;
+    const matchVersion = ruleVersionFilter === 'all' || aclVersion === ruleVersionFilter;
     const matchDecision = ruleDecisionFilter === 'all' || r.decision === ruleDecisionFilter;
     return matchSearch && matchVersion && matchDecision;
   });
@@ -125,28 +194,40 @@ const AclPage = () => {
     setRuleModalOpen(true);
   };
 
-  const handleRuleSubmit = () => {
-    ruleForm.validateFields().then((values) => {
+  const handleRuleSubmit = async () => {
+    try {
+      const values = (await ruleForm.validateFields()) as AclRuleFormValues;
+      setRuleSubmitting(true);
       if (editingRule) {
-        setRules((prev) => prev.map((r) => (r.id === editingRule.id ? { ...r, ...values } : r)));
+        const updated = await updateAclRule({ ...editingRule, ...values });
+        const normalized = normalizeRule(updated);
+        setRules((prev) => prev.map((r) => (r.id === editingRule.id ? normalized : r)));
         message.success(t('acl.ruleUpdated'));
       } else {
-        const newRule: AclRule = {
-          id: `acl-${Date.now()}`,
+        const created = await createAclRule({
           ...values,
-          aclVersion: '2.0',
-          createdAt: new Date().toISOString(),
-        };
-        setRules((prev) => [newRule, ...prev]);
+          aclVersion: 2,
+        });
+        setRules((prev) => [normalizeRule(created), ...prev]);
         message.success(t('acl.ruleAdded'));
       }
       setRuleModalOpen(false);
-    });
+    } catch (error) {
+      if (isFormValidationError(error)) return;
+      message.error(t('common.operationFailed'));
+    } finally {
+      setRuleSubmitting(false);
+    }
   };
 
-  const handleDeleteRule = (id: string) => {
-    setRules((prev) => prev.filter((r) => r.id !== id));
-    message.success(t('acl.ruleDeleted'));
+  const handleDeleteRule = async (id: string) => {
+    try {
+      await deleteAclRule(id);
+      setRules((prev) => prev.filter((r) => r.id !== id));
+      message.success(t('acl.ruleDeleted'));
+    } catch {
+      message.error(t('common.operationFailed'));
+    }
   };
 
   /* ─── User helpers ─── */
@@ -180,42 +261,59 @@ const AclPage = () => {
     setUserModalOpen(true);
   };
 
-  const handleUserSubmit = () => {
-    userForm.validateFields().then((values) => {
+  const handleUserSubmit = async () => {
+    try {
+      const values = (await userForm.validateFields()) as AclUserFormValues;
+      setUserSubmitting(true);
       if (editingUser) {
-        setUsers((prev) => prev.map((u) => (u.id === editingUser.id ? { ...u, ...values } : u)));
+        const updated = await updateAclUser({ ...editingUser, ...values });
+        const normalized = normalizeUser(updated);
+        setUsers((prev) => prev.map((u) => (u.id === editingUser.id ? normalized : u)));
         message.success(t('acl.userUpdated'));
       } else {
-        const newUser: AclUser = {
-          id: `u-${Date.now()}`,
+        const created = await createAclUser({
           username: values.username,
-          accessKey: values.accessKey || `LTAI****${values.username.slice(-4)}`,
-          secretKey:
-            values.secretKey ||
-            `${Math.random().toString(36).slice(2, 6)}****${Math.random().toString(36).slice(2, 6)}`,
+          accessKey: values.accessKey,
+          secretKey: values.secretKey,
           admin: values.admin ?? false,
           clusters: ['rmq-cn-v5-prod-01'],
-          createdAt: new Date().toISOString(),
-        };
-        setUsers((prev) => [newUser, ...prev]);
+        });
+        setUsers((prev) => [normalizeUser(created), ...prev]);
         message.success(t('acl.userAdded'));
       }
       setUserModalOpen(false);
-    });
+    } catch (error) {
+      if (isFormValidationError(error)) return;
+      message.error(t('common.operationFailed'));
+    } finally {
+      setUserSubmitting(false);
+    }
   };
 
-  const handleDeleteUser = (id: string) => {
-    setUsers((prev) => prev.filter((u) => u.id !== id));
-    message.success(t('acl.userDeleted'));
+  const handleDeleteUser = async (id: string) => {
+    try {
+      await deleteAclUser(id);
+      setUsers((prev) => prev.filter((u) => u.id !== id));
+      message.success(t('acl.userDeleted'));
+    } catch {
+      message.error(t('common.operationFailed'));
+    }
   };
 
-  const handleToggleAdmin = (userId: string, checked: boolean) => {
-    setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, admin: checked } : u)));
-    message.success(checked ? t('acl.adminSet') : t('acl.adminRemoved'));
+  const handleToggleAdmin = async (user: AclUser, checked: boolean) => {
+    try {
+      const updated = await updateAclUser({ ...user, admin: checked });
+      const normalized = normalizeUser(updated);
+      setUsers((prev) => prev.map((u) => (u.id === user.id ? normalized : u)));
+      message.success(checked ? t('acl.adminSet') : t('acl.adminRemoved'));
+    } catch {
+      message.error(t('common.operationFailed'));
+    }
   };
 
   const formatDate = (iso: string) => {
     const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '-';
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   };
 
@@ -291,9 +389,9 @@ const AclPage = () => {
       dataIndex: 'aclVersion',
       key: 'aclVersion',
       width: 100,
-      sorter: (a, b) => a.aclVersion.localeCompare(b.aclVersion),
-      render: (version: string) => (
-        <Tag color={version === '2.0' ? 'geekblue' : 'default'}>{version}</Tag>
+      sorter: (a, b) => String(a.aclVersion).localeCompare(String(b.aclVersion)),
+      render: (version: AclRule['aclVersion']) => (
+        <Tag color={String(version) === '2.0' ? 'geekblue' : 'default'}>{version}</Tag>
       ),
     },
     {
@@ -409,7 +507,7 @@ const AclPage = () => {
         <Switch
           checked={val}
           size="small"
-          onChange={(checked) => handleToggleAdmin(record.id, checked)}
+          onChange={(checked) => handleToggleAdmin(record, checked)}
         />
       ),
     },
@@ -554,6 +652,7 @@ const AclPage = () => {
                     columns={ruleColumns}
                     dataSource={filteredRules}
                     rowKey="id"
+                    loading={rulesLoading}
                     pagination={{
                       pageSize: 20,
                       showSizeChanger: true,
@@ -590,6 +689,7 @@ const AclPage = () => {
                     columns={userColumns}
                     dataSource={users}
                     rowKey="id"
+                    loading={usersLoading}
                     pagination={{
                       pageSize: 20,
                       showSizeChanger: true,
@@ -612,6 +712,7 @@ const AclPage = () => {
         onOk={handleRuleSubmit}
         okText={editingRule ? t('acl.save') : t('acl.add')}
         cancelText={t('common.cancel')}
+        confirmLoading={ruleSubmitting}
         width={560}
         destroyOnClose
       >
@@ -713,6 +814,7 @@ const AclPage = () => {
         onOk={handleUserSubmit}
         okText={editingUser ? t('acl.save') : t('acl.add')}
         cancelText={t('common.cancel')}
+        confirmLoading={userSubmitting}
         width={520}
         destroyOnClose
       >
