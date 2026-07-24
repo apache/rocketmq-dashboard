@@ -38,10 +38,10 @@ public final class StudioAuthorizationPolicy {
     private static final String LIVENESS_PATH = "/actuator/health/liveness";
     private static final String READINESS_PATH = "/actuator/health/readiness";
     private static final List<Route> ROUTES = List.of(
-        route(HttpMethod.POST, "/api/ai/chat", Access.ADMIN),
+        route(HttpMethod.POST, "/api/ai/chat", Access.USER),
         route(HttpMethod.POST, "/api/ai/execute", Access.ADMIN),
         route(HttpMethod.GET, "/api/ai/tools", Access.USER),
-        route(HttpMethod.GET, "/api/audit-logs", Access.USER),
+        route(HttpMethod.GET, "/api/audit-logs", Access.ADMIN),
         route(HttpMethod.POST, "/api/audit-logs/cleanup", Access.ADMIN),
         route(HttpMethod.GET, "/api/dashboard", Access.USER),
         route(HttpMethod.GET, "/api/alert-rules", Access.USER),
@@ -52,15 +52,15 @@ public final class StudioAuthorizationPolicy {
         route(HttpMethod.GET, "/api/system-alerts", Access.USER),
         route(HttpMethod.POST, "/api/system-alerts/acknowledge", Access.ADMIN),
         route(HttpMethod.POST, "/api/system-alerts/clear-acknowledged", Access.ADMIN),
-        route(HttpMethod.GET, "/api/acl/rules", Access.USER),
+        route(HttpMethod.GET, "/api/acl/rules", Access.ADMIN),
         route(HttpMethod.POST, "/api/acl/rules/create", Access.ADMIN),
         route(HttpMethod.POST, "/api/acl/rules/delete", Access.ADMIN),
-        route(HttpMethod.GET, "/api/acl/users", Access.USER),
+        route(HttpMethod.GET, "/api/acl/users", Access.ADMIN),
         route(HttpMethod.POST, "/api/acl/users/create", Access.ADMIN),
         route(HttpMethod.POST, "/api/acl/users/delete", Access.ADMIN),
-        route(HttpMethod.GET, "/api/settings/general", Access.USER),
+        route(HttpMethod.GET, "/api/settings/general", Access.ADMIN),
         route(HttpMethod.POST, "/api/settings/general/save", Access.ADMIN),
-        route(HttpMethod.GET, "/api/settings/datasources", Access.USER),
+        route(HttpMethod.GET, "/api/settings/datasources", Access.ADMIN),
         route(HttpMethod.POST, "/api/settings/datasources/create", Access.ADMIN),
         route(HttpMethod.POST, "/api/settings/datasources/update", Access.ADMIN),
         route(HttpMethod.POST, "/api/settings/datasources/delete", Access.ADMIN),
@@ -87,7 +87,7 @@ public final class StudioAuthorizationPolicy {
         route(HttpMethod.POST, "/api/nameservers/restart", Access.ADMIN),
         route(HttpMethod.POST, "/api/nameservers/upgrade", Access.ADMIN),
         route(HttpMethod.POST, "/api/nameservers/delete", Access.ADMIN),
-        route(HttpMethod.GET, "/api/k8s-certs", Access.USER),
+        route(HttpMethod.GET, "/api/k8s-certs", Access.ADMIN),
         route(HttpMethod.POST, "/api/k8s-certs/create", Access.ADMIN),
         route(HttpMethod.POST, "/api/k8s-certs/update", Access.ADMIN),
         route(HttpMethod.POST, "/api/k8s-certs/renew", Access.ADMIN),
@@ -110,7 +110,7 @@ public final class StudioAuthorizationPolicy {
             Access.ADMIN
         ),
         route(HttpMethod.POST, "/api/proxies/restart", Access.ADMIN),
-        route(HttpMethod.POST, "/api/metrics/query", Access.ADMIN)
+        route(HttpMethod.POST, "/api/metrics/query", Access.USER)
     );
 
     private final List<CompiledRoute> compiledRoutes;

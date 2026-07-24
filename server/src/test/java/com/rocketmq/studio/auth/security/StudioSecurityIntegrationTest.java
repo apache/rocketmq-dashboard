@@ -30,6 +30,7 @@ import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongSupplier;
@@ -43,6 +44,15 @@ import com.rocketmq.studio.auth.security.StudioAuthorizationPolicy.Route;
 import com.rocketmq.studio.auth.security.StudioSessionStore.Session;
 import com.rocketmq.studio.auth.security.StudioUserRegistry.Role;
 import com.rocketmq.studio.cluster.broker.ClusterService;
+import com.rocketmq.studio.cluster.k8s.K8sCertService;
+import com.rocketmq.studio.cluster.metrics.MetricQueryDTO;
+import com.rocketmq.studio.cluster.metrics.MetricsService;
+import com.rocketmq.studio.instance.acl.AclService;
+import com.rocketmq.studio.ops.ai.AiService;
+import com.rocketmq.studio.ops.ai.ChatDTO;
+import com.rocketmq.studio.ops.audit.AuditService;
+import com.rocketmq.studio.settings.SettingsService;
+import jakarta.servlet.DispatcherType;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -70,15 +80,19 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.springframework.web.util.WebUtils;
 import org.springframework.web.util.pattern.PathPattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -87,6 +101,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -118,6 +133,38 @@ class StudioSecurityIntegrationTest {
         "studio-security-" + UUID.randomUUID()
     ).toAbsolutePath();
     private static final Path USER_FILE = TEST_DIRECTORY.resolve("users.json");
+    private static final Set<Route> REVIEWED_USER_ALLOWLIST = Set.of(
+        user(HttpMethod.POST, "/api/auth/logout"),
+        user(HttpMethod.POST, "/api/metrics/query"),
+        user(HttpMethod.POST, "/api/ai/chat"),
+        user(HttpMethod.GET, "/api/dashboard"),
+        user(HttpMethod.GET, "/api/clusters"),
+        user(HttpMethod.GET, "/api/clusters/{id}"),
+        user(HttpMethod.GET, "/api/clients"),
+        user(HttpMethod.GET, "/api/instances"),
+        user(HttpMethod.GET, "/api/topics"),
+        user(HttpMethod.GET, "/api/topics/{name}/routes"),
+        user(HttpMethod.GET, "/api/topics/{name}/consumers"),
+        user(HttpMethod.GET, "/api/namespaces"),
+        user(HttpMethod.GET, "/api/groups"),
+        user(HttpMethod.GET, "/api/groups/{name}"),
+        user(HttpMethod.GET, "/api/groups/{name}/progress"),
+        user(HttpMethod.GET, "/api/groups/{name}/subscriptions"),
+        user(HttpMethod.GET, "/api/messages"),
+        user(HttpMethod.GET, "/api/messages/{msgId}/trace"),
+        user(HttpMethod.GET, "/api/dlq"),
+        user(HttpMethod.GET, "/api/alert-rules"),
+        user(HttpMethod.GET, "/api/system-alerts"),
+        user(HttpMethod.GET, "/api/ai/tools")
+    );
+    private static final Set<Route> SENSITIVE_ADMIN_GETS = Set.of(
+        admin(HttpMethod.GET, "/api/settings/general"),
+        admin(HttpMethod.GET, "/api/settings/datasources"),
+        admin(HttpMethod.GET, "/api/acl/users"),
+        admin(HttpMethod.GET, "/api/acl/rules"),
+        admin(HttpMethod.GET, "/api/audit-logs"),
+        admin(HttpMethod.GET, "/api/k8s-certs")
+    );
 
     @Autowired
     private MockMvc mockMvc;
@@ -135,6 +182,9 @@ class StudioSecurityIntegrationTest {
     private StudioSessionStore sessions;
 
     @Autowired
+    private StudioUserRegistry registry;
+
+    @Autowired
     private StudioAuthorizationPolicy policy;
 
     @Autowired
@@ -147,6 +197,24 @@ class StudioSecurityIntegrationTest {
     @MockBean
     private ClusterService clusterService;
 
+    @MockBean
+    private SettingsService settingsService;
+
+    @MockBean
+    private AclService aclService;
+
+    @MockBean
+    private AuditService auditService;
+
+    @MockBean
+    private K8sCertService k8sCertService;
+
+    @MockBean
+    private MetricsService metricsService;
+
+    @MockBean
+    private AiService aiService;
+
     @DynamicPropertySource
     static void securityProperties(DynamicPropertyRegistry registry) {
         createTestDirectory();
@@ -157,7 +225,15 @@ class StudioSecurityIntegrationTest {
 
     @BeforeEach
     void resetUsersAndTime() throws IOException {
-        reset(clusterService);
+        reset(
+            clusterService,
+            settingsService,
+            aclService,
+            auditService,
+            k8sCertService,
+            metricsService,
+            aiService
+        );
         clock.advance(Duration.ofDays(1));
         ticker.advance(Duration.ofSeconds(1));
         writeUsers(
@@ -273,14 +349,18 @@ class StudioSecurityIntegrationTest {
 
     @Test
     void authorizationTableIsImmutablePreciseAndUsesMvcPathSemantics() {
-        assertThat(policy.routes())
-            .filteredOn(route -> route.access() == Access.USER)
+        Set<Route> actualUserRoutes = policy.routes().stream()
+            .filter(route -> route.access() == Access.USER)
+            .collect(Collectors.toUnmodifiableSet());
+        assertThat(actualUserRoutes).isEqualTo(REVIEWED_USER_ALLOWLIST);
+        assertThat(actualUserRoutes)
             .allSatisfy(route -> assertThat(route.mvcPattern()).doesNotContain("/**"));
         assertThat(policy.routes()).contains(
             new Route(HttpMethod.POST, "/api/auth/login", Access.PUBLIC),
             new Route(HttpMethod.POST, "/api/auth/logout", Access.USER),
             new Route(HttpMethod.GET, "/api/clusters/{id}", Access.USER)
         );
+        assertThat(policy.routes()).containsAll(SENSITIVE_ADMIN_GETS);
         assertThat(policy.routes())
             .noneSatisfy(route -> assertThat(route.mvcPattern()).contains("capabilities"));
         assertThat(access(HttpMethod.GET, "/api/clusters/cluster-a")).isEqualTo(Access.USER);
@@ -317,10 +397,21 @@ class StudioSecurityIntegrationTest {
         String userToken = login(USERNAME, PASSWORD);
         String adminToken = login(ADMIN_USERNAME, ADMIN_PASSWORD);
 
+        for (Route route : SENSITIVE_ADMIN_GETS) {
+            assertThat(route.access()).isEqualTo(Access.ADMIN);
+            assertForbidden(get(route.mvcPattern())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + userToken));
+        }
         assertForbidden(get("/api/clusters/cluster-a/credentials")
             .header(HttpHeaders.AUTHORIZATION, "Bearer " + userToken));
         assertForbidden(get("/api/capabilities")
             .header(HttpHeaders.AUTHORIZATION, "Bearer " + userToken));
+        verifyNoInteractions(
+            settingsService,
+            aclService,
+            auditService,
+            k8sCertService
+        );
 
         mockMvc.perform(get("/api/clusters/cluster-a/credentials")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
@@ -328,6 +419,109 @@ class StudioSecurityIntegrationTest {
         mockMvc.perform(get("/api/capabilities")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
             .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void validUserReachesMetricsController() throws Exception {
+        String token = login(USERNAME, PASSWORD);
+
+        mockMvc.perform(post("/api/metrics/query")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "metric": "up",
+                      "start": 1,
+                      "end": 2,
+                      "step": "1m"
+                    }
+                    """))
+            .andExpect(status().isOk());
+
+        verify(metricsService).query(any(MetricQueryDTO.class));
+    }
+
+    @Test
+    void validUserReachesAiChatAsyncBoundary() throws Exception {
+        SseEmitter emitter = new SseEmitter();
+        when(aiService.chat(any(ChatDTO.class))).thenReturn(emitter);
+        String token = login(USERNAME, PASSWORD);
+
+        mockMvc.perform(post("/api/ai/chat")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"message\":\"hello\",\"mode\":\"chat\"}"))
+            .andExpect(status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result
+                .MockMvcResultMatchers.request().asyncStarted());
+
+        verify(aiService).chat(any(ChatDTO.class));
+        emitter.complete();
+    }
+
+    @Test
+    void validUserAiChatCompletesAcrossAuthenticatedAsyncRedispatch() throws Exception {
+        SseEmitter emitter = new SseEmitter();
+        when(aiService.chat(any(ChatDTO.class))).thenReturn(emitter);
+        String token = login(USERNAME, PASSWORD);
+        MvcResult initial = mockMvc.perform(post("/api/ai/chat")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"message\":\"hello\",\"mode\":\"chat\"}"))
+            .andExpect(status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result
+                .MockMvcResultMatchers.request().asyncStarted())
+            .andReturn();
+
+        emitter.send(SseEmitter.event().name("message").data("reply"));
+        emitter.complete();
+
+        mockMvc.perform(asyncDispatch(initial))
+            .andExpect(status().isOk())
+            .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))
+            .andExpect(content().string(org.hamcrest.Matchers.containsString("data:reply")));
+    }
+
+    @Test
+    void revokedTokenFailsClosedBeforeAsyncRedispatchChain() throws Exception {
+        String token = login(USERNAME, PASSWORD);
+        Session session = sessions.resolve(token).orElseThrow();
+        sessions.revoke(session.id());
+        AtomicBoolean chainReached = new AtomicBoolean();
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        bearerFilter().doFilter(
+            dispatchRequest(DispatcherType.ASYNC, token),
+            response,
+            (request, servletResponse) -> chainReached.set(true)
+        );
+
+        assertThat(chainReached).isFalse();
+        assertThat(response.getStatus()).isEqualTo(401);
+        assertThat(response.getHeader(HttpHeaders.WWW_AUTHENTICATE)).isEqualTo("Bearer");
+        assertThat(response.getContentAsString()).isEqualTo(UNAUTHORIZED_JSON);
+    }
+
+    @Test
+    void validTokenIsReauthenticatedForErrorDispatch() throws Exception {
+        String token = login(USERNAME, PASSWORD);
+        AtomicReference<Authentication> observed = new AtomicReference<>();
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        try {
+            bearerFilter().doFilter(
+                dispatchRequest(DispatcherType.ERROR, token),
+                response,
+                (request, servletResponse) -> observed.set(
+                    SecurityContextHolder.getContext().getAuthentication()
+                )
+            );
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+
+        assertThat(observed.get()).isNotNull();
+        assertThat(observed.get().getPrincipal()).isInstanceOf(StudioPrincipal.class);
     }
 
     @Test
@@ -582,6 +776,33 @@ class StudioSecurityIntegrationTest {
         return policy.access(request);
     }
 
+    private StudioBearerAuthenticationFilter bearerFilter() {
+        return new StudioBearerAuthenticationFilter(
+            policy,
+            sessions,
+            registry,
+            securityResponses
+        );
+    }
+
+    private static MockHttpServletRequest dispatchRequest(
+        DispatcherType dispatcherType,
+        String token
+    ) {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setDispatcherType(dispatcherType);
+        request.setMethod(HttpMethod.GET.name());
+        request.setRequestURI("/api/clusters/cluster-a");
+        request.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + token);
+        if (dispatcherType == DispatcherType.ERROR) {
+            request.setAttribute(
+                WebUtils.ERROR_REQUEST_URI_ATTRIBUTE,
+                request.getRequestURI()
+            );
+        }
+        return request;
+    }
+
     private static boolean isApplicationApiController(
         RequestMappingInfo info,
         HandlerMethod method
@@ -598,27 +819,36 @@ class StudioSecurityIntegrationTest {
         Set<org.springframework.web.bind.annotation.RequestMethod> methods =
             info.getMethodsCondition().getMethods();
         return info.getPathPatternsCondition().getPatterns().stream()
-            .flatMap(pattern -> methods.stream().map(method -> new Route(
-                HttpMethod.valueOf(method.name()),
-                pattern.getPatternString(),
-                method == org.springframework.web.bind.annotation.RequestMethod.POST
-                    && "/api/auth/login".equals(pattern.getPatternString())
-                    ? Access.PUBLIC
-                    : expectedAccess(method, pattern.getPatternString())
-            )));
+            .flatMap(pattern -> methods.stream().map(method -> {
+                HttpMethod httpMethod = HttpMethod.valueOf(method.name());
+                String mvcPattern = pattern.getPatternString();
+                return new Route(
+                    httpMethod,
+                    mvcPattern,
+                    expectedAccess(httpMethod, mvcPattern)
+                );
+            }));
     }
 
     private static Access expectedAccess(
-        org.springframework.web.bind.annotation.RequestMethod method,
+        HttpMethod method,
         String pattern
     ) {
-        if (method == org.springframework.web.bind.annotation.RequestMethod.GET) {
-            return Access.USER;
+        if (method == HttpMethod.POST && "/api/auth/login".equals(pattern)) {
+            return Access.PUBLIC;
         }
-        if ("/api/auth/logout".equals(pattern)) {
+        if (REVIEWED_USER_ALLOWLIST.contains(user(method, pattern))) {
             return Access.USER;
         }
         return Access.ADMIN;
+    }
+
+    private static Route user(HttpMethod method, String pattern) {
+        return new Route(method, pattern, Access.USER);
+    }
+
+    private static Route admin(HttpMethod method, String pattern) {
+        return new Route(method, pattern, Access.ADMIN);
     }
 
     private static String concretePath(String pattern) {
