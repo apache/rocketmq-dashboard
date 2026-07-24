@@ -57,11 +57,26 @@ describe('metrics API', () => {
 
   it('posts a metrics query and returns its result', async () => {
     const query = { metric: 'TPS_IN', start: 1, end: 2, step: '1m' };
+    const result = {
+      resultType: 'matrix',
+      series: [
+        {
+          labels: {
+            __name__: 'rocketmq_messages_in_total',
+            cluster: 'rmq-cn-v5-prod-01',
+          },
+          values: [{ timestamp: 1, value: '8' }],
+          histograms: [],
+        },
+      ],
+      warnings: [],
+    };
+
     mock.onPost('/metrics/query').reply((config) => {
       expect(JSON.parse(config.data)).toEqual(query);
-      return [200, { code: 200, data: [{ timestamp: 1, value: 8 }] }];
+      return [200, { code: 200, data: result }];
     });
 
-    await expect(queryMetrics(query)).resolves.toEqual([{ timestamp: 1, value: 8 }]);
+    await expect(queryMetrics(query)).resolves.toEqual(result);
   });
 });
