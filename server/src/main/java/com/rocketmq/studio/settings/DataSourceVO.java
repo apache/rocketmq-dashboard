@@ -16,6 +16,7 @@
  */
 package com.rocketmq.studio.settings;
 
+import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -27,8 +28,11 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class DataSourceVO {
     private String key;
+    @NotBlank(message = "name is required")
     private String name;
+    @NotBlank(message = "type is required")
     private String type;
+    @NotBlank(message = "url is required")
     private String url;
     private String auth;
     private String status;
