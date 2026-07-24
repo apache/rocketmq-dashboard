@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Table,
   Card,
@@ -59,13 +59,22 @@ import type { Dayjs } from 'dayjs';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import { TOPIC_TYPE_MAP, PROTOCOL_MAP } from '../../constants/theme';
-import { mockConsumerGroups, mockQueueProgress, mockSubscriptions } from '../../mock/consumers';
 import type {
   ConsumerGroup,
   ConsumerInstance,
   QueueProgress,
   SubscriptionEntry,
-} from '../../mock/consumers';
+} from '../../api/metadata';
+import {
+  batchDeleteConsumerGroups,
+  createConsumerGroup,
+  deleteConsumerGroup,
+  getConsumerGroup,
+  getConsumerProgress,
+  getConsumerSubscriptions,
+  listConsumerGroups,
+  resetConsumerOffset,
+} from '../../services/consumerService';
 
 const { Text } = Typography;
 
@@ -103,28 +112,80 @@ const formatDelay = (totalSeconds: number): string => {
 
 const formatDateTime = (dateStr: string): string => {
   const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return dateStr;
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 };
+
+const normalizeGroup = (group: ConsumerGroup): ConsumerGroup => ({
+  ...group,
+  namespace: group.namespace ?? 'default',
+  clusterId: group.clusterId ?? '',
+  subscriptionMode: group.subscriptionMode ?? 'Push',
+  consumeType: group.consumeType ?? 'CLUSTERING',
+  onlineInstances: group.onlineInstances ?? group.instances?.length ?? 0,
+  totalLag: group.totalLag ?? 0,
+  subscribedTopics: group.subscribedTopics ?? [],
+  subscriptionDataType: group.subscriptionDataType ?? 'NORMAL',
+  retryMaxTimes: group.retryMaxTimes ?? 16,
+  createdAt: group.createdAt ?? '',
+  updatedAt: group.updatedAt ?? '',
+  delaySeconds: group.delaySeconds ?? 0,
+  instances: group.instances ?? [],
+});
+
+const buildSubscriptionFallback = (group: ConsumerGroup): SubscriptionEntry[] =>
+  group.subscribedTopics.map((topic) => ({
+    topic,
+    expression: '*',
+    type: group.subscriptionDataType,
+    filterMode: '全量',
+    consistency: '一致',
+  }));
 
 /* ═══════════════════════════════════════════
    ConsumerPage
    ═══════════════════════════════════════════ */
 const ConsumerPage = () => {
   const { t } = useLang();
-  const [groups, setGroups] = useState<ConsumerGroup[]>(mockConsumerGroups);
+  const [groups, setGroups] = useState<ConsumerGroup[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [resetSubmitting, setResetSubmitting] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [search, setSearch] = useState('');
   const [modeFilter, setModeFilter] = useState<string>('ALL');
   const [sortKey, setSortKey] = useState<string>('name_asc');
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<ConsumerGroup | null>(null);
+  const [selectedProgress, setSelectedProgress] = useState<QueueProgress[]>([]);
+  const [selectedSubscriptions, setSelectedSubscriptions] = useState<SubscriptionEntry[]>([]);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [form] = Form.useForm();
   const [dataTypeValue, setDataTypeValue] = useState<string | undefined>(undefined);
   const [resetModalOpen, setResetModalOpen] = useState(false);
   const [resetGroup, setResetGroup] = useState<ConsumerGroup | null>(null);
   const [resetTime, setResetTime] = useState<Dayjs>(dayjs().subtract(3, 'hour'));
+
+  useEffect(() => {
+    let active = true;
+
+    listConsumerGroups()
+      .then((data) => {
+        if (active) setGroups(data.map(normalizeGroup));
+      })
+      .catch(() => {
+        if (active) message.error('消费组加载失败，请稍后重试');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   /* ─── Filtered & sorted data ─── */
   const filtered = useMemo(() => {
@@ -149,9 +210,27 @@ const ConsumerPage = () => {
   }, [groups, search, modeFilter, sortKey]);
 
   /* ─── Open detail modal ─── */
-  const openModal = (group: ConsumerGroup) => {
+  const openModal = async (group: ConsumerGroup) => {
     setSelectedGroup(group);
+    setSelectedProgress([]);
+    setSelectedSubscriptions(buildSubscriptionFallback(group));
     setModalOpen(true);
+    setDetailLoading(true);
+    try {
+      const [detail, progress, subscriptions] = await Promise.all([
+        getConsumerGroup(group.name),
+        getConsumerProgress(group.name),
+        getConsumerSubscriptions(group.name),
+      ]);
+      const normalized = normalizeGroup(detail);
+      setSelectedGroup(normalized);
+      setSelectedProgress(progress);
+      setSelectedSubscriptions(subscriptions.length ? subscriptions : buildSubscriptionFallback(normalized));
+    } catch {
+      message.error('消费组详情加载失败，请稍后重试');
+    } finally {
+      setDetailLoading(false);
+    }
   };
 
   /* ═══════════════════════════════════════════
@@ -249,7 +328,7 @@ const ConsumerPage = () => {
             style={{ borderColor: '#1677ff', color: '#1677ff' }}
             onClick={(e) => {
               e.stopPropagation();
-              openModal(record);
+              void openModal(record);
             }}
           >
             详情
@@ -279,7 +358,12 @@ const ConsumerPage = () => {
                 okText: '删除',
                 okButtonProps: { danger: true },
                 cancelText: '取消',
-                onOk: () => message.success(`消费组 ${record.name} 已删除`),
+                onOk: async () => {
+                  await deleteConsumerGroup(record.name);
+                  setGroups((prev) => prev.filter((g) => g.name !== record.name));
+                  setSelectedRowKeys((prev) => prev.filter((key) => key !== record.name));
+                  message.success(`消费组 ${record.name} 已删除`);
+                },
               });
             }}
           >
@@ -517,8 +601,10 @@ const ConsumerPage = () => {
                   okText: '删除',
                   okButtonProps: { danger: true },
                   cancelText: '取消',
-                  onOk: () => {
-                    setGroups((prev) => prev.filter((g) => !selectedRowKeys.includes(g.name)));
+                  onOk: async () => {
+                    const names = selectedRowKeys.map(String);
+                    await batchDeleteConsumerGroups(names);
+                    setGroups((prev) => prev.filter((g) => !names.includes(g.name)));
                     message.success(`已删除 ${selectedRowKeys.length} 个 Group`);
                     setSelectedRowKeys([]);
                   },
@@ -553,6 +639,7 @@ const ConsumerPage = () => {
           columns={columns}
           dataSource={filtered}
           rowKey="name"
+          loading={loading}
           rowSelection={{
             selectedRowKeys,
             onChange: (keys) => setSelectedRowKeys(keys),
@@ -568,7 +655,7 @@ const ConsumerPage = () => {
               <div style={{ padding: '8px 0' }}>
                 <Table
                   columns={subscriptionSubColumns}
-                  dataSource={mockSubscriptions[record.name] || []}
+                  dataSource={buildSubscriptionFallback(record)}
                   rowKey="topic"
                   pagination={false}
                   size="small"
@@ -600,6 +687,8 @@ const ConsumerPage = () => {
         onCancel={() => {
           setModalOpen(false);
           setSelectedGroup(null);
+          setSelectedProgress([]);
+          setSelectedSubscriptions([]);
         }}
         width={800}
         destroyOnClose
@@ -747,10 +836,11 @@ const ConsumerPage = () => {
                       </Flex>
                       <Table
                         columns={subscriptionSubColumns}
-                        dataSource={mockSubscriptions[selectedGroup.name] || []}
+                        dataSource={selectedSubscriptions}
                         rowKey="topic"
                         pagination={false}
                         size="small"
+                        loading={detailLoading}
                       />
                     </div>
                   </div>
@@ -773,6 +863,7 @@ const ConsumerPage = () => {
                     pagination={false}
                     size="small"
                     scroll={{ y: 400 }}
+                    loading={detailLoading}
                   />
                 ),
               },
@@ -801,15 +892,13 @@ const ConsumerPage = () => {
                           <Text type="secondary">总 Broker 数:</Text>
                           <Text strong>
                             {
-                              new Set(
-                                (mockQueueProgress[selectedGroup.name] || []).map((q) => q.broker),
-                              ).size
+                              new Set(selectedProgress.map((q) => q.broker)).size
                             }
                           </Text>
                         </Space>
                         <Space size={4}>
                           <Text type="secondary">总 Queue 数:</Text>
-                          <Text strong>{(mockQueueProgress[selectedGroup.name] || []).length}</Text>
+                          <Text strong>{selectedProgress.length}</Text>
                         </Space>
                         <Space size={4}>
                           <Text type="secondary">总堆积:</Text>
@@ -827,11 +916,12 @@ const ConsumerPage = () => {
 
                     <Table
                       columns={queueColumns}
-                      dataSource={mockQueueProgress[selectedGroup.name] || []}
+                      dataSource={selectedProgress}
                       rowKey={(r) => `${r.broker}-${r.queueId}`}
                       pagination={false}
                       size="small"
                       scroll={{ y: 380 }}
+                      loading={detailLoading}
                     />
                   </div>
                 ),
@@ -866,11 +956,28 @@ const ConsumerPage = () => {
                 content: `将创建消费组 "${values.name}"，命名空间: ${values.namespace || 'default'}`,
                 okText: '确认创建',
                 cancelText: '取消',
-                onOk: () => {
-                  message.success(`消费组 ${values.name} 创建成功`);
-                  setCreateModalOpen(false);
-                  form.resetFields();
-                  setDataTypeValue(undefined);
+                onOk: async () => {
+                  setSubmitting(true);
+                  try {
+                    const created = await createConsumerGroup({
+                      name: values.name,
+                      namespace: values.namespace,
+                      subscriptionMode: values.subscriptionMode,
+                      consumeType: values.consumeType,
+                      retryMaxTimes: values.retryMaxTimes,
+                      subscriptionDataType: values.dataType ?? 'NORMAL',
+                      deliveryOrderType: values.deliveryOrderType,
+                    });
+                    setGroups((prev) => [normalizeGroup(created), ...prev]);
+                    message.success(`消费组 ${values.name} 创建成功`);
+                    setCreateModalOpen(false);
+                    form.resetFields();
+                    setDataTypeValue(undefined);
+                  } catch {
+                    message.error('消费组创建失败，请稍后重试');
+                  } finally {
+                    setSubmitting(false);
+                  }
                 },
               });
             })
@@ -878,6 +985,7 @@ const ConsumerPage = () => {
         }}
         okText="创建"
         cancelText="取消"
+        confirmLoading={submitting}
         width={560}
         destroyOnClose
       >
@@ -975,17 +1083,30 @@ const ConsumerPage = () => {
           setResetModalOpen(false);
           setResetGroup(null);
         }}
-        onOk={() => {
+        onOk={async () => {
           if (resetGroup) {
-            message.success(
-              `${resetGroup.name} 消费位点已重置到 ${resetTime.format('YYYY-MM-DD HH:mm:ss')}`,
-            );
+            setResetSubmitting(true);
+            try {
+              await resetConsumerOffset({
+                name: resetGroup.name,
+                timestamp: resetTime.valueOf(),
+              });
+              message.success(
+                `${resetGroup.name} 消费位点已重置到 ${resetTime.format('YYYY-MM-DD HH:mm:ss')}`,
+              );
+            } catch {
+              message.error('消费位点重置失败，请稍后重试');
+              setResetSubmitting(false);
+              return;
+            }
           }
+          setResetSubmitting(false);
           setResetModalOpen(false);
           setResetGroup(null);
         }}
         okText="确认重置"
         cancelText="取消"
+        confirmLoading={resetSubmitting}
         width={480}
         destroyOnClose
       >
