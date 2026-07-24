@@ -17,9 +17,11 @@
 
 package com.rocketmq.studio.ops;
 
+import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
 @Data
 public class OpsNameServerDTO {
+    @NotBlank(message = "namesrvAddr is required")
     private String namesrvAddr;
 }
