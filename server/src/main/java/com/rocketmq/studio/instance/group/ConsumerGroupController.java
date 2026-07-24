@@ -37,6 +37,7 @@ import java.util.Map;
 public class ConsumerGroupController {
 
     private final MetadataService metadataService;
+    private final ConsumerDiagnosticsService consumerDiagnosticsService;
 
     @GetMapping
     public Result<List<ConsumerGroupVO>> listConsumerGroups(
@@ -58,6 +59,13 @@ public class ConsumerGroupController {
     @GetMapping("/{name}/subscriptions")
     public Result<List<SubscriptionEntryVO>> getGroupSubscriptions(@PathVariable String name) {
         return Result.ok(metadataService.getGroupSubscriptions(name));
+    }
+
+    @GetMapping("/{name}/instances/{clientId}/stack")
+    public Result<ConsumerStackTraceVO> getConsumerStack(
+            @PathVariable String name,
+            @PathVariable String clientId) {
+        return Result.ok(consumerDiagnosticsService.getConsumerStack(name, clientId));
     }
 
     @PostMapping("/create")
