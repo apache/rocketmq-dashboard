@@ -141,7 +141,17 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(NoResourceFoundException.class)
-    public ResponseEntity<Void> handleNoResourceFoundException(NoResourceFoundException ex) {
+    public ResponseEntity<Void> handleNoResourceFoundException(
+        NoResourceFoundException ex,
+        HttpServletRequest request
+    ) {
+        String requestUri = request.getRequestURI();
+        String contextPath = request.getContextPath();
+        if (requestUri != null
+            && contextPath != null
+            && requestUri.equals(contextPath + LOGIN_PATH + "/")) {
+            return loginEmpty(HttpStatus.NOT_FOUND);
+        }
         return ResponseEntity.notFound().build();
     }
 

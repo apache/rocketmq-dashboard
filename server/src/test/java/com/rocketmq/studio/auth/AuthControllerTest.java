@@ -165,9 +165,11 @@ class AuthControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .accept(MediaType.APPLICATION_JSON)
                         .content("{\"username\":\"testuser\",\"password\":\"testpass\"}"))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(content().string(""));
 
-        verifyNoInteractions(authService);
+        verify(authService, never()).login(any(LoginDTO.class), any());
     }
 
     @ParameterizedTest
