@@ -48,6 +48,43 @@ describe('message API', () => {
     await expect(queryMessages(params)).resolves.toEqual([]);
   });
 
+  it('sorts message query results by store time descending', async () => {
+    mock.onGet('/messages').reply(200, {
+      code: 200,
+      data: [
+        {
+          msgId: 'msg-old',
+          topic: 'orders',
+          tag: 'created',
+          key: 'order-1',
+          body: '{}',
+          storeTime: '2026-07-23T10:00:00.000Z',
+          bornHost: '10.0.0.1:1000',
+          storeHost: '10.0.0.2:10911',
+          properties: {},
+          size: 2,
+        },
+        {
+          msgId: 'msg-new',
+          topic: 'orders',
+          tag: 'created',
+          key: 'order-2',
+          body: '{}',
+          storeTime: 1784804400000,
+          bornHost: '10.0.0.1:1001',
+          storeHost: '10.0.0.2:10911',
+          properties: {},
+          size: 2,
+        },
+      ],
+    });
+
+    await expect(queryMessages({ topic: 'orders' })).resolves.toMatchObject([
+      { msgId: 'msg-new' },
+      { msgId: 'msg-old' },
+    ]);
+  });
+
   it('unwraps trace records with numeric timestamps', async () => {
     const trace = {
       nodes: [
