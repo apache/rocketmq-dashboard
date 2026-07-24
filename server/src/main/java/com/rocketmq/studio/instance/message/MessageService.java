@@ -29,9 +29,10 @@ public class MessageService {
 
     private final MessageProvider messageProvider;
 
-    public List<MessageRecordVO> queryMessages(String topic, String msgId, String key, Long startTime, Long endTime) {
-        log.info("Querying messages: topic={}, msgId={}, key={}", topic, msgId, key);
-        return messageProvider.queryMessages(topic, msgId, key, startTime, endTime);
+    public List<MessageRecordVO> queryMessages(
+            String topic, String msgId, String tag, String key, Long startTime, Long endTime) {
+        log.info("Querying messages: topic={}, msgId={}, tag={}, key={}", topic, msgId, tag, key);
+        return messageProvider.queryMessages(topic, msgId, tag, key, startTime, endTime);
     }
 
     public TraceRecordVO getMessageTrace(String msgId) {
