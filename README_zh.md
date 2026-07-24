@@ -18,6 +18,10 @@ cd deploy && docker compose up -d --build
 
 **RocketMQ 服务端端口：** NameServer 9876、Broker 10911、Proxy Remoting 8080、Proxy gRPC 8081
 
+共享环境可复制 `deploy/.env.example` 为 `deploy/.env`，设置
+`STUDIO_AUTH_LOGIN_REQUIRED=true`，并配置 `STUDIO_AUTH_ADMIN_USERNAME` /
+`STUDIO_AUTH_ADMIN_PASSWORD` 开启登录保护。
+
 ## 功能概览
 
 | 模块 | 能力 |

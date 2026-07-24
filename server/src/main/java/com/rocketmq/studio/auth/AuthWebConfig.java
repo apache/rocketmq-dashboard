@@ -17,31 +17,22 @@
 
 package com.rocketmq.studio.auth;
 
-import com.rocketmq.studio.common.domain.Result;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpHeaders;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
-@RestController
-@RequestMapping("/api/auth")
+@Configuration
 @RequiredArgsConstructor
-public class AuthController {
+@ConditionalOnProperty(prefix = "studio.auth", name = "login-required", havingValue = "true")
+public class AuthWebConfig implements WebMvcConfigurer {
 
+    private final AuthProperties authProperties;
     private final AuthService authService;
 
-    @PostMapping("/login")
-    public Result<LoginVO> login(@RequestBody LoginDTO request) {
-        return Result.ok(authService.login(request));
-    }
-
-    @PostMapping("/logout")
-    public Result<Void> logout(@RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false)
-                               String authorization) {
-        authService.logout(authorization);
-        return Result.ok();
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(new AuthInterceptor(authProperties, authService)).addPathPatterns("/api/**");
     }
 }
