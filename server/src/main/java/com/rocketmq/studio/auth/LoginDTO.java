@@ -17,11 +17,20 @@
 
 package com.rocketmq.studio.auth;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 @Data
 public class LoginDTO {
+    @NotBlank
+    @Size(max = 128)
+    @Pattern(regexp = "[A-Za-z0-9._@-]+")
     private String username;
+
+    @NotBlank
+    @Size(max = 72)
     private String password;
 
     @Override

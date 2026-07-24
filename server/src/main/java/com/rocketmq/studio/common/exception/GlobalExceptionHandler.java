@@ -16,58 +16,135 @@
  */
 package com.rocketmq.studio.common.exception;
 
+import com.rocketmq.studio.auth.security.StudioLoginException;
 import com.rocketmq.studio.cluster.metrics.PrometheusException;
 import com.rocketmq.studio.common.domain.Result;
+import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    private static final String LOGIN_PATH = "/api/auth/login";
+    private static final String INVALID_LOGIN_REQUEST = "Invalid login request";
+    private static final String INVALID_LOGIN_CREDENTIALS = "Invalid username or password";
+    private static final String TOO_MANY_LOGIN_ATTEMPTS = "Too many login attempts";
+    private static final String INTERNAL_SERVER_ERROR = "Internal Server Error";
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(BusinessException.class)
-    public ResponseEntity<Result<?>> handleBusinessException(BusinessException ex) {
+    public ResponseEntity<Result<?>> handleBusinessException(
+        BusinessException ex,
+        HttpServletRequest request
+    ) {
+        if (isLoginRequest(request)) {
+            log.warn("Invalid Studio login request");
+            return loginError(HttpStatus.BAD_REQUEST, INVALID_LOGIN_REQUEST);
+        }
         log.warn("Business exception: {}", ex.getMessage());
         return ResponseEntity.status(ex.getCode())
-                .body(Result.error(ex.getCode(), ex.getMessage()));
+            .body(Result.error(ex.getCode(), ex.getMessage()));
     }
 
     @ExceptionHandler(PrometheusException.class)
-    public ResponseEntity<Result<?>> handlePrometheusException(PrometheusException ex) {
+    public ResponseEntity<Result<?>> handlePrometheusException(
+        PrometheusException ex,
+        HttpServletRequest request
+    ) {
+        if (isLoginRequest(request)) {
+            log.error("Unexpected exception during Studio login");
+            return loginError(HttpStatus.INTERNAL_SERVER_ERROR, INTERNAL_SERVER_ERROR);
+        }
         log.warn("Prometheus exception: status={}, message={}", ex.getStatusCode(), ex.getMessage());
         return ResponseEntity.status(ex.getStatusCode())
                 .body(Result.error(ex.getStatusCode(), ex.getMessage()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public Result<?> handleValidationException(MethodArgumentNotValidException ex) {
+    public ResponseEntity<Result<?>> handleValidationException(
+        MethodArgumentNotValidException ex,
+        HttpServletRequest request
+    ) {
+        if (isLoginRequest(request)) {
+            log.warn("Invalid Studio login request");
+            return loginError(HttpStatus.BAD_REQUEST, INVALID_LOGIN_REQUEST);
+        }
         String message = ex.getBindingResult().getFieldErrors().stream()
                 .findFirst()
                 .map(error -> error.getDefaultMessage() == null ? "Invalid request" : error.getDefaultMessage())
                 .orElse("Invalid request");
-        return Result.error(HttpStatus.BAD_REQUEST.value(), message);
+        return ResponseEntity.badRequest()
+            .body(Result.error(HttpStatus.BAD_REQUEST.value(), message));
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
-    @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public Result<?> handleHttpMessageNotReadableException(HttpMessageNotReadableException ex) {
+    public ResponseEntity<Result<?>> handleHttpMessageNotReadableException(
+        HttpMessageNotReadableException ex,
+        HttpServletRequest request
+    ) {
         log.warn("Invalid request body");
-        return Result.error(HttpStatus.BAD_REQUEST.value(), "Invalid request body");
+        if (isLoginRequest(request)) {
+            return loginError(HttpStatus.BAD_REQUEST, INVALID_LOGIN_REQUEST);
+        }
+        return ResponseEntity.badRequest()
+            .body(Result.error(HttpStatus.BAD_REQUEST.value(), "Invalid request body"));
+    }
+
+    @ExceptionHandler(StudioLoginException.class)
+    public ResponseEntity<Result<?>> handleStudioLoginException(StudioLoginException ex) {
+        if (ex.status() == HttpStatus.UNAUTHORIZED) {
+            return loginError(HttpStatus.UNAUTHORIZED, INVALID_LOGIN_CREDENTIALS);
+        }
+        if (ex.status() == HttpStatus.TOO_MANY_REQUESTS) {
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .cacheControl(CacheControl.noStore())
+                .header(
+                HttpHeaders.RETRY_AFTER,
+                Long.toString(Math.max(1, ex.retryAfterSeconds()))
+                )
+                .body(Result.error(
+                    HttpStatus.TOO_MANY_REQUESTS.value(),
+                    TOO_MANY_LOGIN_ATTEMPTS
+                ));
+        }
+        log.error("Unexpected Studio login exception status");
+        return loginError(HttpStatus.INTERNAL_SERVER_ERROR, INTERNAL_SERVER_ERROR);
     }
 
     @ExceptionHandler(Exception.class)
-    @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
-    public Result<?> handleException(Exception ex) {
+    public ResponseEntity<Result<?>> handleException(
+        Exception ex,
+        HttpServletRequest request
+    ) {
+        if (isLoginRequest(request)) {
+            log.error("Unexpected exception during Studio login");
+            return loginError(HttpStatus.INTERNAL_SERVER_ERROR, INTERNAL_SERVER_ERROR);
+        }
         log.error("Unexpected exception", ex);
-        return Result.error(500, "Internal Server Error");
+        return ResponseEntity.internalServerError()
+            .body(Result.error(500, INTERNAL_SERVER_ERROR));
+    }
+
+    private static boolean isLoginRequest(HttpServletRequest request) {
+        String requestUri = request.getRequestURI();
+        String contextPath = request.getContextPath();
+        return requestUri != null
+            && contextPath != null
+            && requestUri.equals(contextPath + LOGIN_PATH);
+    }
+
+    private static ResponseEntity<Result<?>> loginError(HttpStatus status, String message) {
+        return ResponseEntity.status(status)
+            .cacheControl(CacheControl.noStore())
+            .body(Result.error(status.value(), message));
     }
 }

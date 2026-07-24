@@ -66,10 +66,6 @@ public class AuthService {
         this.properties = Objects.requireNonNull(properties);
     }
 
-    public LoginVO login(LoginDTO request) {
-        return login(request, "unknown");
-    }
-
     public LoginVO login(LoginDTO request, String remoteAddress) {
         Credentials credentials = validate(request);
         String username = credentials.username();

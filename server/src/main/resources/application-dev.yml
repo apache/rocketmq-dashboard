@@ -3,3 +3,4 @@ logging:
   level:
     com.rocketmq.studio: DEBUG
     org.springframework.web: DEBUG
+    org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver: INFO

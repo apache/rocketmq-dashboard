@@ -18,7 +18,11 @@
 package com.rocketmq.studio.auth;
 
 import com.rocketmq.studio.common.domain.Result;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -32,8 +36,14 @@ public class AuthController {
     private final AuthService authService;
 
     @PostMapping("/login")
-    public Result<LoginVO> login(@RequestBody LoginDTO request) {
-        return Result.ok(authService.login(request));
+    public ResponseEntity<Result<LoginVO>> login(
+        @Valid @RequestBody LoginDTO request,
+        HttpServletRequest servletRequest
+    ) {
+        LoginVO response = authService.login(request, servletRequest.getRemoteAddr());
+        return ResponseEntity.ok()
+            .cacheControl(CacheControl.noStore())
+            .body(Result.ok(response));
     }
 
     @PostMapping("/logout")
