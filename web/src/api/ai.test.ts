@@ -20,6 +20,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
 import { chatStream, executeAiCommand, listTools, type AiExecuteRequest, type McpTool } from './ai';
 
+vi.mock('../config', () => ({
+  API_BASE_URL: 'https://api.example.test/custom-api',
+}));
+
 const mock = new MockAdapter(client);
 const encoder = new TextEncoder();
 
@@ -49,6 +53,85 @@ describe('AI API', () => {
   });
 
   describe('chatStream (SSE)', () => {
+    it('uses the configured API base URL and stored token', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(streamResponse(['event: done\ndata: [DONE]\n\n']));
+      vi.stubGlobal('fetch', fetchMock);
+
+      await chatStream({ message: 'hello', mode: 'chat', model: 'stub' }, vi.fn());
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://api.example.test/custom-api/ai/chat',
+        expect.objectContaining({
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer test-token',
+          },
+        }),
+      );
+    });
+
+    it('omits the authorization header when no token is stored', async () => {
+      vi.mocked(localStorage.getItem).mockReturnValue(null);
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(streamResponse(['event: done\ndata: [DONE]\n\n']));
+      vi.stubGlobal('fetch', fetchMock);
+
+      await chatStream({ message: 'hello', mode: 'chat', model: 'stub' }, vi.fn());
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://api.example.test/custom-api/ai/chat',
+        expect.objectContaining({
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }),
+      );
+    });
+
+    it('reports the gateway error message for a failed response', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(JSON.stringify({ code: 502, message: 'LLM provider unavailable' }), {
+            status: 502,
+            statusText: 'Bad Gateway',
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        ),
+      );
+
+      await expect(
+        chatStream({ message: 'hello', mode: 'chat', model: 'stub' }, vi.fn()),
+      ).rejects.toThrow('AI chat failed: LLM provider unavailable');
+    });
+
+    it('falls back to the HTTP status for a non-JSON error response', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValue(
+            new Response('Bad gateway', { status: 502, statusText: 'Bad Gateway' }),
+          ),
+      );
+
+      await expect(
+        chatStream({ message: 'hello', mode: 'chat', model: 'stub' }, vi.fn()),
+      ).rejects.toThrow('AI chat failed: Bad Gateway');
+    });
+
+    it('rejects a successful response without a stream body', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 200 })));
+
+      await expect(
+        chatStream({ message: 'hello', mode: 'chat', model: 'stub' }, vi.fn()),
+      ).rejects.toThrow('AI chat failed: empty response body');
+    });
+
     it('reassembles an event split across network chunks', async () => {
       vi.stubGlobal(
         'fetch',
@@ -110,38 +193,43 @@ describe('AI API', () => {
   });
 
   describe('executeAiCommand', () => {
-    it('should post AI command and return result with tool calls', async () => {
+    it('should post the backend command contract and return its result', async () => {
       const request: AiExecuteRequest = {
-        message: 'list topics',
+        command: 'list_topics',
         mode: 'agent',
         model: 'gpt-4',
+        conversationId: 'conversation-1',
+        prompt: 'List all topics',
+        context: { cluster: 'cluster-a' },
       };
-      const mockResult = { result: 'Found 5 topics', toolCalls: [{ name: 'listTopics' }] };
+      const mockResult = { success: true, result: 'Found 5 topics' };
       mock.onPost('/ai/execute', request).reply(200, { data: mockResult });
 
       const result = await executeAiCommand(request);
+
+      expect(result.success).toBe(true);
       expect(result.result).toBe('Found 5 topics');
-      expect(result.toolCalls).toHaveLength(1);
-      expect((result.toolCalls[0] as { name: string }).name).toBe('listTopics');
     });
 
-    it('should handle empty tool calls', async () => {
-      mock.onPost('/ai/execute').reply(200, { data: { result: 'Hi!', toolCalls: [] } });
-
-      const result = await executeAiCommand({
-        message: 'hello',
-        mode: 'chat',
+    it('should return an unsuccessful execution result', async () => {
+      const request: AiExecuteRequest = {
+        command: 'unknown_command',
+        mode: 'agent',
         model: 'gpt-4',
-      });
-      expect(result.result).toBe('Hi!');
-      expect(result.toolCalls).toEqual([]);
+      };
+      mock
+        .onPost('/ai/execute', request)
+        .reply(200, { data: { success: false, result: 'Unsupported command' } });
+
+      const result = await executeAiCommand(request);
+
+      expect(result.success).toBe(false);
+      expect(result.result).toBe('Unsupported command');
     });
 
     it('should handle server error', async () => {
       mock.onPost('/ai/execute').reply(500);
-      await expect(
-        executeAiCommand({ message: 'test', mode: 'chat', model: 'gpt-4' }),
-      ).rejects.toThrow();
+      await expect(executeAiCommand({ command: 'test' })).rejects.toThrow();
     });
   });
 

@@ -1619,6 +1619,11 @@ POST /api/ai/chat
 
 **Response:** `text/event-stream`（SSE 流式返回）
 
+| 事件 | `data` | 说明 |
+|------|--------|------|
+| `message` | `{"text":"..."}` | 增量文本片段 |
+| `done` | `[DONE]` | 流结束标记 |
+
 ### 15.2 执行 AI 指令
 
 ```
@@ -1627,9 +1632,14 @@ POST /api/ai/execute
 
 **Request Body:**
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `command` | `string` | AI 生成的可执行指令 |
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `command` | `string` | 是 | AI 生成的可执行指令 |
+| `mode` | `string` | 否 | 执行模式 |
+| `model` | `string` | 否 | 模型名称 |
+| `conversationId` | `string` | 否 | 会话 ID |
+| `prompt` | `string` | 否 | 生成该指令的提示词 |
+| `context` | `object` | 否 | 指令执行上下文 |
 
 **Response `data`:**
 
