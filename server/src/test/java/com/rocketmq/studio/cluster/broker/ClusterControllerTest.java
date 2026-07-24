@@ -35,6 +35,7 @@ import java.util.Arrays;
 import java.util.Collections;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -133,6 +134,40 @@ class ClusterControllerTest {
                 .andExpect(jsonPath("$.data.config.flushDiskType").value("SYNC_FLUSH"))
                 .andExpect(jsonPath("$.data.config.writeQueueNums").value(16))
                 .andExpect(jsonPath("$.data.config.readQueueNums").value(16));
+    }
+
+    @Test
+    void updateConfigShouldRejectMissingId() throws Exception {
+        UpdateConfigDTO command = UpdateConfigDTO.builder()
+                .flushDiskType("SYNC_FLUSH")
+                .writeQueueNums(16)
+                .build();
+
+        mockMvc.perform(post("/api/clusters/config/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(command)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("id is required"));
+
+        verifyNoInteractions(clusterService);
+    }
+
+    @Test
+    void updateConfigShouldRejectBlankId() throws Exception {
+        UpdateConfigDTO command = UpdateConfigDTO.builder()
+                .id(" ")
+                .flushDiskType("SYNC_FLUSH")
+                .build();
+
+        mockMvc.perform(post("/api/clusters/config/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(command)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("id is required"));
+
+        verifyNoInteractions(clusterService);
     }
 
     @Test
