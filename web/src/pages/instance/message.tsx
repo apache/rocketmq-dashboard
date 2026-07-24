@@ -119,6 +119,7 @@ const MessagePage = () => {
   const [queryMode, setQueryMode] = useState<QueryMode>('topic');
   const [selectedTopic, setSelectedTopic] = useState<string | undefined>();
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>(getDefaultRange);
+  const [tagInput, setTagInput] = useState('');
   const [keyInput, setKeyInput] = useState('');
   const [msgIdInput, setMsgIdInput] = useState('');
   const [messages, setMessages] = useState<MessageRecord[]>([]);
@@ -132,6 +133,7 @@ const MessagePage = () => {
   /* ─── Handlers ─── */
   const handleReset = () => {
     setSelectedTopic(undefined);
+    setTagInput('');
     setKeyInput('');
     setMsgIdInput('');
     setDateRange(getDefaultRange());
@@ -143,6 +145,7 @@ const MessagePage = () => {
       queryMode === 'topic'
         ? {
             topic: selectedTopic,
+            tag: tagInput || undefined,
             startTime: dateRange[0].valueOf(),
             endTime: dateRange[1].valueOf(),
           }
@@ -447,7 +450,7 @@ const MessagePage = () => {
      ═══════════════════════════════════════════ */
   return (
     <div style={{ padding: 24 }}>
-      <PageHeader title={t('message.title')} subtitle="按 Topic、Key 或 Message ID 检索消息" />
+      <PageHeader title={t('message.title')} subtitle="按 Topic、Tag、Key 或 Message ID 检索消息" />
 
       {/* ── Query Form ── */}
       <Card style={{ marginBottom: 16 }}>
@@ -482,6 +485,13 @@ const MessagePage = () => {
                       setDateRange([vals[0], vals[1]]);
                     }
                   }}
+                />
+                <Input
+                  placeholder="输入 Tag（可选）"
+                  style={{ width: 180 }}
+                  value={tagInput}
+                  onChange={(e) => setTagInput(e.target.value)}
+                  allowClear
                 />
               </>
             )}
