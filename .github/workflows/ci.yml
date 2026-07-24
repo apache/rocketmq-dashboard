@@ -62,3 +62,31 @@ jobs:
 
       - name: Build frontend Docker image
         run: docker build -t rocketmq-studio-web-ci ./web
+
+  go-cli:
+    name: Go CLI
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tools/rmq
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.x"
+          cache-dependency-path: tools/rmq/go.sum
+
+      - name: Test
+        run: go test -race ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Check generated catalog
+        run: go run ./cmd/cataloggen -check
+
+      - name: Build rmqctl
+        run: go build ./cmd/rmqctl
