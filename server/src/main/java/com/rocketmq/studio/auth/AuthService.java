@@ -44,7 +44,7 @@ public class AuthService {
     private static final int BCRYPT_PASSWORD_BYTE_LIMIT = 72;
     private static final String INVALID_LOGIN_REQUEST = "Invalid login request";
     private static final String DUMMY_PASSWORD_HASH =
-        "{bcrypt}$2y$12$OB.XpBh3tjrEibKmHgXiseb3N5PRL3kYONspvnp3jXtIkYNKI5tv.";
+        "{bcrypt}$2y$12$DHdmkmAtJpr2JHVMZJ6bE.hO2fyGjpQOr6s5xzxFWO7H1bCdFl1yq";
 
     private final StudioUserRegistry registry;
     private final PasswordEncoder passwordEncoder;
@@ -87,7 +87,9 @@ public class AuthService {
             User user = snapshot.available() ? snapshot.users().get(username) : null;
             String passwordHash = user == null ? DUMMY_PASSWORD_HASH : user.passwordHash();
             boolean matches = passwordEncoder.matches(credentials.password(), passwordHash);
-            if (!matches || user == null || !snapshot.available()) {
+            boolean dummyHashCollision = user != null
+                && DUMMY_PASSWORD_HASH.equals(user.passwordHash());
+            if (!matches || user == null || !snapshot.available() || dummyHashCollision) {
                 limiter.recordFailure(decision.key());
                 log.info("Studio login rejected for username {}", username);
                 throw StudioLoginException.invalidCredentials();
@@ -134,13 +136,21 @@ public class AuthService {
 
     private Snapshot readSnapshot() {
         try {
-            return registry.snapshot();
+            Snapshot snapshot = registry.snapshot();
+            if (snapshot != null) {
+                return snapshot;
+            }
         } catch (RuntimeException exception) {
-            log.warn("Studio user registry is unavailable during login");
-            return new Snapshot(0, false, Map.of());
+            // Registry failures share the same generic unavailable path.
         }
+        log.warn("Studio user registry is unavailable during login");
+        return new Snapshot(0, false, Map.of());
     }
 
     private record Credentials(String username, String password) {
+        @Override
+        public String toString() {
+            return "Credentials[username=<redacted>, password=<redacted>]";
+        }
     }
 }

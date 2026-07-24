@@ -31,6 +31,11 @@ public class LoginVO {
     private int expiresIn;
     private UserInfo user;
 
+    @Override
+    public String toString() {
+        return "LoginVO(token=<redacted>, expiresIn=" + expiresIn + ", user=" + user + ")";
+    }
+
     @Data
     @Builder
     @NoArgsConstructor

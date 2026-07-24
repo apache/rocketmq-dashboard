@@ -17,6 +17,7 @@
 
 package com.rocketmq.studio.auth;
 
+import java.lang.reflect.Field;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -46,6 +47,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.LoggerFactory;
@@ -59,6 +61,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
@@ -125,8 +128,9 @@ class AuthServiceTest {
         assertThat(result.getUser().getUsername()).isEqualTo("Admin");
         assertThat(result.getUser().isAdmin()).isTrue();
         verify(passwordEncoder).matches("correct", admin.passwordHash());
-        verify(sessions).issue(admin, REVISION);
-        verify(limiter).recordSuccess(attemptKey);
+        InOrder issueBeforeSuccess = inOrder(sessions, limiter);
+        issueBeforeSuccess.verify(sessions).issue(admin, REVISION);
+        issueBeforeSuccess.verify(limiter).recordSuccess(attemptKey);
         verify(limiter, never()).recordFailure(any());
         verify(permit).close();
     }
@@ -189,6 +193,44 @@ class AuthServiceTest {
 
         verify(passwordEncoder).matches(eq("guess"), argThat(AuthServiceTest::isDummyCostTwelveHash));
         verify(limiter).recordFailure(attemptKey);
+        verify(sessions, never()).issue(any(), anyLong());
+        verify(permit).close();
+    }
+
+    @Test
+    void nullRegistrySnapshotRunsOneDummyMatchAndRecordsGenericFailure() {
+        when(registry.snapshot()).thenReturn(null);
+        when(passwordEncoder.matches(eq("guess"), any())).thenReturn(false);
+
+        assertThatThrownBy(() -> authService.login(dto("alice", "guess"), REMOTE_ADDRESS))
+            .isInstanceOf(StudioLoginException.class)
+            .hasMessage("Invalid username or password");
+
+        verify(passwordEncoder).matches(eq("guess"), argThat(AuthServiceTest::isDummyCostTwelveHash));
+        verify(limiter).recordFailure(attemptKey);
+        verify(sessions, never()).issue(any(), anyLong());
+        verify(permit).close();
+    }
+
+    @Test
+    void configuredUserWithTheDummyHashCanNeverAuthenticate() throws Exception {
+        User collision = new User(
+            "collision-user",
+            dummyPasswordHash(),
+            Role.ADMIN,
+            "collision-fingerprint"
+        );
+        when(registry.snapshot()).thenReturn(available(collision));
+        when(passwordEncoder.matches("guess", collision.passwordHash())).thenReturn(true);
+
+        assertThatThrownBy(() ->
+            authService.login(dto(collision.username(), "guess"), REMOTE_ADDRESS))
+            .isInstanceOf(StudioLoginException.class)
+            .hasMessage("Invalid username or password");
+
+        verify(passwordEncoder).matches("guess", collision.passwordHash());
+        verify(limiter).recordFailure(attemptKey);
+        verify(limiter, never()).recordSuccess(any());
         verify(sessions, never()).issue(any(), anyLong());
         verify(permit).close();
     }
@@ -295,6 +337,38 @@ class AuthServiceTest {
     }
 
     @Test
+    void authenticationValueObjectsRedactSecretsFromToString() throws Exception {
+        LoginDTO request = dto("raw-username-marker", "raw-password-marker");
+        LoginVO response = LoginVO.builder()
+            .token("raw-token-marker")
+            .expiresIn(300)
+            .user(LoginVO.UserInfo.builder()
+                .username("canonical-user")
+                .admin(false)
+                .build())
+            .build();
+
+        Class<?> credentialsType = Stream.of(AuthService.class.getDeclaredClasses())
+            .filter(type -> type.getSimpleName().equals("Credentials"))
+            .findFirst()
+            .orElseThrow();
+        var constructor = credentialsType.getDeclaredConstructor(String.class, String.class);
+        constructor.setAccessible(true);
+        Object credentials = constructor.newInstance(
+            "credentials-username-marker",
+            "credentials-password-marker"
+        );
+
+        assertThat(request.toString())
+            .isEqualTo("LoginDTO(username=<redacted>, password=<redacted>)");
+        assertThat(response.toString())
+            .contains("token=<redacted>")
+            .doesNotContain("raw-token-marker");
+        assertThat(credentials.toString())
+            .isEqualTo("Credentials[username=<redacted>, password=<redacted>]");
+    }
+
+    @Test
     void ordinarySecurityBeansStartWithoutAUserFileAndUsePrefixAwareCostTwelveBcrypt() {
         new ApplicationContextRunner()
             .withUserConfiguration(SecurityConfig.class)
@@ -318,10 +392,15 @@ class AuthServiceTest {
                     .isFalse();
 
                 PasswordEncoder encoder = context.getBean(PasswordEncoder.class);
-                String costTwelveHash =
-                    "{bcrypt}$2y$12$OB.XpBh3tjrEibKmHgXiseb3N5PRL3kYONspvnp3jXtIkYNKI5tv.";
-                assertThat(encoder.matches("correct horse battery staple", costTwelveHash))
-                    .isTrue();
+                String dummyHash;
+                try {
+                    dummyHash = dummyPasswordHash();
+                } catch (ReflectiveOperationException exception) {
+                    throw new AssertionError(exception);
+                }
+                assertThat(dummyHash)
+                    .matches("\\{bcrypt}\\$2[aby]\\$12\\$[./A-Za-z0-9]{53}");
+                assertThat(encoder.matches("known-non-matching-probe", dummyHash)).isFalse();
             });
     }
 
@@ -369,6 +448,12 @@ class AuthServiceTest {
         return hash != null
             && !USER_HASH.equals(hash)
             && hash.matches("\\{bcrypt}\\$2[aby]\\$12\\$[./A-Za-z0-9]{53}");
+    }
+
+    private static String dummyPasswordHash() throws ReflectiveOperationException {
+        Field field = AuthService.class.getDeclaredField("DUMMY_PASSWORD_HASH");
+        field.setAccessible(true);
+        return (String) field.get(null);
     }
 
     private static Snapshot available(User user) {
