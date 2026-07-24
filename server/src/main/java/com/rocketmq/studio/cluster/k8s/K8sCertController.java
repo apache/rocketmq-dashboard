@@ -17,6 +17,7 @@
 package com.rocketmq.studio.cluster.k8s;
 
 import com.rocketmq.studio.common.domain.Result;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -39,22 +40,22 @@ public class K8sCertController {
     }
 
     @PostMapping("/create")
-    public Result<K8sCertVO> createCert(@RequestBody CreateCertDTO command) {
+    public Result<K8sCertVO> createCert(@Valid @RequestBody CreateCertDTO command) {
         return Result.ok(k8sCertService.createCert(command));
     }
 
     @PostMapping("/update")
-    public Result<K8sCertVO> updateCert(@RequestBody UpdateCertDTO command) {
+    public Result<K8sCertVO> updateCert(@Valid @RequestBody UpdateCertDTO command) {
         return Result.ok(k8sCertService.updateCert(command));
     }
 
     @PostMapping("/renew")
-    public Result<K8sCertVO> renewCert(@RequestBody RenewCertDTO command) {
+    public Result<K8sCertVO> renewCert(@Valid @RequestBody RenewCertDTO command) {
         return Result.ok(k8sCertService.renewCert(command));
     }
 
     @PostMapping("/delete")
-    public Result<Void> deleteCert(@RequestBody DeleteCertDTO command) {
+    public Result<Void> deleteCert(@Valid @RequestBody DeleteCertDTO command) {
         k8sCertService.deleteCert(command);
         return Result.ok();
     }

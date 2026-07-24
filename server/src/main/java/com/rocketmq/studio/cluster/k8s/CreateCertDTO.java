@@ -16,6 +16,8 @@
  */
 package com.rocketmq.studio.cluster.k8s;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -28,10 +30,16 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class CreateCertDTO {
+    @NotBlank(message = "name is required")
     private String name;
+    @NotBlank(message = "namespace is required")
     private String namespace;
+    @NotBlank(message = "cluster is required")
     private String cluster;
+    @NotBlank(message = "type is required")
+    @Pattern(regexp = "TLS|mTLS|ServiceAccount", message = "type must be one of TLS, mTLS, ServiceAccount")
     private String type;
+    @NotBlank(message = "issuer is required")
     private String issuer;
     private List<String> san;
 }
