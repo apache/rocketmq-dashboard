@@ -41,6 +41,12 @@ public class AclService {
 
     public AclRuleVO createRule(AclRuleVO rule) {
         log.info("Creating ACL rule for principal={}", rule.getPrincipal());
+        if (isBlank(rule.getPrincipal())) {
+            throw new BusinessException(400, "ACL principal is required");
+        }
+        if (isBlank(rule.getResource())) {
+            throw new BusinessException(400, "ACL resource is required");
+        }
         rule.setId(UUID.randomUUID().toString());
         rule.setCreatedAt(LocalDateTime.now());
         return aclRepository.saveRule(rule);
@@ -71,6 +77,9 @@ public class AclService {
 
     public AclUserVO createUser(AclUserVO user) {
         log.info("Creating ACL user username={}", user.getUsername());
+        if (isBlank(user.getUsername())) {
+            throw new BusinessException(400, "ACL username is required");
+        }
         user.setId(UUID.randomUUID().toString());
         user.setAccessKey(UUID.randomUUID().toString().replace("-", ""));
         user.setSecretKey(UUID.randomUUID().toString().replace("-", ""));
