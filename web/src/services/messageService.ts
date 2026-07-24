@@ -1,5 +1,6 @@
 import { USE_MOCK } from '../config';
 import * as messageApi from '../api/message';
+import { sortMessagesByStoreTimeDesc } from '../api/message';
 import type { MessageQuery, MessageRecord, TraceRecord, DLQGroup } from '../api/message';
 import { mockMessages, mockMessageTraces } from '../mock/messages';
 import { mockDLQGroups } from '../mock/dlq';
@@ -10,7 +11,7 @@ export async function queryMessages(params: MessageQuery): Promise<MessageRecord
     if (params.topic) result = result.filter((m) => m.topic === params.topic);
     if (params.key) result = result.filter((m) => m.key.includes(params.key!));
     if (params.msgId) result = result.filter((m) => m.msgId === params.msgId);
-    return result as unknown as MessageRecord[];
+    return sortMessagesByStoreTimeDesc(result as unknown as MessageRecord[]);
   }
   return messageApi.queryMessages(params);
 }
