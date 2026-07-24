@@ -171,6 +171,30 @@ class StudioSecurityIntegrationTest {
         admin(HttpMethod.GET, "/api/audit-logs"),
         admin(HttpMethod.GET, "/api/k8s-certs")
     );
+    private static final Set<Route> EXPECTED_REBASED_ADMIN_ROUTES = Set.of(
+        admin(HttpMethod.GET, "/api/proxy/homePage.query"),
+        admin(HttpMethod.GET, "/api/producer/connection"),
+        admin(HttpMethod.POST, "/api/ops/updateIsVIPChannel"),
+        admin(HttpMethod.POST, "/api/llm/config/test"),
+        admin(HttpMethod.GET, "/api/ops/homePage"),
+        admin(HttpMethod.GET, "/api/liteTopic/session/{sessionId}"),
+        admin(HttpMethod.GET, "/api/liteTopic/quota"),
+        admin(HttpMethod.GET, "/api/liteTopic/list"),
+        admin(HttpMethod.POST, "/api/ops/updateNameSvrAddr"),
+        admin(HttpMethod.POST, "/api/proxy/addProxyAddr.do"),
+        admin(HttpMethod.GET, "/api/groups/{name}/instances/{clientId}/stack"),
+        admin(HttpMethod.GET, "/api/alert/rules"),
+        admin(HttpMethod.GET, "/api/llm/config"),
+        admin(HttpMethod.POST, "/api/ops/addNameSvrAddr"),
+        admin(HttpMethod.GET, "/api/llm/models"),
+        admin(HttpMethod.GET, "/api/liteTopic/capability"),
+        admin(HttpMethod.POST, "/api/acl/users/update"),
+        admin(HttpMethod.POST, "/api/ai/tools/{name}/execute"),
+        admin(HttpMethod.POST, "/api/liteTopic/extendTTL"),
+        admin(HttpMethod.POST, "/api/llm/config"),
+        admin(HttpMethod.POST, "/api/ops/updateUseTLS"),
+        admin(HttpMethod.POST, "/api/acl/rules/update")
+    );
 
     @Autowired
     private MockMvc mockMvc;
@@ -458,7 +482,7 @@ class StudioSecurityIntegrationTest {
             .flatMap(entry -> routes(entry.getKey()))
             .collect(Collectors.toUnmodifiableSet());
 
-        assertThat(discovered).hasSize(69);
+        assertThat(discovered).hasSize(91);
         assertThat(policy.routes()).doesNotHaveDuplicates();
         assertThat(Set.copyOf(policy.routes())).isEqualTo(discovered);
     }
@@ -477,6 +501,10 @@ class StudioSecurityIntegrationTest {
             new Route(HttpMethod.GET, "/api/clusters/{id}", Access.USER)
         );
         assertThat(policy.routes()).containsAll(SENSITIVE_ADMIN_GETS);
+        assertThat(EXPECTED_REBASED_ADMIN_ROUTES)
+            .hasSize(22)
+            .allSatisfy(route -> assertThat(route.access()).isEqualTo(Access.ADMIN));
+        assertThat(policy.routes()).containsAll(EXPECTED_REBASED_ADMIN_ROUTES);
         assertThat(policy.routes())
             .noneSatisfy(route -> assertThat(route.mvcPattern()).contains("capabilities"));
         assertThat(access(HttpMethod.GET, "/api/clusters/cluster-a")).isEqualTo(Access.USER);

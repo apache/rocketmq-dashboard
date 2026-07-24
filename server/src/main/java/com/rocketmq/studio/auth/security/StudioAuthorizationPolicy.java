@@ -112,7 +112,33 @@ public final class StudioAuthorizationPolicy {
             Access.ADMIN
         ),
         route(HttpMethod.POST, "/api/proxies/restart", Access.ADMIN),
-        route(HttpMethod.POST, "/api/metrics/query", Access.USER)
+        route(HttpMethod.POST, "/api/metrics/query", Access.USER),
+        route(HttpMethod.GET, "/api/proxy/homePage.query", Access.ADMIN),
+        route(HttpMethod.GET, "/api/producer/connection", Access.ADMIN),
+        route(HttpMethod.POST, "/api/ops/updateIsVIPChannel", Access.ADMIN),
+        route(HttpMethod.POST, "/api/llm/config/test", Access.ADMIN),
+        route(HttpMethod.GET, "/api/ops/homePage", Access.ADMIN),
+        route(HttpMethod.GET, "/api/liteTopic/session/{sessionId}", Access.ADMIN),
+        route(HttpMethod.GET, "/api/liteTopic/quota", Access.ADMIN),
+        route(HttpMethod.GET, "/api/liteTopic/list", Access.ADMIN),
+        route(HttpMethod.POST, "/api/ops/updateNameSvrAddr", Access.ADMIN),
+        route(HttpMethod.POST, "/api/proxy/addProxyAddr.do", Access.ADMIN),
+        route(
+            HttpMethod.GET,
+            "/api/groups/{name}/instances/{clientId}/stack",
+            Access.ADMIN
+        ),
+        route(HttpMethod.GET, "/api/alert/rules", Access.ADMIN),
+        route(HttpMethod.GET, "/api/llm/config", Access.ADMIN),
+        route(HttpMethod.POST, "/api/ops/addNameSvrAddr", Access.ADMIN),
+        route(HttpMethod.GET, "/api/llm/models", Access.ADMIN),
+        route(HttpMethod.GET, "/api/liteTopic/capability", Access.ADMIN),
+        route(HttpMethod.POST, "/api/acl/users/update", Access.ADMIN),
+        route(HttpMethod.POST, "/api/ai/tools/{name}/execute", Access.ADMIN),
+        route(HttpMethod.POST, "/api/liteTopic/extendTTL", Access.ADMIN),
+        route(HttpMethod.POST, "/api/llm/config", Access.ADMIN),
+        route(HttpMethod.POST, "/api/ops/updateUseTLS", Access.ADMIN),
+        route(HttpMethod.POST, "/api/acl/rules/update", Access.ADMIN)
     );
 
     private final List<CompiledRoute> compiledRoutes;
