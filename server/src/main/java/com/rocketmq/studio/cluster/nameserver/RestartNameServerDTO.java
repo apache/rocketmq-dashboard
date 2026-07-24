@@ -16,6 +16,7 @@
  */
 package com.rocketmq.studio.cluster.nameserver;
 
+import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -26,6 +27,9 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class RestartNameServerDTO {
+    @NotBlank(message = "clusterId is required")
     private String clusterId;
+
+    @NotBlank(message = "addr is required")
     private String addr;
 }
