@@ -30,6 +30,7 @@ import java.util.List;
 
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -123,5 +124,36 @@ class LiteTopicControllerTest {
                 .andExpect(jsonPath("$.code").value(200));
 
         verify(liteTopicService).extendTTL(eq("chat/{sessionId}"), eq(7_200_000L));
+    }
+
+    @Test
+    void extendTTLShouldRejectMissingTopicPattern() throws Exception {
+        LiteTopicTTLUpdateDTO request = new LiteTopicTTLUpdateDTO();
+        request.setNewTTL(7_200_000L);
+
+        mockMvc.perform(post("/api/liteTopic/extendTTL")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("topicPattern is required"));
+
+        verifyNoInteractions(liteTopicService);
+    }
+
+    @Test
+    void extendTTLShouldRejectNonPositiveTTL() throws Exception {
+        LiteTopicTTLUpdateDTO request = new LiteTopicTTLUpdateDTO();
+        request.setTopicPattern("chat/{sessionId}");
+        request.setNewTTL(0L);
+
+        mockMvc.perform(post("/api/liteTopic/extendTTL")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("newTTL must be positive"));
+
+        verifyNoInteractions(liteTopicService);
     }
 }
