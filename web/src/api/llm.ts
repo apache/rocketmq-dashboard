@@ -19,7 +19,8 @@ import client from './client';
 
 export interface LlmConfig {
   provider: string;
-  apiKey: string;
+  apiKey?: string;
+  apiKeyConfigured?: boolean;
   apiBase: string;
   model: string;
   maxTokens: number;

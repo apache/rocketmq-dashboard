@@ -67,8 +67,15 @@ public class LlmConfigService {
 
     public synchronized void saveConfig(LlmConfigVO config) {
         LlmConfigVO normalized = normalize(config);
-        overrides = copy(normalized);
         GeneralSettingsVO current = settingsService.getGeneralSettings();
+        boolean sameProvider = current != null
+                && normalizeProvider(current.getLlmProvider()).equals(normalized.getProvider());
+        boolean apiKeyOmitted = isBlank(normalized.getApiKey());
+        LlmConfigVO effective = copy(normalized);
+        if (apiKeyOmitted && sameProvider) {
+            effective.setApiKey(defaultString(current.getApiKey(), ""));
+        }
+        overrides = effective;
         settingsService.saveGeneralSettings(GeneralSettingsVO.builder()
                 .theme(current.getTheme())
                 .compact(current.isCompact())
@@ -78,13 +85,14 @@ public class LlmConfigService {
                 .requireLogin(current.isRequireLogin())
                 .llmProvider(normalized.getProvider())
                 .apiKey(normalized.getApiKey())
+                .clearApiKey(apiKeyOmitted && !sameProvider)
                 .model(normalized.getModel())
                 .baseUrl(normalized.getApiBase())
                 .build());
     }
 
     public LlmOperationResultVO testConfig(LlmConfigVO config) {
-        LlmConfigVO normalized = normalize(config);
+        LlmConfigVO normalized = withStoredApiKeyIfSameProvider(normalize(config));
         String provider = normalized.getProvider();
         boolean keyRequired = !"ollama".equals(provider);
         if (keyRequired && isBlank(normalized.getApiKey())) {
@@ -134,6 +142,20 @@ public class LlmConfigService {
                 .apiVersion(defaultString(config == null ? null : config.getApiVersion(), "2024-02-15-preview"))
                 .awsRegion(defaultString(config == null ? null : config.getAwsRegion(), "us-east-1"))
                 .build();
+    }
+
+    private LlmConfigVO withStoredApiKeyIfSameProvider(LlmConfigVO config) {
+        if (!isBlank(config.getApiKey())) {
+            return config;
+        }
+        GeneralSettingsVO current = settingsService.getGeneralSettings();
+        if (current == null || !normalizeProvider(current.getLlmProvider())
+                .equals(config.getProvider())) {
+            return config;
+        }
+        LlmConfigVO effective = copy(config);
+        effective.setApiKey(defaultString(current.getApiKey(), ""));
+        return effective;
     }
 
     private LlmConfigVO copy(LlmConfigVO config) {
