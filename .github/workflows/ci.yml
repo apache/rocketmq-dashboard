@@ -52,3 +52,13 @@ jobs:
 
       - name: Build frontend
         run: npm run build
+
+  frontend-docker-build:
+    name: Frontend Docker Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build frontend Docker image
+        run: docker build -t rocketmq-studio-web-ci ./web
