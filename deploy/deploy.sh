@@ -10,6 +10,18 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# ─── 颜色输出 ───
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+log()  { echo -e "${GREEN}[✓]${NC} $*"; }
+info() { echo -e "${CYAN}[→]${NC} $*"; }
+warn() { echo -e "${YELLOW}[!]${NC} $*"; }
+err()  { echo -e "${RED}[✗]${NC} $*"; exit 1; }
+
 # 加载配置
 if [[ -f "$SCRIPT_DIR/.env" ]]; then
   set -a
@@ -25,18 +37,6 @@ NETWORK="${PODMAN_NETWORK:-rocketmq-studio}"
 TMP_DIR="/tmp/rocketmq-studio-deploy"
 
 TARGET="${1:-all}"  # all | server | web
-
-# ─── 颜色输出 ───
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-NC='\033[0m'
-
-log()  { echo -e "${GREEN}[✓]${NC} $*"; }
-info() { echo -e "${CYAN}[→]${NC} $*"; }
-warn() { echo -e "${YELLOW}[!]${NC} $*"; }
-err()  { echo -e "${RED}[✗]${NC} $*"; exit 1; }
 
 # ─── 前置检查 ───
 check_prereqs() {
