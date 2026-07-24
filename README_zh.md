@@ -6,15 +6,29 @@
 
 RocketMQ Studio 是一个面向多集群、多架构、多云环境的 RocketMQ 管控平台，提供实例管理、集群运维、Topic / 消费组 CRUD、ACL 权限管控、消息查询与轨迹追踪、死信队列处理、监控告警、审计日志以及 AI 智能助手等一站式能力。
 
-## 一键构建 & 运行
+## 安全启动
 
 ```bash
-cd deploy && docker compose up -d --build
+cd deploy
+# 首次启动前，先按 deploy/README.md 创建严格的 cost-12 bcrypt 用户注册表，
+# 并用临时 helper 填充私有命名卷。
+docker compose up -d --build
 ```
 
-启动后访问 **http://127.0.0.1:6789** 即可使用。
+凭据卷初始化是必需步骤：空卷会按设计失败关闭，系统不提供默认账户。首次
+`up` 前请遵循[部署指南](deploy/README.md)，启动后仅在本机访问
+**http://127.0.0.1:6789**。Web 只监听回环地址，后端不发布宿主机端口。
 
-**Studio 服务端口：** 前端 6789（Nginx）、后端 8888（Spring Boot）
+远程主机也应保持回环监听，并通过 SSH 隧道访问：
+
+```bash
+ssh -L 6789:127.0.0.1:6789 deploy-user@studio.example.com
+```
+
+需要网络浏览器直接访问时，使用
+[`deploy/nginx/rocketmq-studio-tls.conf.example`](deploy/nginx/rocketmq-studio-tls.conf.example)
+终止 HTTPS，禁止公开回环 HTTP 入口。注册表 schema、角色、会话、健康探针和
+可信代理模型见 [`docs/security.md`](docs/security.md)。
 
 **RocketMQ 服务端端口：** NameServer 9876、Broker 10911、Proxy Remoting 8080、Proxy gRPC 8081
 

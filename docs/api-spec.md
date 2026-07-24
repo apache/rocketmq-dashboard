@@ -25,7 +25,7 @@
 >
 > Base URL: `/api`
 > Content-Type: `application/json`
-> 认证方式: `Authorization: Bearer <token>`
+> 认证方式: `Authorization: Bearer <opaque-token>`
 
 ## 接口设计风格
 
@@ -139,11 +139,28 @@
 | `401` | 未认证 | Token 过期或缺失 |
 | `403` | 无权限 | 无权访问该资源 |
 | `404` | 不存在 | 资源未找到 |
+| `429` | 请求过多 | 登录尝试被限流 |
 | `500` | 服务器异常 | 未预期的内部错误 |
 
 ---
 
 ## 1. 认证 Auth
+
+除登录和公开健康探针外，请求必须携带且只携带一个
+`Authorization: Bearer <opaque-token>`。Token 是不透明随机会话凭据，并非 JWT。
+Nginx 不生成或覆盖认证响应头；以下状态与响应头由 Spring 返回。
+
+| 场景 | HTTP/`code` | 响应头 | `message` |
+|------|-------------|--------|-----------|
+| 登录 JSON/字段无效 | `400` | `Cache-Control: no-store`；无 `WWW-Authenticate`/`Retry-After` | `Invalid login request` |
+| 登录用户名、密码或注册表不可用 | `401` | `Cache-Control: no-store`；无 `WWW-Authenticate` | `Invalid username or password` |
+| 受保护接口（含登出）缺少、格式错误、过期或已撤销 Token | `401` | `WWW-Authenticate: Bearer`、`Cache-Control: no-store` | `Unauthorized` |
+| 已认证 `USER` 调用 `ADMIN` 接口 | `403` | `Cache-Control: no-store`；无 `WWW-Authenticate` | `Forbidden` |
+| 登录尝试被限流 | `429` | `Retry-After: <至少 1 秒>`、`Cache-Control: no-store`；无 `WWW-Authenticate` | `Too many login attempts` |
+
+`401`、`403` 和 `429` 响应体仍使用通用
+`{"code":<status>,"message":"...","data":null}` 结构。客户端不得记录
+`Authorization` 或 Token，也不应自动重试 `401`/`403`。
 
 ### 1.1 登录
 
@@ -162,7 +179,7 @@ POST /api/auth/login
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `token` | `string` | JWT Token |
+| `token` | `string` | 不透明 Bearer 会话 Token |
 | `expiresIn` | `number` | 过期时间（秒） |
 | `user` | `object` | 用户信息 |
 | `user.username` | `string` | 用户名 |
@@ -174,7 +191,13 @@ POST /api/auth/login
 POST /api/auth/logout
 ```
 
+**Request Header:** `Authorization: Bearer <opaque-token>`
+
 **Response `data`:** `null`
+
+成功登出会撤销当前会话。缺失、无效或已撤销的 Token 返回上表中的精确
+`401` 响应；登出接口允许 `USER` 和 `ADMIN`，因此合法会话不会因角色返回
+`403`。
 
 ---
 
@@ -1480,8 +1503,8 @@ GET /api/settings/general
 | `compact` | `boolean` | 紧凑模式 |
 | `desktopNotify` | `boolean` | 桌面通知 |
 | `notifySound` | `boolean` | 通知声音 |
-| `sessionTimeout` | `number` | 会话超时（分钟，5-1440） |
-| `requireLogin` | `boolean` | 是否需要登录 |
+| `sessionTimeout` | `number` | 已弃用的兼容字段；不控制认证会话 |
+| `requireLogin` | `boolean` | 已弃用的兼容字段；认证始终启用 |
 | `llmProvider` | `string` | LLM 提供商: `openai` / `azure` / `ollama` / `qwen` |
 | `apiKeyConfigured` | `boolean` | 是否已配置 API Key；响应不会返回密钥内容 |
 | `model` | `string` | 模型名称 |
@@ -1501,8 +1524,8 @@ POST /api/settings/general/save
 | `compact` | `boolean` | 是 | 紧凑模式 |
 | `desktopNotify` | `boolean` | 是 | 桌面通知 |
 | `notifySound` | `boolean` | 是 | 通知声音 |
-| `sessionTimeout` | `number` | 是 | 会话超时（分钟，5-1440） |
-| `requireLogin` | `boolean` | 是 | 是否需要登录 |
+| `sessionTimeout` | `number` | 是 | 已弃用的兼容字段；不控制认证会话 |
+| `requireLogin` | `boolean` | 是 | 已弃用的兼容字段；认证始终启用 |
 | `llmProvider` | `string` | 是 | LLM 提供商 |
 | `apiKey` | `string` | 否 | 新 API Key；省略或传空值时保留现有密钥 |
 | `clearApiKey` | `boolean` | 否 | 传 `true` 时显式清除现有密钥，优先级高于 `apiKey` |
@@ -1510,6 +1533,9 @@ POST /api/settings/general/save
 | `baseUrl` | `string` | 是 | Base URL |
 
 **Response `data`:** `null`
+
+`sessionTimeout` 和 `requireLogin` 仅为旧客户端保留。有效会话时长由
+`STUDIO_SECURITY_SESSION_TTL` 配置，不能通过 Settings API 关闭认证。
 
 ### 14.3 获取数据源列表
 

@@ -8,8 +8,17 @@ services:
     image: rocketmq-server:latest
     container_name: rocketmq-server
     restart: unless-stopped
+    environment:
+      STUDIO_SECURITY_USER_FILE: /run/secrets/studio-users.json
     expose:
       - "8888"
+    volumes:
+      - type: volume
+        source: studio-users
+        target: /run/secrets/studio-users.json
+        read_only: true
+        volume:
+          subpath: studio-users.json
 
   rocketmq-web:
     build:
@@ -19,6 +28,9 @@ services:
     container_name: rocketmq-web
     restart: unless-stopped
     ports:
-      - "6789:80"
+      - "127.0.0.1:6789:80"
     depends_on:
       - rocketmq-server
+
+volumes:
+  studio-users:
