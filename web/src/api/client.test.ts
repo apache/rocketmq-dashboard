@@ -16,6 +16,7 @@
  */
 
 import MockAdapter from 'axios-mock-adapter';
+import type { AxiosAdapter, AxiosInstance } from 'axios';
 import { message } from 'antd';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { persistAuthSession, readAuthSession } from '../stores/authStorage';
@@ -40,6 +41,24 @@ vi.stubGlobal('localStorage', {
     return storage.size;
   },
 });
+
+function captureAdapterRejection(apiClient: AxiosInstance): () => unknown {
+  const adapter = apiClient.defaults.adapter;
+  if (typeof adapter !== 'function') {
+    throw new Error('Expected a function adapter');
+  }
+
+  let capturedError: unknown;
+  apiClient.defaults.adapter = async (config) => {
+    try {
+      return await (adapter as AxiosAdapter)(config);
+    } catch (error) {
+      capturedError = error;
+      throw error;
+    }
+  };
+  return () => capturedError;
+}
 
 describe('API client response contract', () => {
   beforeEach(() => {
@@ -109,16 +128,22 @@ describe('API client response contract', () => {
   });
 
   it('clears the session and redirects once for an HTTP 401 response', async () => {
-    persistAuthSession('expired-token', 'studio-admin');
+    const token = 'secret-expired-token';
+    persistAuthSession(token, 'studio-admin');
     const navigate = vi.fn();
     const unauthorizedClient = createApiClient(navigate);
     const unauthorizedMock = new MockAdapter(unauthorizedClient);
     unauthorizedMock.onGet('/protected').reply(401);
+    const getAdapterError = captureAdapterRejection(unauthorizedClient);
 
-    await expect(unauthorizedClient.get('/protected')).rejects.toMatchObject({
-      response: { status: 401 },
-    });
+    const rejectedError = (await unauthorizedClient
+      .get('/protected')
+      .catch((error: unknown) => error)) as Error & { toJSON?: () => unknown };
 
+    expect(rejectedError).toBe(getAdapterError());
+    expect(rejectedError).toMatchObject({ response: { status: 401 } });
+    expect(JSON.stringify(rejectedError.toJSON?.() ?? rejectedError)).not.toContain(token);
+    expect(`${rejectedError.message}\n${rejectedError.stack ?? ''}`).not.toContain(token);
     expect(readAuthSession()).toEqual({ token: null, user: null });
     expect(navigate).toHaveBeenCalledOnce();
     expect(navigate).toHaveBeenCalledWith('/');
@@ -126,17 +151,57 @@ describe('API client response contract', () => {
   });
 
   it('preserves the original non-401 error without clearing or redirecting', async () => {
-    persistAuthSession('valid-token', 'studio-admin');
+    const token = 'secret-valid-token';
+    persistAuthSession(token, 'studio-admin');
     const navigate = vi.fn();
     const nonUnauthorizedClient = createApiClient(navigate);
-    const originalError = Object.assign(new Error('upstream failed'), {
-      response: { status: 500 },
-    });
-    nonUnauthorizedClient.defaults.adapter = async () => Promise.reject(originalError);
+    const nonUnauthorizedMock = new MockAdapter(nonUnauthorizedClient);
+    nonUnauthorizedMock.onGet('/protected').reply(500);
+    const getAdapterError = captureAdapterRejection(nonUnauthorizedClient);
 
-    await expect(nonUnauthorizedClient.get('/protected')).rejects.toBe(originalError);
+    const rejectedError = (await nonUnauthorizedClient
+      .get('/protected', { headers: { 'X-Trace-Id': 'trace-1' } })
+      .catch((error: unknown) => error)) as Error & { toJSON?: () => unknown };
 
-    expect(readAuthSession()).toEqual({ token: 'valid-token', user: 'studio-admin' });
+    expect(rejectedError).toBe(getAdapterError());
+    expect(rejectedError).toMatchObject({ response: { status: 500 } });
+    const serializedError = JSON.stringify(rejectedError.toJSON?.() ?? rejectedError);
+    expect(serializedError).not.toContain(token);
+    expect(serializedError).toContain('trace-1');
+    expect(`${rejectedError.message}\n${rejectedError.stack ?? ''}`).not.toContain(token);
+    expect(readAuthSession()).toEqual({ token, user: 'studio-admin' });
     expect(navigate).not.toHaveBeenCalled();
+    nonUnauthorizedMock.restore();
+  });
+
+  it('redacts case-insensitive authorization headers from request interceptor errors', async () => {
+    const token = 'secret-request-token';
+    const requestClient = createApiClient();
+    requestClient.interceptors.response.eject(0);
+    const originalError = Object.assign(new Error('request rejected'), {
+      config: {
+        headers: {
+          authorization: `Bearer ${token}`,
+          AUTHORIZATION: `Bearer ${token}`,
+          'X-Trace-Id': 'trace-2',
+        },
+      },
+    }) as Error & {
+      config: { headers: Record<string, string> };
+      toJSON?: () => unknown;
+    };
+    originalError.toJSON = () => ({
+      message: originalError.message,
+      stack: originalError.stack,
+      config: originalError.config,
+    });
+    requestClient.interceptors.request.use(() => Promise.reject(originalError));
+
+    const rejectedError = await requestClient.get('/protected').catch((error: unknown) => error);
+
+    expect(rejectedError).toBe(originalError);
+    const serializedError = JSON.stringify(originalError.toJSON?.() ?? originalError);
+    expect(serializedError).not.toContain(token);
+    expect(serializedError).toContain('trace-2');
   });
 });

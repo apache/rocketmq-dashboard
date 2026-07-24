@@ -41,6 +41,44 @@ function getBusinessError(data: unknown): string | null {
   return typeof data.message === 'string' && data.message.trim() ? data.message : '请求失败';
 }
 
+function redactAuthorizationHeaders(error: unknown): unknown {
+  try {
+    if (typeof error !== 'object' || error === null) {
+      return error;
+    }
+    const config = (error as { config?: unknown }).config;
+    if (typeof config !== 'object' || config === null) {
+      return error;
+    }
+    const headers = (config as { headers?: unknown }).headers;
+    if (typeof headers !== 'object' || headers === null) {
+      return error;
+    }
+
+    const deleteHeader = (headers as { delete?: unknown }).delete;
+    if (typeof deleteHeader === 'function') {
+      try {
+        deleteHeader.call(headers, 'Authorization');
+      } catch {
+        // Fall through to plain-object deletion.
+      }
+    }
+
+    for (const key of Object.keys(headers)) {
+      if (key.toLowerCase() === 'authorization') {
+        try {
+          delete (headers as Record<string, unknown>)[key];
+        } catch {
+          // Readonly or proxy-backed headers are left unchanged without masking the request error.
+        }
+      }
+    }
+  } catch {
+    // Malformed error objects must preserve the original rejection semantics.
+  }
+  return error;
+}
+
 export function createApiClient(navigate?: (url: string) => void) {
   const client = axios.create({
     baseURL: API_BASE_URL,
@@ -56,7 +94,7 @@ export function createApiClient(navigate?: (url: string) => void) {
       }
       return config;
     },
-    (error) => Promise.reject(error),
+    (error) => Promise.reject(redactAuthorizationHeaders(error)),
   );
 
   // Response interceptor: check business code and handle 401
@@ -70,6 +108,7 @@ export function createApiClient(navigate?: (url: string) => void) {
       return response;
     },
     (error) => {
+      redactAuthorizationHeaders(error);
       if (error.response?.status === 401) {
         handleUnauthorized(navigate);
       }
