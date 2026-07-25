@@ -502,6 +502,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'cluster.readQueues': { zh: '读队列数', en: 'Read Queues' },
   'cluster.brokerPermission': { zh: 'Broker 权限', en: 'Broker Permission' },
   'cluster.viewDetail': { zh: '查看详情: {addr}', en: 'View detail: {addr}' },
+  'cluster.proxyDetailTitle': { zh: 'Proxy 详情 - {addr}', en: 'Proxy Detail - {addr}' },
   'cluster.restartProxyConfirm': {
     zh: '确定要重启 Proxy "{addr}" 吗？',
     en: 'Are you sure to restart Proxy "{addr}"?',

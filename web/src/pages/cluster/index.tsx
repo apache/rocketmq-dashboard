@@ -29,6 +29,7 @@ import {
   Switch,
   InputNumber,
   Progress,
+  Descriptions,
   Flex,
   Space,
   Typography,
@@ -56,6 +57,8 @@ import clusters, {
 
 const { Text } = Typography;
 
+type ProxyDetail = ProxyInfo & { clusterName: string; nsClusterName: string };
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 const ClusterPage = () => {
@@ -69,6 +72,7 @@ const ClusterPage = () => {
   const [selectedCluster, setSelectedCluster] = useState<ClusterInfo | null>(null);
   const [nsModalOpen, setNsModalOpen] = useState(false);
   const [nsModalMode, setNsModalMode] = useState<'create' | 'edit'>('create');
+  const [selectedProxy, setSelectedProxy] = useState<ProxyDetail | null>(null);
   const [nsForm] = Form.useForm();
   const [configForm] = Form.useForm();
 
@@ -608,7 +612,7 @@ const ClusterPage = () => {
   // ─── Tab 3: Proxy 管理 (flat table) ────────────────────────────────────────
 
   function renderProxyTab() {
-    type ProxyRow = ProxyInfo & { clusterName: string; nsClusterName: string };
+    type ProxyRow = ProxyDetail;
 
     const allProxies: ProxyRow[] = clusters
       .filter((c) => c.proxies.length > 0)
@@ -704,7 +708,7 @@ const ClusterPage = () => {
               size="small"
               icon={<EyeOutlined />}
               style={{ borderColor: '#1677ff', color: '#1677ff' }}
-              onClick={() => message.info(t('cluster.viewDetail', { addr: record.addr }))}
+              onClick={() => setSelectedProxy(record)}
             >
               {t('common.detail')}
             </Button>
@@ -854,6 +858,54 @@ const ClusterPage = () => {
         </Form>
       </Modal>
       <Tabs items={tabItems} defaultActiveKey="broker" />
+      <Modal
+        title={t('cluster.proxyDetailTitle', { addr: selectedProxy?.addr ?? '' })}
+        open={Boolean(selectedProxy)}
+        onCancel={() => setSelectedProxy(null)}
+        footer={<Button onClick={() => setSelectedProxy(null)}>{t('common.close')}</Button>}
+        width={560}
+        destroyOnClose
+      >
+        {selectedProxy && (
+          <Descriptions column={1} bordered size="small">
+            <Descriptions.Item label={t('cluster.k8sName')}>
+              {selectedProxy.clusterName}
+            </Descriptions.Item>
+            <Descriptions.Item label={t('cluster.nsClusterName')}>
+              {selectedProxy.nsClusterName}
+            </Descriptions.Item>
+            <Descriptions.Item label={t('cluster.proxyAddr')}>
+              <Text copyable code>
+                {selectedProxy.addr}
+              </Text>
+            </Descriptions.Item>
+            <Descriptions.Item label={t('common.status')}>
+              <Tag
+                color={
+                  selectedProxy.status === 'healthy'
+                    ? 'green'
+                    : selectedProxy.status === 'warning'
+                      ? 'gold'
+                      : selectedProxy.status === 'error'
+                        ? 'red'
+                        : 'default'
+                }
+              >
+                {selectedProxy.status}
+              </Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label={t('cluster.connections')}>
+              {selectedProxy.connections.toLocaleString()}
+            </Descriptions.Item>
+            <Descriptions.Item label={t('cluster.grpcPort')}>
+              {selectedProxy.grpcPort}
+            </Descriptions.Item>
+            <Descriptions.Item label={t('cluster.remotingPort')}>
+              {selectedProxy.remotingPort}
+            </Descriptions.Item>
+          </Descriptions>
+        )}
+      </Modal>
     </div>
   );
 };
