@@ -1,0 +1,27 @@
+server/src/test/java/com/rocketmq/studio/cluster/k8s/K8sCertServiceTest.java
+  s_4884e99c338e65::t_fed4ce1143b9e6 68-69,180-186,240
+  s_4884e99c338e65::t_c30dcbee68d13d 224-239
+  s_4884e99c338e65::t_31f6af0da065ae 247-248,262-268,272-292
+  s_4884e99c338e65::t_9c311ee140af57 241-242
+  s_4884e99c338e65::t_2181ed8ca1aeca 293-294
+server/src/main/java/com/rocketmq/studio/cluster/k8s/K8sCertService.java
+  s_4884e99c338e65::t_31f6af0da065ae 75,77,80,83,86,89,92,103,109-114,116,128-145
+  s_4884e99c338e65::t_fed4ce1143b9e6 72,94,96
+  s_4884e99c338e65::t_8241c091a3ec25 146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "6cb36c76d6b18f83741bfbb56edc830d94d312f8",
+  "prompts": {},
+  "sessions": {
+    "s_4884e99c338e65": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8dd4-ca01-7ce3-a219-1972df092368",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "yx9o <yangx_soft@163.com>"
+    }
+  }
+}
