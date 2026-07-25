@@ -61,6 +61,24 @@ class ConsumerDiagnosticsServiceTest {
     }
 
     @Test
+    void getConsumerStackShouldTrimInputsBeforeDelegatingToProvider() {
+        ConsumerStackTraceVO stackTrace = ConsumerStackTraceVO.builder()
+                .groupName("cg-orders")
+                .clientId("client-1")
+                .capturedAt(LocalDateTime.now())
+                .threadCount(0)
+                .threads(List.of())
+                .build();
+        when(diagnosticsProvider.getConsumerStack("cg-orders", "client-1")).thenReturn(stackTrace);
+
+        ConsumerStackTraceVO result = diagnosticsService.getConsumerStack(" cg-orders ", " client-1 ");
+
+        assertThat(result.getGroupName()).isEqualTo("cg-orders");
+        assertThat(result.getClientId()).isEqualTo("client-1");
+        verify(diagnosticsProvider).getConsumerStack("cg-orders", "client-1");
+    }
+
+    @Test
     void getConsumerStackShouldRejectBlankGroupName() {
         assertThatThrownBy(() -> diagnosticsService.getConsumerStack(" ", "client-1"))
                 .isInstanceOf(BusinessException.class)
