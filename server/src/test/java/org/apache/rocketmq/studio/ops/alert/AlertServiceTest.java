@@ -32,6 +32,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -131,6 +132,53 @@ class AlertServiceTest {
         AlertRuleVO result2 = alertService.createRule(input2);
 
         assertThat(result1.getId()).isNotEqualTo(result2.getId());
+    }
+
+    @Test
+    void updateRuleShouldUpdateExistingRule() {
+        AlertRuleVO update = AlertRuleVO.builder().id("rule-1").name("CPU Alert").threshold(90.0).build();
+        when(alertRepository.replaceRule(update)).thenReturn(true);
+
+        AlertRuleVO result = alertService.updateRule(update);
+
+        assertThat(result.getId()).isEqualTo("rule-1");
+        assertThat(result.getThreshold()).isEqualTo(90.0);
+        verify(alertRepository).replaceRule(update);
+    }
+
+    @Test
+    void updateRuleShouldRejectNullId() {
+        AlertRuleVO update = AlertRuleVO.builder().name("CPU Alert").build();
+
+        assertThatThrownBy(() -> alertService.updateRule(update))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Alert rule ID is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        verify(alertRepository, never()).replaceRule(any());
+    }
+
+    @Test
+    void updateRuleShouldRejectBlankId() {
+        AlertRuleVO update = AlertRuleVO.builder().id("  ").name("CPU Alert").build();
+
+        assertThatThrownBy(() -> alertService.updateRule(update))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Alert rule ID is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        verify(alertRepository, never()).replaceRule(any());
+    }
+
+    @Test
+    void updateRuleShouldRejectUnknownId() {
+        AlertRuleVO update = AlertRuleVO.builder().id("missing").name("CPU Alert").build();
+        when(alertRepository.replaceRule(update)).thenReturn(false);
+
+        assertThatThrownBy(() -> alertService.updateRule(update))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Alert rule not found: missing")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
+        verify(alertRepository).replaceRule(update);
+        verify(alertRepository, never()).saveRule(any());
     }
 
     @Test

@@ -24,6 +24,8 @@ public interface AlertRepository {
 
     AlertRuleVO saveRule(AlertRuleVO rule);
 
+    boolean replaceRule(AlertRuleVO rule);
+
     void deleteRule(String id);
 
     List<SystemAlertVO> findAlerts(String level);

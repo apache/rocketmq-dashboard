@@ -45,6 +45,13 @@ public class InMemoryAlertRepository implements AlertRepository {
     }
 
     @Override
+    public boolean replaceRule(AlertRuleVO rule) {
+        boolean replaced = rules.replace(rule.getId(), rule) != null;
+        log.debug("Replaced alert rule id={}, replaced={}", rule.getId(), replaced);
+        return replaced;
+    }
+
+    @Override
     public void deleteRule(String id) {
         rules.remove(id);
         log.debug("Deleted alert rule id={}", id);
