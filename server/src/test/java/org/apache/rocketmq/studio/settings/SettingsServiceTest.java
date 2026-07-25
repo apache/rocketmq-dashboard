@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.settings;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,6 +38,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.verify;
@@ -213,13 +215,27 @@ class SettingsServiceTest {
     void updateDataSourceShouldDelegateToRepository() {
         DataSourceVO input = DataSourceVO.builder().key("ds-1").name("Updated DS").type("rocketmq")
                 .url("updated-host:9876").build();
-        when(settingsRepository.saveDataSource(any(DataSourceVO.class))).thenReturn(input);
+        when(settingsRepository.replaceDataSource(input)).thenReturn(true);
 
         DataSourceVO result = settingsService.updateDataSource(input);
 
         assertThat(result.getKey()).isEqualTo("ds-1");
         assertThat(result.getName()).isEqualTo("Updated DS");
-        verify(settingsRepository).saveDataSource(input);
+        verify(settingsRepository).replaceDataSource(input);
+    }
+
+    @Test
+    void updateDataSourceShouldRejectUnknownKey() {
+        SettingsService service = new SettingsService(new InMemorySettingsRepository(), RestClient.builder(), new ObjectMapper());
+        DataSourceVO input = DataSourceVO.builder().key("missing").name("Unexpected DS").type("rocketmq")
+                .url("unexpected-host:9876").build();
+
+        assertThatThrownBy(() -> service.updateDataSource(input))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Data source not found: missing")
+                .extracting("code")
+                .isEqualTo(404);
+        assertThat(service.listDataSources()).isEmpty();
     }
 
     @Test

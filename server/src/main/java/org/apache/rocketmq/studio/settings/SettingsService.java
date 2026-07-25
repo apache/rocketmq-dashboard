@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.settings;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -101,7 +102,10 @@ public class SettingsService {
 
     public DataSourceVO updateDataSource(DataSourceVO dataSource) {
         log.info("Updating data source: {}", dataSource.getKey());
-        return settingsRepository.saveDataSource(dataSource);
+        if (!settingsRepository.replaceDataSource(dataSource)) {
+            throw new BusinessException(404, "Data source not found: " + dataSource.getKey());
+        }
+        return dataSource;
     }
 
 

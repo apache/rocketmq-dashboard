@@ -25,7 +25,7 @@ class InMemorySettingsRepositoryTest {
     private final InMemorySettingsRepository repository = new InMemorySettingsRepository();
 
     @Test
-    void saveDataSourceShouldSupportCreateUpdateAndDeleteByKey() {
+    void saveDataSourceShouldSupportCreateAndDeleteByKey() {
         DataSourceVO dataSource = DataSourceVO.builder()
                 .key("source-1")
                 .name("Prometheus")
@@ -38,17 +38,31 @@ class InMemorySettingsRepositoryTest {
         assertThat(repository.findDataSourceByKey("source-1")).containsSame(dataSource);
         assertThat(repository.findAllDataSources()).containsExactly(dataSource);
 
-        dataSource.setName("Updated Prometheus");
-        repository.saveDataSource(dataSource);
-
-        assertThat(repository.findDataSourceByKey("source-1"))
-                .get()
-                .extracting(DataSourceVO::getName)
-                .isEqualTo("Updated Prometheus");
-
         repository.deleteDataSource("source-1");
 
         assertThat(repository.findDataSourceByKey("source-1")).isEmpty();
+        assertThat(repository.findAllDataSources()).isEmpty();
+    }
+
+    @Test
+    void replaceDataSourceShouldUpdateExistingEntry() {
+        DataSourceVO existing = DataSourceVO.builder().key("source-1").name("Prometheus").build();
+        DataSourceVO replacement = DataSourceVO.builder().key("source-1").name("Updated Prometheus").build();
+        repository.saveDataSource(existing);
+
+        boolean replaced = repository.replaceDataSource(replacement);
+
+        assertThat(replaced).isTrue();
+        assertThat(repository.findAllDataSources()).containsExactly(replacement);
+    }
+
+    @Test
+    void replaceDataSourceShouldNotInsertUnknownEntry() {
+        DataSourceVO replacement = DataSourceVO.builder().key("missing").name("Unexpected DS").build();
+
+        boolean replaced = repository.replaceDataSource(replacement);
+
+        assertThat(replaced).isFalse();
         assertThat(repository.findAllDataSources()).isEmpty();
     }
 }
