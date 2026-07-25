@@ -19,6 +19,8 @@ package com.rocketmq.studio.ops;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -31,6 +33,7 @@ import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -90,23 +93,49 @@ class OpsControllerTest {
         verify(opsService).addNameServer(eq("10.0.0.2:9876"));
     }
 
-    @Test
-    void updateVipChannelShouldDelegateToService() throws Exception {
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void updateVipChannelShouldDelegateToService(boolean useVipChannel) throws Exception {
         mockMvc.perform(post("/api/ops/updateIsVIPChannel")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("useVIPChannel", false))))
+                        .content(objectMapper.writeValueAsString(Map.of("useVIPChannel", useVipChannel))))
                 .andExpect(status().isOk());
 
-        verify(opsService).updateVipChannel(false);
+        verify(opsService).updateVipChannel(useVipChannel);
     }
 
     @Test
-    void updateUseTlsShouldDelegateToService() throws Exception {
+    void updateVipChannelShouldRejectMissingValue() throws Exception {
+        mockMvc.perform(post("/api/ops/updateIsVIPChannel")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("useVIPChannel is required"));
+
+        verifyNoInteractions(opsService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void updateUseTlsShouldDelegateToService(boolean useTls) throws Exception {
         mockMvc.perform(post("/api/ops/updateUseTLS")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("useTLS", true))))
+                        .content(objectMapper.writeValueAsString(Map.of("useTLS", useTls))))
                 .andExpect(status().isOk());
 
-        verify(opsService).updateUseTLS(true);
+        verify(opsService).updateUseTLS(useTls);
+    }
+
+    @Test
+    void updateUseTlsShouldRejectMissingValue() throws Exception {
+        mockMvc.perform(post("/api/ops/updateUseTLS")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("useTLS is required"));
+
+        verifyNoInteractions(opsService);
     }
 }

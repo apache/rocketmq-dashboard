@@ -17,9 +17,11 @@
 
 package com.rocketmq.studio.ops;
 
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 @Data
 public class OpsVipChannelDTO {
-    private boolean useVIPChannel;
+    @NotNull(message = "useVIPChannel is required")
+    private Boolean useVIPChannel;
 }
