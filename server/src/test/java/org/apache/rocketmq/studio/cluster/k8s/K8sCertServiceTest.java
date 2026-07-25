@@ -65,6 +65,8 @@ class K8sCertServiceTest {
                 .san(Arrays.asList("rocketmq.example.com", "*.rocketmq.example.com"))
                 .build();
         sampleCert.setId("cert-1");
+        sampleCert.setCreatedAt(LocalDateTime.of(2024, 12, 1, 0, 0));
+        sampleCert.setUpdatedAt(LocalDateTime.of(2025, 1, 2, 0, 0));
     }
 
     @Test
@@ -175,7 +177,13 @@ class K8sCertServiceTest {
         assertThat(result.getType()).isEqualTo(CertType.mTLS);
         assertThat(result.getIssuer()).isEqualTo("new-issuer");
         assertThat(result.getSan()).containsExactly("new.example.com");
-        assertThat(result.getUpdatedAt()).isNotNull();
+        assertThat(result.getId()).isEqualTo("cert-1");
+        assertThat(result.getCreatedAt()).isEqualTo(LocalDateTime.of(2024, 12, 1, 0, 0));
+        assertThat(result.getUpdatedAt()).isAfter(sampleCert.getUpdatedAt());
+        assertThat(result).isNotSameAs(sampleCert);
+        assertThat(sampleCert.getName()).isEqualTo("rocketmq-tls");
+        assertThat(sampleCert.getType()).isEqualTo(CertType.TLS);
+        assertThat(sampleCert.getUpdatedAt()).isEqualTo(LocalDateTime.of(2025, 1, 2, 0, 0));
         verify(k8sCertRepository).save(any(K8sCertVO.class));
     }
 
@@ -214,9 +222,30 @@ class K8sCertServiceTest {
     }
 
     @Test
+    void updateCertShouldNotMutateStoredCertWhenSaveFails() {
+        when(k8sCertRepository.findById("cert-1")).thenReturn(Optional.of(sampleCert));
+        when(k8sCertRepository.save(any(K8sCertVO.class))).thenThrow(new IllegalStateException("save failed"));
+        UpdateCertDTO command = UpdateCertDTO.builder()
+                .id("cert-1")
+                .name("should-not-persist")
+                .type("mTLS")
+                .build();
+
+        assertThatThrownBy(() -> k8sCertService.updateCert(command))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("save failed");
+
+        assertThat(sampleCert.getName()).isEqualTo("rocketmq-tls");
+        assertThat(sampleCert.getType()).isEqualTo(CertType.TLS);
+        assertThat(sampleCert.getUpdatedAt()).isEqualTo(LocalDateTime.of(2025, 1, 2, 0, 0));
+    }
+
+    @Test
     void renewCertShouldRenewCertValidity() {
         sampleCert.setStatus(CertStatus.expired);
         sampleCert.setDaysRemaining(0);
+        LocalDateTime originalNotBefore = sampleCert.getNotBefore();
+        LocalDateTime originalNotAfter = sampleCert.getNotAfter();
 
         when(k8sCertRepository.findById("cert-1")).thenReturn(Optional.of(sampleCert));
         when(k8sCertRepository.save(any(K8sCertVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -230,7 +259,37 @@ class K8sCertServiceTest {
         assertThat(result.getNotBefore()).isNotNull();
         assertThat(result.getNotAfter()).isAfter(result.getNotBefore());
         assertThat(result.getUpdatedAt()).isNotNull();
+        assertThat(result.getId()).isEqualTo("cert-1");
+        assertThat(result.getCreatedAt()).isEqualTo(sampleCert.getCreatedAt());
+        assertThat(result).isNotSameAs(sampleCert);
+        assertThat(sampleCert.getStatus()).isEqualTo(CertStatus.expired);
+        assertThat(sampleCert.getDaysRemaining()).isZero();
+        assertThat(sampleCert.getNotBefore()).isEqualTo(originalNotBefore);
+        assertThat(sampleCert.getNotAfter()).isEqualTo(originalNotAfter);
         verify(k8sCertRepository).save(any(K8sCertVO.class));
+    }
+
+    @Test
+    void renewCertShouldNotMutateStoredCertWhenSaveFails() {
+        sampleCert.setStatus(CertStatus.expired);
+        sampleCert.setDaysRemaining(0);
+        LocalDateTime originalNotBefore = sampleCert.getNotBefore();
+        LocalDateTime originalNotAfter = sampleCert.getNotAfter();
+
+        when(k8sCertRepository.findById("cert-1")).thenReturn(Optional.of(sampleCert));
+        when(k8sCertRepository.save(any(K8sCertVO.class))).thenThrow(new IllegalStateException("save failed"));
+
+        RenewCertDTO command = RenewCertDTO.builder().id("cert-1").build();
+
+        assertThatThrownBy(() -> k8sCertService.renewCert(command))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("save failed");
+
+        assertThat(sampleCert.getStatus()).isEqualTo(CertStatus.expired);
+        assertThat(sampleCert.getDaysRemaining()).isZero();
+        assertThat(sampleCert.getNotBefore()).isEqualTo(originalNotBefore);
+        assertThat(sampleCert.getNotAfter()).isEqualTo(originalNotAfter);
+        assertThat(sampleCert.getUpdatedAt()).isEqualTo(LocalDateTime.of(2025, 1, 2, 0, 0));
     }
 
     @Test

@@ -69,49 +69,51 @@ public class K8sCertService {
 
     public K8sCertVO updateCert(UpdateCertDTO command) {
         log.info("Updating K8s certificate: {}", command.getId());
-        K8sCertVO cert = k8sCertRepository.findById(command.getId())
+        K8sCertVO existing = k8sCertRepository.findById(command.getId())
                 .orElseThrow(() -> new BusinessException(404, "Certificate not found: " + command.getId()));
 
+        K8sCertVO updated = copyOf(existing);
         if (command.getName() != null) {
-            cert.setName(command.getName());
+            updated.setName(command.getName());
         }
         if (command.getNamespace() != null) {
-            cert.setNamespace(command.getNamespace());
+            updated.setNamespace(command.getNamespace());
         }
         if (command.getCluster() != null) {
-            cert.setCluster(command.getCluster());
+            updated.setCluster(command.getCluster());
         }
         if (command.getType() != null) {
-            cert.setType(CertType.valueOf(command.getType()));
+            updated.setType(CertType.valueOf(command.getType()));
         }
         if (command.getIssuer() != null) {
-            cert.setIssuer(command.getIssuer());
+            updated.setIssuer(command.getIssuer());
         }
         if (command.getSan() != null) {
-            cert.setSan(command.getSan());
+            updated.setSan(command.getSan());
         }
-        cert.setUpdatedAt(LocalDateTime.now());
+        updated.setUpdatedAt(LocalDateTime.now());
 
-        K8sCertVO saved = k8sCertRepository.save(cert);
+        K8sCertVO saved = k8sCertRepository.save(updated);
         log.info("K8s certificate updated: {} (id={})", saved.getName(), saved.getId());
         return saved;
     }
 
     public K8sCertVO renewCert(RenewCertDTO command) {
         log.info("Renewing K8s certificate: {}", command.getId());
-        K8sCertVO cert = k8sCertRepository.findById(command.getId())
+        K8sCertVO existing = k8sCertRepository.findById(command.getId())
                 .orElseThrow(() -> new BusinessException(404, "Certificate not found: " + command.getId()));
 
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime notAfter = now.plusYears(1);
 
-        cert.setNotBefore(now);
-        cert.setNotAfter(notAfter);
-        cert.setStatus(CertStatus.valid);
-        cert.setDaysRemaining((int) ChronoUnit.DAYS.between(now, notAfter));
-        cert.setUpdatedAt(now);
+        K8sCertVO renewed = copyOf(existing);
+        renewed.setNotBefore(now);
+        renewed.setNotAfter(notAfter);
+        renewed.setStatus(CertStatus.valid);
+        renewed.setDaysRemaining((int) ChronoUnit.DAYS.between(now, notAfter));
+        renewed.setUpdatedAt(now);
 
-        K8sCertVO saved = k8sCertRepository.save(cert);
+        K8sCertVO saved = k8sCertRepository.save(renewed);
         log.info("K8s certificate renewed: {} (id={}), new expiry: {}", saved.getName(), saved.getId(), notAfter);
         return saved;
     }
@@ -122,5 +124,24 @@ public class K8sCertService {
                 .orElseThrow(() -> new BusinessException(404, "Certificate not found: " + command.getId()));
         k8sCertRepository.deleteById(command.getId());
         log.info("K8s certificate deleted: {}", command.getId());
+    }
+
+    private K8sCertVO copyOf(K8sCertVO cert) {
+        K8sCertVO copy = K8sCertVO.builder()
+                .name(cert.getName())
+                .namespace(cert.getNamespace())
+                .cluster(cert.getCluster())
+                .type(cert.getType())
+                .issuer(cert.getIssuer())
+                .notBefore(cert.getNotBefore())
+                .notAfter(cert.getNotAfter())
+                .status(cert.getStatus())
+                .daysRemaining(cert.getDaysRemaining())
+                .san(cert.getSan())
+                .build();
+        copy.setId(cert.getId());
+        copy.setCreatedAt(cert.getCreatedAt());
+        copy.setUpdatedAt(cert.getUpdatedAt());
+        return copy;
     }
 }
