@@ -188,14 +188,30 @@ class AuditServiceTest {
     }
 
     @Test
-    void queryLogsShouldHandleInvalidDateFormat() {
-        when(auditRepository.findAll(isNull(), isNull(), isNull(), isNull(), isNull()))
-                .thenReturn(Collections.emptyList());
+    void queryLogsShouldRejectInvalidStartDate() {
+        assertThatThrownBy(() -> auditService.queryLogs(
+                1, 10, null, null, "invalid-date", null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("startDate must use YYYY-MM-DD")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+    }
 
-        PageResult<AuditRecordVO> result = auditService.queryLogs(1, 10, null, null, "invalid-date", null, null);
+    @Test
+    void queryLogsShouldRejectInvalidEndDate() {
+        assertThatThrownBy(() -> auditService.queryLogs(
+                1, 10, null, null, null, "2025-02-30", null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("endDate must use YYYY-MM-DD")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+    }
 
-        assertThat(result).isNotNull();
-        assertThat(result.getItems()).isEmpty();
+    @Test
+    void queryLogsShouldRejectReversedDateRange() {
+        assertThatThrownBy(() -> auditService.queryLogs(
+                1, 10, null, null, "2025-02-01", "2025-01-31", null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("startDate must not be after endDate")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
     }
 
     @Test

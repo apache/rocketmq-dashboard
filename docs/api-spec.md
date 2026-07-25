@@ -1424,6 +1424,8 @@ GET /api/audit-logs?page={page}&pageSize={pageSize}&search={search}&operationTyp
 | `endDate` | `string` | 否 | 结束日期 (YYYY-MM-DD) |
 | `result` | `string` | 否 | 结果过滤: `success` / `failure` |
 
+`startDate` 或 `endDate` 格式错误，以及 `startDate` 晚于 `endDate` 时，接口返回 HTTP 400。
+
 **Response `data`:**
 
 | 字段 | 类型 | 说明 |
