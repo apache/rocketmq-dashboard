@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Button, Form, Input, Select, Table, Card, App } from 'antd';
 import { MagnifyingGlass } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
@@ -32,21 +32,30 @@ const ProducerPage = () => {
   const [loading, setLoading] = useState(false);
   const { t } = useLang();
   const { message } = App.useApp();
+  const fetchTopicFailedMessage = t('producer.fetchTopicFailed');
 
-  // Load topic list on mount (once)
-  const initialized = useRef<boolean | null>(null);
-  if (initialized.current == null) {
-    initialized.current = true;
+  useEffect(() => {
+    let cancelled = false;
+
     const loadTopics = async () => {
       try {
         const topics = await fetchTopicList();
-        setTopicList(topics);
+        if (!cancelled) {
+          setTopicList(topics);
+        }
       } catch {
-        message.error(t('producer.fetchTopicFailed'));
+        if (!cancelled) {
+          message.error(fetchTopicFailedMessage);
+        }
       }
     };
-    loadTopics();
-  }
+
+    void loadTopics();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchTopicFailedMessage, message]);
 
   const onFinish = async (values: { selectedTopic: string; producerGroup: string }) => {
     setLoading(true);
