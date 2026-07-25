@@ -187,6 +187,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'clients.cluster': { zh: '所属集群', en: 'Cluster' },
   'clients.allClusters': { zh: '全部集群', en: 'All Clusters' },
   'clients.searchPlaceholder': { zh: '搜索 Client ID 或地址', en: 'Search Client ID or address' },
+  'clients.detailTitle': { zh: '客户端详情 - {id}', en: 'Client Detail - {id}' },
 
   // ─── Alert Rules ───
   'alerts.title': { zh: '告警规则管理', en: 'Alert Rules' },
