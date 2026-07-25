@@ -23,6 +23,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -56,12 +57,32 @@ class GlobalExceptionHandlerTest {
                 .andExpect(jsonPath("$.message").value("failure-400"));
     }
 
+    @Test
+    void returnsBadRequestWhenRequestParamTypeIsInvalid() throws Exception {
+        mockMvc.perform(get("/test/number").param("startTime", "invalid"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("Invalid request parameter: startTime"));
+    }
+
+    @Test
+    void acceptsValidRequestParamType() throws Exception {
+        mockMvc.perform(get("/test/number").param("startTime", "1000"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").value(1000));
+    }
+
     @RestController
     static class FailingController {
 
         @GetMapping("/test/business/{code}")
         Result<Void> fail(@PathVariable int code) {
             throw new BusinessException(code, "failure-" + code);
+        }
+
+        @GetMapping("/test/number")
+        Result<Long> number(@RequestParam Long startTime) {
+            return Result.ok(startTime);
         }
     }
 }

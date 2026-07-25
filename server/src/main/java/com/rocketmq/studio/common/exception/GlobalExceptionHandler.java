@@ -27,6 +27,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -62,6 +63,13 @@ public class GlobalExceptionHandler {
     public Result<?> handleHttpMessageNotReadableException(HttpMessageNotReadableException ex) {
         log.warn("Invalid request body");
         return Result.error(HttpStatus.BAD_REQUEST.value(), "Invalid request body");
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Result<?> handleMethodArgumentTypeMismatchException(MethodArgumentTypeMismatchException ex) {
+        log.warn("Invalid request parameter: {}", ex.getName());
+        return Result.error(HttpStatus.BAD_REQUEST.value(), "Invalid request parameter: " + ex.getName());
     }
 
     @ExceptionHandler(Exception.class)
