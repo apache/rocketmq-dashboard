@@ -881,6 +881,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'proxy.action': { zh: '操作', en: 'Action' },
   'proxy.fetchListFailed': { zh: '获取代理列表失败', en: 'Failed to fetch proxy list' },
   'proxy.addFailed': { zh: '添加代理失败', en: 'Failed to add proxy' },
+  'proxy.removeFailed': { zh: '移除代理失败', en: 'Failed to remove proxy' },
   'proxy.addrRequired': { zh: '请输入代理地址', en: 'Proxy address is required' },
   'proxy.noConfigData': { zh: '无配置数据', en: 'No config data' },
   'proxy.version': { zh: '版本', en: 'Version' },

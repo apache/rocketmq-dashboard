@@ -41,7 +41,7 @@ public class ProxyAddressService {
     }
 
     public synchronized void addProxyAddr(String newProxyAddr) {
-        String normalized = normalizeProxyAddr(newProxyAddr);
+        String normalized = normalizeProxyAddr(newProxyAddr, "newProxyAddr");
         proxyAddrs.add(normalized);
         if (currentProxyAddr == null || currentProxyAddr.isBlank()) {
             currentProxyAddr = normalized;
@@ -49,9 +49,20 @@ public class ProxyAddressService {
         log.info("Added Proxy address {}", normalized);
     }
 
-    private String normalizeProxyAddr(String proxyAddr) {
+    public synchronized void removeProxyAddr(String proxyAddr) {
+        String normalized = normalizeProxyAddr(proxyAddr, "proxyAddr");
+        if (!proxyAddrs.remove(normalized)) {
+            throw new BusinessException(404, "Proxy address not found: " + normalized);
+        }
+        if (normalized.equals(currentProxyAddr)) {
+            currentProxyAddr = proxyAddrs.stream().findFirst().orElse("");
+        }
+        log.info("Removed Proxy address {}", normalized);
+    }
+
+    private String normalizeProxyAddr(String proxyAddr, String fieldName) {
         if (proxyAddr == null || proxyAddr.trim().isEmpty()) {
-            throw new BusinessException(400, "newProxyAddr is required");
+            throw new BusinessException(400, fieldName + " is required");
         }
         return proxyAddr.trim();
     }

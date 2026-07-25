@@ -48,7 +48,7 @@ import {
 } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
-import { queryProxyHomePage, addProxyAddr, type ProxyNode } from '../../api/proxy';
+import { queryProxyHomePage, addProxyAddr, removeProxyAddr, type ProxyNode } from '../../api/proxy';
 
 const ProxyPage: React.FC = () => {
   const { t } = useLang();
@@ -161,7 +161,18 @@ const ProxyPage: React.FC = () => {
   };
 
   const handleRemoveNode = (node: ProxyNode) => {
-    message.info(`Remove node operation (not implemented in API): ${node.address}`);
+    setLoading(true);
+    removeProxyAddr(node.address)
+      .then(() => {
+        message.success(t('common.success'));
+        loadProxyNodes();
+      })
+      .catch(() => {
+        message.error(t('proxy.removeFailed'));
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   };
 
   const handleRefresh = () => {
