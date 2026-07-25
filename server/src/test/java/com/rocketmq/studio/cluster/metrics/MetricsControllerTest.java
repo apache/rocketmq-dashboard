@@ -40,6 +40,48 @@ class MetricsControllerTest {
     private MetricsService metricsService;
 
     @Test
+    void queryShouldReturnBadRequestWhenMetricIsBlank() throws Exception {
+        mockMvc.perform(post("/api/metrics/query")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"metric":" ","start":1784107658,"end":1784108558,"step":"30s"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("Metric query is required"));
+
+        verifyNoInteractions(metricsService);
+    }
+
+    @Test
+    void queryShouldReturnBadRequestWhenStartIsNotPositive() throws Exception {
+        mockMvc.perform(post("/api/metrics/query")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"metric":"up","start":0,"end":1784108558,"step":"30s"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("Metric query start must be positive"));
+
+        verifyNoInteractions(metricsService);
+    }
+
+    @Test
+    void queryShouldReturnBadRequestWhenStepIsBlank() throws Exception {
+        mockMvc.perform(post("/api/metrics/query")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"metric":"up","start":1784107658,"end":1784108558,"step":""}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("Metric query step is required"));
+
+        verifyNoInteractions(metricsService);
+    }
+
+    @Test
     void queryShouldReturnBadRequestWhenFieldTypeIsInvalid() throws Exception {
         mockMvc.perform(post("/api/metrics/query")
                         .contentType(MediaType.APPLICATION_JSON)
