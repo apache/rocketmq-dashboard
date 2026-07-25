@@ -1,0 +1,52 @@
+server/src/test/java/com/rocketmq/studio/instance/acl/AclServiceTest.java
+  s_4884e99c338e65::t_c36bae6c576f67 149,151-162,170-173
+  s_4884e99c338e65::t_acl_credential_attribution_repair_20260725 219-220
+  s_4884e99c338e65::t_f4a5db4f844f58 192-209,215-216
+  s_4884e99c338e65::t_6be3b45afbb544 20-21,24-27,33-34,39,52-65,177-191,210-214,217-218,264-265,269-270,276-278,280-335
+server/src/main/java/com/rocketmq/studio/instance/acl/AclRepository.java
+  s_4884e99c338e65::t_1c1442f9bc7da3 21,32
+  s_4884e99c338e65::t_acl_credential_attribution_repair_20260725 33
+server/src/main/java/com/rocketmq/studio/instance/acl/AclService.java
+  s_4884e99c338e65::t_1c1442f9bc7da3 92-103
+  s_4884e99c338e65::t_acl_credential_attribution_repair_20260725 114,137
+  s_4884e99c338e65::t_f4a5db4f844f58 34,122,131
+  s_4884e99c338e65::t_761bc403f8e620 33,35-36,72-74,115-121,123-130,132-136
+web/src/pages/instance/__tests__/AclPage.test.tsx
+  s_4884e99c338e65::t_461bbc19468e53 125
+  s_4884e99c338e65::t_acl_credential_attribution_repair_20260725 171
+  s_4884e99c338e65::t_763bb8bba8aac9 130
+  s_4884e99c338e65::t_9d188e8a468974 19,126,128-129
+  s_4884e99c338e65::t_84db531806911f 63,82-83,109-124,127,131-170
+docs/api-spec.md
+  s_4884e99c338e65::t_13b3f176ecb182 1072,1089
+  s_4884e99c338e65::t_1c1442f9bc7da3 1059,1077-1088,1090-1096
+  s_4884e99c338e65::t_761bc403f8e620 1060
+server/src/test/java/com/rocketmq/studio/instance/acl/AclControllerTest.java
+  s_4884e99c338e65::t_c36bae6c576f67 159-160,165-182,190-191
+  s_4884e99c338e65::t_acl_credential_attribution_repair_20260725 183-185
+  s_4884e99c338e65::t_761bc403f8e620 144-145
+  s_4884e99c338e65::t_84db531806911f 186,192-196,200,208-209
+web/src/api/acl.test.ts
+  s_4884e99c338e65::t_84db531806911f 110
+server/src/main/java/com/rocketmq/studio/instance/acl/InMemoryAclRepository.java
+  s_4884e99c338e65::t_acl_credential_attribution_repair_20260725 65-66
+  s_4884e99c338e65::t_1c1442f9bc7da3 25,62-64
+web/src/pages/instance/acl.tsx
+  s_4884e99c338e65::t_1c1442f9bc7da3 59,267-272,306-311
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "8efceb841b1a680eca37cea7b0b5d6e1426d59d1",
+  "prompts": {},
+  "sessions": {
+    "s_4884e99c338e65": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8dd4-ca01-7ce3-a219-1972df092368",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "yx9o <yangx_soft@163.com>"
+    }
+  }
+}
