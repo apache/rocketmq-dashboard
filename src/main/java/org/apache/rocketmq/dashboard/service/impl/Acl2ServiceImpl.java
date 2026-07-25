@@ -30,6 +30,7 @@ import org.apache.rocketmq.dashboard.util.AclVersionDetector;
 import org.apache.rocketmq.dashboard.util.UserInfoContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.yaml.snakeyaml.Yaml;
 
@@ -46,6 +47,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.LinkedHashMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * ACL 2.0 Service Implementation.
@@ -85,6 +88,13 @@ public class Acl2ServiceImpl implements Acl2Service {
 
     /** Lock for file operations to prevent race conditions */
     private final Object fileLock = new Object();
+
+    /** RIP-1 AUTH-01: hot-rotation state. Credentials/policies are reloaded on a ~5s cadence. */
+    private volatile long lastPolicyFileModified = -1L;
+    private final AtomicLong lastRotationTs = new AtomicLong(-1L);
+    private final AtomicInteger rotationCount = new AtomicInteger(0);
+    private final AtomicLong lastVersionProbeTs = new AtomicLong(-1L);
+    private static final long ROTATION_INTERVAL_MS = 5000L;
 
     // ==================== Constructor & Init ====================
 
@@ -169,6 +179,67 @@ public class Acl2ServiceImpl implements Acl2Service {
         }
 
         return report;
+    }
+
+    // ==================== RIP-1 AUTH-01 Hot Rotation ====================
+
+    @Override
+    public int reloadPoliciesIfChanged() {
+        String fullPath = rmqConfigure.getRocketMqDashboardDataPath() + File.separator + ACL2_POLICY_FILE;
+        File file = new File(fullPath);
+        long currentModified = file.exists() ? file.lastModified() : -1L;
+
+        boolean reloaded = false;
+        if (currentModified != lastPolicyFileModified) {
+            synchronized (fileLock) {
+                if (currentModified != lastPolicyFileModified) {
+                    loadPoliciesFromFile();
+                    reloaded = true;
+                    log.info("ACL 2.0 credentials rotated from file (modified={})", currentModified);
+                }
+            }
+        }
+
+        // Re-probe the cluster ACL version on every rotation tick so version changes
+        // propagate within ~5s without a manual detect call.
+        long now = System.currentTimeMillis();
+        if (now - lastVersionProbeTs.get() >= ROTATION_INTERVAL_MS) {
+            lastVersionProbeTs.set(now);
+            cachedAclVersion = null; // force re-detection on next detectAclVersion()
+        }
+
+        lastRotationTs.set(now);
+        rotationCount.incrementAndGet();
+        return acl2PolicyCache.size();
+    }
+
+    /**
+     * Background hot-rotation scheduler (RIP-1 AUTH-01). Runs ~5s after the previous
+     * invocation completes, keeping ACL credentials/policies in sync with the persistent
+     * store and the cluster's ACL version with minimal latency.
+     */
+    @Scheduled(fixedDelay = ROTATION_INTERVAL_MS)
+    public void rotateCredentials() {
+        try {
+            reloadPoliciesIfChanged();
+        } catch (Exception e) {
+            log.error("ACL 2.0 hot-rotation tick failed", e);
+        }
+    }
+
+    @Override
+    public Map<String, Object> getRotationStatus() {
+        Map<String, Object> status = new LinkedHashMap<>();
+        status.put("enabled", true);
+        status.put("intervalMs", ROTATION_INTERVAL_MS);
+        status.put("rotationCount", rotationCount.get());
+        status.put("lastRotationTs", lastRotationTs.get());
+        status.put("lastPolicyFileModified", lastPolicyFileModified);
+        status.put("cachedAclVersion", cachedAclVersion);
+        status.put("cachedPolicyCount", acl2PolicyCache.size());
+        long last = lastRotationTs.get();
+        status.put("nextRotationInMs", last < 0 ? 0 : Math.max(0, ROTATION_INTERVAL_MS - (System.currentTimeMillis() - last)));
+        return status;
     }
 
     @Override
@@ -410,6 +481,7 @@ public class Acl2ServiceImpl implements Acl2Service {
         synchronized (fileLock) {
             String fullPath = rmqConfigure.getRocketMqDashboardDataPath() + File.separator + ACL2_POLICY_FILE;
             File file = new File(fullPath);
+            lastPolicyFileModified = file.exists() ? file.lastModified() : -1L;
 
             if (!file.exists()) {
                 log.debug("ACL 2.0 policy file not found, skipping load: {}", fullPath);

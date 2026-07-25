@@ -30,6 +30,7 @@ import DlqMessage from '../pages/DlqMessage/dlqmessage';
 import MessageTrace from '../pages/MessageTrace/messagetrace';
 import Acl from '../pages/Acl/acl';
 import AlertManagement from '../pages/Alert/AlertManagement';
+import AuditLog from '../pages/Audit/AuditLog';
 import LlmSettings from '../pages/LlmSettings/LlmSettings';
 import DashboardPage from '../pages/Dashboard/DashboardPage';
 
@@ -188,6 +189,22 @@ const AppRouter = () => {
                         element={
                             <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
                                 <AlertManagement />
+                            </motion.div>
+                        }
+                    />
+                    <Route
+                        path="/alert-rule"
+                        element={
+                            <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
+                                <AlertManagement />
+                            </motion.div>
+                        }
+                    />
+                    <Route
+                        path="/audit"
+                        element={
+                            <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
+                                <AuditLog />
                             </motion.div>
                         }
                     />

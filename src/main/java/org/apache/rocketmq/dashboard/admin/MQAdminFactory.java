@@ -52,6 +52,7 @@ public class MQAdminFactory {
             mqAdminExt = new DefaultMQAdminExt(rpcHook, rmqConfigure.getTimeoutMillis());
         }
         mqAdminExt.setAdminExtGroup(mqAdminExt.getAdminExtGroup() + "_" + adminIndex.getAndIncrement());
+        mqAdminExt.setNamesrvAddr(rmqConfigure.getNamesrvAddr());
         mqAdminExt.setVipChannelEnabled(Boolean.parseBoolean(rmqConfigure.getIsVIPChannel()));
         mqAdminExt.setUseTLS(rmqConfigure.isUseTLS());
         mqAdminExt.setInstanceName(Long.toString(System.currentTimeMillis()));

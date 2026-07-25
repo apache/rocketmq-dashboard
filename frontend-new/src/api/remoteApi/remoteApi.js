@@ -171,7 +171,7 @@ const remoteApi = {
     },
 
     getCookie() {
-        return document.cookie.replace(/(?:(?:^|.*;\s*)XSRF-TOKEN\s*\=\s*([^;]*).*$)|^.*$/, '$1')
+        return document.cookie.replace(/(?:(?:^|.*;\s*)XSRF-TOKEN\s*=\s*([^;]*).*$)|^.*$/, '$1')
     },
 
     _fetch: async (url, options = {}) => {
@@ -1430,6 +1430,96 @@ const remoteApi = {
             callback(data);
         } catch (error) {
             callback({status: 1, errMsg: "Failed to fetch namespace capability"});
+        }
+    },
+
+    // ===== Alert Rules (backend-backed) =====
+    listAlertRules: async () => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl('/api/alert/rules'));
+            return await response.json();
+        } catch (error) {
+            console.error('Failed to list alert rules:', error);
+            return {status: 1, errMsg: 'Failed to list alert rules'};
+        }
+    },
+
+    createAlertRule: async (rule) => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl('/api/alert/rules'), {
+                method: 'POST',
+                body: JSON.stringify(rule),
+            });
+            return await response.json();
+        } catch (error) {
+            console.error('Failed to create alert rule:', error);
+            return {status: 1, errMsg: 'Failed to create alert rule'};
+        }
+    },
+
+    updateAlertRule: async (id, rule) => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl(`/api/alert/rules/${id}`), {
+                method: 'PUT',
+                body: JSON.stringify(rule),
+            });
+            return await response.json();
+        } catch (error) {
+            console.error('Failed to update alert rule:', error);
+            return {status: 1, errMsg: 'Failed to update alert rule'};
+        }
+    },
+
+    deleteAlertRule: async (id) => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl(`/api/alert/rules/${id}`), {
+                method: 'DELETE',
+            });
+            return await response.json();
+        } catch (error) {
+            console.error('Failed to delete alert rule:', error);
+            return {status: 1, errMsg: 'Failed to delete alert rule'};
+        }
+    },
+
+    setAlertRuleEnabled: async (id, enabled) => {
+        try {
+            const url = new URL(remoteApi.buildUrl(`/api/alert/rules/${id}/enable`));
+            url.searchParams.append('enabled', String(enabled));
+            const response = await remoteApi._fetch(url.toString(), {method: 'POST'});
+            return await response.json();
+        } catch (error) {
+            console.error('Failed to set alert rule enabled:', error);
+            return {status: 1, errMsg: 'Failed to set alert rule enabled'};
+        }
+    },
+
+    // ===== Audit Logs (backend-backed) =====
+    listAuditLogs: async (query = {}) => {
+        try {
+            const url = new URL(remoteApi.buildUrl('/api/audit/logs'));
+            ['page', 'size', 'keyword', 'type', 'startTime', 'endTime'].forEach((key) => {
+                if (query[key] !== undefined && query[key] !== null && query[key] !== '') {
+                    url.searchParams.append(key, String(query[key]));
+                }
+            });
+            const response = await remoteApi._fetch(url.toString());
+            return await response.json();
+        } catch (error) {
+            console.error('Failed to list audit logs:', error);
+            return {status: 1, errMsg: 'Failed to list audit logs'};
+        }
+    },
+
+    clearAuditLogs: async () => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl('/api/audit/logs'), {
+                method: 'DELETE',
+            });
+            return await response.json();
+        } catch (error) {
+            console.error('Failed to clear audit logs:', error);
+            return {status: 1, errMsg: 'Failed to clear audit logs'};
         }
     }
 };

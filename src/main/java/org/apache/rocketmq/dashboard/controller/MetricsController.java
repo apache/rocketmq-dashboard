@@ -18,6 +18,7 @@ package org.apache.rocketmq.dashboard.controller;
 
 import org.apache.rocketmq.dashboard.adapter.PrometheusMetricsAdapter;
 import org.apache.rocketmq.dashboard.aspect.admin.annotation.OriginalControllerReturnValue;
+import org.apache.rocketmq.dashboard.model.MetricsSelfCheckResult;
 import org.apache.rocketmq.dashboard.model.request.MetricsDataSourceRequest;
 import org.apache.rocketmq.dashboard.service.MetricsEnhancedService;
 import org.apache.rocketmq.dashboard.service.MetricsService;
@@ -97,10 +98,10 @@ public class MetricsController {
      * GET /metrics - Export all metrics in Prometheus format.
      */
     @GetMapping(value = "/metrics", produces = MediaType.TEXT_PLAIN_VALUE)
+    @OriginalControllerReturnValue
     public String exportAllMetrics() {
         try {
-            Map<String, Object> clusterMetrics = metricsService.getClusterMetrics();
-            return prometheusAdapter.generateFullMetricsExport(clusterMetrics);
+            return metricsService.getClusterMetricsExposition();
         } catch (Exception e) {
             return "# Error collecting metrics: " + e.getMessage();
         }
@@ -110,10 +111,10 @@ public class MetricsController {
      * GET /metrics/cluster - Export cluster metrics in Prometheus format.
      */
     @GetMapping(value = "/metrics/cluster", produces = MediaType.TEXT_PLAIN_VALUE)
+    @OriginalControllerReturnValue
     public String exportClusterMetrics() {
         try {
-            Map<String, Object> metrics = metricsService.getClusterMetrics();
-            return prometheusAdapter.toPrometheusFormat(metrics);
+            return metricsService.getClusterMetricsExposition();
         } catch (Exception e) {
             return "# Error: " + e.getMessage();
         }
@@ -123,6 +124,7 @@ public class MetricsController {
      * GET /metrics/broker/{brokerName} - Export broker metrics in Prometheus format.
      */
     @GetMapping(value = "/metrics/broker/{brokerName}", produces = MediaType.TEXT_PLAIN_VALUE)
+    @OriginalControllerReturnValue
     public String exportBrokerMetrics(@PathVariable String brokerName) {
         try {
             Map<String, Object> metrics = metricsService.getBrokerMetrics(brokerName);
@@ -136,6 +138,7 @@ public class MetricsController {
      * GET /metrics/topic/{topicName} - Export topic metrics in Prometheus format.
      */
     @GetMapping(value = "/metrics/topic/{topicName}", produces = MediaType.TEXT_PLAIN_VALUE)
+    @OriginalControllerReturnValue
     public String exportTopicMetrics(@PathVariable String topicName) {
         try {
             Map<String, Object> metrics = metricsService.getTopicMetrics(topicName);
@@ -149,6 +152,7 @@ public class MetricsController {
      * GET /metrics/consumer/{groupName} - Export consumer group metrics in Prometheus format.
      */
     @GetMapping(value = "/metrics/consumer/{groupName}", produces = MediaType.TEXT_PLAIN_VALUE)
+    @OriginalControllerReturnValue
     public String exportConsumerGroupMetrics(@PathVariable String groupName) {
         try {
             Map<String, Object> metrics = metricsService.getConsumerGroupMetrics(groupName);
@@ -162,6 +166,7 @@ public class MetricsController {
      * GET /metrics/client - Export client metrics in Prometheus format.
      */
     @GetMapping(value = "/metrics/client", produces = MediaType.TEXT_PLAIN_VALUE)
+    @OriginalControllerReturnValue
     public String exportClientMetrics() {
         try {
             Map<String, Object> metrics = metricsService.getClientMetrics();
@@ -175,6 +180,7 @@ public class MetricsController {
      * GET /metrics/system - Export system metrics in Prometheus format.
      */
     @GetMapping(value = "/metrics/system", produces = MediaType.TEXT_PLAIN_VALUE)
+    @OriginalControllerReturnValue
     public String exportSystemMetrics() {
         try {
             Map<String, Object> metrics = metricsService.getSystemMetrics();
@@ -188,6 +194,7 @@ public class MetricsController {
      * GET /metrics/custom/{metricType} - Export custom metrics in Prometheus format.
      */
     @GetMapping(value = "/metrics/custom/{metricType}", produces = MediaType.TEXT_PLAIN_VALUE)
+    @OriginalControllerReturnValue
     public String exportCustomMetrics(@PathVariable String metricType) {
         try {
             Map<String, Object> metrics = metricsService.getCustomMetrics(metricType);
@@ -631,6 +638,46 @@ public class MetricsController {
         } catch (Exception e) {
             log.error("Failed to get prebuilt queries", e);
             return new JsonResult<>(1, "Failed to get prebuilt queries: " + e.getMessage());
+        }
+    }
+
+    // ==================== Self-Check & Federation (RIP-1 METRICS-01) ====================
+
+    /**
+     * GET /api/metrics/selfCheck - Comprehensive self-check of the metrics subsystem.
+     * RIP-1 METRICS-01: verifies data-source connectivity, dashboard panel integrity,
+     * alert-ruleset completeness (&ge;20 rules), and pre-built query availability.
+     *
+     * @return JsonResult wrapping a {@link org.apache.rocketmq.dashboard.model.MetricsSelfCheckResult}
+     */
+    @GetMapping("/api/metrics/selfCheck")
+    public Object selfCheck() {
+        try {
+            MetricsSelfCheckResult result = metricsEnhancedService.selfCheck();
+            return new JsonResult<>(result);
+        } catch (Exception e) {
+            log.error("Failed to run metrics self-check", e);
+            return new JsonResult<>(1, "Failed to run self-check: " + e.getMessage());
+        }
+    }
+
+    /**
+     * GET /metrics/federate - Prometheus federation export.
+     * RIP-1 METRICS-01: exposes a Prometheus-compatible {@code /federate} endpoint that
+     * returns exposition-format metrics filtered by one or more {@code match[]} selectors
+     * (metric-name prefixes or regexes). Mirrors the upstream Prometheus federation API.
+     *
+     * @param match repeated selectors, e.g. {@code match[]=rocketmq_broker_*}; if empty, all metrics are returned
+     * @return Prometheus text exposition (text/plain)
+     */
+    @GetMapping(value = "/metrics/federate", produces = MediaType.TEXT_PLAIN_VALUE)
+    @OriginalControllerReturnValue
+    public String federate(@RequestParam(name = "match[]", required = false) List<String> match) {
+        try {
+            return metricsService.federate(match);
+        } catch (Exception e) {
+            log.error("Failed to produce federation export", e);
+            return "# Error producing federation export: " + e.getMessage();
         }
     }
 }

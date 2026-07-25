@@ -257,4 +257,24 @@ public class Acl2Controller {
                 return "Unable to determine ACL version";
         }
     }
+
+    /**
+     * GET /api/acl2/rotation/status - RIP-1 AUTH-01 hot-rotation scheduler status.
+     *
+     * Reports the ~5s credential-rotation scheduler state: interval, rotation count,
+     * last run timestamp, next-run ETA, cached ACL version, and cached policy count.
+     *
+     * @return JsonResult containing rotation status map
+     */
+    @GetMapping("/rotation/status")
+    @ResponseBody
+    public Object rotationStatus() {
+        try {
+            Map<String, Object> status = acl2Service.getRotationStatus();
+            return new JsonResult<>(status);
+        } catch (Exception e) {
+            log.error("Failed to get ACL rotation status", e);
+            return new JsonResult<>(1, "Failed to get rotation status: " + e.getMessage());
+        }
+    }
 }

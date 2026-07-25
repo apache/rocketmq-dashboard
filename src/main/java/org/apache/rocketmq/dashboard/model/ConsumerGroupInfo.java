@@ -103,7 +103,12 @@ public class ConsumerGroupInfo {
     private Integer onlineClientCount;
 
     /**
- *
+     * Whether the consumer group currently has online clients.
+     */
+    private Boolean online;
+
+    /**
+     *
      */
     private String liteBindTopic;
 

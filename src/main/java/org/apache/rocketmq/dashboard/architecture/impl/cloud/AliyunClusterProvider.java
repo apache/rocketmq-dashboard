@@ -124,7 +124,7 @@ public class AliyunClusterProvider extends AbstractCloudClusterProvider {
 
         try {
             // Call OnsInstanceBaseInfo to get instance details
-            Map<String, Object> params = buildBaseParams();
+            Map<String, String> params = buildBaseParams();
             params.put("InstanceId", config.getInstanceId());
             Map<String, Object> result = callApi("OnsInstanceBaseInfo", params);
 
@@ -168,7 +168,7 @@ public class AliyunClusterProvider extends AbstractCloudClusterProvider {
 
             // Try to list proxy nodes (5.0 instances have proxy endpoints)
             try {
-                Map<String, Object> endpointParams = buildBaseParams();
+                Map<String, String> endpointParams = buildBaseParams();
                 endpointParams.put("InstanceId", config.getInstanceId());
                 Map<String, Object> endpointResult = callApi("OnsInstanceEndpoint", endpointParams);
 
@@ -217,7 +217,7 @@ public class AliyunClusterProvider extends AbstractCloudClusterProvider {
 
         // Try to detect actual version from instance info
         try {
-            Map<String, Object> params = buildBaseParams();
+            Map<String, String> params = buildBaseParams();
             params.put("InstanceId", config.getInstanceId());
             Map<String, Object> result = callApi("OnsInstanceBaseInfo", params);
 
@@ -249,7 +249,7 @@ public class AliyunClusterProvider extends AbstractCloudClusterProvider {
             nodeIds.add(config.getInstanceId());
 
             // Try to get endpoint info for more detailed node listing
-            Map<String, Object> params = buildBaseParams();
+            Map<String, String> params = buildBaseParams();
             params.put("InstanceId", config.getInstanceId());
             Map<String, Object> result = callApi("OnsInstanceEndpoint", params);
 
@@ -276,7 +276,7 @@ public class AliyunClusterProvider extends AbstractCloudClusterProvider {
     @Override
     protected boolean doHealthCheck() throws Exception {
         try {
-            Map<String, Object> params = buildBaseParams();
+            Map<String, String> params = buildBaseParams();
             params.put("InstanceId", config.getInstanceId());
             Map<String, Object> result = callApi("OnsInstanceBaseInfo", params);
 
