@@ -17,71 +17,61 @@
 
 import axios from 'axios';
 import { message } from 'antd';
+import { clearAuthSession, TOKEN_STORAGE_KEY } from '../stores/authStorage';
+import { API_BASE_URL } from '../config';
+
+const SUCCESS_BUSINESS_CODES = new Set([0, 200]);
+
+interface BusinessResponse {
+  code?: unknown;
+  message?: unknown;
+}
+
+function isBusinessResponse(data: unknown): data is BusinessResponse {
+  return typeof data === 'object' && data !== null;
+}
+
+function getBusinessError(data: unknown): string | null {
+  if (!isBusinessResponse(data) || data.code === undefined) {
+    return null;
+  }
+  if (typeof data.code === 'number' && SUCCESS_BUSINESS_CODES.has(data.code)) {
+    return null;
+  }
+  return typeof data.message === 'string' && data.message.trim() ? data.message : '请求失败';
+}
 
 const client = axios.create({
-  baseURL: '/api',
+  baseURL: API_BASE_URL,
   timeout: 30000,
-  withCredentials: true,
 });
 
-// CSRF token cache
-let csrfToken: string | null = null;
-
-/** Fetch CSRF token from backend cookie-based endpoint */
-export async function fetchCsrfToken(): Promise<string> {
-  try {
-    const res = await axios.get('/rocketmq-dashboard/csrf-token', { withCredentials: true });
-    csrfToken = res.data?.token || res.data?.csrfToken || null;
-    return csrfToken || '';
-  } catch {
-    // CSRF endpoint may not be available in all environments
-    return '';
-  }
-}
-
-/** Get cached CSRF token */
-export function getCsrfToken(): string | null {
-  return csrfToken;
-}
-
-// Request interceptor: attach CSRF token for non-GET requests
+// Request interceptor: attach Authorization header
 client.interceptors.request.use(
   (config) => {
-    // Attach CSRF token for state-changing requests
-    if (config.method && !['get', 'head', 'options'].includes(config.method.toLowerCase())) {
-      const token = getCsrfToken();
-      if (token) {
-        config.headers['X-XSRF-TOKEN'] = token;
-      }
+    const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
   },
   (error) => Promise.reject(error),
 );
 
-// Response interceptor: handle backend response formats
-// Backend has two response patterns:
-// 1. Direct return: controller returns object directly (most endpoints)
-// 2. JsonResult wrapper: { status: 0, data: T, errMsg: null } (e.g., ClientController)
+// Response interceptor: check business code and handle 401
 client.interceptors.response.use(
   (response) => {
-    const data = response.data;
-    // Handle JsonResult wrapper pattern
-    if (data && typeof data === 'object' && 'status' in data) {
-      if (data.status !== 0) {
-        const errMsg = data.errMsg || data.message || '请求失败';
-        message.error(errMsg);
-        return Promise.reject(new Error(errMsg));
-      }
-      // Unwrap JsonResult: return the inner data field
-      response.data = data.data !== undefined ? data.data : data;
+    const errorMessage = getBusinessError(response.data);
+    if (errorMessage) {
+      message.error(errorMessage);
+      return Promise.reject(new Error(errorMessage));
     }
     return response;
   },
   (error) => {
     if (error.response?.status === 401) {
-      message.warning('登录已过期，请重新登录');
-      window.location.href = '/login';
+      clearAuthSession();
+      window.location.href = '/';
     }
     return Promise.reject(error);
   },

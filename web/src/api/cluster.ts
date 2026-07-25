@@ -21,29 +21,23 @@ import client from './client';
 export interface ClusterInfo {
   id: string;
   name: string;
+  nsClusterName: string;
   type: string;
+  endpoint: string;
   status: string;
   version: string;
-  brokers: number;
-  proxies: number;
-  topics: number;
-  groups: number;
-  tpsIn: number;
-  tpsOut: number;
-}
-
-export interface ClusterDetail extends ClusterInfo {
-  brokerList: BrokerInfo[];
-  proxyList: ProxyInfo[];
-  nameServerList: NameServerInfo[];
+  brokers: BrokerInfo[];
+  proxies: ProxyInfo[];
+  nameServers: NameServerInfo[];
   config: ClusterConfig;
+  topicCount: number;
+  groupCount: number;
+  tpsHistory: number[];
 }
 
 export interface BrokerInfo {
   addr: string;
-  brokerName: string;
-  brokerId: number;
-  clusterName: string;
+  name: string;
   status: string;
   tpsIn: number;
   tpsOut: number;
@@ -53,7 +47,6 @@ export interface BrokerInfo {
 
 export interface ProxyInfo {
   addr: string;
-  clusterName: string;
   status: string;
   connections: number;
   grpcPort: number;
@@ -62,9 +55,7 @@ export interface ProxyInfo {
 
 export interface NameServerInfo {
   addr: string;
-  clusterName: string;
   status: string;
-  version: string;
 }
 
 export interface ClusterConfig {
@@ -72,10 +63,12 @@ export interface ClusterConfig {
   autoCreateTopicEnable: boolean;
   autoCreateSubscriptionGroup: boolean;
   maxMessageSize: number;
+  msgTraceTopicName: string;
   fileReservedTime: number;
   writeQueueNums: number;
   readQueueNums: number;
   brokerPermission: number;
+  deleteWhen: string;
 }
 
 export interface K8sCertInfo {
@@ -92,71 +85,81 @@ export interface K8sCertInfo {
   san: string[];
 }
 
-// ─── Cluster API ────────────────────────────────────────────────
-// Backend: ClusterController at /cluster
-// GET /cluster/list.query           → list clusters
-// GET /cluster/brokerConfig.query   → broker config
-
+// ─── Cluster ────────────────────────────────────────────────────
 export async function listClusters() {
-  const res = await client.get('/cluster/list.query');
-  return res.data;
+  const res = await client.get<{ data: ClusterInfo[] }>('/clusters');
+  return res.data.data;
 }
 
 export async function getCluster(id: string) {
-  // Backend doesn't have a single-cluster endpoint; list all and filter
-  const res = await client.get('/cluster/list.query');
-  const clusters = res.data;
-  return Array.isArray(clusters) ? clusters.find((c: ClusterInfo) => c.id === id) : null;
+  const res = await client.get<{ data: ClusterInfo }>(`/clusters/${id}`);
+  return res.data.data;
 }
 
-export async function getBrokerConfig(brokerAddr: string) {
-  const res = await client.get('/cluster/brokerConfig.query', { params: { brokerAddr } });
-  return res.data;
-}
-
-// ─── NameServer API ─────────────────────────────────────────────
-// Backend: NamesvrController at /rocketmq
-// GET /rocketmq/nsaddr.query        → get nameserver addresses
-
-export async function getNameServerAddresses() {
-  const res = await client.get('/rocketmq/nsaddr.query');
-  return res.data;
-}
-
-// ─── Cluster Config & Broker Ops (no direct backend endpoint) ───
-// These are kept for mock compatibility; the backend cluster controller
-// only provides list.query and brokerConfig.query
-
-export async function updateClusterConfig(data: { id: string } & Record<string, unknown>) {
-  // No direct backend endpoint; kept for mock compatibility
+export async function updateClusterConfig(data: { id: string } & Partial<ClusterConfig>) {
   await client.post('/clusters/config/update', data);
 }
 
 export async function restartBroker(clusterId: string, brokerName: string) {
-  // No direct backend endpoint; kept for mock compatibility
-  const res = await client.post<{ success: boolean; message: string }>(
+  const res = await client.post<{ data: { success: boolean; message: string } }>(
     `/clusters/${clusterId}/brokers/${brokerName}/restart`,
   );
-  return res.data;
+  return res.data.data;
 }
 
-// ─── K8s Certs (no backend equivalent yet — uses mock) ──────────
+// ─── NameServer ─────────────────────────────────────────────────
+export async function restartNameServer(data: { clusterId: string; addr: string }) {
+  await client.post('/nameservers/restart', data);
+}
+
+export async function upgradeNameServer(data: {
+  clusterId: string;
+  addr: string;
+  version: string;
+}) {
+  await client.post('/nameservers/upgrade', data);
+}
+
+export async function deleteNameServer(data: { clusterId: string; addr: string }) {
+  await client.post('/nameservers/delete', data);
+}
+
+export async function createNameServer(data: { clusterId: string; addr: string }) {
+  await client.post('/nameservers/create', data);
+}
+
+export async function updateNameServer(data: {
+  clusterId: string;
+  addr: string;
+  newAddr?: string;
+}) {
+  await client.post('/nameservers/update', data);
+}
+
+// ─── Proxy ──────────────────────────────────────────────────────
+export async function restartProxy(data: { clusterId: string; addr: string }) {
+  await client.post('/proxies/restart', data);
+}
+
+// ─── K8s Certs ──────────────────────────────────────────────────
 export async function listK8sCerts() {
-  // No backend endpoint for K8s certs yet
-  const res = await client.get('/k8s-certs');
-  return res.data;
+  const res = await client.get<{ data: K8sCertInfo[] }>('/k8s-certs');
+  return res.data.data;
 }
 
 export async function createK8sCert(data: Partial<K8sCertInfo>) {
-  await client.post('/k8s-certs/create', data);
+  const res = await client.post<{ data: K8sCertInfo }>('/k8s-certs/create', data);
+  return res.data.data;
 }
 
 export async function updateK8sCert(data: Partial<K8sCertInfo>) {
-  await client.post('/k8s-certs/update', data);
+  const res = await client.post<{ data: K8sCertInfo }>('/k8s-certs/update', data);
+  return res.data.data;
 }
 
 export async function renewK8sCert(id: string) {
-  await client.post('/k8s-certs/renew', { id });
+  const res = await client.post<{ data: K8sCertInfo }>('/k8s-certs/renew', { id });
+  return res.data.data;
 }
 
 export async function deleteK8sCert(id: string) {

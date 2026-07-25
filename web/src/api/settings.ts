@@ -19,34 +19,31 @@ import client from './client';
 
 // ─── Types ──────────────────────────────────────────────────────
 export interface GeneralSettings {
-  siteName: string;
-  language: string;
   theme: string;
-  autoRefreshInterval: number;
-  notificationChannels: string[];
+  compact: boolean;
+  desktopNotify: boolean;
+  notifySound: boolean;
+  sessionTimeout: number;
+  requireLogin: boolean;
   llmProvider: string;
-  llmModel: string;
+  apiKey: string;
+  model: string;
+  baseUrl: string;
 }
 
 export interface DataSource {
-  id: string;
+  key: string;
   name: string;
   type: string;
   url: string;
-  isDefault: boolean;
+  auth: string;
   status: string;
 }
 
-// ─── Settings API ───────────────────────────────────────────────
-// Note: The backend OpsController provides some ops-related settings.
-// General settings and data sources have no direct backend equivalent yet.
-// These endpoints are kept for mock compatibility.
-
 // ─── General Settings ───────────────────────────────────────────
 export async function getGeneralSettings() {
-  // No direct backend endpoint; use ops/homePage.query for some settings
-  const res = await client.get('/settings/general');
-  return res.data;
+  const res = await client.get<{ data: GeneralSettings }>('/settings/general');
+  return res.data.data;
 }
 
 export async function saveGeneralSettings(data: Partial<GeneralSettings>) {
@@ -55,26 +52,28 @@ export async function saveGeneralSettings(data: Partial<GeneralSettings>) {
 
 // ─── Data Sources ───────────────────────────────────────────────
 export async function listDataSources() {
-  const res = await client.get('/settings/datasources');
-  return res.data;
+  const res = await client.get<{ data: DataSource[] }>('/settings/datasources');
+  return res.data.data;
 }
 
 export async function createDataSource(data: Partial<DataSource>) {
-  await client.post('/settings/datasources/create', data);
+  const res = await client.post<{ data: DataSource }>('/settings/datasources/create', data);
+  return res.data.data;
 }
 
 export async function updateDataSource(data: Partial<DataSource>) {
-  await client.post('/settings/datasources/update', data);
+  const res = await client.post<{ data: DataSource }>('/settings/datasources/update', data);
+  return res.data.data;
 }
 
-export async function deleteDataSource(id: string) {
-  await client.post('/settings/datasources/delete', { id });
+export async function deleteDataSource(key: string) {
+  await client.post('/settings/datasources/delete', undefined, { params: { key } });
 }
 
-export async function testDataSource(data: { type: string; url: string }) {
-  const res = await client.post<{ success: boolean; message: string }>(
+export async function testDataSource(data: { type: string; url: string; auth?: string }) {
+  const res = await client.post<{ data: { success: boolean; message: string } }>(
     '/settings/datasources/test',
     data,
   );
-  return res.data;
+  return res.data.data;
 }

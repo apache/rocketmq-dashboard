@@ -24,12 +24,13 @@ interface PageHeaderProps {
   title: string;
   subtitle?: ReactNode;
   extra?: ReactNode;
+  headingLevel?: 1 | 2 | 3 | 4 | 5;
 }
 
-const PageHeader = ({ title, subtitle, extra }: PageHeaderProps) => (
+const PageHeader = ({ title, subtitle, extra, headingLevel = 1 }: PageHeaderProps) => (
   <Flex justify="space-between" align="center" style={{ marginBottom: 24 }}>
     <Flex align="center" gap={12}>
-      <Title level={4} style={{ margin: 0, fontWeight: 600 }}>
+      <Title level={headingLevel} style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>
         {title}
       </Title>
       {subtitle && (

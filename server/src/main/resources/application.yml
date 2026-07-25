@@ -12,3 +12,13 @@ springdoc:
     path: /api-docs
   swagger-ui:
     path: /swagger-ui.html
+
+studio:
+  metrics:
+    prometheus:
+      base-url: ${STUDIO_METRICS_PROMETHEUS_BASE_URL:}
+      connect-timeout: ${STUDIO_METRICS_PROMETHEUS_CONNECT_TIMEOUT:3s}
+      read-timeout: ${STUDIO_METRICS_PROMETHEUS_READ_TIMEOUT:10s}
+      username: ${STUDIO_METRICS_PROMETHEUS_USERNAME:}
+      password: ${STUDIO_METRICS_PROMETHEUS_PASSWORD:}
+      bearer-token: ${STUDIO_METRICS_PROMETHEUS_BEARER_TOKEN:}

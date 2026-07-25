@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus, Pencil, Trash } from '@phosphor-icons/react';
 import {
   Button,
@@ -34,8 +34,15 @@ import {
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import PageHeader from '../../components/PageHeader';
-import { mockAlertRules, type AlertRule } from '../../mock/alerts';
 import { useLang } from '../../i18n/LangContext';
+import type { AlertRule } from '../../api/ops';
+import {
+  createAlertRule,
+  deleteAlertRule,
+  listAlertRules,
+  toggleAlertRule,
+  updateAlertRule,
+} from '../../services/opsService';
 
 const { TextArea } = Input;
 
@@ -49,10 +56,22 @@ const metricOptions = ['磁盘使用率', '消费堆积量', 'TPS 异常', 'Brok
 
 const durationOptions = ['1分钟', '5分钟', '15分钟', '30分钟'];
 
+const thresholdUnits: Record<string, string> = {
+  磁盘使用率: '%',
+  消费堆积量: '条',
+  'TPS 异常': 'TPS',
+  'Broker 离线': '个',
+  'Proxy 连接数': '个',
+};
+
 const AlertsPage = () => {
   const { t } = useLang();
-  const [rules, setRules] = useState<AlertRule[]>([...mockAlertRules]);
+  const [rules, setRules] = useState<AlertRule[]>([]);
+  const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
+  const [editingRule, setEditingRule] = useState<AlertRule | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [actionId, setActionId] = useState<string | null>(null);
   const [form] = Form.useForm();
 
   const channelLabels: Record<string, string> = {
@@ -61,6 +80,25 @@ const AlertsPage = () => {
     sms: 'SMS',
   };
 
+  useEffect(() => {
+    let cancelled = false;
+
+    void listAlertRules()
+      .then((nextRules) => {
+        if (!cancelled) setRules(nextRules);
+      })
+      .catch(() => {
+        if (!cancelled) message.error('告警规则加载失败，请稍后重试');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const enabledCount = rules.filter((r) => r.enabled).length;
 
   // eslint-disable-next-line react-hooks/purity
@@ -68,6 +106,43 @@ const AlertsPage = () => {
   const triggered24h = rules.filter(
     (r) => r.lastTriggered && new Date(r.lastTriggered).getTime() > dayAgo,
   ).length;
+
+  const openCreateModal = () => {
+    setEditingRule(null);
+    form.resetFields();
+    setModalVisible(true);
+  };
+
+  const openEditModal = (rule: AlertRule) => {
+    setEditingRule(rule);
+    form.setFieldsValue(rule);
+    setModalVisible(true);
+  };
+
+  const handleToggle = async (rule: AlertRule, enabled: boolean) => {
+    setActionId(`toggle-${rule.id}`);
+    try {
+      const updated = await toggleAlertRule(rule.id, enabled);
+      setRules((previous) => previous.map((item) => (item.id === rule.id ? updated : item)));
+    } catch {
+      message.error('更新告警规则状态失败，请稍后重试');
+    } finally {
+      setActionId(null);
+    }
+  };
+
+  const handleDelete = async (rule: AlertRule) => {
+    setActionId(`delete-${rule.id}`);
+    try {
+      await deleteAlertRule(rule.id);
+      setRules((previous) => previous.filter((item) => item.id !== rule.id));
+      message.success('告警规则已删除');
+    } catch {
+      message.error('删除告警规则失败，请稍后重试');
+    } finally {
+      setActionId(null);
+    }
+  };
 
   const columns: ColumnsType<AlertRule> = [
     {
@@ -103,11 +178,8 @@ const AlertsPage = () => {
       render: (_, record) => (
         <Switch
           checked={record.enabled}
-          onChange={() => {
-            setRules((prev) =>
-              prev.map((r) => (r.id === record.id ? { ...r, enabled: !r.enabled } : r)),
-            );
-          }}
+          loading={actionId === `toggle-${record.id}`}
+          onChange={(enabled) => void handleToggle(record, enabled)}
         />
       ),
     },
@@ -128,6 +200,7 @@ const AlertsPage = () => {
             size="small"
             icon={<Pencil size={14} />}
             style={{ borderColor: '#1890ff', color: '#1890ff' }}
+            onClick={() => openEditModal(record)}
           >
             {t('common.edit')}
           </Button>
@@ -135,8 +208,9 @@ const AlertsPage = () => {
             size="small"
             icon={<Trash size={14} />}
             danger
+            loading={actionId === `delete-${record.id}`}
             style={{ borderColor: '#ff4d4f', color: '#ff4d4f' }}
-            onClick={() => setRules((prev) => prev.filter((r) => r.id !== record.id))}
+            onClick={() => void handleDelete(record)}
           >
             {t('common.delete')}
           </Button>
@@ -146,10 +220,30 @@ const AlertsPage = () => {
   ];
 
   const handleSubmit = async () => {
-    await form.validateFields();
-    message.success(t('alerts.ruleCreated'));
-    setModalVisible(false);
-    form.resetFields();
+    try {
+      const values = await form.validateFields();
+      setSubmitting(true);
+      if (editingRule) {
+        const updated = await updateAlertRule({ ...editingRule, ...values });
+        setRules((previous) =>
+          previous.map((rule) => (rule.id === editingRule.id ? updated : rule)),
+        );
+        message.success('告警规则已更新');
+      } else {
+        const created = await createAlertRule({
+          ...values,
+          thresholdUnit: thresholdUnits[values.metric] ?? '',
+        });
+        setRules((previous) => [...previous, created]);
+        message.success(t('alerts.ruleCreated'));
+      }
+      setModalVisible(false);
+      form.resetFields();
+    } catch {
+      message.error('保存告警规则失败，请稍后重试');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -178,7 +272,7 @@ const AlertsPage = () => {
                 {triggered24h}
               </span>
             </Flex>
-            <Button type="primary" icon={<Plus />} onClick={() => setModalVisible(true)}>
+            <Button type="primary" icon={<Plus />} onClick={openCreateModal}>
               {t('alerts.newRule')}
             </Button>
           </Flex>
@@ -192,19 +286,22 @@ const AlertsPage = () => {
           dataSource={rules}
           rowKey="id"
           size="small"
+          loading={loading}
           pagination={false}
         />
       </Card>
 
       <Modal
-        title={t('alerts.newRule')}
+        title={editingRule ? t('common.edit') : t('alerts.newRule')}
         open={modalVisible}
         onOk={handleSubmit}
+        confirmLoading={submitting}
         onCancel={() => {
           setModalVisible(false);
+          setEditingRule(null);
           form.resetFields();
         }}
-        okText={t('common.create')}
+        okText={editingRule ? t('common.edit') : t('common.create')}
         cancelText={t('common.cancel')}
       >
         <Form form={form} layout="vertical">

@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   Table,
   Card,
@@ -54,15 +54,16 @@ import {
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import { TOPIC_TYPE_MAP, CLUSTER_TYPE_MAP } from '../../constants/theme';
-import { formatDateTime, formatNumber } from '../../utils/format';
+import type { Topic, BrokerRoute, ConsumerGroupInfo } from '../../api/metadata';
 import {
-  topics as mockTopics,
-  topicRoutes,
-  defaultRoute,
-  topicConsumers,
-  defaultConsumers,
-} from '../../mock/topics';
-import type { Topic, BrokerRoute, ConsumerGroupInfo } from '../../mock/topics';
+  batchDeleteTopics,
+  createTopic,
+  deleteTopic,
+  getTopicConsumers,
+  getTopicRoutes,
+  listTopics,
+  sendTopicMessage,
+} from '../../services/topicService';
 
 const { Text } = Typography;
 
@@ -74,7 +75,7 @@ const CLUSTER_NAME_MAP: Record<string, { name: string; type: string }> = {
 
 // ─── Namespace options ────────────────────────────────────────────
 const NAMESPACE_OPTIONS = [
-  { labelKey: 'topic.allNamespaces', value: '' },
+  { label: '全部', value: '' },
   { label: 'trade', value: 'trade' },
   { label: 'user', value: 'user' },
   { label: 'message', value: 'message' },
@@ -83,20 +84,16 @@ const NAMESPACE_OPTIONS = [
 ];
 
 const TYPE_OPTIONS = [
-  { labelKey: 'topic.allNamespaces', value: '' },
-  { labelKey: 'theme.topicNormal', value: 'NORMAL' },
-  { labelKey: 'theme.topicFifo', value: 'FIFO' },
-  { labelKey: 'theme.topicDelay', value: 'DELAY' },
-  { labelKey: 'theme.topicTransaction', value: 'TRANSACTION' },
+  { label: '全部', value: '' },
+  { label: '普通', value: 'NORMAL' },
+  { label: '顺序', value: 'FIFO' },
+  { label: '延迟', value: 'DELAY' },
+  { label: '事务', value: 'TRANSACTION' },
   { label: 'LiteTopic', value: 'LITE' },
 ];
 
 // ─── Perm label ───────────────────────────────────────────────────
-const PERM_LABEL_KEY: Record<string, string> = {
-  RW: 'topic.permRW',
-  RO: 'topic.permRO',
-  WO: 'topic.permWO',
-};
+const PERM_LABEL: Record<string, string> = { RW: '读写', RO: '只读', WO: '只写' };
 
 // ─── Random message body generators ──────────────────────────────
 const randomOrderBody = () =>
@@ -197,27 +194,36 @@ const randomMetricsBody = () =>
   );
 
 const RANDOM_BODY_GENERATORS = [
-  { labelKey: 'topic.orderEvent', fn: randomOrderBody },
-  { labelKey: 'topic.userEvent', fn: randomUserEventBody },
-  { labelKey: 'topic.paymentCallback', fn: randomPaymentBody },
-  { labelKey: 'topic.inventoryChange', fn: randomInventoryBody },
-  { labelKey: 'topic.notification', fn: randomNotificationBody },
-  { labelKey: 'topic.metrics', fn: randomMetricsBody },
+  { label: '订单事件', fn: randomOrderBody },
+  { label: '用户行为', fn: randomUserEventBody },
+  { label: '支付回调', fn: randomPaymentBody },
+  { label: '库存变更', fn: randomInventoryBody },
+  { label: '通知消息', fn: randomNotificationBody },
+  { label: '监控指标', fn: randomMetricsBody },
 ];
 
 // ─── Format helpers ───────────────────────────────────────────────
+const formatNumber = (n: number) => n.toLocaleString('zh-CN');
+const formatDateTime = (iso: string): string => {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+};
 
 // ═══════════════════════════════════════════════════════════════════
 const TopicPage = () => {
   const { t } = useLang();
 
   // ─── State ─────────────────────────────────────────────────────
-  const [topics, setTopics] = useState<Topic[]>(mockTopics);
+  const [topics, setTopics] = useState<Topic[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [routesByTopic, setRoutesByTopic] = useState<Record<string, BrokerRoute[]>>({});
+  const [consumersByTopic, setConsumersByTopic] = useState<Record<string, ConsumerGroupInfo[]>>({});
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [searchText, setSearchText] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [nsFilter, setNsFilter] = useState('');
-  const [viewMode, setViewMode] = useState<string>('list');
+  const [viewMode, setViewMode] = useState<string>('列表');
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -227,6 +233,24 @@ const TopicPage = () => {
   const [sending, setSending] = useState(false);
   const [sendForm] = Form.useForm();
   const { modal } = App.useApp();
+
+  useEffect(() => {
+    let cancelled = false;
+    void listTopics()
+      .then((nextTopics) => {
+        if (!cancelled) setTopics(nextTopics);
+      })
+      .catch(() => {
+        if (!cancelled) message.error('Topic 列表加载失败，请稍后重试');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // ─── Filtered data ─────────────────────────────────────────────
   const filteredTopics = useMemo(
@@ -243,33 +267,50 @@ const TopicPage = () => {
   );
 
   // ─── Open detail modal ────────────────────────────────────────
-  const openDetail = (topic: Topic) => {
+  const openDetail = async (topic: Topic) => {
     setSelectedTopic(topic);
     setDetailModalOpen(true);
+    try {
+      const [routes, consumers] = await Promise.all([
+        getTopicRoutes(topic.name),
+        getTopicConsumers(topic.name),
+      ]);
+      setRoutesByTopic((previous) => ({ ...previous, [topic.name]: routes }));
+      setConsumersByTopic((previous) => ({ ...previous, [topic.name]: consumers }));
+    } catch {
+      message.error('Topic 详情加载失败，请稍后重试');
+    }
   };
 
   // ─── Route / consumer helpers ─────────────────────────────────
-  const getRoutes = (name: string): BrokerRoute[] => topicRoutes[name] || defaultRoute;
-  const getConsumers = (name: string): ConsumerGroupInfo[] =>
-    topicConsumers[name] || defaultConsumers;
+  const getRoutes = (name: string): BrokerRoute[] => routesByTopic[name] ?? [];
+  const getConsumers = (name: string): ConsumerGroupInfo[] => consumersByTopic[name] ?? [];
 
   const handleAction = (key: string, topic: Topic) => {
     if (key === 'detail') {
-      openDetail(topic);
+      void openDetail(topic);
     } else if (key === 'route') {
-      openDetail(topic);
+      void openDetail(topic);
     } else if (key === 'send') {
       setSendTopic(topic);
       sendForm.setFieldsValue({ topic: topic.name, tag: '', key: '', body: '', properties: [] });
       setSendModalOpen(true);
     } else if (key === 'delete') {
       modal.confirm({
-        title: t('topic.confirmDelete'),
-        content: t('topic.deleteConfirm', { name: topic.name }),
-        okText: t('common.delete'),
+        title: '确认删除',
+        content: `确定要删除 Topic「${topic.name}」吗？此操作不可撤销。`,
+        okText: '删除',
         okType: 'danger',
-        cancelText: t('common.cancel'),
-        onOk: () => message.success(t('topic.deleted', { name: topic.name })),
+        cancelText: '取消',
+        onOk: async () => {
+          try {
+            await deleteTopic(topic.name);
+            setTopics((previous) => previous.filter((item) => item.name !== topic.name));
+            message.success(`Topic「${topic.name}」已删除`);
+          } catch {
+            message.error('删除 Topic 失败，请稍后重试');
+          }
+        },
       });
     }
   };
@@ -277,7 +318,7 @@ const TopicPage = () => {
   // ─── Table columns ────────────────────────────────────────────
   const columns: TableColumnsType<Topic> = [
     {
-      title: t('topic.topicName'),
+      title: 'Topic 名称',
       dataIndex: 'name',
       key: 'name',
       width: 220,
@@ -289,7 +330,7 @@ const TopicPage = () => {
       ),
     },
     {
-      title: t('topic.remark'),
+      title: '备注',
       dataIndex: 'remark',
       key: 'remark',
       width: 200,
@@ -301,24 +342,24 @@ const TopicPage = () => {
       ),
     },
     {
-      title: t('topic.type'),
+      title: '类型',
       dataIndex: 'type',
       key: 'type',
       width: 100,
       sorter: (a, b) => a.type.localeCompare(b.type),
       render: (type: string) => {
         const cfg = TOPIC_TYPE_MAP[type];
-        return cfg ? <Tag color={cfg.color}>{t(cfg.labelKey)}</Tag> : <Tag>{type}</Tag>;
+        return cfg ? <Tag color={cfg.color}>{cfg.label}</Tag> : <Tag>{type}</Tag>;
       },
     },
     {
-      title: t('topic.status'),
+      title: '状态',
       key: 'status',
       width: 90,
-      render: () => <Tag color="green">{t('topic.serving')}</Tag>,
+      render: () => <Tag color="green">服务中</Tag>,
     },
     {
-      title: t('topic.createdAt'),
+      title: '创建时间',
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 170,
@@ -326,7 +367,7 @@ const TopicPage = () => {
       render: (d: string) => <Text type="secondary">{formatDateTime(d)}</Text>,
     },
     {
-      title: t('topic.updatedAt'),
+      title: '修改时间',
       dataIndex: 'updatedAt',
       key: 'updatedAt',
       width: 170,
@@ -334,7 +375,7 @@ const TopicPage = () => {
       render: (d: string) => <Text type="secondary">{formatDateTime(d)}</Text>,
     },
     {
-      title: t('common.actions'),
+      title: '操作',
       key: 'action',
       width: 200,
       render: (_: unknown, record: Topic) => (
@@ -345,7 +386,7 @@ const TopicPage = () => {
             style={{ borderColor: '#1677ff', color: '#1677ff' }}
             onClick={() => handleAction('detail', record)}
           >
-            {t('common.detail')}
+            详情
           </Button>
           <Button
             size="small"
@@ -353,7 +394,7 @@ const TopicPage = () => {
             style={{ borderColor: '#52c41a', color: '#52c41a' }}
             onClick={() => handleAction('send', record)}
           >
-            {t('topic.send')}
+            发送
           </Button>
           <Button
             size="small"
@@ -361,7 +402,7 @@ const TopicPage = () => {
             style={{ borderColor: '#ff4d4f', color: '#ff4d4f' }}
             onClick={() => handleAction('delete', record)}
           >
-            {t('common.delete')}
+            删除
           </Button>
         </Flex>
       ),
@@ -370,35 +411,35 @@ const TopicPage = () => {
 
   // ─── Route table columns ──────────────────────────────────────
   const routeColumns: TableColumnsType<BrokerRoute> = [
-    { title: t('topic.brokerName'), dataIndex: 'brokerName', key: 'brokerName' },
-    { title: t('topic.brokerAddr'), dataIndex: 'brokerAddr', key: 'brokerAddr' },
-    { title: t('topic.writeQueue'), dataIndex: 'writeQueues', key: 'writeQueues' },
-    { title: t('topic.readQueue'), dataIndex: 'readQueues', key: 'readQueues' },
+    { title: 'Broker 名称', dataIndex: 'brokerName', key: 'brokerName' },
+    { title: 'Broker 地址', dataIndex: 'brokerAddr', key: 'brokerAddr' },
+    { title: '写队列', dataIndex: 'writeQueues', key: 'writeQueues' },
+    { title: '读队列', dataIndex: 'readQueues', key: 'readQueues' },
     {
-      title: t('topic.perm'),
+      title: '权限',
       dataIndex: 'perm',
       key: 'perm',
-      render: (p: string) => <Tag>{t(PERM_LABEL_KEY[p] || p)}</Tag>,
+      render: (p: string) => <Tag>{PERM_LABEL[p] || p}</Tag>,
     },
   ];
 
   // ─── Consumer table columns ───────────────────────────────────
   const consumerColumns: TableColumnsType<ConsumerGroupInfo> = [
-    { title: t('topic.consumerGroup'), dataIndex: 'group', key: 'group' },
+    { title: '消费者组', dataIndex: 'group', key: 'group' },
     {
-      title: t('topic.consumeMode'),
+      title: '消费模式',
       dataIndex: 'messageModel',
       key: 'messageModel',
-      render: (m: string) => <Tag color={m === t('topic.broadcast') ? 'orange' : 'blue'}>{m}</Tag>,
+      render: (m: string) => <Tag color={m === '广播消费' ? 'orange' : 'blue'}>{m}</Tag>,
     },
     {
-      title: t('topic.consumeTps'),
+      title: '消费 TPS',
       dataIndex: 'consumeTps',
       key: 'consumeTps',
       render: (n: number) => formatNumber(n),
     },
     {
-      title: t('topic.backlog'),
+      title: '堆积量',
       dataIndex: 'diffTotal',
       key: 'diffTotal',
       render: (n: number) => <Text type={n > 100 ? 'warning' : undefined}>{formatNumber(n)}</Text>,
@@ -413,34 +454,30 @@ const TopicPage = () => {
 
     return (
       <Descriptions bordered column={2} size="small" labelStyle={{ fontWeight: 500 }}>
-        <Descriptions.Item label={t('topic.topicName')} span={2}>
+        <Descriptions.Item label="Topic 名称" span={2}>
           {topic.name}
         </Descriptions.Item>
-        <Descriptions.Item label={t('topic.type')}>
-          <Tag color={typeInfo?.color}>{typeInfo ? t(typeInfo.labelKey) : topic.type}</Tag>
+        <Descriptions.Item label="类型">
+          <Tag color={typeInfo?.color}>{typeInfo?.label}</Tag>
         </Descriptions.Item>
-        <Descriptions.Item label={t('topic.namespace')}>
+        <Descriptions.Item label="命名空间">
           <Tag>{topic.namespace}</Tag>
         </Descriptions.Item>
-        <Descriptions.Item label={t('topic.cluster')} span={2}>
+        <Descriptions.Item label="集群" span={2}>
           <Space>
             <Text>{topic.clusterId}</Text>
-            {clusterType && <Tag color={clusterType.color}>{t(clusterType.labelKey)}</Tag>}
+            {clusterType && <Tag color={clusterType.color}>{clusterType.label}</Tag>}
           </Space>
         </Descriptions.Item>
-        <Descriptions.Item label={t('topic.writeQueues')}>{topic.writeQueues}</Descriptions.Item>
-        <Descriptions.Item label={t('topic.readQueues')}>{topic.readQueues}</Descriptions.Item>
-        <Descriptions.Item label={t('topic.perm')}>
-          <Tag>{t(PERM_LABEL_KEY[topic.perm] || topic.perm)}</Tag>
+        <Descriptions.Item label="写队列数">{topic.writeQueues}</Descriptions.Item>
+        <Descriptions.Item label="读队列数">{topic.readQueues}</Descriptions.Item>
+        <Descriptions.Item label="权限">
+          <Tag>{PERM_LABEL[topic.perm]}</Tag>
         </Descriptions.Item>
-        <Descriptions.Item label={t('topic.messageCount')}>
-          {formatNumber(topic.messageCount)}
-        </Descriptions.Item>
-        <Descriptions.Item label={t('topic.tps')}>{formatNumber(topic.tps)}</Descriptions.Item>
-        <Descriptions.Item label={t('topic.consumerGroupCount')}>
-          {topic.consumerGroupCount}
-        </Descriptions.Item>
-        <Descriptions.Item label={t('topic.createdAt')} span={2}>
+        <Descriptions.Item label="今日消息量">{formatNumber(topic.messageCount)}</Descriptions.Item>
+        <Descriptions.Item label="TPS">{formatNumber(topic.tps)}</Descriptions.Item>
+        <Descriptions.Item label="消费者组数">{topic.consumerGroupCount}</Descriptions.Item>
+        <Descriptions.Item label="创建时间" span={2}>
           {formatDateTime(topic.createdAt)}
         </Descriptions.Item>
       </Descriptions>
@@ -460,7 +497,7 @@ const TopicPage = () => {
             <Card
               hoverable
               size="small"
-              onClick={() => openDetail(topic)}
+              onClick={() => void openDetail(topic)}
               styles={{ body: { padding: '16px 20px' } }}
               style={{ borderRadius: 8, border: '1px solid #f0f0f0' }}
             >
@@ -469,7 +506,7 @@ const TopicPage = () => {
                 <Text strong style={{ fontSize: 15 }}>
                   {topic.name}
                 </Text>
-                <Tag color={typeInfo?.color}>{typeInfo ? t(typeInfo.labelKey) : topic.type}</Tag>
+                <Tag color={typeInfo?.color}>{typeInfo?.label}</Tag>
               </Flex>
 
               {/* Namespace + cluster tags */}
@@ -477,7 +514,7 @@ const TopicPage = () => {
                 <Tag style={{ fontSize: 11 }}>{topic.namespace}</Tag>
                 {clusterType && (
                   <Tag color={clusterType.color} style={{ fontSize: 11 }}>
-                    {t(clusterType.labelKey)}
+                    {clusterType.label}
                   </Tag>
                 )}
               </Space>
@@ -486,7 +523,7 @@ const TopicPage = () => {
               <Row gutter={16}>
                 <Col span={8}>
                   <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
-                    {t('topic.messageCount')}
+                    今日消息量
                   </Text>
                   <Text strong style={{ fontSize: 16, fontVariantNumeric: 'tabular-nums' }}>
                     {formatNumber(topic.messageCount)}
@@ -502,7 +539,7 @@ const TopicPage = () => {
                 </Col>
                 <Col span={8}>
                   <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
-                    {t('topic.consumerGroup')}
+                    消费者组
                   </Text>
                   <Text strong style={{ fontSize: 16, fontVariantNumeric: 'tabular-nums' }}>
                     {topic.consumerGroupCount}
@@ -517,12 +554,17 @@ const TopicPage = () => {
   );
 
   // ─── Create modal submit ──────────────────────────────────────
-  const handleCreate = () => {
-    form.validateFields().then((values) => {
-      message.success(t('topic.createSuccess', { name: values.name }));
+  const handleCreate = async () => {
+    try {
+      const values = await form.validateFields();
+      const created = await createTopic(values);
+      setTopics((previous) => [created, ...previous]);
+      message.success(`Topic「${created.name}」创建成功`);
       setModalOpen(false);
       form.resetFields();
-    });
+    } catch {
+      message.error('创建 Topic 失败，请稍后重试');
+    }
   };
 
   // ─── Send message modal submit ────────────────────────────────
@@ -537,10 +579,14 @@ const TopicPage = () => {
           if (p.key) props[p.key] = p.value || '';
         });
       }
-      // Simulate send (mock always succeeds)
-      await new Promise((r) => setTimeout(r, 500));
-      const mockMsgId = `7F${Math.random().toString(16).slice(2, 18).toUpperCase()}`;
-      message.success(t('topic.sendSuccess', { id: mockMsgId }));
+      const result = await sendTopicMessage({
+        topic: values.topic,
+        tag: values.tag || undefined,
+        key: values.key || undefined,
+        body: values.body,
+        properties: props,
+      });
+      message.success(`消息发送成功！MsgId: ${result.msgId}`);
       setSendModalOpen(false);
       sendForm.resetFields();
     } catch {
@@ -556,10 +602,7 @@ const TopicPage = () => {
   return (
     <div style={{ padding: 24 }}>
       {/* ── Header ────────────────────────────────────────────── */}
-      <PageHeader
-        title={t('topic.title')}
-        subtitle={t('topic.totalCount', { count: filteredTopics.length })}
-      />
+      <PageHeader title={t('topic.title')} subtitle={`共 ${filteredTopics.length} 个 Topic`} />
 
       {/* ── Filter bar ────────────────────────────────────────── */}
       <Flex
@@ -571,7 +614,7 @@ const TopicPage = () => {
       >
         <Space size={12} wrap>
           <Input.Search
-            placeholder={t('topic.searchPlaceholder')}
+            placeholder="搜索 Topic 名称"
             allowClear
             style={{ width: 260 }}
             onSearch={setSearchText}
@@ -580,31 +623,25 @@ const TopicPage = () => {
             }}
           />
           <Select
-            placeholder={t('topic.typeFilter')}
+            placeholder="类型筛选"
             value={typeFilter}
             onChange={setTypeFilter}
-            options={TYPE_OPTIONS.map((o) => ({
-              ...o,
-              label: o.labelKey ? t(o.labelKey) : o.label,
-            }))}
+            options={TYPE_OPTIONS}
             style={{ width: 140 }}
           />
           <Select
-            placeholder={t('topic.namespace')}
+            placeholder="命名空间"
             value={nsFilter}
             onChange={setNsFilter}
-            options={NAMESPACE_OPTIONS.map((o) => ({
-              ...o,
-              label: o.labelKey ? t(o.labelKey) : o.label!,
-            }))}
+            options={NAMESPACE_OPTIONS}
             style={{ width: 140 }}
           />
           <Segmented
             value={viewMode}
             onChange={(v) => setViewMode(v as string)}
             options={[
-              { label: t('topic.listView'), value: 'list', icon: <UnorderedListOutlined /> },
-              { label: t('topic.cardView'), value: 'card', icon: <AppstoreOutlined /> },
+              { label: '列表', value: '列表', icon: <UnorderedListOutlined /> },
+              { label: '卡片', value: '卡片', icon: <AppstoreOutlined /> },
             ]}
           />
         </Space>
@@ -615,43 +652,52 @@ const TopicPage = () => {
               icon={<DeleteOutlined />}
               onClick={() => {
                 Modal.confirm({
-                  title: t('topic.confirmBatchDelete'),
-                  content: t('topic.batchDeleteConfirm', { count: selectedRowKeys.length }),
-                  okText: t('topic.delete'),
+                  title: '确认批量删除',
+                  content: `确定要删除选中的 ${selectedRowKeys.length} 个 Topic 吗？此操作不可撤销。`,
+                  okText: '删除',
                   okType: 'danger',
-                  cancelText: t('common.cancel'),
-                  onOk: () => {
-                    setTopics((prev) => prev.filter((t) => !selectedRowKeys.includes(t.name)));
-                    message.success(t('topic.batchDeleted', { count: selectedRowKeys.length }));
-                    setSelectedRowKeys([]);
+                  cancelText: '取消',
+                  onOk: async () => {
+                    try {
+                      const names = selectedRowKeys.map(String);
+                      await batchDeleteTopics(names);
+                      setTopics((previous) =>
+                        previous.filter((topic) => !names.includes(topic.name)),
+                      );
+                      message.success(`已删除 ${names.length} 个 Topic`);
+                      setSelectedRowKeys([]);
+                    } catch {
+                      message.error('批量删除 Topic 失败，请稍后重试');
+                    }
                   },
                 });
               }}
             >
-              {t('topic.delete')} ({selectedRowKeys.length})
+              删除 ({selectedRowKeys.length})
             </Button>
           )}
-          <Button icon={<ImportOutlined />} onClick={() => message.info(t('topic.importWip'))}>
-            {t('common.import')}
+          <Button icon={<ImportOutlined />} onClick={() => message.info('导入功能开发中')}>
+            导入
           </Button>
           <Button
             icon={<ExportOutlined />}
-            onClick={() => message.success(t('topic.exported', { count: filteredTopics.length }))}
+            onClick={() => message.success(`已导出 ${filteredTopics.length} 个 Topic`)}
           >
-            {t('common.export')}
+            导出
           </Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
-            {t('topic.createTopic')}
+            创建 Topic
           </Button>
         </Space>
       </Flex>
 
       {/* ── Content ───────────────────────────────────────────── */}
-      {viewMode === 'list' ? (
+      {viewMode === '列表' ? (
         <Card styles={{ body: { padding: 0 } }} style={{ borderRadius: 8 }}>
           <Table<Topic>
             columns={columns}
             dataSource={filteredTopics}
+            loading={loading}
             rowKey="name"
             rowSelection={{
               selectedRowKeys,
@@ -660,11 +706,11 @@ const TopicPage = () => {
             pagination={{
               pageSize: 20,
               showSizeChanger: true,
-              showTotal: (total) => t('topic.showTotal', { total }),
+              showTotal: (t) => `共 ${t} 条`,
             }}
             size="small"
             onRow={(record) => ({
-              onClick: () => openDetail(record),
+              onClick: () => void openDetail(record),
               style: { cursor: 'pointer' },
             })}
           />
@@ -684,17 +730,17 @@ const TopicPage = () => {
       >
         {selectedTopic && (
           <>
-            {/* Section 1: Basic Info */}
+            {/* Section 1: 基本信息 */}
             <Text strong style={{ fontSize: 14, display: 'block', marginBottom: 12 }}>
-              {t('topic.basicInfo')}
+              基本信息
             </Text>
             {renderDetailTab(selectedTopic)}
 
             <Divider style={{ margin: '20px 0 16px' }} />
 
-            {/* Section 2: Route Info */}
+            {/* Section 2: 路由信息 */}
             <Text strong style={{ fontSize: 14, display: 'block', marginBottom: 12 }}>
-              {t('topic.routeInfo')}
+              路由信息
             </Text>
             <Table<BrokerRoute>
               columns={routeColumns}
@@ -706,9 +752,9 @@ const TopicPage = () => {
 
             <Divider style={{ margin: '20px 0 16px' }} />
 
-            {/* Section 3: Consumers */}
+            {/* Section 3: 消费者 */}
             <Text strong style={{ fontSize: 14, display: 'block', marginBottom: 12 }}>
-              {t('topic.consumerInfo')}
+              消费者
             </Text>
             <Table<ConsumerGroupInfo>
               columns={consumerColumns}
@@ -723,15 +769,15 @@ const TopicPage = () => {
 
       {/* ── Create Topic Modal ────────────────────────────────── */}
       <Modal
-        title={t('topic.createTopic')}
+        title="创建 Topic"
         open={modalOpen}
         onCancel={() => {
           setModalOpen(false);
           form.resetFields();
         }}
         onOk={handleCreate}
-        okText={t('common.create')}
-        cancelText={t('common.cancel')}
+        okText="创建"
+        cancelText="取消"
         width={560}
         destroyOnClose
       >
@@ -739,8 +785,8 @@ const TopicPage = () => {
           form={form}
           layout="vertical"
           initialValues={{
-            writeQueueNums: 8,
-            readQueueNums: 8,
+            writeQueues: 8,
+            readQueues: 8,
             perm: 'RW',
             type: 'NORMAL',
             namespace: 'default',
@@ -748,27 +794,27 @@ const TopicPage = () => {
           style={{ marginTop: 16 }}
         >
           <Form.Item
-            label={t('topic.topicName')}
+            label="Topic 名称"
             name="name"
             rules={[
-              { required: true, message: t('topic.topicNameRequired') },
+              { required: true, message: '请输入 Topic 名称' },
               {
                 pattern: /^[a-zA-Z0-9_\-/*]+$/,
-                message: t('topic.topicNameRule'),
+                message: '仅支持字母、数字、下划线、中划线、斜杠和星号',
               },
             ]}
           >
-            <Input placeholder={t('topic.topicNamePlaceholder')} />
+            <Input placeholder="请输入 Topic 名称" />
           </Form.Item>
 
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item label={t('topic.namespace')} name="namespace" rules={[{ required: true }]}>
+              <Form.Item label="命名空间" name="namespace" rules={[{ required: true }]}>
                 <Select disabled options={[{ label: 'default', value: 'default' }]} />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item label={t('topic.type')} name="type" rules={[{ required: true }]}>
+              <Form.Item label="类型" name="type" rules={[{ required: true }]}>
                 <Select options={TYPE_OPTIONS.filter((o) => o.value)} />
               </Form.Item>
             </Col>
@@ -777,36 +823,36 @@ const TopicPage = () => {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item
-                label={t('topic.writeQueues')}
-                name="writeQueueNums"
+                label="写队列数"
+                name="writeQueues"
                 rules={[{ required: true }]}
-                extra={t('topic.queueExtra')}
+                extra="每个 Broker 节点 8 个队列"
               >
                 <InputNumber min={1} max={256} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item
-                label={t('topic.readQueues')}
-                name="readQueueNums"
+                label="读队列数"
+                name="readQueues"
                 rules={[{ required: true }]}
-                extra={t('topic.queueExtra')}
+                extra="每个 Broker 节点 8 个队列"
               >
                 <InputNumber min={1} max={256} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
           </Row>
 
-          <Form.Item label={t('topic.perm')} name="perm" rules={[{ required: true }]}>
+          <Form.Item label="权限" name="perm" rules={[{ required: true }]}>
             <Radio.Group>
-              <Radio.Button value="RW">{t('topic.permRW')}</Radio.Button>
-              <Radio.Button value="RO">{t('topic.permRO')}</Radio.Button>
-              <Radio.Button value="WO">{t('topic.permWO')}</Radio.Button>
+              <Radio.Button value="RW">读写</Radio.Button>
+              <Radio.Button value="RO">只读</Radio.Button>
+              <Radio.Button value="WO">只写</Radio.Button>
             </Radio.Group>
           </Form.Item>
 
-          <Form.Item label={t('topic.remark')} name="remark">
-            <Input.TextArea rows={3} placeholder={t('topic.remarkPlaceholder')} />
+          <Form.Item label="备注" name="remark">
+            <Input.TextArea rows={3} placeholder="可选，描述 Topic 用途" />
           </Form.Item>
         </Form>
       </Modal>
@@ -816,7 +862,7 @@ const TopicPage = () => {
         title={
           <Space>
             <SendOutlined />
-            <span>{t('topic.sendMsg', { name: sendTopic?.name ?? '' })}</span>
+            <span>发送消息到 {sendTopic?.name}</span>
           </Space>
         }
         open={sendModalOpen}
@@ -825,8 +871,8 @@ const TopicPage = () => {
           sendForm.resetFields();
         }}
         onOk={handleSend}
-        okText={t('topic.send')}
-        cancelText={t('common.cancel')}
+        okText="发送"
+        cancelText="取消"
         confirmLoading={sending}
         width={640}
         destroyOnClose
@@ -844,48 +890,48 @@ const TopicPage = () => {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item label="Tag" name="tag">
-                <Input placeholder={t('topic.tagPlaceholder')} />
+                <Input placeholder="可选，消息标签" />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item label="Key" name="key">
-                <Input placeholder={t('topic.keyPlaceholder')} />
+                <Input placeholder="可选，消息 Key（用于查询）" />
               </Form.Item>
             </Col>
           </Row>
 
           <Form.Item
-            label={t('topic.bodyLabel')}
+            label="消息体 Body"
             name="body"
-            rules={[{ required: true, message: t('topic.bodyRequired') }]}
+            rules={[{ required: true, message: '请输入消息体' }]}
           >
             <Input.TextArea
               rows={8}
-              placeholder={t('topic.bodyPlaceholder')}
+              placeholder="JSON 格式消息体"
               style={{ fontFamily: 'monospace', fontSize: 13 }}
             />
           </Form.Item>
           <Flex gap={12} style={{ marginTop: -8, marginBottom: 16 }}>
             <Text type="secondary" style={{ fontSize: 12, flexShrink: 0 }}>
-              {t('topic.quickFill')}
+              快速填入:
             </Text>
             <Space size={4} wrap>
               {RANDOM_BODY_GENERATORS.map((gen) => (
                 <Button
-                  key={gen.labelKey}
+                  key={gen.label}
                   type="text"
                   size="small"
                   onClick={() => sendForm.setFieldValue('body', gen.fn())}
                   style={{ fontSize: 12, color: '#8c8c8c', height: 22, padding: '0 6px' }}
                 >
-                  {t(gen.labelKey)}
+                  {gen.label}
                 </Button>
               ))}
             </Space>
           </Flex>
 
           <Divider style={{ margin: '8px 0 16px' }} orientation="left" plain>
-            {t('topic.customProps')}
+            自定义属性（可选）
           </Divider>
 
           <Form.List name="properties">
@@ -895,12 +941,12 @@ const TopicPage = () => {
                   <Row gutter={8} key={key} align="middle" style={{ marginBottom: 8 }}>
                     <Col span={10}>
                       <Form.Item {...rest} name={[name, 'key']} style={{ marginBottom: 0 }}>
-                        <Input placeholder={t('topic.propName')} />
+                        <Input placeholder="属性名" />
                       </Form.Item>
                     </Col>
                     <Col span={10}>
                       <Form.Item {...rest} name={[name, 'value']} style={{ marginBottom: 0 }}>
-                        <Input placeholder={t('topic.propValue')} />
+                        <Input placeholder="属性值" />
                       </Form.Item>
                     </Col>
                     <Col span={4}>
@@ -912,7 +958,7 @@ const TopicPage = () => {
                   </Row>
                 ))}
                 <Button type="dashed" onClick={() => add()} block icon={<PlusCircleOutlined />}>
-                  {t('topic.addProp')}
+                  添加属性
                 </Button>
               </>
             )}

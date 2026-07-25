@@ -1,12 +1,10 @@
 import { USE_MOCK } from '../config';
 import * as messageApi from '../api/message';
-import type { MessageRecord, TraceRecord, DLQGroup } from '../api/message';
+import type { MessageQuery, MessageRecord, TraceRecord, DLQGroup } from '../api/message';
 import { mockMessages, mockMessageTraces } from '../mock/messages';
 import { mockDLQGroups } from '../mock/dlq';
 
-export async function queryMessages(
-  params: Record<string, string | undefined>,
-): Promise<MessageRecord[]> {
+export async function queryMessages(params: MessageQuery): Promise<MessageRecord[]> {
   if (USE_MOCK) {
     let result = [...mockMessages];
     if (params.topic) result = result.filter((m) => m.topic === params.topic);
@@ -14,7 +12,7 @@ export async function queryMessages(
     if (params.msgId) result = result.filter((m) => m.msgId === params.msgId);
     return result as unknown as MessageRecord[];
   }
-  return messageApi.queryMessages(params as { mode: string });
+  return messageApi.queryMessages(params);
 }
 
 export async function getMessageTrace(msgId: string): Promise<TraceRecord | null> {
@@ -29,8 +27,8 @@ export async function listDLQGroups(): Promise<DLQGroup[]> {
 
 export async function resendDLQ(data: {
   groupName: string;
-  startTime: string;
-  endTime: string;
+  startTime: number;
+  endTime: number;
   targetTopic?: string;
 }): Promise<void> {
   if (USE_MOCK) return;

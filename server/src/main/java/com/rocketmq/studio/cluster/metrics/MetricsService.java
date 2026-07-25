@@ -28,8 +28,8 @@ public class MetricsService {
     private final MetricsSource metricsSource;
 
     public MetricDataVO query(MetricQueryDTO query) {
-        log.info("Querying metrics: metric={}, start={}, end={}, step={}",
-                query.getMetric(), query.getStart(), query.getEnd(), query.getStep());
+        log.debug("Querying metrics: start={}, end={}, step={}",
+                query.getStart(), query.getEnd(), query.getStep());
         return metricsSource.query(query);
     }
 }

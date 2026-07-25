@@ -1,11 +1,6 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.
- */
-
 import client from './client';
 
-// ─── Types ──────────────────────────────────────────────────────
+// Matches mock/alerts.ts (inferred from data)
 export interface AlertRule {
   id: string;
   name: string;
@@ -20,6 +15,7 @@ export interface AlertRule {
   description: string;
 }
 
+// Matches mock/dashboard.ts systemAlerts
 export interface SystemAlert {
   id: string;
   level: string;
@@ -29,6 +25,7 @@ export interface SystemAlert {
   acknowledged: boolean;
 }
 
+// Matches mock/audit.ts (inferred from data)
 export interface AuditRecord {
   id: string;
   timestamp: string;
@@ -40,75 +37,52 @@ export interface AuditRecord {
   result: string;
 }
 
-// ─── Ops API ────────────────────────────────────────────────────
-// Backend: OpsController at /ops
-// GET  /ops/homePage.query          → home page info
-// POST /ops/updateNameSvrAddr.do    → update nameserver address
-// POST /ops/addNameSvrAddr.do       → add nameserver address
-// POST /ops/updateIsVIPChannel.do   → update VIP channel
-// GET  /ops/rocketMqStatus.query    → cluster status check
-// POST /ops/updateUseTLS.do         → update TLS setting
-
-export async function getOpsHomePage() {
-  const res = await client.get('/ops/homePage.query');
-  return res.data;
+export interface PageResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  size: number;
 }
 
-export async function updateNameServerAddr(nameSvrAddrList: string) {
-  await client.post('/ops/updateNameSvrAddr.do', null, {
-    params: { nameSvrAddrList },
-  });
+export interface AuditQuery {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  operationType?: string;
+  startDate?: string;
+  endDate?: string;
+  result?: string;
 }
 
-export async function addNameServerAddr(newNamesrvAddr: string) {
-  await client.post('/ops/addNameSvrAddr.do', null, {
-    params: { newNamesrvAddr },
-  });
-}
-
-export async function updateVIPChannel(useVIPChannel: string) {
-  await client.post('/ops/updateIsVIPChannel.do', null, {
-    params: { useVIPChannel },
-  });
-}
-
-export async function getRocketMQStatus() {
-  const res = await client.get('/ops/rocketMqStatus.query');
-  return res.data;
-}
-
-export async function updateUseTLS(useTLS: string) {
-  await client.post('/ops/updateUseTLS.do', null, {
-    params: { useTLS },
-  });
-}
-
-// ─── Alert Rules (no backend equivalent yet — uses mock) ────────
+// ─── Alert Rules ────────────────────────────────────────────────
 export async function listAlertRules() {
-  const res = await client.get('/alert-rules');
-  return res.data;
+  const res = await client.get<{ data: AlertRule[] }>('/alert-rules');
+  return res.data.data;
 }
 
 export async function createAlertRule(data: Partial<AlertRule>) {
-  await client.post('/alert-rules/create', data);
+  const res = await client.post<{ data: AlertRule }>('/alert-rules/create', data);
+  return res.data.data;
 }
 
-export async function updateAlertRule(data: Partial<AlertRule>) {
-  await client.post('/alert-rules/update', data);
+export async function updateAlertRule(data: AlertRule) {
+  const res = await client.post<{ data: AlertRule }>('/alert-rules/update', data);
+  return res.data.data;
 }
 
 export async function toggleAlertRule(id: string, enabled: boolean) {
-  await client.post('/alert-rules/toggle', { id, enabled });
+  const res = await client.post<{ data: AlertRule }>('/alert-rules/toggle', { id, enabled });
+  return res.data.data;
 }
 
 export async function deleteAlertRule(id: string) {
   await client.post('/alert-rules/delete', { id });
 }
 
-// ─── System Alerts (no backend equivalent yet — uses mock) ──────
+// ─── System Alerts ──────────────────────────────────────────────
 export async function listSystemAlerts() {
-  const res = await client.get('/system-alerts');
-  return res.data;
+  const res = await client.get<{ data: SystemAlert[] }>('/system-alerts');
+  return res.data.data;
 }
 
 export async function acknowledgeAlert(id: string) {
@@ -116,15 +90,50 @@ export async function acknowledgeAlert(id: string) {
 }
 
 export async function clearAcknowledgedAlerts() {
-  await client.post('/system-alerts/clear-acknowledged');
+  const res = await client.post<{ data: { cleared: number } }>('/system-alerts/clear-acknowledged');
+  return res.data.data;
 }
 
-// ─── Audit Logs (no backend equivalent yet — uses mock) ─────────
-export async function listAuditRecords(params?: Record<string, unknown>) {
-  const res = await client.get('/audit-logs', { params });
-  return res.data;
+// ─── Audit Logs ─────────────────────────────────────────────────
+export async function listAuditRecords(params?: AuditQuery) {
+  const res = await client.get<{ data: PageResult<AuditRecord> }>('/audit-logs', {
+    params,
+  });
+  return res.data.data;
 }
 
 export async function cleanupAuditLogs(beforeDays: number) {
-  await client.post('/audit-logs/cleanup', { beforeDays });
+  const res = await client.post<{ data: { deleted: number } }>('/audit-logs/cleanup', {
+    beforeDays,
+  });
+  return res.data.data;
+}
+
+// ─── NameServer Operations ──────────────────────────────────────
+export interface OpsHomeData {
+  namesvrAddrList: string[];
+  useVIPChannel: boolean;
+  useTLS: boolean;
+  currentNamesrv: string;
+}
+
+export async function queryOpsHomePage(): Promise<OpsHomeData> {
+  const res = await client.get<{ data: OpsHomeData }>('/ops/homePage');
+  return res.data.data;
+}
+
+export async function updateNameSvrAddr(namesrvAddr: string): Promise<void> {
+  await client.post('/ops/updateNameSvrAddr', { namesrvAddr });
+}
+
+export async function addNameSvrAddr(namesrvAddr: string): Promise<void> {
+  await client.post('/ops/addNameSvrAddr', { namesrvAddr });
+}
+
+export async function updateIsVIPChannel(useVIPChannel: boolean): Promise<void> {
+  await client.post('/ops/updateIsVIPChannel', { useVIPChannel });
+}
+
+export async function updateUseTLS(useTLS: boolean): Promise<void> {
+  await client.post('/ops/updateUseTLS', { useTLS });
 }

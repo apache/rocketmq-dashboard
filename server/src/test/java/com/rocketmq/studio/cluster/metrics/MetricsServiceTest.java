@@ -22,9 +22,9 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -48,22 +48,21 @@ class MetricsServiceTest {
                 .end(1700003600L)
                 .step("1m")
                 .build();
-        List<long[]> values = Arrays.asList(
-                new long[]{1700000000L, 45},
-                new long[]{1700000060L, 52},
-                new long[]{1700000120L, 48}
+        List<MetricDataVO.MetricSampleVO> values = List.of(
+                sample(1700000000L, "45.5"),
+                sample(1700000060L, "52"),
+                sample(1700000120L, "48")
         );
-        MetricDataVO data = MetricDataVO.builder().metric("cpu_usage").values(values).build();
+        MetricDataVO data = metricData("cpu_usage", values);
         when(metricsSource.query(query)).thenReturn(data);
 
         MetricDataVO result = metricsService.query(query);
 
-        assertThat(result.getMetric()).isEqualTo("cpu_usage");
-        assertThat(result.getValues()).hasSize(3);
-        assertThat(result.getValues().get(0)[0]).isEqualTo(1700000000L);
-        assertThat(result.getValues().get(0)[1]).isEqualTo(45);
-        assertThat(result.getValues().get(1)[1]).isEqualTo(52);
-        assertThat(result.getValues().get(2)[1]).isEqualTo(48);
+        assertThat(result.getSeries()).hasSize(1);
+        assertThat(result.getSeries().get(0).getLabels()).containsEntry("__name__", "cpu_usage");
+        assertThat(result.getSeries().get(0).getValues()).hasSize(3);
+        assertThat(result.getSeries().get(0).getValues().get(0).getTimestamp()).isEqualTo(1700000000D);
+        assertThat(result.getSeries().get(0).getValues().get(0).getValue()).isEqualTo("45.5");
         verify(metricsSource).query(query);
     }
 
@@ -75,13 +74,12 @@ class MetricsServiceTest {
                 .end(1700003600L)
                 .step("5m")
                 .build();
-        MetricDataVO data = MetricDataVO.builder().metric("disk_io").values(Collections.emptyList()).build();
+        MetricDataVO data = emptyMetricData();
         when(metricsSource.query(query)).thenReturn(data);
 
         MetricDataVO result = metricsService.query(query);
 
-        assertThat(result.getMetric()).isEqualTo("disk_io");
-        assertThat(result.getValues()).isEmpty();
+        assertThat(result.getSeries()).isEmpty();
     }
 
     @Test
@@ -92,7 +90,7 @@ class MetricsServiceTest {
                 .end(1700086400L)
                 .step("1h")
                 .build();
-        MetricDataVO data = MetricDataVO.builder().metric("tps").values(Collections.emptyList()).build();
+        MetricDataVO data = emptyMetricData();
         when(metricsSource.query(any(MetricQueryDTO.class))).thenReturn(data);
 
         metricsService.query(query);
@@ -104,7 +102,7 @@ class MetricsServiceTest {
     void queryShouldHandleVariousStepSizes() {
         MetricQueryDTO query15s = MetricQueryDTO.builder().metric("cpu").start(1L).end(2L).step("15s").build();
         MetricQueryDTO query1h = MetricQueryDTO.builder().metric("cpu").start(1L).end(2L).step("1h").build();
-        MetricDataVO data = MetricDataVO.builder().metric("cpu").values(Collections.emptyList()).build();
+        MetricDataVO data = emptyMetricData();
         when(metricsSource.query(any(MetricQueryDTO.class))).thenReturn(data);
 
         MetricDataVO result15s = metricsService.query(query15s);
@@ -124,20 +122,19 @@ class MetricsServiceTest {
                 .end(1700003600L)
                 .step("1m")
                 .build();
-        List<long[]> values = Arrays.asList(
-                new long[]{1700000000L, 72},
-                new long[]{1700000060L, 73},
-                new long[]{1700000120L, 71},
-                new long[]{1700000180L, 74},
-                new long[]{1700000240L, 75}
+        List<MetricDataVO.MetricSampleVO> values = List.of(
+                sample(1700000000L, "72"),
+                sample(1700000060L, "73"),
+                sample(1700000120L, "71"),
+                sample(1700000180L, "74"),
+                sample(1700000240L, "75")
         );
-        MetricDataVO data = MetricDataVO.builder().metric("memory_usage").values(values).build();
+        MetricDataVO data = metricData("memory_usage", values);
         when(metricsSource.query(query)).thenReturn(data);
 
         MetricDataVO result = metricsService.query(query);
 
-        assertThat(result.getMetric()).isEqualTo("memory_usage");
-        assertThat(result.getValues()).hasSize(5);
+        assertThat(result.getSeries().get(0).getValues()).hasSize(5);
     }
 
     @Test
@@ -145,12 +142,39 @@ class MetricsServiceTest {
         String[] metrics = {"rocketmq_tps", "rocketmq_latency_p99", "broker_disk_usage", "consumer_lag"};
         for (String metricName : metrics) {
             MetricQueryDTO query = MetricQueryDTO.builder().metric(metricName).start(1L).end(2L).step("1m").build();
-            MetricDataVO data = MetricDataVO.builder().metric(metricName).values(Collections.emptyList()).build();
+            MetricDataVO data = metricData(metricName, Collections.emptyList());
             when(metricsSource.query(query)).thenReturn(data);
 
             MetricDataVO result = metricsService.query(query);
 
-            assertThat(result.getMetric()).isEqualTo(metricName);
+            assertThat(result.getSeries().get(0).getLabels()).containsEntry("__name__", metricName);
         }
+    }
+
+    private MetricDataVO emptyMetricData() {
+        return MetricDataVO.builder()
+                .resultType("matrix")
+                .series(Collections.emptyList())
+                .warnings(Collections.emptyList())
+                .build();
+    }
+
+    private MetricDataVO metricData(String metricName, List<MetricDataVO.MetricSampleVO> values) {
+        MetricDataVO.MetricSeriesVO series = MetricDataVO.MetricSeriesVO.builder()
+                .labels(Map.of("__name__", metricName))
+                .values(values)
+                .build();
+        return MetricDataVO.builder()
+                .resultType("matrix")
+                .series(List.of(series))
+                .warnings(Collections.emptyList())
+                .build();
+    }
+
+    private MetricDataVO.MetricSampleVO sample(double timestamp, String value) {
+        return MetricDataVO.MetricSampleVO.builder()
+                .timestamp(timestamp)
+                .value(value)
+                .build();
     }
 }
