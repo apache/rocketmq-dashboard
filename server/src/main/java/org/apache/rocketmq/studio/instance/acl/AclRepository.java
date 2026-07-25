@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.instance.acl;
 
 
 import java.util.List;
+import java.util.Optional;
 
 public interface AclRepository {
     List<AclRuleVO> findRules(String clusterId, String principal);
@@ -27,6 +28,8 @@ public interface AclRepository {
     void deleteRule(String id);
 
     List<AclUserVO> findUsers();
+
+    Optional<AclUserVO> findUserById(String id);
 
     AclUserVO saveUser(AclUserVO user);
 

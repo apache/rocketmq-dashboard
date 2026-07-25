@@ -16,7 +16,7 @@
  */
 
 import { App } from 'antd';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -60,6 +60,7 @@ const renderWithProviders = (ui: React.ReactElement) =>
 
 describe('ACL page', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.mocked(aclService.listAclRules).mockResolvedValue([
       {
         id: 'rule-remote',
@@ -78,8 +79,8 @@ describe('ACL page', () => {
       {
         id: 'user-remote',
         username: 'remote-admin',
-        accessKey: 'ak-remote',
-        secretKey: 'sk-remote',
+        accessKey: 'acce****3456',
+        secretKey: 'secr****7654',
         admin: true,
         clusters: ['cluster-a'],
         createdAt: '2026-07-23T00:00:00Z',
@@ -104,5 +105,68 @@ describe('ACL page', () => {
 
     expect(await screen.findByText('remote-admin')).toBeInTheDocument();
     expect(screen.getByText('cluster-a')).toBeInTheDocument();
+  });
+
+  it('does not submit masked credentials when editing a user', async () => {
+    const user = userEvent.setup();
+    vi.mocked(aclService.updateAclUser).mockResolvedValue({
+      id: 'user-remote',
+      username: 'remote-admin',
+      accessKey: 'acce****3456',
+      secretKey: 'secr****7654',
+      admin: true,
+      clusters: ['cluster-a'],
+      createdAt: '2026-07-23T00:00:00Z',
+    });
+    renderWithProviders(<AclPage />);
+
+    await user.click(await screen.findByText('用户管理'));
+    expect(await screen.findByText('remote-admin')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /编辑/ }));
+    const dialog = await screen.findByRole('dialog');
+
+    expect(within(dialog).queryByText('Access Key')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('Secret Key')).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+
+    await waitFor(() => expect(aclService.updateAclUser).toHaveBeenCalledTimes(1));
+    const payload = vi.mocked(aclService.updateAclUser).mock.calls[0][0];
+    expect(payload).toEqual({
+      id: 'user-remote',
+      username: 'remote-admin',
+      admin: true,
+      clusters: ['cluster-a'],
+    });
+    expect(payload).not.toHaveProperty('accessKey');
+    expect(payload).not.toHaveProperty('secretKey');
+  });
+
+  it('does not submit masked credentials when toggling admin', async () => {
+    const user = userEvent.setup();
+    vi.mocked(aclService.updateAclUser).mockResolvedValue({
+      id: 'user-remote',
+      username: 'remote-admin',
+      accessKey: 'acce****3456',
+      secretKey: 'secr****7654',
+      admin: false,
+      clusters: ['cluster-a'],
+      createdAt: '2026-07-23T00:00:00Z',
+    });
+    renderWithProviders(<AclPage />);
+
+    await user.click(await screen.findByText('用户管理'));
+    expect(await screen.findByText('remote-admin')).toBeInTheDocument();
+    await user.click(screen.getByRole('switch'));
+
+    await waitFor(() => expect(aclService.updateAclUser).toHaveBeenCalledTimes(1));
+    const payload = vi.mocked(aclService.updateAclUser).mock.calls[0][0];
+    expect(payload).toEqual({
+      id: 'user-remote',
+      username: 'remote-admin',
+      admin: false,
+      clusters: ['cluster-a'],
+    });
+    expect(payload).not.toHaveProperty('accessKey');
+    expect(payload).not.toHaveProperty('secretKey');
   });
 });

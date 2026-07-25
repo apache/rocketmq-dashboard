@@ -17,17 +17,26 @@
 
 package org.apache.rocketmq.studio.instance.acl;
 
+import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Optional;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -39,6 +48,20 @@ class AclServiceTest {
 
     @InjectMocks
     private AclService aclService;
+
+    private AclUserVO existingUser;
+
+    @BeforeEach
+    void setUp() {
+        existingUser = AclUserVO.builder()
+                .id("user-1")
+                .username("orders")
+                .accessKey("access-key-123456")
+                .secretKey("secret-key-987654")
+                .admin(false)
+                .clusters(List.of("cluster-a"))
+                .build();
+    }
 
     @Test
     void listRulesShouldReturnRulesFromRepository() {
@@ -123,10 +146,20 @@ class AclServiceTest {
     }
 
     @Test
-    void listUsersShouldReturnAllUsers() {
+    void listUsersShouldMaskCredentialsWithoutChangingStoredUsers() {
         List<AclUserVO> users = List.of(
-                AclUserVO.builder().username("admin").admin(true).build(),
-                AclUserVO.builder().username("reader").admin(false).build()
+                AclUserVO.builder()
+                        .username("admin")
+                        .accessKey("access-key-123456")
+                        .secretKey("secret-key-987654")
+                        .admin(true)
+                        .build(),
+                AclUserVO.builder()
+                        .username("reader")
+                        .accessKey("access-key-654321")
+                        .secretKey("secret-key-456789")
+                        .admin(false)
+                        .build()
         );
         when(aclRepository.findUsers()).thenReturn(users);
 
@@ -134,7 +167,55 @@ class AclServiceTest {
 
         assertThat(result).hasSize(2);
         assertThat(result.get(0).getUsername()).isEqualTo("admin");
+        assertThat(result.get(0).getAccessKey()).isEqualTo("acce****3456");
+        assertThat(result.get(0).getSecretKey()).isEqualTo("secr****7654");
+        assertThat(users.get(0).getAccessKey()).isEqualTo("access-key-123456");
+        assertThat(users.get(0).getSecretKey()).isEqualTo("secret-key-987654");
         verify(aclRepository).findUsers();
+    }
+
+    @ParameterizedTest
+    @MethodSource("credentialMasks")
+    void listUsersShouldMaskCredentialLengthBoundaries(String credential, String expected) {
+        when(aclRepository.findUsers()).thenReturn(List.of(AclUserVO.builder()
+                .username("boundary")
+                .accessKey(credential)
+                .secretKey(credential)
+                .build()));
+
+        AclUserVO result = aclService.listUsers().get(0);
+
+        assertThat(result.getAccessKey()).isEqualTo(expected);
+        assertThat(result.getSecretKey()).isEqualTo(expected);
+    }
+
+    @Test
+    void listUsersShouldCopyClustersWhenMaskingCredentials() {
+        List<String> clusters = new java.util.ArrayList<>(List.of("cluster-a"));
+        when(aclRepository.findUsers()).thenReturn(List.of(AclUserVO.builder()
+                .username("admin")
+                .accessKey("access-key-123456")
+                .secretKey("secret-key-987654")
+                .clusters(clusters)
+                .build()));
+
+        AclUserVO result = aclService.listUsers().get(0);
+
+        assertThat(result.getClusters()).containsExactly("cluster-a");
+        assertThatThrownBy(() -> result.getClusters().add("cluster-b"))
+                .isInstanceOf(UnsupportedOperationException.class);
+        assertThat(clusters).containsExactly("cluster-a");
+    }
+
+    static Stream<Arguments> credentialMasks() {
+        return Stream.of(
+                Arguments.of(null, null),
+                Arguments.of("", ""),
+                Arguments.of("12345678", "****"),
+                Arguments.of("123456789", "****"),
+                Arguments.of("1234567890123456", "****"),
+                Arguments.of("access-key-123456", "acce****3456")
+        );
     }
 
     @Test
@@ -180,18 +261,77 @@ class AclServiceTest {
         AclUserVO input = AclUserVO.builder()
                 .id("user-1")
                 .username("newuser")
-                .accessKey("ak")
-                .secretKey("sk")
+                .accessKey("client-access-key")
+                .secretKey("client-secret-key")
                 .admin(true)
                 .build();
 
+        ArgumentCaptor<AclUserVO> captor = ArgumentCaptor.forClass(AclUserVO.class);
+        when(aclRepository.findUserById("user-1")).thenReturn(Optional.of(existingUser));
         when(aclRepository.saveUser(any(AclUserVO.class))).thenAnswer(inv -> inv.getArgument(0));
 
         AclUserVO result = aclService.updateUser(input);
 
         assertThat(result.getId()).isEqualTo("user-1");
-        assertThat(result.getCreatedAt()).isNotNull();
+        assertThat(result.getUsername()).isEqualTo("newuser");
+        assertThat(result.getAccessKey()).isEqualTo("acce****3456");
+        assertThat(result.getSecretKey()).isEqualTo("secr****7654");
         assertThat(result.isAdmin()).isTrue();
-        verify(aclRepository).saveUser(any(AclUserVO.class));
+        verify(aclRepository).saveUser(captor.capture());
+        assertThat(captor.getValue().getAccessKey()).isEqualTo("access-key-123456");
+        assertThat(captor.getValue().getSecretKey()).isEqualTo("secret-key-987654");
+    }
+
+    @Test
+    void updateUserShouldThrowWhenUserDoesNotExist() {
+        AclUserVO input = AclUserVO.builder()
+                .id("missing")
+                .username("ghost")
+                .build();
+
+        when(aclRepository.findUserById("missing")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> aclService.updateUser(input))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("ACL user not found: missing")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
+        verify(aclRepository, never()).saveUser(any(AclUserVO.class));
+    }
+
+    @Test
+    void createListUpdateShouldPreserveStoredCredentials() {
+        InMemoryAclRepository repository = new InMemoryAclRepository();
+        AclService service = new AclService(repository);
+        AclUserVO created = service.createUser(AclUserVO.builder()
+                .username("orders")
+                .admin(false)
+                .clusters(List.of("cluster-a"))
+                .build());
+        String accessKey = created.getAccessKey();
+        String secretKey = created.getSecretKey();
+        AclUserVO listed = service.listUsers().get(0);
+
+        AclUserVO updated = service.updateUser(AclUserVO.builder()
+                .id(listed.getId())
+                .username("orders-admin")
+                .accessKey(listed.getAccessKey())
+                .secretKey(listed.getSecretKey())
+                .admin(true)
+                .clusters(listed.getClusters())
+                .build());
+
+        assertThat(listed.getAccessKey()).isNotEqualTo(accessKey);
+        assertThat(listed.getSecretKey()).isNotEqualTo(secretKey);
+        assertThat(updated.getAccessKey()).isEqualTo(mask(accessKey));
+        assertThat(updated.getSecretKey()).isEqualTo(mask(secretKey));
+        AclUserVO stored = repository.findUserById(created.getId()).orElseThrow();
+        assertThat(stored.getAccessKey()).isEqualTo(accessKey);
+        assertThat(stored.getSecretKey()).isEqualTo(secretKey);
+        assertThat(stored.getUsername()).isEqualTo("orders-admin");
+        assertThat(stored.isAdmin()).isTrue();
+    }
+
+    private String mask(String credential) {
+        return credential.substring(0, 4) + "****" + credential.substring(credential.length() - 4);
     }
 }
