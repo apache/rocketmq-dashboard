@@ -1,0 +1,23 @@
+server/src/test/java/com/rocketmq/studio/ops/audit/AuditServiceTest.java
+  s_4884e99c338e65::t_6769cb2b31cdce 191-197,199-206,208-214
+docs/api-spec.md
+  s_4884e99c338e65::t_4e11ebc318297d 1427-1428
+server/src/main/java/com/rocketmq/studio/ops/audit/AuditService.java
+  s_4884e99c338e65::t_4e11ebc318297d 29,47-51,83,90-91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "0ffd79bb60998ff0b710e7a01577434213342a37",
+  "prompts": {},
+  "sessions": {
+    "s_4884e99c338e65": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8dd4-ca01-7ce3-a219-1972df092368",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}
