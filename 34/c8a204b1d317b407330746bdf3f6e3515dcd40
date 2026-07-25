@@ -1,0 +1,32 @@
+server/src/test/java/com/rocketmq/studio/settings/SettingsServiceTest.java
+  s_4884e99c338e65::t_8c9fdc4cf880a2 19,31,193,199-205,207-210
+  s_4884e99c338e65::t_0f4f343d5ecb40 206
+  s_4884e99c338e65::t_f368e3e0e4f702 211-213
+server/src/main/java/com/rocketmq/studio/settings/SettingsRepository.java
+  s_4884e99c338e65::t_8c9fdc4cf880a2 33-34
+server/src/main/java/com/rocketmq/studio/settings/SettingsService.java
+  s_4884e99c338e65::t_8c9fdc4cf880a2 19
+  s_4884e99c338e65::t_7ba2545eadf6c2 70-73
+server/src/test/java/com/rocketmq/studio/settings/InMemorySettingsRepositoryTest.java
+  s_4884e99c338e65::t_8c9fdc4cf880a2 28,46-65,67
+  s_4884e99c338e65::t_b583efc9200202 66
+server/src/main/java/com/rocketmq/studio/settings/InMemorySettingsRepository.java
+  s_4884e99c338e65::t_8c9fdc4cf880a2 69-72
+  s_4884e99c338e65::t_020ae50cdddf20 68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "34c8a204b1d317b407330746bdf3f6e3515dcd40",
+  "prompts": {},
+  "sessions": {
+    "s_4884e99c338e65": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8dd4-ca01-7ce3-a219-1972df092368",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "yx9o <yangx_soft@163.com>"
+    }
+  }
+}
