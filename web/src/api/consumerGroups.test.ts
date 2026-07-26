@@ -18,7 +18,13 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { getConsumerGroup, listConsumerGroups, resetConsumerOffset } from './metadata';
+import {
+  getConsumerGroup,
+  getConsumerProgress,
+  getConsumerSubscriptions,
+  listConsumerGroups,
+  resetConsumerOffset,
+} from './metadata';
 
 const mock = new MockAdapter(client);
 const group = {
@@ -57,6 +63,17 @@ describe('consumer groups API contract', () => {
     });
 
     await expect(listConsumerGroups(params)).resolves.toEqual([group]);
+  });
+
+  it('encodes consumer group names used in path segments', async () => {
+    const groupName = '%RETRY%cg-order';
+    mock.onGet('/groups/%25RETRY%25cg-order').reply(200, { code: 200, data: group });
+    mock.onGet('/groups/%25RETRY%25cg-order/progress').reply(200, { code: 200, data: [] });
+    mock.onGet('/groups/%25RETRY%25cg-order/subscriptions').reply(200, { code: 200, data: [] });
+
+    await expect(getConsumerGroup(groupName)).resolves.toEqual(group);
+    await expect(getConsumerProgress(groupName)).resolves.toEqual([]);
+    await expect(getConsumerSubscriptions(groupName)).resolves.toEqual([]);
   });
 
   it('unwraps detail records and sends numeric reset timestamps', async () => {

@@ -18,7 +18,14 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { createTopic, deleteTopic, listTopics, sendTopicMessage } from './metadata';
+import {
+  createTopic,
+  deleteTopic,
+  getTopicConsumers,
+  getTopicRoutes,
+  listTopics,
+  sendTopicMessage,
+} from './metadata';
 
 const mock = new MockAdapter(client);
 
@@ -41,6 +48,15 @@ describe('topic metadata API', () => {
     });
 
     await expect(listTopics(params)).resolves.toEqual([]);
+  });
+
+  it('encodes topic names used in path segments', async () => {
+    const topicName = '%DLQ%cg-order';
+    mock.onGet('/topics/%25DLQ%25cg-order/routes').reply(200, { code: 200, data: [] });
+    mock.onGet('/topics/%25DLQ%25cg-order/consumers').reply(200, { code: 200, data: [] });
+
+    await expect(getTopicRoutes(topicName)).resolves.toEqual([]);
+    await expect(getTopicConsumers(topicName)).resolves.toEqual([]);
   });
 
   it('persists topic creation, deletion, and sending through API endpoints', async () => {
