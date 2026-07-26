@@ -41,11 +41,13 @@ import {
   SettingOutlined,
   EyeOutlined,
   EditOutlined,
+  DeleteOutlined,
   PlusOutlined,
 } from '@ant-design/icons';
 import { Cpu, HardDrives, Globe } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
+import * as clusterService from '../../services/clusterService';
 import clusters, {
   type BrokerInfo,
   type ProxyInfo,
@@ -69,8 +71,54 @@ const ClusterPage = () => {
   const [selectedCluster, setSelectedCluster] = useState<ClusterInfo | null>(null);
   const [nsModalOpen, setNsModalOpen] = useState(false);
   const [nsModalMode, setNsModalMode] = useState<'create' | 'edit'>('create');
+  const [editNsAddr, setEditNsAddr] = useState('');
+  const [editNsClusterId, setEditNsClusterId] = useState('');
   const [nsForm] = Form.useForm();
   const [configForm] = Form.useForm();
+
+  // ─── NameServer CRUD handlers ─────────────────────────────────
+  const handleNsOk = async () => {
+    try {
+      const values = await nsForm.validateFields();
+      if (nsModalMode === 'create') {
+        await clusterService.createNameServer({ clusterId: values.clusterId, addr: values.addr });
+        message.success(`${t('cluster.nsCreated')}: ${values.addr}`);
+      } else {
+        await clusterService.updateNameServer({
+          clusterId: editNsClusterId,
+          addr: editNsAddr,
+          newAddr: values.newAddr || values.addr,
+        });
+        message.success(
+          `${t('cluster.nsUpdated')}: ${editNsAddr}${values.newAddr ? ` → ${values.newAddr}` : ''}`,
+        );
+      }
+      setNsModalOpen(false);
+      nsForm.resetFields();
+    } catch (err) {
+      if (err instanceof Error) {
+        message.error(err.message);
+      }
+    }
+  };
+
+  const handleDeleteNameServer = (clusterId: string, addr: string) => {
+    Modal.confirm({
+      title: '确认删除',
+      content: `确定要删除 NameServer "${addr}" 吗？`,
+      okText: '确认',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          await clusterService.deleteNameServer({ clusterId, addr });
+          message.success(`NameServer "${addr}" 已删除`);
+        } catch (err) {
+          message.error('删除失败');
+        }
+      },
+    });
+  };
 
   // ─── Auto-refresh TPS / connections every 2s ──────────────────────────────
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -479,7 +527,7 @@ const ClusterPage = () => {
       {
         title: t('common.actions'),
         key: 'action',
-        width: 100,
+        width: 150,
         render: (_: unknown, record: NameServerInfo) => (
           <Flex gap={6}>
             <Button
@@ -488,11 +536,21 @@ const ClusterPage = () => {
               style={{ borderColor: '#722ed1', color: '#722ed1' }}
               onClick={() => {
                 setNsModalMode('edit');
+                setEditNsAddr(record.addr);
+                setEditNsClusterId(clusterId);
                 nsForm.setFieldsValue({ clusterId, addr: record.addr, newAddr: '' });
                 setNsModalOpen(true);
               }}
             >
               {t('common.edit')}
+            </Button>
+            <Button
+              size="small"
+              icon={<DeleteOutlined />}
+              danger
+              onClick={() => handleDeleteNameServer(clusterId, record.addr)}
+            >
+              {t('common.delete')}
             </Button>
           </Flex>
         ),
@@ -810,18 +868,7 @@ const ClusterPage = () => {
         }
         open={nsModalOpen}
         onCancel={() => setNsModalOpen(false)}
-        onOk={() => {
-          nsForm.validateFields().then((values: Record<string, string>) => {
-            if (nsModalMode === 'create') {
-              message.success(`${t('cluster.nsCreated')}: ${values.addr}`);
-            } else {
-              message.success(
-                `${t('cluster.nsUpdated')}: ${values.addr}${values.newAddr ? ` → ${values.newAddr}` : ''}`,
-              );
-            }
-            setNsModalOpen(false);
-          });
-        }}
+        onOk={handleNsOk}
         okText={t('common.confirm')}
         cancelText={t('common.cancel')}
         destroyOnClose

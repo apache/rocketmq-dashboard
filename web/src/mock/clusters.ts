@@ -402,4 +402,45 @@ const clusters: ClusterInfo[] = [
   },
 ];
 
-export default clusters;
+// ─── localStorage persistence ──────────────────────────────────
+const STORAGE_KEY = 'rocketmq-studio-clusters';
+
+function loadFromStorage(): ClusterInfo[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      return JSON.parse(raw) as ClusterInfo[];
+    }
+  } catch {
+    // ignore parse errors, fall through to defaults
+  }
+  return clusters;
+}
+
+// Initialize from localStorage if available, otherwise use defaults
+const initialClusters = loadFromStorage();
+
+// Save to localStorage whenever data changes
+function persistClusters(data: ClusterInfo[]): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch {
+    // localStorage might be full or unavailable
+  }
+}
+
+// Clone the initial data so mutations don't affect the static `clusters` constant
+const mutableClusters: ClusterInfo[] = initialClusters.map((c) => ({
+  ...c,
+  brokers: c.brokers.map((b) => ({ ...b })),
+  proxies: c.proxies.map((p) => ({ ...p })),
+  nameServers: c.nameServers.map((ns) => ({ ...ns })),
+  config: { ...c.config },
+  tpsHistory: [...c.tpsHistory],
+}));
+
+export function persistClusterStore(): void {
+  persistClusters(mutableClusters);
+}
+
+export default mutableClusters;

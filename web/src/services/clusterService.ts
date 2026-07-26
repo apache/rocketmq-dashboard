@@ -1,7 +1,7 @@
 import { USE_MOCK } from '../config';
 import * as clusterApi from '../api/cluster';
 import type { ClusterInfo, K8sCertInfo } from '../api/cluster';
-import clusters, { mockK8sCerts } from '../mock/clusters';
+import clusters, { mockK8sCerts, persistClusterStore } from '../mock/clusters';
 
 const mockCertStore: K8sCertInfo[] = mockK8sCerts.map((cert) => ({
   ...cert,
@@ -155,6 +155,7 @@ export async function deleteNameServer(data: { clusterId: string; addr: string }
     const index = nameServers.findIndex((item) => item.addr === data.addr);
     if (index < 0) throw new Error(`NameServer not found: ${data.addr}`);
     nameServers.splice(index, 1);
+    persistClusterStore();
     return;
   }
   return clusterApi.deleteNameServer(data);
@@ -167,6 +168,7 @@ export async function createNameServer(data: { clusterId: string; addr: string }
       throw new Error(`NameServer already exists: ${data.addr}`);
     }
     nameServers.push({ addr: data.addr, status: 'healthy' });
+    persistClusterStore();
     return;
   }
   return clusterApi.createNameServer(data);
@@ -183,6 +185,7 @@ export async function updateNameServer(data: {
     );
     if (!nameServer) throw new Error(`NameServer not found: ${data.addr}`);
     if (data.newAddr) nameServer.addr = data.newAddr;
+    persistClusterStore();
     return;
   }
   return clusterApi.updateNameServer(data);
