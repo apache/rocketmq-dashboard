@@ -16,11 +16,21 @@
  */
 
 import React, {useEffect, useState} from 'react';
-import {Button, Input, message, Select, Space, Switch, Typography} from 'antd';
+import {Button, Input, message, Select, Space, Switch, Typography, Tag, Alert, Divider} from 'antd';
+import {SwapOutlined, CheckCircleOutlined, ExclamationCircleOutlined} from '@ant-design/icons';
 import {remoteApi} from '../../api/remoteApi/remoteApi';
+import {useClusterCapabilities} from '../../store/context/ClusterCapabilitiesContext';
+import {isWriteOperationEnabled} from '../../constants/roles';
 
-const {Title} = Typography;
+const {Title, Text} = Typography;
 const {Option} = Select;
+
+// Architecture type display labels
+const ARCH_LABELS = {
+    'V4_NAMESRV': 'V4 — NameServer 直连',
+    'V5_PROXY_LOCAL': 'V5 — Proxy 本地模式',
+    'V5_PROXY_CLUSTER': 'V5 — Proxy 集群模式'
+};
 
 const Ops = () => {
     const [namesrvAddrList, setNamesrvAddrList] = useState([]);
@@ -30,10 +40,16 @@ const Ops = () => {
     const [useTLS, setUseTLS] = useState(false);
     const [writeOperationEnabled, setWriteOperationEnabled] = useState(true); // Default to true
     const [messageApi, msgContextHolder] = message.useMessage();
+
+    // Architecture switch state
+    const {capabilities, switchArchitecture, refreshCapabilities} = useClusterCapabilities();
+    const [archTypes, setArchTypes] = useState(null);
+    const [selectedArchType, setSelectedArchType] = useState('');
+    const [proxyAddr, setProxyAddr] = useState('');
+    const [switching, setSwitching] = useState(false);
     useEffect(() => {
         const fetchOpsData = async () => {
-            const userRole = sessionStorage.getItem("userrole");
-            setWriteOperationEnabled(userRole === null || userRole === "1"); // Assuming "1" means write access
+            setWriteOperationEnabled(isWriteOperationEnabled());
 
             const resp = await remoteApi.queryOpsHomePage();
             if (resp.status === 0) {
@@ -46,16 +62,64 @@ const Ops = () => {
             }
         };
         fetchOpsData();
+
+        // Fetch architecture types for the switcher
+        const fetchArchTypes = async () => {
+            const types = await remoteApi.getArchitectureTypes();
+            if (types) {
+                setArchTypes(types);
+            }
+        };
+        fetchArchTypes();
     }, []);
 
+    // Sync selected arch type with current capabilities
     useEffect(() => {
-        const userPermission = localStorage.getItem('userrole');
-        console.log(userPermission);
-        if (userPermission == 2) {
-            setWriteOperationEnabled(false);
-        } else {
-            setWriteOperationEnabled(true);
+        if (capabilities.accessType) {
+            setSelectedArchType(capabilities.accessType);
         }
+    }, [capabilities.accessType]);
+
+    // Handle architecture switch
+    const handleSwitchArchitecture = async () => {
+        if (!selectedArchType) {
+            messageApi.warning('请选择目标架构类型');
+            return;
+        }
+        if (selectedArchType === capabilities.accessType) {
+            messageApi.info('当前已是该架构类型');
+            return;
+        }
+        // V5 requires proxy addresses
+        const isV5 = selectedArchType.startsWith('V5');
+        if (isV5 && !proxyAddr.trim()) {
+            messageApi.warning('V5 架构需要填写 Proxy 地址');
+            return;
+        }
+
+        setSwitching(true);
+        try {
+            const request = { accessType: selectedArchType };
+            if (isV5) {
+                request.proxyAddresses = proxyAddr.split(',').map(s => s.trim()).filter(Boolean);
+                request.nameSrvAddress = selectedNamesrv || '';
+            }
+            const result = await switchArchitecture(request);
+            if (result && result.success) {
+                messageApi.success(`架构切换成功: ${ARCH_LABELS[selectedArchType] || selectedArchType}`);
+                await refreshCapabilities();
+            } else {
+                messageApi.error(`架构切换失败: ${result?.error || '未知错误'}`);
+            }
+        } catch (err) {
+            messageApi.error(`架构切换异常: ${err.message}`);
+        } finally {
+            setSwitching(false);
+        }
+    };
+
+    useEffect(() => {
+        setWriteOperationEnabled(isWriteOperationEnabled());
     }, []);
 
     const handleUpdateNameSvrAddr = async () => {
@@ -114,6 +178,86 @@ const Ops = () => {
         <>
             {msgContextHolder}
             <div style={{padding: 24}}>
+                {/* Architecture Switch Section */}
+                <div style={{marginBottom: 24, padding: 20, border: '1px solid #d9d9d9', borderRadius: 8, background: '#fafafa'}}>
+                    <Title level={4} style={{marginBottom: 12}}>
+                        <SwapOutlined style={{marginRight: 8}} />
+                        架构切换
+                    </Title>
+                    <div style={{marginBottom: 12}}>
+                        <Text type="secondary">当前架构: </Text>
+                        <Tag color={capabilities.isV5Architecture ? 'green' : 'blue'} style={{fontSize: 13}}>
+                            {ARCH_LABELS[capabilities.accessType] || capabilities.accessType}
+                        </Tag>
+                        {capabilities.isV5Architecture && (
+                            <Tag color="cyan" style={{marginLeft: 4}}>V5</Tag>
+                        )}
+                    </div>
+                    <Space wrap align="start" style={{marginBottom: 12}}>
+                        <Select
+                            style={{minWidth: 280}}
+                            value={selectedArchType}
+                            onChange={setSelectedArchType}
+                            placeholder="选择目标架构类型"
+                        >
+                            {archTypes && Object.entries(archTypes).map(([key, info]) => (
+                                <Option key={key} value={key}>
+                                    {ARCH_LABELS[key] || key}
+                                    {info.isV5 ? ' (V5)' : ' (V4)'}
+                                </Option>
+                            ))}
+                            {!archTypes && (
+                                <>
+                                    <Option value="V4_NAMESRV">V4 — NameServer 直连</Option>
+                                    <Option value="V5_PROXY_LOCAL">V5 — Proxy 本地模式</Option>
+                                    <Option value="V5_PROXY_CLUSTER">V5 — Proxy 集群模式</Option>
+                                </>
+                            )}
+                        </Select>
+                        {selectedArchType && selectedArchType.startsWith('V5') && (
+                            <Input
+                                style={{minWidth: 300}}
+                                placeholder="Proxy 地址 (多个用逗号分隔, 如: 127.0.0.1:8080,127.0.0.1:8081)"
+                                value={proxyAddr}
+                                onChange={(e) => setProxyAddr(e.target.value)}
+                            />
+                        )}
+                        {writeOperationEnabled && (
+                            <Button
+                                type="primary"
+                                icon={<SwapOutlined />}
+                                loading={switching}
+                                onClick={handleSwitchArchitecture}
+                                disabled={switching || selectedArchType === capabilities.accessType}
+                            >
+                                切换架构
+                            </Button>
+                        )}
+                    </Space>
+                    {capabilities.isV5Architecture && (
+                        <Alert
+                            type="success"
+                            showIcon
+                            icon={<CheckCircleOutlined />}
+                            message="V5 架构已激活"
+                            description="LiteTopic、Proxy 管理、路由事件等 V5 功能已可用。"
+                            style={{marginTop: 8}}
+                        />
+                    )}
+                    {!capabilities.isV5Architecture && (
+                        <Alert
+                            type="info"
+                            showIcon
+                            icon={<ExclamationCircleOutlined />}
+                            message="当前为 V4 架构"
+                            description="如需使用 LiteTopic、Proxy 等功能，请切换到 V5 架构并配置 Proxy 地址。"
+                            style={{marginTop: 8}}
+                        />
+                    )}
+                </div>
+
+                <Divider style={{margin: '16px 0'}} />
+
                 <div style={{marginBottom: 24}}>
                     <Title level={4}>NameServerAddressList</Title>
                     <Space wrap align="start">

@@ -80,6 +80,18 @@ rocketmq:
     proxyAddr: 127.0.0.1:8080
     proxyAddrs:
       - 127.0.0.1:8080
+    # Proxy Admin gRPC server port (separate from the data plane port above).
+    # Default: 8086. This is the port where the proxy's admin gRPC service listens.
+    proxyAdminPort: 8086
+    # CORS allowed origin patterns for frontend access.
+    # Supports wildcards: http://localhost:*, http://127.0.0.1:*, https://*.example.com
+    # For production, restrict to specific domains.
+    cors:
+      allowedOriginPatterns:
+        - http://localhost:*
+        - http://127.0.0.1:*
+        - https://localhost:*
+        - https://127.0.0.1:*
     # set the accessKey and secretKey if you used acl
 #    accessKey: rocketmq2
 #    secretKey: 12345678

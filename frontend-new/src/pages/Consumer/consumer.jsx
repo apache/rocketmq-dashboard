@@ -18,6 +18,7 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {Button, Checkbox, Input, message, notification, Select, Spin, Switch, Table} from 'antd';
 import {useLanguage} from '../../i18n/LanguageContext';
+import {isWriteOperationEnabled} from '../../constants/roles';
 import {remoteApi} from '../../api/remoteApi/remoteApi';
 import {useOperationEvent, OperationEvents} from '../../store/context/OperationEventContext';
 import ClientInfoModal from "../../components/consumer/ClientInfoModal";
@@ -257,13 +258,7 @@ const ConsumerGroupList = () => {
     }, [intervalProcessSwitch, loadConsumerGroups]);
 
     useEffect(() => {
-        const userPermission = localStorage.getItem('userrole');
-        console.log(userPermission);
-        if (userPermission == 2) {
-            setWriteOperationEnabled(false);
-        } else {
-            setWriteOperationEnabled(true);
-        }
+        setWriteOperationEnabled(isWriteOperationEnabled());
     }, []);
 
     useEffect(() => {

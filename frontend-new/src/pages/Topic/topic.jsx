@@ -18,6 +18,7 @@
 import React, {useEffect, useState} from 'react';
 import {Button, Checkbox, Form, Input, message, Popconfirm, Space, Table} from 'antd';
 import {useLanguage} from '../../i18n/LanguageContext';
+import {isWriteOperationEnabled} from '../../constants/roles';
 import {remoteApi} from '../../api/remoteApi/remoteApi';
 import {useOperationEvent, OperationEvents} from '../../store/context/OperationEventContext';
 import ResetOffsetResultDialog from "../../components/topic/ResetOffsetResultDialog";
@@ -121,13 +122,7 @@ const DeployHistoryList = () => {
         filterUnspecified, filterRetry, filterDLQ, filterSystem, allTopicList]);
 
     useEffect(() => {
-        const userPermission = localStorage.getItem('userrole');
-        console.log(userPermission);
-        if (userPermission == 2) {
-            setWriteOperationEnabled(false);
-        } else {
-            setWriteOperationEnabled(true);
-        }
+        setWriteOperationEnabled(isWriteOperationEnabled());
     }, []);
 
     // Close functions for Modals

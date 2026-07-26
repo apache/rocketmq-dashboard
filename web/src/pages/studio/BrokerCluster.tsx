@@ -16,7 +16,7 @@
  */
 
 import { useState } from 'react';
-import { Table, Button, Tag, Tabs, Card, Space, Switch, Progress, Tooltip } from 'antd';
+import { Table, Button, Tag, Tabs, Card, Space, Switch, Progress, Tooltip, Alert } from 'antd';
 import {
   Plus,
   ArrowClockwise,
@@ -27,6 +27,7 @@ import {
   PlugsConnected,
 } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
+import { useCapability } from '../../contexts/CapabilityContext';
 
 // ─── Types ──────────────────────────────────────────────────────
 interface BrokerRecord {
@@ -190,6 +191,20 @@ const BrokerClusterPage = () => {
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [activeTab, setActiveTab] = useState('broker');
   const { t } = useLang();
+  const { capability } = useCapability();
+
+  if (!capability.grpcClientSupported) {
+    return (
+      <div style={{ padding: 24 }}>
+        <Alert
+          type="warning"
+          showIcon
+          message="Broker 集群管理需要 V5 架构"
+          description="当前集群不支持 gRPC Proxy 管理。请在「设置 → 架构切换」中切换到 V5 Proxy 模式后重试。"
+        />
+      </div>
+    );
+  }
 
   const renderStatus = (status: string) => {
     const config: Record<string, { color: string; label: string }> = {

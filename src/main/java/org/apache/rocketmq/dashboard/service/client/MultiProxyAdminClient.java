@@ -46,7 +46,7 @@ import java.util.function.Consumer;
 /**
  * Multi-Proxy aggregation client for RIP-2 Proxy Admin Service.
  *
- * <p>Manages connections to multiple Proxy Admin gRPC endpoints (port 8082)
+ * <p>Manages connections to multiple Proxy Admin gRPC endpoints (port 8086)
  * and provides aggregated results from all Proxy instances. This implements
  * the Dashboard-layer multi-Proxy aggregation requirement.</p>
  *
@@ -77,7 +77,7 @@ public class MultiProxyAdminClient {
      * @param proxyAddresses array of proxy addresses in format "host:port"
      */
     public MultiProxyAdminClient(String[] proxyAddresses) {
-        this(proxyAddresses, 8082);
+        this(proxyAddresses, 8086);
     }
 
     /**

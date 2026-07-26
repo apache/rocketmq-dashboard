@@ -104,12 +104,28 @@ export const ClusterCapabilitiesProvider = ({children}) => {
         await fetchCapabilities();
     };
 
+    // Switch architecture type and refresh capabilities
+    const switchArchitecture = async (request) => {
+        try {
+            const result = await remoteApi.switchArchitecture(request);
+            if (result && result.success) {
+                // Refresh capabilities after successful switch
+                await fetchCapabilities();
+            }
+            return result;
+        } catch (error) {
+            console.error('Failed to switch architecture:', error);
+            return { success: false, error: error.message };
+        }
+    };
+
     const value = {
         capabilities,
         selectedCluster,
         loading,
         selectCluster,
-        refreshCapabilities: () => fetchCapabilities()
+        refreshCapabilities: () => fetchCapabilities(),
+        switchArchitecture
     };
 
     return (

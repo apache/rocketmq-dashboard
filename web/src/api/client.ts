@@ -46,12 +46,52 @@ const client = axios.create({
   timeout: 30000,
 });
 
-// Request interceptor: attach Authorization header
+// ─── CSRF support ────────────────────────────────────────────────
+// The backend uses CookieCsrfTokenRepository (httpOnly=false), so the token
+// is available in the XSRF-TOKEN cookie. For mutating requests (POST/PUT/DELETE)
+// we must send it back as the X-XSRF-TOKEN header.
+function getXsrfTokenFromCookie(): string | null {
+  const match = document.cookie
+    .split(';')
+    .map((c) => c.trim())
+    .find((c) => c.startsWith('XSRF-TOKEN='));
+  return match ? decodeURIComponent(match.slice('XSRF-TOKEN='.length)) : null;
+}
+
+let xsrfFetchPromise: Promise<void> | null = null;
+
+async function ensureXsrfToken(): Promise<void> {
+  if (getXsrfTokenFromCookie()) return;
+  if (!xsrfFetchPromise) {
+    xsrfFetchPromise = fetch('/rocketmq-dashboard/csrf-token', {
+      method: 'GET',
+      credentials: 'same-origin',
+    })
+      .then(() => {
+        xsrfFetchPromise = null;
+      })
+      .catch(() => {
+        xsrfFetchPromise = null;
+      });
+  }
+  await xsrfFetchPromise;
+}
+
+// Request interceptor: attach Authorization + XSRF headers
 client.interceptors.request.use(
-  (config) => {
+  async (config) => {
     const token = localStorage.getItem(TOKEN_STORAGE_KEY);
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+    }
+    // Attach XSRF token for mutating requests
+    const method = (config.method || '').toUpperCase();
+    if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+      await ensureXsrfToken();
+      const xsrf = getXsrfTokenFromCookie();
+      if (xsrf) {
+        config.headers['X-XSRF-TOKEN'] = xsrf;
+      }
     }
     return config;
   },

@@ -22,6 +22,7 @@ import {remoteApi} from "../../api/remoteApi/remoteApi";
 import ResourceInput from '../../components/acl/ResourceInput';
 import SubjectInput from "../../components/acl/SubjectInput";
 import {useLanguage} from "../../i18n/LanguageContext";
+import {isWriteOperationEnabled} from "../../constants/roles";
 
 const {TabPane} = Tabs;
 const {Search} = Input;
@@ -120,12 +121,7 @@ const Acl = () => {
     }, [activeTab]); // Dependencies for useEffect
 
     useEffect(() => {
-        const userPermission = localStorage.getItem('userrole');
-        if (userPermission == 2) {
-            setWriteOperationEnabled(false);
-        } else {
-            setWriteOperationEnabled(true);
-        }
+        setWriteOperationEnabled(isWriteOperationEnabled());
     }, []);
 
     // --- Helper function to update broker options based on selected cluster ---

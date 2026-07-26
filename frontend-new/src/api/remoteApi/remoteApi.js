@@ -1276,7 +1276,9 @@ const remoteApi = {
     getArchitectureInfo: async () => {
         try {
             const response = await remoteApi._fetch(remoteApi.buildUrl('/api/architecture/info'));
-            return await response.json();
+            const result = await response.json();
+            // Backend wraps response in {status, data, errMsg}; return the data payload
+            return (result && result.status === 0 && result.data) ? result.data : result;
         } catch (error) {
             console.error("Error fetching architecture info:", error);
             return null;
@@ -1295,6 +1297,43 @@ const remoteApi = {
         } catch (error) {
             console.error("Error fetching route events:", error);
             return {supported: false, events: []};
+        }
+    },
+
+    /**
+     * Get all supported architecture types.
+     * @returns {Promise<Object>} - { V4_NAMESRV: {...}, V5_PROXY_LOCAL: {...}, V5_PROXY_CLUSTER: {...} }
+     */
+    getArchitectureTypes: async () => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl('/api/architecture/types'));
+            const result = await response.json();
+            // Backend wraps response in {status, data, errMsg}; return the data payload
+            return (result && result.status === 0 && result.data) ? result.data : result;
+        } catch (error) {
+            console.error("Error fetching architecture types:", error);
+            return null;
+        }
+    },
+
+    /**
+     * Switch the cluster architecture type at runtime.
+     * @param {Object} request - { accessType, proxyAddresses?, nameSrvAddress?, namespace? }
+     * @returns {Promise<Object>} - { success, accessType, capabilities }
+     */
+    switchArchitecture: async (request) => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl('/api/architecture/switch'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(request)
+            });
+            const result = await response.json();
+            // Backend wraps response in {status, data, errMsg}; return the data payload
+            return (result && result.status === 0 && result.data) ? result.data : result;
+        } catch (error) {
+            console.error("Error switching architecture:", error);
+            return { success: false, error: error.message };
         }
     },
 

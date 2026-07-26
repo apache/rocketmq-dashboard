@@ -192,14 +192,14 @@ public class ArchitectureConfigTest {
 
     @Test
     public void testProxyAdminGrpcClient_Creation_WithExplicitPort() {
-        ProxyAdminGrpcClient client = new ProxyAdminGrpcClient("192.168.1.1:8080", 8082);
+        ProxyAdminGrpcClient client = new ProxyAdminGrpcClient("192.168.1.1:8080", 8086);
         assertNotNull(client);
         assertFalse(client.isAvailable());
     }
 
     @Test
     public void testProxyAdminGrpcClient_ExtractHost_ParsesCorrectly() {
-        ProxyAdminGrpcClient client1 = new ProxyAdminGrpcClient("10.0.0.1:8080", 8082);
+        ProxyAdminGrpcClient client1 = new ProxyAdminGrpcClient("10.0.0.1:8080", 8086);
         assertNotNull(client1);
 
         ProxyAdminGrpcClient client2 = new ProxyAdminGrpcClient("myproxy.example.com:8080");

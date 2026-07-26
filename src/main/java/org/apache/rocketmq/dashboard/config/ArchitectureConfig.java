@@ -114,7 +114,7 @@ public class ArchitectureConfig {
 
     /**
      * Default ProxyAdminGrpcClient bean for RIP-2 Proxy Admin gRPC integration.
-     * Connects to the Proxy Admin gRPC server on localhost:8082 by default.
+     * Connects to the Proxy Admin gRPC server on the configured admin port (default 8086).
      * When gRPC is unavailable, client queries gracefully degrade to Remoting-only.
      */
     @Bean
@@ -300,10 +300,11 @@ public class ArchitectureConfig {
             }
 
             // Create MultiProxyAdminClient for aggregated RIP-2 operations
-            MultiProxyAdminClient multiProxyClient = new MultiProxyAdminClient(proxyAddresses);
+            int adminPort = rmqConfigure.getProxyAdminPort() != null ? rmqConfigure.getProxyAdminPort() : 8086;
+            MultiProxyAdminClient multiProxyClient = new MultiProxyAdminClient(proxyAddresses, adminPort);
 
             // Create gRPC Proxy Admin client (uses first proxy for backward compat)
-            ProxyAdminGrpcClient proxyAdminGrpcClient = new ProxyAdminGrpcClient(proxyAddresses[0]);
+            ProxyAdminGrpcClient proxyAdminGrpcClient = new ProxyAdminGrpcClient(proxyAddresses[0], adminPort);
 
             // Create V5-specific admin client with Remoting fallback + gRPC channel
             GrpcAdminClient grpcClient = new GrpcAdminClient(proxyAddresses[0], mqAdminExt, proxyAdminGrpcClient);

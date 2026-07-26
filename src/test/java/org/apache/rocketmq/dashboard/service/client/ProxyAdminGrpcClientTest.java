@@ -35,7 +35,7 @@ import static org.mockito.Mockito.when;
 public class ProxyAdminGrpcClientTest {
 
     private static final String TEST_HOST = "192.168.1.100";
-    private static final int DEFAULT_ADMIN_PORT = 8082;
+    private static final int DEFAULT_ADMIN_PORT = 8086;
     private static final int CUSTOM_DATA_PORT = 9090;
 
     private ProxyAdminGrpcClient client;
@@ -55,7 +55,7 @@ public class ProxyAdminGrpcClientTest {
     // ==================== extractHost behavior (tested via constructor) ====================
 
     @Test
-    public void testDefaultPortIs8082() throws Exception {
+    public void testDefaultPortIs8086() throws Exception {
         ProxyAdminGrpcClient defaultClient = new ProxyAdminGrpcClient("somehost:10911");
         int port = getFieldValue(defaultClient, "proxyAdminPort");
         assertEquals(DEFAULT_ADMIN_PORT, port);
