@@ -14,8 +14,8 @@ export async function listTopics(params?: TopicQuery): Promise<Topic[]> {
   if (USE_MOCK) {
     let result = [...mockTopics];
     if (params?.search) {
-      const kw = params.search.toLowerCase();
-      result = result.filter((t) => t.name.toLowerCase().includes(kw));
+      const keyword = params.search.trim().toLowerCase();
+      if (keyword) result = result.filter((topic) => topic.name.toLowerCase().includes(keyword));
     }
     if (params?.type) result = result.filter((t) => t.type === params.type);
     if (params?.clusterId) result = result.filter((t) => t.clusterId === params.clusterId);
