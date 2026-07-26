@@ -24,9 +24,10 @@ export function getChatDraft(state: unknown): ChatDraft | null {
   if (typeof state !== 'object' || state === null) return null;
   const candidate = state as Record<string, unknown>;
   if (typeof candidate.prompt !== 'string' || !candidate.prompt.trim()) return null;
+  const model = typeof candidate.model === 'string' ? candidate.model.trim() : '';
 
   return {
     prompt: candidate.prompt.trim(),
-    ...(typeof candidate.model === 'string' && candidate.model ? { model: candidate.model } : {}),
+    ...(model ? { model } : {}),
   };
 }
