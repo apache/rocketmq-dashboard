@@ -129,11 +129,12 @@ const K8sCertsPage = () => {
     }
   };
 
+  const normalizedCertSearch = certSearch.trim().toLowerCase();
   const filteredCerts = certs.filter((cert) => {
     const matchSearch =
-      !certSearch ||
-      cert.name.toLowerCase().includes(certSearch.toLowerCase()) ||
-      cert.cluster.toLowerCase().includes(certSearch.toLowerCase());
+      !normalizedCertSearch ||
+      cert.name.toLowerCase().includes(normalizedCertSearch) ||
+      cert.cluster.toLowerCase().includes(normalizedCertSearch);
     const matchType = !certTypeFilter || cert.type === certTypeFilter;
     return matchSearch && matchType;
   });
