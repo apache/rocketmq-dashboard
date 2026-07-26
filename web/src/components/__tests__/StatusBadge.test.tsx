@@ -15,14 +15,19 @@
  * limitations under the License.
  */
 
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import StatusBadge from '../StatusBadge';
 import { LangProvider } from '../../i18n/LangContext';
+import { LANGUAGE_STORAGE_KEY } from '../../i18n/languagePreference';
 
 const renderWithLang = (ui: React.ReactElement) => render(<LangProvider>{ui}</LangProvider>);
 
 describe('StatusBadge', () => {
+  afterEach(() => {
+    localStorage.clear();
+  });
+
   it('renders the translated label for a known status in Chinese', () => {
     renderWithLang(<StatusBadge status="healthy" />);
     // theme.healthy in zh is '运行中'
@@ -73,5 +78,13 @@ describe('StatusBadge', () => {
     const { container } = renderWithLang(<StatusBadge status="healthy" />);
     const statusEl = container.querySelector('[role="status"]');
     expect(statusEl).toBeInTheDocument();
+  });
+
+  it('uses the translated status as its accessible name', () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+
+    renderWithLang(<StatusBadge status="healthy" />);
+
+    expect(screen.getByRole('status')).toHaveAccessibleName('Healthy');
   });
 });
