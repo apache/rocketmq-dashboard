@@ -6,8 +6,12 @@ import { mockInstances } from '../mock/instances';
 // Compile-time switch: mock or real API
 // Vite replaces USE_MOCK with a literal at build time → tree-shaking removes unused branch
 
+function copyInstance(instance: Instance): Instance {
+  return { ...instance };
+}
+
 export async function listInstances(): Promise<Instance[]> {
-  if (USE_MOCK) return mockInstances;
+  if (USE_MOCK) return mockInstances.map(copyInstance);
   return instanceApi.listInstances();
 }
 
@@ -23,7 +27,7 @@ export async function createInstance(data: CreateInstanceRequest): Promise<Insta
       updatedAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
     };
     mockInstances.push(instance);
-    return instance;
+    return copyInstance(instance);
   }
   return instanceApi.createInstance(data);
 }
@@ -35,7 +39,7 @@ export async function updateInstance(data: UpdateInstanceRequest): Promise<Insta
       Object.assign(mockInstances[idx], data, {
         updatedAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
       });
-      return mockInstances[idx];
+      return copyInstance(mockInstances[idx]);
     }
     throw new Error('Instance not found');
   }
