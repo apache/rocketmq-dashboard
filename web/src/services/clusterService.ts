@@ -8,33 +8,37 @@ const mockCertStore: K8sCertInfo[] = mockK8sCerts.map((cert) => ({
   san: [...cert.san],
 }));
 
+function copyCluster(cluster: ClusterInfo): ClusterInfo {
+  return {
+    id: cluster.id,
+    name: cluster.name,
+    nsClusterName: cluster.nsClusterName,
+    type: cluster.type,
+    endpoint: cluster.endpoint,
+    status: cluster.status,
+    version: cluster.version,
+    brokers: cluster.brokers.map((broker) => ({ ...broker })),
+    proxies: cluster.proxies.map((proxy) => ({ ...proxy })),
+    nameServers: cluster.nameServers.map((nameServer) => ({ ...nameServer })),
+    config: { ...cluster.config },
+    topicCount: cluster.topicCount,
+    groupCount: cluster.groupCount,
+    tpsHistory: [...cluster.tpsHistory],
+  };
+}
+
 export async function listClusters(): Promise<ClusterInfo[]> {
   if (USE_MOCK) {
-    return clusters.map((c) => ({
-      id: c.id,
-      name: c.name,
-      nsClusterName: c.nsClusterName,
-      type: c.type,
-      endpoint: c.endpoint,
-      status: c.status,
-      version: c.version,
-      brokers: c.brokers.map((broker) => ({ ...broker })),
-      proxies: c.proxies.map((proxy) => ({ ...proxy })),
-      nameServers: c.nameServers.map((nameServer) => ({ ...nameServer })),
-      config: { ...c.config },
-      topicCount: c.topicCount,
-      groupCount: c.groupCount,
-      tpsHistory: [...c.tpsHistory],
-    }));
+    return clusters.map(copyCluster);
   }
   return clusterApi.listClusters();
 }
 
-export async function getCluster(id: string) {
+export async function getCluster(id: string): Promise<ClusterInfo> {
   if (USE_MOCK) {
-    const c = clusters.find((c) => c.id === id);
-    if (!c) throw new Error('Cluster not found');
-    return c;
+    const cluster = clusters.find((item) => item.id === id);
+    if (!cluster) throw new Error('Cluster not found');
+    return copyCluster(cluster);
   }
   return clusterApi.getCluster(id);
 }
