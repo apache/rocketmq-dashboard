@@ -16,6 +16,8 @@
  */
 
 import client from './client';
+import { API_BASE_URL } from '../config';
+import { TOKEN_STORAGE_KEY } from '../stores/authStorage';
 
 // ─── Types ──────────────────────────────────────────────────────
 export interface McpTool {
@@ -25,10 +27,17 @@ export interface McpTool {
 }
 
 export interface AiExecuteRequest {
-  message: string;
-  mode: string;
-  model: string;
-  tools?: string[];
+  command: string;
+  mode?: string;
+  model?: string;
+  conversationId?: string;
+  prompt?: string;
+  context?: Record<string, unknown>;
+}
+
+export interface AiExecuteResult {
+  success: boolean;
+  result: string;
 }
 
 export interface AiChatRequest {
@@ -81,24 +90,45 @@ function emitEvent(event: string, onChunk: (text: string) => void): boolean {
   return false;
 }
 
+async function getResponseError(response: Response): Promise<string> {
+  try {
+    const payload = (await response.json()) as { message?: unknown };
+    if (typeof payload.message === 'string' && payload.message.trim()) {
+      return payload.message;
+    }
+  } catch {
+    // Fall back to the HTTP status when the gateway does not return JSON.
+  }
+
+  return response.statusText || `HTTP ${response.status}`;
+}
+
 // ─── AI ─────────────────────────────────────────────────────────
 export async function chatStream(
   data: AiChatRequest,
   onChunk: (text: string) => void,
   signal?: AbortSignal,
 ) {
-  const response = await fetch('/api/ai/chat', {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_BASE_URL}/ai/chat`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
-    },
+    headers,
     body: JSON.stringify(data),
     signal,
   });
 
-  if (!response.ok || !response.body) {
-    throw new Error(`AI chat failed: ${response.statusText}`);
+  if (!response.ok) {
+    throw new Error(`AI chat failed: ${await getResponseError(response)}`);
+  }
+  if (!response.body) {
+    throw new Error('AI chat failed: empty response body');
   }
 
   const reader = response.body.getReader();
@@ -124,10 +154,7 @@ export async function chatStream(
 }
 
 export async function executeAiCommand(data: AiExecuteRequest) {
-  const res = await client.post<{ data: { result: string; toolCalls: unknown[] } }>(
-    '/ai/execute',
-    data,
-  );
+  const res = await client.post<{ data: AiExecuteResult }>('/ai/execute', data);
   return res.data.data;
 }
 
