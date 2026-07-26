@@ -35,11 +35,12 @@ public class InMemoryAuditRepository implements AuditRepository {
     public List<AuditRecordVO> findAll(String search, String operationType,
                                      LocalDateTime startDate, LocalDateTime endDate,
                                      String result) {
+        String normalizedSearch = normalize(search);
         return records.values().stream()
-                .filter(r -> search == null || search.isEmpty()
-                        || r.getDetail().toLowerCase().contains(search.toLowerCase())
-                        || r.getOperator().toLowerCase().contains(search.toLowerCase())
-                        || r.getTarget().toLowerCase().contains(search.toLowerCase()))
+                .filter(r -> normalizedSearch == null
+                        || containsIgnoreCase(r.getDetail(), normalizedSearch)
+                        || containsIgnoreCase(r.getOperator(), normalizedSearch)
+                        || containsIgnoreCase(r.getTarget(), normalizedSearch))
                 .filter(r -> operationType == null || operationType.isEmpty()
                         || operationType.equals(r.getOperationType()))
                 .filter(r -> startDate == null || r.getTimestamp() != null && !r.getTimestamp().isBefore(startDate))
@@ -52,6 +53,17 @@ public class InMemoryAuditRepository implements AuditRepository {
                     return b.getTimestamp().compareTo(a.getTimestamp());
                 })
                 .collect(Collectors.toList());
+    }
+
+    private String normalize(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.toLowerCase();
+    }
+
+    private boolean containsIgnoreCase(String value, String normalizedSearch) {
+        return value != null && value.toLowerCase().contains(normalizedSearch);
     }
 
     @Override
