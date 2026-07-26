@@ -90,7 +90,7 @@ describe('GroupManagement Page', () => {
     const user = userEvent.setup();
     renderWithProviders(<GroupManagement />);
     const searchInput = screen.getByPlaceholderText('搜索消费组');
-    await user.type(searchInput, 'order');
+    await user.type(searchInput, 'ORDER');
     expect(screen.getByText('order-consumer-group')).toBeInTheDocument();
     expect(screen.queryByText('payment-consumer-group')).not.toBeInTheDocument();
   });
