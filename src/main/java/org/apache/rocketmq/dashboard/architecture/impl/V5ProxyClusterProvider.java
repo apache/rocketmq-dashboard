@@ -178,6 +178,7 @@ public class V5ProxyClusterProvider implements ClusterProvider {
         capability.setPopConsumeSupported(true);
         capability.setAclV2Supported(true);
         capability.setGrpcClientSupported(true);
+        capability.setRouteEventsSupported(true); // RIP-2 SubscribeRouteEvents streaming
         capability.setDelayMessageSupported(true);
         capability.setTransactionMessageSupported(true);
         capability.setFifoMessageSupported(true);

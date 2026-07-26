@@ -175,9 +175,13 @@ const remoteApi = {
     },
 
     _fetch: async (url, options = {}) => {
+        // [ISSUE #390] Content-Type must default to JSON but let caller-supplied
+        // headers win, otherwise form-urlencoded callers (e.g. addProxyAddr) get
+        // their Content-Type clobbered back to application/json and @RequestParam
+        // binding on the backend fails.
         const headers = {
-            ...options.headers,
             'Content-Type': 'application/json',
+            ...options.headers,
         };
 
         const csrfToken = await remoteApi.getCsrfToken();
@@ -1259,6 +1263,38 @@ const remoteApi = {
         } catch (error) {
             console.error("Error fetching cluster capabilities:", error);
             return {status: 1, errMsg: "Failed to fetch cluster capabilities"};
+        }
+    },
+
+    /**
+     * Get current architecture info (access type + full cluster capabilities).
+     * This is the authoritative source for capability-driven UI rendering; it
+     * reflects the runtime architecture (V4 / V5_PROXY_LOCAL / V5_PROXY_CLUSTER)
+     * after an architecture switch.
+     * @returns {Promise<Object>} - { accessType, capabilities, topology, healthy }
+     */
+    getArchitectureInfo: async () => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl('/api/architecture/info'));
+            return await response.json();
+        } catch (error) {
+            console.error("Error fetching architecture info:", error);
+            return null;
+        }
+    },
+
+    /**
+     * Get a snapshot of recent RIP-2 route-change events.
+     * @param {number} limit - max number of events to return (newest first)
+     * @returns {Promise<Object>} - { supported, events: RouteEventView[] }
+     */
+    getRouteEvents: async (limit = 50) => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl(`/api/route-events?limit=${limit}`));
+            return await response.json();
+        } catch (error) {
+            console.error("Error fetching route events:", error);
+            return {supported: false, events: []};
         }
     },
 

@@ -105,49 +105,59 @@ public abstract class ArchitectureBasedService {
      * Check if namespace is supported
      */
     protected boolean supportsNamespace() {
-        return clusterCapability != null && clusterCapability.isNamespaceSupported();
+        ClusterCapability cap = resolveClusterCapability();
+        return cap != null && cap.isNamespaceSupported();
     }
 
     /**
  *
-     */
+ */
     protected boolean supportsLiteTopic() {
-        return clusterCapability != null && clusterCapability.isLiteTopicSupported();
+        // Resolve live capability: @PostConstruct cached clusterCapability is stale
+        // until the user switches architecture (e.g. to V5_PROXY_LOCAL). Reading the
+        // cached field here caused LiteTopic to report "not supported" even on 5.x.
+        ClusterCapability cap = resolveClusterCapability();
+        return cap != null && cap.isLiteTopicSupported();
     }
 
     /**
  *
-     */
+ */
     protected boolean supportsPopConsume() {
-        return clusterCapability != null && clusterCapability.isPopConsumeSupported();
+        ClusterCapability cap = resolveClusterCapability();
+        return cap != null && cap.isPopConsumeSupported();
     }
 
     /**
  *
-     */
+ */
     protected boolean supportsGrpcClient() {
-        return clusterCapability != null && clusterCapability.isGrpcClientSupported();
+        ClusterCapability cap = resolveClusterCapability();
+        return cap != null && cap.isGrpcClientSupported();
     }
 
     /**
  *
-     */
+ */
     protected boolean supportsAclV2() {
-        return clusterCapability != null && clusterCapability.isAclV2Supported();
+        ClusterCapability cap = resolveClusterCapability();
+        return cap != null && cap.isAclV2Supported();
     }
 
     /**
  *
-     */
+ */
     protected boolean isV4Architecture() {
-        return clusterCapability != null && "4.0".equals(clusterCapability.getArchitectureVersion());
+        ClusterCapability cap = resolveClusterCapability();
+        return cap != null && "4.0".equals(cap.getArchitectureVersion());
     }
 
     /**
  *
-     */
+ */
     protected boolean isV5Architecture() {
-        return clusterCapability != null && "5.0".equals(clusterCapability.getArchitectureVersion());
+        ClusterCapability cap = resolveClusterCapability();
+        return cap != null && "5.0".equals(cap.getArchitectureVersion());
     }
 
     /**

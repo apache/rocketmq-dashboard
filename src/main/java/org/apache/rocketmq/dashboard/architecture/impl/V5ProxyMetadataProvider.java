@@ -50,6 +50,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -449,32 +450,109 @@ public class V5ProxyMetadataProvider implements MetadataProvider {
 
     @Override
     public List<LiteTopicSummary> listLiteTopics(String pattern, Optional<String> namespace) throws Exception {
-        // LiteTopic listing requires Proxy Admin RPC (RIP-2 interface).
-        // Not available in current RocketMQ SDK -- return empty placeholder.
-        log.debug("listLiteTopics(pattern={}, namespace={}) -- RIP-2 interface not yet available",
-            pattern, namespace.orElse("(default)"));
-        return Collections.emptyList();
+        // LiteTopics in 5.x share physical storage and are addressed via a common
+        // prefix. The console presents them as an aggregated "prefix -> member topics"
+        // view (META-01 M4 prefix aggregation). This is derived from the standard topic
+        // list -- it does NOT require any unavailable upstream RPC.
+        String effectiveNs = resolveEffectiveNamespace(namespace);
+        Set<String> rawTopicSet = mqAdminExt.fetchAllTopicList().getTopicList();
+        List<String> topicNames = new ArrayList<>(rawTopicSet);
+
+        String filter = pattern == null ? "" : pattern.trim().toLowerCase();
+        boolean explicitQuery = !filter.isEmpty();
+
+        Map<String, List<String>> grouped = new LinkedHashMap<>();
+        for (String topicName : topicNames) {
+            if (topicName == null || topicName.isEmpty() || isSystemTopic(topicName)) {
+                continue;
+            }
+            if (explicitQuery && !topicName.toLowerCase().contains(filter)) {
+                continue;
+            }
+            String prefix = deriveLiteTopicPrefix(topicName);
+            grouped.computeIfAbsent(prefix, k -> new ArrayList<>()).add(topicName);
+        }
+
+        List<LiteTopicSummary> result = new ArrayList<>();
+        for (Map.Entry<String, List<String>> e : grouped.entrySet()) {
+            // Without an explicit query, only surface prefixes that actually aggregate
+            // multiple leaf topics (a single standalone topic is not a "lite" group).
+            if (!explicitQuery && e.getValue().size() < 2) {
+                continue;
+            }
+            List<String> members = new ArrayList<>(e.getValue());
+            Collections.sort(members);
+
+            LiteTopicSummary summary = new LiteTopicSummary();
+            summary.setTopicPattern(e.getKey() + "*");
+            summary.setTopicCount(members.size());
+            summary.setSessionIds(members);
+            summary.setNamespace(effectiveNs);
+            summary.setActive(true);
+            summary.setConsumerCount(0);
+            result.add(summary);
+        }
+        result.sort((a, b) -> Integer.compare(b.getTopicCount(), a.getTopicCount()));
+        log.info("listLiteTopics aggregated {} prefixes from {} topics (namespace={}, pattern={})",
+            result.size(), topicNames.size(), effectiveNs, pattern);
+        return result;
+    }
+
+    /**
+     * Returns true for RocketMQ system / internal topics that must not be surfaced
+     * as user-facing LiteTopics.
+     */
+    private boolean isSystemTopic(String topicName) {
+        return topicName.startsWith("%RETRY%")
+            || topicName.startsWith("%DLQ%")
+            || topicName.startsWith("%SYS%")
+            || topicName.startsWith("rmq_sys_")
+            || topicName.startsWith("SCHEDULE_TOPIC")
+            || topicName.startsWith("SELF_TEST_TOPIC")
+            || topicName.equals("OFFSET_MOVED_EVENT")
+            || topicName.equals("TBW102")
+            || topicName.equals("BenchmarkTest")
+            || topicName.endsWith("_REPLY_TOPIC");
+    }
+
+    /**
+     * Derive the aggregation prefix for a topic name. LiteTopics conventionally share
+     * a leading segment delimited by one of '-', '_' or '.'. If no delimiter is present
+     * the whole topic name is treated as its own prefix.
+     */
+    private String deriveLiteTopicPrefix(String topicName) {
+        int idx = -1;
+        for (char delim : new char[] {'-', '_', '.'}) {
+            int i = topicName.indexOf(delim);
+            if (i > 0 && (idx == -1 || i < idx)) {
+                idx = i;
+            }
+        }
+        return idx > 0 ? topicName.substring(0, idx) : topicName;
     }
 
     @Override
     public LiteTopicSession getLiteTopicSession(String sessionId) throws Exception {
+        // Session-level introspection is a runtime, per-connection concern that is not
+        // exposed by any current admin surface (the RIP-2 proxy admin proto defines no
+        // LiteTopic session RPC). Surfaced as a clear, non-fatal capability gap.
         throw new UnsupportedOperationException(
-            "V5 Proxy does not support LiteTopic session retrieval via standard SDK. "
-            + "Please use gRPC Admin interface (RIP-2) when available.");
+            "LiteTopic session introspection is not available: no admin RPC currently "
+            + "exposes per-session LiteTopic state. Use the aggregated prefix view instead.");
     }
 
     @Override
     public void extendLiteTopicTTL(String topicPattern, long newTTL) throws Exception {
         throw new UnsupportedOperationException(
-            "V5 Proxy does not support LiteTopic TTL extension via standard SDK. "
-            + "Please use gRPC Admin interface (RIP-2) when available.");
+            "LiteTopic TTL extension is not available: TTL is governed by the broker's "
+            + "message/topic TTL policy and there is no admin RPC to mutate it per prefix.");
     }
 
     @Override
     public LiteTopicQuota getLiteTopicQuota(Optional<String> namespace) throws Exception {
         throw new UnsupportedOperationException(
-            "V5 Proxy does not support LiteTopic quota query via standard SDK. "
-            + "Please use gRPC Admin interface (RIP-2) when available.");
+            "LiteTopic quota query is not available: no admin RPC currently exposes "
+            + "per-namespace LiteTopic quota counters.");
     }
 
     // ==================== Consumer Group Operations ====================

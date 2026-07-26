@@ -28,6 +28,25 @@ export const useClusterCapabilities = () => {
     return context;
 };
 
+// Map the backend ClusterCapability DTO (returned by /api/architecture/info)
+// into the UI capability flags consumed across the app.
+const mapCapabilities = (info) => {
+    const cap = (info && info.capabilities) || {};
+    const accessType = (info && info.accessType) || 'V4_NAMESRV';
+    const isV5 = accessType.indexOf('V5') >= 0 || String(cap.architectureVersion || '').startsWith('5');
+    return {
+        hasNamespace: !!cap.namespaceSupported,
+        supportsLiteTopic: !!cap.liteTopicSupported,
+        supportsPopConsumption: !!cap.popConsumeSupported,
+        supportsGrpc: !!cap.grpcClientSupported,
+        supportsAcl2: !!cap.aclV2Supported,
+        supportsRouteEvents: !!cap.routeEventsSupported,
+        isV5Architecture: isV5,
+        accessType: accessType,
+        architectureVersion: cap.architectureVersion || '4.0'
+    };
+};
+
 export const ClusterCapabilitiesProvider = ({children}) => {
     const [capabilities, setCapabilities] = useState({
         hasNamespace: false,
@@ -35,29 +54,25 @@ export const ClusterCapabilitiesProvider = ({children}) => {
         supportsPopConsumption: false,
         supportsGrpc: false,
         supportsAcl2: false,
+        supportsRouteEvents: false,
         isV5Architecture: false,
-        accessType: 'v4-namesrv' // default
+        accessType: 'V4_NAMESRV' // default
     });
     const [selectedCluster, setSelectedCluster] = useState(null);
     const [loading, setLoading] = useState(false);
 
-    // Fetch cluster capabilities from backend
-    const fetchCapabilities = async (clusterName) => {
-        if (!clusterName) return;
-
+    // Fetch cluster capabilities from the authoritative architecture endpoint.
+    // Architecture is a cluster-wide (global) setting in this dashboard, so the
+    // optional clusterName argument is accepted for API compatibility but the
+    // global /api/architecture/info is the real source of truth.
+    const fetchCapabilities = async () => {
         setLoading(true);
         try {
-            const response = await remoteApi.getClusterCapabilities(clusterName);
-            if (response.status === 0 && response.data) {
-                setCapabilities({
-                    hasNamespace: response.data.hasNamespace || false,
-                    supportsLiteTopic: response.data.supportsLiteTopic || false,
-                    supportsPopConsumption: response.data.supportsPopConsumption || false,
-                    supportsGrpc: response.data.supportsGrpc || false,
-                    supportsAcl2: response.data.supportsAcl2 || false,
-                    isV5Architecture: response.data.isV5Architecture || false,
-                    accessType: response.data.accessType || 'v4-namesrv'
-                });
+            const info = await remoteApi.getArchitectureInfo();
+            if (info) {
+                setCapabilities(mapCapabilities(info));
+            } else {
+                throw new Error('empty architecture info');
             }
         } catch (error) {
             console.error('Failed to fetch cluster capabilities:', error);
@@ -68,18 +83,25 @@ export const ClusterCapabilitiesProvider = ({children}) => {
                 supportsPopConsumption: false,
                 supportsGrpc: false,
                 supportsAcl2: false,
+                supportsRouteEvents: false,
                 isV5Architecture: false,
-                accessType: 'v4-namesrv'
+                accessType: 'V4_NAMESRV'
             });
         } finally {
             setLoading(false);
         }
     };
 
-    // Update cluster selection and fetch capabilities
+    // Refresh on mount so the navbar reflects the current architecture even
+    // before a cluster is explicitly selected.
+    useEffect(() => {
+        fetchCapabilities();
+    }, []);
+
+    // Update cluster selection and refresh capabilities
     const selectCluster = async (clusterName) => {
         setSelectedCluster(clusterName);
-        await fetchCapabilities(clusterName);
+        await fetchCapabilities();
     };
 
     const value = {
@@ -87,7 +109,7 @@ export const ClusterCapabilitiesProvider = ({children}) => {
         selectedCluster,
         loading,
         selectCluster,
-        refreshCapabilities: () => selectedCluster && fetchCapabilities(selectedCluster)
+        refreshCapabilities: () => fetchCapabilities()
     };
 
     return (

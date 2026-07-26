@@ -120,13 +120,16 @@ public class ArchitectureConfig {
     @Bean
     public ProxyAdminGrpcClient proxyAdminGrpcClient(
             @org.springframework.beans.factory.annotation.Value("${rocketmq.dashboard.proxyAddress:localhost:8080}")
-            String proxyAddress) {
-        return new ProxyAdminGrpcClient(proxyAddress);
+            String proxyAddress,
+            @org.springframework.beans.factory.annotation.Value("${rocketmq.dashboard.proxyAdminPort:8086}")
+            int proxyAdminPort) {
+        return new ProxyAdminGrpcClient(proxyAddress, proxyAdminPort);
     }
 
     /**
      * MultiProxyAdminClient bean for aggregated multi-Proxy operations.
-     * Connects to all configured proxy addresses on admin port 8082.
+     * Connects to all configured proxy addresses on the Proxy Admin gRPC port
+     * (default 8086; matches rmq-proxy.json proxyAdminServerPort).
      * Used by ProxyAdminService and GrpcClientCollector for fan-out queries.
      */
     @Bean
@@ -134,14 +137,16 @@ public class ArchitectureConfig {
             @org.springframework.beans.factory.annotation.Value("${rocketmq.dashboard.proxyAddrs:#{null}}")
             String[] proxyAddresses,
             @org.springframework.beans.factory.annotation.Value("${rocketmq.dashboard.proxyAddress:localhost:8080}")
-            String defaultProxyAddress) {
+            String defaultProxyAddress,
+            @org.springframework.beans.factory.annotation.Value("${rocketmq.dashboard.proxyAdminPort:8086}")
+            int proxyAdminPort) {
         if (proxyAddresses != null && proxyAddresses.length > 0) {
-            log.info("Creating MultiProxyAdminClient with {} proxy endpoints", proxyAddresses.length);
-            return new MultiProxyAdminClient(proxyAddresses);
+            log.info("Creating MultiProxyAdminClient with {} proxy endpoints (admin port {})", proxyAddresses.length, proxyAdminPort);
+            return new MultiProxyAdminClient(proxyAddresses, proxyAdminPort);
         }
         // Fallback to single proxy address
-        log.info("Creating MultiProxyAdminClient with single proxy endpoint: {}", defaultProxyAddress);
-        return new MultiProxyAdminClient(new String[]{defaultProxyAddress});
+        log.info("Creating MultiProxyAdminClient with single proxy endpoint {} (admin port {})", defaultProxyAddress, proxyAdminPort);
+        return new MultiProxyAdminClient(new String[]{defaultProxyAddress}, proxyAdminPort);
     }
 
     /**

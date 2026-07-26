@@ -102,6 +102,7 @@ const Navbar = ({rmqVersion = true, showAcl = true}) => {
         {key: 'cluster', label: t.CLUSTER},
         {key: 'topic', label: t.TOPIC},
         ...(capabilities.supportsLiteTopic ? [{key: 'lite-topic', label: t.LITE_TOPIC}] : []),
+        ...(capabilities.supportsRouteEvents ? [{key: 'route-events', label: t.ROUTE_EVENTS}] : []),
         {key: 'consumer', label: t.CONSUMER},
         ...(capabilities.supportsPopConsumption ? [{key: 'pop-consumer', label: t.POP_CONSUMER}] : []),
         {key: 'producer', label: t.PRODUCER},

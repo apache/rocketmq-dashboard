@@ -39,6 +39,7 @@ import HomePage from '../pages/Home/HomePage';
 import GroupManagement from '../pages/GroupManagement/GroupManagement';
 import BrokerCluster from '../pages/BrokerCluster/BrokerCluster';
 import LiteTopic from '../pages/LiteTopic/LiteTopic';
+import RouteEvents from '../pages/RouteEvents/RouteEvents';
 import SslSettings from '../pages/SslSettings/SslSettings';
 import Namespace from '../pages/Namespace/Namespace';
 
@@ -141,6 +142,14 @@ const AppRouter = () => {
                         element={
                             <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
                                 <LiteTopic />
+                            </motion.div>
+                        }
+                    />
+                    <Route
+                        path="/route-events"
+                        element={
+                            <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
+                                <RouteEvents />
                             </motion.div>
                         }
                     />
