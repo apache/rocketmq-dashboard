@@ -74,6 +74,13 @@ public class InstanceService {
         InstanceVO existing = instanceRepository.findById(instance.getId())
                 .orElseThrow(() -> new BusinessException(404, "InstanceVO not found: " + instance.getId()));
 
+        if (instance.getName() != null && instance.getName().isBlank()) {
+            throw new BusinessException(400, "InstanceVO name is required");
+        }
+        if (instance.getEndpoint() != null && instance.getEndpoint().isBlank()) {
+            throw new BusinessException(400, "InstanceVO endpoint is required");
+        }
+
         if (instance.getName() != null) {
             existing.setName(instance.getName());
         }

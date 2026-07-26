@@ -31,6 +31,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -258,6 +259,50 @@ class InstanceServiceTest {
         assertThatThrownBy(() -> instanceService.updateInstance(input))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("InstanceVO not found: nonexistent");
+    }
+
+    @Test
+    void updateInstanceShouldRejectBlankName() {
+        InstanceVO existing = InstanceVO.builder()
+                .name("existing-name")
+                .endpoint("10.0.1.1:8080")
+                .build();
+        existing.setId("inst-1");
+        InstanceVO update = InstanceVO.builder().name("   ").build();
+        update.setId("inst-1");
+
+        when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> instanceService.updateInstance(update))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("InstanceVO name is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        assertThat(existing.getName()).isEqualTo("existing-name");
+        verify(instanceRepository, never()).save(any(InstanceVO.class));
+    }
+
+    @Test
+    void updateInstanceShouldRejectBlankEndpointWithoutMutatingExistingFields() {
+        InstanceVO existing = InstanceVO.builder()
+                .name("existing-name")
+                .endpoint("10.0.1.1:8080")
+                .build();
+        existing.setId("inst-1");
+        InstanceVO update = InstanceVO.builder()
+                .name("new-name")
+                .endpoint("   ")
+                .build();
+        update.setId("inst-1");
+
+        when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> instanceService.updateInstance(update))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("InstanceVO endpoint is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        assertThat(existing.getName()).isEqualTo("existing-name");
+        assertThat(existing.getEndpoint()).isEqualTo("10.0.1.1:8080");
+        verify(instanceRepository, never()).save(any(InstanceVO.class));
     }
 
     @Test
