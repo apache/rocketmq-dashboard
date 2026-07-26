@@ -10,6 +10,11 @@ import type {
 } from '../api/metadata';
 import { topics as mockTopics, topicRoutes, topicConsumers } from '../mock/topics';
 
+const cloneTopic = (topic: Topic): Topic => ({ ...topic });
+const cloneRoutes = (routes: BrokerRoute[]): BrokerRoute[] => routes.map((route) => ({ ...route }));
+const cloneConsumers = (consumers: ConsumerGroupInfo[]): ConsumerGroupInfo[] =>
+  consumers.map((consumer) => ({ ...consumer }));
+
 export async function listTopics(params?: TopicQuery): Promise<Topic[]> {
   if (USE_MOCK) {
     let result = [...mockTopics];
@@ -19,7 +24,7 @@ export async function listTopics(params?: TopicQuery): Promise<Topic[]> {
     }
     if (params?.type) result = result.filter((t) => t.type === params.type);
     if (params?.clusterId) result = result.filter((t) => t.clusterId === params.clusterId);
-    return result as unknown as Topic[];
+    return (result as unknown as Topic[]).map(cloneTopic);
   }
   return metadataApi.listTopics(params);
 }
@@ -35,7 +40,7 @@ export async function createTopic(data: Partial<Topic>): Promise<Topic> {
       consumerGroupCount: 0,
     } as unknown as Topic;
     mockTopics.unshift(topic as never);
-    return topic;
+    return cloneTopic(topic);
   }
   return metadataApi.createTopic(data);
 }
@@ -45,7 +50,7 @@ export async function updateTopic(data: Partial<Topic>): Promise<Topic> {
     const idx = mockTopics.findIndex((t) => t.name === data.name);
     if (idx < 0) throw new Error(`Topic not found: ${data.name}`);
     Object.assign(mockTopics[idx], data, { updatedAt: new Date().toISOString() });
-    return mockTopics[idx] as unknown as Topic;
+    return cloneTopic(mockTopics[idx] as unknown as Topic);
   }
   return metadataApi.updateTopic(data);
 }
@@ -67,12 +72,12 @@ export async function batchDeleteTopics(names: string[]): Promise<void> {
 }
 
 export async function getTopicRoutes(name: string): Promise<BrokerRoute[]> {
-  if (USE_MOCK) return (topicRoutes[name] as unknown as BrokerRoute[]) ?? [];
+  if (USE_MOCK) return cloneRoutes((topicRoutes[name] as unknown as BrokerRoute[]) ?? []);
   return metadataApi.getTopicRoutes(name);
 }
 
 export async function getTopicConsumers(name: string): Promise<ConsumerGroupInfo[]> {
-  if (USE_MOCK) return (topicConsumers[name] as unknown as ConsumerGroupInfo[]) ?? [];
+  if (USE_MOCK) return cloneConsumers((topicConsumers[name] as unknown as ConsumerGroupInfo[]) ?? []);
   return metadataApi.getTopicConsumers(name);
 }
 
