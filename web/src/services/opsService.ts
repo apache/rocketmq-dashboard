@@ -8,6 +8,10 @@ import { systemAlerts as mockSystemAlerts } from '../mock/dashboard';
 let auditRecordsState = mockAuditRecords as unknown as AuditRecord[];
 const alertRulesState = mockAlertRules as unknown as AlertRule[];
 
+function includesIgnoreCase(value: string | null | undefined, search: string): boolean {
+  return (value ?? '').toLowerCase().includes(search);
+}
+
 export async function listAlertRules(): Promise<AlertRule[]> {
   if (USE_MOCK) return alertRulesState;
   return opsApi.listAlertRules();
@@ -97,9 +101,9 @@ export async function listAuditRecords(params: AuditQuery = {}): Promise<PageRes
     const search = params.search?.trim().toLowerCase();
     if (
       search &&
-      !record.operator.toLowerCase().includes(search) &&
-      !record.target.toLowerCase().includes(search) &&
-      !record.detail.toLowerCase().includes(search)
+      !includesIgnoreCase(record.operator, search) &&
+      !includesIgnoreCase(record.target, search) &&
+      !includesIgnoreCase(record.detail, search)
     ) {
       return false;
     }
