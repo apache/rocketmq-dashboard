@@ -237,13 +237,13 @@ const GeneralSettingsTab = () => {
 
 // ─── Data Source Tab ────────────────────────────────────────────────────────
 
-const DataSourceTab = () => {
+export const DataSourceTab = () => {
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingDataSource, setEditingDataSource] = useState<DataSource | null>(null);
   const [dsForm] = Form.useForm();
-  const [testing, setTesting] = useState(false);
+  const [testingKey, setTestingKey] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -264,8 +264,11 @@ const DataSourceTab = () => {
     };
   }, []);
 
-  const handleTestConnection = async (data: Pick<DataSource, 'type' | 'url' | 'auth'>) => {
-    setTesting(true);
+  const handleTestConnection = async (
+    data: Pick<DataSource, 'type' | 'url' | 'auth'>,
+    key: string,
+  ) => {
+    setTestingKey(key);
     try {
       const result = await testDataSource(data);
       if (result.success) message.success(result.message);
@@ -273,7 +276,7 @@ const DataSourceTab = () => {
     } catch {
       message.error('连接测试失败，请稍后重试');
     } finally {
-      setTesting(false);
+      setTestingKey(null);
     }
   };
 
@@ -347,8 +350,8 @@ const DataSourceTab = () => {
             type="link"
             size="small"
             icon={<ApiOutlined />}
-            loading={testing}
-            onClick={() => void handleTestConnection(record)}
+            loading={testingKey === record.key}
+            onClick={() => void handleTestConnection(record, record.key)}
           >
             测试连接
           </Button>
@@ -447,11 +450,11 @@ const DataSourceTab = () => {
 
           <Button
             icon={<ApiOutlined />}
-            loading={testing}
+            loading={testingKey === 'modal'}
             onClick={() => {
               void dsForm
                 .validateFields(['type', 'url', 'auth'])
-                .then((values) => handleTestConnection(values))
+                .then((values) => handleTestConnection(values, 'modal'))
                 .catch(() => undefined);
             }}
             style={{ marginTop: 8 }}
