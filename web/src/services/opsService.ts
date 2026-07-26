@@ -8,8 +8,23 @@ import { systemAlerts as mockSystemAlerts } from '../mock/dashboard';
 let auditRecordsState = mockAuditRecords as unknown as AuditRecord[];
 const alertRulesState = mockAlertRules as unknown as AlertRule[];
 
+function copyAlertRule(rule: AlertRule): AlertRule {
+  return {
+    ...rule,
+    channels: [...rule.channels],
+  };
+}
+
+function copySystemAlert(alert: SystemAlert): SystemAlert {
+  return { ...alert };
+}
+
+function copyAuditRecord(record: AuditRecord): AuditRecord {
+  return { ...record };
+}
+
 export async function listAlertRules(): Promise<AlertRule[]> {
-  if (USE_MOCK) return alertRulesState;
+  if (USE_MOCK) return alertRulesState.map(copyAlertRule);
   return opsApi.listAlertRules();
 }
 
@@ -23,14 +38,14 @@ export async function createAlertRule(data: Partial<AlertRule>): Promise<AlertRu
       threshold: 0,
       thresholdUnit: '',
       duration: '',
-      channels: [],
       enabled: true,
       lastTriggered: null,
       description: '',
       ...data,
+      channels: [...(data.channels ?? [])],
     };
     alertRulesState.push(rule);
-    return rule;
+    return copyAlertRule(rule);
   }
   return opsApi.createAlertRule(data);
 }
@@ -38,8 +53,9 @@ export async function createAlertRule(data: Partial<AlertRule>): Promise<AlertRu
 export async function updateAlertRule(data: AlertRule): Promise<AlertRule> {
   if (USE_MOCK) {
     const index = alertRulesState.findIndex((rule) => rule.id === data.id);
-    if (index >= 0) alertRulesState[index] = data;
-    return data;
+    const rule = copyAlertRule(data);
+    if (index >= 0) alertRulesState[index] = rule;
+    return copyAlertRule(rule);
   }
   return opsApi.updateAlertRule(data);
 }
@@ -49,7 +65,7 @@ export async function toggleAlertRule(id: string, enabled: boolean): Promise<Ale
     const rule = alertRulesState.find((item) => item.id === id);
     if (!rule) throw new Error(`Alert rule not found: ${id}`);
     rule.enabled = enabled;
-    return rule;
+    return copyAlertRule(rule);
   }
   return opsApi.toggleAlertRule(id, enabled);
 }
@@ -64,7 +80,7 @@ export async function deleteAlertRule(id: string): Promise<void> {
 }
 
 export async function listSystemAlerts(): Promise<SystemAlert[]> {
-  if (USE_MOCK) return mockSystemAlerts as unknown as SystemAlert[];
+  if (USE_MOCK) return (mockSystemAlerts as unknown as SystemAlert[]).map(copySystemAlert);
   return opsApi.listSystemAlerts();
 }
 
@@ -110,7 +126,7 @@ export async function listAuditRecords(params: AuditQuery = {}): Promise<PageRes
   });
   const from = (page - 1) * pageSize;
   return {
-    items: records.slice(from, from + pageSize),
+    items: records.slice(from, from + pageSize).map(copyAuditRecord),
     total: records.length,
     page,
     size: pageSize,
