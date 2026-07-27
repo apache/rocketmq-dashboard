@@ -16,7 +16,6 @@
  */
 package com.rocketmq.studio.ops.alert;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -24,45 +23,40 @@ import lombok.NoArgsConstructor;
 
 import java.util.List;
 
+/**
+ * Value object representing a branch compensation alert rule.
+ * Branch compensation monitors the HA replication lag between
+ * master and slave brokers, alerting when slaves fall behind the master
+ * beyond configured thresholds.
+ */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class AlertRuleVO {
+public class BranchCompensateAlertRuleVO {
     private String id;
-    /** Alert rule name (e.g. "BrokerDownAlert") */
-    private String alert;
-    /** Grouping label (e.g. "broker", "topic", "consumer") */
-    private String group;
-    /** Prometheus-style expression (e.g. "up{job=\"broker\"} == 0") */
-    private String expr;
-    /** Duration before alert fires (e.g. "5m") - mapped from JSON key "for" */
-    @JsonProperty("for")
-    private String forDuration;
-    /** Severity level: critical, warning, info */
+    /** Rule name */
+    private String name;
+    /** Target broker name pattern (e.g. "broker-a", or "*" for all) */
+    private String brokerName;
+    /** Target cluster name pattern (e.g. "DefaultCluster", or "*" for all) */
+    private String clusterName;
+    /** Replication lag threshold in bytes that triggers the alert */
+    private long lagThreshold;
+    /** Lag threshold unit: B, KB, MB, GB */
+    private String lagThresholdUnit;
+    /** Duration the lag must persist before alerting (e.g. "5m", "10m") */
+    private String duration;
+    /** Alert severity: critical, warning, info */
     private String severity;
-    /** Responsible team: broker, topic, consumer, client, proxy, security, reliability */
-    private String team;
-    /** Brief summary of the alert */
-    private String summary;
-    /** Detailed description */
-    private String description;
     /** Notification channels */
     private List<String> channels;
     /** Whether the rule is enabled */
     private boolean enabled;
-    /** Last triggered timestamp */
-    private String lastTriggered;
-    /** Creation time (formatted yyyy-MM-dd HH:mm:ss) */
+    /** Brief description of the rule */
+    private String description;
+    /** Creation time (ISO format) */
     private String createdAt;
-    /** Last update time (formatted yyyy-MM-dd HH:mm:ss) */
+    /** Last update time (ISO format) */
     private String updatedAt;
-
-    // Legacy fields kept for backward compatibility
-    private String name;
-    private String metric;
-    private String operator;
-    private double threshold;
-    private String thresholdUnit;
-    private String duration;
 }

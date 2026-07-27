@@ -38,6 +38,11 @@ public class InMemoryAlertRepository implements AlertRepository {
     }
 
     @Override
+    public AlertRuleVO findRuleById(String id) {
+        return rules.get(id);
+    }
+
+    @Override
     public AlertRuleVO saveRule(AlertRuleVO rule) {
         rules.put(rule.getId(), rule);
         log.debug("Saved alert rule id={}", rule.getId());

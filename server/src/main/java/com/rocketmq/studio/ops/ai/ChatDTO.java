@@ -21,6 +21,9 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+import java.util.Map;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -30,4 +33,5 @@ public class ChatDTO {
     private String mode;
     private String model;
     private String conversationId;
+    private List<Map<String, String>> history;
 }

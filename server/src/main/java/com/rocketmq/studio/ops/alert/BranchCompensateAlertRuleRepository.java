@@ -14,17 +14,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.rocketmq.studio.ops.ai;
+package com.rocketmq.studio.ops.alert;
 
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import java.util.List;
 
-import java.util.Map;
+/**
+ * Repository interface for branch compensation alert rules.
+ */
+public interface BranchCompensateAlertRuleRepository {
 
-public interface LlmGateway {
+    List<BranchCompensateAlertRuleVO> findAllRules();
 
-    SseEmitter chat(ChatDTO request);
+    BranchCompensateAlertRuleVO saveRule(BranchCompensateAlertRuleVO rule);
 
-    String execute(AiCommandDTO command);
+    void deleteRule(String id);
 
-    Map<String, Object> testConnection(AiLlmConfigDTO config);
+    BranchCompensateAlertRuleVO findRuleById(String id);
 }

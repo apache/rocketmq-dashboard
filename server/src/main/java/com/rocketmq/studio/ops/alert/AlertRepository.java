@@ -22,6 +22,8 @@ import java.util.List;
 public interface AlertRepository {
     List<AlertRuleVO> findAllRules();
 
+    AlertRuleVO findRuleById(String id);
+
     AlertRuleVO saveRule(AlertRuleVO rule);
 
     void deleteRule(String id);

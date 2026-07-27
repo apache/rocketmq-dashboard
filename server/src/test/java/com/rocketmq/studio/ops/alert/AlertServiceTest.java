@@ -46,18 +46,18 @@ class AlertServiceTest {
 
     @Test
     void listRulesShouldReturnAllRules() {
-        AlertRuleVO rule1 = AlertRuleVO.builder().id("1").name("High CPU").metric("cpu_usage")
-                .operator(">").threshold(90.0).enabled(true).build();
-        AlertRuleVO rule2 = AlertRuleVO.builder().id("2").name("Low Disk").metric("disk_free")
-                .operator("<").threshold(10.0).enabled(false).build();
+        AlertRuleVO rule1 = AlertRuleVO.builder().id("1").alert("HighCpuAlert").group("broker")
+                .expr("cpu_usage > 90").severity("critical").enabled(true).build();
+        AlertRuleVO rule2 = AlertRuleVO.builder().id("2").alert("LowDiskAlert").group("broker")
+                .expr("disk_free < 10").severity("warning").enabled(false).build();
         when(alertRepository.findAllRules()).thenReturn(Arrays.asList(rule1, rule2));
 
         List<AlertRuleVO> result = alertService.listRules();
 
         assertThat(result).hasSize(2);
-        assertThat(result.get(0).getName()).isEqualTo("High CPU");
+        assertThat(result.get(0).getAlert()).isEqualTo("HighCpuAlert");
         assertThat(result.get(0).isEnabled()).isTrue();
-        assertThat(result.get(1).getName()).isEqualTo("Low Disk");
+        assertThat(result.get(1).getAlert()).isEqualTo("LowDiskAlert");
         assertThat(result.get(1).isEnabled()).isFalse();
     }
 
@@ -71,23 +71,25 @@ class AlertServiceTest {
     }
 
     @Test
-    void createRuleShouldAssignId() {
-        AlertRuleVO input = AlertRuleVO.builder().name("New Rule").metric("tps")
-                .operator(">").threshold(1000.0).build();
+    void createRuleShouldAssignIdAndTimestamps() {
+        AlertRuleVO input = AlertRuleVO.builder().alert("NewAlert").group("topic")
+                .expr("lag > 1000").severity("warning").build();
         when(alertRepository.saveRule(any(AlertRuleVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         AlertRuleVO result = alertService.createRule(input);
 
         assertThat(result.getId()).isNotNull().isNotEmpty();
-        assertThat(result.getName()).isEqualTo("New Rule");
-        assertThat(result.getMetric()).isEqualTo("tps");
+        assertThat(result.getAlert()).isEqualTo("NewAlert");
+        assertThat(result.getCreatedAt()).isNotNull().isNotEmpty();
+        assertThat(result.getUpdatedAt()).isNotNull().isNotEmpty();
+        assertThat(result.getCreatedAt()).isEqualTo(result.getUpdatedAt());
         verify(alertRepository).saveRule(result);
     }
 
     @Test
     void createRuleShouldGenerateUniqueIds() {
-        AlertRuleVO input1 = AlertRuleVO.builder().name("Rule 1").build();
-        AlertRuleVO input2 = AlertRuleVO.builder().name("Rule 2").build();
+        AlertRuleVO input1 = AlertRuleVO.builder().alert("Alert1").build();
+        AlertRuleVO input2 = AlertRuleVO.builder().alert("Alert2").build();
         when(alertRepository.saveRule(any(AlertRuleVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         AlertRuleVO result1 = alertService.createRule(input1);
@@ -97,21 +99,51 @@ class AlertServiceTest {
     }
 
     @Test
+    void updateRuleShouldPreserveCreatedAtAndUpdateTimestamp() {
+        AlertRuleVO existing = AlertRuleVO.builder().id("rule-1").alert("OldAlert")
+                .createdAt("2025-01-01 00:00:00").updatedAt("2025-01-01 00:00:00").build();
+        AlertRuleVO input = AlertRuleVO.builder().id("rule-1").alert("UpdatedAlert")
+                .group("consumer").expr("lag > 5000").severity("critical").build();
+        when(alertRepository.findRuleById("rule-1")).thenReturn(existing);
+        when(alertRepository.saveRule(any(AlertRuleVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        AlertRuleVO result = alertService.updateRule(input);
+
+        assertThat(result.getCreatedAt()).isEqualTo("2025-01-01 00:00:00");
+        assertThat(result.getUpdatedAt()).isNotNull();
+        assertThat(result.getUpdatedAt()).isNotEqualTo("2025-01-01 00:00:00");
+        assertThat(result.getAlert()).isEqualTo("UpdatedAlert");
+    }
+
+    @Test
+    void updateRuleShouldThrowWhenRuleNotFound() {
+        AlertRuleVO input = AlertRuleVO.builder().id("non-existent").alert("Ghost").build();
+        when(alertRepository.findRuleById("non-existent")).thenReturn(null);
+
+        assertThatThrownBy(() -> alertService.updateRule(input))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Alert rule not found: non-existent");
+    }
+
+    @Test
     void toggleRuleShouldEnableRule() {
-        AlertRuleVO existing = AlertRuleVO.builder().id("rule-1").name("CPU Alert").enabled(false).build();
-        when(alertRepository.findAllRules()).thenReturn(List.of(existing));
+        AlertRuleVO existing = AlertRuleVO.builder().id("rule-1").alert("CPUAlert")
+                .enabled(false).updatedAt("2025-01-01 00:00:00").build();
+        when(alertRepository.findRuleById("rule-1")).thenReturn(existing);
         when(alertRepository.saveRule(any(AlertRuleVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         AlertRuleVO result = alertService.toggleRule("rule-1", true);
 
         assertThat(result.isEnabled()).isTrue();
+        assertThat(result.getUpdatedAt()).isNotNull();
         verify(alertRepository).saveRule(result);
     }
 
     @Test
     void toggleRuleShouldDisableRule() {
-        AlertRuleVO existing = AlertRuleVO.builder().id("rule-1").name("CPU Alert").enabled(true).build();
-        when(alertRepository.findAllRules()).thenReturn(List.of(existing));
+        AlertRuleVO existing = AlertRuleVO.builder().id("rule-1").alert("CPUAlert")
+                .enabled(true).updatedAt("2025-01-01 00:00:00").build();
+        when(alertRepository.findRuleById("rule-1")).thenReturn(existing);
         when(alertRepository.saveRule(any(AlertRuleVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         AlertRuleVO result = alertService.toggleRule("rule-1", false);
@@ -121,7 +153,7 @@ class AlertServiceTest {
 
     @Test
     void toggleRuleShouldThrowWhenRuleNotFound() {
-        when(alertRepository.findAllRules()).thenReturn(Collections.emptyList());
+        when(alertRepository.findRuleById("non-existent")).thenReturn(null);
 
         assertThatThrownBy(() -> alertService.toggleRule("non-existent", true))
                 .isInstanceOf(BusinessException.class)

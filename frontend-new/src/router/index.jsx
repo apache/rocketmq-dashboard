@@ -41,6 +41,7 @@ import BrokerCluster from '../pages/BrokerCluster/BrokerCluster';
 import LiteTopic from '../pages/LiteTopic/LiteTopic';
 import RouteEvents from '../pages/RouteEvents/RouteEvents';
 import SslSettings from '../pages/SslSettings/SslSettings';
+import BranchCompensateAlert from '../pages/BranchCompensateAlert/BranchCompensateAlert';
 
 import StudioLayout from '../components/StudioLayout/StudioLayout';
 import { remoteApi } from '../api/remoteApi/remoteApi';
@@ -238,6 +239,14 @@ const AppRouter = () => {
                         element={
                             <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
                                 <SslSettings />
+                            </motion.div>
+                        }
+                    />
+                    <Route
+                        path="/branch-compensate-alert"
+                        element={
+                            <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
+                                <BranchCompensateAlert />
                             </motion.div>
                         }
                     />

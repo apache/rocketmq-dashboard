@@ -21,6 +21,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -58,5 +59,11 @@ public class LlmGatewayStub implements LlmGateway {
     public String execute(AiCommandDTO command) {
         log.info("Stub executing AI command: {}", command.getCommand());
         return "Command executed successfully (stub)";
+    }
+
+    @Override
+    public Map<String, Object> testConnection(AiLlmConfigDTO config) {
+        log.info("Stub testing connection for model: {}", config.getModel());
+        return Map.of("success", true, "message", "Connection test successful (stub)");
     }
 }

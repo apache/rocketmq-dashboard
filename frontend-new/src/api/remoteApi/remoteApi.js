@@ -1596,6 +1596,69 @@ const remoteApi = {
             console.error('Failed to clear audit logs:', error);
             return {status: 1, errMsg: 'Failed to clear audit logs'};
         }
+    },
+
+    // ===== Branch Compensate Alert Rules (backend-backed) =====
+    listBranchCompensateAlertRules: async () => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl('/api/branch-compensate-alert-rules'));
+            return await response.json();
+        } catch (error) {
+            console.error('Failed to list branch compensate alert rules:', error);
+            return {code: 1, message: 'Failed to list branch compensate alert rules'};
+        }
+    },
+
+    createBranchCompensateAlertRule: async (rule) => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl('/api/branch-compensate-alert-rules/create'), {
+                method: 'POST',
+                body: JSON.stringify(rule),
+            });
+            return await response.json();
+        } catch (error) {
+            console.error('Failed to create branch compensate alert rule:', error);
+            return {code: 1, message: 'Failed to create branch compensate alert rule'};
+        }
+    },
+
+    updateBranchCompensateAlertRule: async (rule) => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl('/api/branch-compensate-alert-rules/update'), {
+                method: 'POST',
+                body: JSON.stringify(rule),
+            });
+            return await response.json();
+        } catch (error) {
+            console.error('Failed to update branch compensate alert rule:', error);
+            return {code: 1, message: 'Failed to update branch compensate alert rule'};
+        }
+    },
+
+    toggleBranchCompensateAlertRule: async (id, enabled) => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl('/api/branch-compensate-alert-rules/toggle'), {
+                method: 'POST',
+                body: JSON.stringify({id, enabled}),
+            });
+            return await response.json();
+        } catch (error) {
+            console.error('Failed to toggle branch compensate alert rule:', error);
+            return {code: 1, message: 'Failed to toggle branch compensate alert rule'};
+        }
+    },
+
+    deleteBranchCompensateAlertRule: async (id) => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl('/api/branch-compensate-alert-rules/delete'), {
+                method: 'POST',
+                body: JSON.stringify({id}),
+            });
+            return await response.json();
+        } catch (error) {
+            console.error('Failed to delete branch compensate alert rule:', error);
+            return {code: 1, message: 'Failed to delete branch compensate alert rule'};
+        }
     }
 };
 
