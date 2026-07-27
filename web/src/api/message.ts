@@ -14,6 +14,11 @@ export interface MessageRecord {
   size: number;
 }
 
+type MessageRecordPayload = Omit<MessageRecord, 'tag' | 'key'> & {
+  tag?: string | null;
+  key?: string | null;
+};
+
 export interface TraceNode {
   title: string;
   timestamp: number | string;
@@ -52,6 +57,12 @@ const toStoreTimestamp = (storeTime: MessageRecord['storeTime']): number => {
 export const sortMessagesByStoreTimeDesc = (messages: MessageRecord[]): MessageRecord[] =>
   [...messages].sort((a, b) => toStoreTimestamp(b.storeTime) - toStoreTimestamp(a.storeTime));
 
+const normalizeMessageRecord = (message: MessageRecordPayload): MessageRecord => ({
+  ...message,
+  tag: message.tag ?? '',
+  key: message.key ?? '',
+});
+
 // Matches mock/dlq.ts
 export interface DLQGroup {
   groupName: string;
@@ -64,8 +75,8 @@ export interface DLQGroup {
 
 // ─── Messages ───────────────────────────────────────────────────
 export async function queryMessages(params: MessageQuery) {
-  const res = await client.get<{ data: MessageRecord[] }>('/messages', { params });
-  return sortMessagesByStoreTimeDesc(res.data.data);
+  const res = await client.get<{ data: MessageRecordPayload[] }>('/messages', { params });
+  return sortMessagesByStoreTimeDesc(res.data.data.map(normalizeMessageRecord));
 }
 
 export async function getMessageTrace(msgId: string) {
