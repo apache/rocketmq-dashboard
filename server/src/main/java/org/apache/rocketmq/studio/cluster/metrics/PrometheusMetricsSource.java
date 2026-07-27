@@ -108,9 +108,21 @@ public class PrometheusMetricsSource implements MetricsSource {
         if (query == null) {
             throw new PrometheusException(HttpStatus.BAD_REQUEST.value(), "Metric query is required");
         }
+        if (!StringUtils.hasText(query.getMetric())) {
+            throw new PrometheusException(HttpStatus.BAD_REQUEST.value(), "Metric query is required");
+        }
+        if (query.getStart() <= 0) {
+            throw new PrometheusException(HttpStatus.BAD_REQUEST.value(), "Metric query start must be positive");
+        }
+        if (query.getEnd() <= 0) {
+            throw new PrometheusException(HttpStatus.BAD_REQUEST.value(), "Metric query end must be positive");
+        }
         if (query.getEnd() < query.getStart()) {
             throw new PrometheusException(HttpStatus.BAD_REQUEST.value(),
                     "Metric query end must not be earlier than start");
+        }
+        if (!StringUtils.hasText(query.getStep())) {
+            throw new PrometheusException(HttpStatus.BAD_REQUEST.value(), "Metric query step is required");
         }
     }
 
