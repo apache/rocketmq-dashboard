@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.settings;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
@@ -45,6 +46,9 @@ public class SettingsService {
     private static final Set<String> PROMETHEUS_COMPATIBLE_TYPES = Set.of(
             "prometheus", "victoriametrics", "thanos", "mimir");
     private static final String PROMETHEUS_TEST_QUERY = "up";
+    private static final String AUTH_NONE = "none";
+    private static final String AUTH_BASIC = "basic auth";
+    private static final String AUTH_BEARER = "bearer token";
     private static final Duration DATA_SOURCE_TEST_CONNECT_TIMEOUT = Duration.ofSeconds(3);
     private static final Duration DATA_SOURCE_TEST_READ_TIMEOUT = Duration.ofSeconds(5);
 
@@ -120,6 +124,7 @@ public class SettingsService {
             JsonNode response = restClient.get()
                     .uri(prometheusQueryUri(request.getUrl()))
                     .accept(MediaType.APPLICATION_JSON)
+                    .headers(headers -> applyAuthentication(headers, request))
                     .retrieve()
                     .body(JsonNode.class);
             return prometheusSuccess(response);
@@ -143,6 +148,35 @@ public class SettingsService {
     private boolean isPrometheusCompatible(String type) {
         return StringUtils.hasText(type)
                 && PROMETHEUS_COMPATIBLE_TYPES.contains(type.replaceAll("\\s+", "").toLowerCase());
+    }
+
+    private void applyAuthentication(HttpHeaders headers, DataSourceTestDTO request) {
+        String auth = normalizeAuth(request.getAuth());
+        if (AUTH_NONE.equals(auth)) {
+            return;
+        }
+        if (AUTH_BASIC.equals(auth)) {
+            if (!StringUtils.hasText(request.getUsername()) || !StringUtils.hasText(request.getPassword())) {
+                throw new IllegalArgumentException("Basic authentication requires username and password");
+            }
+            headers.setBasicAuth(request.getUsername().trim(), request.getPassword());
+            return;
+        }
+        if (AUTH_BEARER.equals(auth)) {
+            if (!StringUtils.hasText(request.getBearerToken())) {
+                throw new IllegalArgumentException("Bearer authentication requires token");
+            }
+            headers.setBearerAuth(request.getBearerToken().trim());
+            return;
+        }
+        throw new IllegalArgumentException("Unsupported data source authentication: " + request.getAuth());
+    }
+
+    private String normalizeAuth(String auth) {
+        if (!StringUtils.hasText(auth)) {
+            return AUTH_NONE;
+        }
+        return auth.trim().replaceAll("\\s+", " ").toLowerCase();
     }
 
     private URI prometheusQueryUri(String baseUrl) throws URISyntaxException {

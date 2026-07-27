@@ -29,7 +29,9 @@ import org.springframework.web.client.RestClient;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
@@ -249,6 +251,74 @@ class SettingsServiceTest {
         assertThat(result.getMessage()).isEqualTo("Connection successful");
         assertThat(requestPath.get()).isEqualTo("/api/v1/query");
         assertThat(requestQuery.get()).isEqualTo("query=up");
+    }
+
+    @Test
+    void testConnectionShouldApplyBasicAuthentication() {
+        AtomicReference<String> authorization = new AtomicReference<>();
+        prometheusServer.createContext("/api/v1/query", exchange -> {
+            authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            respond(exchange, 200, "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[]}}");
+        });
+        DataSourceTestDTO request = DataSourceTestDTO.builder()
+                .url(prometheusBaseUrl)
+                .type("Prometheus")
+                .auth("Basic Auth")
+                .username("prom")
+                .password("secret")
+                .build();
+
+        DataSourceTestResultVO result = settingsService.testDataSource(request);
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(authorization.get()).isEqualTo("Basic "
+                + Base64.getEncoder().encodeToString("prom:secret".getBytes(StandardCharsets.UTF_8)));
+    }
+
+    @Test
+    void testConnectionShouldApplyBearerAuthentication() {
+        AtomicReference<String> authorization = new AtomicReference<>();
+        prometheusServer.createContext("/api/v1/query", exchange -> {
+            authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            respond(exchange, 200, "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[]}}");
+        });
+        DataSourceTestDTO request = DataSourceTestDTO.builder()
+                .url(prometheusBaseUrl)
+                .type("Prometheus")
+                .auth("Bearer Token")
+                .bearerToken("token-1")
+                .build();
+
+        DataSourceTestResultVO result = settingsService.testDataSource(request);
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(authorization.get()).isEqualTo("Bearer token-1");
+    }
+
+    @Test
+    void testConnectionShouldRejectIncompleteBasicAuthentication() {
+        DataSourceTestResultVO result = settingsService.testDataSource(DataSourceTestDTO.builder()
+                .url(prometheusBaseUrl)
+                .type("Prometheus")
+                .auth("Basic Auth")
+                .username("prom")
+                .build());
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getMessage()).isEqualTo(
+                "Basic authentication requires username and password");
+    }
+
+    @Test
+    void testConnectionShouldRejectMissingBearerToken() {
+        DataSourceTestResultVO result = settingsService.testDataSource(DataSourceTestDTO.builder()
+                .url(prometheusBaseUrl)
+                .type("Prometheus")
+                .auth("Bearer Token")
+                .build());
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getMessage()).isEqualTo("Bearer authentication requires token");
     }
 
     @Test
