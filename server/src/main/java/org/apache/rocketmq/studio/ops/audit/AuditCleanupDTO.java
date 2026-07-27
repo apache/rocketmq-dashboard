@@ -14,14 +14,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.rocketmq.studio.ops.audit;
 
-package org.apache.rocketmq.studio.ops;
-
-import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Data
-public class OpsTlsDTO {
-    @NotNull(message = "useTLS is required")
-    private Boolean useTLS;
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class AuditCleanupDTO {
+    @Positive(message = "beforeDays must be greater than 0")
+    private Integer beforeDays;
 }

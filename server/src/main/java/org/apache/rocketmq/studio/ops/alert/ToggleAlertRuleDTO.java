@@ -14,14 +14,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.rocketmq.studio.ops.alert;
 
-package org.apache.rocketmq.studio.ops;
-
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Data
-public class OpsTlsDTO {
-    @NotNull(message = "useTLS is required")
-    private Boolean useTLS;
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class ToggleAlertRuleDTO {
+    @NotBlank(message = "id is required")
+    private String id;
+
+    @NotNull(message = "enabled is required")
+    private Boolean enabled;
 }
