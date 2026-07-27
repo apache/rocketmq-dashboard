@@ -69,6 +69,28 @@ class MetadataServiceTest {
     }
 
     @Test
+    void listTopicsShouldNormalizeFiltersBeforeQueryingProvider() {
+        TopicVO topic = new TopicVO();
+        topic.setName("order-topic");
+        when(metadataProvider.listTopics("cluster-1", "FIFO", "order")).thenReturn(List.of(topic));
+
+        List<TopicVO> result = metadataService.listTopics(" cluster-1 ", " FIFO ", " order ");
+
+        assertThat(result).containsExactly(topic);
+        verify(metadataProvider).listTopics("cluster-1", "FIFO", "order");
+    }
+
+    @Test
+    void listTopicsShouldTreatBlankFiltersAsUnspecified() {
+        when(metadataProvider.listTopics(null, null, null)).thenReturn(List.of());
+
+        List<TopicVO> result = metadataService.listTopics(" ", "\t", "");
+
+        assertThat(result).isEmpty();
+        verify(metadataProvider).listTopics(null, null, null);
+    }
+
+    @Test
     void createTopicShouldDelegateToAdminClient() {
         TopicVO input = new TopicVO();
         input.setName("new-topic");
@@ -140,5 +162,17 @@ class MetadataServiceTest {
 
         assertThat(result).isEmpty();
         verify(metadataProvider).listConsumerGroups(null, "order");
+    }
+
+    @Test
+    void listConsumerGroupsShouldNormalizeFiltersBeforeQueryingProvider() {
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("cg-order");
+        when(metadataProvider.listConsumerGroups("cluster-1", "order")).thenReturn(List.of(group));
+
+        List<ConsumerGroupVO> result = metadataService.listConsumerGroups(" cluster-1 ", " order ");
+
+        assertThat(result).containsExactly(group);
+        verify(metadataProvider).listConsumerGroups("cluster-1", "order");
     }
 }

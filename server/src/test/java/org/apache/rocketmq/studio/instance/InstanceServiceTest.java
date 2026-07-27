@@ -84,6 +84,19 @@ class InstanceServiceTest {
     }
 
     @Test
+    void listInstancesShouldTrimSearchKeyword() {
+        List<InstanceVO> instances = List.of(
+                InstanceVO.builder().name("production").build()
+        );
+        when(instanceRepository.search("prod")).thenReturn(instances);
+
+        List<InstanceVO> result = instanceService.listInstances(null, " prod ");
+
+        assertThat(result).hasSize(1);
+        verify(instanceRepository).search("prod");
+    }
+
+    @Test
     void listInstancesShouldFilterByTypeAndSearch() {
         List<InstanceVO> instances = List.of(
                 InstanceVO.builder().name("production-proxy").type(InstanceType.PROXY).build()
@@ -91,6 +104,19 @@ class InstanceServiceTest {
         when(instanceRepository.findByTypeAndSearch(InstanceType.PROXY, "prod")).thenReturn(instances);
 
         List<InstanceVO> result = instanceService.listInstances(InstanceType.PROXY, "prod");
+
+        assertThat(result).hasSize(1);
+        verify(instanceRepository).findByTypeAndSearch(InstanceType.PROXY, "prod");
+    }
+
+    @Test
+    void listInstancesShouldTrimSearchKeywordWhenFilteringByType() {
+        List<InstanceVO> instances = List.of(
+                InstanceVO.builder().name("production-proxy").type(InstanceType.PROXY).build()
+        );
+        when(instanceRepository.findByTypeAndSearch(InstanceType.PROXY, "prod")).thenReturn(instances);
+
+        List<InstanceVO> result = instanceService.listInstances(InstanceType.PROXY, " prod ");
 
         assertThat(result).hasSize(1);
         verify(instanceRepository).findByTypeAndSearch(InstanceType.PROXY, "prod");
