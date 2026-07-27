@@ -60,7 +60,7 @@ public class UserSpecificMQAdminPooledObjectFactory implements PooledObjectFacto
         DefaultMQAdminExt mqAdminExt = new DefaultMQAdminExt(rpcHook);
 
         mqAdminExt.setAdminExtGroup("MQ_ADMIN_GROUP_FOR_" + userAk + "_" + instanceCreationCounter.getAndIncrement());
-
+        mqAdminExt.setNamesrvAddr(userSpecificClientConfig.getNamesrvAddr());
         mqAdminExt.start();
         log.info("Created new MQAdminExt instance ({}) for user {}", mqAdminExt, userAk);
         return new DefaultPooledObject<>(mqAdminExt);

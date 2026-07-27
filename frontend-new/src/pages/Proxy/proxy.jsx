@@ -19,6 +19,7 @@ import React, {useEffect, useState} from 'react';
 import {Button, Card, Col, Input, Modal, notification, Row, Select, Spin} from 'antd';
 import {useLanguage} from '../../i18n/LanguageContext';
 import {remoteApi} from "../../api/remoteApi/remoteApi";
+import {isWriteOperationEnabled} from "../../constants/roles";
 
 
 const {Option} = Select;
@@ -37,13 +38,8 @@ const ProxyManager = () => {
     const [notificationApi, notificationContextHolder] = notification.useNotification();
 
     useEffect(() => {
-        const userPermission = localStorage.getItem('userrole');
-        console.log(userPermission);
-        if (userPermission == 2) {
-            setWriteOperationEnabled(false);
-        } else {
-            setWriteOperationEnabled(true);
-        }
+        setWriteOperationEnabled(isWriteOperationEnabled());
+    }, []);
     }, []);
 
     useEffect(() => {

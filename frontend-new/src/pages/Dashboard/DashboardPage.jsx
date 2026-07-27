@@ -29,6 +29,7 @@ import {
     titleStyle,
     categoryAxis,
     valueAxis,
+    barValueAxis,
     lineCategoryAxis,
     withAreaStyle,
     barSeries,
@@ -95,7 +96,7 @@ const DashboardPage = () => {
             } else {
                 base.legend = { show: false };
                 base.xAxis = categoryAxis([]);
-                base.yAxis = valueAxis({ axisLabel: { formatter: (v) => v.toFixed(2) } });
+                base.yAxis = barValueAxis();
                 base.series = [barSeries([], 'TotalMsg')];
             }
             chart.setOption(base);
@@ -876,7 +877,7 @@ const DashboardPage = () => {
 
                 const option = {
                     xAxis: categoryAxis(xAxisData, { axisLabel: { rotate: 45, interval: 0, fontSize: 10 } }),
-                    yAxis: valueAxis({ axisLabel: { formatter: (v) => v.toFixed(2) } }),
+                    yAxis: barValueAxis(),
                     grid: baseGrid(),
                     tooltip: baseTooltip(),
                     series: [barSeries(data, 'TotalMsg')]

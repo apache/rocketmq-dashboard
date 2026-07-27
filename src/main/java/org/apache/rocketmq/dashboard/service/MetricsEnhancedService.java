@@ -17,6 +17,7 @@
 package org.apache.rocketmq.dashboard.service;
 
 import org.apache.rocketmq.dashboard.model.MetricsHealthResult;
+import org.apache.rocketmq.dashboard.model.MetricsSelfCheckResult;
 
 import java.util.List;
 import java.util.Map;
@@ -86,4 +87,16 @@ public interface MetricsEnhancedService {
      *         Alertmanager / VictoriaMetrics alerting
      */
     String getAlertRulesYaml();
+
+    /**
+     * RIP-1 METRICS-01: comprehensive self-check of the metrics subsystem.
+     *
+     * <p>Validates: data-source connectivity (degraded-but-operational when no external
+     * Prometheus is configured), every dashboard panel resolves a non-empty PromQL
+     * referencing a known metric family, the built-in alert ruleset is present and meets
+     * the &ge;20 rules requirement, and pre-built queries are available.</p>
+     *
+     * @return structured self-check result with per-check severity and overall verdict
+     */
+    MetricsSelfCheckResult selfCheck();
 }

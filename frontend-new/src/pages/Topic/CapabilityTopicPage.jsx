@@ -18,6 +18,7 @@
 import React, { useEffect, useState } from 'react';
 import { Button, Checkbox, Form, Input, message, Popconfirm, Space, Table, Tag, Tooltip } from 'antd';
 import { useLanguage } from '../../i18n/LanguageContext';
+import { isWriteOperationEnabled } from '../../constants/roles';
 import { useClusterCapabilities } from '../../store/context/ClusterCapabilitiesContext';
 import { remoteApi } from '../../api/remoteApi/remoteApi';
 import CapabilityAwareTopic, { TopicTypeFilter, TopicOperations } from '../../components/topic/CapabilityAwareTopic';
@@ -109,8 +110,7 @@ const CapabilityTopicPage = () => {
 
   // Effect: Check user permissions
   useEffect(() => {
-    const userPermission = localStorage.getItem('userrole');
-    setWriteOperationEnabled(userPermission != 2);
+    setWriteOperationEnabled(isWriteOperationEnabled());
   }, []);
 
   /**

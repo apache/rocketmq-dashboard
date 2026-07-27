@@ -16,8 +16,10 @@
  */
 package org.apache.rocketmq.dashboard.service.impl;
 
+import org.apache.rocketmq.dashboard.adapter.PrometheusMetricsAdapter;
 import org.apache.rocketmq.dashboard.architecture.ClusterProvider;
 import org.apache.rocketmq.dashboard.architecture.MetadataProvider;
+import org.apache.rocketmq.dashboard.model.ClusterTopology;
 import org.apache.rocketmq.dashboard.model.request.MetricsDataSourceRequest;
 import org.apache.rocketmq.dashboard.service.ArchitectureBasedService;
 import org.apache.rocketmq.dashboard.service.MetricsService;
@@ -26,12 +28,17 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.Resource;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.LinkedHashMap;
 import java.util.concurrent.ConcurrentHashMap;
@@ -57,6 +64,9 @@ public class MetricsServiceImpl extends ArchitectureBasedService implements Metr
 
     @Resource
     private ClusterProvider clusterProvider;
+
+    @Resource
+    private PrometheusMetricsAdapter prometheusAdapter;
 
     @Override
     public Map<String, Object> getClusterMetrics() {
@@ -544,5 +554,168 @@ public class MetricsServiceImpl extends ArchitectureBasedService implements Metr
         } catch (Exception e) {
             return value;
         }
+    }
+
+    // ==================== Federation (RIP-1 METRICS-01) ====================
+
+    @Override
+    public String federate(List<String> matches) {
+        String exposition = getClusterMetricsExposition();
+        return filterPrometheusText(exposition, matches);
+    }
+
+    /**
+     * Return cluster metrics as raw Prometheus text exposition.
+     *
+     * <p>In V5 architecture the broker runs a native Prometheus exporter (default port 5557). We
+     * relay that real exposition directly so the output is accurate and label-preserving. For other
+     * architectures we fall back to the generated exposition from {@link #getClusterMetrics()}.</p>
+     */
+    @Override
+    public String getClusterMetricsExposition() {
+        String raw = fetchV5BrokerMetricsRaw();
+        if (raw != null && !raw.isEmpty()) {
+            return raw;
+        }
+        return prometheusAdapter.generateFullMetricsExport(getClusterMetrics());
+    }
+
+    /**
+     * In V5 architecture, scrape each broker's native Prometheus exporter (default port 5557) and
+     * concatenate the real exposition. Returns {@code null} when not applicable (non-V5) or when
+     * no broker metrics could be fetched.
+     */
+    private String fetchV5BrokerMetricsRaw() {
+        if (!supports("METRICS_EXPORT")) {
+            return null;
+        }
+        try {
+            ClusterTopology topology = clusterProvider.getClusterTopology();
+            if (topology == null || topology.getBrokerNodes() == null
+                    || topology.getBrokerNodes().isEmpty()) {
+                return null;
+            }
+            StringBuilder sb = new StringBuilder();
+            Set<String> scrapedHosts = new HashSet<>();
+            for (ClusterTopology.NodeInfo node : topology.getBrokerNodes()) {
+                String address = node.getNodeAddress();
+                if (address == null || address.trim().isEmpty()) {
+                    continue;
+                }
+                String host = address.contains(":") ? address.substring(0, address.indexOf(':')) : address;
+                if (host.trim().isEmpty() || !scrapedHosts.add(host)) {
+                    continue;
+                }
+                String exposition = scrapeHttp("http://" + host + ":5557/metrics");
+                if (exposition != null && !exposition.isEmpty()) {
+                    sb.append("# Scraped from broker ").append(host).append(":5557\n");
+                    sb.append(exposition);
+                    if (!exposition.endsWith("\n")) {
+                        sb.append("\n");
+                    }
+                }
+            }
+            return sb.length() > 0 ? sb.toString() : null;
+        } catch (Exception e) {
+            log.warn("Failed to fetch V5 broker metrics from exporter: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Perform a simple HTTP GET and return the response body as a UTF-8 string, or {@code null} on
+     * any failure (timeout, non-2xx, IO error). Intentionally minimal to avoid extra dependencies.
+     */
+    private String scrapeHttp(String targetUrl) {
+        HttpURLConnection connection = null;
+        try {
+            URL url = new URL(targetUrl);
+            connection = (HttpURLConnection) url.openConnection();
+            connection.setRequestMethod("GET");
+            connection.setConnectTimeout(3000);
+            connection.setReadTimeout(5000);
+            connection.setInstanceFollowRedirects(true);
+            int status = connection.getResponseCode();
+            if (status != HttpURLConnection.HTTP_OK) {
+                return null;
+            }
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
+                StringBuilder body = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    body.append(line).append("\n");
+                }
+                return body.toString();
+            }
+        } catch (Exception e) {
+            log.debug("scrapeHttp failed for {}: {}", targetUrl, e.getMessage());
+            return null;
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
+    }
+
+    /**
+     * Filter a Prometheus text-exposition by {@code match[]} selectors.
+     *
+     * <p>Each selector is a metric-name prefix or regex. A trailing {@code *} is treated as
+     * a wildcard (converted to {@code .*}). A line is kept if its metric name matches any
+     * selector, or if it is a comment/HELP/TYPE line belonging to a kept metric family.
+     * Extracted as a {@code static} method so it can be unit-tested without a Spring context.</p>
+     *
+     * @param exposition Prometheus text exposition
+     * @param selectors  list of match selectors (empty/blank returns the full exposition)
+     * @return filtered exposition text
+     */
+    static String filterPrometheusText(String exposition, List<String> selectors) {
+        if (exposition == null || exposition.isEmpty()) {
+            return exposition;
+        }
+        if (selectors == null || selectors.isEmpty()) {
+            return exposition;
+        }
+        List<String> patterns = new ArrayList<>();
+        for (String s : selectors) {
+            if (s == null || s.trim().isEmpty()) {
+                continue;
+            }
+            // Treat the selector as a Prometheus-style regex. A bare "*" is a wildcard
+            // (converted to ".*"); any other "." is left as a regex metacharacter, which is
+            // correct because Prometheus metric names never contain dots.
+            String p = s.trim().replace("*", ".*");
+            patterns.add(p);
+        }
+        if (patterns.isEmpty()) {
+            return exposition;
+        }
+
+        StringBuilder out = new StringBuilder();
+        String[] lines = exposition.split("\n");
+        for (String line : lines) {
+            if (line.startsWith("#")) {
+                // Keep HELP/TYPE comments — they are lightweight and aid consumers.
+                out.append(line).append("\n");
+                continue;
+            }
+            String trimmed = line.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            String metricName = trimmed.split("[\\[{ \\t]")[0];
+            boolean keep = false;
+            for (String p : patterns) {
+                if (metricName.matches(p) || metricName.startsWith(p.replace(".*", ""))) {
+                    keep = true;
+                    break;
+                }
+            }
+            if (keep) {
+                out.append(line).append("\n");
+            }
+        }
+        return out.toString();
     }
 }

@@ -181,8 +181,8 @@ public class HuaweiCloudMetadataProvider extends AbstractCloudMetadataProvider {
                 topic.setClusterName(config.getInstanceId());
 
                 int permission = CloudApiHttpClient.getInt(topicData, "permission", 6);
-                topic.setReadQueueNum(CloudApiHttpClient.getInt(topicData, "total_read_queue_num", 16));
-                topic.setWriteQueueNum(CloudApiHttpClient.getInt(topicData, "total_write_queue_num", 16));
+                topic.setReadQueueNums(CloudApiHttpClient.getInt(topicData, "total_read_queue_num", 16));
+                topic.setWriteQueueNums(CloudApiHttpClient.getInt(topicData, "total_write_queue_num", 16));
 
                 int messageType = CloudApiHttpClient.getInt(topicData, "message_type", 0);
                 topic.setTopicType(mapHuaweiTopicType(messageType));
@@ -211,8 +211,8 @@ public class HuaweiCloudMetadataProvider extends AbstractCloudMetadataProvider {
             topic.getTopicName(), config.getInstanceId());
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("name", topic.getTopicName());
-        body.put("total_read_queue_num", topic.getReadQueueNum() > 0 ? topic.getReadQueueNum() : 16);
-        body.put("total_write_queue_num", topic.getWriteQueueNum() > 0 ? topic.getWriteQueueNum() : 16);
+        body.put("total_read_queue_num", topic.getReadQueueNums() != null && topic.getReadQueueNums() > 0 ? topic.getReadQueueNums() : 16);
+        body.put("total_write_queue_num", topic.getWriteQueueNums() != null && topic.getWriteQueueNums() > 0 ? topic.getWriteQueueNums() : 16);
         body.put("permission", 6); // read + write
         body.put("message_type", mapToHuaweiTopicType(topic.getTopicType()));
 
@@ -226,8 +226,8 @@ public class HuaweiCloudMetadataProvider extends AbstractCloudMetadataProvider {
         log.info("Updating topic: {} for Huawei Cloud instance: {}",
             topic.getTopicName(), config.getInstanceId());
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("total_read_queue_num", topic.getReadQueueNum() > 0 ? topic.getReadQueueNum() : 16);
-        body.put("total_write_queue_num", topic.getWriteQueueNum() > 0 ? topic.getWriteQueueNum() : 16);
+        body.put("total_read_queue_num", topic.getReadQueueNums() != null && topic.getReadQueueNums() > 0 ? topic.getReadQueueNums() : 16);
+        body.put("total_write_queue_num", topic.getWriteQueueNums() != null && topic.getWriteQueueNums() > 0 ? topic.getWriteQueueNums() : 16);
         body.put("permission", 6);
 
         String jsonBody = CloudApiHttpClient.toJson(body);

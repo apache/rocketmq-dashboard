@@ -222,8 +222,8 @@ public class TencentCloudMetadataProvider extends AbstractCloudMetadataProvider 
                 int type = CloudApiHttpClient.getInt(topicData, "Type", 0);
                 topic.setTopicType(mapTencentTopicType(type));
 
-                topic.setReadQueueNum(CloudApiHttpClient.getInt(topicData, "PartitionNum", 16));
-                topic.setWriteQueueNum(CloudApiHttpClient.getInt(topicData, "PartitionNum", 16));
+                topic.setReadQueueNums(CloudApiHttpClient.getInt(topicData, "PartitionNum", 16));
+                topic.setWriteQueueNums(CloudApiHttpClient.getInt(topicData, "PartitionNum", 16));
                 topics.add(topic);
             }
 
@@ -251,7 +251,7 @@ public class TencentCloudMetadataProvider extends AbstractCloudMetadataProvider 
         params.put("ClusterId", config.getInstanceId());
         params.put("NamespaceId", topic.getNamespace() != null ? topic.getNamespace() : "default");
         params.put("Topic", topic.getTopicName());
-        params.put("Partitions", topic.getWriteQueueNum() > 0 ? topic.getWriteQueueNum() : 16);
+        params.put("Partitions", topic.getWriteQueueNums() != null && topic.getWriteQueueNums() > 0 ? topic.getWriteQueueNums() : 16);
         params.put("Type", mapToTencentTopicType(topic.getTopicType()));
         if (topic.getAttributes() != null && topic.getAttributes().get("remark") != null) {
             params.put("Remark", topic.getAttributes().get("remark"));

@@ -144,6 +144,9 @@ const PROVIDERS = [
     },
 ];
 
+// 数字千分位格式化（用于 Token 数显示，如 4096 -> 4,096）
+const formatTokens = (v) => Number(v || 0).toLocaleString('en-US');
+
 function LlmSettings() {
     const [form] = Form.useForm();
     const [loading, setLoading] = useState(false);
@@ -551,31 +554,31 @@ function LlmSettings() {
                                 noStyle
                                 shouldUpdate={(prev, cur) => prev.maxTokens !== cur.maxTokens}
                             >
-                                {({ getFieldValue }) => (
-                                    <Form.Item
-                                        name="maxTokens"
-                                        label={
-                                            <span>
-                                                最大 Token 数
-                                                <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
-                                                    {getFieldValue('maxTokens') ?? 4096}
-                                                </Text>
-                                            </span>
-                                        }
-                                    >
-                                        <Slider
-                                            min={256}
-                                            max={128000}
-                                            step={256}
-                                            marks={{
-                                                2048: { label: '2K', style: { fontSize: 11 } },
-                                                8192: { label: '8K', style: { fontSize: 11 } },
-                                                32768: { label: '32K', style: { fontSize: 11 } },
-                                                128000: { label: '128K', style: { fontSize: 11 } },
-                                            }}
-                                        />
-                                    </Form.Item>
-                                )}
+                                {({ getFieldValue }) => {
+                                    const val = getFieldValue('maxTokens') ?? 4096;
+                                    return (
+                                        <div className="ai-param">
+                                            <div className="ai-param-head">
+                                                <span className="ai-param-label">最大 Token 数</span>
+                                                <span className="ai-param-value">{formatTokens(val)}</span>
+                                            </div>
+                                            <Form.Item name="maxTokens">
+                                                <Slider
+                                                    min={256}
+                                                    max={128000}
+                                                    step={256}
+                                                    marks={{
+                                                        2048: { label: '2K', style: { fontSize: 11 } },
+                                                        8192: { label: '8K', style: { fontSize: 11 } },
+                                                        32768: { label: '32K', style: { fontSize: 11 } },
+                                                        128000: { label: '128K', style: { fontSize: 11 } },
+                                                    }}
+                                                    tooltip={{ formatter: (v) => formatTokens(v) + ' tokens' }}
+                                                />
+                                            </Form.Item>
+                                        </div>
+                                    );
+                                }}
                             </Form.Item>
                         </Col>
                         <Col span={12}>
@@ -583,32 +586,31 @@ function LlmSettings() {
                                 noStyle
                                 shouldUpdate={(prev, cur) => prev.temperature !== cur.temperature}
                             >
-                                {({ getFieldValue }) => (
-                                    <Form.Item
-                                        name="temperature"
-                                        label={
-                                            <span>
-                                                温度 (Temperature)
-                                                <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
-                                                    {getFieldValue('temperature') ?? 0.7}
-                                                </Text>
-                                            </span>
-                                        }
-                                        extra="值越低输出越确定，越高越随机"
-                                    >
-                                        <Slider
-                                            min={0}
-                                            max={2}
-                                            step={0.1}
-                                            marks={{
-                                                0: { label: '0', style: { fontSize: 11 } },
-                                                0.7: { label: '0.7', style: { fontSize: 11 } },
-                                                1: { label: '1', style: { fontSize: 11 } },
-                                                2: { label: '2', style: { fontSize: 11 } },
-                                            }}
-                                        />
-                                    </Form.Item>
-                                )}
+                                {({ getFieldValue }) => {
+                                    const t = getFieldValue('temperature') ?? 0.7;
+                                    return (
+                                        <div className="ai-param">
+                                            <div className="ai-param-head">
+                                                <span className="ai-param-label">温度 (Temperature)</span>
+                                                <span className="ai-param-value">{Number(t).toFixed(1)}</span>
+                                            </div>
+                                            <Form.Item name="temperature" extra="值越低输出越确定，越高越随机">
+                                                <Slider
+                                                    min={0}
+                                                    max={2}
+                                                    step={0.1}
+                                                    marks={{
+                                                        0: { label: '0', style: { fontSize: 11 } },
+                                                        0.7: { label: '0.7', style: { fontSize: 11 } },
+                                                        1: { label: '1', style: { fontSize: 11 } },
+                                                        2: { label: '2', style: { fontSize: 11 } },
+                                                    }}
+                                                    tooltip={{ formatter: (v) => Number(v).toFixed(1) }}
+                                                />
+                                            </Form.Item>
+                                        </div>
+                                    );
+                                }}
                             </Form.Item>
                         </Col>
                     </Row>

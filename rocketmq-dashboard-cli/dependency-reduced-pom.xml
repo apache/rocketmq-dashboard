@@ -44,7 +44,27 @@
                     <exclude>META-INF/*.RSA</exclude>
                   </excludes>
                 </filter>
+                <filter>
+                  <artifact>org.springframework.boot:spring-boot</artifact>
+                  <excludes>
+                    <exclude>org/springframework/**</exclude>
+                  </excludes>
+                </filter>
+                <filter>
+                  <artifact>org.springframework.boot:spring-boot-autoconfigure</artifact>
+                  <excludes>
+                    <exclude>org/springframework/**</exclude>
+                  </excludes>
+                </filter>
+                <filter>
+                  <artifact>org.springframework.boot:spring-boot-actuator-autoconfigure</artifact>
+                  <excludes>
+                    <exclude>org/springframework/**</exclude>
+                  </excludes>
+                </filter>
               </filters>
+              <shadedArtifactAttached>true</shadedArtifactAttached>
+              <shadedClassifierName>standalone</shadedClassifierName>
               <transformers>
                 <transformer>
                   <mainClass>org.apache.rocketmq.dashboard.cli.RmqctlCommand</mainClass>
@@ -57,6 +77,12 @@
     </plugins>
   </build>
   <dependencies>
+    <dependency>
+      <groupId>org.apache.rocketmq</groupId>
+      <artifactId>rocketmq-dashboard-app</artifactId>
+      <version>2.1.1-SNAPSHOT</version>
+      <scope>provided</scope>
+    </dependency>
     <dependency>
       <groupId>junit</groupId>
       <artifactId>junit</artifactId>

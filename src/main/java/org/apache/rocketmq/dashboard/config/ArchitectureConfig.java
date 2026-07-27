@@ -114,19 +114,22 @@ public class ArchitectureConfig {
 
     /**
      * Default ProxyAdminGrpcClient bean for RIP-2 Proxy Admin gRPC integration.
-     * Connects to the Proxy Admin gRPC server on localhost:8082 by default.
+     * Connects to the Proxy Admin gRPC server on the configured admin port (default 8086).
      * When gRPC is unavailable, client queries gracefully degrade to Remoting-only.
      */
     @Bean
     public ProxyAdminGrpcClient proxyAdminGrpcClient(
             @org.springframework.beans.factory.annotation.Value("${rocketmq.dashboard.proxyAddress:localhost:8080}")
-            String proxyAddress) {
-        return new ProxyAdminGrpcClient(proxyAddress);
+            String proxyAddress,
+            @org.springframework.beans.factory.annotation.Value("${rocketmq.dashboard.proxyAdminPort:8086}")
+            int proxyAdminPort) {
+        return new ProxyAdminGrpcClient(proxyAddress, proxyAdminPort);
     }
 
     /**
      * MultiProxyAdminClient bean for aggregated multi-Proxy operations.
-     * Connects to all configured proxy addresses on admin port 8082.
+     * Connects to all configured proxy addresses on the Proxy Admin gRPC port
+     * (default 8086; matches rmq-proxy.json proxyAdminServerPort).
      * Used by ProxyAdminService and GrpcClientCollector for fan-out queries.
      */
     @Bean
@@ -134,14 +137,16 @@ public class ArchitectureConfig {
             @org.springframework.beans.factory.annotation.Value("${rocketmq.dashboard.proxyAddrs:#{null}}")
             String[] proxyAddresses,
             @org.springframework.beans.factory.annotation.Value("${rocketmq.dashboard.proxyAddress:localhost:8080}")
-            String defaultProxyAddress) {
+            String defaultProxyAddress,
+            @org.springframework.beans.factory.annotation.Value("${rocketmq.dashboard.proxyAdminPort:8086}")
+            int proxyAdminPort) {
         if (proxyAddresses != null && proxyAddresses.length > 0) {
-            log.info("Creating MultiProxyAdminClient with {} proxy endpoints", proxyAddresses.length);
-            return new MultiProxyAdminClient(proxyAddresses);
+            log.info("Creating MultiProxyAdminClient with {} proxy endpoints (admin port {})", proxyAddresses.length, proxyAdminPort);
+            return new MultiProxyAdminClient(proxyAddresses, proxyAdminPort);
         }
         // Fallback to single proxy address
-        log.info("Creating MultiProxyAdminClient with single proxy endpoint: {}", defaultProxyAddress);
-        return new MultiProxyAdminClient(new String[]{defaultProxyAddress});
+        log.info("Creating MultiProxyAdminClient with single proxy endpoint {} (admin port {})", defaultProxyAddress, proxyAdminPort);
+        return new MultiProxyAdminClient(new String[]{defaultProxyAddress}, proxyAdminPort);
     }
 
     /**
@@ -295,10 +300,11 @@ public class ArchitectureConfig {
             }
 
             // Create MultiProxyAdminClient for aggregated RIP-2 operations
-            MultiProxyAdminClient multiProxyClient = new MultiProxyAdminClient(proxyAddresses);
+            int adminPort = rmqConfigure.getProxyAdminPort() != null ? rmqConfigure.getProxyAdminPort() : 8086;
+            MultiProxyAdminClient multiProxyClient = new MultiProxyAdminClient(proxyAddresses, adminPort);
 
             // Create gRPC Proxy Admin client (uses first proxy for backward compat)
-            ProxyAdminGrpcClient proxyAdminGrpcClient = new ProxyAdminGrpcClient(proxyAddresses[0]);
+            ProxyAdminGrpcClient proxyAdminGrpcClient = new ProxyAdminGrpcClient(proxyAddresses[0], adminPort);
 
             // Create V5-specific admin client with Remoting fallback + gRPC channel
             GrpcAdminClient grpcClient = new GrpcAdminClient(proxyAddresses[0], mqAdminExt, proxyAdminGrpcClient);

@@ -77,9 +77,9 @@ const DlqMessageQueryPage = () => {
             setLoading(true);
             const resp = await remoteApi.queryConsumerGroupList(false);
             if (resp.status === 0) {
-                const filteredGroups = resp.data
-                    .filter(consumerGroup => !consumerGroup.group.startsWith(SYS_GROUP_TOPIC_PREFIX))
-                    .map(consumerGroup => consumerGroup.group)
+                const filteredGroups = (resp.data || [])
+                    .map(consumerGroup => consumerGroup && (consumerGroup.group || consumerGroup.consumerGroupName))
+                    .filter(group => group && typeof group === 'string' && !group.startsWith(SYS_GROUP_TOPIC_PREFIX))
                     .sort();
                 setAllConsumerGroupList(filteredGroups);
             } else {

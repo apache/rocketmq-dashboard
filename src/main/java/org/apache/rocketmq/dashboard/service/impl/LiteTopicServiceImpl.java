@@ -45,9 +45,11 @@ import java.util.Optional;
  *   <li><b>getLiteTopicQuota:</b> V4 throws UnsupportedOperationException</li>
  * </ul>
  *
- * <p>Note: V5 Proxy implementation currently returns UnsupportedOperationException
- * for most LiteTopic methods as they require the RIP-2 gRPC interface. Once
- * RIP-2 is merged, these methods will be fully functional.</p>
+ * <p>Note: In V5 Proxy, {@code listLiteTopics} is fully functional and returns a real
+ * prefix-aggregated view derived from the standard topic list. The session / TTL-extension
+ * / quota operations remain unsupported because they are runtime, per-session concerns not
+ * exposed by any current admin surface (the RIP-2 proxy admin proto defines no LiteTopic
+ * session RPC); they degrade gracefully with a clear message rather than faking support.</p>
  */
 @Service
 public class LiteTopicServiceImpl extends ArchitectureBasedService implements LiteTopicService {
@@ -72,7 +74,7 @@ public class LiteTopicServiceImpl extends ArchitectureBasedService implements Li
         }
 
         try {
-            return metadataProvider.listLiteTopics(pattern, namespace);
+            return getMetadataProvider().listLiteTopics(pattern, namespace);
         } catch (UnsupportedOperationException e) {
             log.warn("LiteTopic listing not supported by metadata provider: {}", e.getMessage());
             return Collections.emptyList();
@@ -95,7 +97,7 @@ public class LiteTopicServiceImpl extends ArchitectureBasedService implements Li
         }
 
         try {
-            return metadataProvider.getLiteTopicSession(sessionId);
+            return getMetadataProvider().getLiteTopicSession(sessionId);
         } catch (UnsupportedOperationException e) {
             log.error("LiteTopic session retrieval not supported: {}", e.getMessage());
             throw e;
@@ -125,7 +127,7 @@ public class LiteTopicServiceImpl extends ArchitectureBasedService implements Li
         }
 
         try {
-            metadataProvider.extendLiteTopicTTL(topicPattern, newTTL);
+            getMetadataProvider().extendLiteTopicTTL(topicPattern, newTTL);
         } catch (UnsupportedOperationException e) {
             log.error("LiteTopic TTL extension not supported: {}", e.getMessage());
             throw e;
@@ -148,7 +150,7 @@ public class LiteTopicServiceImpl extends ArchitectureBasedService implements Li
         }
 
         try {
-            return metadataProvider.getLiteTopicQuota(namespace);
+            return getMetadataProvider().getLiteTopicQuota(namespace);
         } catch (UnsupportedOperationException e) {
             log.error("LiteTopic quota query not supported: {}", e.getMessage());
             throw e;

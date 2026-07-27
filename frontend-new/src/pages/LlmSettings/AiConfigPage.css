@@ -237,3 +237,56 @@
         color: rgba(255, 255, 255, 0.85);
     }
 }
+
+/* ===== 模型参数控件（最大 Token 数 / 温度）===== */
+
+.ai-param {
+    margin-bottom: 4px;
+}
+
+/* 标签 + 当前值 同行两端对齐，值用胶囊样式，绝不换行/重叠 */
+.ai-param-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 2px;
+}
+
+.ai-param-label {
+    font-size: 14px;
+    font-weight: 500;
+    color: rgba(0, 0, 0, 0.88);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ai-param-value {
+    flex-shrink: 0;
+    margin-left: 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #1677ff;
+    background: #e6f4ff;
+    padding: 1px 10px;
+    border-radius: 10px;
+    font-variant-numeric: tabular-nums;
+}
+
+/* 让 Slider 端点刻度标签不被裁切 */
+.ai-config-card .ant-slider-mark-text {
+    font-size: 11px;
+    color: #8c8c8c;
+}
+
+/* 暗色模式下参数控件适配 */
+@media (prefers-color-scheme: dark) {
+    .ai-param-label {
+        color: rgba(255, 255, 255, 0.85);
+    }
+
+    .ai-param-value {
+        color: #69b1ff;
+        background: rgba(22, 119, 255, 0.18);
+    }
+}

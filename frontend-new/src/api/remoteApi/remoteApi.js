@@ -171,13 +171,17 @@ const remoteApi = {
     },
 
     getCookie() {
-        return document.cookie.replace(/(?:(?:^|.*;\s*)XSRF-TOKEN\s*\=\s*([^;]*).*$)|^.*$/, '$1')
+        return document.cookie.replace(/(?:(?:^|.*;\s*)XSRF-TOKEN\s*=\s*([^;]*).*$)|^.*$/, '$1')
     },
 
     _fetch: async (url, options = {}) => {
+        // [ISSUE #390] Content-Type must default to JSON but let caller-supplied
+        // headers win, otherwise form-urlencoded callers (e.g. addProxyAddr) get
+        // their Content-Type clobbered back to application/json and @RequestParam
+        // binding on the backend fails.
         const headers = {
-            ...options.headers,
             'Content-Type': 'application/json',
+            ...options.headers,
         };
 
         const csrfToken = await remoteApi.getCsrfToken();
@@ -1262,6 +1266,77 @@ const remoteApi = {
         }
     },
 
+    /**
+     * Get current architecture info (access type + full cluster capabilities).
+     * This is the authoritative source for capability-driven UI rendering; it
+     * reflects the runtime architecture (V4 / V5_PROXY_LOCAL / V5_PROXY_CLUSTER)
+     * after an architecture switch.
+     * @returns {Promise<Object>} - { accessType, capabilities, topology, healthy }
+     */
+    getArchitectureInfo: async () => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl('/api/architecture/info'));
+            const result = await response.json();
+            // Backend wraps response in {status, data, errMsg}; return the data payload
+            return (result && result.status === 0 && result.data) ? result.data : result;
+        } catch (error) {
+            console.error("Error fetching architecture info:", error);
+            return null;
+        }
+    },
+
+    /**
+     * Get a snapshot of recent RIP-2 route-change events.
+     * @param {number} limit - max number of events to return (newest first)
+     * @returns {Promise<Object>} - { supported, events: RouteEventView[] }
+     */
+    getRouteEvents: async (limit = 50) => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl(`/api/route-events?limit=${limit}`));
+            return await response.json();
+        } catch (error) {
+            console.error("Error fetching route events:", error);
+            return {supported: false, events: []};
+        }
+    },
+
+    /**
+     * Get all supported architecture types.
+     * @returns {Promise<Object>} - { V4_NAMESRV: {...}, V5_PROXY_LOCAL: {...}, V5_PROXY_CLUSTER: {...} }
+     */
+    getArchitectureTypes: async () => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl('/api/architecture/types'));
+            const result = await response.json();
+            // Backend wraps response in {status, data, errMsg}; return the data payload
+            return (result && result.status === 0 && result.data) ? result.data : result;
+        } catch (error) {
+            console.error("Error fetching architecture types:", error);
+            return null;
+        }
+    },
+
+    /**
+     * Switch the cluster architecture type at runtime.
+     * @param {Object} request - { accessType, proxyAddresses?, nameSrvAddress?, namespace? }
+     * @returns {Promise<Object>} - { success, accessType, capabilities }
+     */
+    switchArchitecture: async (request) => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl('/api/architecture/switch'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(request)
+            });
+            const result = await response.json();
+            // Backend wraps response in {status, data, errMsg}; return the data payload
+            return (result && result.status === 0 && result.data) ? result.data : result;
+        } catch (error) {
+            console.error("Error switching architecture:", error);
+            return { success: false, error: error.message };
+        }
+    },
+
     // LLM APIs
     getLlmConfig: function() {
         return remoteApi._fetch(remoteApi.buildUrl('/api/llm/config'), { method: 'GET' }).then(r => r.json());
@@ -1430,6 +1505,96 @@ const remoteApi = {
             callback(data);
         } catch (error) {
             callback({status: 1, errMsg: "Failed to fetch namespace capability"});
+        }
+    },
+
+    // ===== Alert Rules (backend-backed) =====
+    listAlertRules: async () => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl('/api/alert/rules'));
+            return await response.json();
+        } catch (error) {
+            console.error('Failed to list alert rules:', error);
+            return {status: 1, errMsg: 'Failed to list alert rules'};
+        }
+    },
+
+    createAlertRule: async (rule) => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl('/api/alert/rules'), {
+                method: 'POST',
+                body: JSON.stringify(rule),
+            });
+            return await response.json();
+        } catch (error) {
+            console.error('Failed to create alert rule:', error);
+            return {status: 1, errMsg: 'Failed to create alert rule'};
+        }
+    },
+
+    updateAlertRule: async (id, rule) => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl(`/api/alert/rules/${id}`), {
+                method: 'PUT',
+                body: JSON.stringify(rule),
+            });
+            return await response.json();
+        } catch (error) {
+            console.error('Failed to update alert rule:', error);
+            return {status: 1, errMsg: 'Failed to update alert rule'};
+        }
+    },
+
+    deleteAlertRule: async (id) => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl(`/api/alert/rules/${id}`), {
+                method: 'DELETE',
+            });
+            return await response.json();
+        } catch (error) {
+            console.error('Failed to delete alert rule:', error);
+            return {status: 1, errMsg: 'Failed to delete alert rule'};
+        }
+    },
+
+    setAlertRuleEnabled: async (id, enabled) => {
+        try {
+            const url = new URL(remoteApi.buildUrl(`/api/alert/rules/${id}/enable`));
+            url.searchParams.append('enabled', String(enabled));
+            const response = await remoteApi._fetch(url.toString(), {method: 'POST'});
+            return await response.json();
+        } catch (error) {
+            console.error('Failed to set alert rule enabled:', error);
+            return {status: 1, errMsg: 'Failed to set alert rule enabled'};
+        }
+    },
+
+    // ===== Audit Logs (backend-backed) =====
+    listAuditLogs: async (query = {}) => {
+        try {
+            const url = new URL(remoteApi.buildUrl('/api/audit/logs'));
+            ['page', 'size', 'keyword', 'type', 'startTime', 'endTime'].forEach((key) => {
+                if (query[key] !== undefined && query[key] !== null && query[key] !== '') {
+                    url.searchParams.append(key, String(query[key]));
+                }
+            });
+            const response = await remoteApi._fetch(url.toString());
+            return await response.json();
+        } catch (error) {
+            console.error('Failed to list audit logs:', error);
+            return {status: 1, errMsg: 'Failed to list audit logs'};
+        }
+    },
+
+    clearAuditLogs: async () => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl('/api/audit/logs'), {
+                method: 'DELETE',
+            });
+            return await response.json();
+        } catch (error) {
+            console.error('Failed to clear audit logs:', error);
+            return {status: 1, errMsg: 'Failed to clear audit logs'};
         }
     }
 };

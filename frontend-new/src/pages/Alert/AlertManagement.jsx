@@ -71,40 +71,38 @@ const AlertManagement = () => {
     const [loading, setLoading] = useState(false);
     const [modalVisible, setModalVisible] = useState(false);
     const [editingRule, setEditingRule] = useState(null);
-    const [yamlSource, setYamlSource] = useState('');
     const [searchText, setSearchText] = useState('');
     const [filterGroup, setFilterGroup] = useState('all');
     const [filterSeverity, setFilterSeverity] = useState('all');
     const [filterStatus, setFilterStatus] = useState('all');
-    const [disabledRules, setDisabledRules] = useState(() => {
-        try {
-            const saved = localStorage.getItem('alertDisabledRules');
-            return saved ? JSON.parse(saved) : {};
-        } catch {
-            return {};
-        }
-    });
     const [form] = Form.useForm();
     const [messageApi, msgContextHolder] = message.useMessage();
     const {t} = useLanguage();
 
-    useEffect(() => {
-        localStorage.setItem('alertDisabledRules', JSON.stringify(disabledRules));
-    }, [disabledRules]);
+    // Map a backend AlertRule into the shape the table/form expect.
+    const normalize = (rule, idx) => ({
+        id: rule.id,
+        key: rule.id,
+        index: idx,
+        alert: rule.alert,
+        group: rule.group,
+        expr: rule.expr,
+        for: rule.for,
+        severity: rule.severity,
+        team: rule.team,
+        summary: rule.summary || '',
+        description: rule.description || '',
+        enabled: rule.enabled !== false
+    });
 
     const fetchAlertRules = async () => {
         setLoading(true);
         try {
-            const result = await new Promise((resolve) => {
-                remoteApi.queryAlertRules(resolve);
-            });
-            if (result && result.status === 0 && result.data) {
-                const yamlStr = result.data.rules || '';
-                setYamlSource(yamlStr);
-                const parsed = parseYamlRules(yamlStr);
-                setAlertRules(parsed);
+            const result = await remoteApi.listAlertRules();
+            if (result && result.status === 0 && Array.isArray(result.data)) {
+                setAlertRules(result.data.map((r, i) => normalize(r, i + 1)));
             } else {
-                messageApi.error(t.ALERT_FETCH_FAILED || 'Failed to fetch alert rules');
+                messageApi.error(result?.errMsg || t.ALERT_FETCH_FAILED || 'Failed to fetch alert rules');
             }
         } catch (error) {
             console.error('Error fetching alert rules:', error);
@@ -118,58 +116,20 @@ const AlertManagement = () => {
         fetchAlertRules();
     }, []);
 
-    const parseYamlRules = (yamlStr) => {
-        const rules = [];
-        if (!yamlStr) return rules;
-
-        const groupBlocks = yamlStr.split(/\n(?=\s*- name:)/);
-        let ruleIndex = 0;
-
-        for (const block of groupBlocks) {
-            const groupNameMatch = block.match(/- name:\s*(.+)/);
-            if (!groupNameMatch) continue;
-            const groupName = groupNameMatch[1].trim();
-
-            const ruleBlocks = block.split(/\n\s*#\s*Rule\s+\d+:/);
-            for (let i = 1; i < ruleBlocks.length; i++) {
-                const ruleBlock = ruleBlocks[i];
-                const alertMatch = ruleBlock.match(/alert:\s*(.+)/);
-                const exprMatch = ruleBlock.match(/expr:\s*(.+)/);
-                const forMatch = ruleBlock.match(/for:\s*(.+)/);
-                const severityMatch = ruleBlock.match(/severity:\s*(.+)/);
-                const teamMatch = ruleBlock.match(/team:\s*(.+)/);
-                const summaryMatch = ruleBlock.match(/summary:\s*"(.+)"/);
-                const descMatch = ruleBlock.match(/description:\s*"(.+)"/);
-
-                if (alertMatch) {
-                    ruleIndex++;
-                    rules.push({
-                        key: alertMatch[1].trim(),
-                        index: ruleIndex,
-                        alert: alertMatch[1].trim(),
-                        group: groupName,
-                        expr: exprMatch ? exprMatch[1].trim() : '',
-                        for: forMatch ? forMatch[1].trim() : '',
-                        severity: severityMatch ? severityMatch[1].trim() : 'warning',
-                        team: teamMatch ? teamMatch[1].trim() : '',
-                        summary: summaryMatch ? summaryMatch[1].trim() : '',
-                        description: descMatch ? descMatch[1].trim() : '',
-                        enabled: !disabledRules[alertMatch[1].trim()]
-                    });
-                }
+    const handleToggleRule = async (record) => {
+        const next = !record.enabled;
+        // Optimistic update
+        setAlertRules(prev => prev.map(r => r.id === record.id ? {...r, enabled: next} : r));
+        try {
+            const result = await remoteApi.setAlertRuleEnabled(record.id, next);
+            if (!(result && result.status === 0)) {
+                setAlertRules(prev => prev.map(r => r.id === record.id ? {...r, enabled: !next} : r));
+                messageApi.error(result?.errMsg || t.ALERT_UPDATE_FAILED || 'Failed to update rule');
             }
+        } catch (error) {
+            setAlertRules(prev => prev.map(r => r.id === record.id ? {...r, enabled: !next} : r));
+            messageApi.error(t.ALERT_UPDATE_FAILED || 'Failed to update rule');
         }
-        return rules;
-    };
-
-    const handleToggleRule = (ruleKey) => {
-        setDisabledRules(prev => {
-            const updated = {...prev, [ruleKey]: !prev[ruleKey]};
-            return updated;
-        });
-        setAlertRules(prev => prev.map(rule =>
-            rule.key === ruleKey ? {...rule, enabled: !rule.enabled} : rule
-        ));
     };
 
     const handleAddRule = () => {
@@ -200,58 +160,58 @@ const AlertManagement = () => {
         setModalVisible(true);
     };
 
-    const handleDeleteRule = (ruleKey) => {
-        setAlertRules(prev => prev.filter(rule => rule.key !== ruleKey));
-        setDisabledRules(prev => {
-            const updated = {...prev};
-            delete updated[ruleKey];
-            return updated;
-        });
-        messageApi.success(t.ALERT_DELETE_SUCCESS || 'Alert rule deleted');
+    const handleDeleteRule = async (id) => {
+        try {
+            const result = await remoteApi.deleteAlertRule(id);
+            if (result && result.status === 0) {
+                setAlertRules(prev => prev.filter(r => r.id !== id));
+                messageApi.success(t.ALERT_DELETE_SUCCESS || 'Alert rule deleted');
+            } else {
+                messageApi.error(result?.errMsg || t.ALERT_DELETE_FAILED || 'Failed to delete rule');
+            }
+        } catch (error) {
+            messageApi.error(t.ALERT_DELETE_FAILED || 'Failed to delete rule');
+        }
     };
 
     const handleModalOk = async () => {
         try {
             const values = await form.validateFields();
-            if (editingRule) {
-                setAlertRules(prev => prev.map(rule =>
-                    rule.key === editingRule.key
-                        ? {
-                            ...rule,
-                            alert: values.alert,
-                            group: values.group,
-                            expr: values.expr,
-                            for: values.for,
-                            severity: values.severity,
-                            team: values.team,
-                            summary: values.summary || '',
-                            description: values.description || '',
-                            enabled: values.enabled !== false
-                        }
-                        : rule
-                ));
-                messageApi.success(t.ALERT_UPDATE_SUCCESS || 'Alert rule updated');
-            } else {
-                const newRule = {
-                    key: values.alert,
-                    index: alertRules.length + 1,
-                    alert: values.alert,
-                    group: values.group,
-                    expr: values.expr,
-                    for: values.for,
-                    severity: values.severity,
-                    team: values.team,
-                    summary: values.summary || '',
-                    description: values.description || '',
-                    enabled: values.enabled !== false
-                };
-                setAlertRules(prev => [...prev, newRule]);
-                messageApi.success(t.ALERT_CREATE_SUCCESS || 'Alert rule created');
-            }
+            const payload = {
+                alert: values.alert,
+                group: values.group,
+                expr: values.expr,
+                for: values.for,
+                severity: values.severity,
+                team: values.team,
+                summary: values.summary || '',
+                description: values.description || '',
+                enabled: values.enabled !== false
+            };
             setModalVisible(false);
-            form.resetFields();
+            setLoading(true);
+            if (editingRule) {
+                const result = await remoteApi.updateAlertRule(editingRule.id, payload);
+                if (result && result.status === 0) {
+                    messageApi.success(t.ALERT_UPDATE_SUCCESS || 'Alert rule updated');
+                    await fetchAlertRules();
+                } else {
+                    messageApi.error(result?.errMsg || t.ALERT_UPDATE_FAILED || 'Failed to update rule');
+                }
+            } else {
+                const result = await remoteApi.createAlertRule(payload);
+                if (result && result.status === 0) {
+                    messageApi.success(t.ALERT_CREATE_SUCCESS || 'Alert rule created');
+                    await fetchAlertRules();
+                } else {
+                    messageApi.error(result?.errMsg || t.ALERT_CREATE_FAILED || 'Failed to create rule');
+                }
+            }
         } catch (err) {
-            // validation failed
+            // validation failed — keep modal open
+            return;
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -404,7 +364,7 @@ const AlertManagement = () => {
                 <Switch
                     size="small"
                     checked={enabled}
-                    onChange={() => handleToggleRule(record.key)}
+                    onChange={() => handleToggleRule(record)}
                 />
             )
         },
@@ -423,7 +383,7 @@ const AlertManagement = () => {
                     </Tooltip>
                     <Popconfirm
                         title={t.ARE_YOU_SURE_TO_DELETE || 'Are you sure to delete?'}
-                        onConfirm={() => handleDeleteRule(record.key)}
+                        onConfirm={() => handleDeleteRule(record.id)}
                         okText={t.YES || 'Yes'}
                         cancelText={t.NO || 'No'}
                     >
@@ -671,6 +631,13 @@ const AlertManagement = () => {
                         label={t.ALERT_DESCRIPTION || 'Description'}
                     >
                         <TextArea rows={2} placeholder="Detailed description (optional)"/>
+                    </Form.Item>
+                    <Form.Item
+                        name="enabled"
+                        label={t.ALERT_ENABLED || 'Enabled'}
+                        valuePropName="checked"
+                    >
+                        <Switch/>
                     </Form.Item>
                 </Form>
             </Modal>

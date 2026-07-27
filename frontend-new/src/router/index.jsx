@@ -30,6 +30,7 @@ import DlqMessage from '../pages/DlqMessage/dlqmessage';
 import MessageTrace from '../pages/MessageTrace/messagetrace';
 import Acl from '../pages/Acl/acl';
 import AlertManagement from '../pages/Alert/AlertManagement';
+import AuditLog from '../pages/Audit/AuditLog';
 import LlmSettings from '../pages/LlmSettings/LlmSettings';
 import DashboardPage from '../pages/Dashboard/DashboardPage';
 
@@ -38,6 +39,7 @@ import HomePage from '../pages/Home/HomePage';
 import GroupManagement from '../pages/GroupManagement/GroupManagement';
 import BrokerCluster from '../pages/BrokerCluster/BrokerCluster';
 import LiteTopic from '../pages/LiteTopic/LiteTopic';
+import RouteEvents from '../pages/RouteEvents/RouteEvents';
 import SslSettings from '../pages/SslSettings/SslSettings';
 
 import StudioLayout from '../components/StudioLayout/StudioLayout';
@@ -143,6 +145,14 @@ const AppRouter = () => {
                         }
                     />
                     <Route
+                        path="/route-events"
+                        element={
+                            <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
+                                <RouteEvents />
+                            </motion.div>
+                        }
+                    />
+                    <Route
                         path="/producer"
                         element={
                             <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
@@ -187,6 +197,22 @@ const AppRouter = () => {
                         element={
                             <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
                                 <AlertManagement />
+                            </motion.div>
+                        }
+                    />
+                    <Route
+                        path="/alert-rule"
+                        element={
+                            <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
+                                <AlertManagement />
+                            </motion.div>
+                        }
+                    />
+                    <Route
+                        path="/audit"
+                        element={
+                            <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
+                                <AuditLog />
                             </motion.div>
                         }
                     />

@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     Table,
     Button,
@@ -26,6 +26,8 @@ import {
     Switch,
     Progress,
     Tooltip,
+    Spin,
+    notification,
 } from 'antd';
 import {
     PlusOutlined,
@@ -36,143 +38,133 @@ import {
     DashboardOutlined,
     ApiOutlined,
 } from '@ant-design/icons';
+import { remoteApi, tools } from '../../api/remoteApi/remoteApi';
+import { useLanguage } from '../../i18n/LanguageContext';
 import './BrokerCluster.css';
 
+// 自动刷新间隔（毫秒）
+const AUTO_REFRESH_INTERVAL = 5000;
+
 const BrokerCluster = () => {
+    const { t } = useLanguage();
+    const [api, contextHolder] = notification.useNotification();
+
+    const [loading, setLoading] = useState(false);
     const [autoRefresh, setAutoRefresh] = useState(false);
     const [activeTab, setActiveTab] = useState('broker');
 
-    // 模拟 Broker 数据
-    const brokerData = [
-        {
-            key: '1',
-            k8sCluster: 'prod-cn-east-1',
-            brokerName: 'broker-a',
-            status: 'running',
-            version: '5.3.0',
-            diskUsage: 62,
-            address: '10.0.1.10:10911',
-            tpsIn: '12,580',
-            tpsOut: '8,340',
-        },
-        {
-            key: '2',
-            k8sCluster: 'prod-cn-east-1',
-            brokerName: 'broker-b',
-            status: 'readonly',
-            version: '5.3.0',
-            diskUsage: 89,
-            address: '10.0.1.11:10911',
-            tpsIn: '0',
-            tpsOut: '3,120',
-        },
-        {
-            key: '3',
-            k8sCluster: 'prod-cn-east-1',
-            brokerName: 'broker-c',
-            status: 'running',
-            version: '5.2.0',
-            diskUsage: 45,
-            address: '10.0.1.12:10911',
-            tpsIn: '9,750',
-            tpsOut: '6,280',
-        },
-        {
-            key: '4',
-            k8sCluster: 'prod-cn-south-1',
-            brokerName: 'broker-d',
-            status: 'maintenance',
-            version: '5.3.0',
-            diskUsage: 33,
-            address: '10.0.2.10:10911',
-            tpsIn: '0',
-            tpsOut: '0',
-        },
-        {
-            key: '5',
-            k8sCluster: 'prod-cn-south-1',
-            brokerName: 'broker-e',
-            status: 'running',
-            version: '5.3.0',
-            diskUsage: 51,
-            address: '10.0.2.11:10911',
-            tpsIn: '7,890',
-            tpsOut: '5,430',
-        },
-        {
-            key: '6',
-            k8sCluster: 'staging-cn-east-1',
-            brokerName: 'broker-staging-a',
-            status: 'running',
-            version: '5.3.1',
-            diskUsage: 28,
-            address: '10.0.10.10:10911',
-            tpsIn: '1,230',
-            tpsOut: '980',
-        },
-    ];
+    const [brokerData, setBrokerData] = useState([]);
+    const [nameServerData, setNameServerData] = useState([]);
+    const [proxyData, setProxyData] = useState([]);
 
-    // NameServer 数据
-    const nameServerData = [
-        {
-            key: '1',
-            k8sCluster: 'prod-cn-east-1',
-            name: 'nameserver-a',
-            status: 'running',
-            version: '5.3.0',
-            address: '10.0.1.20:9876',
-            connections: 156,
-        },
-        {
-            key: '2',
-            k8sCluster: 'prod-cn-east-1',
-            name: 'nameserver-b',
-            status: 'running',
-            version: '5.3.0',
-            address: '10.0.1.21:9876',
-            connections: 148,
-        },
-        {
-            key: '3',
-            k8sCluster: 'prod-cn-south-1',
-            name: 'nameserver-c',
-            status: 'running',
-            version: '5.3.0',
-            address: '10.0.2.20:9876',
-            connections: 92,
-        },
-    ];
+    // 加载集群数据（Broker + NameServer地址）
+    const fetchClusterData = useCallback(async () => {
+        setLoading(true);
+        try {
+            // 并行请求集群数据和运维页面数据
+            const [clusterResp, opsResp, proxyResp] = await Promise.allSettled([
+                new Promise((resolve) => {
+                    remoteApi.queryClusterList((resp) => resolve(resp));
+                }),
+                remoteApi.queryOpsHomePage(),
+                new Promise((resolve) => {
+                    remoteApi.queryProxyHomePage((resp) => resolve(resp));
+                }),
+            ]);
 
-    // Proxy 数据
-    const proxyData = [
-        {
-            key: '1',
-            k8sCluster: 'prod-cn-east-1',
-            name: 'proxy-a',
-            status: 'running',
-            version: '5.3.0',
-            address: '10.0.1.30:8080',
-            grpcPort: '10.0.1.30:8081',
-            connections: 2340,
-        },
-        {
-            key: '2',
-            k8sCluster: 'prod-cn-south-1',
-            name: 'proxy-b',
-            status: 'running',
-            version: '5.3.0',
-            address: '10.0.2.30:8080',
-            grpcPort: '10.0.2.30:8081',
-            connections: 1560,
-        },
-    ];
+            // 处理集群数据 → Broker列表
+            if (clusterResp.status === 'fulfilled' && clusterResp.value?.status === 0) {
+                const { clusterInfo, brokerServer } = clusterResp.value.data;
+                const { clusterAddrTable, brokerAddrTable } = clusterInfo;
+                const generatedBrokers = tools.generateBrokerMap(brokerServer, clusterAddrTable, brokerAddrTable);
+
+                // 将 clusterMap 展平为 brokerData 列表
+                const brokers = [];
+                Object.entries(generatedBrokers).forEach(([clusterName, instances]) => {
+                    instances.forEach((instance) => {
+                        const putTpsValue = instance.putTps ? Number(String(instance.putTps).split(' ')[0]) : 0;
+                        const getTpsValue = (instance.getTransferedTps || instance.getTransferredTps)
+                            ? Number(String(instance.getTransferedTps || instance.getTransferredTps).split(' ')[0])
+                            : 0;
+                        // 从 dispatchMaxBuffer 推断状态：>0 正常运行，=0 可能只读
+                        const status = instance.dispatchMaxBuffer !== undefined
+                            ? (Number(instance.dispatchMaxBuffer) > 0 ? 'running' : 'readonly')
+                            : 'running';
+                        brokers.push({
+                            key: `${clusterName}-${instance.brokerName}-${instance.brokerId}`,
+                            clusterName,
+                            brokerName: instance.brokerName,
+                            brokerId: instance.brokerId,
+                            status,
+                            version: instance.brokerVersionDesc || '-',
+                            diskUsage: instance.diskUsageString ? parseFloat(instance.diskUsageString) : 0,
+                            address: instance.address,
+                            putTps: putTpsValue,
+                            getTps: getTpsValue,
+                            // 保留原始详情用于配置/状态查看
+                            detail: instance.detail || instance,
+                        });
+                    });
+                });
+                setBrokerData(brokers);
+            } else {
+                const errMsg = clusterResp.status === 'fulfilled' ? clusterResp.value?.errMsg : clusterResp.reason?.message;
+                api.error({ message: t.QUERY_CLUSTER_LIST_FAILED || 'Failed to fetch cluster list', description: errMsg, duration: 3 });
+            }
+
+            // 处理运维页面数据 → NameServer列表
+            if (opsResp.status === 'fulfilled' && opsResp.value?.status === 0) {
+                const { namesvrAddrList, currentNamesrv } = opsResp.value.data;
+                const nsList = (namesvrAddrList || []).map((addr, index) => ({
+                    key: addr,
+                    name: `nameserver-${index + 1}`,
+                    status: 'running', // API不提供健康状态，默认running
+                    version: '-', // API不提供版本信息
+                    address: addr,
+                    isCurrent: addr === currentNamesrv,
+                }));
+                setNameServerData(nsList);
+            }
+
+            // 处理Proxy数据 → Proxy列表
+            if (proxyResp.status === 'fulfilled' && proxyResp.value?.status === 0) {
+                const { proxyAddrList, currentProxyAddr } = proxyResp.value.data;
+                const proxyList = (proxyAddrList || []).map((addr, index) => ({
+                    key: addr,
+                    name: `proxy-${index + 1}`,
+                    status: 'running', // API不提供健康状态，默认running
+                    version: '-', // API不提供版本信息，需通过queryBrokerConfig获取
+                    address: addr,
+                    isCurrent: addr === currentProxyAddr,
+                }));
+                setProxyData(proxyList);
+            }
+        } catch (error) {
+            console.error('Error fetching cluster data:', error);
+            api.error({ message: t.FAILED_TO_FETCH_DATA || 'Failed to fetch data', description: error.message, duration: 3 });
+        } finally {
+            setLoading(false);
+        }
+    }, [t, api]);
+
+    // 初始加载
+    useEffect(() => {
+        fetchClusterData();
+    }, [fetchClusterData]);
+
+    // 自动刷新
+    useEffect(() => {
+        if (!autoRefresh) return;
+        const timer = setInterval(fetchClusterData, AUTO_REFRESH_INTERVAL);
+        return () => clearInterval(timer);
+    }, [autoRefresh, fetchClusterData]);
 
     // 状态标签渲染
     const renderStatus = (status) => {
         const config = {
-            running: { color: 'success', text: '运行中', icon: null },
-            readonly: { color: 'warning', text: '只读', icon: null },
-            maintenance: { color: 'error', text: '维护中', icon: null },
+            running: { color: 'success', text: '运行中' },
+            readonly: { color: 'warning', text: '只读' },
+            maintenance: { color: 'error', text: '维护中' },
         };
         const { color, text } = config[status] || config.running;
         return <Tag color={color}>{text}</Tag>;
@@ -180,6 +172,7 @@ const BrokerCluster = () => {
 
     // 磁盘使用率渲染
     const renderDiskUsage = (percent) => {
+        if (!percent || percent <= 0) return <span style={{ color: '#999' }}>-</span>;
         let status = 'normal';
         let color = '#52c41a';
         if (percent > 85) {
@@ -203,20 +196,28 @@ const BrokerCluster = () => {
         );
     };
 
+    // TPS格式化
+    const formatTps = (value) => {
+        if (!value && value !== 0) return '-';
+        return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    };
+
     // Broker 表格列
     const brokerColumns = [
         {
-            title: 'K8s集群名称',
-            dataIndex: 'k8sCluster',
-            key: 'k8sCluster',
+            title: '集群',
+            dataIndex: 'clusterName',
+            key: 'clusterName',
             render: (text) => <span style={{ fontWeight: 500 }}>{text}</span>,
         },
         {
             title: 'Broker名称',
             dataIndex: 'brokerName',
             key: 'brokerName',
-            render: (text) => (
-                <span style={{ color: '#1677ff', fontWeight: 500 }}>{text}</span>
+            render: (text, record) => (
+                <span style={{ color: '#1677ff', fontWeight: 500 }}>
+                    {text} ({record.brokerId === 0 ? 'Master' : 'Slave'})
+                </span>
             ),
         },
         {
@@ -245,31 +246,26 @@ const BrokerCluster = () => {
         },
         {
             title: 'TPS入流量',
-            dataIndex: 'tpsIn',
-            key: 'tpsIn',
-            render: (text) => <span style={{ fontWeight: 500 }}>{text}</span>,
-            sorter: (a, b) => parseFloat(a.tpsIn.replace(/,/g, '')) - parseFloat(b.tpsIn.replace(/,/g, '')),
+            dataIndex: 'putTps',
+            key: 'putTps',
+            render: formatTps,
+            sorter: (a, b) => (a.putTps || 0) - (b.putTps || 0),
         },
         {
             title: 'TPS出流量',
-            dataIndex: 'tpsOut',
-            key: 'tpsOut',
-            render: (text) => <span style={{ fontWeight: 500 }}>{text}</span>,
-            sorter: (a, b) => parseFloat(a.tpsOut.replace(/,/g, '')) - parseFloat(b.tpsOut.replace(/,/g, '')),
+            dataIndex: 'getTps',
+            key: 'getTps',
+            render: formatTps,
+            sorter: (a, b) => (a.getTps || 0) - (b.getTps || 0),
         },
         {
             title: '操作',
             key: 'action',
-            render: () => (
+            render: (_, record) => (
                 <Space size="small">
                     <Tooltip title="配置">
                         <Button type="link" size="small" icon={<SettingOutlined />}>
                             配置
-                        </Button>
-                    </Tooltip>
-                    <Tooltip title="重启">
-                        <Button type="link" size="small" icon={<SyncOutlined />}>
-                            重启
                         </Button>
                     </Tooltip>
                 </Space>
@@ -279,45 +275,61 @@ const BrokerCluster = () => {
 
     // NameServer 表格列
     const nsColumns = [
-        { title: 'K8s集群名称', dataIndex: 'k8sCluster', key: 'k8sCluster', render: (t) => <span style={{ fontWeight: 500 }}>{t}</span> },
-        { title: 'NameServer名称', dataIndex: 'name', key: 'name', render: (t) => <span style={{ color: '#1677ff', fontWeight: 500 }}>{t}</span> },
-        { title: '运行状态', dataIndex: 'status', key: 'status', render: renderStatus },
-        { title: '版本', dataIndex: 'version', key: 'version' },
-        { title: '地址', dataIndex: 'address', key: 'address', render: (t) => <code style={{ fontSize: 12, background: '#f5f5f5', padding: '2px 6px', borderRadius: 4 }}>{t}</code> },
-        { title: '连接数', dataIndex: 'connections', key: 'connections', render: (t) => <span style={{ fontWeight: 500 }}>{t}</span> },
         {
-            title: '操作', key: 'action',
-            render: () => (
-                <Space size="small">
-                    <Button type="link" size="small" icon={<SettingOutlined />}>配置</Button>
-                    <Button type="link" size="small" icon={<SyncOutlined />}>重启</Button>
-                </Space>
+            title: 'NameServer名称',
+            dataIndex: 'name',
+            key: 'name',
+            render: (text, record) => (
+                <span>
+                    <span style={{ color: '#1677ff', fontWeight: 500 }}>{text}</span>
+                    {record.isCurrent && <Tag color="blue" style={{ marginLeft: 8 }}>当前</Tag>}
+                </span>
             ),
+        },
+        {
+            title: '运行状态',
+            dataIndex: 'status',
+            key: 'status',
+            render: renderStatus,
+        },
+        {
+            title: '地址',
+            dataIndex: 'address',
+            key: 'address',
+            render: (text) => <code style={{ fontSize: 12, background: '#f5f5f5', padding: '2px 6px', borderRadius: 4 }}>{text}</code>,
         },
     ];
 
     // Proxy 表格列
     const proxyColumns = [
-        { title: 'K8s集群名称', dataIndex: 'k8sCluster', key: 'k8sCluster', render: (t) => <span style={{ fontWeight: 500 }}>{t}</span> },
-        { title: 'Proxy名称', dataIndex: 'name', key: 'name', render: (t) => <span style={{ color: '#1677ff', fontWeight: 500 }}>{t}</span> },
-        { title: '运行状态', dataIndex: 'status', key: 'status', render: renderStatus },
-        { title: '版本', dataIndex: 'version', key: 'version' },
-        { title: 'HTTP地址', dataIndex: 'address', key: 'address', render: (t) => <code style={{ fontSize: 12, background: '#f5f5f5', padding: '2px 6px', borderRadius: 4 }}>{t}</code> },
-        { title: 'gRPC地址', dataIndex: 'grpcPort', key: 'grpcPort', render: (t) => <code style={{ fontSize: 12, background: '#f5f5f5', padding: '2px 6px', borderRadius: 4 }}>{t}</code> },
-        { title: '连接数', dataIndex: 'connections', key: 'connections', render: (t) => <span style={{ fontWeight: 500 }}>{t}</span> },
         {
-            title: '操作', key: 'action',
-            render: () => (
-                <Space size="small">
-                    <Button type="link" size="small" icon={<SettingOutlined />}>配置</Button>
-                    <Button type="link" size="small" icon={<SyncOutlined />}>重启</Button>
-                </Space>
+            title: 'Proxy名称',
+            dataIndex: 'name',
+            key: 'name',
+            render: (text, record) => (
+                <span>
+                    <span style={{ color: '#1677ff', fontWeight: 500 }}>{text}</span>
+                    {record.isCurrent && <Tag color="blue" style={{ marginLeft: 8 }}>当前</Tag>}
+                </span>
             ),
+        },
+        {
+            title: '运行状态',
+            dataIndex: 'status',
+            key: 'status',
+            render: renderStatus,
+        },
+        {
+            title: '地址',
+            dataIndex: 'address',
+            key: 'address',
+            render: (text) => <code style={{ fontSize: 12, background: '#f5f5f5', padding: '2px 6px', borderRadius: 4 }}>{text}</code>,
         },
     ];
 
     return (
         <div className="broker-cluster-page">
+            {contextHolder}
             <div className="page-header">
                 <h2 className="page-title">
                     <CloudServerOutlined style={{ marginRight: 8, color: '#1677ff' }} />
@@ -331,76 +343,83 @@ const BrokerCluster = () => {
                         unCheckedChildren="手动"
                         size="small"
                     />
-                    <Button icon={<ReloadOutlined />} size="small">
+                    <Button
+                        icon={<ReloadOutlined />}
+                        size="small"
+                        onClick={fetchClusterData}
+                        loading={loading}
+                    >
                         刷新
-                    </Button>
-                    <Button type="primary" icon={<PlusOutlined />}>
-                        新建集群
                     </Button>
                 </Space>
             </div>
 
             <Card bordered={false} className="cluster-card">
-                <Tabs
-                    activeKey={activeTab}
-                    onChange={setActiveTab}
-                    items={[
-                        {
-                            key: 'nameserver',
-                            label: (
-                                <span>
-                                    <DashboardOutlined style={{ marginRight: 4 }} />
-                                    NameServer管理
-                                </span>
-                            ),
-                            children: (
-                                <Table
-                                    columns={nsColumns}
-                                    dataSource={nameServerData}
-                                    pagination={false}
-                                    size="middle"
-                                />
-                            ),
-                        },
-                        {
-                            key: 'broker',
-                            label: (
-                                <span>
-                                    <CloudServerOutlined style={{ marginRight: 4 }} />
-                                    Broker管理
-                                </span>
-                            ),
-                            children: (
-                                <Table
-                                    columns={brokerColumns}
-                                    dataSource={brokerData}
-                                    pagination={{
-                                        pageSize: 10,
-                                        showTotal: (total) => `共 ${total} 个Broker`,
-                                    }}
-                                    size="middle"
-                                />
-                            ),
-                        },
-                        {
-                            key: 'proxy',
-                            label: (
-                                <span>
-                                    <ApiOutlined style={{ marginRight: 4 }} />
-                                    Proxy管理
-                                </span>
-                            ),
-                            children: (
-                                <Table
-                                    columns={proxyColumns}
-                                    dataSource={proxyData}
-                                    pagination={false}
-                                    size="middle"
-                                />
-                            ),
-                        },
-                    ]}
-                />
+                <Spin spinning={loading} tip="加载中...">
+                    <Tabs
+                        activeKey={activeTab}
+                        onChange={setActiveTab}
+                        items={[
+                            {
+                                key: 'nameserver',
+                                label: (
+                                    <span>
+                                        <DashboardOutlined style={{ marginRight: 4 }} />
+                                        NameServer ({nameServerData.length})
+                                    </span>
+                                ),
+                                children: (
+                                    <Table
+                                        columns={nsColumns}
+                                        dataSource={nameServerData}
+                                        pagination={false}
+                                        size="middle"
+                                        locale={{ emptyText: '暂无NameServer数据' }}
+                                    />
+                                ),
+                            },
+                            {
+                                key: 'broker',
+                                label: (
+                                    <span>
+                                        <CloudServerOutlined style={{ marginRight: 4 }} />
+                                        Broker ({brokerData.length})
+                                    </span>
+                                ),
+                                children: (
+                                    <Table
+                                        columns={brokerColumns}
+                                        dataSource={brokerData}
+                                        pagination={{
+                                            pageSize: 10,
+                                            showTotal: (total) => `共 ${total} 个Broker`,
+                                        }}
+                                        size="middle"
+                                        locale={{ emptyText: '暂无Broker数据' }}
+                                    />
+                                ),
+                            },
+                            {
+                                key: 'proxy',
+                                label: (
+                                    <span>
+                                        <ApiOutlined style={{ marginRight: 4 }} />
+                                        Proxy ({proxyData.length})
+                                    </span>
+                                ),
+                                children: (
+                                    <Table
+                                        columns={proxyColumns}
+                                        dataSource={proxyData}
+                                        pagination={false}
+                                        size="middle"
+                                        locale={{ emptyText: '暂无Proxy数据' }}
+                                    />
+                                ),
+                            },
+                        ]}
+                    />
+                </Spin>
             </Card>
         </div>
     );

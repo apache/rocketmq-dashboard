@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
     Card,
     Table,
@@ -25,14 +25,11 @@ import {
     Modal,
     Form,
     Input,
-    Select,
     notification,
     Spin,
     Row,
     Col,
     Statistic,
-    Progress,
-    Tabs,
     Descriptions,
     Tooltip,
     Popconfirm,
@@ -44,99 +41,83 @@ import {
     SettingOutlined,
     DashboardOutlined,
     CheckCircleOutlined,
-    CloseCircleOutlined,
-    ExclamationCircleOutlined,
-    SyncOutlined,
 } from '@ant-design/icons';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { remoteApi } from '../../api/remoteApi/remoteApi';
 import './ProxyCluster.css';
 
-const { Option } = Select;
-const { TabPane } = Tabs;
-
 const ProxyCluster = () => {
     const { t } = useLanguage();
     const [form] = Form.useForm();
+    const [api, contextHolder] = notification.useNotification();
 
     const [loading, setLoading] = useState(false);
     const [proxyNodes, setProxyNodes] = useState([]);
     const [selectedNode, setSelectedNode] = useState(null);
     const [nodeConfig, setNodeConfig] = useState({});
+    const [configLoading, setConfigLoading] = useState(false);
     const [configModalVisible, setConfigModalVisible] = useState(false);
     const [addNodeModalVisible, setAddNodeModalVisible] = useState(false);
-    const [clusterStats, setClusterStats] = useState({
-        totalNodes: 0,
-        healthyNodes: 0,
-        totalConnections: 0,
-        totalTPS: 0,
-    });
 
     // 加载 Proxy 节点列表
-    useEffect(() => {
-        loadProxyNodes();
-    }, []);
-
-    const loadProxyNodes = () => {
+    const loadProxyNodes = useCallback(() => {
         setLoading(true);
         remoteApi.queryProxyHomePage((resp) => {
             setLoading(false);
             if (resp.status === 0) {
                 const { proxyAddrList, currentProxyAddr } = resp.data;
-                const nodes = (proxyAddrList || []).map((addr, index) => ({
+                const nodes = (proxyAddrList || []).map((addr) => ({
                     key: addr,
                     address: addr,
-                    status: index === 0 ? 'healthy' : 'healthy', // 模拟健康状态
-                    version: '5.3.0',
-                    connections: Math.floor(Math.random() * 1000) + 100,
-                    tps: Math.floor(Math.random() * 5000) + 1000,
-                    memory: Math.floor(Math.random() * 60) + 20,
-                    cpu: Math.floor(Math.random() * 50) + 10,
-                    uptime: `${Math.floor(Math.random() * 30) + 1}d`,
                     isSelected: addr === currentProxyAddr,
                 }));
                 setProxyNodes(nodes);
-
-                // 计算集群统计
-                const healthyCount = nodes.filter(n => n.status === 'healthy').length;
-                const totalConn = nodes.reduce((sum, n) => sum + n.connections, 0);
-                const totalTPS = nodes.reduce((sum, n) => sum + n.tps, 0);
-                setClusterStats({
-                    totalNodes: nodes.length,
-                    healthyNodes: healthyCount,
-                    totalConnections: totalConn,
-                    totalTPS: totalTPS,
-                });
             } else {
-                notification.error({
+                api.error({
                     message: t.FETCH_PROXY_LIST_FAILED || 'Failed to fetch proxy list',
-                    duration: 2,
+                    description: resp.errMsg,
+                    duration: 3,
                 });
             }
         });
-    };
+    }, [t, api]);
 
-    // 查看节点配置
+    useEffect(() => {
+        loadProxyNodes();
+    }, [loadProxyNodes]);
+
+    // 查看节点配置 — 接入真实 queryBrokerConfig API
     const handleViewConfig = (node) => {
         setSelectedNode(node);
-        setLoading(true);
-        // 模拟配置数据
-        setTimeout(() => {
-            setNodeConfig({
-                'proxy.name': `proxy-${node.address.split(':')[0]}`,
-                'proxy.listenPort': node.address.split(':')[1] || '8081',
-                'proxy.grpcPort': '8080',
-                'proxy.maxConnections': '10000',
-                'proxy.threadPoolSize': '64',
-                'proxy.messageMaxSize': '4194304',
-                'proxy.enableACL': 'true',
-                'proxy.tls.enabled': 'false',
-                'rocketmq.namesrv.addr': localStorage.getItem('namesrvAddr') || '127.0.0.1:9876',
-                'proxy.clusterName': 'DefaultCluster',
-            });
-            setLoading(false);
-            setConfigModalVisible(true);
-        }, 500);
+        setConfigModalVisible(true);
+        setConfigLoading(true);
+        setNodeConfig({});
+
+        remoteApi.queryBrokerConfig(node.address, (resp) => {
+            setConfigLoading(false);
+            if (resp.status === 0) {
+                // 后端返回的配置是 key-value 对象或数组
+                const configData = resp.data || {};
+                if (Array.isArray(configData)) {
+                    // 如果返回数组格式 [{key, value}, ...]
+                    const configMap = {};
+                    configData.forEach((item) => {
+                        configMap[item.keyName || item.key || item.name] = item.value || item.val;
+                    });
+                    setNodeConfig(configMap);
+                } else if (typeof configData === 'object') {
+                    // 如果返回对象格式 {key: value, ...}
+                    setNodeConfig(configData);
+                }
+            } else {
+                api.error({
+                    message: t.FAILED_TO_FETCH_CONFIG || 'Failed to fetch node config',
+                    description: resp.errMsg,
+                    duration: 3,
+                });
+                setNodeConfig({});
+            }
+        });
     };
 
     // 添加节点
@@ -146,7 +127,7 @@ const ProxyCluster = () => {
             remoteApi.addProxyAddr(values.address, (resp) => {
                 setLoading(false);
                 if (resp.status === 0) {
-                    notification.success({
+                    api.success({
                         message: t.SUCCESS || 'Node added successfully',
                         duration: 2,
                     });
@@ -154,9 +135,9 @@ const ProxyCluster = () => {
                     form.resetFields();
                     loadProxyNodes();
                 } else {
-                    notification.error({
+                    api.error({
                         message: resp.errMsg || t.ADD_PROXY_FAILED || 'Failed to add node',
-                        duration: 2,
+                        duration: 3,
                     });
                 }
             });
@@ -165,38 +146,14 @@ const ProxyCluster = () => {
 
     // 删除节点
     const handleRemoveNode = (node) => {
-        notification.info({
+        api.info({
             message: 'Remove node operation (not implemented in API)',
             description: `Would remove node: ${node.address}`,
             duration: 2,
         });
     };
 
-    // 刷新节点
-    const handleRefresh = () => {
-        loadProxyNodes();
-        notification.success({
-            message: t.REFRESH_SUCCESS || 'Refreshed successfully',
-            duration: 1,
-        });
-    };
-
-    // 状态标签渲染
-    const renderStatus = (status) => {
-        const statusConfig = {
-            healthy: { color: 'success', icon: <CheckCircleOutlined />, text: 'Healthy' },
-            unhealthy: { color: 'error', icon: <CloseCircleOutlined />, text: 'Unhealthy' },
-            warning: { color: 'warning', icon: <ExclamationCircleOutlined />, text: 'Warning' },
-        };
-        const config = statusConfig[status] || statusConfig.healthy;
-        return (
-            <Tag color={config.color} icon={config.icon}>
-                {config.text}
-            </Tag>
-        );
-    };
-
-    // 表格列定义
+    // 表格列定义 — 仅展示API实际返回的字段
     const columns = [
         {
             title: t.ADDRESS || 'Address',
@@ -214,66 +171,9 @@ const ProxyCluster = () => {
             ),
         },
         {
-            title: t.STATUS || 'Status',
-            dataIndex: 'status',
-            key: 'status',
-            render: renderStatus,
-        },
-        {
-            title: t.VERSION || 'Version',
-            dataIndex: 'version',
-            key: 'version',
-        },
-        {
-            title: t.CONNECTIONS || 'Connections',
-            dataIndex: 'connections',
-            key: 'connections',
-            render: (val) => val.toLocaleString(),
-            sorter: (a, b) => a.connections - b.connections,
-        },
-        {
-            title: 'TPS',
-            dataIndex: 'tps',
-            key: 'tps',
-            render: (val) => val.toLocaleString(),
-            sorter: (a, b) => a.tps - b.tps,
-        },
-        {
-            title: t.MEMORY || 'Memory',
-            dataIndex: 'memory',
-            key: 'memory',
-            render: (val) => (
-                <Progress
-                    percent={val}
-                    size="small"
-                    status={val > 80 ? 'exception' : 'normal'}
-                    style={{ width: 100 }}
-                />
-            ),
-            sorter: (a, b) => a.memory - b.memory,
-        },
-        {
-            title: 'CPU',
-            dataIndex: 'cpu',
-            key: 'cpu',
-            render: (val) => (
-                <Progress
-                    percent={val}
-                    size="small"
-                    status={val > 80 ? 'exception' : 'normal'}
-                    style={{ width: 100 }}
-                />
-            ),
-            sorter: (a, b) => a.cpu - b.cpu,
-        },
-        {
-            title: t.UPTIME || 'Uptime',
-            dataIndex: 'uptime',
-            key: 'uptime',
-        },
-        {
             title: t.ACTION || 'Action',
             key: 'action',
+            width: 120,
             render: (_, record) => (
                 <Space size="small">
                     <Tooltip title={t.VIEW_CONFIG || 'View Config'}>
@@ -306,50 +206,33 @@ const ProxyCluster = () => {
         },
     ];
 
+    // 统计卡片 — 仅展示API可提供的数据
+    const totalNodes = proxyNodes.length;
+    const currentNode = proxyNodes.find(n => n.isSelected);
+
     return (
         <div className="proxy-cluster-container">
+            {contextHolder}
             <Spin spinning={loading} tip={t.LOADING}>
                 {/* 集群统计卡片 */}
                 <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-                    <Col xs={24} sm={12} md={6}>
+                    <Col xs={24} sm={12} md={8}>
                         <Card>
                             <Statistic
                                 title={t.TOTAL_NODES || 'Total Nodes'}
-                                value={clusterStats.totalNodes}
+                                value={totalNodes}
                                 prefix={<DashboardOutlined />}
                                 valueStyle={{ color: '#1890ff' }}
                             />
                         </Card>
                     </Col>
-                    <Col xs={24} sm={12} md={6}>
+                    <Col xs={24} sm={12} md={8}>
                         <Card>
                             <Statistic
-                                title={t.HEALTHY_NODES || 'Healthy Nodes'}
-                                value={clusterStats.healthyNodes}
-                                suffix={`/ ${clusterStats.totalNodes}`}
-                                valueStyle={{
-                                    color: clusterStats.healthyNodes === clusterStats.totalNodes
-                                        ? '#3f8600'
-                                        : '#cf1322',
-                                }}
-                            />
-                        </Card>
-                    </Col>
-                    <Col xs={24} sm={12} md={6}>
-                        <Card>
-                            <Statistic
-                                title={t.TOTAL_CONNECTIONS || 'Total Connections'}
-                                value={clusterStats.totalConnections}
-                                valueStyle={{ color: '#1890ff' }}
-                            />
-                        </Card>
-                    </Col>
-                    <Col xs={24} sm={12} md={6}>
-                        <Card>
-                            <Statistic
-                                title={t.TOTAL_TPS || 'Total TPS'}
-                                value={clusterStats.totalTPS}
-                                valueStyle={{ color: '#1890ff' }}
+                                title="当前Proxy"
+                                value={currentNode ? currentNode.address : '-'}
+                                valueStyle={{ color: '#3f8600', fontSize: 16 }}
+                                prefix={<CheckCircleOutlined />}
                             />
                         </Card>
                     </Col>
@@ -361,7 +244,7 @@ const ProxyCluster = () => {
                         <Button
                             type="primary"
                             icon={<ReloadOutlined />}
-                            onClick={handleRefresh}
+                            onClick={loadProxyNodes}
                         >
                             {t.REFRESH || 'Refresh'}
                         </Button>
@@ -382,11 +265,12 @@ const ProxyCluster = () => {
                         dataSource={proxyNodes}
                         pagination={false}
                         size="middle"
+                        locale={{ emptyText: '暂无Proxy节点' }}
                     />
                 </Card>
             </Spin>
 
-            {/* 配置查看弹窗 */}
+            {/* 配置查看弹窗 — 使用真实API数据 */}
             <Modal
                 title={`${t.NODE_CONFIG || 'Node Configuration'} - ${selectedNode?.address}`}
                 open={configModalVisible}
@@ -398,13 +282,21 @@ const ProxyCluster = () => {
                 ]}
                 width={700}
             >
-                <Descriptions bordered column={1} size="small">
-                    {Object.entries(nodeConfig).map(([key, value]) => (
-                        <Descriptions.Item key={key} label={key}>
-                            {value}
-                        </Descriptions.Item>
-                    ))}
-                </Descriptions>
+                <Spin spinning={configLoading} tip="加载配置...">
+                    {Object.keys(nodeConfig).length > 0 ? (
+                        <Descriptions bordered column={1} size="small">
+                            {Object.entries(nodeConfig).map(([key, value]) => (
+                                <Descriptions.Item key={key} label={key}>
+                                    {String(value)}
+                                </Descriptions.Item>
+                            ))}
+                        </Descriptions>
+                    ) : !configLoading ? (
+                        <div style={{ textAlign: 'center', padding: 20, color: '#999' }}>
+                            暂无配置数据
+                        </div>
+                    ) : null}
+                </Spin>
             </Modal>
 
             {/* 添加节点弹窗 */}

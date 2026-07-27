@@ -16,7 +16,9 @@
  */
 package org.apache.rocketmq.dashboard.service.impl;
 
+import org.apache.rocketmq.dashboard.model.CheckItem;
 import org.apache.rocketmq.dashboard.model.MetricsHealthResult;
+import org.apache.rocketmq.dashboard.model.MetricsSelfCheckResult;
 import org.apache.rocketmq.dashboard.service.MetricsEnhancedService;
 import org.apache.rocketmq.dashboard.service.MetricsProvider;
 import org.slf4j.Logger;
@@ -563,6 +565,147 @@ public class MetricsEnhancedServiceImpl implements MetricsEnhancedService {
     @Override
     public String getAlertRulesYaml() {
         return ALERT_RULES_YAML;
+    }
+
+    /**
+     * Metric-family prefixes recognized as valid PromQL sources for dashboard panels.
+     * A panel whose PromQL references at least one of these is considered resolvable.
+     */
+    private static final String[] KNOWN_METRIC_PREFIXES = {
+        "rocketmq_", "java_", "up", "go_", "process_", "jvm_", "node_"
+    };
+
+    /**
+     * Validate that a dashboard panel's PromQL is non-empty and references at least one
+     * known metric family. Extracted as a {@code static} method so it can be unit-tested
+     * without a Spring context.
+     *
+     * @param promql the PromQL expression of a panel
+     * @return true if the expression is usable
+     */
+    static boolean isPanelPromqlValid(String promql) {
+        if (promql == null || promql.trim().isEmpty()) {
+            return false;
+        }
+        String normalized = promql.trim();
+        for (String prefix : KNOWN_METRIC_PREFIXES) {
+            if (normalized.contains(prefix)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Override
+    public MetricsSelfCheckResult selfCheck() {
+        MetricsSelfCheckResult result = new MetricsSelfCheckResult();
+        result.setTimestamp(System.currentTimeMillis());
+        List<CheckItem> checks = new ArrayList<>();
+
+        // 1) Data-source health
+        try {
+            MetricsHealthResult health = checkDataSourceHealth();
+            if (health.isConnected()) {
+                checks.add(new CheckItem("data-source-connectivity",
+                    true, "INFO",
+                    "Data source connected: " + health.getStatusMessage()));
+            } else {
+                String msg = health.getStatusMessage() == null ? "" : health.getStatusMessage();
+                if (msg.contains("no data source") || msg.contains("not configured")
+                    || msg.contains("unavailable")) {
+                    // Built-in metrics still work without an external Prometheus.
+                    checks.add(new CheckItem("data-source-connectivity",
+                        true, "WARN",
+                        "No external Prometheus configured — built-in metrics active (degraded mode)."));
+                } else {
+                    checks.add(new CheckItem("data-source-connectivity",
+                        false, "ERROR",
+                        "Data source not reachable: " + msg));
+                }
+            }
+        } catch (Exception e) {
+            checks.add(new CheckItem("data-source-connectivity",
+                false, "ERROR", "Health check threw: " + e.getMessage()));
+        }
+
+        // 2) Each dashboard panel resolves a known metric family
+        ensurePanelsLoaded();
+        int panelTotal = panelsCache.size();
+        int panelValid = 0;
+        for (Map<String, Object> panel : panelsCache.values()) {
+            String promql = (String) panel.get("promql");
+            if (isPanelPromqlValid(promql)) {
+                panelValid++;
+            } else {
+                checks.add(new CheckItem("panel:" + panel.get("id"),
+                    false, "WARN",
+                    "Panel has empty or unrecognized PromQL: " + (promql == null ? "null" : promql)));
+            }
+        }
+        checks.add(new CheckItem("dashboard-panels",
+            panelValid == panelTotal,
+            panelValid == panelTotal ? "INFO" : "WARN",
+            panelValid + "/" + panelTotal + " panels resolve a known metric family"));
+
+        // 3) Alert ruleset present and meets >=20 rules requirement
+        int alertRuleCount = countAlertRules(ALERT_RULES_YAML);
+        checks.add(new CheckItem("alert-rules",
+            alertRuleCount >= 20,
+            alertRuleCount >= 20 ? "INFO" : "ERROR",
+            alertRuleCount + " alert rules defined (requirement: >=20)"));
+
+        // 4) Pre-built queries available
+        try {
+            Map<String, Object> queries = getPrebuiltQueries();
+            boolean hasQueries = queries != null && !queries.isEmpty();
+            checks.add(new CheckItem("prebuilt-queries",
+                hasQueries,
+                hasQueries ? "INFO" : "WARN",
+                hasQueries ? (queries.size() + " query categories available")
+                           : "No pre-built queries found"));
+        } catch (Exception e) {
+            checks.add(new CheckItem("prebuilt-queries",
+                false, "WARN", "Failed to load pre-built queries: " + e.getMessage()));
+        }
+
+        // Aggregate
+        int passed = 0;
+        int failed = 0;
+        boolean healthy = true;
+        for (CheckItem item : checks) {
+            if (item.isPassed()) {
+                passed++;
+            } else {
+                failed++;
+                if ("ERROR".equals(item.getSeverity())) {
+                    healthy = false;
+                }
+            }
+        }
+        result.setChecks(checks);
+        result.setTotalChecks(checks.size());
+        result.setPassedChecks(passed);
+        result.setFailedChecks(failed);
+        result.setHealthy(healthy);
+        result.setSummary(healthy
+            ? "Metrics subsystem healthy (" + passed + "/" + checks.size() + " checks passed)"
+            : "Metrics subsystem has " + failed + " failing check(s) (" + passed + "/"
+                + checks.size() + " passed)");
+        return result;
+    }
+
+    /** Count {@code - alert:} definitions in an alert-rules YAML block. */
+    static int countAlertRules(String yaml) {
+        if (yaml == null || yaml.isEmpty()) {
+            return 0;
+        }
+        int count = 0;
+        int idx = yaml.indexOf("- alert:");
+        while (idx >= 0) {
+            count++;
+            idx = yaml.indexOf("- alert:", idx + 1);
+        }
+        return count;
     }
 
     /**

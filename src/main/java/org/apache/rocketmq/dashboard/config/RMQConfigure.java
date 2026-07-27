@@ -95,6 +95,11 @@ public class RMQConfigure {
     @Getter
     private String authMode = "file";
 
+    /** Proxy Admin gRPC server port (default 8086). The proxy admin service runs on a separate port from the data plane. */
+    @Setter
+    @Getter
+    private Integer proxyAdminPort = 8086;
+
     public void setProxyAddrs(List<String> proxyAddrs) {
         this.proxyAddrs = proxyAddrs;
         if (CollectionUtils.isNotEmpty(proxyAddrs)) {

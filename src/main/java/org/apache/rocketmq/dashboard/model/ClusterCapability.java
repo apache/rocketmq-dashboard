@@ -53,7 +53,13 @@ public class ClusterCapability {
     private boolean grpcClientSupported;
 
     /**
- *
+     * RIP-2 streaming route-change event subscription (SubscribeRouteEvents) support.
+     * True for V5 Proxy architecture where the Proxy Admin gRPC service is reachable.
+     */
+    private boolean routeEventsSupported;
+
+    /**
+     *
      */
     private boolean delayMessageSupported;
 

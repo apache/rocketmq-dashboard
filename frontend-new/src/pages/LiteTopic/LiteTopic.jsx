@@ -90,7 +90,8 @@ const LiteTopic = () => {
         try {
             const result = await remoteApi.queryLiteTopicCapability();
             if (result.status === 0 && result.data) {
-                setCapabilitySupported(result.data.supported !== false);
+                // Backend returns the boolean under `liteTopicSupported`.
+                setCapabilitySupported(result.data.liteTopicSupported !== false);
             } else if (result.status !== 0) {
                 setCapabilitySupported(false);
             }

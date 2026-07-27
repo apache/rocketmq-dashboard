@@ -34,6 +34,7 @@ import {
   Tooltip,
   Popconfirm,
   App,
+  Alert,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -48,10 +49,12 @@ import {
 } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
+import { useCapability } from '../../contexts/CapabilityContext';
 import { queryProxyHomePage, addProxyAddr, type ProxyNode } from '../../api/proxy';
 
 const ProxyPage: React.FC = () => {
   const { t } = useLang();
+  const { capability } = useCapability();
   const { message } = App.useApp();
 
   const [loading, setLoading] = useState(false);
@@ -298,6 +301,20 @@ const ProxyPage: React.FC = () => {
   ];
 
   // ─── Render ──────────────────────────────────────────────────
+
+  if (!capability.grpcClientSupported) {
+    return (
+      <div style={{ padding: 24 }}>
+        <PageHeader title={t('proxy.title')} />
+        <Alert
+          type="warning"
+          showIcon
+          message="Proxy 管理需要 V5 架构"
+          description="当前集群不支持 gRPC Proxy 管理。请在「设置 → 架构切换」中切换到 V5 Proxy 模式后重试。"
+        />
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: 0 }}>

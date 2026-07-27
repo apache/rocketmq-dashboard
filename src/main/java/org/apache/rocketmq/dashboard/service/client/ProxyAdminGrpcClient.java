@@ -55,7 +55,7 @@ import org.slf4j.LoggerFactory;
 /**
  * gRPC client wrapper for RIP-2 Proxy Admin Service.
  *
- * <p>Manages a gRPC channel to the Proxy Admin server (default port 8082)
+ * <p>Manages a gRPC channel to the Proxy Admin server (default port 8086)
  * and provides typed methods for all 10 RPCs defined in RIP-2:
  * <ul>
  *   <li>M1: ListClients, DescribeClient, ListClientsByGroup, ListClientsByTopic</li>
@@ -76,7 +76,7 @@ public class ProxyAdminGrpcClient {
 
     private static final Logger log = LoggerFactory.getLogger(ProxyAdminGrpcClient.class);
 
-    private static final int DEFAULT_ADMIN_PORT = 8082;
+    private static final int DEFAULT_ADMIN_PORT = 8086;
     private static final int MAX_PAGE_SIZE = 100;
     private static final int CONNECTION_TIMEOUT_SECONDS = 10;
 

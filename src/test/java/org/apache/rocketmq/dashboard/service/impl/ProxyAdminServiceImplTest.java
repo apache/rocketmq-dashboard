@@ -93,7 +93,7 @@ public class ProxyAdminServiceImplTest {
             .setProxyName("proxy-0")
             .setGrpcServerPort(8081)
             .setProxyAdminEnabled(true)
-            .setProxyAdminServerPort(8082)
+            .setProxyAdminServerPort(8086)
             .setMaxMessageSize(4194304)
             .build();
 
@@ -113,7 +113,7 @@ public class ProxyAdminServiceImplTest {
         assertEquals("proxy-0", proxyConfig.get("proxyName"));
         assertEquals(8081, proxyConfig.get("grpcServerPort"));
         assertEquals(true, proxyConfig.get("proxyAdminEnabled"));
-        assertEquals(8082, proxyConfig.get("proxyAdminServerPort"));
+        assertEquals(8086, proxyConfig.get("proxyAdminServerPort"));
         assertEquals(4194304, proxyConfig.get("maxMessageSize"));
     }
 

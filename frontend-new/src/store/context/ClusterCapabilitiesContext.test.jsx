@@ -24,14 +24,14 @@ import { remoteApi } from '../../api/remoteApi/remoteApi';
 // Mock the remoteApi
 jest.mock('../../api/remoteApi/remoteApi', () => ({
   remoteApi: {
-    getClusterCapabilities: jest.fn()
+    getArchitectureInfo: jest.fn()
   }
 }));
 
 // Test component to use the context
 const TestComponent = () => {
   const { capabilities, selectedCluster, loading, selectCluster } = useClusterCapabilities();
-  
+
   return (
     <div>
       <div data-testid="selected-cluster">{selectedCluster || 'none'}</div>
@@ -40,43 +40,54 @@ const TestComponent = () => {
       <div data-testid="supports-grpc">{capabilities.supportsGrpc ? 'true' : 'false'}</div>
       <div data-testid="is-v5">{capabilities.isV5Architecture ? 'true' : 'false'}</div>
       <div data-testid="access-type">{capabilities.accessType}</div>
+      <div data-testid="supports-route">{capabilities.supportsRouteEvents ? 'true' : 'false'}</div>
       <button onClick={() => selectCluster('test-cluster')}>Select Cluster</button>
     </div>
   );
 };
 
-describe('ClusterCapabilitiesContext', () => {
-  const mockCapabilities = {
-    hasNamespace: true,
-    supportsLiteTopic: true,
-    supportsPopConsumption: true,
-    supportsGrpc: true,
-    supportsAcl2: true,
-    isV5Architecture: true,
-    accessType: 'v5-proxy-cluster'
-  };
+// Backend ClusterCapability DTO shape (field names differ from UI flags).
+const mockInfoV5 = {
+  accessType: 'V5_PROXY_CLUSTER',
+  capabilities: {
+    architectureVersion: '5.0',
+    namespaceSupported: true,
+    liteTopicSupported: true,
+    popConsumeSupported: true,
+    grpcClientSupported: true,
+    aclV2Supported: true,
+    routeEventsSupported: true,
+  }
+};
 
+describe('ClusterCapabilitiesContext', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  test('should provide default capabilities when no cluster is selected', () => {
+  test('should provide default (V4) capabilities when info is empty', async () => {
+    remoteApi.getArchitectureInfo.mockResolvedValue(null);
+
     render(
       <ClusterCapabilitiesProvider>
         <TestComponent />
       </ClusterCapabilitiesProvider>
     );
 
+    await waitFor(() => {
+      expect(screen.getByTestId('loading')).toHaveTextContent('false');
+    });
     expect(screen.getByTestId('selected-cluster')).toHaveTextContent('none');
     expect(screen.getByTestId('has-namespace')).toHaveTextContent('false');
     expect(screen.getByTestId('supports-grpc')).toHaveTextContent('false');
     expect(screen.getByTestId('is-v5')).toHaveTextContent('false');
-    expect(screen.getByTestId('access-type')).toHaveTextContent('v4-namesrv');
+    expect(screen.getByTestId('access-type')).toHaveTextContent('V4_NAMESRV');
+    expect(screen.getByTestId('supports-route')).toHaveTextContent('false');
   });
 
   test('should render loading state when fetching capabilities', async () => {
-    remoteApi.getClusterCapabilities.mockImplementation(() => 
-      new Promise(resolve => setTimeout(() => resolve({ status: 0, data: mockCapabilities }), 100))
+    remoteApi.getArchitectureInfo.mockImplementation(() =>
+      new Promise(resolve => setTimeout(() => resolve(mockInfoV5), 100))
     );
 
     render(
@@ -85,23 +96,16 @@ describe('ClusterCapabilitiesContext', () => {
       </ClusterCapabilitiesProvider>
     );
 
-    // Initially should be loading
+    // Initially should be loading (fetch kicks off on mount)
     expect(screen.getByTestId('loading')).toHaveTextContent('true');
 
-    // Click select cluster
-    await userEvent.click(screen.getByText('Select Cluster'));
-
-    // Wait for loading to complete
     await waitFor(() => {
       expect(screen.getByTestId('loading')).toHaveTextContent('false');
     });
   });
 
-  test('should update capabilities when cluster is selected', async () => {
-    remoteApi.getClusterCapabilities.mockResolvedValue({ 
-      status: 0, 
-      data: mockCapabilities 
-    });
+  test('should update capabilities from architecture info', async () => {
+    remoteApi.getArchitectureInfo.mockResolvedValue(mockInfoV5);
 
     render(
       <ClusterCapabilitiesProvider>
@@ -109,10 +113,6 @@ describe('ClusterCapabilitiesContext', () => {
       </ClusterCapabilitiesProvider>
     );
 
-    // Click select cluster
-    await userEvent.click(screen.getByText('Select Cluster'));
-
-    // Wait for loading to complete and capabilities to be updated
     await waitFor(() => {
       expect(screen.getByTestId('loading')).toHaveTextContent('false');
     });
@@ -120,14 +120,15 @@ describe('ClusterCapabilitiesContext', () => {
     expect(screen.getByTestId('has-namespace')).toHaveTextContent('true');
     expect(screen.getByTestId('supports-grpc')).toHaveTextContent('true');
     expect(screen.getByTestId('is-v5')).toHaveTextContent('true');
-    expect(screen.getByTestId('access-type')).toHaveTextContent('v5-proxy-cluster');
-    
-    // Verify API was called with correct cluster name
-    expect(remoteApi.getClusterCapabilities).toHaveBeenCalledWith('test-cluster');
+    expect(screen.getByTestId('access-type')).toHaveTextContent('V5_PROXY_CLUSTER');
+    expect(screen.getByTestId('supports-route')).toHaveTextContent('true');
+
+    // Verify API was called
+    expect(remoteApi.getArchitectureInfo).toHaveBeenCalled();
   });
 
   test('should fallback to default capabilities when API fails', async () => {
-    remoteApi.getClusterCapabilities.mockRejectedValue(new Error('API Error'));
+    remoteApi.getArchitectureInfo.mockRejectedValue(new Error('API Error'));
 
     render(
       <ClusterCapabilitiesProvider>
@@ -135,50 +136,17 @@ describe('ClusterCapabilitiesContext', () => {
       </ClusterCapabilitiesProvider>
     );
 
-    // Click select cluster
-    await userEvent.click(screen.getByText('Select Cluster'));
-
-    // Wait for error handling
     await waitFor(() => {
       expect(screen.getByTestId('loading')).toHaveTextContent('false');
     });
 
-    // Should have default capabilities
     expect(screen.getByTestId('has-namespace')).toHaveTextContent('false');
     expect(screen.getByTestId('supports-grpc')).toHaveTextContent('false');
     expect(screen.getByTestId('is-v5')).toHaveTextContent('false');
-    expect(screen.getByTestId('access-type')).toHaveTextContent('v4-namesrv');
-  });
-
-  test('should handle API error with status code', async () => {
-    remoteApi.getClusterCapabilities.mockResolvedValue({ 
-      status: 1, 
-      errMsg: 'Cluster not found'
-    });
-
-    render(
-      <ClusterCapabilitiesProvider>
-        <TestComponent />
-      </ClusterCapabilitiesProvider>
-    );
-
-    // Click select cluster
-    await userEvent.click(screen.getByText('Select Cluster'));
-
-    // Wait for error handling
-    await waitFor(() => {
-      expect(screen.getByTestId('selected-cluster')).toHaveTextContent('test-cluster');
-    });
-
-    // Should have default capabilities
-    expect(screen.getByTestId('has-namespace')).toHaveTextContent('false');
-    expect(screen.getByTestId('supports-grpc')).toHaveTextContent('false');
-    expect(screen.getByTestId('is-v5')).toHaveTextContent('false');
-    expect(screen.getByTestId('access-type')).toHaveTextContent('v4-namesrv');
+    expect(screen.getByTestId('access-type')).toHaveTextContent('V4_NAMESRV');
   });
 
   test('should throw error when useClusterCapabilities is used outside provider', () => {
-    // Suppress console error for this test
     const originalError = console.error;
     console.error = jest.fn();
 

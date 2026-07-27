@@ -1,10 +1,17 @@
 /*
  * 统一图表视觉主题 —— 用于监控面板所有 ECharts 图表
- * 目标：替换原先杂乱、刺眼的默认配色（黑轴标签、#FF0000 等），
- *      提供一套现代、和谐、与 RocketMQ Studio 品牌色一致的视觉规范。
+ * 设计目标：现代、清爽、与 RocketMQ Studio 品牌色一致的视觉规范。
+ *
+ * 关键改进：
+ *  - 柱状图 Y 轴使用千分位/k·w 缩写（不再显示 12345.00 这种丑陋的小数）
+ *  - 柱状图顶部显示数值标签，信息更直观
+ *  - 折线图：圆角线段 + 2.5px 细线 + 轻微发光，干净利落
+ *  - 面积填充：仅在系列较少(<3)时使用浅渐变，避免多系列互相叠加变成"一坨泥"
+ *  - 统一的网格留白、坐标轴配色、悬浮提示卡片
  */
 
 // 主色板：蓝(品牌) → 青 → 绿 → 金 → 品红 → 紫 → 橙 → 深蓝
+// 顺序经过挑选，相邻颜色区分度高，多系列也不易混淆。
 export const CHART_PALETTE = [
     '#1677ff', // 主蓝
     '#13c2c2', // 青
@@ -41,13 +48,18 @@ export const hexToRgba = (hex, alpha = 1) => {
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
 
-// 数字格式化（大数用 k / w 缩写，避免轴标签拥挤）
+// 数字格式化（大数用 k / w / 亿 缩写，避免轴标签拥挤；整数直接展示不补小数）
+const abbreviate = (n, unit) => {
+    const r = n / unit;
+    return (Number.isInteger(r) ? r : r.toFixed(1)) + unit;
+};
 export const formatAxisNum = (v) => {
     const n = Math.abs(Number(v));
-    if (n >= 1e8) return (v / 1e8).toFixed(1) + '亿';
-    if (n >= 1e4) return (v / 1e4).toFixed(1) + 'w';
-    if (n >= 1e3) return (v / 1e3).toFixed(1) + 'k';
-    return v;
+    if (n >= 1e8) return abbreviate(v, '亿');
+    if (n >= 1e4) return abbreviate(v, 'w');
+    if (n >= 1e3) return abbreviate(v, 'k');
+    // 整数直接展示，避免 12345.00 这种丑陋写法
+    return Number.isInteger(Number(v)) ? String(v) : Number(v).toFixed(2);
 };
 
 // 通用网格（留出边距，标签不被裁切）
@@ -74,6 +86,7 @@ export const baseTooltip = (extra = {}) => ({
     padding: [8, 12],
     textStyle: { color: '#595959', fontSize: 12, lineHeight: 18 },
     extraCssText: 'box-shadow:0 6px 20px rgba(0,0,0,0.08);border-radius:8px;',
+    valueFormatter: (v) => formatAxisNum(v),
     ...extra,
 });
 
@@ -88,8 +101,18 @@ export const categoryAxis = (data, extra = {}) => ({
     ...extra,
 });
 
-// 数值轴（Y 轴）通用样式
+// 数值轴（Y 轴）通用样式 —— 折线图使用，千分位/k·w 缩写
 export const valueAxis = (extra = {}) => ({
+    type: 'value',
+    axisLabel: { color: '#8c8c8c', fontSize: 11, formatter: formatAxisNum, ...(extra.axisLabel || {}) },
+    axisLine: { show: false },
+    axisTick: { show: false },
+    splitLine: { lineStyle: { color: '#f5f5f5', type: 'solid' } },
+    ...extra,
+});
+
+// 柱状图专用数值轴（整数计数，千分位/k·w 缩写，不使用小数）
+export const barValueAxis = (extra = {}) => ({
     type: 'value',
     axisLabel: { color: '#8c8c8c', fontSize: 11, formatter: formatAxisNum, ...(extra.axisLabel || {}) },
     axisLine: { show: false },
@@ -109,45 +132,68 @@ export const lineCategoryAxis = (data, extra = {}) => ({
     ...extra,
 });
 
-// 给一组折线 series 套上「平滑 + 细线 + 面积渐变」的统一风格
-export const withAreaStyle = (series, { showSymbol = false } = {}) =>
-    series.map((s, i) => {
+// 给一组折线 series 套上「平滑 + 圆角细线 + 适度面积渐变」的统一风格。
+// 当系列数 >= 3 时（多指标/多 broker 叠加），自动关闭面积填充，仅保留干净细线，
+// 避免多层半透明面积互相叠加变成一团糊。
+export const withAreaStyle = (series, { showSymbol = false } = {}) => {
+    const heavy = series.length >= 3;
+    return series.map((s, i) => {
         const c = CHART_PALETTE[i % CHART_PALETTE.length];
-        return {
+        const base = {
             ...s,
             smooth: true,
             symbol: showSymbol ? 'circle' : 'none',
-            symbolSize: 5,
+            symbolSize: 6,
             showSymbol,
             sampling: 'average',
-            lineStyle: { width: 2, color: c, ...(s.lineStyle || {}) },
+            lineStyle: {
+                width: 2.5,
+                color: c,
+                cap: 'round',
+                join: 'round',
+                shadowColor: hexToRgba(c, 0.25),
+                shadowBlur: 4,
+                ...(s.lineStyle || {}),
+            },
             itemStyle: { color: c, ...(s.itemStyle || {}) },
-            areaStyle: {
+        };
+        if (!heavy) {
+            base.areaStyle = {
                 opacity: 1,
                 color: {
                     type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
                     colorStops: [
-                        { offset: 0, color: hexToRgba(c, 0.28) },
-                        { offset: 1, color: hexToRgba(c, 0.02) },
+                        { offset: 0, color: hexToRgba(c, 0.22) },
+                        { offset: 1, color: hexToRgba(c, 0.01) },
                     ],
                 },
-                ...(s.areaStyle || {}),
-            },
-        };
+            };
+        }
+        return base;
     });
+};
 
-// 柱状图单系列（带圆角 + 渐变 + 高亮态）
+// 柱状图单系列（带圆角 + 渐变 + 顶部数值标签 + 高亮态）
 export const barSeries = (data, name = 'TotalMsg', color = BAR_GRADIENT) => ({
     name,
     type: 'bar',
     data,
-    barMaxWidth: 38,
+    barMaxWidth: 36,
+    barCategoryGap: '30%',
     itemStyle: {
         borderRadius: [6, 6, 0, 0],
         color,
     },
     emphasis: {
         itemStyle: { color: BAR_GRADIENT_HOVER },
+    },
+    label: {
+        show: true,
+        position: 'top',
+        color: '#8c8c8c',
+        fontSize: 10,
+        formatter: (p) => formatAxisNum(p.value),
+        hideOverlap: true,
     },
 });
 

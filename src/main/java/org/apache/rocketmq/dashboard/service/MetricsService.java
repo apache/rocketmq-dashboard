@@ -148,4 +148,28 @@ public interface MetricsService {
      * @return test result with "success", "latencyMs", and "message" fields
      */
     Map<String, Object> testDataSource(String id);
+
+    /**
+     * RIP-1 METRICS-01: Prometheus federation export.
+     *
+     * <p>Returns cluster metrics in Prometheus text-exposition format, filtered by the
+     * supplied {@code match[]} selectors (metric-name prefixes or regexes), mirroring the
+     * upstream Prometheus {@code /federate} API. With no selectors, all metrics are returned.</p>
+     *
+     * @param matches list of match selectors (may be null/empty)
+     * @return Prometheus text exposition
+     */
+    String federate(List<String> matches);
+
+    /**
+     * Return the cluster metrics as a raw Prometheus text exposition.
+     *
+     * <p>In V5 architecture the broker exposes a native Prometheus exporter (default port 5557);
+     * this method relays that real exposition directly (the most accurate source). In other
+     * architectures it falls back to the generated exposition built from {@link #getClusterMetrics()}.
+     * </p>
+     *
+     * @return Prometheus text exposition (may be empty if no data source is available)
+     */
+    String getClusterMetricsExposition();
 }

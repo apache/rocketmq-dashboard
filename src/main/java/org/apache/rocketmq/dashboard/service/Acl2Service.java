@@ -85,4 +85,21 @@ public interface Acl2Service {
      * @return map with detection result details
      */
     Map<String, Object> detectAndReport();
+
+    /**
+     * RIP-1 AUTH-01: trigger an immediate hot-rotation of ACL credentials/policies.
+     * Reloads the policy store from the persistent file only if it changed since the
+     * last load, and re-probes the cluster ACL version. Designed to be driven by a
+     * background scheduler (~5s) for near-real-time credential rotation.
+     *
+     * @return the number of policies currently cached after rotation
+     */
+    int reloadPoliciesIfChanged();
+
+    /**
+     * RIP-1 AUTH-01: return the current hot-rotation scheduler status.
+     *
+     * @return map with rotation interval, last run timestamp, rotation count, and cached ACL version
+     */
+    Map<String, Object> getRotationStatus();
 }
