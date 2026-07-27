@@ -52,12 +52,12 @@ public class SettingsController {
     }
 
     @PostMapping("/datasources/create")
-    public Result<DataSourceVO> createDataSource(@RequestBody DataSourceVO dataSource) {
+    public Result<DataSourceVO> createDataSource(@Valid @RequestBody DataSourceVO dataSource) {
         return Result.ok(settingsService.createDataSource(dataSource));
     }
 
     @PostMapping("/datasources/update")
-    public Result<DataSourceVO> updateDataSource(@RequestBody DataSourceVO dataSource) {
+    public Result<DataSourceVO> updateDataSource(@Valid @RequestBody DataSourceVO dataSource) {
         return Result.ok(settingsService.updateDataSource(dataSource));
     }
 
@@ -68,7 +68,7 @@ public class SettingsController {
     }
 
     @PostMapping("/datasources/test")
-    public Result<DataSourceTestResultVO> testDataSource(@RequestBody DataSourceTestDTO request) {
+    public Result<DataSourceTestResultVO> testDataSource(@Valid @RequestBody DataSourceTestDTO request) {
         return Result.ok(settingsService.testDataSource(request));
     }
 }
