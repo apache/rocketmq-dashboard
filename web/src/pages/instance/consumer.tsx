@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   Table,
   Card,
@@ -59,13 +59,21 @@ import type { Dayjs } from 'dayjs';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import { TOPIC_TYPE_MAP, PROTOCOL_MAP } from '../../constants/theme';
-import { mockConsumerGroups, mockQueueProgress, mockSubscriptions } from '../../mock/consumers';
 import type {
   ConsumerGroup,
   ConsumerInstance,
   QueueProgress,
   SubscriptionEntry,
-} from '../../mock/consumers';
+} from '../../api/metadata';
+import {
+  batchDeleteConsumerGroups,
+  createConsumerGroup,
+  deleteConsumerGroup,
+  getConsumerProgress,
+  getConsumerSubscriptions,
+  listConsumerGroups,
+  resetConsumerOffset,
+} from '../../services/consumerService';
 
 const { Text } = Typography;
 
@@ -112,7 +120,13 @@ const formatDateTime = (dateStr: string): string => {
    ═══════════════════════════════════════════ */
 const ConsumerPage = () => {
   const { t } = useLang();
-  const [groups, setGroups] = useState<ConsumerGroup[]>(mockConsumerGroups);
+  const [groups, setGroups] = useState<ConsumerGroup[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [subscriptionsByGroup, setSubscriptionsByGroup] = useState<
+    Record<string, SubscriptionEntry[]>
+  >({});
+  const [progressByGroup, setProgressByGroup] = useState<Record<string, QueueProgress[]>>({});
+  const [detailsLoading, setDetailsLoading] = useState<Record<string, boolean>>({});
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [search, setSearch] = useState('');
   const [modeFilter, setModeFilter] = useState<string>('ALL');
@@ -125,6 +139,25 @@ const ConsumerPage = () => {
   const [resetModalOpen, setResetModalOpen] = useState(false);
   const [resetGroup, setResetGroup] = useState<ConsumerGroup | null>(null);
   const [resetTime, setResetTime] = useState<Dayjs>(dayjs().subtract(3, 'hour'));
+  const [resetting, setResetting] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void listConsumerGroups()
+      .then((nextGroups) => {
+        if (!cancelled) setGroups(nextGroups);
+      })
+      .catch(() => {
+        if (!cancelled) message.error('消费组列表加载失败，请稍后重试');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   /* ─── Filtered & sorted data ─── */
   const filtered = useMemo(() => {
@@ -149,9 +182,35 @@ const ConsumerPage = () => {
   }, [groups, search, modeFilter, sortKey]);
 
   /* ─── Open detail modal ─── */
-  const openModal = (group: ConsumerGroup) => {
+  const loadSubscriptions = async (name: string) => {
+    if (subscriptionsByGroup[name]) return;
+    setDetailsLoading((previous) => ({ ...previous, [name]: true }));
+    try {
+      const subscriptions = await getConsumerSubscriptions(name);
+      setSubscriptionsByGroup((previous) => ({ ...previous, [name]: subscriptions }));
+    } catch {
+      message.error('消费组订阅关系加载失败，请稍后重试');
+    } finally {
+      setDetailsLoading((previous) => ({ ...previous, [name]: false }));
+    }
+  };
+
+  const openModal = async (group: ConsumerGroup) => {
     setSelectedGroup(group);
     setModalOpen(true);
+    setDetailsLoading((previous) => ({ ...previous, [group.name]: true }));
+    try {
+      const [subscriptions, progress] = await Promise.all([
+        getConsumerSubscriptions(group.name),
+        getConsumerProgress(group.name),
+      ]);
+      setSubscriptionsByGroup((previous) => ({ ...previous, [group.name]: subscriptions }));
+      setProgressByGroup((previous) => ({ ...previous, [group.name]: progress }));
+    } catch {
+      message.error('消费组详情加载失败，请稍后重试');
+    } finally {
+      setDetailsLoading((previous) => ({ ...previous, [group.name]: false }));
+    }
   };
 
   /* ═══════════════════════════════════════════
@@ -249,7 +308,7 @@ const ConsumerPage = () => {
             style={{ borderColor: '#1677ff', color: '#1677ff' }}
             onClick={(e) => {
               e.stopPropagation();
-              openModal(record);
+              void openModal(record);
             }}
           >
             详情
@@ -279,7 +338,16 @@ const ConsumerPage = () => {
                 okText: '删除',
                 okButtonProps: { danger: true },
                 cancelText: '取消',
-                onOk: () => message.success(`消费组 ${record.name} 已删除`),
+                onOk: async () => {
+                  try {
+                    await deleteConsumerGroup(record.name);
+                    setGroups((previous) => previous.filter((group) => group.name !== record.name));
+                    setSelectedRowKeys((previous) => previous.filter((key) => key !== record.name));
+                    message.success(`消费组 ${record.name} 已删除`);
+                  } catch {
+                    message.error('删除消费组失败，请稍后重试');
+                  }
+                },
               });
             }}
           >
@@ -517,10 +585,18 @@ const ConsumerPage = () => {
                   okText: '删除',
                   okButtonProps: { danger: true },
                   cancelText: '取消',
-                  onOk: () => {
-                    setGroups((prev) => prev.filter((g) => !selectedRowKeys.includes(g.name)));
-                    message.success(`已删除 ${selectedRowKeys.length} 个 Group`);
-                    setSelectedRowKeys([]);
+                  onOk: async () => {
+                    try {
+                      const names = selectedRowKeys.map(String);
+                      await batchDeleteConsumerGroups(names);
+                      setGroups((previous) =>
+                        previous.filter((group) => !names.includes(group.name)),
+                      );
+                      message.success(`已删除 ${names.length} 个 Group`);
+                      setSelectedRowKeys([]);
+                    } catch {
+                      message.error('批量删除消费组失败，请稍后重试');
+                    }
                   },
                 });
               }}
@@ -552,6 +628,7 @@ const ConsumerPage = () => {
         <Table
           columns={columns}
           dataSource={filtered}
+          loading={loading}
           rowKey="name"
           rowSelection={{
             selectedRowKeys,
@@ -568,13 +645,17 @@ const ConsumerPage = () => {
               <div style={{ padding: '8px 0' }}>
                 <Table
                   columns={subscriptionSubColumns}
-                  dataSource={mockSubscriptions[record.name] || []}
+                  dataSource={subscriptionsByGroup[record.name] || []}
+                  loading={detailsLoading[record.name]}
                   rowKey="topic"
                   pagination={false}
                   size="small"
                 />
               </div>
             ),
+            onExpand: (expanded, record) => {
+              if (expanded) void loadSubscriptions(record.name);
+            },
           }}
         />
       </Card>
@@ -748,7 +829,8 @@ const ConsumerPage = () => {
                       </Flex>
                       <Table
                         columns={subscriptionSubColumns}
-                        dataSource={mockSubscriptions[selectedGroup.name] || []}
+                        dataSource={subscriptionsByGroup[selectedGroup.name] || []}
+                        loading={detailsLoading[selectedGroup.name]}
                         rowKey="topic"
                         pagination={false}
                         size="small"
@@ -803,14 +885,14 @@ const ConsumerPage = () => {
                           <Text strong>
                             {
                               new Set(
-                                (mockQueueProgress[selectedGroup.name] || []).map((q) => q.broker),
+                                (progressByGroup[selectedGroup.name] || []).map((q) => q.broker),
                               ).size
                             }
                           </Text>
                         </Space>
                         <Space size={4}>
                           <Text type="secondary">总 Queue 数:</Text>
-                          <Text strong>{(mockQueueProgress[selectedGroup.name] || []).length}</Text>
+                          <Text strong>{(progressByGroup[selectedGroup.name] || []).length}</Text>
                         </Space>
                         <Space size={4}>
                           <Text type="secondary">总堆积:</Text>
@@ -828,7 +910,8 @@ const ConsumerPage = () => {
 
                     <Table
                       columns={queueColumns}
-                      dataSource={mockQueueProgress[selectedGroup.name] || []}
+                      dataSource={progressByGroup[selectedGroup.name] || []}
+                      loading={detailsLoading[selectedGroup.name]}
                       rowKey={(r) => `${r.broker}-${r.queueId}`}
                       pagination={false}
                       size="small"
@@ -867,11 +950,21 @@ const ConsumerPage = () => {
                 content: `将创建消费组 "${values.name}"，命名空间: ${values.namespace || 'default'}`,
                 okText: '确认创建',
                 cancelText: '取消',
-                onOk: () => {
-                  message.success(`消费组 ${values.name} 创建成功`);
-                  setCreateModalOpen(false);
-                  form.resetFields();
-                  setDataTypeValue(undefined);
+                onOk: async () => {
+                  try {
+                    const { dataType, ...groupValues } = values;
+                    const created = await createConsumerGroup({
+                      ...groupValues,
+                      subscriptionDataType: dataType,
+                    });
+                    setGroups((previous) => [created, ...previous]);
+                    message.success(`消费组 ${created.name} 创建成功`);
+                    setCreateModalOpen(false);
+                    form.resetFields();
+                    setDataTypeValue(undefined);
+                  } catch {
+                    message.error('创建消费组失败，请稍后重试');
+                  }
                 },
               });
             })
@@ -976,15 +1069,26 @@ const ConsumerPage = () => {
           setResetModalOpen(false);
           setResetGroup(null);
         }}
-        onOk={() => {
-          if (resetGroup) {
+        onOk={async () => {
+          if (!resetGroup) return;
+          setResetting(true);
+          try {
+            await resetConsumerOffset({
+              name: resetGroup.name,
+              timestamp: resetTime.valueOf(),
+            });
             message.success(
               `${resetGroup.name} 消费位点已重置到 ${resetTime.format('YYYY-MM-DD HH:mm:ss')}`,
             );
+            setResetModalOpen(false);
+            setResetGroup(null);
+          } catch {
+            message.error('重置消费位点失败，请稍后重试');
+          } finally {
+            setResetting(false);
           }
-          setResetModalOpen(false);
-          setResetGroup(null);
         }}
+        confirmLoading={resetting}
         okText="确认重置"
         cancelText="取消"
         width={480}
