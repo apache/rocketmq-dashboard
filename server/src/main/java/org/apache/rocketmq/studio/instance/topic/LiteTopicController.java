@@ -18,6 +18,7 @@
 package org.apache.rocketmq.studio.instance.topic;
 
 import org.apache.rocketmq.studio.common.domain.Result;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -49,7 +50,7 @@ public class LiteTopicController {
     }
 
     @PostMapping("/extendTTL")
-    public Result<Void> extendTTL(@RequestBody LiteTopicTTLUpdateDTO request) {
+    public Result<Void> extendTTL(@Valid @RequestBody LiteTopicTTLUpdateDTO request) {
         liteTopicService.extendTTL(request.getTopicPattern(), request.getNewTTL());
         return Result.ok();
     }
