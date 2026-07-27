@@ -14,34 +14,33 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.rocketmq.studio.common.domain;
+package org.apache.rocketmq.dashboard.model;
 
-public class Result<T> {
-    private int status;
-    private T data;
-    private String errMsg;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-    private Result() {}
+import java.io.Serializable;
 
-    private Result(int status, String errMsg, T data) {
-        this.status = status;
-        this.errMsg = errMsg;
-        this.data = data;
-    }
+/**
+ * Represents a single check item in a metrics self-check result.
+ */
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class CheckItem implements Serializable {
 
-    public static <T> Result<T> ok(T data) {
-        return new Result<>(0, null, data);
-    }
+    private static final long serialVersionUID = 1L;
 
-    public static <T> Result<T> ok() {
-        return new Result<>(0, null, null);
-    }
+    /** Unique name identifying this check. */
+    private String name;
 
-    public static <T> Result<T> error(int status, String errMsg) {
-        return new Result<>(status, errMsg, null);
-    }
+    /** Whether the check passed. */
+    private boolean passed;
 
-    public int getStatus() { return status; }
-    public String getErrMsg() { return errMsg; }
-    public T getData() { return data; }
+    /** Severity level: INFO, WARN, or ERROR. */
+    private String severity;
+
+    /** Human-readable message describing the check outcome. */
+    private String message;
 }

@@ -75,10 +75,10 @@ const BranchCompensateAlert = () => {
         setLoading(true);
         try {
             const result = await remoteApi.listBranchCompensateAlertRules();
-            if (result && result.code === 200 && Array.isArray(result.data)) {
+            if (result && result.status === 0 && Array.isArray(result.data)) {
                 setRules(result.data.map((r, i) => ({...r, key: r.id, index: i + 1})));
             } else {
-                messageApi.error(result?.message || t.BC_ALERT_FETCH_FAILED || 'Failed to fetch branch compensate alert rules');
+                messageApi.error(result?.errMsg || t.BC_ALERT_FETCH_FAILED || 'Failed to fetch branch compensate alert rules');
             }
         } catch (error) {
             console.error('Error fetching branch compensate alert rules:', error);
@@ -97,9 +97,9 @@ const BranchCompensateAlert = () => {
         setRules(prev => prev.map(r => r.id === record.id ? {...r, enabled: next} : r));
         try {
             const result = await remoteApi.toggleBranchCompensateAlertRule(record.id, next);
-            if (!(result && result.code === 200)) {
+            if (!(result && result.status === 0)) {
                 setRules(prev => prev.map(r => r.id === record.id ? {...r, enabled: !next} : r));
-                messageApi.error(result?.message || t.BC_ALERT_UPDATE_FAILED || 'Failed to update rule');
+                messageApi.error(result?.errMsg || t.BC_ALERT_UPDATE_FAILED || 'Failed to update rule');
             }
         } catch (error) {
             setRules(prev => prev.map(r => r.id === record.id ? {...r, enabled: !next} : r));
@@ -143,11 +143,11 @@ const BranchCompensateAlert = () => {
     const handleDeleteRule = async (id) => {
         try {
             const result = await remoteApi.deleteBranchCompensateAlertRule(id);
-            if (result && result.code === 200) {
+            if (result && result.status === 0) {
                 setRules(prev => prev.filter(r => r.id !== id));
                 messageApi.success(t.BC_ALERT_DELETE_SUCCESS || 'Rule deleted');
             } else {
-                messageApi.error(result?.message || t.BC_ALERT_DELETE_FAILED || 'Failed to delete rule');
+                messageApi.error(result?.errMsg || t.BC_ALERT_DELETE_FAILED || 'Failed to delete rule');
             }
         } catch (error) {
             messageApi.error(t.BC_ALERT_DELETE_FAILED || 'Failed to delete rule');
@@ -175,19 +175,19 @@ const BranchCompensateAlert = () => {
                 payload.id = editingRule.id;
                 payload.createdAt = editingRule.createdAt;
                 const result = await remoteApi.updateBranchCompensateAlertRule(payload);
-                if (result && result.code === 200) {
+                if (result && result.status === 0) {
                     messageApi.success(t.BC_ALERT_UPDATE_SUCCESS || 'Rule updated');
                     await fetchRules();
                 } else {
-                    messageApi.error(result?.message || t.BC_ALERT_UPDATE_FAILED || 'Failed to update rule');
+                    messageApi.error(result?.errMsg || t.BC_ALERT_UPDATE_FAILED || 'Failed to update rule');
                 }
             } else {
                 const result = await remoteApi.createBranchCompensateAlertRule(payload);
-                if (result && result.code === 200) {
+                if (result && result.status === 0) {
                     messageApi.success(t.BC_ALERT_CREATE_SUCCESS || 'Rule created');
                     await fetchRules();
                 } else {
-                    messageApi.error(result?.message || t.BC_ALERT_CREATE_FAILED || 'Failed to create rule');
+                    messageApi.error(result?.errMsg || t.BC_ALERT_CREATE_FAILED || 'Failed to create rule');
                 }
             }
         } catch (err) {

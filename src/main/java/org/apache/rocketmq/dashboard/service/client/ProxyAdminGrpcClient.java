@@ -17,7 +17,6 @@
 package org.apache.rocketmq.dashboard.service.client;
 
 import apache.rocketmq.proxy.admin.v1.AdminCode;
-import apache.rocketmq.proxy.admin.v1.BatchConsumeClientDiagnostics;
 import apache.rocketmq.proxy.admin.v1.ClientDetail;
 import apache.rocketmq.proxy.admin.v1.ClientInstance;
 import apache.rocketmq.proxy.admin.v1.DescribeBatchConsumeDiagnosticsRequest;
@@ -36,7 +35,6 @@ import apache.rocketmq.proxy.admin.v1.ListClientsByTopicRequest;
 import apache.rocketmq.proxy.admin.v1.ListClientsByTopicResponse;
 import apache.rocketmq.proxy.admin.v1.ListClientsRequest;
 import apache.rocketmq.proxy.admin.v1.ListClientsResponse;
-import apache.rocketmq.proxy.admin.v1.PopReceiptHandleInfo;
 import apache.rocketmq.proxy.admin.v1.ProxyClientAdminServiceGrpc;
 import apache.rocketmq.proxy.admin.v1.ProxyClientAdminServiceGrpc.ProxyClientAdminServiceBlockingStub;
 import apache.rocketmq.proxy.admin.v1.ProxyRuntimeConfig;

@@ -12,6 +12,7 @@
     "axios": "^1.9.0",
     "dayjs": "^1.11.13",
     "echarts": "^5.6.0",
+    "echarts-for-react": "^3.0.6",
     "framer-motion": "^12.16.0",
     "http-proxy-middleware": "^3.0.5",
     "i18next": "^23.2.3",

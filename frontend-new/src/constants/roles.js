@@ -14,34 +14,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.rocketmq.studio.common.domain;
 
-public class Result<T> {
-    private int status;
-    private T data;
-    private String errMsg;
-
-    private Result() {}
-
-    private Result(int status, String errMsg, T data) {
-        this.status = status;
-        this.errMsg = errMsg;
-        this.data = data;
-    }
-
-    public static <T> Result<T> ok(T data) {
-        return new Result<>(0, null, data);
-    }
-
-    public static <T> Result<T> ok() {
-        return new Result<>(0, null, null);
-    }
-
-    public static <T> Result<T> error(int status, String errMsg) {
-        return new Result<>(status, errMsg, null);
-    }
-
-    public int getStatus() { return status; }
-    public String getErrMsg() { return errMsg; }
-    public T getData() { return data; }
-}
+/**
+ * Check if write operations are enabled for the current user.
+ * Write operations are enabled when userrole is not set (null) or is '1' (admin).
+ * Read-only mode applies when userrole is '0' or any other non-admin value.
+ */
+export const isWriteOperationEnabled = () => {
+    const userRole = sessionStorage.getItem('userrole');
+    return userRole === null || userRole === '1';
+};

@@ -16,7 +16,6 @@
  */
 package org.apache.rocketmq.dashboard.service.metrics;
 
-import java.util.List;
 import java.util.Map;
 
 /**

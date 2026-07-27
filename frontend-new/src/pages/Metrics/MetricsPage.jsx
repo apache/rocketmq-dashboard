@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import React, {useEffect, useState, useCallback} from 'react';
+import React, {useEffect, useState, useCallback, useMemo} from 'react';
 import {
     Card,
     Row,
@@ -34,11 +34,13 @@ import {
 import {
     ReloadOutlined,
     DashboardOutlined,
-    ServerOutlined,
+    DatabaseOutlined,
     BarChartOutlined,
     TeamOutlined,
     CloudServerOutlined,
+    LineChartOutlined,
 } from '@ant-design/icons';
+import ReactECharts from 'echarts-for-react';
 import {remoteApi} from '../../api/remoteApi/remoteApi';
 import {useLanguage} from '../../i18n/LanguageContext';
 
@@ -53,6 +55,15 @@ const ROLE_COLORS = {
     SLAVE: 'default',
 };
 
+// Grafana-style chart theme
+const CHART_THEME = {
+    bg: 'transparent',
+    borderColor: '#30363d',
+    textColor: '#c9d1d9',
+    subTextColor: '#8b949e',
+    colors: ['#58a6ff', '#3fb950', '#d29922', '#f85149', '#bc8cff', '#39d2c0', '#f0883e', '#8b949e'],
+};
+
 const MetricsPage = () => {
     const {t} = useLanguage();
     const [loading, setLoading] = useState(false);
@@ -63,7 +74,7 @@ const MetricsPage = () => {
         setLoading(true);
         try {
             const result = await remoteApi.getMetricsOverview();
-            if (result && result.code === 200 && result.data) {
+            if (result && result.status === 0 && result.data) {
                 setOverview(result.data);
             } else {
                 console.error(t.METRICS_FETCH_FAILED || 'Failed to fetch metrics');
@@ -98,6 +109,183 @@ const MetricsPage = () => {
         if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
         return (bytes / 1024).toFixed(1) + ' KB';
     };
+
+    // --- Grafana-style ECharts options ---
+
+    const getBrokerTpsChartOption = useMemo(() => {
+        if (!overview?.brokers?.length) return null;
+        const brokers = overview.brokers;
+        const names = brokers.map(b => b.brokerName || b.brokerId);
+        return {
+            backgroundColor: CHART_THEME.bg,
+            tooltip: {trigger: 'axis', axisPointer: {type: 'shadow'}},
+            legend: {data: ['TPS In', 'TPS Out'], textStyle: {color: CHART_THEME.subTextColor}},
+            grid: {left: 60, right: 30, top: 40, bottom: 30},
+            xAxis: {type: 'category', data: names, axisLabel: {color: CHART_THEME.subTextColor}},
+            yAxis: {type: 'value', axisLabel: {color: CHART_THEME.subTextColor}, splitLine: {lineStyle: {color: '#21262d'}}},
+            series: [
+                {name: 'TPS In', type: 'bar', data: brokers.map(b => b.tpsIn || 0), itemStyle: {color: CHART_THEME.colors[0]}},
+                {name: 'TPS Out', type: 'bar', data: brokers.map(b => b.tpsOut || 0), itemStyle: {color: CHART_THEME.colors[1]}},
+            ],
+        };
+    }, [overview]);
+
+    const getBrokerResourceGaugeOption = useMemo(() => {
+        if (!overview?.brokers?.length) return null;
+        const brokers = overview.brokers;
+        return {
+            backgroundColor: CHART_THEME.bg,
+            tooltip: {trigger: 'item', formatter: '{b}: {c}%'},
+            series: brokers.slice(0, 6).flatMap((b, i) => [
+                {
+                    type: 'gauge', center: [`${(i % 3) * 33.3 + 16.65}%`, i < 3 ? '35%' : '75%'],
+                    radius: '28%',
+                    startAngle: 220, endAngle: -40, min: 0, max: 100,
+                    progress: {show: true, width: 8},
+                    axisLine: {lineStyle: {width: 8, color: [[0.6, '#3fb950'], [0.8, '#d29922'], [1, '#f85149']]}},
+                    axisTick: {show: false}, splitLine: {show: false}, axisLabel: {show: false},
+                    pointer: {show: false},
+                    title: {offsetCenter: [0, '70%'], fontSize: 11, color: CHART_THEME.subTextColor},
+                    detail: {offsetCenter: [0, '30%'], fontSize: 14, fontWeight: 'bold', color: CHART_THEME.textColor, formatter: '{value}%'},
+                    data: [{value: parseFloat((b.cpuUsage || 0).toFixed(1)), name: `${b.brokerName || b.brokerId} CPU`}],
+                },
+                {
+                    type: 'gauge', center: [`${(i % 3) * 33.3 + 16.65 + 11}%`, i < 3 ? '35%' : '75%'],
+                    radius: '28%',
+                    startAngle: 220, endAngle: -40, min: 0, max: 100,
+                    progress: {show: true, width: 8},
+                    axisLine: {lineStyle: {width: 8, color: [[0.7, '#3fb950'], [0.85, '#d29922'], [1, '#f85149']]}},
+                    axisTick: {show: false}, splitLine: {show: false}, axisLabel: {show: false},
+                    pointer: {show: false},
+                    title: {offsetCenter: [0, '70%'], fontSize: 11, color: CHART_THEME.subTextColor},
+                    detail: {offsetCenter: [0, '30%'], fontSize: 14, fontWeight: 'bold', color: CHART_THEME.textColor, formatter: '{value}%'},
+                    data: [{value: parseFloat((b.memoryUsage || 0).toFixed(1)), name: 'MEM'}],
+                },
+            ]),
+        };
+    }, [overview]);
+
+    const getSystemResourceChartOption = useMemo(() => {
+        const sr = overview?.systemResources;
+        if (!sr) return null;
+        return {
+            backgroundColor: CHART_THEME.bg,
+            tooltip: {trigger: 'item', formatter: '{b}: {c}%'},
+            series: [
+                {
+                    type: 'gauge', center: ['25%', '50%'], radius: '70%',
+                    startAngle: 220, endAngle: -40, min: 0, max: 100,
+                    progress: {show: true, width: 14},
+                    axisLine: {lineStyle: {width: 14, color: [[0.6, '#3fb950'], [0.8, '#d29922'], [1, '#f85149']]}},
+                    axisTick: {show: false}, splitLine: {show: false}, axisLabel: {show: false},
+                    pointer: {show: false},
+                    title: {offsetCenter: [0, '75%'], fontSize: 14, color: CHART_THEME.subTextColor},
+                    detail: {offsetCenter: [0, '35%'], fontSize: 28, fontWeight: 'bold', color: CHART_THEME.textColor, formatter: '{value}%'},
+                    data: [{value: parseFloat((sr.cpuUsagePercent || 0).toFixed(1)), name: 'CPU Usage'}],
+                },
+                {
+                    type: 'gauge', center: ['75%', '50%'], radius: '70%',
+                    startAngle: 220, endAngle: -40, min: 0, max: 100,
+                    progress: {show: true, width: 14},
+                    axisLine: {lineStyle: {width: 14, color: [[0.7, '#3fb950'], [0.85, '#d29922'], [1, '#f85149']]}},
+                    axisTick: {show: false}, splitLine: {show: false}, axisLabel: {show: false},
+                    pointer: {show: false},
+                    title: {offsetCenter: [0, '75%'], fontSize: 14, color: CHART_THEME.subTextColor},
+                    detail: {offsetCenter: [0, '35%'], fontSize: 28, fontWeight: 'bold', color: CHART_THEME.textColor, formatter: '{value}%'},
+                    data: [{value: parseFloat((sr.memoryUsagePercent || 0).toFixed(1)), name: 'Memory Usage'}],
+                },
+            ],
+        };
+    }, [overview]);
+
+    const getTopicBacklogChartOption = useMemo(() => {
+        if (!overview?.topTopics?.length) return null;
+        const topics = overview.topTopics.slice(0, 10);
+        return {
+            backgroundColor: CHART_THEME.bg,
+            tooltip: {trigger: 'axis', axisPointer: {type: 'shadow'}},
+            grid: {left: 150, right: 30, top: 10, bottom: 20},
+            xAxis: {type: 'value', axisLabel: {color: CHART_THEME.subTextColor}, splitLine: {lineStyle: {color: '#21262d'}}},
+            yAxis: {type: 'category', data: topics.map(t => t.topicName), axisLabel: {color: CHART_THEME.subTextColor, width: 130, overflow: 'truncate'}},
+            series: [{
+                type: 'bar', data: topics.map(t => t.messageBacklog || 0),
+                itemStyle: {
+                    color: (params) => {
+                        const v = params.value;
+                        return v > 100000 ? '#f85149' : v > 10000 ? '#d29922' : '#3fb950';
+                    },
+                },
+                barWidth: '60%',
+            }],
+        };
+    }, [overview]);
+
+    const getConsumerGroupDiffChartOption = useMemo(() => {
+        if (!overview?.consumerGroups?.length) return null;
+        const groups = overview.consumerGroups.slice(0, 10);
+        return {
+            backgroundColor: CHART_THEME.bg,
+            tooltip: {trigger: 'axis', axisPointer: {type: 'shadow'}},
+            grid: {left: 150, right: 30, top: 10, bottom: 20},
+            xAxis: {type: 'value', axisLabel: {color: CHART_THEME.subTextColor}, splitLine: {lineStyle: {color: '#21262d'}}},
+            yAxis: {type: 'category', data: groups.map(g => g.groupName), axisLabel: {color: CHART_THEME.subTextColor, width: 130, overflow: 'truncate'}},
+            series: [{
+                type: 'bar', data: groups.map(g => g.totalDiff || 0),
+                itemStyle: {
+                    color: (params) => {
+                        const v = params.value;
+                        return v > 10000 ? '#f85149' : v > 1000 ? '#d29922' : '#58a6ff';
+                    },
+                },
+                barWidth: '60%',
+            }],
+        };
+    }, [overview]);
+
+    const getBrokerStatusPieOption = useMemo(() => {
+        if (!overview?.brokers?.length) return null;
+        const brokers = overview.brokers;
+        const counts = {healthy: 0, warning: 0, critical: 0};
+        brokers.forEach(b => { counts[b.status] = (counts[b.status] || 0) + 1; });
+        return {
+            backgroundColor: CHART_THEME.bg,
+            tooltip: {trigger: 'item', formatter: '{b}: {c} ({d}%)'},
+            legend: {bottom: 0, textStyle: {color: CHART_THEME.subTextColor}},
+            series: [{
+                type: 'pie', radius: ['40%', '70%'], center: ['50%', '45%'],
+                avoidLabelOverlap: false,
+                itemStyle: {borderRadius: 6, borderColor: '#0d1117', borderWidth: 2},
+                label: {show: true, color: CHART_THEME.textColor},
+                data: [
+                    {value: counts.healthy, name: 'Healthy', itemStyle: {color: '#3fb950'}},
+                    {value: counts.warning, name: 'Warning', itemStyle: {color: '#d29922'}},
+                    {value: counts.critical, name: 'Critical', itemStyle: {color: '#f85149'}},
+                ].filter(d => d.value > 0),
+            }],
+        };
+    }, [overview]);
+
+    const getDiskUsageChartOption = useMemo(() => {
+        if (!overview?.systemResources) return null;
+        const sr = overview.systemResources;
+        const diskUsed = sr.diskUsedGb || 0;
+        const diskTotal = sr.diskTotalGb || 1;
+        return {
+            backgroundColor: CHART_THEME.bg,
+            tooltip: {trigger: 'item', formatter: '{b}: {c}%'},
+            series: [{
+                type: 'gauge', center: ['50%', '55%'], radius: '75%',
+                startAngle: 220, endAngle: -40, min: 0, max: 100,
+                progress: {show: true, width: 16},
+                axisLine: {lineStyle: {width: 16, color: [[0.75, '#3fb950'], [0.9, '#d29922'], [1, '#f85149']]}},
+                axisTick: {show: false}, splitLine: {show: false}, axisLabel: {show: false},
+                pointer: {show: false},
+                title: {offsetCenter: [0, '75%'], fontSize: 14, color: CHART_THEME.subTextColor, formatter: `{a|${diskUsed} GB / ${diskTotal} GB}`, rich: {a: {fontSize: 12, color: CHART_THEME.subTextColor}}},
+                detail: {offsetCenter: [0, '35%'], fontSize: 32, fontWeight: 'bold', color: CHART_THEME.textColor, formatter: '{value}%'},
+                data: [{value: parseFloat((sr.diskUsagePercent || 0).toFixed(1)), name: 'Disk Usage'}],
+            }],
+        };
+    }, [overview]);
 
     const brokerColumns = [
         {title: t.METRICS_BROKER_ID, dataIndex: 'brokerId', key: 'brokerId', width: 130},
@@ -237,15 +425,132 @@ const MetricsPage = () => {
                                         value={overview.healthyBrokerCount}
                                         suffix={`/ ${overview.totalBrokerCount}`}
                                         valueStyle={{color: overview.healthyBrokerCount === overview.totalBrokerCount ? '#52c41a' : '#faad14'}}
-                                        prefix={<ServerOutlined />}
+                                        prefix={<DatabaseOutlined />}
                                     />
+                                </Card>
+                            </Col>
+                        </Row>
+
+                        {/* Grafana-style Chart Panels */}
+                        <Row gutter={[16, 16]} style={{marginBottom: 16}}>
+                            <Col xs={24} lg={12}>
+                                <Card
+                                    title={<><LineChartOutlined /> {t.METRICS_BROKER_TPS || 'Broker TPS Overview'}</>}
+                                    size="small"
+                                    style={{background: '#0d1117', borderColor: CHART_THEME.borderColor}}
+                                    headStyle={{background: '#0d1117', borderColor: CHART_THEME.borderColor, color: CHART_THEME.textColor}}
+                                    bodyStyle={{padding: '8px'}}
+                                >
+                                    {getBrokerTpsChartOption ? (
+                                        <ReactECharts option={getBrokerTpsChartOption} style={{height: 260}} />
+                                    ) : (
+                                        <div style={{height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center', color: CHART_THEME.subTextColor}}>No broker data</div>
+                                    )}
+                                </Card>
+                            </Col>
+                            <Col xs={24} lg={12}>
+                                <Card
+                                    title={<><DatabaseOutlined /> {t.METRICS_BROKER_STATUS || 'Broker Health Status'}</>}
+                                    size="small"
+                                    style={{background: '#0d1117', borderColor: CHART_THEME.borderColor}}
+                                    headStyle={{background: '#0d1117', borderColor: CHART_THEME.borderColor, color: CHART_THEME.textColor}}
+                                    bodyStyle={{padding: '8px'}}
+                                >
+                                    {getBrokerStatusPieOption ? (
+                                        <ReactECharts option={getBrokerStatusPieOption} style={{height: 260}} />
+                                    ) : (
+                                        <div style={{height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center', color: CHART_THEME.subTextColor}}>No broker data</div>
+                                    )}
+                                </Card>
+                            </Col>
+                        </Row>
+
+                        {/* System Resource Gauges */}
+                        {overview.systemResources && (
+                            <Row gutter={[16, 16]} style={{marginBottom: 16}}>
+                                <Col xs={24} lg={16}>
+                                    <Card
+                                        title={<><CloudServerOutlined /> {t.METRICS_SYSTEM_RESOURCE || 'System Resources'}</>}
+                                        size="small"
+                                        style={{background: '#0d1117', borderColor: CHART_THEME.borderColor}}
+                                        headStyle={{background: '#0d1117', borderColor: CHART_THEME.borderColor, color: CHART_THEME.textColor}}
+                                        bodyStyle={{padding: '8px'}}
+                                    >
+                                        {getSystemResourceChartOption ? (
+                                            <ReactECharts option={getSystemResourceChartOption} style={{height: 240}} />
+                                        ) : (
+                                            <div style={{height: 240, display: 'flex', alignItems: 'center', justifyContent: 'center', color: CHART_THEME.subTextColor}}>No system data</div>
+                                        )}
+                                    </Card>
+                                </Col>
+                                <Col xs={24} lg={8}>
+                                    <Card
+                                        title={<><CloudServerOutlined /> {t.METRICS_DISK_USAGE || 'Disk Usage'}</>}
+                                        size="small"
+                                        style={{background: '#0d1117', borderColor: CHART_THEME.borderColor}}
+                                        headStyle={{background: '#0d1117', borderColor: CHART_THEME.borderColor, color: CHART_THEME.textColor}}
+                                        bodyStyle={{padding: '8px'}}
+                                    >
+                                        {getDiskUsageChartOption ? (
+                                            <ReactECharts option={getDiskUsageChartOption} style={{height: 240}} />
+                                        ) : (
+                                            <div style={{height: 240, display: 'flex', alignItems: 'center', justifyContent: 'center', color: CHART_THEME.subTextColor}}>No disk data</div>
+                                        )}
+                                    </Card>
+                                </Col>
+                            </Row>
+                        )}
+
+                        {/* Broker Resource Gauges */}
+                        {overview.brokers?.length > 0 && getBrokerResourceGaugeOption && (
+                            <Card
+                                title={<><DatabaseOutlined /> {t.METRICS_BROKER_RESOURCES || 'Broker Resource Usage'}</>}
+                                size="small"
+                                style={{marginBottom: 16, background: '#0d1117', borderColor: CHART_THEME.borderColor}}
+                                headStyle={{background: '#0d1117', borderColor: CHART_THEME.borderColor, color: CHART_THEME.textColor}}
+                                bodyStyle={{padding: '8px'}}
+                            >
+                                <ReactECharts option={getBrokerResourceGaugeOption} style={{height: overview.brokers.length <= 3 ? 200 : 380}} />
+                            </Card>
+                        )}
+
+                        {/* Topic Backlog & Consumer Group Diff Charts */}
+                        <Row gutter={[16, 16]} style={{marginBottom: 16}}>
+                            <Col xs={24} lg={12}>
+                                <Card
+                                    title={<><BarChartOutlined /> {t.METRICS_TOPIC_BACKLOG || 'Topic Message Backlog (Top 10)'}</>}
+                                    size="small"
+                                    style={{background: '#0d1117', borderColor: CHART_THEME.borderColor}}
+                                    headStyle={{background: '#0d1117', borderColor: CHART_THEME.borderColor, color: CHART_THEME.textColor}}
+                                    bodyStyle={{padding: '8px'}}
+                                >
+                                    {getTopicBacklogChartOption ? (
+                                        <ReactECharts option={getTopicBacklogChartOption} style={{height: 300}} />
+                                    ) : (
+                                        <div style={{height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', color: CHART_THEME.subTextColor}}>No topic data</div>
+                                    )}
+                                </Card>
+                            </Col>
+                            <Col xs={24} lg={12}>
+                                <Card
+                                    title={<><TeamOutlined /> {t.METRICS_CONSUMER_DIFF || 'Consumer Group Lag (Top 10)'}</>}
+                                    size="small"
+                                    style={{background: '#0d1117', borderColor: CHART_THEME.borderColor}}
+                                    headStyle={{background: '#0d1117', borderColor: CHART_THEME.borderColor, color: CHART_THEME.textColor}}
+                                    bodyStyle={{padding: '8px'}}
+                                >
+                                    {getConsumerGroupDiffChartOption ? (
+                                        <ReactECharts option={getConsumerGroupDiffChartOption} style={{height: 300}} />
+                                    ) : (
+                                        <div style={{height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', color: CHART_THEME.subTextColor}}>No consumer group data</div>
+                                    )}
                                 </Card>
                             </Col>
                         </Row>
 
                         {/* Broker Metrics Table */}
                         <Card
-                            title={<><ServerOutlined /> {t.METRICS_BROKER || 'Broker Metrics'}</>}
+                            title={<><DatabaseOutlined /> {t.METRICS_BROKER || 'Broker Metrics'}</>}
                             style={{marginBottom: 16}}
                             size="small"
                         >

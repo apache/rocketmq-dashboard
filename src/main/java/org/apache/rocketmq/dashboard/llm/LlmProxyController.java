@@ -17,7 +17,8 @@
 package org.apache.rocketmq.dashboard.llm;
 
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;import org.apache.rocketmq.dashboard.aspect.admin.annotation.OriginalControllerReturnValue;
+import jakarta.servlet.http.HttpServletResponse;
+import org.apache.rocketmq.dashboard.aspect.admin.annotation.OriginalControllerReturnValue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -37,7 +38,8 @@ import org.springframework.web.client.RestTemplate;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.io.OutputStream;import java.net.http.HttpClient;
+import java.io.OutputStream;
+import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
@@ -52,7 +54,7 @@ import java.util.List;
 @Controller
 public class LlmProxyController {
 
-    private static final Logger logger = LoggerFactory.getLogger(LlmProxyController.class);
+    private static final Logger LOG = LoggerFactory.getLogger(LlmProxyController.class);
     private static final List<String> SKIP_HEADERS = List.of(
             "host", "connection", "content-length", "accept-encoding", "transfer-encoding");
 
@@ -94,7 +96,7 @@ public class LlmProxyController {
                     .headers(filterResponseHeaders(e.getResponseHeaders()))
                     .body(e.getResponseBodyAsByteArray());
         } catch (Exception e) {
-            logger.error("Failed to call LLM API {} : {}", targetUrl, e.getMessage(), e);
+            LOG.error("Failed to call LLM API {} : {}", targetUrl, e.getMessage(), e);
             String errorJson = "{\"status\":-1,\"errMsg\":\"LLM proxy error: " 
                     + e.getMessage().replace("\"", "\\\"") + "\"}";
             return ResponseEntity.status(500)
@@ -141,7 +143,7 @@ public class LlmProxyController {
                 }
             }
         } catch (Exception e) {
-            logger.error("Error processing LLM SSE stream: {}", e.getMessage(), e);
+            LOG.error("Error processing LLM SSE stream: {}", e.getMessage(), e);
             try {
                 OutputStream out = response.getOutputStream();
                 out.write(("event: error\ndata: {\"message\":\"" + e.getMessage() + "\"}\n\n")

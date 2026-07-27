@@ -1610,6 +1610,19 @@ const remoteApi = {
         }
     },
 
+    queryMetricsRange: async (metric, start, end, step) => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl('/api/metrics/query'), {
+                method: 'POST',
+                body: JSON.stringify({metric, start, end, step}),
+            });
+            return await response.json();
+        } catch (error) {
+            console.error('Failed to query metrics range:', error);
+            return {status: 1, errMsg: 'Failed to query metrics range'};
+        }
+    },
+
     // ===== Audit Logs (backend-backed) =====
     listAuditLogs: async (query = {}) => {
         try {
@@ -1646,7 +1659,7 @@ const remoteApi = {
             return await response.json();
         } catch (error) {
             console.error('Failed to list branch compensate alert rules:', error);
-            return {code: 1, message: 'Failed to list branch compensate alert rules'};
+            return {status: 1, errMsg: 'Failed to list branch compensate alert rules'};
         }
     },
 
@@ -1659,7 +1672,7 @@ const remoteApi = {
             return await response.json();
         } catch (error) {
             console.error('Failed to create branch compensate alert rule:', error);
-            return {code: 1, message: 'Failed to create branch compensate alert rule'};
+            return {status: 1, errMsg: 'Failed to create branch compensate alert rule'};
         }
     },
 
@@ -1672,7 +1685,7 @@ const remoteApi = {
             return await response.json();
         } catch (error) {
             console.error('Failed to update branch compensate alert rule:', error);
-            return {code: 1, message: 'Failed to update branch compensate alert rule'};
+            return {status: 1, errMsg: 'Failed to update branch compensate alert rule'};
         }
     },
 
@@ -1685,7 +1698,7 @@ const remoteApi = {
             return await response.json();
         } catch (error) {
             console.error('Failed to toggle branch compensate alert rule:', error);
-            return {code: 1, message: 'Failed to toggle branch compensate alert rule'};
+            return {status: 1, errMsg: 'Failed to toggle branch compensate alert rule'};
         }
     },
 
@@ -1698,7 +1711,7 @@ const remoteApi = {
             return await response.json();
         } catch (error) {
             console.error('Failed to delete branch compensate alert rule:', error);
-            return {code: 1, message: 'Failed to delete branch compensate alert rule'};
+            return {status: 1, errMsg: 'Failed to delete branch compensate alert rule'};
         }
     }
 };

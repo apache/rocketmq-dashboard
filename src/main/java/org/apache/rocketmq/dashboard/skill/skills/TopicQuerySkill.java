@@ -19,7 +19,6 @@ package org.apache.rocketmq.dashboard.skill.skills;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.dashboard.service.TopicService;
 import org.apache.rocketmq.dashboard.skill.AbstractSkill;
-import org.apache.rocketmq.dashboard.skill.Skill;
 import org.apache.rocketmq.dashboard.skill.SkillParameter;
 import org.apache.rocketmq.dashboard.skill.SkillResult;
 import org.springframework.beans.factory.annotation.Autowired;

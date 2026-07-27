@@ -525,7 +525,7 @@ public class PrometheusMetricsQueryClient {
                         String.format("Prometheus API returned HTTP %d for %s. Body: %s", statusCode, description, body));
             }
 
-            return objectMapper.readValue(response.body(), new TypeReference<Map<String, Object>>() {});
+            return objectMapper.readValue(response.body(), new TypeReference<Map<String, Object>>() { });
         } catch (ServiceException e) {
             throw e;
         } catch (IOException | InterruptedException e) {
@@ -621,10 +621,18 @@ public class PrometheusMetricsQueryClient {
             if (valueParts.length >= 1) {
                 String valStr = valueParts[0];
                 switch (valStr) {
-                    case "+Inf": entry.put("value", Double.POSITIVE_INFINITY); break;
-                    case "-Inf": entry.put("value", Double.NEGATIVE_INFINITY); break;
-                    case "NaN": entry.put("value", Double.NaN); break;
-                    default: entry.put("value", Double.parseDouble(valStr)); break;
+                    case "+Inf":
+                        entry.put("value", Double.POSITIVE_INFINITY);
+                        break;
+                    case "-Inf":
+                        entry.put("value", Double.NEGATIVE_INFINITY);
+                        break;
+                    case "NaN":
+                        entry.put("value", Double.NaN);
+                        break;
+                    default:
+                        entry.put("value", Double.parseDouble(valStr));
+                        break;
                 }
             }
             if (valueParts.length >= 2) {
