@@ -28,7 +28,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -46,7 +46,11 @@ public class ClusterRepositoryImpl implements ClusterRepository {
 
     @Override
     public List<ClusterVO> findAll() {
-        return new ArrayList<>(store.values());
+        return store.values().stream()
+                .sorted(Comparator
+                        .comparing(ClusterVO::getName, Comparator.nullsLast(String::compareToIgnoreCase))
+                        .thenComparing(ClusterVO::getId, Comparator.nullsLast(String::compareTo)))
+                .toList();
     }
 
     @Override

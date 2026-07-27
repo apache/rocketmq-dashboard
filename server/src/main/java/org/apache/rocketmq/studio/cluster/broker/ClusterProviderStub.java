@@ -30,16 +30,16 @@ public class ClusterProviderStub implements ClusterProvider {
 
     @Override
     public List<ClusterVO> discoverClusters() {
-        return List.of(buildSampleCluster());
+        return List.of(buildSampleCluster("cluster-001"));
     }
 
     @Override
     public ClusterVO refreshClusterDetail(String clusterId) {
-        return buildSampleCluster();
+        return buildSampleCluster(clusterId);
     }
 
-    private ClusterVO buildSampleCluster() {
-        return ClusterVO.builder()
+    private ClusterVO buildSampleCluster(String clusterId) {
+        ClusterVO cluster = ClusterVO.builder()
                 .name("rmq-cluster-01")
                 .brokers(List.of(
                         BrokerVO.builder()
@@ -81,5 +81,7 @@ public class ClusterProviderStub implements ClusterProvider {
                                 .build()
                 ))
                 .build();
+        cluster.setId(clusterId);
+        return cluster;
     }
 }
