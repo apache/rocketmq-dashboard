@@ -36,7 +36,6 @@ import picocli.CommandLine.Option;
                 AclCommand.class,
                 BrokerCommand.class,
                 MetricsCommand.class,
-                NamespaceCommand.class,
                 ExplainCommand.class,
                 GenerateCompletion.class
         })

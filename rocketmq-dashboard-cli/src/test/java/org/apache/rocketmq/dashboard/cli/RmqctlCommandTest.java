@@ -92,7 +92,6 @@ public class RmqctlCommandTest {
         Assert.assertNotNull(cmd.getSubcommands().get("acl"));
         Assert.assertNotNull(cmd.getSubcommands().get("broker"));
         Assert.assertNotNull(cmd.getSubcommands().get("metrics"));
-        Assert.assertNotNull(cmd.getSubcommands().get("namespace"));
     }
 
     @Test

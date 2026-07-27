@@ -9,7 +9,6 @@
   {"name": "org.apache.rocketmq.dashboard.cli.AclCommand", "allPublicMethods": true},
   {"name": "org.apache.rocketmq.dashboard.cli.BrokerCommand", "allPublicMethods": true},
   {"name": "org.apache.rocketmq.dashboard.cli.MetricsCommand", "allPublicMethods": true},
-  {"name": "org.apache.rocketmq.dashboard.cli.NamespaceCommand", "allPublicMethods": true},
   {"name": "org.apache.rocketmq.dashboard.cli.ExplainCommand", "allPublicMethods": true},
   {"name": "org.apache.rocketmq.dashboard.cli.GenerateCompletion", "allPublicMethods": true}
 ]

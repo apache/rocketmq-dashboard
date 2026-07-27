@@ -450,35 +450,4 @@ public class CommandClassesTest extends AbstractCliTest {
         Assert.assertEquals(1, result);
     }
 
-    // ---- NamespaceCommand ----
-
-    @Test
-    public void testNamespaceCommandAnnotation() {
-        CommandLine.Command cmd = NamespaceCommand.class.getAnnotation(CommandLine.Command.class);
-        Assert.assertNotNull("@Command annotation should be present on NamespaceCommand", cmd);
-        Assert.assertEquals("namespace", cmd.name());
-    }
-
-    @Test
-    public void testNamespaceList() throws Exception {
-        NamespaceCommand.ListCmd cmd = new NamespaceCommand.ListCmd();
-        int result = cmd.call();
-        Assert.assertEquals(0, result);
-    }
-
-    @Test
-    public void testNamespaceCreate() throws Exception {
-        NamespaceCommand.CreateCmd cmd = new NamespaceCommand.CreateCmd();
-        cmd.namespace = "my-namespace";
-        int result = cmd.call();
-        Assert.assertEquals(0, result);
-    }
-
-    @Test
-    public void testNamespaceDelete() throws Exception {
-        NamespaceCommand.DeleteCmd cmd = new NamespaceCommand.DeleteCmd();
-        cmd.namespace = "doomed-ns";
-        int result = cmd.call();
-        Assert.assertEquals(1, result);
-    }
 }
