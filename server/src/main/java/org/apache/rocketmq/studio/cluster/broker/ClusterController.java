@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.cluster.broker;
 import org.apache.rocketmq.studio.cluster.config.UpdateConfigDTO;
 
 import org.apache.rocketmq.studio.common.domain.Result;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -48,7 +49,7 @@ public class ClusterController {
     }
 
     @PostMapping("/config/update")
-    public Result<ClusterVO> updateClusterConfig(@RequestBody UpdateConfigDTO command) {
+    public Result<ClusterVO> updateClusterConfig(@Valid @RequestBody UpdateConfigDTO command) {
         return Result.ok(clusterService.updateClusterConfig(command));
     }
 
