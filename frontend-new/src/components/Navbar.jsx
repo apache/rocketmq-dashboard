@@ -112,6 +112,7 @@ const Navbar = ({rmqVersion = true, showAcl = true}) => {
         ...(capabilities.supportsAcl2 && showAcl ? [{key: 'acl', label: t.ACL_MANAGEMENT}] : []),
         {key: 'alert', label: t.ALERT_MANAGEMENT},
         {key: 'branch-compensate-alert', label: t.BC_ALERT_MANAGEMENT},
+        {key: 'metrics', label: t.METRICS},
     ];
 
     // Determine if it's a small screen (e.g., less than md)

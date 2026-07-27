@@ -42,6 +42,7 @@ import LiteTopic from '../pages/LiteTopic/LiteTopic';
 import RouteEvents from '../pages/RouteEvents/RouteEvents';
 import SslSettings from '../pages/SslSettings/SslSettings';
 import BranchCompensateAlert from '../pages/BranchCompensateAlert/BranchCompensateAlert';
+import MetricsPage from '../pages/Metrics/MetricsPage';
 
 import StudioLayout from '../components/StudioLayout/StudioLayout';
 import { remoteApi } from '../api/remoteApi/remoteApi';
@@ -247,6 +248,14 @@ const AppRouter = () => {
                         element={
                             <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
                                 <BranchCompensateAlert />
+                            </motion.div>
+                        }
+                    />
+                    <Route
+                        path="/metrics"
+                        element={
+                            <motion.div variants={pageVariants} initial="initial" animate="in" exit="out" transition={pageTransition}>
+                                <MetricsPage />
                             </motion.div>
                         }
                     />

@@ -1569,6 +1569,47 @@ const remoteApi = {
         }
     },
 
+    // ===== Metrics (backend-backed) =====
+    getMetricsOverview: async () => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl('/api/metrics/overview'));
+            return await response.json();
+        } catch (error) {
+            console.error('Failed to fetch metrics overview:', error);
+            return {status: 1, errMsg: 'Failed to fetch metrics overview'};
+        }
+    },
+
+    getBrokerMetrics: async (brokerId) => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl(`/api/metrics/brokers/${encodeURIComponent(brokerId)}`));
+            return await response.json();
+        } catch (error) {
+            console.error('Failed to fetch broker metrics:', error);
+            return {status: 1, errMsg: 'Failed to fetch broker metrics'};
+        }
+    },
+
+    getTopicMetrics: async (topicName) => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl(`/api/metrics/topics/${encodeURIComponent(topicName)}`));
+            return await response.json();
+        } catch (error) {
+            console.error('Failed to fetch topic metrics:', error);
+            return {status: 1, errMsg: 'Failed to fetch topic metrics'};
+        }
+    },
+
+    getConsumerGroupMetrics: async (groupName) => {
+        try {
+            const response = await remoteApi._fetch(remoteApi.buildUrl(`/api/metrics/consumer-groups/${encodeURIComponent(groupName)}`));
+            return await response.json();
+        } catch (error) {
+            console.error('Failed to fetch consumer group metrics:', error);
+            return {status: 1, errMsg: 'Failed to fetch consumer group metrics'};
+        }
+    },
+
     // ===== Audit Logs (backend-backed) =====
     listAuditLogs: async (query = {}) => {
         try {
