@@ -85,6 +85,33 @@ describe('message API', () => {
     ]);
   });
 
+  it('normalizes missing message tags and keys', async () => {
+    mock.onGet('/messages').reply(200, {
+      code: 200,
+      data: [
+        {
+          msgId: 'msg-without-metadata',
+          topic: 'orders',
+          tag: null,
+          body: '{}',
+          storeTime: 1784804400000,
+          bornHost: '10.0.0.1:1001',
+          storeHost: '10.0.0.2:10911',
+          properties: {},
+          size: 2,
+        },
+      ],
+    });
+
+    await expect(queryMessages({ topic: 'orders' })).resolves.toMatchObject([
+      {
+        msgId: 'msg-without-metadata',
+        tag: '',
+        key: '',
+      },
+    ]);
+  });
+
   it('unwraps trace records with numeric timestamps', async () => {
     const trace = {
       nodes: [

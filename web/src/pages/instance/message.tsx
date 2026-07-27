@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Card,
   Table,
@@ -50,6 +50,7 @@ import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import type { MessageRecord, TraceRecord } from '../../api/message';
 import { getMessageTrace, queryMessages } from '../../services/messageService';
+import { listTopics } from '../../services/topicService';
 
 const { Paragraph, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -62,14 +63,6 @@ const QUERY_OPTIONS = [
   { value: 'topic' as const, label: '按 Topic 查询' },
   { value: 'key' as const, label: '按 Message Key' },
   { value: 'msgid' as const, label: '按 Message ID' },
-];
-
-const TOPIC_OPTIONS = [
-  'order-create',
-  'payment-callback',
-  'user-activity-log',
-  'notification-push',
-  'inventory-sync',
 ];
 
 const DELIVERY_STATUS_MAP: Record<string, { label: string; color: string }> = {
@@ -122,12 +115,31 @@ const MessagePage = () => {
   const [keyInput, setKeyInput] = useState('');
   const [msgIdInput, setMsgIdInput] = useState('');
   const [messages, setMessages] = useState<MessageRecord[]>([]);
+  const [topics, setTopics] = useState<string[]>([]);
+  const [topicsLoading, setTopicsLoading] = useState(false);
   const [queryLoading, setQueryLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalTab, setModalTab] = useState('content');
   const [selectedMsg, setSelectedMsg] = useState<MessageRecord | null>(null);
   const [traceData, setTraceData] = useState<TraceRecord | null>(null);
   const [traceLoading, setTraceLoading] = useState(false);
+
+  useEffect(() => {
+    const loadTopics = async () => {
+      setTopicsLoading(true);
+      try {
+        const result = await listTopics();
+        setTopics(result.map((topic) => topic.name));
+      } catch {
+        setTopics([]);
+        message.error('Topic 列表加载失败，请稍后重试');
+      } finally {
+        setTopicsLoading(false);
+      }
+    };
+
+    void loadTopics();
+  }, []);
 
   /* ─── Handlers ─── */
   const handleReset = () => {
@@ -139,16 +151,37 @@ const MessagePage = () => {
   };
 
   const handleQuery = async () => {
+    const topic = selectedTopic?.trim();
+    const key = keyInput.trim();
+    const msgId = msgIdInput.trim();
+
+    if (queryMode === 'topic' && !topic) {
+      message.warning('请选择 Topic');
+      return;
+    }
+    if (queryMode === 'key' && !topic) {
+      message.warning('请选择 Topic');
+      return;
+    }
+    if (queryMode === 'key' && !key) {
+      message.warning('请输入 Message Key');
+      return;
+    }
+    if (queryMode === 'msgid' && !msgId) {
+      message.warning('请输入 Message ID');
+      return;
+    }
+
     const params =
       queryMode === 'topic'
         ? {
-            topic: selectedTopic,
+            topic,
             startTime: dateRange[0].valueOf(),
             endTime: dateRange[1].valueOf(),
           }
         : queryMode === 'key'
-          ? { topic: selectedTopic, key: keyInput || undefined }
-          : { msgId: msgIdInput || undefined };
+          ? { topic, key }
+          : { msgId };
 
     setQueryLoading(true);
     try {
@@ -280,7 +313,7 @@ const MessagePage = () => {
             size="small"
             icon={<CheckCircleOutlined />}
             style={{ borderColor: '#52c41a', color: '#52c41a' }}
-            onClick={() => message.success(`消息 ${record.msgId.slice(0, 16)}... 消费验证成功`)}
+            onClick={() => void openDetail(record, 'consumer')}
           >
             验证
           </Button>
@@ -468,7 +501,9 @@ const MessagePage = () => {
                   onChange={setSelectedTopic}
                   allowClear
                   showSearch
-                  options={TOPIC_OPTIONS.map((t) => ({
+                  loading={topicsLoading}
+                  disabled={topicsLoading}
+                  options={topics.map((t) => ({
                     value: t,
                     label: t,
                   }))}
@@ -495,7 +530,9 @@ const MessagePage = () => {
                   onChange={setSelectedTopic}
                   allowClear
                   showSearch
-                  options={TOPIC_OPTIONS.map((t) => ({
+                  loading={topicsLoading}
+                  disabled={topicsLoading}
+                  options={topics.map((t) => ({
                     value: t,
                     label: t,
                   }))}
@@ -521,6 +558,7 @@ const MessagePage = () => {
             <Button
               type="primary"
               icon={<SearchOutlined />}
+              loading={queryLoading}
               onClick={() => {
                 void handleQuery();
               }}
