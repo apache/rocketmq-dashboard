@@ -17,6 +17,8 @@
 
 import client from './client';
 
+const pathSegment = (value: string): string => encodeURIComponent(value);
+
 // ─── Types ──────────────────────────────────────────────────────
 export interface ClusterInfo {
   id: string;
@@ -92,7 +94,7 @@ export async function listClusters() {
 }
 
 export async function getCluster(id: string) {
-  const res = await client.get<{ data: ClusterInfo }>(`/clusters/${id}`);
+  const res = await client.get<{ data: ClusterInfo }>(`/clusters/${pathSegment(id)}`);
   return res.data.data;
 }
 
@@ -102,7 +104,7 @@ export async function updateClusterConfig(data: { id: string } & Partial<Cluster
 
 export async function restartBroker(clusterId: string, brokerName: string) {
   const res = await client.post<{ data: { success: boolean; message: string } }>(
-    `/clusters/${clusterId}/brokers/${brokerName}/restart`,
+    `/clusters/${pathSegment(clusterId)}/brokers/${pathSegment(brokerName)}/restart`,
   );
   return res.data.data;
 }
