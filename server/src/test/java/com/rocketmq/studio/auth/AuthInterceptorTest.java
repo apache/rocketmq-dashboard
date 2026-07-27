@@ -22,6 +22,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class AuthInterceptorTest {
@@ -56,6 +58,11 @@ class AuthInterceptorTest {
     void shouldAllowProtectedApiWithActiveTokenWhenLoginIsEnabled() throws Exception {
         AuthProperties properties = new AuthProperties();
         properties.setLoginRequired(true);
+        AuthProperties.User user = new AuthProperties.User();
+        user.setUsername("admin");
+        user.setPassword("secret");
+        user.setAdmin(true);
+        properties.setUsers(List.of(user));
         AuthService authService = new AuthService(properties);
         AuthInterceptor interceptor = new AuthInterceptor(properties, authService);
         LoginDTO login = new LoginDTO();

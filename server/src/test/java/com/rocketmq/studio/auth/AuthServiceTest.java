@@ -104,6 +104,19 @@ class AuthServiceTest {
     }
 
     @Test
+    void loginShouldRejectWhenLoginIsRequiredWithoutConfiguredUsers() {
+        authProperties.setLoginRequired(true);
+        LoginDTO request = new LoginDTO();
+        request.setUsername("admin");
+        request.setPassword("secret");
+
+        assertThatThrownBy(() -> authService.login(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Login is enabled but no valid users are configured")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(503));
+    }
+
+    @Test
     void logoutShouldRevokeActiveToken() {
         LoginDTO request = new LoginDTO();
         request.setUsername("testuser");

@@ -47,7 +47,8 @@ STUDIO_AUTH_ADMIN_PASSWORD=change-me
 参数中。登录成功后前端会把返回的 token 作为 `Authorization: Bearer <token>` 发送给后续
 `/api/**` 请求；未携带有效 token 的请求会返回 `401 Unauthorized`。
 
-没有配置有效用户时，后端保留本地开发兼容模式：任意非空用户名和密码可登录，`admin` 用户会被标记为管理员。
+开启登录保护后必须至少配置一个有效用户；如未配置有效用户名和密码，后端会拒绝登录以避免共享环境误开放。
+本地开发兼容模式仅在 `studio.auth.login-required=false` 时保留。
 
 ## 前置条件
 
