@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   App,
   Badge,
@@ -145,6 +145,7 @@ const AlertManagementPage: React.FC = () => {
   const { t } = useLang();
   const { message } = App.useApp();
   const [form] = Form.useForm();
+  const fetchFailedMessage = t('alertMgmt.fetchFailed');
 
   const [alertRules, setAlertRules] = useState<AlertRule[]>([]);
   const [loading, setLoading] = useState(false);
@@ -162,32 +163,49 @@ const AlertManagementPage: React.FC = () => {
       return {};
     }
   });
+  const disabledRulesRef = useRef(disabledRules);
 
-  // One-time initialization (ESLint-compliant)
-  const initialized = useRef<boolean | null>(null);
-  if (initialized.current == null) {
-    initialized.current = true;
+  useEffect(() => {
+    disabledRulesRef.current = disabledRules;
+  }, [disabledRules]);
+
+  useEffect(() => {
+    let cancelled = false;
+
     const loadRules = async () => {
-      setLoading(true);
+      if (!cancelled) {
+        setLoading(true);
+      }
       try {
         const data = await queryAlertRules();
         const yamlStr = data.rules || '';
-        setAlertRules(parseYamlRules(yamlStr, disabledRules));
+        if (!cancelled) {
+          setAlertRules(parseYamlRules(yamlStr, disabledRulesRef.current));
+        }
       } catch {
-        message.error(t('alertMgmt.fetchFailed'));
+        if (!cancelled) {
+          message.error(fetchFailedMessage);
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     };
-    loadRules();
-  }
+
+    void loadRules();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchFailedMessage, message]);
 
   const fetchAlertRules = async () => {
     setLoading(true);
     try {
       const data = await queryAlertRules();
       const yamlStr = data.rules || '';
-      setAlertRules(parseYamlRules(yamlStr, disabledRules));
+      setAlertRules(parseYamlRules(yamlStr, disabledRulesRef.current));
     } catch {
       message.error(t('alertMgmt.fetchFailed'));
     } finally {
