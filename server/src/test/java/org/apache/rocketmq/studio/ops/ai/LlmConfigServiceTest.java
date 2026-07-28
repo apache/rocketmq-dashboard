@@ -65,6 +65,7 @@ class LlmConfigServiceTest {
         assertThat(config.getApiBase()).isEqualTo("https://api.openai.com/v1");
         assertThat(config.getModel()).isEqualTo("gpt-4o");
         assertThat(config.isEnabled()).isTrue();
+        assertThat(config.isReady()).isTrue();
     }
 
     @Test
@@ -79,6 +80,51 @@ class LlmConfigServiceTest {
         assertThat(config.toString()).doesNotContain("sk-secret");
         assertThat(config.toString()).doesNotContain("apiKey");
         assertThat(config.isApiKeyConfigured()).isTrue();
+    }
+
+    @Test
+    void readyShouldRequireApiKeyForRemoteProviders() {
+        LlmConfigVO config = LlmConfigVO.builder()
+                .provider("openai")
+                .apiBase("https://api.openai.com/v1")
+                .model("gpt-4o")
+                .enabled(true)
+                .build();
+
+        assertThat(config.isReady()).isFalse();
+    }
+
+    @Test
+    void readyShouldAllowOllamaWithoutApiKey() {
+        LlmConfigVO config = LlmConfigVO.builder()
+                .provider("ollama")
+                .apiBase("http://localhost:11434/v1")
+                .model("llama3")
+                .enabled(true)
+                .build();
+
+        assertThat(config.isReady()).isTrue();
+    }
+
+    @Test
+    void getConfigShouldTreatSavedOllamaAsEnabledWithoutApiKey() {
+        when(settingsService.getGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
+                .theme("dark")
+                .compact(true)
+                .desktopNotify(true)
+                .notifySound(false)
+                .sessionTimeout(45)
+                .requireLogin(true)
+                .llmProvider("ollama")
+                .apiKey("")
+                .model("llama3")
+                .baseUrl("http://localhost:11434/v1")
+                .build());
+
+        LlmConfigVO config = llmConfigService.getConfig();
+
+        assertThat(config.isEnabled()).isTrue();
+        assertThat(config.isReady()).isTrue();
     }
 
     @Test

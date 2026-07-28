@@ -26,6 +26,7 @@ export interface LlmConfig {
   maxTokens: number;
   temperature: number;
   enabled: boolean;
+  ready?: boolean;
   deploymentName?: string;
   apiVersion?: string;
   awsRegion?: string;

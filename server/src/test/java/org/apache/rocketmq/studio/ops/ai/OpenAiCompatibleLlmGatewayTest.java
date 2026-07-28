@@ -28,6 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -35,22 +36,34 @@ class OpenAiCompatibleLlmGatewayTest {
 
     private final LlmConfigService configService = mock(LlmConfigService.class);
     private final OpenAiCompatibleLlmClient llmClient = mock(OpenAiCompatibleLlmClient.class);
-    private final LlmGatewayStub fallbackGateway = mock(LlmGatewayStub.class);
     private final OpenAiCompatibleLlmGateway gateway = new OpenAiCompatibleLlmGateway(
-            configService, llmClient, fallbackGateway, new ObjectMapper());
+            configService, llmClient, new ObjectMapper());
 
     @Test
-    void chatShouldFallbackToStubWhenConfigIsIncomplete() {
+    void chatShouldRejectIncompleteConfigWithoutCallingProvider() {
         ChatDTO request = ChatDTO.builder().message("hello").build();
-        SseEmitter fallbackEmitter = new SseEmitter();
         when(configService.getConfig()).thenReturn(config("openai", ""));
-        when(llmClient.supports(any(LlmConfigVO.class))).thenReturn(true);
-        when(fallbackGateway.chat(request)).thenReturn(fallbackEmitter);
 
         SseEmitter result = gateway.chat(request);
 
-        assertThat(result).isSameAs(fallbackEmitter);
-        verify(fallbackGateway).chat(request);
+        assertThat(result).isNotNull();
+        verify(llmClient, never()).supports(any(LlmConfigVO.class));
+    }
+
+    @Test
+    void executeShouldRejectIncompleteConfig() {
+        when(configService.getConfig()).thenReturn(config("openai", ""));
+
+        assertThatThrownBy(() -> gateway.execute(AiCommandDTO.builder().command("hello").build()))
+                .isInstanceOf(LlmGatewayException.class)
+                .hasMessage("LLM provider is not configured or enabled")
+                .satisfies(exception -> {
+                    LlmGatewayException gatewayException = (LlmGatewayException) exception;
+                    assertThat(gatewayException.getStatusCode()).isEqualTo(400);
+                    assertThat(gatewayException.getCode()).isEqualTo("llm.config.incomplete");
+                    assertThat(gatewayException.getHint()).contains("LLM Settings");
+                });
+        verify(llmClient, never()).complete(any(LlmConfigVO.class), any(String.class), any());
     }
 
     @Test

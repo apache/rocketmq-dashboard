@@ -39,7 +39,6 @@ public class OpenAiCompatibleLlmGateway implements LlmGateway {
 
     private final LlmConfigService configService;
     private final OpenAiCompatibleLlmClient llmClient;
-    private final LlmGatewayStub fallbackGateway;
     private final ObjectMapper objectMapper;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
@@ -47,10 +46,11 @@ public class OpenAiCompatibleLlmGateway implements LlmGateway {
     public SseEmitter chat(ChatDTO request) {
         LlmConfigVO config = configService.getConfig();
         if (!hasRunnableConfig(config)) {
-            log.debug("LLM config is incomplete; falling back to stub chat gateway");
-            return fallbackGateway.chat(request);
+            return errorEmitter(incompleteConfigException());
         }
-        assertSupported(config);
+        if (!llmClient.supports(config)) {
+            return errorEmitter(unsupportedProviderException());
+        }
 
         SseEmitter emitter = new SseEmitter(60_000L);
         executor.execute(() -> streamChat(request, config, emitter));
@@ -61,8 +61,7 @@ public class OpenAiCompatibleLlmGateway implements LlmGateway {
     public String execute(AiCommandDTO command) {
         LlmConfigVO config = configService.getConfig();
         if (!hasRunnableConfig(config)) {
-            log.debug("LLM config is incomplete; falling back to stub execute gateway");
-            return fallbackGateway.execute(command);
+            throw incompleteConfigException();
         }
         assertSupported(config);
         return llmClient.complete(config, commandPrompt(command), command == null ? null : command.getModel());
@@ -80,9 +79,13 @@ public class OpenAiCompatibleLlmGateway implements LlmGateway {
                     token -> sendMessage(emitter, token));
             emitter.send(SseEmitter.event().name("done").data("[DONE]"));
             emitter.complete();
+        } catch (LlmGatewayException exception) {
+            log.warn("LLM chat stream failed: {}", exception.getCode(), exception);
+            sendError(emitter, exception);
         } catch (Exception exception) {
             log.error("Failed to stream LLM chat response", exception);
-            emitter.completeWithError(exception);
+            sendError(emitter, new LlmGatewayException(502, "llm.gateway_error",
+                    "Failed to stream LLM chat response", "Check the LLM provider configuration and retry.", exception));
         }
     }
 
@@ -97,22 +100,48 @@ public class OpenAiCompatibleLlmGateway implements LlmGateway {
         }
     }
 
-    private boolean hasRunnableConfig(LlmConfigVO config) {
-        if (config == null) {
-            return false;
+    private SseEmitter errorEmitter(LlmGatewayException exception) {
+        SseEmitter emitter = new SseEmitter(60_000L);
+        executor.execute(() -> sendError(emitter, exception));
+        return emitter;
+    }
+
+    private void sendError(SseEmitter emitter, LlmGatewayException exception) {
+        try {
+            emitter.send(SseEmitter.event()
+                    .name("error")
+                    .data(objectMapper.writeValueAsString(Map.of(
+                            "status", exception.getStatusCode(),
+                            "code", exception.getCode(),
+                            "message", exception.getMessage(),
+                            "hint", exception.getHint() == null ? "" : exception.getHint()))));
+            emitter.send(SseEmitter.event().name("done").data("[DONE]"));
+            emitter.complete();
+        } catch (IOException ioException) {
+            emitter.completeWithError(ioException);
         }
-        boolean keyRequired = !"ollama".equalsIgnoreCase(config.getProvider());
-        return StringUtils.hasText(config.getApiBase())
-                && StringUtils.hasText(config.getModel())
-                && (!keyRequired || StringUtils.hasText(config.getApiKey()));
+    }
+
+    private boolean hasRunnableConfig(LlmConfigVO config) {
+        return config != null && config.isReady();
     }
 
     private void assertSupported(LlmConfigVO config) {
         if (!llmClient.supports(config)) {
-            throw new LlmGatewayException(400, "llm.config.unsupported_provider",
-                    "LLM provider is not supported by the OpenAI-compatible gateway",
-                    "Use one of: openai, deepseek, tongyi, ollama.");
+            throw unsupportedProviderException();
         }
+    }
+
+    private LlmGatewayException incompleteConfigException() {
+        return new LlmGatewayException(400, "llm.config.incomplete",
+                "LLM provider is not configured or enabled",
+                "Configure and enable an LLM provider in Studio LLM Settings before using AI chat.");
+    }
+
+    private LlmGatewayException unsupportedProviderException() {
+        return new LlmGatewayException(400, "llm.config.unsupported_provider",
+                "LLM provider is not supported by the OpenAI-compatible gateway",
+                "Use one of: openai, deepseek, tongyi, ollama.");
     }
 
     private String commandPrompt(AiCommandDTO command) {

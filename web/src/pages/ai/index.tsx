@@ -32,12 +32,13 @@ import {
   Flex,
   Divider,
   Select,
+  Alert,
   message,
 } from 'antd';
 import { ArrowUp, Sparkle, SlidersHorizontal, CaretDown } from '@phosphor-icons/react';
 import type { ColumnsType } from 'antd/es/table';
 import { useLang } from '../../i18n/LangContext';
-import { chatStream } from '../../api/ai';
+import { AiStreamError, chatStream } from '../../api/ai';
 import { getLlmConfig, getLlmModels, type LlmConfig } from '../../api/llm';
 import { getChatDraft } from './chatDraft';
 
@@ -348,9 +349,15 @@ const AiPage = () => {
     return () => abortControllerRef.current?.abort();
   }, []);
 
+  const llmReady = Boolean((llmConfig?.ready ?? llmConfig?.enabled) && selectedModel);
+
   const handleSend = useCallback(async () => {
     const text = inputValue.trim();
     if (!text || loading) return;
+    if (!llmReady) {
+      message.warning('请先配置并启用 LLM Provider');
+      return;
+    }
 
     if (!conversationIdRef.current) {
       conversationIdRef.current = `conversation-${Date.now()}`;
@@ -397,18 +404,21 @@ const AiPage = () => {
           ),
         );
       } else {
+        const errorMessage = error instanceof Error ? error.message : 'AI 请求失败';
+        const errorHint = error instanceof AiStreamError && error.hint ? error.hint : '';
+        const summary = errorHint ? `${errorMessage}\n\n> ${errorHint}` : errorMessage;
         setMessages((prev) =>
           prev.map((item) =>
-            item.id === responseId ? { ...item, summary: 'AI 服务暂时不可用，请稍后重试。' } : item,
+            item.id === responseId ? { ...item, summary } : item,
           ),
         );
-        message.error(error instanceof Error ? error.message : 'AI 请求失败');
+        message.error(errorMessage);
       }
     } finally {
       if (abortControllerRef.current === controller) abortControllerRef.current = null;
       setLoading(false);
     }
-  }, [inputValue, loading, selectedModel]);
+  }, [inputValue, llmReady, loading, selectedModel]);
 
   const handleStop = useCallback(() => {
     abortControllerRef.current?.abort();
@@ -553,6 +563,21 @@ const AiPage = () => {
           ))}
         </Flex>
 
+        {llmConfig && !llmReady && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message="AI 助手未启用"
+            description="请先在 Studio LLM Settings 中配置并启用 LLM Provider，启用前不会发送请求或返回 stub 回复。"
+            action={
+              <Button size="small" onClick={() => navigate('/studio/llm-settings')}>
+                去配置
+              </Button>
+            }
+          />
+        )}
+
         {/* Main Input Box */}
         <div className="relative overflow-visible border-[1.5px] backdrop-blur-xl border-white rounded-2xl bg-white/80 shadow-[0_20px_60px_-20px_rgba(80,90,180,0.18)]">
           {/* Model Selector */}
@@ -572,9 +597,9 @@ const AiPage = () => {
                 style={{ fontSize: '0.893rem' }}
               />
               {llmConfig && (
-                <Tag color={llmConfig.enabled ? 'green' : 'default'} style={{ borderRadius: 6 }}>
+                <Tag color={llmReady ? 'green' : 'default'} style={{ borderRadius: 6 }}>
                   {llmConfig.provider || 'openai'}
-                  {llmConfig.enabled ? ' 已启用' : ' 未启用'}
+                  {llmReady ? ' 已就绪' : ' 未就绪'}
                 </Tag>
               )}
             </div>
@@ -621,10 +646,11 @@ const AiPage = () => {
                   <button
                     className="flex items-center justify-center w-9 h-9 rounded-full bg-gradient-to-r from-purple-500 to-violet-600 text-white shadow-lg hover:shadow-xl transition-all hover:scale-105"
                     onClick={handleSend}
-                    disabled={loading || !inputValue.trim()}
+                    disabled={loading || !inputValue.trim() || !llmReady}
                     style={{
-                      opacity: loading || !inputValue.trim() ? 0.5 : 1,
-                      cursor: loading || !inputValue.trim() ? 'not-allowed' : 'pointer',
+                      opacity: loading || !inputValue.trim() || !llmReady ? 0.5 : 1,
+                      cursor:
+                        loading || !inputValue.trim() || !llmReady ? 'not-allowed' : 'pointer',
                     }}
                   >
                     <ArrowUp size={19} weight="bold" />

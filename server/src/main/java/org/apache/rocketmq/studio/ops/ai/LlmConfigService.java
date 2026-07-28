@@ -184,15 +184,18 @@ public class LlmConfigService {
     }
 
     private LlmConfigVO fromGeneralSettings(GeneralSettingsVO settings) {
-        String provider = defaultString(settings.getLlmProvider(), OPENAI);
+        String provider = normalizeProvider(settings.getLlmProvider());
+        String apiKey = defaultString(settings.getApiKey(), "");
+        String apiBase = normalizeApiBase(defaultString(settings.getBaseUrl(), defaultApiBase(provider)));
+        String model = defaultString(settings.getModel(), defaultModel(provider));
         return LlmConfigVO.builder()
                 .provider(provider)
-                .apiKey(defaultString(settings.getApiKey(), ""))
-                .apiBase(normalizeApiBase(defaultString(settings.getBaseUrl(), defaultApiBase(provider))))
-                .model(defaultString(settings.getModel(), defaultModel(provider)))
+                .apiKey(apiKey)
+                .apiBase(apiBase)
+                .model(model)
                 .maxTokens(DEFAULT_MAX_TOKENS)
                 .temperature(DEFAULT_TEMPERATURE)
-                .enabled(!isBlank(settings.getApiKey()))
+                .enabled(!requiresApiKey(provider) || !isBlank(apiKey))
                 .apiVersion("2024-02-15-preview")
                 .awsRegion("us-east-1")
                 .build();
