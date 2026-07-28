@@ -38,7 +38,10 @@ public class MetadataService {
 
 
     public List<TopicVO> listTopics(String clusterId, String type, String search) {
-        return metadataProvider.listTopics(clusterId, type, search);
+        return metadataProvider.listTopics(
+                normalizeFilter(clusterId),
+                normalizeFilter(type),
+                normalizeFilter(search));
     }
 
 
@@ -75,7 +78,7 @@ public class MetadataService {
 
 
     public List<ConsumerGroupVO> listConsumerGroups(String clusterId, String search) {
-        return metadataProvider.listConsumerGroups(clusterId, search);
+        return metadataProvider.listConsumerGroups(normalizeFilter(clusterId), normalizeFilter(search));
     }
 
 
@@ -113,5 +116,9 @@ public class MetadataService {
 
     public List<NamespaceVO> listNamespaces() {
         throw new UnsupportedOperationException("Not implemented");
+    }
+
+    private String normalizeFilter(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 }

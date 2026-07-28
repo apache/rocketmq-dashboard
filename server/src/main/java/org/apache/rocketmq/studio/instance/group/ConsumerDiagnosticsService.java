@@ -30,12 +30,15 @@ public class ConsumerDiagnosticsService {
     private final ConsumerDiagnosticsProvider diagnosticsProvider;
 
     public ConsumerStackTraceVO getConsumerStack(String groupName, String clientId) {
-        if (!StringUtils.hasText(groupName)) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "groupName is required");
+        String normalizedGroupName = normalizeRequired(groupName, "groupName");
+        String normalizedClientId = normalizeRequired(clientId, "clientId");
+        return diagnosticsProvider.getConsumerStack(normalizedGroupName, normalizedClientId);
+    }
+
+    private String normalizeRequired(String value, String fieldName) {
+        if (!StringUtils.hasText(value)) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), fieldName + " is required");
         }
-        if (!StringUtils.hasText(clientId)) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "clientId is required");
-        }
-        return diagnosticsProvider.getConsumerStack(groupName, clientId);
+        return value.trim();
     }
 }

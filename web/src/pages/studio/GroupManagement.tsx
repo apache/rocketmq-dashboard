@@ -227,6 +227,11 @@ const GroupManagementPage = () => {
     setModalVisible(true);
   };
 
+  const normalizedSearchText = searchText.trim().toLowerCase();
+  const filteredGroupData = groupData.filter(
+    (record) => !normalizedSearchText || record.group.toLowerCase().includes(normalizedSearchText),
+  );
+
   const columns = [
     {
       title: t('groupMgmt.groupName'),
@@ -390,7 +395,7 @@ const GroupManagementPage = () => {
       <Card bordered={false} style={{ borderRadius: 8, boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}>
         <Table
           columns={columns}
-          dataSource={groupData.filter((d) => !searchText || d.group.includes(searchText))}
+          dataSource={filteredGroupData}
           pagination={{
             pageSize: 10,
             showTotal: (total) => `${t('common.total')} ${total} Group`,

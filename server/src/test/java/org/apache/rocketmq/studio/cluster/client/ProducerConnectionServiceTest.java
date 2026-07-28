@@ -92,6 +92,25 @@ class ProducerConnectionServiceTest {
     }
 
     @Test
+    void listConnectionsShouldTrimFilterValues() {
+        ClientConnectionVO producer = ClientConnectionVO.builder()
+                .clientId("producer-1")
+                .type(ClientType.Producer)
+                .groupOrTopic("order-topic")
+                .producerGroup("pg-order")
+                .address("10.0.0.1:38888")
+                .language(ClientLanguage.Java)
+                .version("5.1.0")
+                .build();
+        when(clientService.listConnections(null, ClientType.Producer.name())).thenReturn(List.of(producer));
+
+        List<ProducerConnectionVO> result = producerConnectionService.listConnections(" order-topic ", " pg-order ");
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getClientId()).isEqualTo("producer-1");
+    }
+
+    @Test
     void listConnectionsShouldRequireProducerGroupWhenBothFiltersAreProvided() {
         ClientConnectionVO producer = ClientConnectionVO.builder()
                 .clientId("producer-1")
