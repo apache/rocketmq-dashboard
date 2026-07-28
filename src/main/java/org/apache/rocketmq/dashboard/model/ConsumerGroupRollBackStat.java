@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.dashboard.model;
+package org.apache.rocketmq.studio.model;
 
 import com.google.common.collect.Lists;
 import org.apache.rocketmq.remoting.protocol.admin.RollbackStats;

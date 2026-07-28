@@ -15,14 +15,14 @@
  * limitations under the License.
  */
 
-package org.apache.rocketmq.dashboard.model;
+package org.apache.rocketmq.studio.model;
 
 import com.google.common.base.Charsets;
 import org.apache.rocketmq.client.trace.TraceBean;
 import org.apache.rocketmq.client.trace.TraceContext;
 import org.apache.rocketmq.common.message.MessageExt;
-import org.apache.rocketmq.dashboard.model.trace.MessageTraceStatusEnum;
-import org.apache.rocketmq.dashboard.util.MsgTraceDecodeUtil;
+import org.apache.rocketmq.studio.model.trace.MessageTraceStatusEnum;
+import org.apache.rocketmq.studio.util.MsgTraceDecodeUtil;
 
 import java.util.ArrayList;
 import java.util.List;
