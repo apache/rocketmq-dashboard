@@ -32,6 +32,7 @@ import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.dashboard.cli.context.AdminClientHelper;
+import org.apache.rocketmq.dashboard.cli.schema.ParamSchema;
 import org.apache.rocketmq.dashboard.cli.schema.ToolDefinition;
 import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
 import org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper;
@@ -85,6 +86,8 @@ public class ToolExecutor {
             throw new UnsupportedOperationException(
                     "Namespace operations are not supported by the connected cluster admin API.");
         }
+        // Fail fast on missing required arguments before paying the connection cost.
+        validateRequiredArguments(tool, args);
         try (AdminClientHelper admin = connect(getString(args, "cluster"))) {
             switch (tool.getName()) {
                 case "rmq.cluster.list":
@@ -151,6 +154,27 @@ public class ToolExecutor {
             return AdminClientHelper.connectDirect(cluster);
         }
         return AdminClientHelper.connectQuiet(cluster);
+    }
+
+    /**
+     * Validates declared required parameters before any connection is opened,
+     * so pure argument mistakes never pay the cluster connection cost.
+     * The {@code cluster} argument is exempt: it may be omitted and resolved
+     * from the current CLI context inside {@link #connect(String)}.
+     */
+    private static void validateRequiredArguments(ToolDefinition tool, Map<String, Object> args) {
+        if (tool.getParams() == null) {
+            return;
+        }
+        for (ParamSchema param : tool.getParams()) {
+            if (!param.isRequired() || "cluster".equals(param.getName())) {
+                continue;
+            }
+            String value = getString(args, param.getName());
+            if (value == null || value.isEmpty()) {
+                throw new IllegalArgumentException("Missing required argument: " + param.getName());
+            }
+        }
     }
 
     // ---- cluster ----------------------------------------------------------------

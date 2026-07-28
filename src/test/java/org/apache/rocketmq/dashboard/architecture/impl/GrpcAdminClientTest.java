@@ -18,7 +18,26 @@
 package org.apache.rocketmq.dashboard.architecture.impl;
 
 import java.lang.reflect.Field;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import org.apache.rocketmq.client.QueryResult;
+import org.apache.rocketmq.common.TopicConfig;
+import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.dashboard.architecture.ClusterAccessType;
+import org.apache.rocketmq.dashboard.model.GroupConsumeInfo;
+import org.apache.rocketmq.dashboard.util.MockObjectUtil;
+import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
+import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
+import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
+import org.apache.rocketmq.remoting.protocol.body.KVTable;
+import org.apache.rocketmq.remoting.protocol.body.ProducerConnection;
+import org.apache.rocketmq.remoting.protocol.body.TopicList;
+import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
+import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.junit.After;
 import org.junit.Before;
@@ -26,10 +45,14 @@ import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 public class GrpcAdminClientTest {
 
@@ -505,6 +528,278 @@ public class GrpcAdminClientTest {
         } catch (Exception e) {
             fail("Expected IllegalStateException but got " + e.getClass().getSimpleName());
         }
+    }
+
+    // ==================== Remoting fallback delegation ====================
+
+    private TopicList buildTopicList(String... names) {
+        TopicList topicList = new TopicList();
+        topicList.setTopicList(new HashSet<>(java.util.Arrays.asList(names)));
+        return topicList;
+    }
+
+    @Test
+    public void testGetClusterInfoDelegates() throws Exception {
+        GrpcAdminClient client = new GrpcAdminClient(PROXY_ADDRESS, mqAdminExt, grpcClient);
+        ClusterInfo clusterInfo = MockObjectUtil.createClusterInfo();
+        when(mqAdminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo);
+
+        assertSame(clusterInfo, client.getClusterInfo());
+    }
+
+    @Test
+    public void testGetBrokerRuntimeStatsDelegates() throws Exception {
+        GrpcAdminClient client = new GrpcAdminClient(PROXY_ADDRESS, mqAdminExt, grpcClient);
+        KVTable kvTable = new KVTable();
+        when(mqAdminExt.fetchBrokerRuntimeStats("127.0.0.1:10911")).thenReturn(kvTable);
+
+        assertSame(kvTable, client.getBrokerRuntimeStats("127.0.0.1:10911"));
+    }
+
+    @Test
+    public void testUpdateBrokerConfigDelegates() throws Exception {
+        GrpcAdminClient client = new GrpcAdminClient(PROXY_ADDRESS, mqAdminExt, grpcClient);
+        Properties properties = new Properties();
+        client.updateBrokerConfig("127.0.0.1:10911", properties);
+
+        verify(mqAdminExt).updateBrokerConfig("127.0.0.1:10911", properties);
+    }
+
+    @Test
+    public void testGetTopicListDelegates() throws Exception {
+        GrpcAdminClient client = new GrpcAdminClient(PROXY_ADDRESS, mqAdminExt);
+        when(mqAdminExt.fetchAllTopicList()).thenReturn(buildTopicList("topicA", "topicB"));
+
+        List<String> topics = client.getTopicList();
+        assertEquals(2, topics.size());
+        assertTrue(topics.contains("topicA"));
+    }
+
+    @Test
+    public void testGetTopicRouteDelegates() throws Exception {
+        GrpcAdminClient client = new GrpcAdminClient(PROXY_ADDRESS, mqAdminExt);
+        TopicRouteData routeData = MockObjectUtil.createTopicRouteData();
+        when(mqAdminExt.examineTopicRouteInfo("topicA")).thenReturn(routeData);
+
+        assertSame(routeData, client.getTopicRoute("topicA"));
+    }
+
+    @Test
+    public void testGetTopicStatsDelegates() throws Exception {
+        GrpcAdminClient client = new GrpcAdminClient(PROXY_ADDRESS, mqAdminExt);
+        TopicStatsTable statsTable = MockObjectUtil.createTopicStatsTable();
+        when(mqAdminExt.examineTopicStats("topicA")).thenReturn(statsTable);
+
+        assertSame(statsTable, client.getTopicStats("topicA"));
+    }
+
+    @Test
+    public void testCreateOrUpdateTopicOnMasterBrokers() throws Exception {
+        GrpcAdminClient client = new GrpcAdminClient(PROXY_ADDRESS, mqAdminExt);
+        TopicConfig topicConfig = new TopicConfig("topicA");
+        when(mqAdminExt.examineTopicRouteInfo("topicA")).thenReturn(MockObjectUtil.createTopicRouteData());
+
+        client.createOrUpdateTopic("topicA", topicConfig);
+        verify(mqAdminExt).createAndUpdateTopicConfig("127.0.0.1:10911", topicConfig);
+    }
+
+    @Test
+    public void testCreateOrUpdateTopicNullRouteSkips() throws Exception {
+        GrpcAdminClient client = new GrpcAdminClient(PROXY_ADDRESS, mqAdminExt);
+        when(mqAdminExt.examineTopicRouteInfo("topicA")).thenReturn(null);
+
+        client.createOrUpdateTopic("topicA", new TopicConfig("topicA"));
+        verify(mqAdminExt, never()).createAndUpdateTopicConfig(org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(TopicConfig.class));
+    }
+
+    @Test
+    public void testCreateOrUpdateTopicSwallowsBrokerFailure() throws Exception {
+        GrpcAdminClient client = new GrpcAdminClient(PROXY_ADDRESS, mqAdminExt);
+        when(mqAdminExt.examineTopicRouteInfo("topicA")).thenReturn(MockObjectUtil.createTopicRouteData());
+        org.mockito.Mockito.doThrow(new RuntimeException("broker down"))
+                .when(mqAdminExt).createAndUpdateTopicConfig(org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.any(TopicConfig.class));
+
+        // Failure on a single broker must not propagate
+        client.createOrUpdateTopic("topicA", new TopicConfig("topicA"));
+    }
+
+    @Test
+    public void testDeleteTopicDelegates() throws Exception {
+        GrpcAdminClient client = new GrpcAdminClient(PROXY_ADDRESS, mqAdminExt);
+        client.deleteTopic("topicA", "DefaultCluster");
+
+        java.util.Set<String> clusters = new HashSet<>(Collections.singletonList("DefaultCluster"));
+        verify(mqAdminExt).deleteTopicInBroker(clusters, "topicA");
+        verify(mqAdminExt).deleteTopicInNameServer(clusters, "topicA");
+    }
+
+    @Test
+    public void testGetTopicListFromBrokerUsesNameServerList() throws Exception {
+        GrpcAdminClient client = new GrpcAdminClient(PROXY_ADDRESS, mqAdminExt);
+        TopicList topicList = buildTopicList("topicA");
+        when(mqAdminExt.fetchAllTopicList()).thenReturn(topicList);
+
+        assertSame(topicList, client.getTopicListFromBroker("127.0.0.1:10911"));
+    }
+
+    @Test
+    public void testGetConsumerGroupListExtractsRetryTopics() throws Exception {
+        GrpcAdminClient client = new GrpcAdminClient(PROXY_ADDRESS, mqAdminExt);
+        when(mqAdminExt.fetchAllTopicList()).thenReturn(buildTopicList("topicA", "%RETRY%groupA", "%RETRY%groupB"));
+
+        List<String> groups = client.getConsumerGroupList();
+        assertEquals(2, groups.size());
+        assertTrue(groups.contains("groupA"));
+        assertTrue(groups.contains("groupB"));
+    }
+
+    @Test
+    public void testGetConsumerConnectionDelegates() throws Exception {
+        GrpcAdminClient client = new GrpcAdminClient(PROXY_ADDRESS, mqAdminExt);
+        ConsumerConnection connection = MockObjectUtil.createConsumerConnection();
+        when(mqAdminExt.examineConsumerConnectionInfo("groupA")).thenReturn(connection);
+
+        assertSame(connection, client.getConsumerConnection("groupA"));
+    }
+
+    @Test
+    public void testGetGroupConsumeInfoWithRetryTopic() throws Exception {
+        GrpcAdminClient client = new GrpcAdminClient(PROXY_ADDRESS, mqAdminExt);
+        when(mqAdminExt.fetchAllTopicList()).thenReturn(buildTopicList("%RETRY%groupA"));
+
+        GroupConsumeInfo info = client.getGroupConsumeInfo("groupA");
+        assertEquals("groupA", info.getGroup());
+        assertEquals(0L, info.getDiffTotal());
+        assertEquals(0, info.getCount());
+        verify(mqAdminExt, never()).examineConsumeStats("groupA");
+    }
+
+    @Test
+    public void testGetGroupConsumeInfoFromConsumeStats() throws Exception {
+        GrpcAdminClient client = new GrpcAdminClient(PROXY_ADDRESS, mqAdminExt);
+        when(mqAdminExt.fetchAllTopicList()).thenReturn(buildTopicList("topicA"));
+        when(mqAdminExt.examineConsumeStats("groupA")).thenReturn(MockObjectUtil.createConsumeStats());
+
+        GroupConsumeInfo info = client.getGroupConsumeInfo("groupA");
+        // Two queues, each brokerOffset(10) - consumerOffset(7) = 3
+        assertEquals(6L, info.getDiffTotal());
+    }
+
+    @Test
+    public void testGetGroupConsumeInfoStatsFailureDefaultsToZero() throws Exception {
+        GrpcAdminClient client = new GrpcAdminClient(PROXY_ADDRESS, mqAdminExt);
+        when(mqAdminExt.fetchAllTopicList()).thenThrow(new RuntimeException("namesrv down"));
+        when(mqAdminExt.examineConsumeStats("groupA")).thenThrow(new RuntimeException("broker down"));
+
+        GroupConsumeInfo info = client.getGroupConsumeInfo("groupA");
+        assertEquals(0L, info.getDiffTotal());
+    }
+
+    @Test
+    public void testResetConsumeOffsetParameterOrder() throws Exception {
+        GrpcAdminClient client = new GrpcAdminClient(PROXY_ADDRESS, mqAdminExt);
+        client.resetConsumeOffset("groupA", "topicA", 123L, true);
+
+        // consumerGroup comes before topic for the gRPC client (unlike RemotingAdminClient)
+        verify(mqAdminExt).resetOffsetByTimestamp("groupA", "topicA", 123L, true);
+    }
+
+    @Test
+    public void testCreateOrUpdateConsumerGroupOnMasterBrokers() throws Exception {
+        GrpcAdminClient client = new GrpcAdminClient(PROXY_ADDRESS, mqAdminExt);
+        SubscriptionGroupConfig config = new SubscriptionGroupConfig();
+        when(mqAdminExt.fetchAllTopicList()).thenReturn(buildTopicList("topicA"));
+        when(mqAdminExt.examineTopicRouteInfo("topicA")).thenReturn(MockObjectUtil.createTopicRouteData());
+
+        client.createOrUpdateConsumerGroup("groupA", config);
+        verify(mqAdminExt).createAndUpdateSubscriptionGroupConfig("127.0.0.1:10911", config);
+    }
+
+    @Test
+    public void testCreateOrUpdateConsumerGroupSwallowsBrokerFailure() throws Exception {
+        GrpcAdminClient client = new GrpcAdminClient(PROXY_ADDRESS, mqAdminExt);
+        when(mqAdminExt.fetchAllTopicList()).thenReturn(buildTopicList("topicA"));
+        when(mqAdminExt.examineTopicRouteInfo("topicA")).thenReturn(MockObjectUtil.createTopicRouteData());
+        org.mockito.Mockito.doThrow(new RuntimeException("broker down"))
+                .when(mqAdminExt).createAndUpdateSubscriptionGroupConfig(org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.any(SubscriptionGroupConfig.class));
+
+        client.createOrUpdateConsumerGroup("groupA", new SubscriptionGroupConfig());
+    }
+
+    @Test
+    public void testDeleteConsumerGroupDelegates() throws Exception {
+        GrpcAdminClient client = new GrpcAdminClient(PROXY_ADDRESS, mqAdminExt);
+        client.deleteConsumerGroup("groupA", "127.0.0.1:10911");
+
+        verify(mqAdminExt).deleteSubscriptionGroup("127.0.0.1:10911", "groupA");
+    }
+
+    @Test
+    public void testGetProducerConnectionDelegates() throws Exception {
+        GrpcAdminClient client = new GrpcAdminClient(PROXY_ADDRESS, mqAdminExt);
+        ProducerConnection connection = new ProducerConnection();
+        when(mqAdminExt.examineProducerConnectionInfo("pg", "topicA")).thenReturn(connection);
+
+        assertSame(connection, client.getProducerConnection("pg", "topicA"));
+    }
+
+    @Test
+    public void testQueryMessageParameterOrder() throws Exception {
+        GrpcAdminClient client = new GrpcAdminClient(PROXY_ADDRESS, mqAdminExt);
+        QueryResult queryResult = new QueryResult(0, Collections.emptyList());
+        when(mqAdminExt.queryMessage("topicA", "key", 32, 1L, 2L)).thenReturn(queryResult);
+
+        assertSame(queryResult, client.queryMessage("topicA", "key", 1L, 2L, 32));
+    }
+
+    @Test
+    public void testViewMessageDelegates() throws Exception {
+        GrpcAdminClient client = new GrpcAdminClient(PROXY_ADDRESS, mqAdminExt);
+        MessageExt messageExt = MockObjectUtil.createMessageExt();
+        when(mqAdminExt.viewMessage("topicA", "msgId")).thenReturn(messageExt);
+
+        assertSame(messageExt, client.viewMessage("topicA", "msgId"));
+    }
+
+    @Test
+    public void testConsumeMessageDirectlyDelegates() throws Exception {
+        GrpcAdminClient client = new GrpcAdminClient(PROXY_ADDRESS, mqAdminExt);
+        client.consumeMessageDirectly("groupA", "topicA", "msgId");
+
+        verify(mqAdminExt).consumeMessageDirectly("groupA", "topicA", "msgId", null);
+    }
+
+    @Test
+    public void testReplayMessageDelegatesToConsumeMessageDirectly() throws Exception {
+        GrpcAdminClient client = new GrpcAdminClient(PROXY_ADDRESS, mqAdminExt);
+        client.replayMessage("groupA", "topicA", "msgId");
+
+        verify(mqAdminExt).consumeMessageDirectly("groupA", "topicA", "msgId", null);
+    }
+
+    @Test
+    public void testGetNameServerConfigMergesProperties() throws Exception {
+        GrpcAdminClient client = new GrpcAdminClient(PROXY_ADDRESS, mqAdminExt);
+        Properties props = new Properties();
+        props.setProperty("listenPort", "9876");
+        Map<String, Properties> configMap = new HashMap<>();
+        configMap.put("127.0.0.1:9876", props);
+        when(mqAdminExt.getNameServerConfig(Collections.singletonList("127.0.0.1:9876"))).thenReturn(configMap);
+
+        KVTable kvTable = client.getNameServerConfig("127.0.0.1:9876");
+        assertEquals("9876", kvTable.getTable().get("listenPort"));
+    }
+
+    @Test
+    public void testGetNameServerConfigNullMapReturnsEmptyTable() throws Exception {
+        GrpcAdminClient client = new GrpcAdminClient(PROXY_ADDRESS, mqAdminExt);
+        when(mqAdminExt.getNameServerConfig(Collections.singletonList("127.0.0.1:9876"))).thenReturn(null);
+
+        KVTable kvTable = client.getNameServerConfig("127.0.0.1:9876");
+        assertNotNull(kvTable);
     }
 
     // ==================== Helper methods ====================

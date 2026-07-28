@@ -25,6 +25,7 @@ import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.dashboard.BaseTest;
 import org.apache.rocketmq.dashboard.config.CollectExecutorConfig;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
+import org.apache.rocketmq.dashboard.service.ConsumerService;
 import org.apache.rocketmq.dashboard.service.impl.DashboardCollectServiceImpl;
 import org.apache.rocketmq.dashboard.util.JsonUtil;
 import org.apache.rocketmq.dashboard.util.MockObjectUtil;
@@ -42,6 +43,7 @@ import org.junit.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.mockito.Spy;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.io.File;
 import java.text.DateFormat;
@@ -55,7 +57,11 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 public class DashboardCollectTaskTest extends BaseTest {
@@ -74,6 +80,9 @@ public class DashboardCollectTaskTest extends BaseTest {
 
     @Mock
     private ExecutorService collectExecutor;
+
+    @Mock
+    private ConsumerService consumerService;
 
     private int taskExecuteNum = 10;
 
@@ -199,13 +208,97 @@ public class DashboardCollectTaskTest extends BaseTest {
         Assert.assertEquals(brokerData.get("broker-a" + ":" + MixAll.MASTER_ID).size(), taskExecuteNum + 2);
     }
 
+    @Test
+    public void testCollectConsumer() {
+        dashboardCollectTask.collectConsumer();
+        verify(consumerService, times(1)).queryGroupList(false, null);
+    }
+
+    @Test
+    public void testCollectAccumulationAndTransactionAndStorageLatency() throws Exception {
+        // enableDashBoardCollect = false
+        when(rmqConfigure.isEnableDashBoardCollect()).thenReturn(false);
+        dashboardCollectTask.collectAccumulation();
+        dashboardCollectTask.collectTransaction();
+        dashboardCollectTask.collectStorageLatency();
+        verify(collectExecutor, never()).submit(any(Runnable.class));
+
+        when(rmqConfigure.isEnableDashBoardCollect()).thenReturn(true);
+        TopicList topicList = new TopicList();
+        Set<String> topicSet = new HashSet<>();
+        topicSet.add("rmq_sys_xxx");
+        topicSet.add("topic_test");
+        topicSet.add("%RETRY%group_test");
+        topicSet.add("%DLQ%group_test");
+        topicList.setTopicList(topicSet);
+        when(mqAdminExt.fetchAllTopicList())
+                .thenThrow(new RuntimeException("fetchAllTopicList exception"))
+                .thenReturn(topicList);
+
+        // fetchAllTopicList exception is swallowed by these collect methods
+        dashboardCollectTask.collectAccumulation();
+        verify(collectExecutor, never()).submit(any(Runnable.class));
+
+        // only topic_test survives the filter, one task submitted per method
+        dashboardCollectTask.collectAccumulation();
+        dashboardCollectTask.collectTransaction();
+        dashboardCollectTask.collectStorageLatency();
+        verify(collectExecutor, times(3)).submit(any(Runnable.class));
+    }
+
+    @Test
+    public void testCollectClusterLevelTasks() {
+        // enableDashBoardCollect = false
+        when(rmqConfigure.isEnableDashBoardCollect()).thenReturn(false);
+        dashboardCollectTask.collectNetworkThroughput();
+        dashboardCollectTask.collectReplicaSync();
+        dashboardCollectTask.collectHotTopic();
+        verify(collectExecutor, never()).submit(any(Runnable.class));
+
+        when(rmqConfigure.isEnableDashBoardCollect()).thenReturn(true);
+        dashboardCollectTask.collectNetworkThroughput();
+        dashboardCollectTask.collectReplicaSync();
+        dashboardCollectTask.collectHotTopic();
+        verify(collectExecutor, times(3)).submit(any(Runnable.class));
+
+        // submit exception is swallowed
+        when(collectExecutor.submit(any(Runnable.class)))
+                .thenThrow(new RuntimeException("submit exception"));
+        dashboardCollectTask.collectNetworkThroughput();
+        dashboardCollectTask.collectReplicaSync();
+        dashboardCollectTask.collectHotTopic();
+        verify(collectExecutor, times(6)).submit(any(Runnable.class));
+    }
+
+    @Test
+    public void testSaveDataWithDateChanged() throws Exception {
+        when(rmqConfigure.isEnableDashBoardCollect()).thenReturn(true);
+        dashboardCollectService.getBrokerMap().put("broker-a:0", Lists.newArrayList("1000,1.0"));
+        dashboardCollectService.getTopicMap().put("topic_test", Lists.newArrayList("1000,1.0"));
+        // yesterday, cache should be invalidated on date change
+        Date yesterday = new Date(System.currentTimeMillis() - 24 * 60 * 60 * 1000);
+        ReflectionTestUtils.setField(dashboardCollectTask, "currentDate", yesterday);
+
+        dashboardCollectTask.saveData();
+
+        Assert.assertEquals(0, dashboardCollectService.getBrokerMap().size());
+        Assert.assertEquals(0, dashboardCollectService.getTopicMap().size());
+        Assert.assertEquals(true, brokerFile.exists());
+        Assert.assertEquals(true, topicFile.exists());
+    }
+
     @After
     public void after() {
-        if (brokerFile != null && brokerFile.exists()) {
-            brokerFile.delete();
-        }
-        if (topicFile != null && topicFile.exists()) {
-            topicFile.delete();
+        String dataLocationPath = "/tmp/rocketmq-console/test/data";
+        DateFormat format = new SimpleDateFormat("yyyy-MM-dd");
+        String nowDateStr = format.format(new Date());
+        String[] suffixes = {"", "_topic", "_accumulation", "_transaction", "_storageLatency",
+            "_networkThroughput", "_replicaSync", "_hotTopic"};
+        for (String suffix : suffixes) {
+            File file = new File(dataLocationPath + nowDateStr + suffix + ".json");
+            if (file.exists()) {
+                file.delete();
+            }
         }
     }
 

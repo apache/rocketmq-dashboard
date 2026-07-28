@@ -97,8 +97,9 @@ public class McpServerApplication {
         } else {
             // Stdio mode: use StdioTransport directly, no Spring context
             SecurityGate securityGate = new SecurityGate(enableDangerousOps);
-            McpToolRegistry toolRegistry = new McpToolRegistry(securityGate, new ToolExecutor());
-            ResourceProvider resourceProvider = new ResourceProvider();
+            ToolExecutor toolExecutor = new ToolExecutor();
+            McpToolRegistry toolRegistry = new McpToolRegistry(securityGate, toolExecutor);
+            ResourceProvider resourceProvider = new ResourceProvider(toolExecutor);
             McpProtocolHandler protocolHandler = new McpProtocolHandler(toolRegistry, resourceProvider);
 
             log.info("Starting stdio transport");

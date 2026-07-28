@@ -511,7 +511,12 @@ public class AdminClientHelper implements AutoCloseable {
         List<String> masterAddrs = getMasterBrokerAddresses();
         for (String addr : masterAddrs) {
             try {
-                return mqAdminExt.examineTopicConfig(addr, topicName);
+                TopicConfig config = mqAdminExt.examineTopicConfig(addr, topicName);
+                // A broker without this topic may return null instead of throwing;
+                // keep probing the remaining brokers before concluding not-found.
+                if (config != null) {
+                    return config;
+                }
             } catch (Exception e) {
                 log.debug("Topic {} not found on broker {}: {}", topicName, addr, e.getMessage());
             }

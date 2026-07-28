@@ -68,13 +68,15 @@ public class DlqMessageController {
             String topic = MixAll.DLQ_GROUP_TOPIC_PREFIX + consumerGroup;
             messageExt = mqAdminExt.viewMessage(topic, msgId);
         } catch (Exception e) {
-            throw new ServiceException(-1, String.format("Failed to query message by Id: %s", msgId));
+            log.error("Failed to query dlq message by Id:{}", msgId, e);
+            throw new ServiceException(-1, String.format("Failed to query message by Id: %s", msgId), e);
         }
         DlqMessageExcelModel excelModel = new DlqMessageExcelModel(messageExt);
         try {
             ExcelUtil.writeExcel(response, Lists.newArrayList(excelModel), "dlq", "dlq", DlqMessageExcelModel.class);
         } catch (Exception e) {
-            throw new ServiceException(-1, String.format("export dlq message failed!"));
+            log.error("Failed to export dlq message, msgId:{}", msgId, e);
+            throw new ServiceException(-1, "export dlq message failed!", e);
         }
     }
 
@@ -103,7 +105,8 @@ public class DlqMessageController {
         try {
             ExcelUtil.writeExcel(response, dlqMessageExcelModelList, "dlqs", "dlqs", DlqMessageExcelModel.class);
         } catch (Exception e) {
-            throw new ServiceException(-1, String.format("export dlq message failed!"));
+            log.error("Failed to batch export dlq messages", e);
+            throw new ServiceException(-1, "export dlq message failed!", e);
         }
     }
 }

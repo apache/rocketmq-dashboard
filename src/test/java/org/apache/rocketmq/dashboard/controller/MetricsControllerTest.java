@@ -25,8 +25,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.rocketmq.dashboard.adapter.PrometheusMetricsAdapter;
+import org.apache.rocketmq.dashboard.model.MetricsSelfCheckResult;
+import org.apache.rocketmq.dashboard.model.request.MetricsDataSourceRequest;
 import org.apache.rocketmq.dashboard.service.MetricsEnhancedService;
 import org.apache.rocketmq.dashboard.service.MetricsService;
+import org.apache.rocketmq.dashboard.support.JsonResult;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.InjectMocks;
@@ -34,10 +37,15 @@ import org.mockito.Mock;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -430,5 +438,380 @@ public class MetricsControllerTest extends BaseControllerTest {
         perform.andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value(1))
                 .andExpect(jsonPath("$.errMsg").isNotEmpty());
+    }
+
+    // ==================================================================
+    // Direct-invocation tests for the remaining endpoints (Prometheus
+    // text exposition, PromQL proxy, data source CRUD, self-check, ...)
+    // ==================================================================
+
+    @SuppressWarnings("unchecked")
+    private <T> JsonResult<T> asResult(Object obj) {
+        return (JsonResult<T>) obj;
+    }
+
+    // ==================== Prometheus text endpoints ====================
+
+    @Test
+    public void testExportAllMetrics() {
+        when(metricsService.getClusterMetricsExposition()).thenReturn("# HELP up\nup 1");
+        assertEquals("# HELP up\nup 1", metricsController.exportAllMetrics());
+
+        when(metricsService.getClusterMetricsExposition()).thenThrow(new RuntimeException("boom"));
+        assertTrue(metricsController.exportAllMetrics().startsWith("# Error collecting metrics"));
+    }
+
+    @Test
+    public void testExportClusterMetrics() {
+        when(metricsService.getClusterMetricsExposition()).thenReturn("cluster 1");
+        assertEquals("cluster 1", metricsController.exportClusterMetrics());
+
+        when(metricsService.getClusterMetricsExposition()).thenThrow(new RuntimeException("boom"));
+        assertTrue(metricsController.exportClusterMetrics().startsWith("# Error"));
+    }
+
+    @Test
+    public void testExportBrokerMetrics() {
+        Map<String, Object> metrics = Collections.singletonMap("tps", 1);
+        when(metricsService.getBrokerMetrics("broker-a")).thenReturn(metrics);
+        when(prometheusAdapter.toPrometheusFormat(metrics)).thenReturn("broker 1");
+        assertEquals("broker 1", metricsController.exportBrokerMetrics("broker-a"));
+
+        when(metricsService.getBrokerMetrics("broker-b")).thenThrow(new RuntimeException("boom"));
+        assertTrue(metricsController.exportBrokerMetrics("broker-b").startsWith("# Error"));
+    }
+
+    @Test
+    public void testExportTopicMetrics() {
+        Map<String, Object> metrics = Collections.singletonMap("inTps", 2);
+        when(metricsService.getTopicMetrics("topic-a")).thenReturn(metrics);
+        when(prometheusAdapter.toPrometheusFormat(metrics)).thenReturn("topic 2");
+        assertEquals("topic 2", metricsController.exportTopicMetrics("topic-a"));
+
+        when(metricsService.getTopicMetrics("topic-b")).thenThrow(new RuntimeException("boom"));
+        assertTrue(metricsController.exportTopicMetrics("topic-b").startsWith("# Error"));
+    }
+
+    @Test
+    public void testExportConsumerGroupMetrics() {
+        Map<String, Object> metrics = Collections.singletonMap("lag", 3);
+        when(metricsService.getConsumerGroupMetrics("group-a")).thenReturn(metrics);
+        when(prometheusAdapter.toPrometheusFormat(metrics)).thenReturn("group 3");
+        assertEquals("group 3", metricsController.exportConsumerGroupMetrics("group-a"));
+
+        when(metricsService.getConsumerGroupMetrics("group-b")).thenThrow(new RuntimeException("boom"));
+        assertTrue(metricsController.exportConsumerGroupMetrics("group-b").startsWith("# Error"));
+    }
+
+    @Test
+    public void testExportClientMetrics() {
+        Map<String, Object> metrics = Collections.singletonMap("clients", 4);
+        when(metricsService.getClientMetrics()).thenReturn(metrics);
+        when(prometheusAdapter.toPrometheusFormat(metrics)).thenReturn("client 4");
+        assertEquals("client 4", metricsController.exportClientMetrics());
+
+        when(metricsService.getClientMetrics()).thenThrow(new RuntimeException("boom"));
+        assertTrue(metricsController.exportClientMetrics().startsWith("# Error"));
+    }
+
+    @Test
+    public void testExportSystemMetrics() {
+        Map<String, Object> metrics = Collections.singletonMap("cpu", 5);
+        when(metricsService.getSystemMetrics()).thenReturn(metrics);
+        when(prometheusAdapter.toPrometheusFormat(metrics)).thenReturn("system 5");
+        assertEquals("system 5", metricsController.exportSystemMetrics());
+
+        when(metricsService.getSystemMetrics()).thenThrow(new RuntimeException("boom"));
+        assertTrue(metricsController.exportSystemMetrics().startsWith("# Error"));
+    }
+
+    @Test
+    public void testExportCustomMetrics() {
+        Map<String, Object> metrics = Collections.singletonMap("custom", 6);
+        when(metricsService.getCustomMetrics("jvm")).thenReturn(metrics);
+        when(prometheusAdapter.toPrometheusFormat(metrics)).thenReturn("custom 6");
+        assertEquals("custom 6", metricsController.exportCustomMetrics("jvm"));
+
+        when(metricsService.getCustomMetrics("disk")).thenThrow(new RuntimeException("boom"));
+        assertTrue(metricsController.exportCustomMetrics("disk").startsWith("# Error"));
+    }
+
+    @Test
+    public void testGetMetricsSummary() {
+        Map<String, Object> summary = Collections.singletonMap("brokerCount", 2);
+        when(metricsService.getMetricsSummary()).thenReturn(summary);
+        assertEquals(summary, metricsController.getMetricsSummary());
+    }
+
+    // ==================== promqlQuery ====================
+
+    @Test
+    public void testPromqlQueryBlank() {
+        JsonResult<Object> result = asResult(metricsController.promqlQuery(" ", null, null));
+        assertEquals(1, result.getStatus());
+    }
+
+    @Test
+    public void testPromqlQuerySuccess() {
+        Map<String, Object> data = Collections.singletonMap("resultType", "vector");
+        when(metricsService.executePromqlQuery(anyMap())).thenReturn(data);
+
+        JsonResult<Map<String, Object>> result =
+            asResult(metricsController.promqlQuery("up", "1700000000", "ds-1"));
+        assertEquals(0, result.getStatus());
+        assertEquals(data, result.getData());
+    }
+
+    @Test
+    public void testPromqlQueryUnsupported() {
+        when(metricsService.executePromqlQuery(anyMap()))
+            .thenThrow(new UnsupportedOperationException("no datasource"));
+
+        JsonResult<Map<String, Object>> result =
+            asResult(metricsController.promqlQuery("up", null, null));
+        assertEquals(2, result.getStatus());
+        assertEquals(Boolean.FALSE, result.getData().get("supported"));
+    }
+
+    @Test
+    public void testPromqlQueryError() {
+        when(metricsService.executePromqlQuery(anyMap()))
+            .thenThrow(new RuntimeException("prometheus down"));
+
+        JsonResult<Object> result = asResult(metricsController.promqlQuery("up", null, null));
+        assertEquals(1, result.getStatus());
+        assertTrue(result.getErrMsg().contains("prometheus down"));
+    }
+
+    // ==================== promqlRangeQuery ====================
+
+    @Test
+    public void testPromqlRangeQueryParamValidation() {
+        assertEquals(1, asResult(metricsController.promqlRangeQuery(" ", "1", "2", "15s", null)).getStatus());
+        assertEquals(1, asResult(metricsController.promqlRangeQuery("up", " ", "2", "15s", null)).getStatus());
+        assertEquals(1, asResult(metricsController.promqlRangeQuery("up", "1", " ", "15s", null)).getStatus());
+        assertEquals(1, asResult(metricsController.promqlRangeQuery("up", "1", "2", " ", null)).getStatus());
+    }
+
+    @Test
+    public void testPromqlRangeQuerySuccess() {
+        Map<String, Object> data = Collections.singletonMap("resultType", "matrix");
+        when(metricsService.executePromqlRangeQuery(anyMap())).thenReturn(data);
+
+        JsonResult<Map<String, Object>> result =
+            asResult(metricsController.promqlRangeQuery("up", "1", "2", "15s", "ds-1"));
+        assertEquals(0, result.getStatus());
+        assertEquals(data, result.getData());
+    }
+
+    @Test
+    public void testPromqlRangeQueryUnsupported() {
+        when(metricsService.executePromqlRangeQuery(anyMap()))
+            .thenThrow(new UnsupportedOperationException("no datasource"));
+
+        JsonResult<Map<String, Object>> result =
+            asResult(metricsController.promqlRangeQuery("up", "1", "2", "15s", null));
+        assertEquals(2, result.getStatus());
+        assertEquals(Boolean.FALSE, result.getData().get("supported"));
+    }
+
+    @Test
+    public void testPromqlRangeQueryError() {
+        when(metricsService.executePromqlRangeQuery(anyMap()))
+            .thenThrow(new RuntimeException("range failed"));
+
+        JsonResult<Object> result =
+            asResult(metricsController.promqlRangeQuery("up", "1", "2", "15s", null));
+        assertEquals(1, result.getStatus());
+    }
+
+    // ==================== data source CRUD ====================
+
+    @Test
+    public void testListDataSources() {
+        when(metricsService.listDataSources())
+            .thenReturn(Collections.singletonList(Collections.singletonMap("id", "ds-1")));
+        JsonResult<List<Map<String, Object>>> result = asResult(metricsController.listDataSources());
+        assertEquals(0, result.getStatus());
+        assertEquals(1, result.getData().size());
+
+        when(metricsService.listDataSources()).thenThrow(new RuntimeException("boom"));
+        assertEquals(1, asResult(metricsController.listDataSources()).getStatus());
+    }
+
+    @Test
+    public void testCreateDataSourceValidation() {
+        assertEquals(1, asResult(metricsController.createDataSource(null)).getStatus());
+
+        MetricsDataSourceRequest noName = new MetricsDataSourceRequest();
+        noName.setUrl("http://prom:9090");
+        assertEquals(1, asResult(metricsController.createDataSource(noName)).getStatus());
+
+        MetricsDataSourceRequest noUrl = new MetricsDataSourceRequest();
+        noUrl.setName("prom");
+        assertEquals(1, asResult(metricsController.createDataSource(noUrl)).getStatus());
+    }
+
+    @Test
+    public void testCreateDataSourceSuccess() {
+        MetricsDataSourceRequest request = new MetricsDataSourceRequest();
+        request.setName("prom");
+        request.setUrl("http://prom:9090");
+        Map<String, Object> created = Collections.singletonMap("id", "ds-1");
+        when(metricsService.createDataSource(request)).thenReturn(created);
+
+        JsonResult<Map<String, Object>> result = asResult(metricsController.createDataSource(request));
+        assertEquals(0, result.getStatus());
+        assertEquals(created, result.getData());
+    }
+
+    @Test
+    public void testCreateDataSourceErrors() {
+        MetricsDataSourceRequest request = new MetricsDataSourceRequest();
+        request.setName("prom");
+        request.setUrl("http://prom:9090");
+
+        // chain the stubbed throwables: re-stubbing the same call with when()
+        // would trigger the previously stubbed exception
+        when(metricsService.createDataSource(request))
+            .thenThrow(new IllegalArgumentException("duplicate name"))
+            .thenThrow(new RuntimeException("boom"));
+
+        JsonResult<Object> iae = asResult(metricsController.createDataSource(request));
+        assertEquals(1, iae.getStatus());
+        assertEquals("duplicate name", iae.getErrMsg());
+
+        assertEquals(1, asResult(metricsController.createDataSource(request)).getStatus());
+    }
+
+    @Test
+    public void testUpdateDataSource() {
+        MetricsDataSourceRequest request = new MetricsDataSourceRequest();
+        request.setName("prom");
+
+        assertEquals(1, asResult(metricsController.updateDataSource(" ", request)).getStatus());
+        assertEquals(1, asResult(metricsController.updateDataSource("ds-1", null)).getStatus());
+
+        Map<String, Object> updated = Collections.singletonMap("id", "ds-1");
+        when(metricsService.updateDataSource("ds-1", request)).thenReturn(updated);
+        JsonResult<Map<String, Object>> ok = asResult(metricsController.updateDataSource("ds-1", request));
+        assertEquals(0, ok.getStatus());
+        assertEquals(updated, ok.getData());
+
+        when(metricsService.updateDataSource("ds-2", request))
+            .thenThrow(new IllegalArgumentException("not found"));
+        assertEquals(1, asResult(metricsController.updateDataSource("ds-2", request)).getStatus());
+
+        when(metricsService.updateDataSource("ds-3", request)).thenThrow(new RuntimeException("boom"));
+        assertEquals(1, asResult(metricsController.updateDataSource("ds-3", request)).getStatus());
+    }
+
+    @Test
+    public void testDeleteDataSource() {
+        assertEquals(1, asResult(metricsController.deleteDataSource(" ")).getStatus());
+
+        when(metricsService.deleteDataSource("ds-1")).thenReturn(true);
+        JsonResult<Map<String, Object>> deleted = asResult(metricsController.deleteDataSource("ds-1"));
+        assertEquals(0, deleted.getStatus());
+        assertEquals(Boolean.TRUE, deleted.getData().get("success"));
+        assertEquals("Data source deleted successfully", deleted.getData().get("message"));
+
+        when(metricsService.deleteDataSource("ds-2")).thenReturn(false);
+        JsonResult<Map<String, Object>> missed = asResult(metricsController.deleteDataSource("ds-2"));
+        assertEquals(Boolean.FALSE, missed.getData().get("success"));
+
+        when(metricsService.deleteDataSource("ds-3")).thenThrow(new RuntimeException("boom"));
+        assertEquals(1, asResult(metricsController.deleteDataSource("ds-3")).getStatus());
+    }
+
+    @Test
+    public void testTestDataSource() {
+        assertEquals(1, asResult(metricsController.testDataSource(" ")).getStatus());
+
+        Map<String, Object> testResult = new LinkedHashMap<>();
+        testResult.put("connected", true);
+        when(metricsService.testDataSource("ds-1")).thenReturn(testResult);
+        JsonResult<Map<String, Object>> ok = asResult(metricsController.testDataSource("ds-1"));
+        assertEquals(0, ok.getStatus());
+        assertNotNull(ok.getData().get("supportedProviderTypes"));
+
+        when(metricsService.testDataSource("ds-2")).thenThrow(new RuntimeException("boom"));
+        assertEquals(1, asResult(metricsController.testDataSource("ds-2")).getStatus());
+    }
+
+    // ==================== alerts.yaml / grafana GET / panels alias ====================
+
+    @Test
+    public void testExportAlertRulesYaml() {
+        when(metricsEnhancedService.getAlertRulesYaml()).thenReturn("groups: []");
+        assertEquals("groups: []", metricsController.exportAlertRulesYaml());
+
+        when(metricsEnhancedService.getAlertRulesYaml()).thenThrow(new RuntimeException("boom"));
+        assertTrue(metricsController.exportAlertRulesYaml().startsWith("# Error exporting alert rules"));
+    }
+
+    @Test
+    public void testExportGrafanaJsonGetAll() {
+        Map<String, Object> grafanaJson = Collections.singletonMap("exportedCount", 13);
+        when(metricsEnhancedService.exportGrafanaJson(org.mockito.ArgumentMatchers.<List<String>>any()))
+            .thenReturn(grafanaJson);
+
+        JsonResult<Map<String, Object>> result = asResult(metricsController.exportGrafanaJsonGet(null));
+        assertEquals(0, result.getStatus());
+        assertEquals(grafanaJson, result.getData().get("dashboards"));
+    }
+
+    @Test
+    public void testExportGrafanaJsonGetWithIds() {
+        Map<String, Object> grafanaJson = Collections.singletonMap("exportedCount", 2);
+        when(metricsEnhancedService.exportGrafanaJson(eq(Arrays.asList("a", "b"))))
+            .thenReturn(grafanaJson);
+
+        JsonResult<Map<String, Object>> result =
+            asResult(metricsController.exportGrafanaJsonGet(" a , b ,"));
+        assertEquals(0, result.getStatus());
+        assertEquals(grafanaJson, result.getData().get("dashboards"));
+    }
+
+    @Test
+    public void testExportGrafanaJsonGetError() {
+        when(metricsEnhancedService.exportGrafanaJson(org.mockito.ArgumentMatchers.<List<String>>any()))
+            .thenThrow(new RuntimeException("boom"));
+        assertEquals(1, asResult(metricsController.exportGrafanaJsonGet(null)).getStatus());
+    }
+
+    @Test
+    public void testListPanelsAlias() {
+        when(metricsEnhancedService.listDashboards())
+            .thenReturn(Collections.singletonList(Collections.singletonMap("id", "p1")));
+        JsonResult<List<Map<String, Object>>> result = asResult(metricsController.listPanelsAlias());
+        assertEquals(0, result.getStatus());
+        assertEquals(1, result.getData().size());
+
+        when(metricsEnhancedService.listDashboards()).thenThrow(new RuntimeException("boom"));
+        assertEquals(1, asResult(metricsController.listPanelsAlias()).getStatus());
+    }
+
+    // ==================== selfCheck / federate ====================
+
+    @Test
+    public void testSelfCheck() {
+        MetricsSelfCheckResult selfCheckResult = mock(MetricsSelfCheckResult.class);
+        when(metricsEnhancedService.selfCheck()).thenReturn(selfCheckResult);
+        JsonResult<MetricsSelfCheckResult> ok = asResult(metricsController.selfCheck());
+        assertEquals(0, ok.getStatus());
+        assertEquals(selfCheckResult, ok.getData());
+
+        when(metricsEnhancedService.selfCheck()).thenThrow(new RuntimeException("boom"));
+        assertEquals(1, asResult(metricsController.selfCheck()).getStatus());
+    }
+
+    @Test
+    public void testFederate() {
+        when(metricsService.federate(Arrays.asList("rocketmq_broker_*"))).thenReturn("broker 1");
+        assertEquals("broker 1", metricsController.federate(Arrays.asList("rocketmq_broker_*")));
+
+        when(metricsService.federate(null)).thenThrow(new RuntimeException("boom"));
+        assertTrue(metricsController.federate(null).startsWith("# Error producing federation export"));
     }
 }

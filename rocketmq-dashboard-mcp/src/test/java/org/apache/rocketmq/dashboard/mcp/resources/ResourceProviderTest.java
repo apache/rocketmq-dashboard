@@ -18,6 +18,12 @@ package org.apache.rocketmq.dashboard.mcp.resources;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import org.apache.rocketmq.dashboard.cli.executor.ToolExecutor;
+import org.apache.rocketmq.dashboard.cli.schema.ToolDefinition;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -29,11 +35,24 @@ public class ResourceProviderTest {
 
     private ResourceProvider resourceProvider;
     private ObjectMapper objectMapper;
+    private List<String> executedTools;
 
     @Before
     public void setUp() {
-        resourceProvider = new ResourceProvider();
         objectMapper = new ObjectMapper();
+        executedTools = new ArrayList<>();
+        // Stub executor: canned data keyed by tool, no cluster connection needed
+        resourceProvider = new ResourceProvider(new ToolExecutor() {
+            @Override
+            public Object execute(ToolDefinition tool, Map<String, Object> arguments) {
+                executedTools.add(tool.getName());
+                List<Map<String, Object>> list = new ArrayList<>();
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("name", tool.getResource() + "-live-1");
+                list.add(item);
+                return list;
+            }
+        });
     }
 
     // ---- Resources list tests --------------------------------------------------
@@ -86,62 +105,77 @@ public class ResourceProviderTest {
                 "application/json", first.get("mimeType").asText());
     }
 
-    // ---- Resources read tests --------------------------------------------------
+    // ---- Resources read tests (live execution through ToolExecutor) -------------
 
     @Test
-    public void testResourcesReadTopic() throws Exception {
+    public void testResourcesReadTopicExecutesTopicListTool() throws Exception {
         String result = resourceProvider.handleResourcesRead("rmq://topics");
         assertNotNull("Topic resource read should not be null", result);
 
         JsonNode root = objectMapper.readTree(result);
         assertEquals("URI should match", "rmq://topics", root.get("uri").asText());
         assertEquals("mimeType should match", "application/json", root.get("mimeType").asText());
+        assertTrue("Should be flagged as live data", root.get("live").asBoolean());
         assertTrue("Should have data", root.has("data"));
         assertTrue("Data should be an array", root.get("data").isArray());
-        assertTrue("Should have at least 1 topic", root.get("data").size() >= 1);
-
-        JsonNode firstTopic = root.get("data").get(0);
-        assertTrue("Topic should have name", firstTopic.has("name"));
-        assertTrue("Topic should have type", firstTopic.has("type"));
-        assertTrue("Topic should have status", firstTopic.has("status"));
-        assertEquals("Status should be ACTIVE", "ACTIVE", firstTopic.get("status").asText());
+        assertEquals("Data should come from the stub executor",
+                "topic-live-1", root.get("data").get(0).get("name").asText());
+        assertEquals("Should execute rmq.topic.list", List.of("rmq.topic.list"), executedTools);
     }
 
     @Test
-    public void testResourcesReadGroup() throws Exception {
+    public void testResourcesReadGroupExecutesGroupListTool() throws Exception {
         String result = resourceProvider.handleResourcesRead("rmq://groups");
-        assertNotNull("Group resource read should not be null", result);
-
         JsonNode root = objectMapper.readTree(result);
         assertEquals("URI should match", "rmq://groups", root.get("uri").asText());
-        assertTrue("Should have data", root.has("data"));
-
-        JsonNode data = root.get("data");
-        assertTrue("Group data should be array", data.isArray());
-        assertTrue("Should have at least 1 group", data.size() >= 1);
-
-        JsonNode firstGroup = data.get(0);
-        assertTrue("Group should have name", firstGroup.has("name"));
-        assertTrue("Group should have consumeMode", firstGroup.has("consumeMode"));
+        assertTrue("Should be flagged as live data", root.get("live").asBoolean());
+        assertEquals("Data should come from the stub executor",
+                "group-live-1", root.get("data").get(0).get("name").asText());
+        assertEquals("Should execute rmq.group.list", List.of("rmq.group.list"), executedTools);
     }
 
     @Test
-    public void testResourcesReadClient() throws Exception {
+    public void testResourcesReadClientExecutesClientListTool() throws Exception {
         String result = resourceProvider.handleResourcesRead("rmq://clients");
-        assertNotNull("Client resource read should not be null", result);
-
         JsonNode root = objectMapper.readTree(result);
         assertEquals("URI should match", "rmq://clients", root.get("uri").asText());
-        assertTrue("Should have data", root.has("data"));
+        assertTrue("Should be flagged as live data", root.get("live").asBoolean());
+        assertEquals("Data should come from the stub executor",
+                "client-live-1", root.get("data").get(0).get("name").asText());
+        assertEquals("Should execute rmq.client.list", List.of("rmq.client.list"), executedTools);
+    }
 
-        JsonNode data = root.get("data");
-        assertTrue("Client data should be array", data.isArray());
-        assertTrue("Should have at least 1 client", data.size() >= 1);
+    @Test
+    public void testResourcesReadNullDataFallsBackToEmptyList() throws Exception {
+        ResourceProvider nullDataProvider = new ResourceProvider(new ToolExecutor() {
+            @Override
+            public Object execute(ToolDefinition tool, Map<String, Object> arguments) {
+                return null;
+            }
+        });
+        String result = nullDataProvider.handleResourcesRead("rmq://topics");
+        JsonNode root = objectMapper.readTree(result);
+        assertTrue("Data should be an array", root.get("data").isArray());
+        assertEquals("Data should be empty", 0, root.get("data").size());
+    }
 
-        JsonNode firstClient = data.get(0);
-        assertTrue("Client should have clientId", firstClient.has("clientId"));
-        assertTrue("Client should have type", firstClient.has("type"));
-        assertTrue("Client should have version", firstClient.has("version"));
+    @Test
+    public void testResourcesReadExecutionFailureReturnsError() throws Exception {
+        // Execution failures must surface as explicit errors, never mock data
+        ResourceProvider failingProvider = new ResourceProvider(new ToolExecutor() {
+            @Override
+            public Object execute(ToolDefinition tool, Map<String, Object> arguments)
+                    throws Exception {
+                throw new IllegalStateException("no cluster reachable");
+            }
+        });
+        String result = failingProvider.handleResourcesRead("rmq://topics");
+        JsonNode root = objectMapper.readTree(result);
+        assertTrue("Should contain error", root.has("error"));
+        assertEquals("Should be an execution error",
+                "EXECUTION_ERROR", root.get("errorType").asText());
+        assertTrue("Error should carry the cause message",
+                root.get("error").asText().contains("no cluster reachable"));
     }
 
     @Test
@@ -150,6 +184,7 @@ public class ResourceProviderTest {
         assertNotNull("Unknown resource read should not be null", result);
         assertTrue("Should contain error for unknown URI",
                 result.contains("error") || result.contains("Unknown"));
+        assertTrue("Unknown URI must not trigger any execution", executedTools.isEmpty());
     }
 
     @Test
@@ -166,40 +201,5 @@ public class ResourceProviderTest {
         assertNotNull("Empty URI should not be null", result);
         assertTrue("Should contain error for empty/unknown URI",
                 result.contains("error") || result.contains("Unknown"));
-    }
-
-    @Test
-    public void testTopicsDataHasFiveTopics() throws Exception {
-        String result = resourceProvider.handleResourcesRead("rmq://topics");
-        JsonNode root = objectMapper.readTree(result);
-        assertEquals("Should have exactly 5 topics", 5, root.get("data").size());
-    }
-
-    @Test
-    public void testGroupsDataHasFourGroups() throws Exception {
-        String result = resourceProvider.handleResourcesRead("rmq://groups");
-        JsonNode root = objectMapper.readTree(result);
-        assertEquals("Should have exactly 4 groups", 4, root.get("data").size());
-    }
-
-    @Test
-    public void testClientsDataHasSixClients() throws Exception {
-        String result = resourceProvider.handleResourcesRead("rmq://clients");
-        JsonNode root = objectMapper.readTree(result);
-        assertEquals("Should have exactly 6 clients", 6, root.get("data").size());
-    }
-
-    @Test
-    public void testTopicDataContainsExpectedFields() throws Exception {
-        String result = resourceProvider.handleResourcesRead("rmq://topics");
-        JsonNode root = objectMapper.readTree(result);
-
-        JsonNode firstTopic = root.get("data").get(0);
-        assertTrue("Should have queueNums", firstTopic.has("queueNums"));
-        assertEquals("queueNums should be 8", 8, firstTopic.get("queueNums").asInt());
-        assertTrue("Should have perm", firstTopic.has("perm"));
-        assertEquals("perm should be 6", 6, firstTopic.get("perm").asInt());
-        assertTrue("Should have writeQueueNums", firstTopic.has("writeQueueNums"));
-        assertTrue("Should have readQueueNums", firstTopic.has("readQueueNums"));
     }
 }

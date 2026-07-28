@@ -22,18 +22,43 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.apache.rocketmq.dashboard.cli.executor.ToolExecutor;
+import org.apache.rocketmq.dashboard.cli.schema.ToolDefinition;
+import org.apache.rocketmq.dashboard.cli.schema.ToolRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Provides MCP resource endpoints for listing and reading RocketMQ resources.
  * Resources expose cluster topology data as structured URIs.
+ *
+ * <p>resources/read executes against the live cluster through the shared
+ * {@link ToolExecutor} (same path as tools/call). Failures surface as
+ * explicit errors instead of silently falling back to mock data.</p>
  */
 public class ResourceProvider {
 
     private static final Logger log = LoggerFactory.getLogger(ResourceProvider.class);
 
+    /** Maps each resource URI to the read-only tool that backs it. */
+    private static final Map<String, String> URI_TO_TOOL = Map.of(
+            "rmq://topics", "rmq.topic.list",
+            "rmq://groups", "rmq.group.list",
+            "rmq://clients", "rmq.client.list");
+
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    private final ToolExecutor toolExecutor;
+
+    /** Creates a provider backed by a real {@link ToolExecutor}. */
+    public ResourceProvider() {
+        this(new ToolExecutor());
+    }
+
+    /** Visible for tests: inject a stub {@link ToolExecutor}. */
+    public ResourceProvider(ToolExecutor toolExecutor) {
+        this.toolExecutor = toolExecutor;
+    }
 
     /**
      * Return the MCP resources/list response as a JSON array.
@@ -74,35 +99,42 @@ public class ResourceProvider {
     }
 
     /**
-     * Read a specific resource by URI. Returns mock snapshot data.
+     * Read a specific resource by URI against the live cluster.
      *
      * @param uri the resource URI (e.g. "rmq://topics")
-     * @return JSON string with the resource content
+     * @return JSON string with the resource content, or an error payload
      */
     public String handleResourcesRead(String uri) {
         if (uri == null) {
-            return buildError("Resource URI is required");
+            return buildError("Resource URI is required", "INVALID_URI");
+        }
+
+        String toolName = URI_TO_TOOL.get(uri);
+        if (toolName == null) {
+            return buildError("Unknown resource URI: " + uri, "INVALID_URI");
+        }
+
+        ToolDefinition tool = ToolRegistry.getInstance().getTool(toolName);
+        if (tool == null) {
+            return buildError("No tool registered for resource: " + uri, "EXECUTION_ERROR");
+        }
+
+        Object data;
+        try {
+            // Empty arguments: the cluster is resolved from the CLI context,
+            // exactly like tools/call without an explicit cluster argument.
+            data = toolExecutor.execute(tool, new LinkedHashMap<>());
+        } catch (Exception e) {
+            log.error("Failed to read resource {} via {}: {}", uri, toolName, e.getMessage(), e);
+            return buildError("Failed to read resource " + uri + ": " + e.getMessage(),
+                    "EXECUTION_ERROR");
         }
 
         Map<String, Object> content = new LinkedHashMap<>();
         content.put("uri", uri);
-
-        switch (uri) {
-            case "rmq://topics":
-                content.put("mimeType", "application/json");
-                content.put("data", generateTopicsData());
-                break;
-            case "rmq://groups":
-                content.put("mimeType", "application/json");
-                content.put("data", generateGroupsData());
-                break;
-            case "rmq://clients":
-                content.put("mimeType", "application/json");
-                content.put("data", generateClientsData());
-                break;
-            default:
-                return buildError("Unknown resource URI: " + uri);
-        }
+        content.put("mimeType", "application/json");
+        content.put("live", true);
+        content.put("data", data != null ? data : new ArrayList<>());
 
         try {
             return objectMapper.writeValueAsString(content);
@@ -112,60 +144,14 @@ public class ResourceProvider {
         }
     }
 
-    private String buildError(String message) {
+    private String buildError(String message, String errorType) {
         Map<String, Object> error = new LinkedHashMap<>();
         error.put("error", message);
+        error.put("errorType", errorType);
         try {
             return objectMapper.writeValueAsString(error);
         } catch (JsonProcessingException e) {
             return "{\"error\":\"" + message + "\"}";
         }
-    }
-
-    // ---- Mock data generators ------------------------------------------------
-
-    private List<Map<String, Object>> generateTopicsData() {
-        List<Map<String, Object>> topics = new ArrayList<>();
-        for (int i = 1; i <= 5; i++) {
-            Map<String, Object> topic = new LinkedHashMap<>();
-            topic.put("name", "Topic-" + i);
-            topic.put("type", i == 3 ? "FIFO" : "NORMAL");
-            topic.put("status", "ACTIVE");
-            topic.put("queueNums", 8);
-            topic.put("perm", 6);
-            topic.put("writeQueueNums", 8);
-            topic.put("readQueueNums", 8);
-            topics.add(topic);
-        }
-        return topics;
-    }
-
-    private List<Map<String, Object>> generateGroupsData() {
-        List<Map<String, Object>> groups = new ArrayList<>();
-        for (int i = 1; i <= 4; i++) {
-            Map<String, Object> group = new LinkedHashMap<>();
-            group.put("name", "ConsumerGroup-" + i);
-            group.put("status", "ACTIVE");
-            group.put("consumeMode", i == 4 ? "BROADCAST" : "CLUSTER");
-            group.put("consumeEnable", true);
-            group.put("retryMaxTimes", 16);
-            groups.add(group);
-        }
-        return groups;
-    }
-
-    private List<Map<String, Object>> generateClientsData() {
-        List<Map<String, Object>> clients = new ArrayList<>();
-        for (int i = 1; i <= 6; i++) {
-            Map<String, Object> client = new LinkedHashMap<>();
-            client.put("clientId", "192.168.1." + (10 + i) + "@consumer-" + i);
-            client.put("type", i <= 3 ? "CONSUMER" : "PRODUCER");
-            client.put("version", "5.5.0");
-            client.put("language", "JAVA");
-            client.put("status", "CONNECTED");
-            client.put("lastHeartbeat", System.currentTimeMillis() - 60_000);
-            clients.add(client);
-        }
-        return clients;
     }
 }

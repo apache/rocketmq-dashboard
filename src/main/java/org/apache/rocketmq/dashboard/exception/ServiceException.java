@@ -34,6 +34,18 @@ public class ServiceException extends RuntimeException {
     }
 
     /**
+     * Constructs a ServiceException with code, message and root cause,
+     * preserving the original exception for diagnosis.
+     * @param code the error code
+     * @param message the error message
+     * @param cause the root cause
+     */
+    public ServiceException(final int code, final String message, final Throwable cause) {
+        super(message, cause);
+        this.code = code;
+    }
+
+    /**
      * Gets the error code.
      * @return the error code
      */

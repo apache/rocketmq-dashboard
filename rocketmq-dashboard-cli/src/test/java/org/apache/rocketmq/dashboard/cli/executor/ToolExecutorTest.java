@@ -37,6 +37,7 @@ import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.dashboard.cli.AbstractCliTest;
 import org.apache.rocketmq.dashboard.cli.context.AdminClientHelper;
+import org.apache.rocketmq.dashboard.cli.schema.ParamSchema;
 import org.apache.rocketmq.dashboard.cli.schema.ToolDefinition;
 import org.apache.rocketmq.remoting.protocol.LanguageCode;
 import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
@@ -190,6 +191,66 @@ public class ToolExecutorTest extends AbstractCliTest {
         } catch (IllegalStateException e) {
             Assert.assertTrue(e.getMessage().contains("No cluster specified"));
         }
+    }
+
+    @Test
+    public void testExecuteValidatesRequiredArgumentsBeforeConnecting() throws Exception {
+        // "topic" is declared required; a missing value must fail fast with
+        // IllegalArgumentException instead of the connection-time
+        // IllegalStateException (no cluster is configured in this test).
+        ToolDefinition topicDescribe = tool("rmq.topic.describe", "topic", "describe");
+        topicDescribe.setParams(List.of(
+                ParamSchema.builder().name("cluster").type("STRING").required(true).build(),
+                ParamSchema.builder().name("topic").type("STRING").required(true).build()));
+        try {
+            executor.execute(topicDescribe, new LinkedHashMap<>());
+            Assert.fail("Expected IllegalArgumentException");
+        } catch (IllegalArgumentException e) {
+            Assert.assertTrue(e.getMessage().contains("Missing required argument: topic"));
+        }
+    }
+
+    @Test
+    public void testExecuteSkipsClusterInRequiredArgumentValidation() throws Exception {
+        // "cluster" is exempt from pre-connection validation because it may be
+        // resolved from the CLI context; with all other required args present
+        // the failure must come from cluster resolution, not validation.
+        ToolDefinition topicDescribe = tool("rmq.topic.describe", "topic", "describe");
+        topicDescribe.setParams(List.of(
+                ParamSchema.builder().name("cluster").type("STRING").required(true).build(),
+                ParamSchema.builder().name("topic").type("STRING").required(true).build()));
+        Map<String, Object> args = new LinkedHashMap<>();
+        args.put("topic", "TopicA");
+        try {
+            executor.execute(topicDescribe, args);
+            Assert.fail("Expected IllegalStateException");
+        } catch (IllegalStateException e) {
+            Assert.assertTrue(e.getMessage().contains("No cluster specified"));
+        }
+    }
+
+    @Test
+    public void testExamineTopicConfigProbesAllMastersOnNull() throws Exception {
+        // A broker that does not host the topic may return null instead of
+        // throwing; the helper must keep probing the remaining masters.
+        MQAdminExt ext = Mockito.mock(MQAdminExt.class);
+        HashMap<Long, String> addrsA = new HashMap<>();
+        addrsA.put(0L, "127.0.0.1:10911");
+        HashMap<Long, String> addrsB = new HashMap<>();
+        addrsB.put(0L, "127.0.0.1:10921");
+        HashMap<String, BrokerData> brokerAddrTable = new HashMap<>();
+        brokerAddrTable.put("broker-a", new BrokerData("DefaultCluster", "broker-a", addrsA));
+        brokerAddrTable.put("broker-b", new BrokerData("DefaultCluster", "broker-b", addrsB));
+        ClusterInfo clusterInfo = new ClusterInfo();
+        clusterInfo.setBrokerAddrTable(brokerAddrTable);
+        Mockito.when(ext.examineBrokerClusterInfo()).thenReturn(clusterInfo);
+
+        TopicConfig config = new TopicConfig("TopicA");
+        Mockito.when(ext.examineTopicConfig("127.0.0.1:10911", "TopicA")).thenReturn(null);
+        Mockito.when(ext.examineTopicConfig("127.0.0.1:10921", "TopicA")).thenReturn(config);
+
+        AdminClientHelper admin = newAdmin(ext);
+        Assert.assertSame(config, admin.examineTopicConfig("TopicA"));
     }
 
     // ---- argument helpers ----------------------------------------------------------

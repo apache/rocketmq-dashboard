@@ -39,6 +39,8 @@ import java.util.Map;
 
 import static org.hamcrest.Matchers.hasKey;
 import static org.hamcrest.Matchers.hasSize;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -158,6 +160,181 @@ public class DashboardControllerTest extends BaseControllerTest {
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").value("topic_test,100"));
+    }
+
+    @Test
+    public void testAccumulation() throws Exception {
+        final String url = "/dashboard/accumulation.query";
+        Map<String, List<String>> allData = Maps.newHashMap();
+        allData.put("topic_test", java.util.Arrays.asList("1000,1"));
+        // use doReturn on the @Spy to avoid invoking the real implementation
+        doReturn(allData).when(dashboardService).queryAccumulationData(anyString());
+        doReturn(java.util.Arrays.asList("1000,1")).when(dashboardService)
+                .queryAccumulationData(anyString(), anyString());
+
+        // 1. topicName is empty
+        requestBuilder = MockMvcRequestBuilders.get(url);
+        requestBuilder.param("date", nowDateStr);
+        perform = mockMvc.perform(requestBuilder);
+        perform.andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasKey("topic_test")));
+
+        // 2. topicName is not empty
+        requestBuilder = MockMvcRequestBuilders.get(url);
+        requestBuilder.param("date", nowDateStr);
+        requestBuilder.param("topicName", "topic_test");
+        perform = mockMvc.perform(requestBuilder);
+        perform.andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(1)));
+    }
+
+    @Test
+    public void testTransaction() throws Exception {
+        final String url = "/dashboard/transaction.query";
+        Map<String, List<String>> allData = Maps.newHashMap();
+        allData.put("topic_test", java.util.Arrays.asList("1000,2,2"));
+        doReturn(allData).when(dashboardService).queryTransactionData(anyString());
+        doReturn(java.util.Arrays.asList("1000,2,2")).when(dashboardService)
+                .queryTransactionData(anyString(), anyString());
+
+        requestBuilder = MockMvcRequestBuilders.get(url);
+        requestBuilder.param("date", nowDateStr);
+        perform = mockMvc.perform(requestBuilder);
+        perform.andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasKey("topic_test")));
+
+        requestBuilder = MockMvcRequestBuilders.get(url);
+        requestBuilder.param("date", nowDateStr);
+        requestBuilder.param("topicName", "topic_test");
+        perform = mockMvc.perform(requestBuilder);
+        perform.andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(1)));
+    }
+
+    @Test
+    public void testStorageLatency() throws Exception {
+        final String url = "/dashboard/storageLatency.query";
+        Map<String, List<String>> allData = Maps.newHashMap();
+        allData.put("topic_test", java.util.Arrays.asList("1000,3,3,0,0"));
+        doReturn(allData).when(dashboardService).queryStorageLatencyData(anyString());
+        doReturn(java.util.Arrays.asList("1000,3,3,0,0")).when(dashboardService)
+                .queryStorageLatencyData(anyString(), anyString());
+
+        requestBuilder = MockMvcRequestBuilders.get(url);
+        requestBuilder.param("date", nowDateStr);
+        perform = mockMvc.perform(requestBuilder);
+        perform.andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasKey("topic_test")));
+
+        requestBuilder = MockMvcRequestBuilders.get(url);
+        requestBuilder.param("date", nowDateStr);
+        requestBuilder.param("topicName", "topic_test");
+        perform = mockMvc.perform(requestBuilder);
+        perform.andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(1)));
+    }
+
+    @Test
+    public void testNetworkThroughput() throws Exception {
+        final String url = "/dashboard/networkThroughput.query";
+        Map<String, List<String>> allData = Maps.newHashMap();
+        allData.put("broker-a:0", java.util.Arrays.asList("1000,4,4,4,4"));
+        doReturn(allData).when(dashboardService).queryNetworkThroughputData(anyString());
+        doReturn(java.util.Arrays.asList("1000,4,4,4,4")).when(dashboardService)
+                .queryNetworkThroughputData(anyString(), anyString());
+
+        requestBuilder = MockMvcRequestBuilders.get(url);
+        requestBuilder.param("date", nowDateStr);
+        perform = mockMvc.perform(requestBuilder);
+        perform.andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasKey("broker-a:0")));
+
+        requestBuilder = MockMvcRequestBuilders.get(url);
+        requestBuilder.param("date", nowDateStr);
+        requestBuilder.param("brokerName", "broker-a");
+        perform = mockMvc.perform(requestBuilder);
+        perform.andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(1)));
+    }
+
+    @Test
+    public void testReplicaSync() throws Exception {
+        final String url = "/dashboard/replicaSync.query";
+        Map<String, List<String>> allData = Maps.newHashMap();
+        allData.put("broker-a:0", java.util.Arrays.asList("1000,5,5,1,1"));
+        doReturn(allData).when(dashboardService).queryReplicaSyncData(anyString());
+        doReturn(java.util.Arrays.asList("1000,5,5,1,1")).when(dashboardService)
+                .queryReplicaSyncData(anyString(), anyString());
+
+        requestBuilder = MockMvcRequestBuilders.get(url);
+        requestBuilder.param("date", nowDateStr);
+        perform = mockMvc.perform(requestBuilder);
+        perform.andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasKey("broker-a:0")));
+
+        requestBuilder = MockMvcRequestBuilders.get(url);
+        requestBuilder.param("date", nowDateStr);
+        requestBuilder.param("brokerName", "broker-a");
+        perform = mockMvc.perform(requestBuilder);
+        perform.andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(1)));
+    }
+
+    @Test
+    public void testHotTopic() throws Exception {
+        final String url = "/dashboard/hotTopic.query";
+        Map<String, List<String>> allData = Maps.newHashMap();
+        allData.put("topic_test", java.util.Arrays.asList("1000,6,6,6,6"));
+        doReturn(allData).when(dashboardService).queryHotTopicData(anyString());
+        doReturn(java.util.Arrays.asList("1000,6,6,6,6")).when(dashboardService)
+                .queryHotTopicData(anyString(), anyString());
+
+        requestBuilder = MockMvcRequestBuilders.get(url);
+        requestBuilder.param("date", nowDateStr);
+        perform = mockMvc.perform(requestBuilder);
+        perform.andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasKey("topic_test")));
+
+        requestBuilder = MockMvcRequestBuilders.get(url);
+        requestBuilder.param("date", nowDateStr);
+        requestBuilder.param("topicName", "topic_test");
+        perform = mockMvc.perform(requestBuilder);
+        perform.andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(1)));
+    }
+
+    @Test
+    public void testConsumerConcurrency() throws Exception {
+        final String url = "/dashboard/consumerConcurrency.query";
+        Map<String, Object> row = Maps.newHashMap();
+        row.put("groupName", "group_test");
+        row.put("clientCount", 2);
+        List<Map<String, Object>> data = new ArrayList<>();
+        data.add(row);
+        doReturn(data).when(dashboardService).queryConsumerConcurrency();
+
+        requestBuilder = MockMvcRequestBuilders.get(url);
+        perform = mockMvc.perform(requestBuilder);
+        perform.andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(1)))
+                .andExpect(jsonPath("$.data[0].groupName").value("group_test"));
+    }
+
+    @Test
+    public void testBrokerJvmStats() throws Exception {
+        final String url = "/dashboard/brokerJvmStats.query";
+        Map<String, Object> row = Maps.newHashMap();
+        row.put("brokerName", "broker-a");
+        row.put("heapUsed", 1024L);
+        List<Map<String, Object>> data = new ArrayList<>();
+        data.add(row);
+        doReturn(data).when(dashboardService).queryBrokerJvmStats();
+
+        requestBuilder = MockMvcRequestBuilders.get(url);
+        perform = mockMvc.perform(requestBuilder);
+        perform.andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(1)))
+                .andExpect(jsonPath("$.data[0].brokerName").value("broker-a"));
     }
 
     @Override

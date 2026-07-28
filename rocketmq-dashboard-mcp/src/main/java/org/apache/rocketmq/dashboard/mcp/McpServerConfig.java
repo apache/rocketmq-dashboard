@@ -65,8 +65,8 @@ public class McpServerConfig {
     }
 
     @Bean
-    public ResourceProvider resourceProvider() {
-        return new ResourceProvider();
+    public ResourceProvider resourceProvider(ToolExecutor toolExecutor) {
+        return new ResourceProvider(toolExecutor);
     }
 
     @Bean

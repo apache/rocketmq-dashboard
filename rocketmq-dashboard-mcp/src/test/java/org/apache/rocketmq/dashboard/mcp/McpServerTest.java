@@ -59,7 +59,7 @@ public class McpServerTest {
         objectMapper = new ObjectMapper();
         securityGate = new SecurityGate();
         // Stub executor: canned data, no cluster connection needed in tests
-        toolRegistry = new McpToolRegistry(securityGate, new ToolExecutor() {
+        ToolExecutor stubExecutor = new ToolExecutor() {
             @Override
             public Object execute(ToolDefinition tool, Map<String, Object> arguments) {
                 if ("LIST".equals(tool.getReturnType())) {
@@ -73,8 +73,9 @@ public class McpServerTest {
                 obj.put("name", tool.getResource() + "-detail");
                 return obj;
             }
-        });
-        resourceProvider = new ResourceProvider();
+        };
+        toolRegistry = new McpToolRegistry(securityGate, stubExecutor);
+        resourceProvider = new ResourceProvider(stubExecutor);
         protocolHandler = new McpProtocolHandler(toolRegistry, resourceProvider);
     }
 

@@ -28,6 +28,7 @@ import org.apache.rocketmq.dashboard.architecture.impl.V5ProxyClusterProvider;
 import org.apache.rocketmq.dashboard.architecture.impl.V5ProxyMetadataProvider;
 import org.apache.rocketmq.dashboard.model.ClusterCapability;
 import org.apache.rocketmq.dashboard.service.client.GrpcClientCollector;
+import org.apache.rocketmq.dashboard.service.client.MultiProxyAdminClient;
 import org.apache.rocketmq.dashboard.service.client.ProxyAdminGrpcClient;
 import org.apache.rocketmq.dashboard.support.AutoCloseConsumerWrapper;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
@@ -375,5 +376,78 @@ public class ArchitectureConfigTest {
         assertEquals(2, nodes.size());
         assertTrue(nodes.contains("proxy1:8080"));
         assertTrue(nodes.contains("proxy2:8080"));
+    }
+
+    // ==================== Bean Factory Method Tests ====================
+
+    @Test
+    public void testBeanFactoryMethods_CreateExpectedTypes() {
+        ArchitectureConfig config = new ArchitectureConfig();
+
+        AdminClient adminClient = config.remotingAdminClient(mqAdminExt);
+        assertTrue(adminClient instanceof RemotingAdminClient);
+
+        ClusterProvider clusterProvider = config.v4ClusterProvider(mqAdminExt);
+        assertTrue(clusterProvider instanceof V4ClusterProvider);
+
+        MetadataProvider metadataProvider = config.v4MetadataProvider(mqAdminExt, consumerWrapper, rmqConfigure);
+        assertTrue(metadataProvider instanceof V4MetadataProvider);
+    }
+
+    @Test
+    public void testProxyAdminGrpcClientBean() {
+        ArchitectureConfig config = new ArchitectureConfig();
+        ProxyAdminGrpcClient client = config.proxyAdminGrpcClient("localhost:8080", 8086);
+        assertNotNull(client);
+        assertFalse(client.isAvailable());
+    }
+
+    @Test
+    public void testMultiProxyAdminClientBean_WithProxyAddresses() {
+        ArchitectureConfig config = new ArchitectureConfig();
+        MultiProxyAdminClient client = config.multiProxyAdminClient(
+            new String[]{"proxy1:8080", "proxy2:8080"}, "localhost:8080", 8086);
+        assertNotNull(client);
+    }
+
+    @Test
+    public void testMultiProxyAdminClientBean_FallbackToSingleAddress() {
+        ArchitectureConfig config = new ArchitectureConfig();
+        MultiProxyAdminClient fromNull = config.multiProxyAdminClient(null, "localhost:8080", 8086);
+        assertNotNull(fromNull);
+
+        MultiProxyAdminClient fromEmpty = config.multiProxyAdminClient(new String[]{}, "localhost:8080", 8086);
+        assertNotNull(fromEmpty);
+    }
+
+    @Test
+    public void testGrpcClientCollectorBean_WithMultiProxyAdminClient() {
+        ArchitectureConfig config = new ArchitectureConfig();
+        MultiProxyAdminClient multiProxyAdminClient = config.multiProxyAdminClient(
+            new String[]{"localhost:8080"}, "localhost:8080", 8086);
+        GrpcClientCollector collector = config.grpcClientCollector(multiProxyAdminClient);
+        assertNotNull(collector);
+    }
+
+    // ==================== switchToArchitecture Failure Tests ====================
+
+    @Test
+    public void testSwitchToArchitecture_NullAccessType_Throws() {
+        try {
+            adaptationManager.switchToArchitecture(null);
+            fail("Should have thrown IllegalArgumentException");
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("AccessType must not be null"));
+        }
+    }
+
+    @Test
+    public void testSwitchToArchitecture_V5WithoutProxyAddresses_Throws() {
+        try {
+            adaptationManager.switchToArchitecture(ClusterAccessType.V5_PROXY_CLUSTER);
+            fail("Should have thrown IllegalArgumentException");
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("requires explicit proxy addresses"));
+        }
     }
 }

@@ -20,6 +20,9 @@ package org.apache.rocketmq.dashboard.admin;
 import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.apache.rocketmq.dashboard.aspect.admin.MQAdminAspect;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
+import org.apache.rocketmq.dashboard.util.UserInfoContext;
+import org.apache.rocketmq.dashboard.util.WebUtil;
+import org.apache.rocketmq.remoting.protocol.body.UserInfo;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -97,5 +100,90 @@ public class MQAdminAspectTest {
         // 6. 验证 borrowObject() 和 returnObject() 各调用了两次
         verify(mqAdminExtPool, times(2)).borrowObject();
         verify(mqAdminExtPool, times(1)).returnObject(any());
+    }
+
+    private void injectField(Object target, String fieldName, Object value) throws Exception {
+        Field field = target.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        field.set(target, value);
+    }
+
+    private ProceedingJoinPoint mockJoinPoint(String methodName) {
+        ProceedingJoinPoint joinPoint = mock(ProceedingJoinPoint.class);
+        MethodSignature signature = mock(MethodSignature.class);
+        when(signature.getName()).thenReturn(methodName);
+        when(joinPoint.getSignature()).thenReturn(signature);
+        return joinPoint;
+    }
+
+    @Test
+    public void testAroundMQAdminMethodWithFileAuthMode() throws Throwable {
+        // loginRequired=true 但 authMode=file，仍走默认池
+        MQAdminAspect mqAdminAspect = new MQAdminAspect();
+        when(rmqConfigure.isLoginRequired()).thenReturn(true);
+        when(rmqConfigure.getAuthMode()).thenReturn("file");
+        injectField(mqAdminAspect, "rmqConfigure", rmqConfigure);
+
+        GenericObjectPool<MQAdminExt> mqAdminExtPool = mock(GenericObjectPool.class);
+        MQAdminExt mqAdminExt = mock(MQAdminExt.class);
+        when(mqAdminExtPool.borrowObject()).thenReturn(mqAdminExt);
+        injectField(mqAdminAspect, "mqAdminExtPool", mqAdminExtPool);
+
+        ProceedingJoinPoint joinPoint = mockJoinPoint("updateTopic");
+        when(joinPoint.proceed()).thenReturn("ok");
+
+        Object result = mqAdminAspect.aroundMQAdminMethod(joinPoint);
+        assertEquals("ok", result);
+        verify(mqAdminExtPool, times(1)).borrowObject();
+        verify(mqAdminExtPool, times(1)).returnObject(mqAdminExt);
+    }
+
+    @Test
+    public void testAroundMQAdminMethodWithCheckedMethod() throws Throwable {
+        // authMode 非 file，但方法名在 METHODS_TO_CHECK 中，走默认池
+        MQAdminAspect mqAdminAspect = new MQAdminAspect();
+        when(rmqConfigure.isLoginRequired()).thenReturn(true);
+        when(rmqConfigure.getAuthMode()).thenReturn("acl");
+        injectField(mqAdminAspect, "rmqConfigure", rmqConfigure);
+
+        GenericObjectPool<MQAdminExt> mqAdminExtPool = mock(GenericObjectPool.class);
+        MQAdminExt mqAdminExt = mock(MQAdminExt.class);
+        when(mqAdminExtPool.borrowObject()).thenReturn(mqAdminExt);
+        injectField(mqAdminAspect, "mqAdminExtPool", mqAdminExtPool);
+
+        ProceedingJoinPoint joinPoint = mockJoinPoint("getUser");
+        when(joinPoint.proceed()).thenReturn("ok");
+
+        Object result = mqAdminAspect.aroundMQAdminMethod(joinPoint);
+        assertEquals("ok", result);
+        verify(mqAdminExtPool, times(1)).borrowObject();
+        verify(mqAdminExtPool, times(1)).returnObject(mqAdminExt);
+    }
+
+    @Test
+    public void testAroundMQAdminMethodWithUserIsolatedPool() throws Throwable {
+        // loginRequired=true + authMode=acl + 方法不在 METHODS_TO_CHECK，走用户隔离池
+        MQAdminAspect mqAdminAspect = new MQAdminAspect();
+        when(rmqConfigure.isLoginRequired()).thenReturn(true);
+        when(rmqConfigure.getAuthMode()).thenReturn("acl");
+        injectField(mqAdminAspect, "rmqConfigure", rmqConfigure);
+
+        UserMQAdminPoolManager userMQAdminPoolManager = mock(UserMQAdminPoolManager.class);
+        MQAdminExt mqAdminExt = mock(MQAdminExt.class);
+        when(userMQAdminPoolManager.borrowMQAdminExt("admin", "pwd")).thenReturn(mqAdminExt);
+        injectField(mqAdminAspect, "userMQAdminPoolManager", userMQAdminPoolManager);
+
+        ProceedingJoinPoint joinPoint = mockJoinPoint("updateTopic");
+        when(joinPoint.proceed()).thenReturn("ok");
+
+        UserInfoContext.set(WebUtil.USER_NAME, UserInfo.of("admin", "pwd", "Super"));
+        try {
+            Object result = mqAdminAspect.aroundMQAdminMethod(joinPoint);
+            assertEquals("ok", result);
+            verify(userMQAdminPoolManager, times(1)).borrowMQAdminExt("admin", "pwd");
+            verify(userMQAdminPoolManager, times(1)).returnMQAdminExt("admin", mqAdminExt);
+        } finally {
+            UserInfoContext.clear();
+        }
     }
 }

@@ -448,6 +448,14 @@
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
                 <version>0.8.12</version>
+                <configuration>
+                    <excludes>
+                        <!-- Generated protobuf/gRPC stubs should not count towards coverage -->
+                        <exclude>apache/rocketmq/proxy/admin/v1/**</exclude>
+                        <!-- Cloud vendor SDK thin wrappers require real cloud credentials to execute -->
+                        <exclude>org/apache/rocketmq/dashboard/architecture/impl/cloud/**</exclude>
+                    </excludes>
+                </configuration>
                 <executions>
                     <execution>
                         <id>prepare-agent</id>
