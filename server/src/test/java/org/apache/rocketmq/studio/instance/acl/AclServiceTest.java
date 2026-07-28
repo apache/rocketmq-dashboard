@@ -299,6 +299,48 @@ class AclServiceTest {
     }
 
     @Test
+    void createRuleShouldRequirePrincipal() {
+        AclRuleVO input = AclRuleVO.builder()
+                .principal(" ")
+                .resource("topic-1")
+                .build();
+
+        assertThatThrownBy(() -> aclService.createRule(input))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400))
+                .hasMessage("ACL principal is required");
+        verify(aclRepository, never()).saveRule(any(AclRuleVO.class));
+    }
+
+    @Test
+    void createRuleShouldRequireResource() {
+        AclRuleVO input = AclRuleVO.builder()
+                .principal("user1")
+                .resource(" ")
+                .build();
+
+        assertThatThrownBy(() -> aclService.createRule(input))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400))
+                .hasMessage("ACL resource is required");
+        verify(aclRepository, never()).saveRule(any(AclRuleVO.class));
+    }
+
+    @Test
+    void createUserShouldRequireUsername() {
+        AclUserVO input = AclUserVO.builder()
+                .username(" ")
+                .admin(false)
+                .build();
+
+        assertThatThrownBy(() -> aclService.createUser(input))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400))
+                .hasMessage("ACL username is required");
+        verify(aclRepository, never()).saveUser(any(AclUserVO.class));
+    }
+
+    @Test
     void createListUpdateShouldPreserveStoredCredentials() {
         InMemoryAclRepository repository = new InMemoryAclRepository();
         AclService service = new AclService(repository);
