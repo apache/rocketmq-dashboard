@@ -153,6 +153,40 @@ class OpenAiCompatibleLlmClientTest {
     }
 
     @Test
+    void listModelsShouldCallOpenAiCompatibleModelsEndpoint() {
+        AtomicReference<String> authorization = new AtomicReference<>();
+        server.createContext("/v1/models", exchange -> {
+            authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            respond(exchange, 200, """
+                    {"object":"list","data":[{"id":"gpt-4o"},{"id":"gpt-4o-mini","name":"GPT-4o Mini"}]}
+                    """, "application/json");
+        });
+
+        List<LlmModelItemVO> models = client.listModels(config("openai", "sk-test"));
+
+        assertThat(authorization.get()).isEqualTo("Bearer sk-test");
+        assertThat(models).extracting("id").containsExactly("gpt-4o", "gpt-4o-mini");
+        assertThat(models).extracting("name").containsExactly("gpt-4o", "GPT-4o Mini");
+    }
+
+    @Test
+    void listModelsShouldRejectMalformedProviderResponse() {
+        server.createContext("/v1/models", exchange -> respond(exchange, 200, """
+                {"object":"list","items":[]}
+                """, "application/json"));
+
+        assertThatThrownBy(() -> client.listModels(config("openai", "sk-test")))
+                .isInstanceOf(LlmGatewayException.class)
+                .hasMessage("LLM provider returned a malformed model response")
+                .satisfies(exception -> {
+                    LlmGatewayException gatewayException = (LlmGatewayException) exception;
+                    assertThat(gatewayException.getStatusCode()).isEqualTo(502);
+                    assertThat(gatewayException.getCode()).isEqualTo("llm.provider.malformed_response");
+                    assertThat(gatewayException.getHint()).contains("OpenAI model listing");
+                });
+    }
+
+    @Test
     void completeShouldExposeUpstreamErrorMessage() {
         server.createContext("/v1/chat/completions", exchange -> respond(exchange, 401, """
                 {"error":{"message":"invalid api key"}}

@@ -45,6 +45,7 @@ import java.util.function.Consumer;
 public class OpenAiCompatibleLlmClient {
 
     private static final String CHAT_COMPLETIONS_PATH = "/chat/completions";
+    private static final String MODELS_PATH = "/models";
     private static final Set<String> SUPPORTED_PROVIDERS = Set.of("openai", "deepseek", "tongyi", "ollama");
 
     private final ObjectMapper objectMapper;
@@ -90,6 +91,30 @@ public class OpenAiCompatibleLlmClient {
             Thread.currentThread().interrupt();
             throw new LlmGatewayException(502, "llm.provider.interrupted",
                     "LLM provider call was interrupted", "Retry the request.", exception);
+        }
+    }
+
+    public List<LlmModelItemVO> listModels(LlmConfigVO config) {
+        validateModelListing(config);
+        HttpRequest request = getRequest(config, modelsUri(config));
+        try {
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() >= 400) {
+                throw upstreamException(response.statusCode(), response.body());
+            }
+            return parseModels(response.body());
+        } catch (HttpTimeoutException exception) {
+            throw new LlmGatewayException(504, "llm.provider.timeout",
+                    "LLM provider model request timed out",
+                    "Check the provider base URL and network connectivity, then retry.", exception);
+        } catch (IOException exception) {
+            throw new LlmGatewayException(502, "llm.provider.io_error",
+                    "Failed to list LLM provider models",
+                    "Check the provider endpoint, TLS settings, and network connectivity.", exception);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new LlmGatewayException(502, "llm.provider.interrupted",
+                    "LLM provider model request was interrupted", "Retry the request.", exception);
         }
     }
 
@@ -158,6 +183,18 @@ public class OpenAiCompatibleLlmClient {
         return false;
     }
 
+    private HttpRequest getRequest(LlmConfigVO config, URI uri) {
+        HttpRequest.Builder builder = HttpRequest.newBuilder()
+                .uri(uri)
+                .timeout(requestTimeout)
+                .header("Accept", "application/json")
+                .GET();
+        if (StringUtils.hasText(config.getApiKey())) {
+            builder.header("Authorization", "Bearer " + config.getApiKey().trim());
+        }
+        return builder.build();
+    }
+
     private HttpRequest request(LlmConfigVO config, String accept, Map<String, Object> body) {
         HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(chatCompletionsUri(config))
@@ -185,8 +222,16 @@ public class OpenAiCompatibleLlmClient {
     }
 
     private URI chatCompletionsUri(LlmConfigVO config) {
+        return providerUri(config, CHAT_COMPLETIONS_PATH);
+    }
+
+    private URI modelsUri(LlmConfigVO config) {
+        return providerUri(config, MODELS_PATH);
+    }
+
+    private URI providerUri(LlmConfigVO config, String path) {
         String baseUrl = normalizeApiBase(config.getApiBase());
-        return URI.create(baseUrl + CHAT_COMPLETIONS_PATH);
+        return URI.create(baseUrl + path);
     }
 
     private String normalizeApiBase(String apiBase) {
@@ -204,6 +249,15 @@ public class OpenAiCompatibleLlmClient {
     }
 
     private void validate(LlmConfigVO config) {
+        validateModelListing(config);
+        if (!StringUtils.hasText(config.getModel())) {
+            throw new LlmGatewayException(400, "llm.config.missing_model",
+                    "LLM model is required",
+                    "Select or enter a model before sending a request.");
+        }
+    }
+
+    private void validateModelListing(LlmConfigVO config) {
         if (!supports(config)) {
             throw new LlmGatewayException(400, "llm.config.unsupported_provider",
                     "LLM provider is not supported by the OpenAI-compatible gateway",
@@ -219,11 +273,6 @@ public class OpenAiCompatibleLlmClient {
                     "LLM API base URL is invalid",
                     "Use an http or https base URL such as https://api.openai.com/v1.");
         }
-        if (!StringUtils.hasText(config.getModel())) {
-            throw new LlmGatewayException(400, "llm.config.missing_model",
-                    "LLM model is required",
-                    "Select or enter a model before sending a request.");
-        }
         if (!"ollama".equals(normalize(config.getProvider())) && !StringUtils.hasText(config.getApiKey())) {
             throw new LlmGatewayException(400, "llm.config.missing_api_key",
                     "LLM API key is required",
@@ -238,6 +287,39 @@ public class OpenAiCompatibleLlmClient {
             return ("http".equals(scheme) || "https".equals(scheme)) && StringUtils.hasText(uri.getHost());
         } catch (IllegalArgumentException | URISyntaxException exception) {
             return false;
+        }
+    }
+
+    private List<LlmModelItemVO> parseModels(String body) {
+        if (!StringUtils.hasText(body)) {
+            throw new LlmGatewayException(502, "llm.provider.empty_response",
+                    "LLM provider returned an empty model response",
+                    "Check whether the provider endpoint is compatible with OpenAI model listing.");
+        }
+        try {
+            JsonNode data = objectMapper.readTree(body).path("data");
+            if (!data.isArray()) {
+                throw new LlmGatewayException(502, "llm.provider.malformed_response",
+                        "LLM provider returned a malformed model response",
+                        "Check whether the provider endpoint is compatible with OpenAI model listing.");
+            }
+            List<LlmModelItemVO> models = new ArrayList<>();
+            data.forEach(item -> {
+                String id = item.isTextual() ? item.asText() : item.path("id").asText();
+                if (StringUtils.hasText(id)) {
+                    models.add(new LlmModelItemVO(id, item.path("name").asText(id)));
+                }
+            });
+            if (models.isEmpty()) {
+                throw new LlmGatewayException(502, "llm.provider.empty_models",
+                        "LLM provider returned no models",
+                        "Check whether the configured account can access any models.");
+            }
+            return models;
+        } catch (JsonProcessingException exception) {
+            throw new LlmGatewayException(502, "llm.provider.malformed_response",
+                    "LLM provider returned a non-JSON model response",
+                    "Check whether the provider endpoint is compatible with OpenAI model listing.", exception);
         }
     }
 

@@ -20,6 +20,7 @@ package org.apache.rocketmq.studio.ops.ai;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.apache.rocketmq.studio.settings.SettingsService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.net.URI;
@@ -30,6 +31,7 @@ import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class LlmConfigService {
 
     private static final String OPENAI = "openai";
@@ -62,6 +64,7 @@ public class LlmConfigService {
                     new LlmModelItemVO("meta.llama3-70b", "Llama 3 70B")));
 
     private final SettingsService settingsService;
+    private final OpenAiCompatibleLlmClient llmClient;
     private LlmConfigVO overrides;
 
     public synchronized LlmConfigVO getConfig() {
@@ -154,7 +157,19 @@ public class LlmConfigService {
     }
 
     public synchronized LlmModelsResultVO listModels() {
-        String provider = getConfig().getProvider();
+        LlmConfigVO config = getConfig();
+        String provider = config.getProvider();
+        if (config.isEnabled() && llmClient.supports(config)) {
+            try {
+                List<LlmModelItemVO> models = llmClient.listModels(config);
+                if (!models.isEmpty()) {
+                    return new LlmModelsResultVO(0, models);
+                }
+            } catch (LlmGatewayException exception) {
+                log.debug("Falling back to built-in LLM model list for provider {}: {}", provider,
+                        exception.getMessage());
+            }
+        }
         List<LlmModelItemVO> models = PROVIDER_MODELS.getOrDefault(provider, PROVIDER_MODELS.get(OPENAI));
         return new LlmModelsResultVO(0, models);
     }

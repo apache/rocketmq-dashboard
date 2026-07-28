@@ -23,6 +23,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
@@ -32,6 +34,7 @@ import static org.mockito.Mockito.when;
 class LlmConfigServiceTest {
 
     private SettingsService settingsService;
+    private OpenAiCompatibleLlmClient llmClient;
     private LlmConfigService llmConfigService;
 
     @BeforeEach
@@ -49,7 +52,8 @@ class LlmConfigServiceTest {
                 .model("gpt-4o")
                 .baseUrl("https://api.openai.com/v1")
                 .build());
-        llmConfigService = new LlmConfigService(settingsService);
+        llmClient = mock(OpenAiCompatibleLlmClient.class);
+        llmConfigService = new LlmConfigService(settingsService, llmClient);
     }
 
     @Test
@@ -213,5 +217,34 @@ class LlmConfigServiceTest {
 
         assertThat(result.getStatus()).isZero();
         assertThat(result.getData()).extracting("id").contains("qwen-max", "qwen-plus");
+    }
+
+    @Test
+    void listModelsShouldPreferProviderModelsWhenAvailable() {
+        when(llmClient.supports(org.mockito.ArgumentMatchers.any())).thenReturn(true);
+        when(llmClient.listModels(org.mockito.ArgumentMatchers.any())).thenReturn(List.of(
+                new LlmModelItemVO("provider-model-a", "Provider Model A"),
+                new LlmModelItemVO("provider-model-b", "Provider Model B")));
+
+        LlmModelsResultVO result = llmConfigService.listModels();
+
+        assertThat(result.getStatus()).isZero();
+        assertThat(result.getData()).extracting("id")
+                .containsExactly("provider-model-a", "provider-model-b");
+    }
+
+    @Test
+    void listModelsShouldFallbackToBuiltInModelsWhenProviderModelListingFails() {
+        when(llmClient.supports(org.mockito.ArgumentMatchers.any())).thenReturn(true);
+        when(llmClient.listModels(org.mockito.ArgumentMatchers.any())).thenThrow(new LlmGatewayException(
+                502,
+                "llm.provider.io_error",
+                "Failed to list LLM provider models",
+                "Check the provider endpoint."));
+
+        LlmModelsResultVO result = llmConfigService.listModels();
+
+        assertThat(result.getStatus()).isZero();
+        assertThat(result.getData()).extracting("id").contains("gpt-4o", "gpt-4");
     }
 }
