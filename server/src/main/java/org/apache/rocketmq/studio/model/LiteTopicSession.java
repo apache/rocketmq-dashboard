@@ -66,7 +66,7 @@ public class LiteTopicSession {
     }
 
     public boolean isExpired() {
-        return "EXPIRED".equals(status) || (ttlRemaining != null && ttlRemaining <= 0);
+        return "EXPIRED".equals(status) || ttlRemaining != null && ttlRemaining <= 0;
     }
 
     public double getConsumptionProgress() {
@@ -76,7 +76,7 @@ public class LiteTopicSession {
         return (double) consumedMessages / totalMessages * 100.0;
     }
 
-        public static class PopConsumeProgress {
+    public static class PopConsumeProgress {
         private Integer ackTimeoutSeconds;
         private Integer maxReconsumeTimes;
         private Integer totalPopInFlightCount;

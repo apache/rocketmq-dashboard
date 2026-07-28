@@ -42,13 +42,7 @@ public class MetricsHealthResult implements Serializable {
 
     /** Round-trip query latency in milliseconds during the health probe. */
     private long queryLatencyMs;
-    public static final long getSerialVersionUID() {
-        return serialVersionUID;
-    }
 
-    public void setSerialVersionUID(static final long serialVersionUID) {
-        this.serialVersionUID = serialVersionUID;
-    }
 
     public boolean isConnected() {
         return connected;

@@ -89,13 +89,7 @@ public class MetricsDataSourceConfig implements Serializable {
      * Whether this data source is currently activated.
      */
     private boolean enabled;
-    public static final long getSerialVersionUID() {
-        return serialVersionUID;
-    }
 
-    public void setSerialVersionUID(static final long serialVersionUID) {
-        this.serialVersionUID = serialVersionUID;
-    }
 
     public String getName() {
         return name;
