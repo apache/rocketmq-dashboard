@@ -70,6 +70,25 @@ const typeTagColor: Record<string, string> = {
   Thanos: 'purple',
 };
 
+type DataSourceFormValues = Partial<DataSource>;
+
+const secretFieldNames = ['username', 'password', 'bearerToken'] as const;
+const authNeedsSecret = (auth?: string) => auth === 'Basic Auth' || auth === 'Bearer Token';
+
+const testFieldNames = (auth?: string) => {
+  if (auth === 'Basic Auth') return ['type', 'url', 'auth', 'username', 'password'];
+  if (auth === 'Bearer Token') return ['type', 'url', 'auth', 'bearerToken'];
+  return ['type', 'url', 'auth'];
+};
+
+const withoutSecrets = (values: DataSourceFormValues): Partial<DataSource> => {
+  const sanitized = { ...values };
+  secretFieldNames.forEach((field) => {
+    delete sanitized[field];
+  });
+  return sanitized;
+};
+
 // ─── General Settings Tab ───────────────────────────────────────────────────
 
 const GeneralSettingsTab = () => {
@@ -243,6 +262,7 @@ export const DataSourceTab = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingDataSource, setEditingDataSource] = useState<DataSource | null>(null);
   const [dsForm] = Form.useForm();
+  const authValue = Form.useWatch('auth', dsForm);
   const [testingKey, setTestingKey] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -265,9 +285,13 @@ export const DataSourceTab = () => {
   }, []);
 
   const handleTestConnection = async (
-    data: Pick<DataSource, 'type' | 'url' | 'auth'>,
+    data: Pick<DataSource, 'type' | 'url' | 'auth'> & Partial<DataSource>,
     key: string,
   ) => {
+    if (key !== 'modal' && authNeedsSecret(data.auth)) {
+      message.warning('认证数据源请编辑后输入凭据再测试连接');
+      return;
+    }
     setTestingKey(key);
     try {
       const result = await testDataSource(data);
@@ -296,10 +320,11 @@ export const DataSourceTab = () => {
   const handleSubmit = async () => {
     try {
       const values = await dsForm.validateFields();
+      const dataSourceValues = withoutSecrets(values);
       setSubmitting(true);
       const saved = editingDataSource
-        ? await updateDataSource({ ...editingDataSource, ...values })
-        : await createDataSource(values);
+        ? await updateDataSource({ ...editingDataSource, ...dataSourceValues })
+        : await createDataSource(dataSourceValues);
       setDataSources((previous) =>
         editingDataSource
           ? previous.map((dataSource) => (dataSource.key === saved.key ? saved : dataSource))
@@ -351,6 +376,8 @@ export const DataSourceTab = () => {
             size="small"
             icon={<ApiOutlined />}
             loading={testingKey === record.key}
+            disabled={authNeedsSecret(record.auth)}
+            title={authNeedsSecret(record.auth) ? '认证数据源请编辑后输入凭据再测试连接' : undefined}
             onClick={() => void handleTestConnection(record, record.key)}
           >
             测试连接
@@ -422,6 +449,7 @@ export const DataSourceTab = () => {
           >
             <Select
               placeholder="请选择"
+              virtual={false}
               options={[
                 { value: 'Prometheus', label: 'Prometheus' },
                 { value: 'VictoriaMetrics', label: 'VictoriaMetrics' },
@@ -440,6 +468,10 @@ export const DataSourceTab = () => {
 
           <Form.Item label="认证方式" name="auth" initialValue="None">
             <Select
+              virtual={false}
+              onChange={() => {
+                dsForm.setFieldsValue({ username: undefined, password: undefined, bearerToken: undefined });
+              }}
               options={[
                 { value: 'None', label: 'None' },
                 { value: 'Basic Auth', label: 'Basic Auth' },
@@ -448,12 +480,41 @@ export const DataSourceTab = () => {
             />
           </Form.Item>
 
+          {authValue === 'Basic Auth' && (
+            <>
+              <Form.Item
+                label="用户名"
+                name="username"
+                rules={[{ required: true, message: '请输入用户名' }]}
+              >
+                <Input autoComplete="username" placeholder="prometheus" />
+              </Form.Item>
+              <Form.Item
+                label="密码"
+                name="password"
+                rules={[{ required: true, message: '请输入密码' }]}
+              >
+                <Input.Password autoComplete="current-password" placeholder="请输入密码" />
+              </Form.Item>
+            </>
+          )}
+
+          {authValue === 'Bearer Token' && (
+            <Form.Item
+              label="Bearer Token"
+              name="bearerToken"
+              rules={[{ required: true, message: '请输入 Bearer Token' }]}
+            >
+              <Input.Password autoComplete="off" placeholder="请输入 Token" />
+            </Form.Item>
+          )}
+
           <Button
             icon={<ApiOutlined />}
             loading={testingKey === 'modal'}
             onClick={() => {
               void dsForm
-                .validateFields(['type', 'url', 'auth'])
+                .validateFields(testFieldNames(authValue))
                 .then((values) => handleTestConnection(values, 'modal'))
                 .catch(() => undefined);
             }}

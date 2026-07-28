@@ -16,11 +16,11 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import type { DataSource } from '../../../api/settings';
-import { listDataSources, testDataSource } from '../../../api/settings';
+import { createDataSource, listDataSources, testDataSource } from '../../../api/settings';
 import { DataSourceTab } from '../index';
 
 vi.mock('../../../api/settings', () => ({
@@ -70,6 +70,7 @@ beforeAll(() => {
 
 describe('DataSourceTab', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.mocked(listDataSources).mockResolvedValue(sources);
   });
 
@@ -99,4 +100,115 @@ describe('DataSourceTab', () => {
 
     resolveTest({ success: true, message: 'ok' });
   });
+
+  it('submits basic auth credentials when testing from the modal', async () => {
+    vi.mocked(testDataSource).mockResolvedValue({ success: true, message: 'ok' });
+
+    const user = userEvent.setup();
+    render(
+      <App>
+        <DataSourceTab />
+      </App>,
+    );
+
+    await screen.findByText('Prometheus prod');
+    await user.click(screen.getByRole('button', { name: /添加数据源/ }));
+    await selectAntdOption(user, '类型', 'Prometheus');
+    await user.type(screen.getByLabelText('URL'), 'http://prometheus:9090');
+    await selectAntdOption(user, '认证方式', 'Basic Auth');
+    await user.type(screen.getByLabelText('用户名'), 'prom');
+    await user.type(screen.getByLabelText('密码'), 'secret');
+
+    const testButtons = screen.getAllByRole('button', { name: /测试连接/ });
+    await user.click(testButtons[testButtons.length - 1]);
+
+    await waitFor(() => {
+      expect(testDataSource).toHaveBeenCalledWith({
+        type: 'Prometheus',
+        url: 'http://prometheus:9090',
+        auth: 'Basic Auth',
+        username: 'prom',
+        password: 'secret',
+      });
+    });
+  });
+
+  it('submits bearer token when testing from the modal', async () => {
+    vi.mocked(testDataSource).mockResolvedValue({ success: true, message: 'ok' });
+
+    const user = userEvent.setup();
+    render(
+      <App>
+        <DataSourceTab />
+      </App>,
+    );
+
+    await screen.findByText('Prometheus prod');
+    await user.click(screen.getByRole('button', { name: /添加数据源/ }));
+    await selectAntdOption(user, '类型', 'Thanos');
+    await user.type(screen.getByLabelText('URL'), 'http://thanos:10902');
+    await selectAntdOption(user, '认证方式', 'Bearer Token');
+    await user.type(screen.getByLabelText('Bearer Token'), 'token-1');
+
+    const testButtons = screen.getAllByRole('button', { name: /测试连接/ });
+    await user.click(testButtons[testButtons.length - 1]);
+
+    await waitFor(() => {
+      expect(testDataSource).toHaveBeenCalledWith({
+        type: 'Thanos',
+        url: 'http://thanos:10902',
+        auth: 'Bearer Token',
+        bearerToken: 'token-1',
+      });
+    });
+  });
+
+  it('does not persist modal-only credentials when creating a data source', async () => {
+    vi.mocked(createDataSource).mockResolvedValue({
+      key: 'prom-secure',
+      name: 'Prometheus secure',
+      type: 'Prometheus',
+      url: 'http://prometheus:9090',
+      auth: 'Basic Auth',
+      status: 'healthy',
+    });
+
+    const user = userEvent.setup();
+    render(
+      <App>
+        <DataSourceTab />
+      </App>,
+    );
+
+    await screen.findByText('Prometheus prod');
+    await user.click(screen.getByRole('button', { name: /添加数据源/ }));
+    await user.type(screen.getByLabelText('名称'), 'Prometheus secure');
+    await selectAntdOption(user, '类型', 'Prometheus');
+    await user.type(screen.getByLabelText('URL'), 'http://prometheus:9090');
+    await selectAntdOption(user, '认证方式', 'Basic Auth');
+    await user.type(screen.getByLabelText('用户名'), 'prom');
+    await user.type(screen.getByLabelText('密码'), 'secret');
+
+    await user.click(screen.getByRole('button', { name: 'OK' }));
+
+    await waitFor(() => {
+      expect(createDataSource).toHaveBeenCalledWith({
+        name: 'Prometheus secure',
+        type: 'Prometheus',
+        url: 'http://prometheus:9090',
+        auth: 'Basic Auth',
+      });
+    });
+  });
 });
+
+async function selectAntdOption(user: ReturnType<typeof userEvent.setup>, label: string, option: string) {
+  await user.click(screen.getByLabelText(label));
+  const popupId = label === '类型' ? 'type_list' : 'auth_list';
+  const popup = await waitFor(() => {
+    const element = document.getElementById(popupId);
+    if (!element) throw new Error(`Missing popup ${popupId}`);
+    return element;
+  });
+  await user.click(within(popup).getByRole('option', { name: option }));
+}

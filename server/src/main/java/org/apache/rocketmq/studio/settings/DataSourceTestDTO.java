@@ -32,4 +32,7 @@ public class DataSourceTestDTO {
     @NotBlank(message = "type is required")
     private String type;
     private String auth;
+    private String username;
+    private String password;
+    private String bearerToken;
 }
