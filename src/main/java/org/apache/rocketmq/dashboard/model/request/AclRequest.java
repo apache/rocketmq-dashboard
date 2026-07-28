@@ -14,13 +14,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.dashboard.model.request;
+package org.apache.rocketmq.studio.model.request;
 
-import lombok.Data;
 import org.apache.rocketmq.auth.migration.v1.PlainAccessConfig;
 
 
-@Data
 public class AclRequest {
 
     private PlainAccessConfig config;
@@ -28,4 +26,28 @@ public class AclRequest {
     private String topicPerm;
 
     private String groupPerm;
+    public PlainAccessConfig getConfig() {
+        return config;
+    }
+
+    public void setConfig(PlainAccessConfig config) {
+        this.config = config;
+    }
+
+    public String getTopicPerm() {
+        return topicPerm;
+    }
+
+    public void setTopicPerm(String topicPerm) {
+        this.topicPerm = topicPerm;
+    }
+
+    public String getGroupPerm() {
+        return groupPerm;
+    }
+
+    public void setGroupPerm(String groupPerm) {
+        this.groupPerm = groupPerm;
+    }
+
 }

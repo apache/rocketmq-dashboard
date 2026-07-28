@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.dashboard.model.request;
+package org.apache.rocketmq.studio.model.request;
 
 import com.google.common.base.Objects;
 

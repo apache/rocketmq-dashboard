@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.dashboard.model.request;
+package org.apache.rocketmq.studio.model.request;
 
 /**
  * Request body for architecture switch operation.
@@ -30,7 +30,7 @@ public class ArchitectureSwitchRequest {
 
     /**
      * Target access type name (e.g., "V4_NAMESRV", "V5_PROXY_LOCAL", "V5_PROXY_CLUSTER").
-     * Must match a value in {@link org.apache.rocketmq.dashboard.architecture.ClusterAccessType}.
+     * Must match a value in {@link org.apache.rocketmq.studio.architecture.ClusterAccessType}.
      */
     private String accessType;
 
