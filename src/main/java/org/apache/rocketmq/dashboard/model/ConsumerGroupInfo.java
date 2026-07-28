@@ -21,121 +21,55 @@ import java.util.Date;
 import java.util.Map;
 import java.util.Set;
 
-/**
- *
- */
 @Data
 public class ConsumerGroupInfo {
 
-    /**
- *
-     */
     private String consumerGroupName;
 
-    /**
- *
-     */
     private String consumeMode;
 
-    /**
- *
-     */
     private Boolean consumeMessageOrderly;
 
-    /**
- *
-     */
     private Boolean consumeBroadcastEnable;
 
-    /**
- *
-     */
     private Boolean consumeFromMinEnable;
 
-    /**
- *
-     */
     private Integer retryQueueNums;
 
-    /**
- *
-     */
     private Integer retryMaxTimes;
 
-    /**
- *
-     */
     private Integer consumeTimeoutMinute;
 
-    /**
- *
-     */
     private String clusterName;
 
-    /**
- *
-     */
     private Date createTime;
 
-    /**
- *
-     */
     private Date updateTime;
 
-    /**
- *
-     */
     private String status;
 
-    /**
- *
-     */
     private Set<String> subscribedTopics;
 
-    /**
- *
-     */
     private Integer onlineClientCount;
 
-    /**
- *
-     */
     private String liteBindTopic;
 
-    /**
- *
-     */
     private Map<String, String> attributes;
 
-    /**
- *
-     */
     private Integer groupSysFlag;
 
-    /**
- *
-     */
     public String getDisplayName() {
         return consumerGroupName;
     }
 
-    /**
- *
-     */
     public boolean isPopConsumer() {
         return "POP".equalsIgnoreCase(consumeMode);
     }
 
-    /**
- *
-     */
     public boolean isOrderlyConsume() {
         return Boolean.TRUE.equals(consumeMessageOrderly);
     }
 
-    /**
- *
-     */
     public boolean isBroadcastConsume() {
         return Boolean.TRUE.equals(consumeBroadcastEnable);
     }

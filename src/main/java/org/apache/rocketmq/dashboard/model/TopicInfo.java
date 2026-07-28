@@ -20,77 +20,33 @@ import lombok.Data;
 import java.util.Date;
 import java.util.Map;
 
-/**
- *
- *
- */
 @Data
 public class TopicInfo {
 
-    /**
- *
-     */
     private String topicName;
 
-    /**
- *
-     */
     private TopicType topicType;
 
-    /**
- *
-     */
     private Integer readQueueNums;
 
     private Integer writeQueueNums;
 
-    /**
- *
-     */
     private Integer perm;
 
-    /**
- *
-     */
     private Boolean orderTopic;
 
-    /**
- *
-     */
     private Date createTime;
 
-    /**
- *
-     */
     private Date updateTime;
 
-    /**
- *
-     */
     private String topicStatus;
 
-    /**
- *
-     */
     private String clusterName;
 
-    /**
- *
-     */
     private Map<String, String> attributes;
 
-    // Removed
-
-    /**
- *
-     */
     private Long fifoTimeoutSeconds;
 
-    // Removed
-
-    /**
- *
-     */
     private Long liteTopicTTL;
 
     /**
@@ -98,61 +54,30 @@ public class TopicInfo {
      */
     private String sessionId;
 
-    /**
- *
-     */
     private String autoCreatePattern;
 
-    // Removed
-
-    /**
- *
-     */
     private String delayLevel;
 
-    // Removed
-
-    /**
- *
-     */
     private String transactionServerAddr;
 
-    /**
- *
-     */
     private Long transactionTimeoutSeconds;
 
-    /**
- *
-     */
     public String getDisplayName() {
         return topicName;
     }
 
-    /**
- *
-     */
     public boolean isLiteTopic() {
         return TopicType.LITE.equals(topicType);
     }
 
-    /**
- *
-     */
     public boolean isOrderTopic() {
         return Boolean.TRUE.equals(orderTopic) || TopicType.FIFO.equals(topicType);
     }
 
-    /**
- *
-     */
     public boolean isDelayTopic() {
         return TopicType.DELAY.equals(topicType);
     }
 
-    /**
- *
-     */
     public boolean isTransactionTopic() {
         return TopicType.TRANSACTION.equals(topicType);
     }

@@ -20,26 +20,13 @@ import lombok.Data;
 import java.util.Date;
 import java.util.List;
 
-/**
- *
- *
- */
 @Data
 public class ClientInstance {
 
-    /**
- *
-     */
     private String clientId;
 
-    /**
- *
-     */
     private String clientAddress;
 
-    /**
- *
-     */
     private ClientType clientType;
 
     /**
@@ -47,120 +34,48 @@ public class ClientInstance {
      */
     private List<String> topics;
 
-    /**
- *
-     */
     private String clientSubType;
 
-    /**
- *
-     */
     private String language;
 
-    /**
- *
-     */
     private String sdkVersion;
 
-    /**
- *
-     */
     private ProtocolType protocolType;
 
-    /**
- *
-     */
     private String endpoint;
 
-    /**
- *
-     */
     private Date lastHeartbeatTime;
 
-    /**
- *
-     */
     private boolean active;
 
-    /**
- *
-     */
     private Date connectTime;
 
-    /**
- *
-     */
     private String instanceName;
 
-    /**
- *
-     */
     private String consumerGroup;
 
-    /**
- *
-     */
     private String producerGroup;
 
-    /**
- *
-     */
     private List<SubscriptionInfo> subscriptions;
 
-    /**
- *
-     */
     private List<String> publishTopics;
 
-    /**
- *
-     */
     private ConsumerProgress consumerProgress;
 
-    // Removed
-
-    /**
- *
-     */
     private String clientVersion;
 
-    /**
- *
-     */
     private Boolean vipChannelEnabled;
 
-    // Removed
-
-    /**
- *
-     */
     private String telemetrySessionId;
 
-    /**
- *
-     */
     private Boolean longConnectionActive;
 
-    /**
- *
-     */
     private String settingsVersion;
 
-    /**
- *
-     */
     private String authFailureReason;
 
-    // Removed
-
-    /**
- *
-     */
     private Boolean popEnabled;
 
-    /**
- *
-     */
     private Integer pendingAckCount;
 
     /**
@@ -173,9 +88,6 @@ public class ClientInstance {
      */
     private String status;
 
-    /**
- *
-     */
     public String getDisplayName() {
         if (instanceName != null && !instanceName.trim().isEmpty()) {
             return instanceName;
@@ -183,9 +95,6 @@ public class ClientInstance {
         return clientId;
     }
 
-    /**
- *
-     */
     public long getClientDelay() {
         if (lastHeartbeatTime == null) {
             return -1;
@@ -193,30 +102,18 @@ public class ClientInstance {
         return (System.currentTimeMillis() - lastHeartbeatTime.getTime()) / 1000;
     }
 
-    /**
- *
-     */
     public boolean isGrpcClient() {
         return ProtocolType.GRPC.equals(protocolType);
     }
 
-    /**
- *
-     */
     public boolean isRemotingClient() {
         return ProtocolType.REMOTING.equals(protocolType);
     }
 
-    /**
- *
-     */
     public boolean isConsumer() {
         return ClientType.CONSUMER.equals(clientType);
     }
 
-    /**
- *
-     */
     public boolean isProducer() {
         return ClientType.PRODUCER.equals(clientType);
     }

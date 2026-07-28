@@ -19,72 +19,33 @@ package org.apache.rocketmq.dashboard.model;
 import lombok.Data;
 import java.util.Map;
 
-/**
- *
- */
 @Data
 public class SubscriptionInfo {
 
-    /**
- *
-     */
     private String topic;
 
-    /**
- *
-     */
     private String consumerGroup;
 
-    /**
- *
-     */
     private String subExpression;
 
-    /**
- *
-     */
     private String subscriptionType;
 
-    /**
- *
-     */
     private Long version;
 
-    /**
- *
-     */
     private Boolean broadcast;
 
-    /**
- *
-     */
     private String consumeFromWhere;
 
-    /**
- *
-     */
     private Long consumeProgress;
 
-    /**
- *
-     */
     private Long backlogCount;
 
-    /**
- *
-     */
     private Map<String, Object> attributes;
 
-    /**
- *
-     */
     public boolean isTagSubscription() {
         return "TAG".equals(subscriptionType);
     }
 
-    /**
- *
-     */
     public boolean isSQL92Subscription() {
         return "SQL92".equals(subscriptionType);
     }

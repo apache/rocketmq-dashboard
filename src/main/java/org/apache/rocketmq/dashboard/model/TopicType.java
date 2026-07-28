@@ -16,35 +16,16 @@
  */
 package org.apache.rocketmq.dashboard.model;
 
-/**
- *
- *
- */
 public enum TopicType {
 
-    /**
- *
-     */
     NORMAL("NORMAL", "Normal message", false),
 
-    /**
- *
-     */
     FIFO("FIFO", "FIFO ordered message", true),
 
-    /**
- *
-     */
     DELAY("DELAY", "Delay message", true),
 
-    /**
- *
-     */
     TRANSACTION("TRANSACTION", "Transaction message", true),
 
-    /**
- *
-     */
     LITE("LITE", "LiteTopic", true);
 
     private final String value;
@@ -69,16 +50,10 @@ public enum TopicType {
         return requiresSpecialConfig;
     }
 
-    /**
- *
-     */
     public boolean isV5Specific() {
         return this == LITE;
     }
 
-    /**
- *
-     */
     public boolean isNotSupportedInV4() {
         return this == LITE;
     }

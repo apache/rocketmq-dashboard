@@ -20,66 +20,29 @@ import lombok.Data;
 import java.util.HashSet;
 import java.util.Set;
 
-/**
- *
- *
- */
 @Data
 public class ClusterCapability {
 
-    /**
- *
-     */
     private boolean liteTopicSupported;
 
-    /**
- *
-     */
     private boolean popConsumeSupported;
 
-    /**
- *
-     */
     private boolean aclV2Supported;
 
-    /**
- *
-     */
     private boolean grpcClientSupported;
 
-    /**
- *
-     */
     private boolean delayMessageSupported;
 
-    /**
- *
-     */
     private boolean transactionMessageSupported;
 
-    /**
- *
-     */
     private boolean fifoMessageSupported;
 
-    /**
- *
-     */
     private String architectureVersion;
 
-    /**
- *
-     */
     private String rocketmqVersion;
 
-    /**
- *
-     */
     private Set<String> extendedCapabilities;
 
-    /**
- *
-     */
     public Set<TopicType> getSupportedTopicTypes() {
         Set<TopicType> supported = new HashSet<>();
         supported.add(TopicType.NORMAL);
@@ -100,9 +63,6 @@ public class ClusterCapability {
         return supported;
     }
 
-    /**
- *
-     */
     public boolean hasCapability(String capability) {
         if (extendedCapabilities != null) {
             return extendedCapabilities.contains(capability);
