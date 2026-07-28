@@ -16,6 +16,8 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Card,
@@ -39,7 +41,7 @@ import { chatStream } from '../../api/ai';
 import { getLlmConfig, getLlmModels, type LlmConfig } from '../../api/llm';
 import { getChatDraft } from './chatDraft';
 
-const { Text, Paragraph } = Typography;
+const { Text } = Typography;
 
 /* ─── Types ─── */
 
@@ -115,7 +117,7 @@ const UserBubble = ({ text }: { text: string }) => (
   </Flex>
 );
 
-const AiMessage = ({ msg }: { msg: Message }) => (
+export const AiMessage = ({ msg }: { msg: Message }) => (
   <Flex gap={12} align="flex-start" style={{ marginBottom: 16 }}>
     <div
       style={{
@@ -227,7 +229,9 @@ const AiMessage = ({ msg }: { msg: Message }) => (
 
       {/* Summary text */}
       {msg.summary && (
-        <Paragraph style={{ margin: 0, fontSize: 14, color: '#595959' }}>{msg.summary}</Paragraph>
+        <div className="ai-markdown">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.summary}</ReactMarkdown>
+        </div>
       )}
 
       {/* Action buttons */}
@@ -334,7 +338,7 @@ const AiPage = () => {
     if (!ta) return;
     const handler = () => {
       ta.style.height = 'auto';
-      ta.style.height = `${Math.min(ta.scrollHeight, 300)}px`;
+      ta.style.height = `${Math.min(ta.scrollHeight, 180)}px`;
     };
     ta.addEventListener('input', handler);
     return () => ta.removeEventListener('input', handler);
