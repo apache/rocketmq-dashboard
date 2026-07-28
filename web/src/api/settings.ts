@@ -42,9 +42,6 @@ export interface DataSource {
   type: string;
   url: string;
   auth: string;
-  username?: string;
-  password?: string;
-  bearerToken?: string;
   status: string;
 }
 
@@ -81,14 +78,7 @@ export async function deleteDataSource(key: string) {
   await client.post('/settings/datasources/delete', undefined, { params: { key } });
 }
 
-export async function testDataSource(data: {
-  type: string;
-  url: string;
-  auth?: string;
-  username?: string;
-  password?: string;
-  bearerToken?: string;
-}) {
+export async function testDataSource(data: { type: string; url: string; auth?: string }) {
   const res = await client.post<{ data: { success: boolean; message: string } }>(
     '/settings/datasources/test',
     data,

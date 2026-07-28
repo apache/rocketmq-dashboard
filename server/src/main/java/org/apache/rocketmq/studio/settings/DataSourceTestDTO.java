@@ -29,7 +29,4 @@ public class DataSourceTestDTO {
     private String url;
     private String type;
     private String auth;
-    private String username;
-    private String password;
-    private String bearerToken;
 }
