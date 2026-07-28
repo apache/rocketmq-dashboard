@@ -36,6 +36,7 @@ import { ArrowUp, Sparkle, SlidersHorizontal, CaretDown } from '@phosphor-icons/
 import type { ColumnsType } from 'antd/es/table';
 import { useLang } from '../../i18n/LangContext';
 import { chatStream } from '../../api/ai';
+import { getLlmConfig, getLlmModels, type LlmConfig } from '../../api/llm';
 import { getChatDraft } from './chatDraft';
 
 const { Text, Paragraph } = Typography;
@@ -78,25 +79,6 @@ interface Message {
   summary?: string;
   actions?: { label: string; type?: 'primary' | 'default' }[];
 }
-
-/* ─── Model Options ─── */
-
-const modelOptions = [
-  {
-    value: 'qwen3.7-max',
-    label: (
-      <span className="inline-flex items-center gap-1.5">
-        Qwen3.7-Max
-        <span className="px-1 py-0.5 rounded text-[0.625rem] leading-none bg-purple-50 text-purple-600 font-medium">
-          推荐
-        </span>
-      </span>
-    ),
-  },
-  { value: 'qwen3.7-plus', label: 'Qwen3.7-Plus' },
-  { value: 'claude-opus-4.7', label: 'Claude Opus 4.7' },
-  { value: 'gpt-5.4', label: 'GPT-5.4' },
-];
 
 /* ─── Mock Data ─── */
 
@@ -276,7 +258,10 @@ const AiPage = () => {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(false);
-  const [selectedModel, setSelectedModel] = useState('qwen3.7-max');
+  const [llmConfig, setLlmConfig] = useState<LlmConfig | null>(null);
+  const [modelOptions, setModelOptions] = useState<{ value: string; label: string }[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [selectedModel, setSelectedModel] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -291,6 +276,37 @@ const AiPage = () => {
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
+  const loadLlmRuntime = useCallback(async () => {
+    setModelsLoading(true);
+    try {
+      const config = await getLlmConfig();
+      setLlmConfig(config);
+      if (config?.model) {
+        setSelectedModel((current) => current || config.model);
+      }
+      const result = await getLlmModels();
+      const models = result?.status === 0 && result.data ? result.data : [];
+      const options = models
+        .map((item) => item.id || item.name || '')
+        .filter(Boolean)
+        .map((id) => ({ value: id, label: id }));
+      if (options.length > 0) {
+        setModelOptions(options);
+        setSelectedModel((current) => current || config?.model || options[0].value);
+      } else if (config?.model) {
+        setModelOptions([{ value: config.model, label: config.model }]);
+      }
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'AI 配置加载失败');
+    } finally {
+      setModelsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void Promise.resolve().then(loadLlmRuntime);
+  }, [loadLlmRuntime]);
+
   useEffect(() => {
     const draft = getChatDraft(location.state);
     if (!draft || consumedDraftRef.current) return;
@@ -298,7 +314,15 @@ const AiPage = () => {
 
     void Promise.resolve().then(() => {
       setInputValue(draft.prompt);
-      if (draft.model) setSelectedModel(draft.model);
+      const draftModel = draft.model;
+      if (draftModel) {
+        setSelectedModel(draftModel);
+        setModelOptions((options) =>
+          options.some((option) => option.value === draftModel)
+            ? options
+            : [{ value: draftModel, label: draftModel }, ...options],
+        );
+      }
       navigate('/ai', { replace: true, state: null });
       textareaRef.current?.focus();
     });
@@ -531,15 +555,23 @@ const AiPage = () => {
             <div className="flex flex-1 min-w-0 items-center gap-2">
               <Select
                 size="small"
-                value={selectedModel}
+                value={selectedModel || undefined}
                 onChange={(val) => setSelectedModel(val)}
                 options={modelOptions}
+                loading={modelsLoading}
                 variant="borderless"
+                placeholder={modelsLoading ? '加载模型中...' : '选择模型'}
                 popupMatchSelectWidth={false}
                 suffixIcon={<CaretDown size={10} color="#9CA3AF" />}
                 className="model-selector"
                 style={{ fontSize: '0.893rem' }}
               />
+              {llmConfig && (
+                <Tag color={llmConfig.enabled ? 'green' : 'default'} style={{ borderRadius: 6 }}>
+                  {llmConfig.provider || 'openai'}
+                  {llmConfig.enabled ? ' 已启用' : ' 未启用'}
+                </Tag>
+              )}
             </div>
           </div>
 
