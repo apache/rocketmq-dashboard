@@ -43,4 +43,10 @@ public class ProxyCompatController {
         proxyAddressService.addProxyAddr(newProxyAddr);
         return Result.ok();
     }
+
+    @PostMapping(value = "/removeProxyAddr.do", consumes = MediaType.APPLICATION_FORM_URLENCODED_VALUE)
+    public Result<Void> removeProxyAddr(@RequestParam String proxyAddr) {
+        proxyAddressService.removeProxyAddr(proxyAddr);
+        return Result.ok();
+    }
 }

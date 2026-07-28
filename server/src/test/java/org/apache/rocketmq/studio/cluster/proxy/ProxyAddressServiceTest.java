@@ -52,4 +52,48 @@ class ProxyAddressServiceTest {
                 .hasMessage("newProxyAddr is required")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
     }
+
+    @Test
+    void removeProxyAddrShouldTrimAndRemoveAddress() {
+        proxyAddressService.addProxyAddr("10.0.0.1:8081");
+
+        proxyAddressService.removeProxyAddr(" 10.0.0.1:8081 ");
+
+        ProxyHomeVO home = proxyAddressService.getHomePage();
+        assertThat(home.getProxyAddrList()).containsExactly("127.0.0.1:8081");
+        assertThat(home.getCurrentProxyAddr()).isEqualTo("127.0.0.1:8081");
+    }
+
+    @Test
+    void removeProxyAddrShouldSelectNextProxyWhenCurrentIsRemoved() {
+        proxyAddressService.removeProxyAddr("127.0.0.1:8081");
+
+        ProxyHomeVO emptyHome = proxyAddressService.getHomePage();
+        assertThat(emptyHome.getProxyAddrList()).isEmpty();
+        assertThat(emptyHome.getCurrentProxyAddr()).isEmpty();
+
+        proxyAddressService.addProxyAddr("10.0.0.1:8081");
+        proxyAddressService.addProxyAddr("10.0.0.2:8081");
+        proxyAddressService.removeProxyAddr("10.0.0.1:8081");
+
+        ProxyHomeVO home = proxyAddressService.getHomePage();
+        assertThat(home.getProxyAddrList()).containsExactly("10.0.0.2:8081");
+        assertThat(home.getCurrentProxyAddr()).isEqualTo("10.0.0.2:8081");
+    }
+
+    @Test
+    void removeProxyAddrShouldRejectBlankAddress() {
+        assertThatThrownBy(() -> proxyAddressService.removeProxyAddr(" "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("proxyAddr is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+    }
+
+    @Test
+    void removeProxyAddrShouldRejectUnknownAddress() {
+        assertThatThrownBy(() -> proxyAddressService.removeProxyAddr("10.0.0.1:8081"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Proxy address not found: 10.0.0.1:8081")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
+    }
 }

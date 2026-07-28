@@ -70,4 +70,15 @@ class ProxyCompatControllerTest {
 
         verify(proxyAddressService).addProxyAddr(eq("10.0.0.1:8081"));
     }
+
+    @Test
+    void removeProxyAddrShouldAcceptFormEncodedPayload() throws Exception {
+        mockMvc.perform(post("/api/proxy/removeProxyAddr.do")
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .param("proxyAddr", "10.0.0.1:8081"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(proxyAddressService).removeProxyAddr(eq("10.0.0.1:8081"));
+    }
 }

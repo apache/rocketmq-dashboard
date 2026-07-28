@@ -51,3 +51,11 @@ export async function addProxyAddr(address: string): Promise<void> {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
   });
 }
+
+export async function removeProxyAddr(address: string): Promise<void> {
+  const params = new URLSearchParams();
+  params.append('proxyAddr', address);
+  await client.post('/proxy/removeProxyAddr.do', params, {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  });
+}

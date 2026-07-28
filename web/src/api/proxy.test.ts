@@ -18,7 +18,7 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { queryProxyHomePage, addProxyAddr } from './proxy';
+import { queryProxyHomePage, addProxyAddr, removeProxyAddr } from './proxy';
 
 const mock = new MockAdapter(client);
 
@@ -72,5 +72,15 @@ describe('Proxy API', () => {
     });
 
     await addProxyAddr('localhost:8081');
+  });
+
+  it('removes a proxy address with form-urlencoded content type', async () => {
+    mock.onPost('/proxy/removeProxyAddr.do').reply((config) => {
+      expect(config.headers?.['Content-Type']).toBe('application/x-www-form-urlencoded');
+      expect(config.data).toBe('proxyAddr=192.168.1.3%3A8081');
+      return [200, { code: 200 }];
+    });
+
+    await removeProxyAddr('192.168.1.3:8081');
   });
 });
