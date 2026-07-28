@@ -26,6 +26,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 
 @Slf4j
@@ -43,8 +44,11 @@ public class AuditService {
         log.info("Querying audit logs, page={}, pageSize={}, search={}, operationType={}, result={}",
                 page, pageSize, search, operationType, result);
 
-        LocalDateTime start = parseDate(startDate, true);
-        LocalDateTime end = parseDate(endDate, false);
+        LocalDateTime start = parseDate(startDate, true, "startDate");
+        LocalDateTime end = parseDate(endDate, false, "endDate");
+        if (start != null && end != null && start.isAfter(end)) {
+            throw new BusinessException(400, "startDate must not be after endDate");
+        }
 
         List<AuditRecordVO> allRecords = auditRepository.findAll(search, operationType, start, end, result);
         long total = allRecords.size();
@@ -76,16 +80,15 @@ public class AuditService {
         }
     }
 
-    private LocalDateTime parseDate(String dateStr, boolean startOfDay) {
+    private LocalDateTime parseDate(String dateStr, boolean startOfDay, String parameterName) {
         if (dateStr == null || dateStr.isEmpty()) {
             return null;
         }
         try {
             LocalDate date = LocalDate.parse(dateStr, DateTimeFormatter.ISO_LOCAL_DATE);
             return startOfDay ? date.atStartOfDay() : date.atTime(LocalTime.MAX);
-        } catch (Exception e) {
-            log.warn("Failed to parse date: {}", dateStr, e);
-            return null;
+        } catch (DateTimeParseException e) {
+            throw new BusinessException(400, parameterName + " must use YYYY-MM-DD");
         }
     }
 }
