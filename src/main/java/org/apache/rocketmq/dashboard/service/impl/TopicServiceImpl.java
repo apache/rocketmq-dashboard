@@ -137,6 +137,24 @@ public class TopicServiceImpl extends ArchitectureBasedService implements TopicS
     }
 
     @Override
+    public Object stats(String topic) {
+        try {
+            return mqAdminExt.examineTopicStats(topic);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to get topic stats:" + topic, e);
+        }
+    }
+
+    @Override
+    public Object route(String topic) {
+        try {
+            return mqAdminExt.examineTopicRouteInfo(topic);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to get topic route: " + topic, e);
+        }
+    }
+
+    @Override
     public void createOrUpdate(TopicConfigInfo topicConfigInfo) {
         try {
             TopicInfo topicInfo = new TopicInfo();
