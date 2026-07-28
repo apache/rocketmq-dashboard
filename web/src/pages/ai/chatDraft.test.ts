@@ -20,7 +20,7 @@ import { getChatDraft } from './chatDraft';
 
 describe('AI chat draft navigation state', () => {
   it('normalizes a prompt and preserves a selected model', () => {
-    expect(getChatDraft({ prompt: '  检查集群状态  ', model: 'qwen3.7-max' })).toEqual({
+    expect(getChatDraft({ prompt: '  检查集群状态  ', model: '  qwen3.7-max  ' })).toEqual({
       prompt: '检查集群状态',
       model: 'qwen3.7-max',
     });
@@ -30,5 +30,11 @@ describe('AI chat draft navigation state', () => {
     expect(getChatDraft(null)).toBeNull();
     expect(getChatDraft({ prompt: '   ' })).toBeNull();
     expect(getChatDraft({ prompt: 42 })).toBeNull();
+  });
+
+  it('drops empty model values after normalization', () => {
+    expect(getChatDraft({ prompt: '检查集群状态', model: '   ' })).toEqual({
+      prompt: '检查集群状态',
+    });
   });
 });

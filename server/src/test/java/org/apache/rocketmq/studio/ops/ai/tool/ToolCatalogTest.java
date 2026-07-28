@@ -38,7 +38,12 @@ class ToolCatalogTest {
         assertThat(catalog.getMinimumClientVersion()).isEqualTo("1.0.0");
         assertThat(catalog.getDigest()).matches("[0-9a-f]{64}");
         assertThat(catalog.list()).extracting(ToolDefinition::getName)
-                .containsExactly("rmq.cluster.list", "rmq.capabilities");
+                .containsExactly(
+                        "rmq.cluster.list",
+                        "rmq.capabilities",
+                        "rmq.dashboard.summary",
+                        "rmq.topic.list",
+                        "rmq.group.list");
         assertThat(catalog.find("rmq.cluster.list")).isPresent();
         assertThat(catalog.find("rmq.unknown")).isEmpty();
     }
