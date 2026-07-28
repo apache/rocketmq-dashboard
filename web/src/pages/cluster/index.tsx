@@ -46,20 +46,51 @@ import {
 import { Cpu, HardDrives, Globe } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
-import clusters, {
-  type BrokerInfo,
-  type ProxyInfo,
-  type NameServerInfo,
-  type ClusterConfig,
-  type ClusterInfo,
-} from '../../mock/clusters';
+import type {
+  BrokerInfo,
+  ProxyInfo,
+  NameServerInfo,
+  ClusterConfig,
+  ClusterInfo,
+} from '../../api/cluster';
+import {
+  createNameServer,
+  listClusters,
+  restartProxy,
+  updateClusterConfig,
+  updateNameServer,
+} from '../../services/clusterService';
 
 const { Text } = Typography;
+
+const buildBrokerTpsMap = (
+  clusters: ClusterInfo[],
+): Record<string, { tpsIn: number; tpsOut: number }> => {
+  const result: Record<string, { tpsIn: number; tpsOut: number }> = {};
+  clusters.forEach((cluster) =>
+    cluster.brokers.forEach((broker) => {
+      result[broker.addr] = { tpsIn: broker.tpsIn, tpsOut: broker.tpsOut };
+    }),
+  );
+  return result;
+};
+
+const buildProxyConnMap = (clusters: ClusterInfo[]): Record<string, number> => {
+  const result: Record<string, number> = {};
+  clusters.forEach((cluster) =>
+    cluster.proxies.forEach((proxy) => {
+      result[proxy.addr] = proxy.connections;
+    }),
+  );
+  return result;
+};
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 const ClusterPage = () => {
   const { t } = useLang();
+  const [clusters, setClusters] = useState<ClusterInfo[]>([]);
+  const [loading, setLoading] = useState(true);
   const [nsSearch, setNsSearch] = useState('');
   const [brokerSearch, setBrokerSearch] = useState('');
   const [brokerNsClusterFilter, setBrokerNsClusterFilter] = useState<string>('');
@@ -74,28 +105,51 @@ const ClusterPage = () => {
 
   // ─── Auto-refresh TPS / connections every 2s ──────────────────────────────
   const [autoRefresh, setAutoRefresh] = useState(true);
-  // Initialize from mock base values
-  const initBrokerTps = (): Record<string, { tpsIn: number; tpsOut: number }> => {
-    const m: Record<string, { tpsIn: number; tpsOut: number }> = {};
-    clusters.forEach((c) =>
-      c.brokers.forEach((b) => {
-        m[b.addr] = { tpsIn: b.tpsIn, tpsOut: b.tpsOut };
-      }),
-    );
-    return m;
-  };
-  const initProxyConn = (): Record<string, number> => {
-    const m: Record<string, number> = {};
-    clusters.forEach((c) =>
-      c.proxies.forEach((p) => {
-        m[p.addr] = p.connections;
-      }),
-    );
-    return m;
+  const [brokerTpsMap, setBrokerTpsMap] = useState<
+    Record<string, { tpsIn: number; tpsOut: number }>
+  >({});
+  const [proxyConnMap, setProxyConnMap] = useState<Record<string, number>>({});
+
+  const applyClusters = (nextClusters: ClusterInfo[]) => {
+    setClusters(nextClusters);
+    setBrokerTpsMap(buildBrokerTpsMap(nextClusters));
+    setProxyConnMap(buildProxyConnMap(nextClusters));
   };
 
-  const [brokerTpsMap, setBrokerTpsMap] = useState(initBrokerTps);
-  const [proxyConnMap, setProxyConnMap] = useState(initProxyConn);
+  const refreshClusters = async (showLoading = false) => {
+    if (showLoading) setLoading(true);
+    try {
+      applyClusters(await listClusters());
+    } catch {
+      message.error(t('common.fetchDataFailed'));
+    } finally {
+      if (showLoading) setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchClusters = async () => {
+      try {
+        const nextClusters = await listClusters();
+        if (!cancelled) {
+          setClusters(nextClusters);
+          setBrokerTpsMap(buildBrokerTpsMap(nextClusters));
+          setProxyConnMap(buildProxyConnMap(nextClusters));
+        }
+      } catch {
+        if (!cancelled) message.error(t('common.fetchDataFailed'));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    void fetchClusters();
+    return () => {
+      cancelled = true;
+    };
+  }, [t]);
 
   useEffect(() => {
     if (!autoRefresh) return;
@@ -133,7 +187,7 @@ const ClusterPage = () => {
     }, 2000);
 
     return () => clearInterval(timer);
-  }, [autoRefresh]);
+  }, [autoRefresh, clusters]);
 
   // Broker config handler
   const handleConfigOpen = (cluster: ClusterInfo) => {
@@ -372,6 +426,7 @@ const ClusterPage = () => {
           <Table
             columns={brokerColumns}
             dataSource={allBrokers}
+            loading={loading}
             rowKey="addr"
             pagination={{ pageSize: 20 }}
             size="small"
@@ -384,7 +439,26 @@ const ClusterPage = () => {
             open={configModalOpen}
             onCancel={() => setConfigModalOpen(false)}
             onOk={() => {
-              configForm.validateFields().then(() => {
+              configForm.validateFields().then(async (values) => {
+                if (!selectedCluster) return;
+                const { maxMessageSizeMB, ...configValues } = values;
+                const nextConfig: ClusterConfig = {
+                  ...selectedCluster.config,
+                  ...configValues,
+                  maxMessageSize: maxMessageSizeMB * 1048576,
+                };
+                await updateClusterConfig({
+                  id: selectedCluster.id,
+                  ...nextConfig,
+                });
+                setClusters((prev) =>
+                  prev.map((cluster) =>
+                    cluster.id === selectedCluster.id
+                      ? { ...cluster, config: nextConfig }
+                      : cluster,
+                  ),
+                );
+                setSelectedCluster((prev) => (prev ? { ...prev, config: nextConfig } : prev));
                 message.success(t('cluster.configUpdated'));
                 setConfigModalOpen(false);
               });
@@ -583,6 +657,7 @@ const ClusterPage = () => {
           <Table
             columns={clusterColumns}
             dataSource={filteredClusters}
+            loading={loading}
             rowKey="id"
             pagination={{ pageSize: 20 }}
             size="small"
@@ -608,7 +683,7 @@ const ClusterPage = () => {
   // ─── Tab 3: Proxy 管理 (flat table) ────────────────────────────────────────
 
   function renderProxyTab() {
-    type ProxyRow = ProxyInfo & { clusterName: string; nsClusterName: string };
+    type ProxyRow = ProxyInfo & { clusterId: string; clusterName: string; nsClusterName: string };
 
     const allProxies: ProxyRow[] = clusters
       .filter((c) => c.proxies.length > 0)
@@ -622,6 +697,7 @@ const ClusterPage = () => {
           .map((p) => ({
             ...p,
             connections: proxyConnMap[p.addr] ?? p.connections,
+            clusterId: c.id,
             clusterName: c.name,
             nsClusterName: c.nsClusterName,
           })),
@@ -718,8 +794,11 @@ const ClusterPage = () => {
                   content: t('cluster.restartProxyConfirm', { addr: record.addr }),
                   okText: t('common.confirm'),
                   cancelText: t('common.cancel'),
-                  onOk: () =>
-                    message.success(t('cluster.restartProxySubmitted', { addr: record.addr })),
+                  onOk: async () => {
+                    await restartProxy({ clusterId: record.clusterId, addr: record.addr });
+                    await refreshClusters();
+                    message.success(t('cluster.restartProxySubmitted', { addr: record.addr }));
+                  },
                 });
               }}
             >
@@ -754,6 +833,7 @@ const ClusterPage = () => {
           <Table
             columns={proxyColumns}
             dataSource={allProxies}
+            loading={loading}
             rowKey={(r) => `${r.clusterName}-${r.addr}`}
             pagination={{ pageSize: 20 }}
             size="small"
@@ -811,14 +891,21 @@ const ClusterPage = () => {
         open={nsModalOpen}
         onCancel={() => setNsModalOpen(false)}
         onOk={() => {
-          nsForm.validateFields().then((values: Record<string, string>) => {
+          nsForm.validateFields().then(async (values: Record<string, string>) => {
             if (nsModalMode === 'create') {
+              await createNameServer({ clusterId: values.clusterId, addr: values.addr });
               message.success(`${t('cluster.nsCreated')}: ${values.addr}`);
             } else {
+              await updateNameServer({
+                clusterId: values.clusterId,
+                addr: values.addr,
+                newAddr: values.newAddr,
+              });
               message.success(
                 `${t('cluster.nsUpdated')}: ${values.addr}${values.newAddr ? ` → ${values.newAddr}` : ''}`,
               );
             }
+            await refreshClusters();
             setNsModalOpen(false);
           });
         }}
