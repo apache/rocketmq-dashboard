@@ -15,17 +15,39 @@
  * limitations under the License.
  */
 
-package org.apache.rocketmq.dashboard.model.trace;
+package org.apache.rocketmq.studio.model.trace;
 
-import lombok.Data;
-import org.apache.rocketmq.dashboard.model.MessageTraceView;
+import org.apache.rocketmq.studio.model.MessageTraceView;
 
 import java.util.List;
 
-@Data
 public class MessageTraceGraph {
     private ProducerNode producerNode;
     private List<SubscriptionNode> subscriptionNodeList;
     private List<MessageTraceView> messageTraceViews;
+
+    public ProducerNode getProducerNode() {
+        return producerNode;
+    }
+
+    public void setProducerNode(ProducerNode producerNode) {
+        this.producerNode = producerNode;
+    }
+
+    public List<SubscriptionNode> getSubscriptionNodeList() {
+        return subscriptionNodeList;
+    }
+
+    public void setSubscriptionNodeList(List<SubscriptionNode> subscriptionNodeList) {
+        this.subscriptionNodeList = subscriptionNodeList;
+    }
+
+    public List<MessageTraceView> getMessageTraceViews() {
+        return messageTraceViews;
+    }
+
+    public void setMessageTraceViews(List<MessageTraceView> messageTraceViews) {
+        this.messageTraceViews = messageTraceViews;
+    }
 
 }

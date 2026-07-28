@@ -15,11 +15,9 @@
  * limitations under the License.
  */
 
-package org.apache.rocketmq.dashboard.model.trace;
+package org.apache.rocketmq.studio.model.trace;
 
-import lombok.Getter;
 
-@Getter
 public enum MessageTraceStatusEnum {
     SUCCESS("success"),
     FAILED("failed"),
@@ -29,4 +27,12 @@ public enum MessageTraceStatusEnum {
     MessageTraceStatusEnum(String status) {
         this.status = status;
     }
+    public final String getStatus() {
+        return status;
+    }
+
+    public void setStatus(final String status) {
+        this.status = status;
+    }
+
 }
