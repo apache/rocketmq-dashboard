@@ -110,7 +110,14 @@ public class LlmConfigService {
         if (validation.getStatus() != 0) {
             return validation;
         }
-        return LlmOperationResultVO.success("Configuration accepted");
+        if (llmClient.supports(normalized)) {
+            try {
+                llmClient.listModels(normalized);
+            } catch (LlmGatewayException exception) {
+                return LlmOperationResultVO.failure(exception.getCode(), exception.getMessage(), exception.getHint());
+            }
+        }
+        return LlmOperationResultVO.success("Connection successful");
     }
 
     private LlmOperationResultVO validate(LlmConfigVO normalized) {
@@ -163,15 +170,17 @@ public class LlmConfigService {
             try {
                 List<LlmModelItemVO> models = llmClient.listModels(config);
                 if (!models.isEmpty()) {
-                    return new LlmModelsResultVO(0, models);
+                    return new LlmModelsResultVO(0, models, LlmModelsResultVO.SOURCE_PROVIDER,
+                            null, null, null);
                 }
             } catch (LlmGatewayException exception) {
                 log.debug("Falling back to built-in LLM model list for provider {}: {}", provider,
                         exception.getMessage());
+                return fallbackModels(provider, exception);
             }
         }
         List<LlmModelItemVO> models = PROVIDER_MODELS.getOrDefault(provider, PROVIDER_MODELS.get(OPENAI));
-        return new LlmModelsResultVO(0, models);
+        return new LlmModelsResultVO(0, models, LlmModelsResultVO.SOURCE_BUILTIN, null, null, null);
     }
 
     private LlmConfigVO fromGeneralSettings(GeneralSettingsVO settings) {
@@ -222,6 +231,28 @@ public class LlmConfigService {
 
     private LlmConfigVO copy(LlmConfigVO config) {
         return normalize(config);
+    }
+
+    private LlmConfigVO normalizeWithStoredApiKey(LlmConfigVO config) {
+        LlmConfigVO normalized = normalize(config);
+        if (!requiresApiKey(normalized.getProvider())) {
+            normalized.setApiKey("");
+            return normalized;
+        }
+        if (isBlank(normalized.getApiKey())) {
+            normalized.setApiKey(defaultString(getConfig().getApiKey(), ""));
+        }
+        return normalized;
+    }
+
+    private LlmModelsResultVO fallbackModels(String provider, LlmGatewayException exception) {
+        List<LlmModelItemVO> models = PROVIDER_MODELS.getOrDefault(provider, PROVIDER_MODELS.get(OPENAI));
+        return new LlmModelsResultVO(0, models, LlmModelsResultVO.SOURCE_FALLBACK,
+                exception.getMessage(), exception.getCode(), exception.getHint());
+    }
+
+    private boolean requiresApiKey(String provider) {
+        return !"ollama".equals(provider);
     }
 
     private String normalizeProvider(String provider) {

@@ -47,6 +47,10 @@ export interface LlmModelItem {
 export interface LlmModelsResult {
   status: number;
   data?: LlmModelItem[];
+  source?: 'provider' | 'builtin' | 'fallback';
+  warning?: string;
+  warningCode?: string;
+  hint?: string;
 }
 
 export async function getLlmConfig(): Promise<LlmConfig> {

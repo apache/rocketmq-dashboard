@@ -55,6 +55,7 @@ import { buildLlmFailureResult, type TestResult } from './llmFailureResult';
 import { fallbackModelOptions } from './llmModelOptions';
 
 const { Text } = Typography;
+const MASKED_API_KEY = '••••••••';
 
 interface ProviderDef {
   key: string;
@@ -170,9 +171,10 @@ const LlmSettingsPage: React.FC = () => {
           const provider = config.provider || 'openai';
           setSelectedProvider(provider);
           setEnabled(config.enabled || false);
-          if (config.apiKey) {
-            setSavedApiKey(config.apiKey);
-            form.setFieldsValue({ apiKey: maskApiKey(config.apiKey) });
+          if (config.apiKeyConfigured) {
+            setSavedApiKey(MASKED_API_KEY);
+            form.setFieldsValue({ apiKey: MASKED_API_KEY });
+            setApiKeyMasked(true);
           }
           form.setFieldsValue({
             provider,
@@ -210,6 +212,13 @@ const LlmSettingsPage: React.FC = () => {
             if (result && result.status === 0 && result.data) {
               models = result.data.map((m) => m.id || m.name || '').filter(Boolean);
             }
+            if (result?.source === 'fallback') {
+              message.warning(
+                result.hint ||
+                  result.warning ||
+                  '已回退到内置模型列表，请检查 Provider 凭证或模型接口。',
+              );
+            }
             if (models.length === 0) {
               models = fallbackModelOptions(provider, config.model).map((option) => option.value);
             }
@@ -228,14 +237,25 @@ const LlmSettingsPage: React.FC = () => {
   }
 
   const maskApiKey = (key: string) => {
+    if (key === MASKED_API_KEY) return MASKED_API_KEY;
     if (!key || key.length < 8) return key ? '••••••••' : '';
     return key.slice(0, 4) + '••••••••' + key.slice(-4);
   };
 
   const currentProvider = PROVIDERS.find((p) => p.key === selectedProvider) || PROVIDERS[0];
 
+  const buildConfig = (values: LlmConfig, forceEnabled: boolean): LlmConfig => {
+    const apiKey = apiKeyMasked && savedApiKey ? undefined : values.apiKey || '';
+    return {
+      ...values,
+      apiKey,
+      enabled: forceEnabled,
+    };
+  };
+
   const handleProviderChange = useCallback(
     (value: string) => {
+      const providerChanged = value !== selectedProvider;
       setSelectedProvider(value);
       setTestResult(null);
       const provider = PROVIDERS.find((p) => p.key === value);
@@ -245,13 +265,14 @@ const LlmSettingsPage: React.FC = () => {
           model: provider.defaultModel,
         });
         setModelOptions(fallbackModelOptions(value, provider.defaultModel));
-        if (!provider.requireApiKey) {
+        if (providerChanged || !provider.requireApiKey) {
           form.setFieldsValue({ apiKey: '' });
           setSavedApiKey('');
+          setApiKeyMasked(true);
         }
       }
     },
-    [form],
+    [form, selectedProvider],
   );
 
   const handleApiKeyFocus = () => {
@@ -275,11 +296,7 @@ const LlmSettingsPage: React.FC = () => {
     form
       .validateFields()
       .then((values) => {
-        const testConfig: LlmConfig = {
-          ...values,
-          apiKey: apiKeyMasked && savedApiKey ? savedApiKey : values.apiKey || '',
-          enabled: true,
-        };
+        const testConfig = buildConfig(values, true);
         testLlmConnection(testConfig)
           .then((result) => {
             if (result && result.status === 0) {
@@ -289,8 +306,8 @@ const LlmSettingsPage: React.FC = () => {
               saveLlmConfig(testConfig)
                 .then(() => {
                   if (testConfig.apiKey) {
-                    setSavedApiKey(testConfig.apiKey);
-                    form.setFieldsValue({ apiKey: maskApiKey(testConfig.apiKey) });
+                    setSavedApiKey(MASKED_API_KEY);
+                    form.setFieldsValue({ apiKey: MASKED_API_KEY });
                     setApiKeyMasked(true);
                   }
                   fetchModels(testConfig.provider, testConfig.model);
@@ -324,18 +341,14 @@ const LlmSettingsPage: React.FC = () => {
     form
       .validateFields()
       .then((values) => {
-        const config: LlmConfig = {
-          ...values,
-          apiKey: apiKeyMasked && savedApiKey ? savedApiKey : values.apiKey || '',
-          enabled,
-        };
+        const config = buildConfig(values, enabled);
         saveLlmConfig(config)
           .then((result) => {
             if (result && result.status === 0) {
               message.success(t('llm.saveSuccess'));
               if (config.apiKey) {
-                setSavedApiKey(config.apiKey);
-                form.setFieldsValue({ apiKey: maskApiKey(config.apiKey) });
+                setSavedApiKey(MASKED_API_KEY);
+                form.setFieldsValue({ apiKey: MASKED_API_KEY });
                 setApiKeyMasked(true);
               }
               fetchModels(config.provider, config.model);
@@ -514,7 +527,7 @@ const LlmSettingsPage: React.FC = () => {
                   </span>
                 }
                 rules={
-                  currentProvider.requireApiKey
+                  currentProvider.requireApiKey && !savedApiKey
                     ? [{ required: true, message: t('llm.apiKeyRequired') }]
                     : []
                 }

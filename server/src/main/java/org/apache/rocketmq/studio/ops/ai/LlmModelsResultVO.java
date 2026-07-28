@@ -17,7 +17,6 @@
 
 package org.apache.rocketmq.studio.ops.ai;
 
-import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -25,8 +24,29 @@ import java.util.List;
 
 @Data
 @NoArgsConstructor
-@AllArgsConstructor
 public class LlmModelsResultVO {
+    public static final String SOURCE_PROVIDER = "provider";
+    public static final String SOURCE_BUILTIN = "builtin";
+    public static final String SOURCE_FALLBACK = "fallback";
+
     private int status;
     private List<LlmModelItemVO> data;
+    private String source;
+    private String warning;
+    private String warningCode;
+    private String hint;
+
+    public LlmModelsResultVO(int status, List<LlmModelItemVO> data) {
+        this(status, data, SOURCE_BUILTIN, null, null, null);
+    }
+
+    public LlmModelsResultVO(int status, List<LlmModelItemVO> data, String source,
+                             String warning, String warningCode, String hint) {
+        this.status = status;
+        this.data = data;
+        this.source = source;
+        this.warning = warning;
+        this.warningCode = warningCode;
+        this.hint = hint;
+    }
 }

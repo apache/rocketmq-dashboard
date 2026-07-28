@@ -30,12 +30,16 @@ const mock = new MockAdapter(client);
 
 const sampleConfig: LlmConfig = {
   provider: 'openai',
-  apiKey: 'sk-test-key-1234',
+  apiKeyConfigured: true,
   apiBase: 'https://api.openai.com/v1',
   model: 'gpt-4o',
   maxTokens: 4096,
   temperature: 0.7,
   enabled: true,
+};
+const configWithApiKey: LlmConfig = {
+  ...sampleConfig,
+  apiKey: 'sk-test-key-1234',
 };
 
 const storedConfig: LlmConfig = {
@@ -68,6 +72,8 @@ describe('LLM API', () => {
     expect(result.apiKey).toBeUndefined();
     expect(result.apiKeyConfigured).toBe(true);
     expect(result.enabled).toBe(true);
+    expect(result.apiKey).toBeUndefined();
+    expect(result.apiKeyConfigured).toBe(true);
   });
 
   it('saves LLM config and returns success result', async () => {
@@ -78,7 +84,7 @@ describe('LLM API', () => {
       return [200, { status: 0, msg: 'saved' }];
     });
 
-    const result = await saveLlmConfig(sampleConfig);
+    const result = await saveLlmConfig(configWithApiKey);
     expect(result.status).toBe(0);
     expect(result.msg).toBe('saved');
   });
@@ -90,7 +96,7 @@ describe('LLM API', () => {
       return [200, { status: 0, msg: 'Connection successful' }];
     });
 
-    const result = await testLlmConnection(sampleConfig);
+    const result = await testLlmConnection(configWithApiKey);
     expect(result.status).toBe(0);
     expect(result.msg).toBe('Connection successful');
   });
@@ -115,12 +121,29 @@ describe('LLM API', () => {
       { id: 'gpt-4o', name: 'GPT-4o' },
       { id: 'gpt-4-turbo', name: 'GPT-4 Turbo' },
     ];
-    mock.onGet('/llm/models').reply(200, { status: 0, data: models });
+    mock.onGet('/llm/models').reply(200, { status: 0, data: models, source: 'provider' });
 
     const result = await getLlmModels();
     expect(result.status).toBe(0);
     expect(result.data).toHaveLength(2);
     expect(result.data![0].id).toBe('gpt-4o');
+    expect(result.source).toBe('provider');
+  });
+
+  it('keeps model fallback warning details', async () => {
+    mock.onGet('/llm/models').reply(200, {
+      status: 0,
+      data: [{ id: 'gpt-4o', name: 'GPT-4o' }],
+      source: 'fallback',
+      warning: 'LLM provider request failed with status 401',
+      warningCode: 'llm.provider.upstream_error',
+      hint: 'Check the provider credentials.',
+    });
+
+    const result = await getLlmModels();
+    expect(result.source).toBe('fallback');
+    expect(result.warningCode).toBe('llm.provider.upstream_error');
+    expect(result.hint).toBe('Check the provider credentials.');
   });
 
   it('handles empty models list', async () => {
