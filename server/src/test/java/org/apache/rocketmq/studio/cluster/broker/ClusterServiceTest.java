@@ -39,6 +39,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -208,6 +209,22 @@ class ClusterServiceTest {
         assertThatThrownBy(() -> clusterService.updateClusterConfig(command))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Cluster not found: missing");
+    }
+
+    @Test
+    void updateConfigShouldRejectInvalidFlushDiskType() {
+        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+
+        UpdateConfigDTO command = UpdateConfigDTO.builder()
+                .id("cluster-1")
+                .flushDiskType("INVALID_FLUSH")
+                .build();
+
+        assertThatThrownBy(() -> clusterService.updateClusterConfig(command))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Invalid flushDiskType: INVALID_FLUSH")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        verify(clusterRepository, never()).updateConfig(eq("cluster-1"), any(ClusterConfigVO.class));
     }
 
     @Test

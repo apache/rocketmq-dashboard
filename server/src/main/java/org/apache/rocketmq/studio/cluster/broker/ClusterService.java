@@ -65,7 +65,7 @@ public class ClusterService {
         }
 
         if (command.getFlushDiskType() != null) {
-            config.setFlushDiskType(FlushDiskType.valueOf(command.getFlushDiskType()));
+            config.setFlushDiskType(parseFlushDiskType(command.getFlushDiskType()));
         }
         if (command.getAutoCreateTopicEnable() != null) {
             config.setAutoCreateTopicEnable(command.getAutoCreateTopicEnable());
@@ -93,6 +93,14 @@ public class ClusterService {
         clusterRepository.updateConfig(command.getId(), config);
         log.info("Cluster config updated successfully for: {}", command.getId());
         return cluster;
+    }
+
+    private FlushDiskType parseFlushDiskType(String value) {
+        try {
+            return FlushDiskType.valueOf(value);
+        } catch (IllegalArgumentException ex) {
+            throw new BusinessException(400, "Invalid flushDiskType: " + value);
+        }
     }
 
     public boolean restartBroker(String clusterId, String brokerName) {

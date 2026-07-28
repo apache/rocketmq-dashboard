@@ -14,29 +14,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.rocketmq.studio.cluster.broker;
 
-import { create } from 'zustand';
-import { listClusters } from '../services/clusterService';
-import type { ClusterInfo } from '../api/cluster';
+import org.junit.jupiter.api.Test;
 
-interface ClusterState {
-  clusters: ClusterInfo[];
-  loading: boolean;
-  fetchClusters: () => Promise<void>;
-}
+import java.util.List;
 
-const useClusterStore = create<ClusterState>((set) => ({
-  clusters: [],
-  loading: false,
-  fetchClusters: async () => {
-    set({ loading: true });
-    try {
-      const clusters = await listClusters();
-      set({ clusters });
-    } finally {
-      set({ loading: false });
+import static org.assertj.core.api.Assertions.assertThat;
+
+class ClusterRepositoryImplTest {
+
+    @Test
+    void findAllShouldReturnClustersInStableNameOrder() {
+        ClusterRepositoryImpl repository = new ClusterRepositoryImpl();
+
+        List<ClusterVO> clusters = repository.findAll();
+
+        assertThat(clusters).extracting(ClusterVO::getName)
+                .containsExactly("rmq-cluster-prod", "rmq-cluster-staging");
     }
-  },
-}));
-
-export default useClusterStore;
+}
