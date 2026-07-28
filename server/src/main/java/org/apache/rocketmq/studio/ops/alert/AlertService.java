@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.ops.alert;
 
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -72,8 +73,13 @@ public class AlertService {
 
 
     public AlertRuleVO updateRule(AlertRuleVO rule) {
-        log.info("Updating alert rule: {}", rule.getId());
-        return alertRepository.saveRule(rule);
+        String id = rule == null ? null : rule.getId();
+        log.info("Updating alert rule: {}", id);
+        validateRuleId(id);
+        if (!alertRepository.replaceRule(rule)) {
+            throw ruleNotFound(id);
+        }
+        return rule;
     }
 
 
@@ -244,5 +250,15 @@ public class AlertService {
 
     private record PrometheusAlertRule(String group, String alert, String expr, String duration,
                                        String severity, String team, String summary, String description) {
+    }
+
+    private void validateRuleId(String id) {
+        if (id == null || id.isBlank()) {
+            throw new BusinessException(400, "Alert rule ID is required");
+        }
+    }
+
+    private BusinessException ruleNotFound(String id) {
+        return new BusinessException(404, "Alert rule not found: " + id);
     }
 }
