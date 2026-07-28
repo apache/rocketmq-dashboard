@@ -341,21 +341,15 @@ const translations: Record<string, Record<Lang, string>> = {
   'acl.inputRequired': { zh: '请输入{field}', en: 'Please enter {field}' },
 
   // ─── Topic Page (unique keys, duplicates merged into Topic section below) ───
-  'topic.name': { zh: 'Topic 名称', en: 'Topic Name' },
   'topic.action': { zh: '操作', en: 'Actions' },
   'topic.detail': { zh: '详情', en: 'Detail' },
   'topic.route': { zh: '路由', en: 'Route' },
   'topic.send': { zh: '发送', en: 'Send' },
-  'topic.delete': { zh: '删除', en: 'Delete' },
   'topic.deleteContent': {
     zh: '确定要删除 Topic「{name}」吗？此操作不可撤销。',
     en: 'Are you sure to delete Topic "{name}"? This cannot be undone.',
   },
   'topic.allTypes': { zh: '全部类型', en: 'All Types' },
-  'topic.normal': { zh: '普通', en: 'Normal' },
-  'topic.fifo': { zh: '顺序', en: 'FIFO' },
-  'topic.delay': { zh: '延迟', en: 'Delay' },
-  'topic.transaction': { zh: '事务', en: 'Transaction' },
   'topic.lite': { zh: 'LiteTopic', en: 'LiteTopic' },
   'topic.batchDelete': { zh: '批量删除', en: 'Batch Delete' },
   'topic.bodyOrder': { zh: '订单事件', en: 'Order Event' },
@@ -512,7 +506,6 @@ const translations: Record<string, Record<Lang, string>> = {
   },
 
   // ─── Topic ───
-  'topic.type': { zh: '类型', en: 'Type' },
   'topic.status': { zh: '状态', en: 'Status' },
   'topic.serving': { zh: '服务中', en: 'Serving' },
   'topic.createdAt': { zh: '创建时间', en: 'Created At' },
@@ -522,7 +515,6 @@ const translations: Record<string, Record<Lang, string>> = {
   'topic.cluster': { zh: '集群', en: 'Cluster' },
   'topic.writeQueues': { zh: '写队列数', en: 'Write Queues' },
   'topic.readQueues': { zh: '读队列数', en: 'Read Queues' },
-  'topic.perm': { zh: '权限', en: 'Permission' },
   'topic.messageCount': { zh: '今日消息量', en: "Today's Messages" },
   'topic.tps': { zh: 'TPS', en: 'TPS' },
   'topic.consumerGroupCount': { zh: '消费者组数', en: 'Consumer Groups' },
@@ -530,7 +522,6 @@ const translations: Record<string, Record<Lang, string>> = {
   'topic.customProps': { zh: '自定义属性（可选）', en: 'Custom Properties (optional)' },
   'topic.allNamespaces': { zh: '全部', en: 'All' },
   'topic.remark': { zh: '备注', en: 'Remark' },
-  'topic.confirmDelete': { zh: '确认删除', en: 'Confirm Delete' },
   'topic.deleteConfirm': {
     zh: '确定要删除 Topic「{name}」吗？此操作不可撤销。',
     en: 'Are you sure to delete Topic "{name}"? This action cannot be undone.',
@@ -539,8 +530,6 @@ const translations: Record<string, Record<Lang, string>> = {
   'topic.permRW': { zh: '读写', en: 'Read/Write' },
   'topic.permRO': { zh: '只读', en: 'Read-only' },
   'topic.permWO': { zh: '只写', en: 'Write-only' },
-  'topic.brokerName': { zh: 'Broker 名称', en: 'Broker Name' },
-  'topic.brokerAddr': { zh: 'Broker 地址', en: 'Broker Address' },
   'topic.writeQueue': { zh: '写队列', en: 'Write Queue' },
   'topic.readQueue': { zh: '读队列', en: 'Read Queue' },
   'topic.consumerGroup': { zh: '消费者组', en: 'Consumer Group' },
@@ -568,7 +557,6 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '可选，描述 Topic 用途',
     en: 'Optional, describe the topic purpose',
   },
-  'topic.sendMsg': { zh: '发送消息到 {name}', en: 'Send message to {name}' },
   'topic.sendSuccess': {
     zh: '消息发送成功！MsgId: {id}',
     en: 'Message sent successfully! MsgId: {id}',
@@ -593,7 +581,6 @@ const translations: Record<string, Record<Lang, string>> = {
   'topic.importWip': { zh: '导入功能开发中', en: 'Import feature is in development' },
   'topic.exported': { zh: '已导出 {count} 个 Topic', en: '{count} topics exported' },
   'topic.totalCount': { zh: '共 {count} 个 Topic', en: '{count} topics total' },
-  'topic.searchPlaceholder': { zh: '搜索 Topic 名称', en: 'Search topic name' },
   'topic.typeFilter': { zh: '类型筛选', en: 'Type filter' },
   'topic.listView': { zh: '列表', en: 'List' },
   'topic.cardView': { zh: '卡片', en: 'Card' },

@@ -55,7 +55,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 public class McpBridgeController {
 
     private static final Logger log = LoggerFactory.getLogger(McpBridgeController.class);
-    private static final ObjectMapper objectMapper = new ObjectMapper();
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     /** Store dry-run results for later confirmation. */
     private final ConcurrentHashMap<String, DryRunRecord> dryRunStore = new ConcurrentHashMap<>();
@@ -141,7 +141,7 @@ public class McpBridgeController {
         String llmResponse = llmProxyService.chat(fullPrompt, filteredTools, config);
 
         try {
-            Map<String, Object> parsed = objectMapper.readValue(llmResponse, Map.class);
+            Map<String, Object> parsed = OBJECT_MAPPER.readValue(llmResponse, Map.class);
 
             if (parsed.containsKey("error")) {
                 result.put("error", parsed.get("error"));
@@ -226,7 +226,7 @@ public class McpBridgeController {
                 Map<String, Object> errorData = new LinkedHashMap<>();
                 errorData.put("message", "LLM is not configured. Go to Settings to configure an LLM provider.");
                 emitter.send(SseEmitter.event().name("error")
-                        .data(objectMapper.writeValueAsString(errorData)));
+                        .data(OBJECT_MAPPER.writeValueAsString(errorData)));
                 emitter.complete();
             } catch (Exception ex) {
                 log.warn("Could not send unconfigured error via SSE: {}", ex.getMessage());
@@ -243,7 +243,7 @@ public class McpBridgeController {
         StringBuilder accumulatedContent = new StringBuilder();
         llmProxyService.chatStream(messages, filterTools, config, chunk -> {
             try {
-                if (chunk == null || chunk.trim().isEmpty() || "[DONE]".equals( chunk.trim())) {
+                if (chunk == null || chunk.trim().isEmpty() || "[DONE]".equals(chunk.trim())) {
                     emitter.send(SseEmitter.event().name("done").data("{}"));
                     emitter.complete();
                     return;
@@ -251,7 +251,7 @@ public class McpBridgeController {
 
                 // Detect LLM API errors (e.g. 401 auth failure) and send as SSE error event
                 try {
-                    Map<String, Object> checkObj = objectMapper.readValue(chunk, Map.class);
+                    Map<String, Object> checkObj = OBJECT_MAPPER.readValue(chunk, Map.class);
                     if (checkObj.containsKey("error")) {
                         log.warn("LLM API error in chunk: {}", checkObj.get("error"));
                         Object errDetail = checkObj.get("error");
@@ -265,7 +265,7 @@ public class McpBridgeController {
                         Map<String, Object> errorBody = new LinkedHashMap<>();
                         errorBody.put("message", "LLM API error: " + errMsg);
                         emitter.send(SseEmitter.event().name("error")
-                                .data(objectMapper.writeValueAsString(errorBody)));
+                                .data(OBJECT_MAPPER.writeValueAsString(errorBody)));
                         emitter.send(SseEmitter.event().name("done").data("{}"));
                         emitter.complete();
                         return;
@@ -273,7 +273,7 @@ public class McpBridgeController {
                 } catch (Exception parseEx) {
                     // Not JSON, fall through to normal processing
                 }
-                Map<String, Object> parsed  = objectMapper.readValue(chunk, Map.class);
+                Map<String, Object> parsed  = OBJECT_MAPPER.readValue(chunk, Map.class);
                 List<Map<String, Object>> choices = (List<Map<String, Object>>) parsed.get("choices");
                 if (choices == null || choices.isEmpty()) {
                     return;
@@ -290,7 +290,7 @@ public class McpBridgeController {
                         Map<String, Object> token = new LinkedHashMap<>();
                         token.put("content", text);
                         emitter.send(SseEmitter.event().name("token")
-                                .data(objectMapper.writeValueAsString(token)));
+                                .data(OBJECT_MAPPER.writeValueAsString(token)));
                     }
 
                     List<Map<String, Object>> deltaToolCalls =
@@ -318,7 +318,7 @@ public class McpBridgeController {
                                 }
                                 if (function.get("arguments") != null) {
                                     accFunction.merge("arguments", function.get("arguments"),
-                                            (oldVal, newVal) -> oldVal.toString() + newVal.toString());
+                                        (oldVal, newVal) -> oldVal.toString() + newVal.toString());
                                 }
                             }
                         }
@@ -340,7 +340,7 @@ public class McpBridgeController {
                                 Map<String, Object> args = new LinkedHashMap<>();
                                 if (argsStr != null && !argsStr.isEmpty()) {
                                     try {
-                                        args = objectMapper.readValue(argsStr, Map.class);
+                                        args = OBJECT_MAPPER.readValue(argsStr, Map.class);
                                     } catch (Exception e) {
                                         args.put("raw", argsStr);
                                     }
@@ -378,11 +378,11 @@ public class McpBridgeController {
                             finalCalls.add(parsedCall);
                         }
                         emitter.send(SseEmitter.event().name("tool_call")
-                                .data(objectMapper.writeValueAsString(finalCalls)));
+                                .data(OBJECT_MAPPER.writeValueAsString(finalCalls)));
                         Map<String, Object> hint = new LinkedHashMap<>();
                         hint.put("viewHint", finalCalls.isEmpty() ? "text" : "dry-run");
                         emitter.send(SseEmitter.event().name("view_hint")
-                                .data(objectMapper.writeValueAsString(hint)));
+                                .data(OBJECT_MAPPER.writeValueAsString(hint)));
                     }
                     emitter.send(SseEmitter.event().name("done").data("{}"));
                     emitter.complete();
@@ -393,7 +393,7 @@ public class McpBridgeController {
                     Map<String, Object> errorBody = new LinkedHashMap<>();
                     errorBody.put("message", e.getMessage());
                     emitter.send(SseEmitter.event().name("error")
-                            .data(objectMapper.writeValueAsString(errorBody)));
+                            .data(OBJECT_MAPPER.writeValueAsString(errorBody)));
                     emitter.complete();
                 } catch (Exception ex) {
                     log.error("Failed to send error SSE event: {}", ex.getMessage());
@@ -457,7 +457,7 @@ public class McpBridgeController {
             dryRunStore.remove(toolCallId);
 
             // Log with LlmAuditLogger
-            String paramsJson = objectMapper.writeValueAsString(record.getArguments());
+            String paramsJson = OBJECT_MAPPER.writeValueAsString(record.getArguments());
             String resultStr = executionResult.getOrDefault("status", "unknown").toString();
             LlmAuditLogger.log(record.getCluster(), record.getUsername(),
                     record.getToolName(), paramsJson, resultStr, "console-llm");
@@ -482,7 +482,7 @@ public class McpBridgeController {
             return Lists.newArrayList();
         }
         try {
-            return objectMapper.readValue(history, List.class);
+            return OBJECT_MAPPER.readValue(history, List.class);
         } catch (JsonProcessingException e) {
             log.error("Failed to parse history: {}", e.getMessage(), e);
             return Lists.newArrayList();
@@ -562,7 +562,7 @@ public class McpBridgeController {
                         Object args = tc.get("arguments");
                         if (args instanceof Map) {
                             try {
-                                argsStr = objectMapper.writeValueAsString(args);
+                                argsStr = OBJECT_MAPPER.writeValueAsString(args);
                             } catch (Exception e) {
                                 argsStr = args.toString();
                             }
@@ -582,7 +582,7 @@ public class McpBridgeController {
                         String resultContent;
                         if (result != null) {
                             try {
-                                resultContent = objectMapper.writeValueAsString(result);
+                                resultContent = OBJECT_MAPPER.writeValueAsString(result);
                             } catch (Exception e) {
                                 resultContent = result.toString();
                             }
@@ -818,7 +818,7 @@ public class McpBridgeController {
             List<ToolDefinition> emptyTools = new ArrayList<>();
             String response = llmProxyService.chat("Hello, this is a test connection.", emptyTools, config);
 
-            Map<String, Object> parsed = objectMapper.readValue(response, Map.class);
+            Map<String, Object> parsed = OBJECT_MAPPER.readValue(response, Map.class);
 
             if (parsed.containsKey("error")) {
                 result.put("status", -1);
@@ -1124,7 +1124,7 @@ public class McpBridgeController {
         String resourceType = tool.getResource().toUpperCase();
         if (arguments != null) {
             for (String key : new String[]{"topic", "group", "cluster", "name",
-                    "username", "brokerName"}) {
+                "username", "brokerName"}) {
                 if (arguments.containsKey(key)) {
                     resources.add(resourceType + ":" + arguments.get(key));
                     break;

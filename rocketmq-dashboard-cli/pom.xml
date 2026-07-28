@@ -84,6 +84,15 @@
                 </executions>
             </plugin>
             <plugin>
+                <!-- The CLI prints to stdout by design, which conflicts with the
+                     parent checkstyle rule prohibiting System.out.println -->
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-checkstyle-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+            <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>

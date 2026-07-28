@@ -48,7 +48,7 @@ import org.springframework.stereotype.Service;
 public class LlmProxyService {
 
     private static final Logger log = LoggerFactory.getLogger(LlmProxyService.class);
-    private static final ObjectMapper objectMapper = new ObjectMapper();
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private static final String SYSTEM_PROMPT =
             "You are a RocketMQ operations assistant. "
@@ -76,10 +76,12 @@ public class LlmProxyService {
         // Build simple messages with system + user for backward compat
         List<Map<String, Object>> messages = new ArrayList<>();
         Map<String, Object> sys = new LinkedHashMap<>();
-        sys.put("role", "system"); sys.put("content", SYSTEM_PROMPT);
+        sys.put("role", "system");
+        sys.put("content", SYSTEM_PROMPT);
         messages.add(sys);
         Map<String, Object> usr = new LinkedHashMap<>();
-        usr.put("role", "user"); usr.put("content", userMessage);
+        usr.put("role", "user");
+        usr.put("content", userMessage);
         messages.add(usr);
         return doChat(messages, tools, config);
     }
@@ -103,7 +105,7 @@ public class LlmProxyService {
 
         try {
             Map<String, Object> requestBody = buildChatRequest(messages, tools, config, false);
-            String requestJson = objectMapper.writeValueAsString(requestBody);
+            String requestJson = OBJECT_MAPPER.writeValueAsString(requestBody);
 
             String url = buildChatUrl(config);
             HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
@@ -142,7 +144,7 @@ public class LlmProxyService {
 
         try {
             Map<String, Object> requestBody = buildChatRequest(messages, tools, config, true);
-            String requestJson = objectMapper.writeValueAsString(requestBody);
+            String requestJson = OBJECT_MAPPER.writeValueAsString(requestBody);
 
             // Log full request for debugging multi-turn issues
             log.info("LLM stream request JSON (first 2000 chars): {}", 
@@ -194,7 +196,7 @@ public class LlmProxyService {
                 // Try to extract a meaningful error message from the response body
                 String errorMessage = "HTTP " + response.statusCode();
                 try {
-                    Map<String, Object> errorObj = objectMapper.readValue(errorBody, Map.class);
+                    Map<String, Object> errorObj = OBJECT_MAPPER.readValue(errorBody, Map.class);
                     Object error = errorObj.get("error");
                     if (error instanceof Map) {
                         Object msg = ((Map<?, ?>) error).get("message");
@@ -246,7 +248,7 @@ public class LlmProxyService {
                     HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
-                Map<String, Object> body = objectMapper.readValue(response.body(), Map.class);
+                Map<String, Object> body = OBJECT_MAPPER.readValue(response.body(), Map.class);
                 List<Map<String, Object>> data = (List<Map<String, Object>>) body.get("data");
                 if (data != null) {
                     for (Map<String, Object> model : data) {
@@ -441,7 +443,7 @@ public class LlmProxyService {
     @SuppressWarnings("unchecked")
     private String parseChatResponse(String responseBody) {
         try {
-            Map<String, Object> response = objectMapper.readValue(responseBody, Map.class);
+            Map<String, Object> response = OBJECT_MAPPER.readValue(responseBody, Map.class);
             Map<String, Object> result = new LinkedHashMap<>();
 
             List<Map<String, Object>> choices = (List<Map<String, Object>>) response.get("choices");
@@ -475,7 +477,7 @@ public class LlmProxyService {
                                 if (arguments != null) {
                                     try {
                                         parsedCall.put("arguments",
-                                                objectMapper.readValue(arguments, Map.class));
+                                                OBJECT_MAPPER.readValue(arguments, Map.class));
                                     } catch (IOException e) {
                                         parsedCall.put("arguments", arguments);
                                     }
@@ -497,7 +499,7 @@ public class LlmProxyService {
                 result.put("usage", usage);
             }
 
-            return objectMapper.writeValueAsString(result);
+            return OBJECT_MAPPER.writeValueAsString(result);
         } catch (IOException e) {
             log.error("Failed to parse chat response: {}", e.getMessage(), e);
             return "{\"content\":\"" + escapeJson(responseBody) + "\"}";
@@ -508,7 +510,7 @@ public class LlmProxyService {
         Map<String, Object> error = new LinkedHashMap<>();
         error.put("error", message);
         try {
-            return objectMapper.writeValueAsString(error);
+            return OBJECT_MAPPER.writeValueAsString(error);
         } catch (IOException e) {
             return "{\"error\":\"" + escapeJson(message) + "\"}";
         }

@@ -41,7 +41,7 @@ import org.springframework.stereotype.Service;
 public class DashboardApiClient {
 
     private static final Logger log = LoggerFactory.getLogger(DashboardApiClient.class);
-    private static final ObjectMapper objectMapper = new ObjectMapper();
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     /** Default dashboard API base URL (same host as main app). */
     private String dashboardBaseUrl = "http://localhost:8082";
@@ -296,7 +296,7 @@ public class DashboardApiClient {
             HttpResponse<String> resp = httpClient.send(request,
                     HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             if (resp.statusCode() >= 200 && resp.statusCode() < 300) {
-                return objectMapper.readValue(resp.body(), Map.class);
+                return OBJECT_MAPPER.readValue(resp.body(), Map.class);
             } else {
                 log.warn("Dashboard API returned {} for {}", resp.statusCode(), path);
                 return error("Dashboard API error: HTTP " + resp.statusCode());

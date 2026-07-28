@@ -69,7 +69,7 @@ public class LlmConfig {
             return yaml;
         }
 
-       private static Yaml createDumpYaml() {
+        private static Yaml createDumpYaml() {
             DumperOptions dumperOptions = new DumperOptions();
             dumperOptions.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
             dumperOptions.setPrettyFlow(true);

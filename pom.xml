@@ -100,6 +100,8 @@
         <commons-collections.version>3.2.2</commons-collections.version>
         <rocketmq.version>5.3.3</rocketmq.version>
         <surefire.version>2.19.1</surefire.version>
+        <!-- easyexcel 2.x (cglib) needs deep reflection on JDK 17+; jacoco prepends its agent to this argLine -->
+        <argLine>--add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.lang.reflect=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED</argLine>
         <aspectj.version>1.9.6</aspectj.version>
         <lombok.version>1.18.30</lombok.version>
         <main.basedir>${basedir}/../..</main.basedir>
@@ -445,7 +447,7 @@
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
-                <version>0.8.7</version>
+                <version>0.8.12</version>
                 <executions>
                     <execution>
                         <id>prepare-agent</id>

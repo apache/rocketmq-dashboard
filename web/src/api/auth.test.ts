@@ -37,37 +37,36 @@ describe('Auth API', () => {
     vi.unstubAllGlobals();
   });
 
-  it('login should post credentials and return token data', async () => {
+  it('login should post credentials and return login data', async () => {
     const mockResponse = {
-      token: 'jwt-token-123',
       username: 'admin',
-      role: 'ADMIN',
+      type: 'ADMIN',
+      contextPath: '/',
     };
-    mock.onPost('/auth/login', { username: 'admin', password: 'secret' }).reply(200, {
-      data: mockResponse,
-    });
+    mock
+      .onPost('/login/login.do', { username: 'admin', password: 'secret' })
+      .reply(200, mockResponse);
 
     const result = await login('admin', 'secret');
     expect(result).toEqual(mockResponse);
-    expect(result.token).toBe('jwt-token-123');
     expect(result.username).toBe('admin');
-    expect(result.role).toBe('ADMIN');
+    expect(result.type).toBe('ADMIN');
   });
 
   it('login should handle error response', async () => {
-    mock.onPost('/auth/login').reply(401, { message: 'Invalid credentials' });
+    mock.onPost('/login/login.do').reply(500, { message: 'Invalid credentials' });
 
     await expect(login('wrong', 'creds')).rejects.toThrow();
   });
 
   it('logout should post to logout endpoint', async () => {
-    mock.onPost('/auth/logout').reply(200);
+    mock.onPost('/login/logout.do').reply(200);
 
     await expect(logout()).resolves.toBeUndefined();
   });
 
   it('logout should handle server error', async () => {
-    mock.onPost('/auth/logout').reply(500);
+    mock.onPost('/login/logout.do').reply(500);
 
     await expect(logout()).rejects.toThrow();
   });

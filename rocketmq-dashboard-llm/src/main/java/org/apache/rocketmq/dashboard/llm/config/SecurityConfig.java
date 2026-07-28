@@ -40,8 +40,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/api/llm/**").permitAll()
                         .requestMatchers("/actuator/**").permitAll()
-                        .anyRequest().permitAll()
-                );
+                        .anyRequest().permitAll());
         return http.build();
     }
 }

@@ -48,7 +48,6 @@ import {
 } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
-import { useCapability } from '../../contexts/CapabilityContext';
 import {
   queryLiteTopicList,
   queryLiteTopicQuota,
@@ -81,7 +80,6 @@ const getProgressStatus = (percent: number): 'exception' | 'active' | 'normal' =
 
 const LiteTopicPage: React.FC = () => {
   const { t } = useLang();
-  const { capability } = useCapability();
   const { message } = App.useApp();
 
   const [loading, setLoading] = useState(false);

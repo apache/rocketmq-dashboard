@@ -20,6 +20,8 @@ export default defineConfig(({ mode }) => {
       environment: 'jsdom',
       setupFiles: './src/test/setup.ts',
       css: true,
+      // antd-heavy pages can exceed the 5s default under parallel load
+      testTimeout: 20000,
     },
   };
 });

@@ -45,15 +45,23 @@ describe('instance API', () => {
   });
 
   it('loads and returns persisted instance records', async () => {
-    mock.onGet('/instances').reply(200, { code: 200, data: [instance] });
-    mock.onPost('/instances/create').reply(200, { code: 200, data: instance });
-    mock.onPost('/instances/update').reply(200, { code: 200, data: instance });
+    mock.onGet('/proxy/homePage.query').reply(200, { data: [instance] });
+    mock.onPost('/proxy/addProxyAddr.do').reply((config) => {
+      expect(config.params).toEqual({ proxyAddr: instance.endpoint });
+      return [200, { status: 0 }];
+    });
+    mock.onPost('/proxy/updateProxyAddr.do').reply((config) => {
+      expect(config.params).toEqual({ proxyAddr: instance.endpoint });
+      return [200, { status: 0 }];
+    });
 
-    await expect(listInstances()).resolves.toEqual([instance]);
+    await expect(listInstances()).resolves.toEqual({ data: [instance] });
     await expect(
       createInstance({ name: instance.name, type: instance.type, endpoint: instance.endpoint }),
-    ).resolves.toEqual(instance);
-    await expect(updateInstance({ id: instance.id, remark: 'updated' })).resolves.toEqual(instance);
+    ).resolves.toEqual({ status: 0 });
+    await expect(updateInstance({ id: instance.id, endpoint: instance.endpoint })).resolves.toEqual(
+      { status: 0 },
+    );
   });
 
   it('sends the instance id when deleting', async () => {

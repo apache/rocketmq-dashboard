@@ -41,8 +41,7 @@ public class SecurityConfig {
                         .requestMatchers("/sse").permitAll()
                         .requestMatchers("/mcp/**").permitAll()
                         .requestMatchers("/actuator/**").permitAll()
-                        .anyRequest().permitAll()
-                );
+                        .anyRequest().permitAll());
         return http.build();
     }
 }
