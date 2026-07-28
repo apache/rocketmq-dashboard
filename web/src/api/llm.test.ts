@@ -99,11 +99,15 @@ describe('LLM API', () => {
     mock.onPost('/llm/config/test').reply(200, {
       status: 1,
       errMsg: 'Invalid API Key',
+      code: 'llm.config.missing_api_key',
+      hint: 'Configure an API key for provider openai.',
     });
 
     const result = await testLlmConnection(sampleConfig);
     expect(result.status).toBe(1);
     expect(result.errMsg).toBe('Invalid API Key');
+    expect(result.code).toBe('llm.config.missing_api_key');
+    expect(result.hint).toBe('Configure an API key for provider openai.');
   });
 
   it('fetches available models', async () => {

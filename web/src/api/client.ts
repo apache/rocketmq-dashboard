@@ -38,6 +38,9 @@ function getBusinessError(data: unknown): string | null {
   if (typeof data.code === 'number' && SUCCESS_BUSINESS_CODES.has(data.code)) {
     return null;
   }
+  if (typeof data.code !== 'number' && !('message' in data) && !('data' in data)) {
+    return null;
+  }
   return typeof data.message === 'string' && data.message.trim() ? data.message : '请求失败';
 }
 

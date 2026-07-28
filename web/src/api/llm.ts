@@ -35,6 +35,8 @@ export interface LlmTestResult {
   status: number;
   msg?: string;
   errMsg?: string;
+  code?: string;
+  hint?: string;
 }
 
 export interface LlmModelItem {
