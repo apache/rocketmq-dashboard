@@ -14,13 +14,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.dashboard.model;
+package org.apache.rocketmq.studio.model;
 
-import lombok.Data;
 import java.util.Date;
 import java.util.Set;
 
-@Data
 public class ACLUser {
 
     private String userName;
@@ -60,4 +58,84 @@ public class ACLUser {
         }
         return ipWhiteList.contains(ip);
     }
+    public String getUserName() {
+        return userName;
+    }
+
+    public void setUserName(String userName) {
+        this.userName = userName;
+    }
+
+    public String getAccessKey() {
+        return accessKey;
+    }
+
+    public void setAccessKey(String accessKey) {
+        this.accessKey = accessKey;
+    }
+
+    public String getUserType() {
+        return userType;
+    }
+
+    public void setUserType(String userType) {
+        this.userType = userType;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    public Date getCreateTime() {
+        return createTime;
+    }
+
+    public void setCreateTime(Date createTime) {
+        this.createTime = createTime;
+    }
+
+    public Date getUpdateTime() {
+        return updateTime;
+    }
+
+    public void setUpdateTime(Date updateTime) {
+        this.updateTime = updateTime;
+    }
+
+    public Date getLastLoginTime() {
+        return lastLoginTime;
+    }
+
+    public void setLastLoginTime(Date lastLoginTime) {
+        this.lastLoginTime = lastLoginTime;
+    }
+
+    public Set<String> getPolicyIds() {
+        return policyIds;
+    }
+
+    public void setPolicyIds(Set<String> policyIds) {
+        this.policyIds = policyIds;
+    }
+
+    public Set<String> getIpWhiteList() {
+        return ipWhiteList;
+    }
+
+    public void setIpWhiteList(Set<String> ipWhiteList) {
+        this.ipWhiteList = ipWhiteList;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
 }

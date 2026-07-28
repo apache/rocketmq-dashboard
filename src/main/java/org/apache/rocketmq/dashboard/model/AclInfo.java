@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.rocketmq.dashboard.model;
+package org.apache.rocketmq.studio.model;
 
 import java.util.ArrayList;
 import java.util.Collections;

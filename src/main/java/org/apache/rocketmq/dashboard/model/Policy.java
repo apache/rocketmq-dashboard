@@ -15,16 +15,28 @@
  * limitations under the License.
  */
 
-package org.apache.rocketmq.dashboard.model;
+package org.apache.rocketmq.studio.model;
 
-import lombok.Getter;
-import lombok.Setter;
 
 import java.util.List;
 
-@Setter
-@Getter
 public class Policy {
     private String policyType;
     private List<Entry> entries;
+    public String getPolicyType() {
+        return policyType;
+    }
+
+    public void setPolicyType(String policyType) {
+        this.policyType = policyType;
+    }
+
+    public List<Entry> getEntries() {
+        return entries;
+    }
+
+    public void setEntries(List<Entry> entries) {
+        this.entries = entries;
+    }
+
 }

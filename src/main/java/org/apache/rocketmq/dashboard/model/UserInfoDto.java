@@ -15,16 +15,10 @@
  * limitations under the License.
  */
 
-package org.apache.rocketmq.dashboard.model;
+package org.apache.rocketmq.studio.model;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
 import org.apache.rocketmq.remoting.protocol.body.UserInfo;
 
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
 public class UserInfoDto {
 
     private String username;
@@ -42,4 +36,36 @@ public class UserInfoDto {
         this.userStatus = userInfo.getUserStatus();
         return this;
     }
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
+
+    public String getUserType() {
+        return userType;
+    }
+
+    public void setUserType(String userType) {
+        this.userType = userType;
+    }
+
+    public String getUserStatus() {
+        return userStatus;
+    }
+
+    public void setUserStatus(String userStatus) {
+        this.userStatus = userStatus;
+    }
+
 }
