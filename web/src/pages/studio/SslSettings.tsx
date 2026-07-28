@@ -81,6 +81,7 @@ const SslSettingsPage = () => {
     certificateExpiry: '2025-12-31',
     certificateIssuer: "Let's Encrypt",
   });
+  const clientAuth = Form.useWatch('clientAuth', form) ?? sslConfig.clientAuth;
   const { t } = useLang();
   const { message } = App.useApp();
 
@@ -230,7 +231,7 @@ const SslSettingsPage = () => {
                 </Upload>
               </Form.Item>
 
-              {form.getFieldValue('clientAuth') !== 'none' && (
+              {clientAuth !== 'none' && (
                 <>
                   <Divider orientation="left">{t('ssl.truststoreConfig')}</Divider>
 

@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
@@ -94,5 +94,29 @@ describe('SslSettings Page', () => {
     expect(screen.getByText('KeyStore 类型')).toBeInTheDocument();
     expect(screen.getByText('KeyStore 路径')).toBeInTheDocument();
     expect(screen.getByText('KeyStore 密码')).toBeInTheDocument();
+  });
+
+  it('should show TrustStore fields when client authentication is required', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<SslSettings />);
+
+    await user.click(screen.getByRole('switch'));
+    expect(screen.queryByText('TrustStore 配置')).not.toBeInTheDocument();
+
+    await user.click(screen.getByLabelText('客户端认证'));
+    await user.click(await screen.findByText('必需'));
+
+    expect(await screen.findByText('TrustStore 配置')).toBeInTheDocument();
+    expect(screen.getByText('TrustStore 类型')).toBeInTheDocument();
+    expect(screen.getByText('TrustStore 路径')).toBeInTheDocument();
+    expect(screen.getByText('TrustStore 密码')).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText('客户端认证'));
+    await user.click(await screen.findByText('无'));
+    await waitFor(() => expect(screen.queryByText('TrustStore 配置')).not.toBeInTheDocument());
+
+    await user.click(screen.getByLabelText('客户端认证'));
+    await user.click(await screen.findByText('可选'));
+    expect(await screen.findByText('TrustStore 配置')).toBeInTheDocument();
   });
 });
