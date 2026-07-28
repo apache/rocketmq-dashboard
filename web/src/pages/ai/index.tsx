@@ -426,12 +426,13 @@ const AiPage = () => {
   }, []);
 
   return (
-    <Flex vertical style={{ height: 'calc(100vh - 48px)', padding: 24 }}>
+    <Flex vertical style={{ height: '100%', minHeight: 0, padding: 24, overflow: 'hidden' }}>
       {/* Chat Area */}
       <div
         className="w-full scrollbar-hide"
         style={{
           flex: 1,
+          minHeight: 0,
           overflowY: 'auto',
           padding: '16px 24px',
           scrollBehavior: 'smooth',
@@ -523,7 +524,7 @@ const AiPage = () => {
       </div>
 
       {/* Input Area */}
-      <div className="w-full" style={{ flexShrink: 0, padding: '0 24px' }}>
+      <div className="w-full" style={{ flexShrink: 0, padding: '0 24px 4px' }}>
         {/* Quick Actions */}
         <Flex align="center" gap={8} style={{ marginBottom: 12 }} wrap="wrap">
           <Text type="secondary" style={{ fontSize: 13, flexShrink: 0 }}>

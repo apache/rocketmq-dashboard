@@ -248,7 +248,7 @@ const MainLayout = () => {
           />
         </Sider>
 
-        <Layout style={{ background: 'transparent' }}>
+        <Layout style={{ background: 'transparent', height: '100vh', overflow: 'hidden' }}>
           {/* Top bar */}
           <div
             style={{
@@ -360,6 +360,7 @@ const MainLayout = () => {
               padding: 0,
               background: 'transparent',
               minHeight: 280,
+              height: 'calc(100vh - 48px)',
               overflow: 'auto',
             }}
           >
