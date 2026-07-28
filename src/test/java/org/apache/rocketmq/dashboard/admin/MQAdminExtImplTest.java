@@ -26,10 +26,12 @@ import org.apache.rocketmq.client.impl.factory.MQClientInstance;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.common.message.MessageRequestMode;
 import org.apache.rocketmq.dashboard.service.client.MQAdminExtImpl;
 import org.apache.rocketmq.dashboard.service.client.MQAdminInstance;
 import org.apache.rocketmq.dashboard.util.MockObjectUtil;
 import org.apache.rocketmq.remoting.RemotingClient;
+import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
@@ -38,6 +40,9 @@ import org.apache.rocketmq.remoting.protocol.admin.RollbackStats;
 import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
 import org.apache.rocketmq.remoting.protocol.body.BrokerStatsData;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
+import org.apache.rocketmq.remoting.protocol.body.AclInfo;
+import org.apache.rocketmq.remoting.protocol.body.HARuntimeInfo;
+import org.apache.rocketmq.remoting.protocol.body.UserInfo;
 import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
 import org.apache.rocketmq.remoting.protocol.body.ConsumeStatsList;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
@@ -82,6 +87,7 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.Silent.class)
@@ -750,5 +756,276 @@ public class MQAdminExtImplTest {
             when(defaultMQAdminExt.getUserTopicConfig(anyString(), anyBoolean(), anyLong())).thenReturn(wrapper);
         }
         Assert.assertEquals(mqAdminExtImpl.getUserTopicConfig("127.0.0.1:10911", true, 3000), wrapper);
+    }
+
+    // ==================== Deprecated lifecycle methods ====================
+
+    @Test(expected = IllegalStateException.class)
+    public void testStartThrowsIllegalState() throws Exception {
+        mqAdminExtImpl.start();
+    }
+
+    @Test(expected = IllegalStateException.class)
+    public void testShutdownThrowsIllegalState() {
+        mqAdminExtImpl.shutdown();
+    }
+
+    // ==================== examineSubscriptionGroupConfig / examineTopicConfig error branches ====================
+
+    @Test
+    public void testExamineSubscriptionGroupConfigErrorResponse() throws Exception {
+        RemotingCommand errorResponse = RemotingCommand.createResponseCommand(null);
+        errorResponse.setCode(ResponseCode.SYSTEM_ERROR);
+        errorResponse.setRemark("system error");
+        when(remotingClient.invokeSync(eq(brokerAddr), any(RemotingCommand.class), anyLong()))
+                .thenReturn(errorResponse);
+        try {
+            mqAdminExtImpl.examineSubscriptionGroupConfig(brokerAddr, "group_test");
+            Assert.fail("Expected MQBrokerException");
+        } catch (MQBrokerException e) {
+            Assert.assertEquals(ResponseCode.SYSTEM_ERROR, e.getResponseCode());
+        }
+    }
+
+    @Test
+    public void testExamineSubscriptionGroupConfigUncheckedExceptionRethrown() throws Exception {
+        when(remotingClient.invokeSync(eq(brokerAddr), any(RemotingCommand.class), anyLong()))
+                .thenThrow(new RuntimeException("network down"));
+        try {
+            mqAdminExtImpl.examineSubscriptionGroupConfig(brokerAddr, "group_test");
+            Assert.fail("Expected RuntimeException");
+        } catch (RuntimeException e) {
+            Assert.assertEquals("network down", e.getMessage());
+        }
+    }
+
+    @Test
+    public void testExamineSubscriptionGroupConfigCheckedExceptionWrapped() throws Exception {
+        when(remotingClient.invokeSync(eq(brokerAddr), any(RemotingCommand.class), anyLong()))
+                .thenThrow(new RemotingTimeoutException(brokerAddr));
+        try {
+            mqAdminExtImpl.examineSubscriptionGroupConfig(brokerAddr, "group_test");
+            Assert.fail("Expected RuntimeException");
+        } catch (RuntimeException e) {
+            assertTrue(e.getCause() instanceof RemotingTimeoutException);
+        }
+    }
+
+    @Test
+    public void testExamineTopicConfigErrorResponse() throws Exception {
+        RemotingCommand errorResponse = RemotingCommand.createResponseCommand(null);
+        errorResponse.setCode(ResponseCode.SYSTEM_ERROR);
+        errorResponse.setRemark("system error");
+        when(remotingClient.invokeSync(eq(brokerAddr), any(RemotingCommand.class), anyLong()))
+                .thenReturn(errorResponse);
+        try {
+            mqAdminExtImpl.examineTopicConfig(brokerAddr, "topic_test");
+            Assert.fail("Expected MQBrokerException");
+        } catch (MQBrokerException e) {
+            Assert.assertEquals(ResponseCode.SYSTEM_ERROR, e.getResponseCode());
+        }
+    }
+
+    @Test
+    public void testExamineTopicConfigUncheckedExceptionRethrown() throws Exception {
+        when(remotingClient.invokeSync(eq(brokerAddr), any(RemotingCommand.class), anyLong()))
+                .thenThrow(new RuntimeException("network down"));
+        try {
+            mqAdminExtImpl.examineTopicConfig(brokerAddr, "topic_test");
+            Assert.fail("Expected RuntimeException");
+        } catch (RuntimeException e) {
+            Assert.assertEquals("network down", e.getMessage());
+        }
+    }
+
+    // ==================== Additional delegation methods ====================
+
+    @Test
+    public void testDeleteTopic() throws Exception {
+        mqAdminExtImpl.deleteTopic("topic_test", "DefaultCluster");
+        verify(defaultMQAdminExt).deleteTopic("topic_test", "DefaultCluster");
+    }
+
+    @Test
+    public void testGetBrokerHAStatus() throws Exception {
+        when(defaultMQAdminExt.getBrokerHAStatus(anyString())).thenReturn(new HARuntimeInfo());
+        Assert.assertNotNull(mqAdminExtImpl.getBrokerHAStatus(brokerAddr));
+    }
+
+    @Test
+    public void testExamineConsumeStatsWithBrokerAddr() throws Exception {
+        when(defaultMQAdminExt.examineConsumeStats(anyString(), anyString(), anyString(), anyLong()))
+                .thenReturn(new ConsumeStats());
+        Assert.assertNotNull(mqAdminExtImpl.examineConsumeStats(brokerAddr, "group_test", "topic_test", 3000L));
+    }
+
+    @Test
+    public void testExamineConsumerConnectionInfoWithBrokerAddr() throws Exception {
+        when(defaultMQAdminExt.examineConsumerConnectionInfo(anyString(), anyString()))
+                .thenReturn(new ConsumerConnection());
+        Assert.assertNotNull(mqAdminExtImpl.examineConsumerConnectionInfo("group_test", brokerAddr));
+    }
+
+    @Test
+    public void testGetTopicClusterListDelegation() throws Exception {
+        when(defaultMQAdminExt.getTopicClusterList(anyString())).thenReturn(new HashSet<>());
+        Assert.assertNotNull(mqAdminExtImpl.getTopicClusterList("topic_test"));
+    }
+
+    @Test
+    public void testCleanUnusedTopicByAddr() throws Exception {
+        when(defaultMQAdminExt.cleanUnusedTopicByAddr(anyString())).thenReturn(true);
+        assertTrue(mqAdminExtImpl.cleanUnusedTopicByAddr(brokerAddr));
+    }
+
+    @Test
+    public void testColdDataFlowCtrMethods() throws Exception {
+        mqAdminExtImpl.updateColdDataFlowCtrGroupConfig(brokerAddr, new Properties());
+        verify(defaultMQAdminExt).updateColdDataFlowCtrGroupConfig(eq(brokerAddr), any(Properties.class));
+
+        mqAdminExtImpl.removeColdDataFlowCtrGroupConfig(brokerAddr, "group_test");
+        verify(defaultMQAdminExt).removeColdDataFlowCtrGroupConfig(brokerAddr, "group_test");
+
+        when(defaultMQAdminExt.getColdDataFlowCtrInfo(anyString())).thenReturn("info");
+        Assert.assertEquals("info", mqAdminExtImpl.getColdDataFlowCtrInfo(brokerAddr));
+
+        when(defaultMQAdminExt.setCommitLogReadAheadMode(anyString(), anyString())).thenReturn("ok");
+        Assert.assertEquals("ok", mqAdminExtImpl.setCommitLogReadAheadMode(brokerAddr, "MADV_NORMAL"));
+    }
+
+    @Test
+    public void testUserCrudDelegation() throws Exception {
+        UserInfo userInfo = new UserInfo();
+        mqAdminExtImpl.createUser(brokerAddr, userInfo);
+        verify(defaultMQAdminExt).createUser(brokerAddr, userInfo);
+
+        mqAdminExtImpl.createUser(brokerAddr, "user", "pwd", "Normal");
+        verify(defaultMQAdminExt).createUser(brokerAddr, "user", "pwd", "Normal");
+
+        mqAdminExtImpl.updateUser(brokerAddr, "user", "pwd", "Normal", "enable");
+        verify(defaultMQAdminExt).updateUser(brokerAddr, "user", "pwd", "Normal", "enable");
+
+        mqAdminExtImpl.updateUser(brokerAddr, userInfo);
+        verify(defaultMQAdminExt).updateUser(brokerAddr, userInfo);
+
+        mqAdminExtImpl.deleteUser(brokerAddr, "user");
+        verify(defaultMQAdminExt).deleteUser(brokerAddr, "user");
+
+        when(defaultMQAdminExt.getUser(anyString(), anyString())).thenReturn(new UserInfo());
+        Assert.assertNotNull(mqAdminExtImpl.getUser(brokerAddr, "user"));
+
+        when(defaultMQAdminExt.listUser(anyString(), anyString())).thenReturn(new ArrayList<>());
+        Assert.assertNotNull(mqAdminExtImpl.listUser(brokerAddr, ""));
+    }
+
+    @Test
+    public void testAclCrudDelegation() throws Exception {
+        List<String> resources = Lists.newArrayList("Topic:topic_test");
+        List<String> actions = Lists.newArrayList("Pub");
+        List<String> sourceIps = Lists.newArrayList("192.168.1.1");
+        AclInfo aclInfo = new AclInfo();
+
+        mqAdminExtImpl.createAcl(brokerAddr, "User:user", resources, actions, sourceIps, "Allow");
+        verify(defaultMQAdminExt).createAcl(brokerAddr, "User:user", resources, actions, sourceIps, "Allow");
+
+        mqAdminExtImpl.createAcl(brokerAddr, aclInfo);
+        verify(defaultMQAdminExt).createAcl(brokerAddr, aclInfo);
+
+        mqAdminExtImpl.updateAcl(brokerAddr, "User:user", resources, actions, sourceIps, "Deny");
+        verify(defaultMQAdminExt).updateAcl(brokerAddr, "User:user", resources, actions, sourceIps, "Deny");
+
+        mqAdminExtImpl.updateAcl(brokerAddr, aclInfo);
+        verify(defaultMQAdminExt).updateAcl(brokerAddr, aclInfo);
+
+        mqAdminExtImpl.deleteAcl(brokerAddr, "User:user", "Topic:topic_test");
+        verify(defaultMQAdminExt).deleteAcl(brokerAddr, "User:user", "Topic:topic_test");
+
+        when(defaultMQAdminExt.getAcl(anyString(), anyString())).thenReturn(new AclInfo());
+        Assert.assertNotNull(mqAdminExtImpl.getAcl(brokerAddr, "User:user"));
+
+        when(defaultMQAdminExt.listAcl(anyString(), anyString(), anyString())).thenReturn(new ArrayList<>());
+        Assert.assertNotNull(mqAdminExtImpl.listAcl(brokerAddr, "", ""));
+    }
+
+    @Test
+    public void testExportPopRecords() throws Exception {
+        mqAdminExtImpl.exportPopRecords(brokerAddr, 3000L);
+        verify(defaultMQAdminExt).exportPopRecords(brokerAddr, 3000L);
+    }
+
+    // ==================== No-op / default-return methods ====================
+
+    @Test
+    public void testNoOpMethodsReturnDefaults() throws Exception {
+        // void no-ops must not throw
+        mqAdminExtImpl.createAndUpdateTopicConfigList(brokerAddr, new ArrayList<>());
+        mqAdminExtImpl.createAndUpdateSubscriptionGroupConfigList(brokerAddr, new ArrayList<>());
+        mqAdminExtImpl.updateNameServerConfig(new Properties(), new ArrayList<>());
+        mqAdminExtImpl.exportRocksDBConfigToJson(brokerAddr, new ArrayList<>());
+
+        assertNull(mqAdminExtImpl.checkRocksdbCqWriteProgress(brokerAddr, "topic_test", 0L));
+        assertNull(mqAdminExtImpl.examineConsumeStats("a", "b", "c"));
+        assertTrue(mqAdminExtImpl.resetOffsetByTimestamp("a", "b", "c", 0L, false).isEmpty());
+        assertNull(mqAdminExtImpl.consumeMessageDirectly("a", "b", "c", "d", "e"));
+        assertNull(mqAdminExtImpl.electMaster("ctrl", "cluster", "broker", 0L));
+    }
+
+    // ==================== Unsupported operations ====================
+
+    private interface ThrowingRunnable {
+        void run() throws Exception;
+    }
+
+    private void assertUnsupported(ThrowingRunnable runnable) {
+        try {
+            runnable.run();
+            Assert.fail("Expected UnsupportedOperationException");
+        } catch (UnsupportedOperationException e) {
+            // expected
+        } catch (Exception e) {
+            Assert.fail("Expected UnsupportedOperationException but got " + e.getClass().getSimpleName());
+        }
+    }
+
+    @Test
+    public void testUnsupportedContainerAndStatsOperations() {
+        assertUnsupported(() -> mqAdminExtImpl.addBrokerToContainer(brokerAddr, "config"));
+        assertUnsupported(() -> mqAdminExtImpl.removeBrokerFromContainer(brokerAddr, "DefaultCluster", "broker-a", 0L));
+        assertUnsupported(() -> mqAdminExtImpl.examineTopicStats(brokerAddr, "topic_test"));
+        assertUnsupported(() -> mqAdminExtImpl.examineTopicStatsConcurrent("topic_test"));
+        assertUnsupported(() -> mqAdminExtImpl.examineConsumeStatsConcurrent("group_test", "topic_test"));
+        assertUnsupported(() -> mqAdminExtImpl.getAllProducerInfo(brokerAddr));
+        assertUnsupported(() -> mqAdminExtImpl.deleteTopicInBrokerConcurrent(Sets.newHashSet(brokerAddr), "topic_test"));
+        assertUnsupported(() -> mqAdminExtImpl.deleteTopicInNameServer(Sets.newHashSet(brokerAddr), "DefaultCluster", "topic_test"));
+        assertUnsupported(() -> mqAdminExtImpl.resetOffsetNewConcurrent("group_test", "topic_test", 0L));
+        assertUnsupported(() -> mqAdminExtImpl.queryTopicsByConsumer("group_test"));
+        assertUnsupported(() -> mqAdminExtImpl.queryTopicsByConsumerConcurrent("group_test"));
+        assertUnsupported(() -> mqAdminExtImpl.querySubscription("group_test", "topic_test"));
+        assertUnsupported(() -> mqAdminExtImpl.queryConsumeTimeSpanConcurrent("topic_test", "group_test"));
+    }
+
+    @Test
+    public void testUnsupportedCommitLogAndOffsetOperations() {
+        assertUnsupported(() -> mqAdminExtImpl.deleteExpiredCommitLog("DefaultCluster"));
+        assertUnsupported(() -> mqAdminExtImpl.deleteExpiredCommitLogByAddr(brokerAddr));
+        assertUnsupported(() -> mqAdminExtImpl.getConsumerRunningInfo("group_test", "clientId", true, true));
+        assertUnsupported(() -> mqAdminExtImpl.messageTrackDetailConcurrent(new MessageExt()));
+        assertUnsupported(() -> mqAdminExtImpl.setMessageRequestMode(brokerAddr, "topic_test", "group_test", MessageRequestMode.PULL, 8, 3000L));
+        assertUnsupported(() -> mqAdminExtImpl.searchOffset(brokerAddr, "topic_test", 0, 0L, 3000L));
+        assertUnsupported(() -> mqAdminExtImpl.resetOffsetByQueueId(brokerAddr, "group_test", "topic_test", 0, 0L));
+        assertUnsupported(() -> mqAdminExtImpl.createStaticTopic(brokerAddr, "defaultTopic", new TopicConfig(), null, false));
+        assertUnsupported(() -> mqAdminExtImpl.updateAndGetGroupReadForbidden(brokerAddr, "group_test", "topic_test", true));
+        assertUnsupported(() -> mqAdminExtImpl.queryMessage("DefaultCluster", "topic_test", "msgId"));
+    }
+
+    @Test
+    public void testUnsupportedControllerOperations() {
+        assertUnsupported(() -> mqAdminExtImpl.getInSyncStateData("ctrl:9878", Lists.newArrayList(brokerAddr)));
+        assertUnsupported(() -> mqAdminExtImpl.getBrokerEpochCache(brokerAddr));
+        assertUnsupported(() -> mqAdminExtImpl.getControllerMetaData("ctrl:9878"));
+        assertUnsupported(() -> mqAdminExtImpl.resetMasterFlushOffset(brokerAddr, 0L));
+        assertUnsupported(() -> mqAdminExtImpl.getControllerConfig(Lists.newArrayList("ctrl:9878")));
+        assertUnsupported(() -> mqAdminExtImpl.updateControllerConfig(new Properties(), Lists.newArrayList("ctrl:9878")));
+        assertUnsupported(() -> mqAdminExtImpl.cleanControllerBrokerData("ctrl:9878", "DefaultCluster", "broker-a", brokerAddr, false));
     }
 }

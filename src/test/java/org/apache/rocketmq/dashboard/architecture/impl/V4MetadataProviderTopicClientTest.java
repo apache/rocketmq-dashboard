@@ -29,7 +29,6 @@ import org.apache.rocketmq.dashboard.model.MessageInfo;
 import org.apache.rocketmq.dashboard.model.SubscriptionInfo;
 import org.apache.rocketmq.dashboard.model.TopicInfo;
 import org.apache.rocketmq.dashboard.support.AutoCloseConsumerWrapper;
-import org.apache.rocketmq.dashboard.util.MockObjectUtil;
 import org.apache.rocketmq.remoting.protocol.LanguageCode;
 import org.apache.rocketmq.remoting.protocol.body.Connection;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
@@ -99,6 +98,20 @@ public class V4MetadataProviderTopicClientTest {
     }
 
     // ==================== Helpers ====================
+
+    private org.apache.rocketmq.remoting.protocol.body.ClusterInfo clusterInfo() {
+        org.apache.rocketmq.remoting.protocol.body.ClusterInfo clusterInfo =
+            new org.apache.rocketmq.remoting.protocol.body.ClusterInfo();
+        HashMap<String, java.util.Set<String>> clusterAddrTable = new HashMap<>();
+        clusterAddrTable.put("DefaultCluster", new HashSet<>(Collections.singletonList("broker-a")));
+        clusterInfo.setClusterAddrTable(clusterAddrTable);
+        HashMap<String, BrokerData> brokerAddrTable = new HashMap<>();
+        HashMap<Long, String> brokerAddrs = new HashMap<>();
+        brokerAddrs.put(0L, "127.0.0.1:10911");
+        brokerAddrTable.put("broker-a", new BrokerData("DefaultCluster", "broker-a", brokerAddrs));
+        clusterInfo.setBrokerAddrTable(brokerAddrTable);
+        return clusterInfo;
+    }
 
     private TopicList topicListOf(String... names) {
         TopicList topicList = new TopicList();
@@ -185,7 +198,7 @@ public class V4MetadataProviderTopicClientTest {
 
     @Test
     public void testCreateTopicOnAllMasterBrokers() throws Exception {
-        when(mqAdminExt.examineBrokerClusterInfo()).thenReturn(MockObjectUtil.createClusterInfo());
+        when(mqAdminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
         TopicInfo topic = new TopicInfo();
         topic.setTopicName("newTopic");
         topic.setReadQueueNums(4);
@@ -197,7 +210,7 @@ public class V4MetadataProviderTopicClientTest {
 
     @Test
     public void testCreateTopicBrokerFailureIsTolerated() throws Exception {
-        when(mqAdminExt.examineBrokerClusterInfo()).thenReturn(MockObjectUtil.createClusterInfo());
+        when(mqAdminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
         doThrow(new RuntimeException("broker down"))
             .when(mqAdminExt).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
         TopicInfo topic = new TopicInfo();
@@ -211,7 +224,7 @@ public class V4MetadataProviderTopicClientTest {
 
     @Test
     public void testUpdateTopicDelegatesToCreate() throws Exception {
-        when(mqAdminExt.examineBrokerClusterInfo()).thenReturn(MockObjectUtil.createClusterInfo());
+        when(mqAdminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
         TopicInfo topic = new TopicInfo();
         topic.setTopicName("topicA");
         topic.setReadQueueNums(4);
@@ -263,7 +276,7 @@ public class V4MetadataProviderTopicClientTest {
 
     @Test
     public void testCreateConsumerGroupOnMasterBrokers() throws Exception {
-        when(mqAdminExt.examineBrokerClusterInfo()).thenReturn(MockObjectUtil.createClusterInfo());
+        when(mqAdminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
         ConsumerGroupInfo group = new ConsumerGroupInfo();
         group.setConsumerGroupName("groupA");
 
@@ -273,7 +286,7 @@ public class V4MetadataProviderTopicClientTest {
 
     @Test
     public void testCreateConsumerGroupBrokerFailureIsTolerated() throws Exception {
-        when(mqAdminExt.examineBrokerClusterInfo()).thenReturn(MockObjectUtil.createClusterInfo());
+        when(mqAdminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
         doThrow(new RuntimeException("broker down"))
             .when(mqAdminExt).createAndUpdateSubscriptionGroupConfig(anyString(), any(SubscriptionGroupConfig.class));
         ConsumerGroupInfo group = new ConsumerGroupInfo();
@@ -284,7 +297,7 @@ public class V4MetadataProviderTopicClientTest {
 
     @Test
     public void testUpdateConsumerGroupDelegatesToCreate() throws Exception {
-        when(mqAdminExt.examineBrokerClusterInfo()).thenReturn(MockObjectUtil.createClusterInfo());
+        when(mqAdminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
         ConsumerGroupInfo group = new ConsumerGroupInfo();
         group.setConsumerGroupName("groupA");
 
@@ -294,7 +307,7 @@ public class V4MetadataProviderTopicClientTest {
 
     @Test
     public void testDeleteConsumerGroupRemovesConfigAndRetryTopic() throws Exception {
-        when(mqAdminExt.examineBrokerClusterInfo()).thenReturn(MockObjectUtil.createClusterInfo());
+        when(mqAdminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
         when(mqAdminExt.examineTopicRouteInfo("%RETRY%groupA")).thenReturn(routeData(1, 1));
 
         provider.deleteConsumerGroup("groupA", Optional.empty());
@@ -304,7 +317,7 @@ public class V4MetadataProviderTopicClientTest {
 
     @Test
     public void testDeleteConsumerGroupMissingRetryTopicIsTolerated() throws Exception {
-        when(mqAdminExt.examineBrokerClusterInfo()).thenReturn(MockObjectUtil.createClusterInfo());
+        when(mqAdminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
         when(mqAdminExt.examineTopicRouteInfo("%RETRY%groupA")).thenThrow(new RuntimeException("no route"));
 
         provider.deleteConsumerGroup("groupA", Optional.empty());

@@ -39,7 +39,11 @@ import org.junit.Test;
 import java.util.Optional;
 
 import static org.junit.Assert.*;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * Tests for ArchitectureConfig and ArchitectureAdaptationManager.
@@ -449,5 +453,107 @@ public class ArchitectureConfigTest {
         } catch (IllegalArgumentException e) {
             assertTrue(e.getMessage().contains("requires explicit proxy addresses"));
         }
+    }
+
+    // ==================== switchToArchitecture V5 -> V4 success path ====================
+
+    @Test
+    public void testSwitchToArchitecture_FromV5BackToV4_CreatesV4Components() {
+        ClusterProvider oldProvider = mock(ClusterProvider.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(
+            adaptationManager, "currentAccessType", ClusterAccessType.V5_PROXY_LOCAL);
+        adaptationManager.setClusterProvider(oldProvider);
+
+        adaptationManager.switchToArchitecture(ClusterAccessType.V4_NAMESRV);
+
+        // old provider is not cached, so it must be shut down
+        verify(oldProvider).shutdown();
+        assertEquals(ClusterAccessType.V4_NAMESRV, adaptationManager.getCurrentAccessType());
+        assertTrue(adaptationManager.getClusterProvider() instanceof V4ClusterProvider);
+        assertTrue(adaptationManager.getAdminClient() instanceof RemotingAdminClient);
+        assertTrue(adaptationManager.getMetadataProvider() instanceof V4MetadataProvider);
+    }
+
+    @Test
+    public void testSwitchToArchitecture_OldProviderShutdownFailure_IsSwallowed() {
+        ClusterProvider oldProvider = mock(ClusterProvider.class);
+        doThrow(new RuntimeException("shutdown boom")).when(oldProvider).shutdown();
+        org.springframework.test.util.ReflectionTestUtils.setField(
+            adaptationManager, "currentAccessType", ClusterAccessType.V5_PROXY_LOCAL);
+        adaptationManager.setClusterProvider(oldProvider);
+
+        adaptationManager.switchToArchitecture(ClusterAccessType.V4_NAMESRV);
+
+        verify(oldProvider).shutdown();
+        assertEquals(ClusterAccessType.V4_NAMESRV, adaptationManager.getCurrentAccessType());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    public void testSwitchToArchitecture_CachedOldProvider_IsNotShutDown() {
+        ClusterProvider oldProvider = mock(ClusterProvider.class);
+        java.util.concurrent.ConcurrentHashMap<ClusterAccessType, ClusterProvider> providerCache =
+            (java.util.concurrent.ConcurrentHashMap<ClusterAccessType, ClusterProvider>)
+                org.springframework.test.util.ReflectionTestUtils.getField(adaptationManager, "providerCache");
+        providerCache.put(ClusterAccessType.V5_PROXY_LOCAL, oldProvider);
+        org.springframework.test.util.ReflectionTestUtils.setField(
+            adaptationManager, "currentAccessType", ClusterAccessType.V5_PROXY_LOCAL);
+        adaptationManager.setClusterProvider(oldProvider);
+
+        adaptationManager.switchToArchitecture(ClusterAccessType.V4_NAMESRV);
+
+        // cached provider must be reusable, so no shutdown
+        verify(oldProvider, never()).shutdown();
+        assertEquals(ClusterAccessType.V4_NAMESRV, adaptationManager.getCurrentAccessType());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    public void testSwitchToArchitecture_ProviderInitializeFailure_ThrowsRuntimeException() throws Exception {
+        ClusterProvider failingProvider = mock(ClusterProvider.class);
+        doThrow(new RuntimeException("init boom")).when(failingProvider).initialize();
+        java.util.concurrent.ConcurrentHashMap<ClusterAccessType, ClusterProvider> providerCache =
+            (java.util.concurrent.ConcurrentHashMap<ClusterAccessType, ClusterProvider>)
+                org.springframework.test.util.ReflectionTestUtils.getField(adaptationManager, "providerCache");
+        providerCache.put(ClusterAccessType.V4_NAMESRV, failingProvider);
+        org.springframework.test.util.ReflectionTestUtils.setField(
+            adaptationManager, "currentAccessType", ClusterAccessType.V5_PROXY_LOCAL);
+
+        try {
+            adaptationManager.switchToArchitecture(ClusterAccessType.V4_NAMESRV);
+            fail("Should have thrown RuntimeException");
+        } catch (RuntimeException e) {
+            assertTrue(e.getMessage().contains("Provider initialization failed"));
+        }
+    }
+
+    @Test
+    public void testSwitchToArchitecture_UnsupportedCloudType_Throws() {
+        try {
+            adaptationManager.switchToArchitecture(ClusterAccessType.CLOUD_ALIYUN);
+            fail("Should have thrown IllegalArgumentException");
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage().contains("Unsupported access type"));
+        }
+    }
+
+    // ==================== getCurrentCapability failure branches ====================
+
+    @Test
+    public void testGetCurrentCapability_ProviderThrows_ReturnsEmptyCapability() throws Exception {
+        ClusterProvider failingProvider = mock(ClusterProvider.class);
+        when(failingProvider.getClusterCapability()).thenThrow(new RuntimeException("capability boom"));
+        adaptationManager.setClusterProvider(failingProvider);
+
+        ClusterCapability capability = adaptationManager.getCurrentCapability();
+        assertNotNull("Should fall back to empty capability on failure", capability);
+    }
+
+    @Test
+    public void testGetCurrentCapability_NullProvider_ReturnsEmptyCapability() {
+        adaptationManager.setClusterProvider(null);
+
+        ClusterCapability capability = adaptationManager.getCurrentCapability();
+        assertNotNull("Should return empty capability when provider is null", capability);
     }
 }
