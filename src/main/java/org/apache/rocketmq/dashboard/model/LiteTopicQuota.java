@@ -18,55 +18,25 @@ package org.apache.rocketmq.dashboard.model;
 
 import lombok.Data;
 
-/**
- *
- */
 @Data
 public class LiteTopicQuota {
 
-    /**
- *
-     */
     private Integer maxTopicCount;
 
-    /**
- *
-     */
     private Integer currentTopicCount;
 
-    /**
- *
-     */
     private Integer maxSessionCount;
 
-    /**
- *
-     */
     private Integer currentSessionCount;
 
-    /**
- *
-     */
     private Long defaultTTL;
 
-    /**
- *
-     */
     private Long maxTTL;
 
-    /**
- *
-     */
     private Double currentCreationRate;
 
-    /**
- *
-     */
     private Double maxCreationRate;
 
-    /**
- *
-     */
     public double getUsageRate() {
         if (maxTopicCount == null || maxTopicCount == 0) {
             return 0.0;
@@ -74,9 +44,6 @@ public class LiteTopicQuota {
         return (double) currentTopicCount / maxTopicCount;
     }
 
-    /**
- *
-     */
     public double getSessionUsageRate() {
         if (maxSessionCount == null || maxSessionCount == 0) {
             return 0.0;
@@ -84,23 +51,14 @@ public class LiteTopicQuota {
         return (double) currentSessionCount / maxSessionCount;
     }
 
-    /**
- *
-     */
     public boolean isNearQuotaLimit(double threshold) {
         return getUsageRate() >= threshold;
     }
 
-    /**
- *
-     */
     public boolean isQuotaExceeded() {
         return currentTopicCount >= maxTopicCount;
     }
 
-    /**
- *
-     */
     public Integer getRemainingQuota() {
         if (maxTopicCount == null) {
             return 0;

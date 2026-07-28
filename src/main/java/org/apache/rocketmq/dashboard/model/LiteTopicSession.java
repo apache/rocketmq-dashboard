@@ -20,10 +20,6 @@ import lombok.Data;
 import java.util.Date;
 import java.util.Set;
 
-/**
- *
- *
- */
 @Data
 public class LiteTopicSession {
 
@@ -32,24 +28,12 @@ public class LiteTopicSession {
      */
     private String sessionId;
 
-    /**
- *
-     */
     private String clientId;
 
-    /**
- *
-     */
     private String clientAddress;
 
-    /**
- *
-     */
     private Set<String> liteTopics;
 
-    /**
- *
-     */
     private String parentTopic;
 
     /**
@@ -57,78 +41,36 @@ public class LiteTopicSession {
      */
     private String consumerGroup;
 
-    /**
- *
-     */
     private Date createTime;
 
-    /**
- *
-     */
     private Date lastActiveTime;
 
-    /**
- *
-     */
     private Long ttl;
 
-    /**
- *
-     */
     private Long ttlRemaining;
 
-    /**
- *
-     */
     private String status;
 
-    /**
- *
-     */
     private Long totalMessages;
 
-    /**
- *
-     */
     private Long consumedMessages;
 
-    /**
- *
-     */
     private Long pendingMessages;
 
-    /**
- *
-     */
     private Double consumptionRate;
 
-    /**
- *
-     */
     private PopConsumeProgress popProgress;
 
-    /**
- *
-     */
     private Integer liteTopicCreationCount;
 
-    /**
- *
-     */
     public boolean hasActiveConsumption() {
         return "ACTIVE".equals(status) && consumptionRate != null && consumptionRate > 0;
     }
 
-    /**
- *
-     */
     public boolean isExpired() {
         return "EXPIRED".equals(status) || (ttlRemaining != null && ttlRemaining <= 0);
     }
 
-    /**
- *
-     */
     public double getConsumptionProgress() {
         if (totalMessages == null || totalMessages == 0) {
             return 0.0;

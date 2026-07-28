@@ -20,76 +20,33 @@ import lombok.Data;
 import java.util.Date;
 import java.util.List;
 
-/**
- *
- *
- */
 @Data
 public class LiteTopicSummary {
 
-    /**
- *
-     */
     private String topicPattern;
 
-    /**
- *
-     */
     private Integer topicCount;
 
-    /**
- *
-     */
     private List<String> sessionIds;
 
-    /**
- *
-     */
     private Date earliestCreateTime;
 
-    /**
- *
-     */
     private Date lastActiveTime;
 
-    /**
- *
-     */
     private Long averageTTL;
 
-    /**
- *
-     */
     private Long minTTL;
 
-    /**
- *
-     */
     private Long maxTTL;
 
-    /**
- *
-     */
     private Integer consumerCount;
 
-    /**
- *
-     */
     private Long totalBacklog;
 
-    /**
- *
-     */
     private boolean active;
 
-    /**
- *
-     */
     private java.util.Map<String, Object> attributes;
 
-    /**
- *
-     */
     public String getTTLStatus() {
         if (lastActiveTime == null) {
             return "UNKNOWN";
@@ -107,9 +64,6 @@ public class LiteTopicSummary {
         }
     }
 
-    /**
- *
-     */
     public double getConsumerDensity() {
         if (topicCount == null || topicCount == 0) {
             return 0.0;
@@ -117,9 +71,6 @@ public class LiteTopicSummary {
         return (double) consumerCount / topicCount;
     }
 
-    /**
- *
-     */
     public boolean isEmptyAggregation() {
         return consumerCount == 0 && (totalBacklog == null || totalBacklog == 0);
     }
