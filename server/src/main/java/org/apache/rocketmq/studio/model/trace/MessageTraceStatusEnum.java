@@ -27,12 +27,9 @@ public enum MessageTraceStatusEnum {
     MessageTraceStatusEnum(String status) {
         this.status = status;
     }
-    public final String getStatus() {
+    public String getStatus() {
         return status;
     }
 
-    public void setStatus(final String status) {
-        this.status = status;
-    }
 
 }

@@ -17,14 +17,13 @@
 
 package org.apache.rocketmq.studio.model.trace;
 
-import org.apache.rocketmq.studio.model.MessageTraceView;
 
 import java.util.List;
 
 public class MessageTraceGraph {
     private ProducerNode producerNode;
     private List<SubscriptionNode> subscriptionNodeList;
-    private List<MessageTraceView> messageTraceViews;
+    private List<Object> messageTraceViews;
 
     public ProducerNode getProducerNode() {
         return producerNode;
@@ -42,11 +41,11 @@ public class MessageTraceGraph {
         this.subscriptionNodeList = subscriptionNodeList;
     }
 
-    public List<MessageTraceView> getMessageTraceViews() {
+    public List<Object> getMessageTraceViews() {
         return messageTraceViews;
     }
 
-    public void setMessageTraceViews(List<MessageTraceView> messageTraceViews) {
+    public void setMessageTraceViews(List<Object> messageTraceViews) {
         this.messageTraceViews = messageTraceViews;
     }
 
