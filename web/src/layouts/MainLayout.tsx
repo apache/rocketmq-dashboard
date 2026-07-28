@@ -181,6 +181,7 @@ const MainLayout = () => {
     .flatMap((item) => ('children' in item && item.children ? item.children : [item]))
     .map((item) => ({ key: String(item.key), label: String(item.label), icon: item.icon }));
   const searchResults = filterNavigationEntries(navigationEntries, searchText);
+  const isAiRoute = location.pathname === '/ai';
 
   return (
     <>
@@ -206,7 +207,7 @@ const MainLayout = () => {
       >
         跳到主要内容
       </a>
-      <Layout style={{ minHeight: '100vh' }}>
+      <Layout style={{ height: '100vh', minHeight: 0, overflow: 'hidden' }}>
         <Sider
           theme={darkMode ? 'dark' : 'light'}
           collapsible
@@ -215,6 +216,8 @@ const MainLayout = () => {
             background: siderBg,
             borderRight: `1px solid ${borderColor}`,
             boxShadow: darkMode ? '2px 0 8px rgba(0,0,0,0.2)' : '2px 0 8px rgba(0,0,0,0.03)',
+            height: '100vh',
+            overflow: 'hidden',
           }}
         >
           {/* Logo */}
@@ -359,9 +362,9 @@ const MainLayout = () => {
             style={{
               padding: 0,
               background: 'transparent',
-              minHeight: 280,
+              minHeight: 0,
               height: 'calc(100vh - 48px)',
-              overflow: 'auto',
+              overflow: isAiRoute ? 'hidden' : 'auto',
             }}
           >
             <Outlet />

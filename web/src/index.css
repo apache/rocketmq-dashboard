@@ -19,6 +19,20 @@
 @tailwind components;
 @tailwind utilities;
 
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  overscroll-behavior: none;
+}
+
 /* === CSS Variables === */
 :root {
   --bolt-elements-bg-depth-1: #ffffff;
@@ -170,8 +184,8 @@
   padding: 16px 56px 16px 51px;
   font-size: 14px;
   line-height: 1.625;
-  min-height: 132px;
-  max-height: 300px;
+  min-height: 108px;
+  max-height: 180px;
   resize: none;
   border: none;
   outline: none;
