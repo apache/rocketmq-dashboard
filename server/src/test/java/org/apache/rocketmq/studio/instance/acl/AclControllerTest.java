@@ -141,8 +141,8 @@ class AclControllerTest {
     void listUsersShouldReturnAllUsers() throws Exception {
         AclUserVO user = AclUserVO.builder()
                 .username("admin")
-                .accessKey("ak123")
-                .secretKey("sk456")
+                .accessKey("acce****3456")
+                .secretKey("secr****7654")
                 .admin(true)
                 .build();
         user.setId("user-1");
@@ -156,20 +156,48 @@ class AclControllerTest {
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data[0].id").value("user-1"))
                 .andExpect(jsonPath("$.data[0].username").value("admin"))
+                .andExpect(jsonPath("$.data[0].accessKey").value("acce****3456"))
+                .andExpect(jsonPath("$.data[0].secretKey").value("secr****7654"))
                 .andExpect(jsonPath("$.data[0].admin").value(true));
     }
 
     @Test
-    void updateUserShouldReturnUpdatedUser() throws Exception {
-        AclUserVO input = AclUserVO.builder()
+    void createUserShouldReturnGeneratedCredentials() throws Exception {
+        AclUserVO created = AclUserVO.builder()
                 .id("user-1")
-                .username("admin")
-                .accessKey("ak123")
-                .secretKey("sk456")
+                .username("new-user")
+                .accessKey("access-key-123456")
+                .secretKey("secret-key-987654")
                 .admin(false)
                 .build();
 
-        when(aclService.updateUser(any(AclUserVO.class))).thenReturn(input);
+        when(aclService.createUser(any(AclUserVO.class))).thenReturn(created);
+
+        mockMvc.perform(post("/api/acl/users/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"new-user\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.accessKey").value("access-key-123456"))
+                .andExpect(jsonPath("$.data.secretKey").value("secret-key-987654"));
+    }
+
+    @Test
+    void updateUserShouldReturnMaskedUpdatedUser() throws Exception {
+        AclUserVO input = AclUserVO.builder()
+                .id("user-1")
+                .username("admin")
+                .admin(false)
+                .build();
+        AclUserVO updated = AclUserVO.builder()
+                .id("user-1")
+                .username("admin")
+                .accessKey("acce****3456")
+                .secretKey("secr****7654")
+                .admin(false)
+                .build();
+
+        when(aclService.updateUser(any(AclUserVO.class))).thenReturn(updated);
 
         mockMvc.perform(post("/api/acl/users/update")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -177,6 +205,8 @@ class AclControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.id").value("user-1"))
+                .andExpect(jsonPath("$.data.accessKey").value("acce****3456"))
+                .andExpect(jsonPath("$.data.secretKey").value("secr****7654"))
                 .andExpect(jsonPath("$.data.admin").value(false));
     }
 }

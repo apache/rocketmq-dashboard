@@ -30,6 +30,10 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AclService {
 
+    private static final int VISIBLE_CREDENTIAL_CHARS = 4;
+    private static final int MIN_PARTIALLY_MASKED_CREDENTIAL_CHARS = 17;
+    private static final String CREDENTIAL_MASK = "****";
+
     private final AclRepository aclRepository;
 
 
@@ -65,7 +69,9 @@ public class AclService {
 
     public List<AclUserVO> listUsers() {
         log.info("Listing ACL users");
-        return aclRepository.findUsers();
+        return aclRepository.findUsers().stream()
+                .map(this::maskCredentials)
+                .toList();
     }
 
 
@@ -83,10 +89,18 @@ public class AclService {
             throw new BusinessException(400, "ACL user id is required");
         }
         log.info("Updating ACL user id={}, username={}", user.getId(), user.getUsername());
-        if (user.getCreatedAt() == null) {
-            user.setCreatedAt(LocalDateTime.now());
-        }
-        return aclRepository.saveUser(user);
+        AclUserVO existing = aclRepository.findUserById(user.getId())
+                .orElseThrow(() -> new BusinessException(404, "ACL user not found: " + user.getId()));
+        AclUserVO merged = AclUserVO.builder()
+                .id(existing.getId())
+                .username(user.getUsername() == null ? existing.getUsername() : user.getUsername())
+                .accessKey(existing.getAccessKey())
+                .secretKey(existing.getSecretKey())
+                .admin(user.isAdmin())
+                .clusters(user.getClusters() == null ? existing.getClusters() : user.getClusters())
+                .createdAt(existing.getCreatedAt())
+                .build();
+        return maskCredentials(aclRepository.saveUser(merged));
     }
 
     public void deleteUser(String id) {
@@ -96,5 +110,29 @@ public class AclService {
 
     private boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
+    }
+
+    private AclUserVO maskCredentials(AclUserVO user) {
+        return AclUserVO.builder()
+                .id(user.getId())
+                .username(user.getUsername())
+                .accessKey(maskCredential(user.getAccessKey()))
+                .secretKey(maskCredential(user.getSecretKey()))
+                .admin(user.isAdmin())
+                .clusters(user.getClusters() == null ? null : List.copyOf(user.getClusters()))
+                .createdAt(user.getCreatedAt())
+                .build();
+    }
+
+    private String maskCredential(String credential) {
+        if (credential == null || credential.isEmpty()) {
+            return credential;
+        }
+        if (credential.length() < MIN_PARTIALLY_MASKED_CREDENTIAL_CHARS) {
+            return CREDENTIAL_MASK;
+        }
+        return credential.substring(0, VISIBLE_CREDENTIAL_CHARS)
+                + CREDENTIAL_MASK
+                + credential.substring(credential.length() - VISIBLE_CREDENTIAL_CHARS);
     }
 }

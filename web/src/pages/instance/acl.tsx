@@ -56,7 +56,7 @@ type AclRuleFormValues = Pick<
   AclRule,
   'principal' | 'resource' | 'resourceType' | 'resourcePattern' | 'actions' | 'decision' | 'scope'
 >;
-type AclUserFormValues = Pick<AclUser, 'username' | 'accessKey' | 'secretKey' | 'admin'>;
+type AclUserFormValues = Pick<AclUser, 'username' | 'admin'>;
 
 const normalizeRule = (rule: AclRule): AclRule => ({
   ...rule,
@@ -254,8 +254,6 @@ const AclPage = () => {
     setEditingUser(user);
     userForm.setFieldsValue({
       username: user.username,
-      accessKey: user.accessKey,
-      secretKey: user.secretKey,
       admin: user.admin,
     });
     setUserModalOpen(true);
@@ -266,15 +264,18 @@ const AclPage = () => {
       const values = (await userForm.validateFields()) as AclUserFormValues;
       setUserSubmitting(true);
       if (editingUser) {
-        const updated = await updateAclUser({ ...editingUser, ...values });
+        const updated = await updateAclUser({
+          id: editingUser.id,
+          username: values.username,
+          admin: values.admin ?? false,
+          clusters: editingUser.clusters,
+        });
         const normalized = normalizeUser(updated);
         setUsers((prev) => prev.map((u) => (u.id === editingUser.id ? normalized : u)));
         message.success(t('acl.userUpdated'));
       } else {
         const created = await createAclUser({
           username: values.username,
-          accessKey: values.accessKey,
-          secretKey: values.secretKey,
           admin: values.admin ?? false,
           clusters: ['rmq-cn-v5-prod-01'],
         });
@@ -302,7 +303,12 @@ const AclPage = () => {
 
   const handleToggleAdmin = async (user: AclUser, checked: boolean) => {
     try {
-      const updated = await updateAclUser({ ...user, admin: checked });
+      const updated = await updateAclUser({
+        id: user.id,
+        username: user.username,
+        admin: checked,
+        clusters: user.clusters,
+      });
       const normalized = normalizeUser(updated);
       setUsers((prev) => prev.map((u) => (u.id === user.id ? normalized : u)));
       message.success(checked ? t('acl.adminSet') : t('acl.adminRemoved'));
@@ -830,17 +836,6 @@ const AclPage = () => {
               placeholder={t('acl.usernamePlaceholder')}
               disabled={!!editingUser}
               prefix={<User size={14} color="#9CA3AF" />}
-            />
-          </Form.Item>
-
-          <Form.Item name="accessKey" label="Access Key">
-            <Input placeholder={t('acl.autoOrManual')} style={{ fontFamily: 'monospace' }} />
-          </Form.Item>
-
-          <Form.Item name="secretKey" label="Secret Key">
-            <Input.Password
-              placeholder={t('acl.autoOrManual')}
-              style={{ fontFamily: 'monospace' }}
             />
           </Form.Item>
 

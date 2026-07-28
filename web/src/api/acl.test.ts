@@ -107,7 +107,7 @@ describe('ACL API contract', () => {
       return [200, { code: 200, data: rule }];
     });
     mock.onPost('/acl/users/update').reply((config) => {
-      expect(JSON.parse(config.data)).toMatchObject({ id: user.id, admin: true });
+      expect(JSON.parse(config.data)).toEqual({ id: user.id, admin: true });
       return [200, { code: 200, data: user }];
     });
     mock.onPost('/acl/rules/delete').reply((config) => {

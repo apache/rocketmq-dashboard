@@ -22,6 +22,7 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
@@ -56,6 +57,11 @@ public class InMemoryAclRepository implements AclRepository {
     @Override
     public List<AclUserVO> findUsers() {
         return new ArrayList<>(users.values());
+    }
+
+    @Override
+    public Optional<AclUserVO> findUserById(String id) {
+        return Optional.ofNullable(users.get(id));
     }
 
     @Override

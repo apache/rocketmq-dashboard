@@ -1056,6 +1056,8 @@ GET /api/acl/users
 | `clusters` | `string[]` | 授权集群列表 |
 | `createdAt` | `string` | 创建时间 |
 
+完整的 AccessKey 和 SecretKey 仅在创建用户的响应中返回一次，后续列表查询和更新响应只返回脱敏值。
+
 ### 7.5 创建 ACL 用户
 
 ```
@@ -1067,12 +1069,31 @@ POST /api/acl/users/create
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `username` | `string` | 是 | 用户名 |
-| `admin` | `boolean` | 否 | 是否管理员 |
+| `admin` | `boolean` | 否 | 是否管理员，默认 false |
 | `clusters` | `string[]` | 否 | 授权集群 |
 
 **Response `data`:** `AclUser`（含生成的 accessKey/secretKey）
 
-### 7.6 删除 ACL 用户
+### 7.6 更新 ACL 用户
+
+```
+POST /api/acl/users/update
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `id` | `string` | 是 | 用户 ID |
+| `username` | `string` | 否 | 用户名 |
+| `admin` | `boolean` | 是 | 是否管理员 |
+| `clusters` | `string[]` | 否 | 授权集群 |
+
+更新请求不得包含 `accessKey` 或 `secretKey`；服务端会读取原用户并保留已存储凭证。若用户 ID 不存在，返回业务错误 `ACL user not found: {id}`。
+
+**Response `data`:** `AclUser`（accessKey/secretKey 为脱敏值）
+
+### 7.7 删除 ACL 用户
 
 ```
 POST /api/acl/users/delete
