@@ -1,5 +1,5 @@
 # Production profile
 logging:
   level:
-    com.rocketmq.studio: INFO
+    org.apache.rocketmq.studio: INFO
     org.springframework.web: WARN
