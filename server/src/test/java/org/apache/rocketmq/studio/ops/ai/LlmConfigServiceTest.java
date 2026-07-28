@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -89,6 +90,43 @@ class LlmConfigServiceTest {
     }
 
     @Test
+    void saveConfigShouldNormalizeChatCompletionsEndpointToApiBase() {
+        llmConfigService.saveConfig(LlmConfigVO.builder()
+                .provider("openai")
+                .apiKey("sk-test")
+                .apiBase(" https://api.openai.com/v1/chat/completions/ ")
+                .model("gpt-4o")
+                .maxTokens(2048)
+                .temperature(1.0)
+                .enabled(true)
+                .build());
+
+        ArgumentCaptor<GeneralSettingsVO> captor = ArgumentCaptor.forClass(GeneralSettingsVO.class);
+        verify(settingsService).saveGeneralSettings(captor.capture());
+        assertThat(captor.getValue().getBaseUrl()).isEqualTo("https://api.openai.com/v1");
+    }
+
+    @Test
+    void saveConfigShouldRejectInvalidApiBase() {
+        assertThatThrownBy(() -> llmConfigService.saveConfig(LlmConfigVO.builder()
+                .provider("openai")
+                .apiKey("sk-test")
+                .apiBase("ftp://api.openai.com/v1")
+                .model("gpt-4o")
+                .maxTokens(2048)
+                .temperature(1.0)
+                .enabled(true)
+                .build()))
+                .isInstanceOf(LlmGatewayException.class)
+                .hasMessage("LLM API base URL is invalid")
+                .satisfies(exception -> {
+                    LlmGatewayException gatewayException = (LlmGatewayException) exception;
+                    assertThat(gatewayException.getStatusCode()).isEqualTo(400);
+                    assertThat(gatewayException.getCode()).isEqualTo("llm.config.invalid_api_base");
+                });
+    }
+
+    @Test
     void testConfigShouldRejectMissingRequiredApiKey() {
         LlmOperationResultVO result = llmConfigService.testConfig(LlmConfigVO.builder()
                 .provider("openai")
@@ -112,6 +150,54 @@ class LlmConfigServiceTest {
 
         assertThat(result.getStatus()).isZero();
         assertThat(result.getMsg()).isEqualTo("Configuration accepted");
+    }
+
+    @Test
+    void testConfigShouldRejectInvalidApiBase() {
+        LlmOperationResultVO result = llmConfigService.testConfig(LlmConfigVO.builder()
+                .provider("openai")
+                .apiKey("sk-test")
+                .apiBase("openai.local/v1")
+                .model("gpt-4o")
+                .maxTokens(2048)
+                .temperature(1.0)
+                .build());
+
+        assertThat(result.getStatus()).isEqualTo(1);
+        assertThat(result.getCode()).isEqualTo("llm.config.invalid_api_base");
+        assertThat(result.getHint()).contains("https://api.openai.com/v1");
+    }
+
+    @Test
+    void testConfigShouldRejectOutOfRangeMaxTokens() {
+        LlmOperationResultVO result = llmConfigService.testConfig(LlmConfigVO.builder()
+                .provider("openai")
+                .apiKey("sk-test")
+                .apiBase("https://api.openai.com/v1")
+                .model("gpt-4o")
+                .maxTokens(200_001)
+                .temperature(1.0)
+                .build());
+
+        assertThat(result.getStatus()).isEqualTo(1);
+        assertThat(result.getCode()).isEqualTo("llm.config.invalid_max_tokens");
+        assertThat(result.getHint()).contains("200000");
+    }
+
+    @Test
+    void testConfigShouldRejectOutOfRangeTemperature() {
+        LlmOperationResultVO result = llmConfigService.testConfig(LlmConfigVO.builder()
+                .provider("openai")
+                .apiKey("sk-test")
+                .apiBase("https://api.openai.com/v1")
+                .model("gpt-4o")
+                .maxTokens(2048)
+                .temperature(2.1)
+                .build());
+
+        assertThat(result.getStatus()).isEqualTo(1);
+        assertThat(result.getCode()).isEqualTo("llm.config.invalid_temperature");
+        assertThat(result.getHint()).contains("between 0 and 2");
     }
 
     @Test

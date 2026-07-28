@@ -80,6 +80,40 @@ class OpenAiCompatibleLlmClientTest {
     }
 
     @Test
+    void completeShouldNormalizeFullChatCompletionsEndpoint() {
+        AtomicReference<String> requestPath = new AtomicReference<>();
+        server.createContext("/v1/chat/completions", exchange -> {
+            requestPath.set(exchange.getRequestURI().getPath());
+            respond(exchange, 200, """
+                    {"choices":[{"message":{"content":"normalized response"}}]}
+                    """, "application/json");
+        });
+        LlmConfigVO config = config("openai", "sk-test");
+        config.setApiBase(baseUrl + "/chat/completions/");
+
+        String result = client.complete(config, "hello", null);
+
+        assertThat(result).isEqualTo("normalized response");
+        assertThat(requestPath.get()).isEqualTo("/v1/chat/completions");
+    }
+
+    @Test
+    void completeShouldRejectInvalidApiBaseBeforeCallingUpstream() {
+        LlmConfigVO config = config("openai", "sk-test");
+        config.setApiBase("ftp://api.openai.com/v1");
+
+        assertThatThrownBy(() -> client.complete(config, "hello", null))
+                .isInstanceOf(LlmGatewayException.class)
+                .hasMessage("LLM API base URL is invalid")
+                .satisfies(exception -> {
+                    LlmGatewayException gatewayException = (LlmGatewayException) exception;
+                    assertThat(gatewayException.getStatusCode()).isEqualTo(400);
+                    assertThat(gatewayException.getCode()).isEqualTo("llm.config.invalid_api_base");
+                    assertThat(gatewayException.getHint()).contains("https://api.openai.com/v1");
+                });
+    }
+
+    @Test
     void streamShouldParseOpenAiCompatibleSseDeltas() {
         AtomicReference<JsonNode> requestBody = new AtomicReference<>();
         server.createContext("/v1/chat/completions", exchange -> {

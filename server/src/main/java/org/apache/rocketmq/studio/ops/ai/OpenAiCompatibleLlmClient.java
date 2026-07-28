@@ -27,6 +27,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -184,11 +185,22 @@ public class OpenAiCompatibleLlmClient {
     }
 
     private URI chatCompletionsUri(LlmConfigVO config) {
-        String baseUrl = config.getApiBase().trim();
+        String baseUrl = normalizeApiBase(config.getApiBase());
+        return URI.create(baseUrl + CHAT_COMPLETIONS_PATH);
+    }
+
+    private String normalizeApiBase(String apiBase) {
+        String baseUrl = apiBase.trim();
         while (baseUrl.endsWith("/")) {
             baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
         }
-        return URI.create(baseUrl + CHAT_COMPLETIONS_PATH);
+        if (baseUrl.endsWith(CHAT_COMPLETIONS_PATH)) {
+            baseUrl = baseUrl.substring(0, baseUrl.length() - CHAT_COMPLETIONS_PATH.length());
+            while (baseUrl.endsWith("/")) {
+                baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
+            }
+        }
+        return baseUrl;
     }
 
     private void validate(LlmConfigVO config) {
@@ -202,6 +214,11 @@ public class OpenAiCompatibleLlmClient {
                     "LLM API base URL is required",
                     "Configure the provider base URL, for example https://api.openai.com/v1.");
         }
+        if (!isValidApiBase(config.getApiBase())) {
+            throw new LlmGatewayException(400, "llm.config.invalid_api_base",
+                    "LLM API base URL is invalid",
+                    "Use an http or https base URL such as https://api.openai.com/v1.");
+        }
         if (!StringUtils.hasText(config.getModel())) {
             throw new LlmGatewayException(400, "llm.config.missing_model",
                     "LLM model is required",
@@ -211,6 +228,16 @@ public class OpenAiCompatibleLlmClient {
             throw new LlmGatewayException(400, "llm.config.missing_api_key",
                     "LLM API key is required",
                     "Configure an API key for this provider, or select ollama for a local provider.");
+        }
+    }
+
+    private boolean isValidApiBase(String apiBase) {
+        try {
+            URI uri = new URI(normalizeApiBase(apiBase));
+            String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase();
+            return ("http".equals(scheme) || "https".equals(scheme)) && StringUtils.hasText(uri.getHost());
+        } catch (IllegalArgumentException | URISyntaxException exception) {
+            return false;
         }
     }
 

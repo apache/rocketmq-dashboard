@@ -22,6 +22,8 @@ import org.apache.rocketmq.studio.settings.SettingsService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -31,6 +33,10 @@ import java.util.Map;
 public class LlmConfigService {
 
     private static final String OPENAI = "openai";
+    private static final String CHAT_COMPLETIONS_PATH = "/chat/completions";
+    private static final int DEFAULT_MAX_TOKENS = 4096;
+    private static final double DEFAULT_TEMPERATURE = 0.7;
+    private static final int MAX_TOKENS_LIMIT = 200_000;
     private static final Map<String, List<LlmModelItemVO>> PROVIDER_MODELS = Map.of(
             OPENAI, List.of(
                     new LlmModelItemVO("gpt-4o", "GPT-4o"),
@@ -75,6 +81,10 @@ public class LlmConfigService {
         if (apiKeyOmitted && sameProvider) {
             effective.setApiKey(defaultString(current.getApiKey(), ""));
         }
+        LlmOperationResultVO validation = validate(effective);
+        if (validation.getStatus() != 0) {
+            throw new LlmGatewayException(400, validation.getCode(), validation.getErrMsg(), validation.getHint());
+        }
         overrides = effective;
         settingsService.saveGeneralSettings(GeneralSettingsVO.builder()
                 .theme(current.getTheme())
@@ -93,7 +103,34 @@ public class LlmConfigService {
 
     public LlmOperationResultVO testConfig(LlmConfigVO config) {
         LlmConfigVO normalized = withStoredApiKeyIfSameProvider(normalize(config));
+        LlmOperationResultVO validation = validate(normalized);
+        if (validation.getStatus() != 0) {
+            return validation;
+        }
+        return LlmOperationResultVO.success("Configuration accepted");
+    }
+
+    private LlmOperationResultVO validate(LlmConfigVO normalized) {
         String provider = normalized.getProvider();
+        if (!isValidApiBase(normalized.getApiBase())) {
+            return LlmOperationResultVO.failure(
+                    "llm.config.invalid_api_base",
+                    "LLM API base URL is invalid",
+                    "Use an http or https base URL such as https://api.openai.com/v1.");
+        }
+        if (normalized.getMaxTokens() > MAX_TOKENS_LIMIT) {
+            return LlmOperationResultVO.failure(
+                    "llm.config.invalid_max_tokens",
+                    "LLM max tokens is out of range",
+                    "Set maxTokens to a value no greater than " + MAX_TOKENS_LIMIT + ".");
+        }
+        if (!Double.isFinite(normalized.getTemperature()) || normalized.getTemperature() < 0
+                || normalized.getTemperature() > 2) {
+            return LlmOperationResultVO.failure(
+                    "llm.config.invalid_temperature",
+                    "LLM temperature is out of range",
+                    "Set temperature to a value between 0 and 2.");
+        }
         boolean keyRequired = !"ollama".equals(provider);
         if (keyRequired && isBlank(normalized.getApiKey())) {
             return LlmOperationResultVO.failure(
@@ -127,10 +164,10 @@ public class LlmConfigService {
         return LlmConfigVO.builder()
                 .provider(provider)
                 .apiKey(defaultString(settings.getApiKey(), ""))
-                .apiBase(defaultString(settings.getBaseUrl(), defaultApiBase(provider)))
+                .apiBase(normalizeApiBase(defaultString(settings.getBaseUrl(), defaultApiBase(provider))))
                 .model(defaultString(settings.getModel(), defaultModel(provider)))
-                .maxTokens(4096)
-                .temperature(0.7)
+                .maxTokens(DEFAULT_MAX_TOKENS)
+                .temperature(DEFAULT_TEMPERATURE)
                 .enabled(!isBlank(settings.getApiKey()))
                 .apiVersion("2024-02-15-preview")
                 .awsRegion("us-east-1")
@@ -142,10 +179,11 @@ public class LlmConfigService {
         return LlmConfigVO.builder()
                 .provider(provider)
                 .apiKey(defaultString(config == null ? null : config.getApiKey(), ""))
-                .apiBase(defaultString(config == null ? null : config.getApiBase(), defaultApiBase(provider)))
+                .apiBase(normalizeApiBase(defaultString(config == null ? null : config.getApiBase(),
+                        defaultApiBase(provider))))
                 .model(defaultString(config == null ? null : config.getModel(), defaultModel(provider)))
-                .maxTokens(config == null || config.getMaxTokens() <= 0 ? 4096 : config.getMaxTokens())
-                .temperature(config == null ? 0.7 : config.getTemperature())
+                .maxTokens(config == null || config.getMaxTokens() <= 0 ? DEFAULT_MAX_TOKENS : config.getMaxTokens())
+                .temperature(config == null ? DEFAULT_TEMPERATURE : config.getTemperature())
                 .enabled(config != null && config.isEnabled())
                 .deploymentName(defaultString(config == null ? null : config.getDeploymentName(), ""))
                 .apiVersion(defaultString(config == null ? null : config.getApiVersion(), "2024-02-15-preview"))
@@ -187,6 +225,31 @@ public class LlmConfigService {
             case "ollama" -> "http://localhost:11434/v1";
             default -> "https://api.openai.com/v1";
         };
+    }
+
+    private String normalizeApiBase(String apiBase) {
+        String normalized = apiBase.trim();
+        while (normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        if (normalized.endsWith(CHAT_COMPLETIONS_PATH)) {
+            normalized = normalized.substring(0, normalized.length() - CHAT_COMPLETIONS_PATH.length());
+            while (normalized.endsWith("/")) {
+                normalized = normalized.substring(0, normalized.length() - 1);
+            }
+        }
+        return normalized;
+    }
+
+    private boolean isValidApiBase(String apiBase) {
+        try {
+            URI uri = new URI(apiBase);
+            String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+            return ("http".equals(scheme) || "https".equals(scheme)) && !isBlank(uri.getHost())
+                    && !apiBase.endsWith(CHAT_COMPLETIONS_PATH);
+        } catch (URISyntaxException exception) {
+            return false;
+        }
     }
 
     private String defaultString(String value, String fallback) {
