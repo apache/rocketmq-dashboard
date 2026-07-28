@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.dashboard.model;
+package org.apache.rocketmq.studio.model;
 
 import com.google.common.collect.Sets;
 import org.apache.rocketmq.common.MQVersion;

@@ -14,13 +14,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.dashboard.model;
+package org.apache.rocketmq.studio.model;
 
-import lombok.Data;
 import java.util.Date;
 import java.util.Map;
 
-@Data
 public class TopicInfo {
 
     private String topicName;
@@ -81,4 +79,148 @@ public class TopicInfo {
     public boolean isTransactionTopic() {
         return TopicType.TRANSACTION.equals(topicType);
     }
+    public String getTopicName() {
+        return topicName;
+    }
+
+    public void setTopicName(String topicName) {
+        this.topicName = topicName;
+    }
+
+    public TopicType getTopicType() {
+        return topicType;
+    }
+
+    public void setTopicType(TopicType topicType) {
+        this.topicType = topicType;
+    }
+
+    public Integer getReadQueueNums() {
+        return readQueueNums;
+    }
+
+    public void setReadQueueNums(Integer readQueueNums) {
+        this.readQueueNums = readQueueNums;
+    }
+
+    public Integer getWriteQueueNums() {
+        return writeQueueNums;
+    }
+
+    public void setWriteQueueNums(Integer writeQueueNums) {
+        this.writeQueueNums = writeQueueNums;
+    }
+
+    public Integer getPerm() {
+        return perm;
+    }
+
+    public void setPerm(Integer perm) {
+        this.perm = perm;
+    }
+
+    public Boolean getOrderTopic() {
+        return orderTopic;
+    }
+
+    public void setOrderTopic(Boolean orderTopic) {
+        this.orderTopic = orderTopic;
+    }
+
+    public Date getCreateTime() {
+        return createTime;
+    }
+
+    public void setCreateTime(Date createTime) {
+        this.createTime = createTime;
+    }
+
+    public Date getUpdateTime() {
+        return updateTime;
+    }
+
+    public void setUpdateTime(Date updateTime) {
+        this.updateTime = updateTime;
+    }
+
+    public String getTopicStatus() {
+        return topicStatus;
+    }
+
+    public void setTopicStatus(String topicStatus) {
+        this.topicStatus = topicStatus;
+    }
+
+    public String getClusterName() {
+        return clusterName;
+    }
+
+    public void setClusterName(String clusterName) {
+        this.clusterName = clusterName;
+    }
+
+    public Map<String, String> getAttributes() {
+        return attributes;
+    }
+
+    public void setAttributes(Map<String, String> attributes) {
+        this.attributes = attributes;
+    }
+
+    public Long getFifoTimeoutSeconds() {
+        return fifoTimeoutSeconds;
+    }
+
+    public void setFifoTimeoutSeconds(Long fifoTimeoutSeconds) {
+        this.fifoTimeoutSeconds = fifoTimeoutSeconds;
+    }
+
+    public Long getLiteTopicTTL() {
+        return liteTopicTTL;
+    }
+
+    public void setLiteTopicTTL(Long liteTopicTTL) {
+        this.liteTopicTTL = liteTopicTTL;
+    }
+
+    public String getSessionId() {
+        return sessionId;
+    }
+
+    public void setSessionId(String sessionId) {
+        this.sessionId = sessionId;
+    }
+
+    public String getAutoCreatePattern() {
+        return autoCreatePattern;
+    }
+
+    public void setAutoCreatePattern(String autoCreatePattern) {
+        this.autoCreatePattern = autoCreatePattern;
+    }
+
+    public String getDelayLevel() {
+        return delayLevel;
+    }
+
+    public void setDelayLevel(String delayLevel) {
+        this.delayLevel = delayLevel;
+    }
+
+    public String getTransactionServerAddr() {
+        return transactionServerAddr;
+    }
+
+    public void setTransactionServerAddr(String transactionServerAddr) {
+        this.transactionServerAddr = transactionServerAddr;
+    }
+
+    public Long getTransactionTimeoutSeconds() {
+        return transactionTimeoutSeconds;
+    }
+
+    public void setTransactionTimeoutSeconds(Long transactionTimeoutSeconds) {
+        this.transactionTimeoutSeconds = transactionTimeoutSeconds;
+    }
+
 }

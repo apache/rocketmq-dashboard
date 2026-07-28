@@ -14,9 +14,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.dashboard.model;
+package org.apache.rocketmq.studio.model;
 
-import lombok.Data;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -26,7 +25,6 @@ import java.util.Map;
  * Unified cluster topology model
  * Hide differences between different cluster architectures
  */
-@Data
 public class ClusterTopology {
 
     /**
@@ -119,8 +117,7 @@ public class ClusterTopology {
             .count();
     }
 
-    @Data
-    public static class NodeInfo {
+        public static class NodeInfo {
         private String nodeName;
         private Long nodeId;
         private String nodeAddress;
@@ -149,4 +146,52 @@ public class ClusterTopology {
             return "ONLINE".equals(status);
         }
     }
+    public String getClusterName() {
+        return clusterName;
+    }
+
+    public void setClusterName(String clusterName) {
+        this.clusterName = clusterName;
+    }
+
+    public List<String> getNamesrvAddresses() {
+        return namesrvAddresses;
+    }
+
+    public void setNamesrvAddresses(List<String> namesrvAddresses) {
+        this.namesrvAddresses = namesrvAddresses;
+    }
+
+    public List<NodeInfo> getNamesrvNodes() {
+        return namesrvNodes;
+    }
+
+    public void setNamesrvNodes(List<NodeInfo> namesrvNodes) {
+        this.namesrvNodes = namesrvNodes;
+    }
+
+    public List<NodeInfo> getBrokerNodes() {
+        return brokerNodes;
+    }
+
+    public void setBrokerNodes(List<NodeInfo> brokerNodes) {
+        this.brokerNodes = brokerNodes;
+    }
+
+    public List<NodeInfo> getProxyNodes() {
+        return proxyNodes;
+    }
+
+    public void setProxyNodes(List<NodeInfo> proxyNodes) {
+        this.proxyNodes = proxyNodes;
+    }
+
+    public Map<String, NodeInfo> getNodeMap() {
+        return nodeMap;
+    }
+
+    public void setNodeMap(Map<String, NodeInfo> nodeMap) {
+        this.nodeMap = nodeMap;
+    }
+
 }
