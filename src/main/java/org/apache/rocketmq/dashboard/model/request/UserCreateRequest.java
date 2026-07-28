@@ -15,15 +15,35 @@
  * limitations under the License.
  */
 
-package org.apache.rocketmq.dashboard.model.request;
+package org.apache.rocketmq.studio.model.request;
 
-import lombok.Getter;
-import lombok.Setter;
 
-@Setter
-@Getter
 public class UserCreateRequest {
     private String clusterName;
     private String brokerName;
     private UserInfoParam userInfo;
+    public String getClusterName() {
+        return clusterName;
+    }
+
+    public void setClusterName(String clusterName) {
+        this.clusterName = clusterName;
+    }
+
+    public String getBrokerName() {
+        return brokerName;
+    }
+
+    public void setBrokerName(String brokerName) {
+        this.brokerName = brokerName;
+    }
+
+    public UserInfoParam getUserInfo() {
+        return userInfo;
+    }
+
+    public void setUserInfo(UserInfoParam userInfo) {
+        this.userInfo = userInfo;
+    }
+
 }
