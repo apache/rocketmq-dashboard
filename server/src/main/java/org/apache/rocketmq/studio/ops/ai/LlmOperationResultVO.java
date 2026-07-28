@@ -28,12 +28,18 @@ public class LlmOperationResultVO {
     private int status;
     private String msg;
     private String errMsg;
+    private String code;
+    private String hint;
 
     public static LlmOperationResultVO success(String message) {
-        return new LlmOperationResultVO(0, message, null);
+        return new LlmOperationResultVO(0, message, null, null, null);
     }
 
     public static LlmOperationResultVO failure(String message) {
-        return new LlmOperationResultVO(1, null, message);
+        return failure("llm.config.invalid", message, null);
+    }
+
+    public static LlmOperationResultVO failure(String code, String message, String hint) {
+        return new LlmOperationResultVO(1, null, message, code, hint);
     }
 }

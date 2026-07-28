@@ -17,13 +17,13 @@
 package org.apache.rocketmq.studio.common.exception;
 
 import org.apache.rocketmq.studio.common.domain.Result;
+import org.apache.rocketmq.studio.ops.ai.LlmGatewayException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -58,11 +58,11 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
-    void returnsBadRequestWhenRequiredRequestParamIsMissing() throws Exception {
-        mockMvc.perform(get("/test/required-param"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value(400))
-                .andExpect(jsonPath("$.message").value("key is required"));
+    void preservesLlmGatewayStatusAndEnvelope() throws Exception {
+        mockMvc.perform(get("/test/llm-timeout"))
+                .andExpect(status().isGatewayTimeout())
+                .andExpect(jsonPath("$.code").value(504))
+                .andExpect(jsonPath("$.message").value("LLM provider request timed out"));
     }
 
     @RestController
@@ -73,9 +73,10 @@ class GlobalExceptionHandlerTest {
             throw new BusinessException(code, "failure-" + code);
         }
 
-        @GetMapping("/test/required-param")
-        Result<String> requiredParam(@RequestParam String key) {
-            return Result.ok(key);
+        @GetMapping("/test/llm-timeout")
+        Result<Void> failLlm() {
+            throw new LlmGatewayException(504, "llm.provider.timeout",
+                    "LLM provider request timed out", "Retry later.");
         }
     }
 }

@@ -57,7 +57,6 @@ class LlmConfigServiceTest {
 
         assertThat(config.getProvider()).isEqualTo("openai");
         assertThat(config.getApiKey()).isEqualTo("sk-test");
-        assertThat(config.isApiKeyConfigured()).isTrue();
         assertThat(config.getApiBase()).isEqualTo("https://api.openai.com/v1");
         assertThat(config.getModel()).isEqualTo("gpt-4o");
         assertThat(config.isEnabled()).isTrue();
@@ -90,64 +89,17 @@ class LlmConfigServiceTest {
     }
 
     @Test
-    void saveConfigShouldKeepStoredApiKeyWhenSameProviderRequestOmitsIt() {
-        LlmConfigVO config = LlmConfigVO.builder()
-                .provider("openai")
-                .apiKey("")
-                .apiBase("https://api.openai.com/v1")
-                .model("gpt-4o")
-                .enabled(true)
-                .build();
-
-        llmConfigService.saveConfig(config);
-
-        assertThat(llmConfigService.getConfig().getApiKey()).isEqualTo("sk-test");
-        ArgumentCaptor<GeneralSettingsVO> captor = ArgumentCaptor.forClass(GeneralSettingsVO.class);
-        verify(settingsService).saveGeneralSettings(captor.capture());
-        assertThat(captor.getValue().getApiKey()).isEmpty();
-        assertThat(captor.getValue().isClearApiKey()).isFalse();
-    }
-
-    @Test
-    void saveConfigShouldClearStoredApiKeyWhenProviderChangesWithoutReplacement() {
-        LlmConfigVO config = LlmConfigVO.builder()
-                .provider("deepseek")
-                .apiKey("")
-                .apiBase("https://api.deepseek.com/v1")
-                .model("deepseek-chat")
-                .enabled(true)
-                .build();
-
-        llmConfigService.saveConfig(config);
-
-        assertThat(llmConfigService.getConfig().isApiKeyConfigured()).isFalse();
-        ArgumentCaptor<GeneralSettingsVO> captor = ArgumentCaptor.forClass(GeneralSettingsVO.class);
-        verify(settingsService).saveGeneralSettings(captor.capture());
-        assertThat(captor.getValue().isClearApiKey()).isTrue();
-    }
-
-    @Test
     void testConfigShouldRejectMissingRequiredApiKey() {
         LlmOperationResultVO result = llmConfigService.testConfig(LlmConfigVO.builder()
-                .provider("deepseek")
+                .provider("openai")
                 .apiKey("")
-                .model("deepseek-chat")
+                .model("gpt-4o")
                 .build());
 
         assertThat(result.getStatus()).isEqualTo(1);
-        assertThat(result.getErrMsg()).isEqualTo("API Key is required");
-    }
-
-    @Test
-    void testConfigShouldReuseStoredApiKeyForSameProvider() {
-        LlmOperationResultVO result = llmConfigService.testConfig(LlmConfigVO.builder()
-                .provider("openai")
-                .apiKey("")
-                .model("gpt-4o")
-                .build());
-
-        assertThat(result.getStatus()).isZero();
-        assertThat(result.getMsg()).isEqualTo("Configuration accepted");
+        assertThat(result.getErrMsg()).isEqualTo("LLM API key is required");
+        assertThat(result.getCode()).isEqualTo("llm.config.missing_api_key");
+        assertThat(result.getHint()).contains("provider openai");
     }
 
     @Test

@@ -96,13 +96,22 @@ public class LlmConfigService {
         String provider = normalized.getProvider();
         boolean keyRequired = !"ollama".equals(provider);
         if (keyRequired && isBlank(normalized.getApiKey())) {
-            return LlmOperationResultVO.failure("API Key is required");
+            return LlmOperationResultVO.failure(
+                    "llm.config.missing_api_key",
+                    "LLM API key is required",
+                    "Configure an API key for provider " + provider + ", or select ollama for a local provider.");
         }
         if ("azure".equals(provider) && isBlank(normalized.getDeploymentName())) {
-            return LlmOperationResultVO.failure("Deployment name is required");
+            return LlmOperationResultVO.failure(
+                    "llm.config.missing_deployment",
+                    "Azure OpenAI deployment name is required",
+                    "Set the Azure deployment name that maps to the selected model.");
         }
         if (isBlank(normalized.getModel())) {
-            return LlmOperationResultVO.failure("Model is required");
+            return LlmOperationResultVO.failure(
+                    "llm.config.missing_model",
+                    "LLM model is required",
+                    "Select or enter a model before testing the connection.");
         }
         return LlmOperationResultVO.success("Configuration accepted");
     }

@@ -26,7 +26,9 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
@@ -124,14 +126,85 @@ class OpenAiCompatibleLlmClientTest {
 
         assertThatThrownBy(() -> client.complete(config("openai", "sk-test"), "hello", null))
                 .isInstanceOf(LlmGatewayException.class)
-                .hasMessage("LLM provider request failed with status 401: invalid api key");
+                .hasMessage("LLM provider request failed with status 401: invalid api key")
+                .satisfies(exception -> {
+                    LlmGatewayException gatewayException = (LlmGatewayException) exception;
+                    assertThat(gatewayException.getStatusCode()).isEqualTo(401);
+                    assertThat(gatewayException.getCode()).isEqualTo("llm.provider.upstream_error");
+                    assertThat(gatewayException.getHint()).contains("provider credentials");
+                });
     }
 
     @Test
     void unsupportedProviderShouldFailBeforeCallingUpstream() {
         assertThatThrownBy(() -> client.complete(config("bedrock", "key"), "hello", null))
                 .isInstanceOf(LlmGatewayException.class)
-                .hasMessage("LLM provider is not supported by the OpenAI-compatible gateway");
+                .hasMessage("LLM provider is not supported by the OpenAI-compatible gateway")
+                .satisfies(exception -> {
+                    LlmGatewayException gatewayException = (LlmGatewayException) exception;
+                    assertThat(gatewayException.getStatusCode()).isEqualTo(400);
+                    assertThat(gatewayException.getCode()).isEqualTo("llm.config.unsupported_provider");
+                    assertThat(gatewayException.getHint()).contains("openai");
+                });
+    }
+
+    @Test
+    void completeShouldRejectEmptyProviderResponse() {
+        server.createContext("/v1/chat/completions", exchange -> respond(exchange, 200, "", "application/json"));
+
+        assertThatThrownBy(() -> client.complete(config("openai", "sk-test"), "hello", null))
+                .isInstanceOf(LlmGatewayException.class)
+                .hasMessage("LLM provider returned an empty response")
+                .satisfies(exception -> {
+                    LlmGatewayException gatewayException = (LlmGatewayException) exception;
+                    assertThat(gatewayException.getStatusCode()).isEqualTo(502);
+                    assertThat(gatewayException.getCode()).isEqualTo("llm.provider.empty_response");
+                    assertThat(gatewayException.getHint()).contains("OpenAI chat completions");
+                });
+    }
+
+    @Test
+    void completeShouldRejectNonJsonProviderResponse() {
+        server.createContext("/v1/chat/completions",
+                exchange -> respond(exchange, 200, "not-json", "text/plain"));
+
+        assertThatThrownBy(() -> client.complete(config("openai", "sk-test"), "hello", null))
+                .isInstanceOf(LlmGatewayException.class)
+                .hasMessage("LLM provider returned a non-JSON completion")
+                .satisfies(exception -> {
+                    LlmGatewayException gatewayException = (LlmGatewayException) exception;
+                    assertThat(gatewayException.getStatusCode()).isEqualTo(502);
+                    assertThat(gatewayException.getCode()).isEqualTo("llm.provider.malformed_response");
+                    assertThat(gatewayException.getHint()).contains("OpenAI chat completions");
+                });
+    }
+
+    @Test
+    void completeShouldExposeTimeoutAsGatewayTimeout() {
+        OpenAiCompatibleLlmClient timeoutClient = new OpenAiCompatibleLlmClient(
+                objectMapper,
+                HttpClient.newBuilder().connectTimeout(Duration.ofMillis(100)).build(),
+                Duration.ofMillis(100));
+        server.createContext("/v1/chat/completions", exchange -> {
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+            }
+            respond(exchange, 200, """
+                    {"choices":[{"message":{"content":"late response"}}]}
+                    """, "application/json");
+        });
+
+        assertThatThrownBy(() -> timeoutClient.complete(config("openai", "sk-test"), "hello", null))
+                .isInstanceOf(LlmGatewayException.class)
+                .hasMessage("LLM provider request timed out")
+                .satisfies(exception -> {
+                    LlmGatewayException gatewayException = (LlmGatewayException) exception;
+                    assertThat(gatewayException.getStatusCode()).isEqualTo(504);
+                    assertThat(gatewayException.getCode()).isEqualTo("llm.provider.timeout");
+                    assertThat(gatewayException.getHint()).contains("network connectivity");
+                });
     }
 
     private LlmConfigVO config(String provider, String apiKey) {

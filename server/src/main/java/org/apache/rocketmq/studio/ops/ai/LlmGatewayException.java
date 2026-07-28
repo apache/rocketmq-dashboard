@@ -16,13 +16,32 @@
  */
 package org.apache.rocketmq.studio.ops.ai;
 
+import lombok.Getter;
+import org.springframework.http.HttpStatus;
+
+@Getter
 public class LlmGatewayException extends RuntimeException {
 
+    private final int statusCode;
+    private final String code;
+    private final String hint;
+
     public LlmGatewayException(String message) {
-        super(message);
+        this(HttpStatus.BAD_GATEWAY.value(), "llm.gateway_error", message, null, null);
     }
 
     public LlmGatewayException(String message, Throwable cause) {
+        this(HttpStatus.BAD_GATEWAY.value(), "llm.gateway_error", message, null, cause);
+    }
+
+    public LlmGatewayException(int statusCode, String code, String message, String hint) {
+        this(statusCode, code, message, hint, null);
+    }
+
+    public LlmGatewayException(int statusCode, String code, String message, String hint, Throwable cause) {
         super(message, cause);
+        this.statusCode = statusCode;
+        this.code = code;
+        this.hint = hint;
     }
 }

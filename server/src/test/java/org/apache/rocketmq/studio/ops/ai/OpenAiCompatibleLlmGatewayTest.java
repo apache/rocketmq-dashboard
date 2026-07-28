@@ -83,7 +83,13 @@ class OpenAiCompatibleLlmGatewayTest {
 
         assertThatThrownBy(() -> gateway.execute(AiCommandDTO.builder().command("hello").build()))
                 .isInstanceOf(LlmGatewayException.class)
-                .hasMessage("LLM provider is not supported by the OpenAI-compatible gateway");
+                .hasMessage("LLM provider is not supported by the OpenAI-compatible gateway")
+                .satisfies(exception -> {
+                    LlmGatewayException gatewayException = (LlmGatewayException) exception;
+                    assertThat(gatewayException.getStatusCode()).isEqualTo(400);
+                    assertThat(gatewayException.getCode()).isEqualTo("llm.config.unsupported_provider");
+                    assertThat(gatewayException.getHint()).contains("openai");
+                });
     }
 
     private LlmConfigVO config(String provider, String apiKey) {

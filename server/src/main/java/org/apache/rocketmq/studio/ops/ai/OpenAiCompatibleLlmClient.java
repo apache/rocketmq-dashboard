@@ -19,7 +19,7 @@ package org.apache.rocketmq.studio.ops.ai;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -30,6 +30,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -40,16 +41,27 @@ import java.util.Set;
 import java.util.function.Consumer;
 
 @Component
-@RequiredArgsConstructor
 public class OpenAiCompatibleLlmClient {
 
     private static final String CHAT_COMPLETIONS_PATH = "/chat/completions";
     private static final Set<String> SUPPORTED_PROVIDERS = Set.of("openai", "deepseek", "tongyi", "ollama");
 
     private final ObjectMapper objectMapper;
-    private final HttpClient httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(10))
-            .build();
+    private final HttpClient httpClient;
+    private final Duration requestTimeout;
+
+    @Autowired
+    public OpenAiCompatibleLlmClient(ObjectMapper objectMapper) {
+        this(objectMapper, HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(10))
+                .build(), Duration.ofSeconds(60));
+    }
+
+    OpenAiCompatibleLlmClient(ObjectMapper objectMapper, HttpClient httpClient, Duration requestTimeout) {
+        this.objectMapper = objectMapper;
+        this.httpClient = httpClient;
+        this.requestTimeout = requestTimeout;
+    }
 
     public boolean supports(LlmConfigVO config) {
         return config != null && SUPPORTED_PROVIDERS.contains(normalize(config.getProvider()));
@@ -65,11 +77,18 @@ public class OpenAiCompatibleLlmClient {
                 throw upstreamException(response.statusCode(), response.body());
             }
             return parseCompletion(response.body());
+        } catch (HttpTimeoutException exception) {
+            throw new LlmGatewayException(504, "llm.provider.timeout",
+                    "LLM provider request timed out",
+                    "Check the provider base URL and network connectivity, then retry.", exception);
         } catch (IOException exception) {
-            throw new LlmGatewayException("Failed to call LLM provider", exception);
+            throw new LlmGatewayException(502, "llm.provider.io_error",
+                    "Failed to call LLM provider",
+                    "Check the provider endpoint, TLS settings, and network connectivity.", exception);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            throw new LlmGatewayException("LLM provider call was interrupted", exception);
+            throw new LlmGatewayException(502, "llm.provider.interrupted",
+                    "LLM provider call was interrupted", "Retry the request.", exception);
         }
     }
 
@@ -85,11 +104,18 @@ public class OpenAiCompatibleLlmClient {
                         new String(response.body().readAllBytes(), StandardCharsets.UTF_8));
             }
             parseStream(response, tokenConsumer);
+        } catch (HttpTimeoutException exception) {
+            throw new LlmGatewayException(504, "llm.provider.timeout",
+                    "LLM provider stream timed out",
+                    "Check the provider base URL and network connectivity, then retry.", exception);
         } catch (IOException exception) {
-            throw new LlmGatewayException("Failed to stream from LLM provider", exception);
+            throw new LlmGatewayException(502, "llm.provider.io_error",
+                    "Failed to stream from LLM provider",
+                    "Check the provider endpoint, TLS settings, and network connectivity.", exception);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            throw new LlmGatewayException("LLM provider stream was interrupted", exception);
+            throw new LlmGatewayException(502, "llm.provider.interrupted",
+                    "LLM provider stream was interrupted", "Retry the request.", exception);
         }
     }
 
@@ -134,7 +160,7 @@ public class OpenAiCompatibleLlmClient {
     private HttpRequest request(LlmConfigVO config, String accept, Map<String, Object> body) {
         HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(chatCompletionsUri(config))
-                .timeout(Duration.ofSeconds(60))
+                .timeout(requestTimeout)
                 .header("Content-Type", "application/json")
                 .header("Accept", accept)
                 .POST(HttpRequest.BodyPublishers.ofString(writeJson(body), StandardCharsets.UTF_8));
@@ -167,29 +193,46 @@ public class OpenAiCompatibleLlmClient {
 
     private void validate(LlmConfigVO config) {
         if (!supports(config)) {
-            throw new LlmGatewayException("LLM provider is not supported by the OpenAI-compatible gateway");
+            throw new LlmGatewayException(400, "llm.config.unsupported_provider",
+                    "LLM provider is not supported by the OpenAI-compatible gateway",
+                    "Use one of: openai, deepseek, tongyi, ollama.");
         }
         if (!StringUtils.hasText(config.getApiBase())) {
-            throw new LlmGatewayException("LLM API base URL is required");
+            throw new LlmGatewayException(400, "llm.config.missing_api_base",
+                    "LLM API base URL is required",
+                    "Configure the provider base URL, for example https://api.openai.com/v1.");
         }
         if (!StringUtils.hasText(config.getModel())) {
-            throw new LlmGatewayException("LLM model is required");
+            throw new LlmGatewayException(400, "llm.config.missing_model",
+                    "LLM model is required",
+                    "Select or enter a model before sending a request.");
         }
         if (!"ollama".equals(normalize(config.getProvider())) && !StringUtils.hasText(config.getApiKey())) {
-            throw new LlmGatewayException("LLM API key is required");
+            throw new LlmGatewayException(400, "llm.config.missing_api_key",
+                    "LLM API key is required",
+                    "Configure an API key for this provider, or select ollama for a local provider.");
         }
     }
 
     private String parseCompletion(String body) {
+        if (!StringUtils.hasText(body)) {
+            throw new LlmGatewayException(502, "llm.provider.empty_response",
+                    "LLM provider returned an empty response",
+                    "Check whether the provider endpoint is compatible with OpenAI chat completions.");
+        }
         try {
             JsonNode root = objectMapper.readTree(body);
             String content = root.path("choices").path(0).path("message").path("content").asText();
             if (!StringUtils.hasText(content)) {
-                throw new LlmGatewayException("LLM provider returned an empty completion");
+                throw new LlmGatewayException(502, "llm.provider.empty_completion",
+                        "LLM provider returned an empty completion",
+                        "Check the selected model and provider response format.");
             }
             return content;
         } catch (JsonProcessingException exception) {
-            throw new LlmGatewayException("LLM provider returned a malformed completion", exception);
+            throw new LlmGatewayException(502, "llm.provider.malformed_response",
+                    "LLM provider returned a non-JSON completion",
+                    "Check whether the provider endpoint is compatible with OpenAI chat completions.", exception);
         }
     }
 
@@ -198,7 +241,9 @@ public class OpenAiCompatibleLlmClient {
             JsonNode root = objectMapper.readTree(body);
             return root.path("choices").path(0).path("delta").path("content").asText("");
         } catch (JsonProcessingException exception) {
-            throw new LlmGatewayException("LLM provider returned a malformed stream event", exception);
+            throw new LlmGatewayException(502, "llm.provider.malformed_stream_event",
+                    "LLM provider returned a malformed stream event",
+                    "Check whether the provider emits OpenAI-compatible SSE data events.", exception);
         }
     }
 
@@ -213,14 +258,16 @@ public class OpenAiCompatibleLlmClient {
         } catch (JsonProcessingException ignored) {
             // Keep the status-only message when the upstream error is not JSON.
         }
-        return new LlmGatewayException(message);
+        return new LlmGatewayException(statusCode, "llm.provider.upstream_error", message,
+                "Check the provider credentials, model name, and account quota.");
     }
 
     private String writeJson(Object value) {
         try {
             return objectMapper.writeValueAsString(value);
         } catch (JsonProcessingException exception) {
-            throw new LlmGatewayException("Failed to serialize LLM request", exception);
+            throw new LlmGatewayException(500, "llm.request.serialize_failed",
+                    "Failed to serialize LLM request", "Check the request payload.", exception);
         }
     }
 

@@ -92,7 +92,8 @@ public class OpenAiCompatibleLlmGateway implements LlmGateway {
                     .name("message")
                     .data(objectMapper.writeValueAsString(Map.of("text", token))));
         } catch (IOException exception) {
-            throw new LlmGatewayException("Failed to send LLM stream event", exception);
+            throw new LlmGatewayException(500, "llm.stream.emit_failed",
+                    "Failed to send LLM stream event", "Retry the chat request.", exception);
         }
     }
 
@@ -108,7 +109,9 @@ public class OpenAiCompatibleLlmGateway implements LlmGateway {
 
     private void assertSupported(LlmConfigVO config) {
         if (!llmClient.supports(config)) {
-            throw new LlmGatewayException("LLM provider is not supported by the OpenAI-compatible gateway");
+            throw new LlmGatewayException(400, "llm.config.unsupported_provider",
+                    "LLM provider is not supported by the OpenAI-compatible gateway",
+                    "Use one of: openai, deepseek, tongyi, ollama.");
         }
     }
 
@@ -123,7 +126,8 @@ public class OpenAiCompatibleLlmGateway implements LlmGateway {
         try {
             return prompt + "\n\nContext:\n" + objectMapper.writeValueAsString(command.getContext());
         } catch (JsonProcessingException exception) {
-            throw new LlmGatewayException("Failed to serialize AI command context", exception);
+            throw new LlmGatewayException(500, "llm.command.context_serialize_failed",
+                    "Failed to serialize AI command context", "Check the command context payload.", exception);
         }
     }
 }
