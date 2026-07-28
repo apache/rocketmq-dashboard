@@ -18,6 +18,11 @@ Visit **http://127.0.0.1:6789** after startup.
 
 **RocketMQ ports:** NameServer 9876, Broker 10911, Proxy Remoting 8080, Proxy gRPC 8081
 
+To enable login protection for a shared environment, copy `deploy/.env.example` to
+`deploy/.env`, set `STUDIO_AUTH_LOGIN_REQUIRED=true`, and configure
+`STUDIO_AUTH_ADMIN_USERNAME` / `STUDIO_AUTH_ADMIN_PASSWORD`. The login endpoint only accepts
+configured users; disabling login protection only skips API interception for local development.
+
 ## Features
 
 | Module | Capabilities |

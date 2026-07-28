@@ -36,6 +36,7 @@ export interface TraceRecord {
 
 export interface MessageQuery {
   topic?: string;
+  tag?: string;
   key?: string;
   msgId?: string;
   startTime?: number;
