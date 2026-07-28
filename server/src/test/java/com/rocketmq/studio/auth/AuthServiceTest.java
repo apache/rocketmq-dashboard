@@ -42,6 +42,10 @@ class AuthServiceTest {
 
     @Test
     void loginShouldReturnTokenForValidCredentials() {
+        AuthProperties.User user = new AuthProperties.User();
+        user.setUsername("testuser");
+        user.setPassword("testpass");
+        authProperties.setUsers(List.of(user));
         LoginDTO request = new LoginDTO();
         request.setUsername("testuser");
         request.setPassword("testpass");
@@ -59,6 +63,11 @@ class AuthServiceTest {
 
     @Test
     void loginShouldReturnAdminFlagForAdminUser() {
+        AuthProperties.User user = new AuthProperties.User();
+        user.setUsername("admin");
+        user.setPassword("adminpass");
+        user.setAdmin(true);
+        authProperties.setUsers(List.of(user));
         LoginDTO request = new LoginDTO();
         request.setUsername("admin");
         request.setPassword("adminpass");
@@ -104,20 +113,40 @@ class AuthServiceTest {
     }
 
     @Test
-    void loginShouldRejectWhenLoginIsRequiredWithoutConfiguredUsers() {
-        authProperties.setLoginRequired(true);
+    void loginShouldRejectUnknownConfiguredUser() {
+        AuthProperties.User user = new AuthProperties.User();
+        user.setUsername("ops");
+        user.setPassword("secret");
+        authProperties.setUsers(List.of(user));
+
         LoginDTO request = new LoginDTO();
         request.setUsername("admin");
         request.setPassword("secret");
 
         assertThatThrownBy(() -> authService.login(request))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("Login is enabled but no valid users are configured")
+                .hasMessage("Invalid username or password")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(401));
+    }
+
+    @Test
+    void loginShouldRejectWithoutConfiguredUsers() {
+        LoginDTO request = new LoginDTO();
+        request.setUsername("admin");
+        request.setPassword("secret");
+
+        assertThatThrownBy(() -> authService.login(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("No valid login users are configured")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(503));
     }
 
     @Test
     void logoutShouldRevokeActiveToken() {
+        AuthProperties.User user = new AuthProperties.User();
+        user.setUsername("testuser");
+        user.setPassword("testpass");
+        authProperties.setUsers(List.of(user));
         LoginDTO request = new LoginDTO();
         request.setUsername("testuser");
         request.setPassword("testpass");

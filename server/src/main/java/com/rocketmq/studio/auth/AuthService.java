@@ -87,10 +87,7 @@ public class AuthService {
     private LoginVO.UserInfo authenticate(LoginDTO request) {
         var configuredUsers = authProperties.configuredUsers();
         if (configuredUsers.isEmpty()) {
-            if (authProperties.isLoginRequired()) {
-                throw new BusinessException(503, "Login is enabled but no valid users are configured");
-            }
-            return userInfo(request.getUsername(), "admin".equals(request.getUsername()));
+            throw new BusinessException(503, "No valid login users are configured");
         }
 
         return configuredUsers.stream()
