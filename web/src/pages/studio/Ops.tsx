@@ -19,6 +19,7 @@ import React, { useEffect, useState } from 'react';
 import { App, Button, Input, Select, Space, Switch, Typography } from 'antd';
 import { FloppyDisk, Plus } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
+import useAuthStore from '../../stores/authStore';
 import {
   addNameSvrAddr,
   queryOpsHomePage,
@@ -31,24 +32,21 @@ const OpsPage: React.FC = () => {
   const { t } = useLang();
   const { message } = App.useApp();
   const fetchFailedMessage = t('ops.fetchFailed');
+  const token = useAuthStore((state) => state.token);
+  const admin = useAuthStore((state) => state.admin);
 
   const [namesrvAddrList, setNamesrvAddrList] = useState<string[]>([]);
   const [selectedNamesrv, setSelectedNamesrv] = useState('');
   const [newNamesrvAddr, setNewNamesrvAddr] = useState('');
   const [useVIPChannel, setUseVIPChannel] = useState(false);
   const [useTLS, setUseTLS] = useState(false);
-  const [writeOperationEnabled, setWriteOperationEnabled] = useState(true);
+  const writeOperationEnabled = !token || admin === true;
 
   useEffect(() => {
     let cancelled = false;
 
     const loadOpsData = async () => {
       try {
-        const userRole = sessionStorage.getItem('userrole');
-        if (!cancelled) {
-          setWriteOperationEnabled(userRole === null || userRole === '1');
-        }
-
         const data = await queryOpsHomePage();
         if (!cancelled) {
           setNamesrvAddrList(data.namesvrAddrList);

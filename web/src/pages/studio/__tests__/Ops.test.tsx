@@ -22,6 +22,7 @@ import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
 import OpsPage from '../Ops';
 import { queryOpsHomePage } from '../../../api/ops';
+import useAuthStore from '../../../stores/authStore';
 
 vi.mock('../../../api/ops', () => ({
   addNameSvrAddr: vi.fn(),
@@ -58,7 +59,9 @@ const renderWithProviders = (ui: ReactElement) => {
 describe('OpsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     sessionStorage.clear();
+    useAuthStore.setState({ token: null, user: null, admin: null });
     vi.mocked(queryOpsHomePage).mockResolvedValue({
       namesvrAddrList: ['127.0.0.1:9876', '127.0.0.2:9876'],
       useVIPChannel: true,
@@ -80,7 +83,7 @@ describe('OpsPage', () => {
   });
 
   it('hides write controls for read-only users', async () => {
-    sessionStorage.setItem('userrole', '2');
+    useAuthStore.setState({ token: 'token-reader', user: 'reader', admin: false });
 
     renderWithProviders(<OpsPage />);
 
@@ -90,5 +93,18 @@ describe('OpsPage', () => {
 
     expect(screen.queryByPlaceholderText('NamesrvAddr')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /新增|添加/ })).not.toBeInTheDocument();
+  });
+
+  it('keeps write controls visible for admin users', async () => {
+    useAuthStore.setState({ token: 'token-admin', user: 'admin', admin: true });
+
+    renderWithProviders(<OpsPage />);
+
+    await waitFor(() => {
+      expect(queryOpsHomePage).toHaveBeenCalledTimes(1);
+    });
+
+    expect(await screen.findByPlaceholderText('NamesrvAddr')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /新增|添加/ })).toBeInTheDocument();
   });
 });

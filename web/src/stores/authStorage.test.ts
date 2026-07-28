@@ -21,6 +21,7 @@ import {
   persistAuthSession,
   readAuthSession,
   TOKEN_STORAGE_KEY,
+  USER_ADMIN_STORAGE_KEY,
   USER_STORAGE_KEY,
 } from './authStorage';
 
@@ -30,22 +31,31 @@ describe('auth session storage', () => {
   });
 
   it('persists the token and user together', () => {
-    persistAuthSession('token-1', 'studio-admin');
+    persistAuthSession('token-1', 'studio-admin', true);
 
-    expect(readAuthSession()).toEqual({ token: 'token-1', user: 'studio-admin' });
+    expect(readAuthSession()).toEqual({ token: 'token-1', user: 'studio-admin', admin: true });
   });
 
   it('does not restore an orphaned user without a token', () => {
     localStorage.setItem(USER_STORAGE_KEY, 'studio-admin');
+    localStorage.setItem(USER_ADMIN_STORAGE_KEY, 'true');
 
-    expect(readAuthSession()).toEqual({ token: null, user: null });
+    expect(readAuthSession()).toEqual({ token: null, user: null, admin: null });
+  });
+
+  it('does not infer admin permissions from legacy sessions', () => {
+    localStorage.setItem(TOKEN_STORAGE_KEY, 'token-1');
+    localStorage.setItem(USER_STORAGE_KEY, 'studio-admin');
+
+    expect(readAuthSession()).toEqual({ token: 'token-1', user: 'studio-admin', admin: null });
   });
 
   it('clears every persisted session key', () => {
-    persistAuthSession('token-1', 'studio-admin');
+    persistAuthSession('token-1', 'studio-admin', true);
     clearAuthSession();
 
     expect(localStorage.getItem(TOKEN_STORAGE_KEY)).toBeNull();
     expect(localStorage.getItem(USER_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(USER_ADMIN_STORAGE_KEY)).toBeNull();
   });
 });
