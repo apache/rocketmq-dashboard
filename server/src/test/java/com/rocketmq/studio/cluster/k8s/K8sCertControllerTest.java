@@ -60,8 +60,8 @@ class K8sCertControllerTest {
 
         mockMvc.perform(get("/api/k8s-certs"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.message").value("success"))
+                .andExpect(jsonPath("$.status").value(0))
+                .andExpect(jsonPath("$.errMsg").isEmpty())
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data.length()").value(2))
                 .andExpect(jsonPath("$.data[0].id").value("cert-1"))
@@ -78,7 +78,7 @@ class K8sCertControllerTest {
 
         mockMvc.perform(get("/api/k8s-certs"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.status").value(0))
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data.length()").value(0));
     }
@@ -105,7 +105,7 @@ class K8sCertControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(command)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.status").value(0))
                 .andExpect(jsonPath("$.data.id").value("cert-new"))
                 .andExpect(jsonPath("$.data.name").value("new-cert"))
                 .andExpect(jsonPath("$.data.namespace").value("default"))
@@ -134,7 +134,7 @@ class K8sCertControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.status").value(0))
                 .andExpect(jsonPath("$.data.id").value("cert-min"));
     }
 

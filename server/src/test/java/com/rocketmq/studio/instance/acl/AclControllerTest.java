@@ -67,7 +67,7 @@ class AclControllerTest {
 
         mockMvc.perform(get("/api/acl/rules"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.status").value(0))
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data[0].id").value("rule-1"))
                 .andExpect(jsonPath("$.data[0].principal").value("user1"))
@@ -111,7 +111,7 @@ class AclControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(input)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.status").value(0))
                 .andExpect(jsonPath("$.data.id").value("new-rule-id"))
                 .andExpect(jsonPath("$.data.principal").value("user1"));
     }
@@ -131,7 +131,7 @@ class AclControllerTest {
 
         mockMvc.perform(get("/api/acl/users"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.status").value(0))
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data[0].id").value("user-1"))
                 .andExpect(jsonPath("$.data[0].username").value("admin"))

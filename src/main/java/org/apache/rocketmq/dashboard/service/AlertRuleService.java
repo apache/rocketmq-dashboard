@@ -14,15 +14,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.rocketmq.studio.ops.alert;
+package org.apache.rocketmq.dashboard.service;
 
+import org.apache.rocketmq.dashboard.model.AlertRuleVO;
 
 import java.util.List;
 
-public interface AlertRepository {
-    List<SystemAlertVO> findAlerts(String level);
+/**
+ * CRUD service for alert rules exposed via {@code /api/alert/rules}.
+ */
+public interface AlertRuleService {
 
-    SystemAlertVO saveAlert(SystemAlertVO alert);
+    List<AlertRuleVO> listRules();
 
-    int deleteAcknowledgedAlerts();
+    AlertRuleVO createRule(AlertRuleVO rule);
+
+    AlertRuleVO updateRule(AlertRuleVO rule);
+
+    AlertRuleVO toggleRule(String id, boolean enabled);
+
+    void deleteRule(String id);
 }

@@ -917,7 +917,10 @@ public class V4MetadataProvider implements MetadataProvider {
             log.debug("ACL check failed: user '{}' not found", username);
             return false;
         }
-        // Check policies for matching resource and action
+        // Check policies for matching resource and action.
+        // DENY takes precedence over ALLOW regardless of iteration order, so all
+        // matching policies must be evaluated before granting access.
+        boolean allowed = false;
         for (ACLPolicy policy : aclPolicyStore.values()) {
             if (policy.getUsers() != null && policy.getUsers().contains(username)) {
                 if (policy.getResources() != null && matchesResource(policy.getResources(), resource)) {
@@ -926,11 +929,14 @@ public class V4MetadataProvider implements MetadataProvider {
                             log.debug("ACL check: DENY for user={} resource={} action={}", username, resource, action);
                             return false;
                         }
-                        log.debug("ACL check: ALLOW for user={} resource={} action={}", username, resource, action);
-                        return true;
+                        allowed = true;
                     }
                 }
             }
+        }
+        if (allowed) {
+            log.debug("ACL check: ALLOW for user={} resource={} action={}", username, resource, action);
+            return true;
         }
         log.debug("ACL check: no matching policy for user={} resource={} action={}", username, resource, action);
         return false;

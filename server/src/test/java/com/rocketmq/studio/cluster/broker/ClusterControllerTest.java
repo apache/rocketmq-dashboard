@@ -62,8 +62,8 @@ class ClusterControllerTest {
 
         mockMvc.perform(get("/api/clusters"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.message").value("success"))
+                .andExpect(jsonPath("$.status").value(0))
+                .andExpect(jsonPath("$.errMsg").isEmpty())
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data.length()").value(2))
                 .andExpect(jsonPath("$.data[0].id").value("cluster-1"))
@@ -79,7 +79,7 @@ class ClusterControllerTest {
 
         mockMvc.perform(get("/api/clusters"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.status").value(0))
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data.length()").value(0));
     }
@@ -98,7 +98,7 @@ class ClusterControllerTest {
 
         mockMvc.perform(get("/api/clusters/cluster-1"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.status").value(0))
                 .andExpect(jsonPath("$.data.id").value("cluster-1"))
                 .andExpect(jsonPath("$.data.name").value("production-cluster"))
                 .andExpect(jsonPath("$.data.status").value("healthy"))
@@ -128,7 +128,7 @@ class ClusterControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(command)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.status").value(0))
                 .andExpect(jsonPath("$.data.id").value("cluster-1"))
                 .andExpect(jsonPath("$.data.config.flushDiskType").value("SYNC_FLUSH"))
                 .andExpect(jsonPath("$.data.config.writeQueueNums").value(16))
@@ -141,7 +141,7 @@ class ClusterControllerTest {
 
         mockMvc.perform(post("/api/clusters/cluster-1/brokers/broker-0/restart"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.status").value(0))
                 .andExpect(jsonPath("$.data.success").value(true))
                 .andExpect(jsonPath("$.data.message").value("Broker restart initiated for broker-0"));
     }

@@ -25,7 +25,6 @@ import org.apache.rocketmq.dashboard.architecture.AdminClient;
 import org.apache.rocketmq.dashboard.architecture.ClusterProvider;
 import org.apache.rocketmq.dashboard.architecture.MetadataProvider;
 import org.junit.Assert;
-import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
@@ -58,12 +57,6 @@ public class TopicServiceImplTest extends BaseTest {
 
     @Mock
     private MetadataProvider metadataProvider;
-
-    @Before
-    public void setUp() {
-        when(rmqConfigure.getNamesrvAddr()).thenReturn("localhost:9876");
-        lenient().when(rmqConfigure.isUseTLS()).thenReturn(false);
-    }
 
     @Test
     public void testGetTopicList() throws Exception {

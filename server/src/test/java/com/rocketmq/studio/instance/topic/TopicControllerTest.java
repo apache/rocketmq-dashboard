@@ -62,7 +62,7 @@ class TopicControllerTest {
 
         mockMvc.perform(get("/api/topics"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.status").value(0))
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data[0].name").value("test-topic"))
                 .andExpect(jsonPath("$.data[0].writeQueues").value(8));
@@ -101,7 +101,7 @@ class TopicControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(input)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.status").value(0))
                 .andExpect(jsonPath("$.data.name").value("new-topic"))
                 .andExpect(jsonPath("$.data.writeQueues").value(16));
     }
@@ -126,7 +126,7 @@ class TopicControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.status").value(0))
                 .andExpect(jsonPath("$.data.msgId").value("msg-001"))
                 .andExpect(jsonPath("$.data.offsetMsgId").value("offset-001"));
     }

@@ -66,6 +66,20 @@ public class MetricsControllerTest extends BaseControllerTest {
         return metricsController;
     }
 
+    /**
+     * MetricsController catches exceptions internally and returns JsonResult with
+     * status 1 (business error), instead of propagating to GlobalExceptionHandler
+     * (which would produce status -1).
+     */
+    private org.springframework.test.web.servlet.ResultActions performBusinessErrorExpect(
+            org.springframework.test.web.servlet.ResultActions perform) throws Exception {
+        return perform.andExpect(status().isOk())
+                .andExpect(jsonPath("$").exists())
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.status").value(1))
+                .andExpect(jsonPath("$.errMsg").isNotEmpty());
+    }
+
     // ==================== listDashboards ====================
 
     @Test
@@ -118,7 +132,7 @@ public class MetricsControllerTest extends BaseControllerTest {
         requestBuilder = MockMvcRequestBuilders.get(url);
         perform = mockMvc.perform(requestBuilder);
 
-        performErrorExpect(perform);
+        performBusinessErrorExpect(perform);
     }
 
     // ==================== getDashboardPanel ====================
@@ -150,7 +164,7 @@ public class MetricsControllerTest extends BaseControllerTest {
         requestBuilder = MockMvcRequestBuilders.get(url);
         perform = mockMvc.perform(requestBuilder);
 
-        performErrorExpect(perform);
+        performBusinessErrorExpect(perform);
     }
 
     @Test
@@ -162,7 +176,7 @@ public class MetricsControllerTest extends BaseControllerTest {
         requestBuilder = MockMvcRequestBuilders.get(url);
         perform = mockMvc.perform(requestBuilder);
 
-        performErrorExpect(perform);
+        performBusinessErrorExpect(perform);
     }
 
     @Test
@@ -174,7 +188,7 @@ public class MetricsControllerTest extends BaseControllerTest {
         requestBuilder = MockMvcRequestBuilders.get(url);
         perform = mockMvc.perform(requestBuilder);
 
-        performErrorExpect(perform);
+        performBusinessErrorExpect(perform);
     }
 
     // ==================== getAlertRules (default yaml format) ====================
@@ -250,7 +264,7 @@ public class MetricsControllerTest extends BaseControllerTest {
         requestBuilder = MockMvcRequestBuilders.get(url);
         perform = mockMvc.perform(requestBuilder);
 
-        performErrorExpect(perform);
+        performBusinessErrorExpect(perform);
     }
 
     // ==================== exportGrafanaJson ====================
@@ -262,7 +276,10 @@ public class MetricsControllerTest extends BaseControllerTest {
         grafanaResult.put("exportedCount", 13);
         grafanaResult.put("grafanaJson", "{\"dashboards\":[]}");
 
-        when(metricsEnhancedService.exportGrafanaJson(anyList())).thenReturn(grafanaResult);
+        // With no request body the controller passes null dashboardIds, so use a
+        // null-friendly matcher (anyList() does not match null).
+        when(metricsEnhancedService.exportGrafanaJson(org.mockito.ArgumentMatchers.<List<String>>any()))
+                .thenReturn(grafanaResult);
 
         final String url = "/api/metrics/export/grafana";
         requestBuilder = MockMvcRequestBuilders.post(url);
@@ -325,7 +342,8 @@ public class MetricsControllerTest extends BaseControllerTest {
 
     @Test
     public void testExportGrafanaJsonError() throws Exception {
-        when(metricsEnhancedService.exportGrafanaJson(anyList()))
+        // Null-friendly matcher: matches the null dashboardIds passed when the request has no body
+        when(metricsEnhancedService.exportGrafanaJson(org.mockito.ArgumentMatchers.<List<String>>any()))
                 .thenThrow(new RuntimeException("Export failed"));
 
         final String url = "/api/metrics/export/grafana";
@@ -333,7 +351,7 @@ public class MetricsControllerTest extends BaseControllerTest {
         requestBuilder.contentType(MediaType.APPLICATION_JSON);
         perform = mockMvc.perform(requestBuilder);
 
-        performErrorExpect(perform);
+        performBusinessErrorExpect(perform);
     }
 
     // ==================== getPrebuiltQueries ====================
@@ -395,7 +413,7 @@ public class MetricsControllerTest extends BaseControllerTest {
         requestBuilder = MockMvcRequestBuilders.get(url);
         perform = mockMvc.perform(requestBuilder);
 
-        performErrorExpect(perform);
+        performBusinessErrorExpect(perform);
     }
 
     // ==================== Error handling: RuntimeException ====================
@@ -410,7 +428,7 @@ public class MetricsControllerTest extends BaseControllerTest {
         perform = mockMvc.perform(requestBuilder);
 
         perform.andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value(-1))
+                .andExpect(jsonPath("$.status").value(1))
                 .andExpect(jsonPath("$.errMsg").isNotEmpty());
     }
 }

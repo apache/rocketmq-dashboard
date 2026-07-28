@@ -47,8 +47,8 @@ class MetricsControllerTest {
                                 {"metric":"up","start":"abc","end":123,"step":"30s"}
                                 """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value(400))
-                .andExpect(jsonPath("$.message").value("Invalid request body"));
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.errMsg").value("Invalid request body"));
 
         verifyNoInteractions(metricsService);
     }

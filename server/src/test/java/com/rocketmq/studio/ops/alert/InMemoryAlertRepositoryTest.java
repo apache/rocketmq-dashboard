@@ -16,6 +16,7 @@
  */
 package com.rocketmq.studio.ops.alert;
 
+import com.rocketmq.studio.common.domain.enums.AlertLevel;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -33,93 +34,81 @@ class InMemoryAlertRepositoryTest {
     }
 
     @Test
-    void saveRuleShouldStoreAndReturnRule() {
-        AlertRuleVO rule = AlertRuleVO.builder().id("rule-1").alert("TestAlert")
-                .group("broker").expr("cpu > 90").severity("critical").build();
+    void saveAlertShouldStoreAndReturnAlert() {
+        SystemAlertVO alert = SystemAlertVO.builder().id("a1").level(AlertLevel.error)
+                .title("Broker Down").acknowledged(false).build();
 
-        AlertRuleVO saved = repository.saveRule(rule);
+        SystemAlertVO saved = repository.saveAlert(alert);
 
         assertThat(saved).isNotNull();
-        assertThat(saved.getId()).isEqualTo("rule-1");
-        assertThat(saved.getAlert()).isEqualTo("TestAlert");
+        assertThat(saved.getId()).isEqualTo("a1");
+        assertThat(saved.getTitle()).isEqualTo("Broker Down");
     }
 
     @Test
-    void findAllRulesShouldReturnAllSavedRules() {
-        AlertRuleVO rule1 = AlertRuleVO.builder().id("r1").alert("Alert1").build();
-        AlertRuleVO rule2 = AlertRuleVO.builder().id("r2").alert("Alert2").build();
-        repository.saveRule(rule1);
-        repository.saveRule(rule2);
+    void findAlertsShouldReturnAllWhenLevelIsNull() {
+        repository.saveAlert(SystemAlertVO.builder().id("a1").level(AlertLevel.error).title("Alert1").build());
+        repository.saveAlert(SystemAlertVO.builder().id("a2").level(AlertLevel.warning).title("Alert2").build());
 
-        List<AlertRuleVO> rules = repository.findAllRules();
+        List<SystemAlertVO> alerts = repository.findAlerts(null);
 
-        assertThat(rules).hasSize(2);
+        assertThat(alerts).hasSize(2);
     }
 
     @Test
-    void findAllRulesShouldReturnEmptyListWhenNoRules() {
-        List<AlertRuleVO> rules = repository.findAllRules();
+    void findAlertsShouldFilterByLevelIgnoringCase() {
+        repository.saveAlert(SystemAlertVO.builder().id("a1").level(AlertLevel.error).title("Alert1").build());
+        repository.saveAlert(SystemAlertVO.builder().id("a2").level(AlertLevel.warning).title("Alert2").build());
 
-        assertThat(rules).isEmpty();
+        List<SystemAlertVO> alerts = repository.findAlerts("ERROR");
+
+        assertThat(alerts).hasSize(1);
+        assertThat(alerts.get(0).getId()).isEqualTo("a1");
     }
 
     @Test
-    void findRuleByIdShouldReturnRuleWhenExists() {
-        AlertRuleVO rule = AlertRuleVO.builder().id("rule-1").alert("TestAlert").build();
-        repository.saveRule(rule);
+    void findAlertsShouldReturnEmptyListWhenNoAlerts() {
+        List<SystemAlertVO> alerts = repository.findAlerts(null);
 
-        AlertRuleVO found = repository.findRuleById("rule-1");
-
-        assertThat(found).isNotNull();
-        assertThat(found.getId()).isEqualTo("rule-1");
-        assertThat(found.getAlert()).isEqualTo("TestAlert");
+        assertThat(alerts).isEmpty();
     }
 
     @Test
-    void findRuleByIdShouldReturnNullWhenNotExists() {
-        AlertRuleVO found = repository.findRuleById("non-existent");
+    void saveAlertShouldUpdateExistingAlert() {
+        repository.saveAlert(SystemAlertVO.builder().id("a1").level(AlertLevel.error)
+                .title("Original").acknowledged(false).build());
 
-        assertThat(found).isNull();
+        repository.saveAlert(SystemAlertVO.builder().id("a1").level(AlertLevel.error)
+                .title("Original").acknowledged(true).build());
+
+        List<SystemAlertVO> alerts = repository.findAlerts(null);
+        assertThat(alerts).hasSize(1);
+        assertThat(alerts.get(0).isAcknowledged()).isTrue();
     }
 
     @Test
-    void deleteRuleShouldRemoveRule() {
-        AlertRuleVO rule = AlertRuleVO.builder().id("rule-1").alert("TestAlert").build();
-        repository.saveRule(rule);
+    void deleteAcknowledgedAlertsShouldRemoveOnlyAcknowledged() {
+        repository.saveAlert(SystemAlertVO.builder().id("a1").level(AlertLevel.error)
+                .title("Alert1").acknowledged(true).build());
+        repository.saveAlert(SystemAlertVO.builder().id("a2").level(AlertLevel.warning)
+                .title("Alert2").acknowledged(false).build());
 
-        repository.deleteRule("rule-1");
+        int cleared = repository.deleteAcknowledgedAlerts();
 
-        assertThat(repository.findRuleById("rule-1")).isNull();
-        assertThat(repository.findAllRules()).isEmpty();
+        assertThat(cleared).isEqualTo(1);
+        List<SystemAlertVO> remaining = repository.findAlerts(null);
+        assertThat(remaining).hasSize(1);
+        assertThat(remaining.get(0).getId()).isEqualTo("a2");
     }
 
     @Test
-    void deleteRuleShouldNotThrowWhenRuleNotFound() {
-        repository.deleteRule("non-existent");
-        // No exception expected
-    }
+    void deleteAcknowledgedAlertsShouldReturnZeroWhenNoneAcknowledged() {
+        repository.saveAlert(SystemAlertVO.builder().id("a1").level(AlertLevel.error)
+                .title("Alert1").acknowledged(false).build());
 
-    @Test
-    void saveRuleShouldUpdateExistingRule() {
-        AlertRuleVO rule = AlertRuleVO.builder().id("rule-1").alert("Original").build();
-        repository.saveRule(rule);
+        int cleared = repository.deleteAcknowledgedAlerts();
 
-        AlertRuleVO updated = AlertRuleVO.builder().id("rule-1").alert("Updated").build();
-        repository.saveRule(updated);
-
-        AlertRuleVO found = repository.findRuleById("rule-1");
-        assertThat(found.getAlert()).isEqualTo("Updated");
-        assertThat(repository.findAllRules()).hasSize(1);
-    }
-
-    @Test
-    void findAllRulesShouldReturnDefensiveCopy() {
-        AlertRuleVO rule = AlertRuleVO.builder().id("rule-1").alert("TestAlert").build();
-        repository.saveRule(rule);
-
-        List<AlertRuleVO> rules = repository.findAllRules();
-        rules.clear();
-
-        assertThat(repository.findAllRules()).hasSize(1);
+        assertThat(cleared).isZero();
+        assertThat(repository.findAlerts(null)).hasSize(1);
     }
 }

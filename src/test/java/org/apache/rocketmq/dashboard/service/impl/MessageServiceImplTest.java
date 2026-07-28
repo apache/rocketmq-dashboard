@@ -437,11 +437,14 @@ public class MessageServiceImplTest {
 
     // ==================== Exception handling tests ====================
 
-    @Test(expected = UnsupportedOperationException.class)
+    @Test
     public void testQueryMessageByTopicException() throws Exception {
         when(metadataProvider.queryMessageByTopic(eq(TOPIC), anyLong(), anyLong(), anyInt()))
                 .thenThrow(new RuntimeException("Test exception"));
-        messageService.queryMessageByTopic(TOPIC, 1000, 3000, 64);
+        // provider failures are degraded gracefully to an empty list
+        List<MessageInfo> result = messageService.queryMessageByTopic(TOPIC, 1000, 3000, 64);
+        assertNotNull(result);
+        assertTrue(result.isEmpty());
     }
 
     @Test(expected = UnsupportedOperationException.class)

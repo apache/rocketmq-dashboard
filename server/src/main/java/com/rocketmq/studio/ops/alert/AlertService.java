@@ -21,10 +21,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.UUID;
 
 @Slf4j
 @Service
@@ -32,54 +29,6 @@ import java.util.UUID;
 public class AlertService {
 
     private final AlertRepository alertRepository;
-
-    private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-
-
-    public List<AlertRuleVO> listRules() {
-        log.info("Listing all alert rules");
-        return alertRepository.findAllRules();
-    }
-
-
-    public AlertRuleVO createRule(AlertRuleVO rule) {
-        log.info("Creating alert rule: {}", rule.getAlert());
-        rule.setId(UUID.randomUUID().toString());
-        String now = LocalDateTime.now().format(FORMATTER);
-        rule.setCreatedAt(now);
-        rule.setUpdatedAt(now);
-        return alertRepository.saveRule(rule);
-    }
-
-
-    public AlertRuleVO updateRule(AlertRuleVO rule) {
-        log.info("Updating alert rule: {}", rule.getId());
-        AlertRuleVO existing = alertRepository.findRuleById(rule.getId());
-        if (existing == null) {
-            throw new BusinessException(404, "Alert rule not found: " + rule.getId());
-        }
-        rule.setCreatedAt(existing.getCreatedAt());
-        rule.setUpdatedAt(LocalDateTime.now().format(FORMATTER));
-        return alertRepository.saveRule(rule);
-    }
-
-
-    public AlertRuleVO toggleRule(String id, boolean enabled) {
-        log.info("Toggling alert rule id={}, enabled={}", id, enabled);
-        AlertRuleVO rule = alertRepository.findRuleById(id);
-        if (rule == null) {
-            throw new BusinessException(404, "Alert rule not found: " + id);
-        }
-        rule.setEnabled(enabled);
-        rule.setUpdatedAt(LocalDateTime.now().format(FORMATTER));
-        return alertRepository.saveRule(rule);
-    }
-
-
-    public void deleteRule(String id) {
-        log.info("Deleting alert rule id={}", id);
-        alertRepository.deleteRule(id);
-    }
 
 
     public List<SystemAlertVO> listAlerts(String level) {
@@ -94,7 +43,7 @@ public class AlertService {
         SystemAlertVO alert = alerts.stream()
                 .filter(a -> a.getId().equals(id))
                 .findFirst()
-                .orElseThrow(() -> new com.rocketmq.studio.common.exception.BusinessException(404, "System alert not found: " + id));
+                .orElseThrow(() -> new BusinessException(404, "System alert not found: " + id));
         alert.setAcknowledged(true);
         return alertRepository.saveAlert(alert);
     }

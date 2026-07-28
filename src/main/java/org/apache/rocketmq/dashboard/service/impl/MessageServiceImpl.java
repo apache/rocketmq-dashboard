@@ -46,21 +46,22 @@ public class MessageServiceImpl extends ArchitectureBasedService implements Mess
 
     @Override
     public Pair<MessageView, List<MessageTrack>> viewMessage(String topic, String msgId) {
-        try {
-            if (supports("MESSAGE_QUERY")) {
-                MessageInfo messageInfo = getMetadataProvider().getMessageById(msgId).orElse(null);
-                if (messageInfo != null) {
-                    MessageView messageView = new MessageView();
-                    messageView.setTopic(messageInfo.getTopic());
-                    messageView.setMsgId(messageInfo.getMsgId());
-                    // Additional field mapping from MessageInfo to MessageView
-                    return new Pair<>(messageView, Collections.emptyList());
-                }
-            }
+        if (!supports("MESSAGE_QUERY")) {
             handleUnsupportedOperation("View message - not supported in current cluster");
+        }
+        try {
+            MessageInfo messageInfo = getMetadataProvider().getMessageById(msgId).orElse(null);
+            if (messageInfo != null) {
+                MessageView messageView = new MessageView();
+                messageView.setTopic(messageInfo.getTopic());
+                messageView.setMsgId(messageInfo.getMsgId());
+                // Additional field mapping from MessageInfo to MessageView
+                return new Pair<>(messageView, Collections.emptyList());
+            }
+            // Message not found is not an unsupported operation, degrade gracefully
             return new Pair<>(null, Collections.emptyList());
         } catch (Exception e) {
-            handleUnsupportedOperation("View message");
+            log.warn("Failed to view message: {}", msgId, e);
             return new Pair<>(null, Collections.emptyList());
         }
     }

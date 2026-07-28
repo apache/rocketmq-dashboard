@@ -23,8 +23,13 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import org.apache.rocketmq.dashboard.cli.executor.ToolExecutor;
+import org.apache.rocketmq.dashboard.cli.schema.ToolDefinition;
 import org.apache.rocketmq.dashboard.mcp.resources.ResourceProvider;
 import org.apache.rocketmq.dashboard.mcp.tools.McpToolRegistry;
 import org.apache.rocketmq.dashboard.mcp.tools.SecurityGate;
@@ -53,7 +58,22 @@ public class McpServerTest {
     public void setUp() {
         objectMapper = new ObjectMapper();
         securityGate = new SecurityGate();
-        toolRegistry = new McpToolRegistry(securityGate);
+        // Stub executor: canned data, no cluster connection needed in tests
+        toolRegistry = new McpToolRegistry(securityGate, new ToolExecutor() {
+            @Override
+            public Object execute(ToolDefinition tool, Map<String, Object> arguments) {
+                if ("LIST".equals(tool.getReturnType())) {
+                    List<Map<String, Object>> list = new ArrayList<>();
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("name", tool.getResource() + "-1");
+                    list.add(item);
+                    return list;
+                }
+                Map<String, Object> obj = new LinkedHashMap<>();
+                obj.put("name", tool.getResource() + "-detail");
+                return obj;
+            }
+        });
         resourceProvider = new ResourceProvider();
         protocolHandler = new McpProtocolHandler(toolRegistry, resourceProvider);
     }

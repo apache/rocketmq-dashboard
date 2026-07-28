@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.rocketmq.studio.ops.alert;
+package org.apache.rocketmq.dashboard.model;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
@@ -24,6 +24,10 @@ import lombok.NoArgsConstructor;
 
 import java.util.List;
 
+/**
+ * Alert rule value object for the alert CRUD API ({@code /api/alert/rules}).
+ * Field layout follows Prometheus alerting rule conventions.
+ */
 @Data
 @Builder
 @NoArgsConstructor

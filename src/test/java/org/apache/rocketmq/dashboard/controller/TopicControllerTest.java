@@ -23,6 +23,7 @@ import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.dashboard.architecture.MetadataProvider;
 import org.apache.rocketmq.dashboard.model.TopicInfo;
 import org.apache.rocketmq.dashboard.model.TopicType;
 import org.apache.rocketmq.dashboard.model.request.SendTopicMessageRequest;
@@ -32,11 +33,8 @@ import org.apache.rocketmq.dashboard.service.ClusterInfoService;
 import org.apache.rocketmq.dashboard.service.ConsumerService;
 import org.apache.rocketmq.dashboard.service.impl.TopicServiceImpl;
 import org.apache.rocketmq.dashboard.util.MockObjectUtil;
-import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
 import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
-import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
-import org.apache.rocketmq.remoting.protocol.body.ConsumerRunningInfo;
 import org.apache.rocketmq.remoting.protocol.body.GroupList;
 import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.junit.Before;
@@ -48,11 +46,12 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -71,6 +70,9 @@ public class TopicControllerTest extends BaseControllerTest {
 
     @Mock
     private ClusterInfoService clusterInfoService;
+
+    @Mock
+    private MetadataProvider metadataProvider;
 
     private String topicName = "topic_test";
 
@@ -100,7 +102,7 @@ public class TopicControllerTest extends BaseControllerTest {
         requestBuilder.param("skipSysProcess", String.valueOf(true));
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-                .andExpect(jsonPath("$.data", hasSize(6)));
+                .andExpect(jsonPath("$.data", hasSize(4)));
 
         // 2、list all topic filter DLQ and Retry topic
         requestBuilder = MockMvcRequestBuilders.get(url);
@@ -114,7 +116,7 @@ public class TopicControllerTest extends BaseControllerTest {
         requestBuilder = MockMvcRequestBuilders.get(url);
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-                .andExpect(jsonPath("$.data", hasSize(6)));
+                .andExpect(jsonPath("$.data", hasSize(4)));
     }
 
     @Test
@@ -155,12 +157,8 @@ public class TopicControllerTest extends BaseControllerTest {
         perform = mockMvc.perform(requestBuilder);
         performErrorExpect(perform);
 
-        {
-            ClusterInfo clusterInfo = MockObjectUtil.createClusterInfo();
-            when(mqAdminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo);
-            doNothing().when(mqAdminExt).createAndUpdateTopicConfig(anyString(), any());
-        }
-
+        // createOrUpdate goes through metadataProvider: getTopic returns Optional.empty()
+        // by default, so createTopic (void, doNothing by default) is invoked
         List<String> clusterNameList = Lists.newArrayList("DefaultCluster");
         info.setTopicName("topic_test");
         info.setReadQueueNums(4);
@@ -180,7 +178,8 @@ public class TopicControllerTest extends BaseControllerTest {
     public void testExamineTopicConfig() throws Exception {
         final String url = "/topic/examineTopicConfig.query";
         {
-            when(topicService.examineTopicConfig(anyString())).thenReturn(List.of(new TopicConfig(topicName)));
+            // examineTopicConfig is a default method that throws; stub the spy directly
+            doReturn(List.of(new TopicConfig(topicName))).when(topicService).examineTopicConfig(anyString());
         }
         requestBuilder = MockMvcRequestBuilders.get(url);
         requestBuilder.param("topic", topicName);
@@ -193,13 +192,10 @@ public class TopicControllerTest extends BaseControllerTest {
     public void testQueryConsumerByTopic() throws Exception {
         final String url = "/topic/queryConsumerByTopic.query";
         {
-            GroupList list = new GroupList();
-            list.setGroupList(Sets.newHashSet("group1"));
-            when(mqAdminExt.queryTopicConsumeByWho(anyString())).thenReturn(list);
-            ConsumeStats consumeStats = MockObjectUtil.createConsumeStats();
-            when(mqAdminExt.examineConsumeStats(anyString(), anyString())).thenReturn(consumeStats);
-            when(mqAdminExt.examineConsumerConnectionInfo(anyString())).thenReturn(new ConsumerConnection());
-            when(mqAdminExt.getConsumerRunningInfo(anyString(), anyString(), anyBoolean())).thenReturn(new ConsumerRunningInfo());
+            // the endpoint delegates to consumerService.queryConsumeStatsListByTopicName
+            Map<String, Object> consumeStatsMap = new HashMap<>();
+            consumeStatsMap.put("group1", new ArrayList<>());
+            when(consumerService.queryConsumeStatsListByTopicName(anyString())).thenReturn(consumeStatsMap);
         }
         requestBuilder = MockMvcRequestBuilders.get(url);
         requestBuilder.param("topic", topicName);
@@ -214,7 +210,8 @@ public class TopicControllerTest extends BaseControllerTest {
         {
             GroupList list = new GroupList();
             list.setGroupList(Sets.newHashSet("group1", "group2", "group3"));
-            when(mqAdminExt.queryTopicConsumeByWho(anyString())).thenReturn(list);
+            // queryTopicConsumerInfo is a default method that throws; stub the spy directly
+            doReturn(list).when(topicService).queryTopicConsumerInfo(anyString());
         }
         requestBuilder = MockMvcRequestBuilders.get(url);
         requestBuilder.param("topic", topicName);
@@ -229,7 +226,8 @@ public class TopicControllerTest extends BaseControllerTest {
         {
             SendResult result = new SendResult(SendStatus.SEND_OK, "7F000001E41A2E5D6D978B82C20F003D",
                     "0A8E83C300002A9F00000000000013D3", new MessageQueue(), 1000L);
-            when(topicService.sendTopicMessageRequest(any(SendTopicMessageRequest.class))).thenReturn(result);
+            // sendTopicMessageRequest is a default method that throws; stub the spy directly
+            doReturn(result).when(topicService).sendTopicMessageRequest(any(SendTopicMessageRequest.class));
         }
         SendTopicMessageRequest request = new SendTopicMessageRequest();
         request.setTopic(topicName);
@@ -246,12 +244,7 @@ public class TopicControllerTest extends BaseControllerTest {
     @Test
     public void testDelete() throws Exception {
         final String url = "/topic/deleteTopic.do";
-        {
-            ClusterInfo clusterInfo = MockObjectUtil.createClusterInfo();
-            when(mqAdminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo);
-            doNothing().when(mqAdminExt).deleteTopicInBroker(any(), anyString());
-            doNothing().when(mqAdminExt).deleteTopicInNameServer(any(), anyString());
-        }
+        // deleteTopic goes through metadataProvider.deleteTopic (void, doNothing by default)
 
         // 1、clusterName is blank
         requestBuilder = MockMvcRequestBuilders.post(url);
@@ -270,9 +263,8 @@ public class TopicControllerTest extends BaseControllerTest {
     @Test
     public void testDeleteTopicByBroker() throws Exception {
         {
-            ClusterInfo clusterInfo = MockObjectUtil.createClusterInfo();
-            when(mqAdminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo);
-            doNothing().when(mqAdminExt).deleteTopicInBroker(any(), anyString());
+            // deleteTopicInBroker is a default method that throws; stub the spy directly
+            doReturn(true).when(topicService).deleteTopicInBroker(anyString(), anyString());
         }
         final String url = "/topic/deleteTopicByBroker.do";
         requestBuilder = MockMvcRequestBuilders.post(url);

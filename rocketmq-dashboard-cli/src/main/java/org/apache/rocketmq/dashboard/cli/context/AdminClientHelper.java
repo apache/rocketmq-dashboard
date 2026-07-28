@@ -187,6 +187,86 @@ public class AdminClientHelper implements AutoCloseable {
     }
 
     /**
+     * Create an AdminClientHelper without printing to stdout. Intended for
+     * embedded usage (e.g. MCP stdio transport where stdout carries the
+     * JSON-RPC protocol stream). Resolves cluster name from the CLI
+     * configuration, falling back to the current context when {@code clusterName}
+     * is null.
+     *
+     * @param clusterName cluster name (if null, uses current context)
+     * @return connected AdminClientHelper (caller must close)
+     */
+    public static AdminClientHelper connectQuiet(String clusterName) throws Exception {
+        CliContext ctx = new CliContext();
+
+        String resolvedName = clusterName;
+        if (resolvedName == null) {
+            CliConfig.ContextEntry contextEntry = ctx.resolveCurrentContext();
+            if (contextEntry != null) {
+                resolvedName = contextEntry.getCluster();
+            }
+        }
+        if (resolvedName == null) {
+            throw new IllegalStateException("No cluster specified and no current context set. Use 'rmqctl config use-context' or --cluster.");
+        }
+
+        CliConfig.ClusterEntry cluster = ctx.getConfig().getClusters().get(resolvedName);
+        if (cluster == null) {
+            throw new IllegalStateException("Cluster '" + resolvedName + "' not found in configuration. Use 'rmqctl config add-cluster'.");
+        }
+
+        String nsAddr = cluster.getNamesrvAddr();
+        if (StringUtils.isEmpty(nsAddr)) {
+            throw new IllegalStateException("Cluster '" + resolvedName + "' has no namesrvAddr configured.");
+        }
+
+        String userRef = null;
+        CliConfig.ContextEntry contextEntry = ctx.resolveCurrentContext();
+        if (contextEntry != null && resolvedName.equals(contextEntry.getCluster())) {
+            userRef = contextEntry.getUser();
+        }
+
+        RPCHook rpcHook = null;
+        if (userRef != null) {
+            CliConfig.UserEntry user = ctx.getConfig().getUsers().get(userRef);
+            if (user != null && StringUtils.isNotEmpty(user.getAccessKey()) && StringUtils.isNotEmpty(user.getSecretKey())) {
+                rpcHook = new AclClientRPCHook(new SessionCredentials(user.getAccessKey(), user.getSecretKey()));
+            }
+        }
+
+        DefaultMQAdminExt mqAdminExt = new DefaultMQAdminExt(rpcHook, 10000);
+        mqAdminExt.setAdminExtGroup("rmqctl_cli_" + System.currentTimeMillis());
+        mqAdminExt.setVipChannelEnabled(false);
+        mqAdminExt.setNamesrvAddr(nsAddr);
+        mqAdminExt.start();
+
+        log.info("Connected to cluster: {} ({})", resolvedName, nsAddr);
+        return new AdminClientHelper(mqAdminExt, resolvedName, nsAddr);
+    }
+
+    /**
+     * Create an AdminClientHelper connected directly to the given NameServer
+     * address, bypassing the CLI configuration. No stdout output is produced,
+     * so it is safe for embedded/stdio usage.
+     *
+     * @param namesrvAddr NameServer address, e.g. {@code 127.0.0.1:9876}
+     * @return connected AdminClientHelper (caller must close)
+     */
+    public static AdminClientHelper connectDirect(String namesrvAddr) throws Exception {
+        if (StringUtils.isEmpty(namesrvAddr)) {
+            throw new IllegalArgumentException("namesrvAddr must not be empty.");
+        }
+        DefaultMQAdminExt mqAdminExt = new DefaultMQAdminExt((RPCHook) null, 10000);
+        mqAdminExt.setAdminExtGroup("rmqctl_cli_" + System.currentTimeMillis());
+        mqAdminExt.setVipChannelEnabled(false);
+        mqAdminExt.setNamesrvAddr(namesrvAddr);
+        mqAdminExt.start();
+
+        log.info("Connected to namesrv: {}", namesrvAddr);
+        return new AdminClientHelper(mqAdminExt, null, namesrvAddr);
+    }
+
+    /**
      * Resolve cluster name from local option or root --cluster.
      */
     public static String resolveClusterName(String localCluster, RmqctlCommand root) {

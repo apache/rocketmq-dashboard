@@ -55,28 +55,31 @@ export interface AuditQuery {
 }
 
 // ─── Alert Rules ────────────────────────────────────────────────
+// RESTful contract served by the dashboard backend at /api/alert/rules
 export async function listAlertRules() {
-  const res = await client.get<{ data: AlertRule[] }>('/alert-rules');
+  const res = await client.get<{ data: AlertRule[] }>('/alert/rules');
   return res.data.data;
 }
 
 export async function createAlertRule(data: Partial<AlertRule>) {
-  const res = await client.post<{ data: AlertRule }>('/alert-rules/create', data);
+  const res = await client.post<{ data: AlertRule }>('/alert/rules', data);
   return res.data.data;
 }
 
 export async function updateAlertRule(data: AlertRule) {
-  const res = await client.post<{ data: AlertRule }>('/alert-rules/update', data);
+  const res = await client.put<{ data: AlertRule }>(`/alert/rules/${data.id}`, data);
   return res.data.data;
 }
 
 export async function toggleAlertRule(id: string, enabled: boolean) {
-  const res = await client.post<{ data: AlertRule }>('/alert-rules/toggle', { id, enabled });
+  const res = await client.post<{ data: AlertRule }>(`/alert/rules/${id}/enable`, null, {
+    params: { enabled },
+  });
   return res.data.data;
 }
 
 export async function deleteAlertRule(id: string) {
-  await client.post('/alert-rules/delete', { id });
+  await client.delete(`/alert/rules/${id}`);
 }
 
 // ─── System Alerts ──────────────────────────────────────────────

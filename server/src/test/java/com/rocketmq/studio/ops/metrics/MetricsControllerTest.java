@@ -92,8 +92,8 @@ class MetricsControllerTest {
 
         mockMvc.perform(get("/api/metrics/overview"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.message").value("success"))
+                .andExpect(jsonPath("$.status").value(0))
+                .andExpect(jsonPath("$.errMsg").isEmpty())
                 .andExpect(jsonPath("$.data.totalTpsIn").value(8000))
                 .andExpect(jsonPath("$.data.totalTpsOut").value(7900))
                 .andExpect(jsonPath("$.data.totalMessageCountToday").value(12500000))
@@ -124,7 +124,7 @@ class MetricsControllerTest {
 
         mockMvc.perform(get("/api/metrics/brokers/broker-a-0"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.status").value(0))
                 .andExpect(jsonPath("$.data.brokerId").value("broker-a-0"))
                 .andExpect(jsonPath("$.data.brokerName").value("broker-a"))
                 .andExpect(jsonPath("$.data.role").value("MASTER"));
@@ -144,7 +144,7 @@ class MetricsControllerTest {
 
         mockMvc.perform(get("/api/metrics/topics/ORDER_TOPIC"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.status").value(0))
                 .andExpect(jsonPath("$.data.topicName").value("ORDER_TOPIC"))
                 .andExpect(jsonPath("$.data.queueCount").value(16));
 
@@ -162,7 +162,7 @@ class MetricsControllerTest {
 
         mockMvc.perform(get("/api/metrics/consumer-groups/order-service-group"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.status").value(0))
                 .andExpect(jsonPath("$.data.groupName").value("order-service-group"))
                 .andExpect(jsonPath("$.data.consumerCount").value(5));
 
@@ -181,7 +181,7 @@ class MetricsControllerTest {
 
         mockMvc.perform(get("/api/metrics/overview"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.status").value(0))
                 .andExpect(jsonPath("$.data.brokers").isArray())
                 .andExpect(jsonPath("$.data.brokers").isEmpty())
                 .andExpect(jsonPath("$.data.topTopics").isEmpty())

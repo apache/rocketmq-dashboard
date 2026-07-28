@@ -19,12 +19,13 @@ package org.apache.rocketmq.dashboard.controller;
 import org.apache.rocketmq.client.QueryResult;
 import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.client.trace.TraceType;
+import org.apache.rocketmq.common.Pair;
 import org.apache.rocketmq.common.message.MessageExt;
+import org.apache.rocketmq.dashboard.model.MessageView;
 import org.apache.rocketmq.dashboard.service.impl.MessageServiceImpl;
 import org.apache.rocketmq.dashboard.service.impl.MessageTraceServiceImpl;
 import org.apache.rocketmq.dashboard.util.MockObjectUtil;
 import org.apache.rocketmq.tools.admin.api.MessageTrack;
-import org.apache.rocketmq.tools.admin.api.TrackType;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.InjectMocks;
@@ -35,10 +36,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.hamcrest.Matchers.hasSize;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -71,17 +72,14 @@ public class MessageTraceControllerTest extends BaseControllerTest {
     public void testViewMessage() throws Exception {
         final String url = "/messageTrace/viewMessage.query";
         {
-            MessageExt messageExt = MockObjectUtil.createMessageExt();
-            when(mqAdminExt.viewMessage(anyString(), anyString()))
-                    .thenThrow(new MQClientException(208, "no message"))
-                    .thenReturn(messageExt);
-            MessageTrack track = new MessageTrack();
-            track.setConsumerGroup("group_test");
-            track.setTrackType(TrackType.CONSUMED);
-            List<MessageTrack> tracks = new ArrayList<>();
-            tracks.add(track);
-            when(mqAdminExt.messageTrackDetail(any()))
-                    .thenReturn(tracks);
+            MessageView messageView = new MessageView();
+            messageView.setTopic("topic_test");
+            messageView.setMsgId("0A9A003F00002A9F0000000000000319");
+            // viewMessage is resolved by the architecture layer; stub the spy directly:
+            // 1st call fails (no message), 2nd call succeeds
+            doThrow(new RuntimeException("no message"))
+                    .doReturn(new Pair<>(messageView, new ArrayList<MessageTrack>()))
+                    .when(messageService).viewMessage(anyString(), anyString());
         }
         // no message
         requestBuilder = MockMvcRequestBuilders.get(url);

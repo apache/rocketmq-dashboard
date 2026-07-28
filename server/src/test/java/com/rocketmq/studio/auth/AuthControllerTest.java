@@ -68,8 +68,8 @@ class AuthControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.message").value("success"))
+                .andExpect(jsonPath("$.status").value(0))
+                .andExpect(jsonPath("$.errMsg").isEmpty())
                 .andExpect(jsonPath("$.data.token").value("mock-jwt-abc123"))
                 .andExpect(jsonPath("$.data.expiresIn").value(86400))
                 .andExpect(jsonPath("$.data.user.username").value("testuser"))
@@ -107,8 +107,8 @@ class AuthControllerTest {
 
         mockMvc.perform(post("/api/auth/logout"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.message").value("success"));
+                .andExpect(jsonPath("$.status").value(0))
+                .andExpect(jsonPath("$.errMsg").isEmpty());
 
         verify(authService).logout();
     }

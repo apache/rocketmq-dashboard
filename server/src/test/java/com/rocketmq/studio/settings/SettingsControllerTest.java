@@ -68,8 +68,8 @@ class SettingsControllerTest {
 
         mockMvc.perform(get("/api/settings/general"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code", is(200)))
-                .andExpect(jsonPath("$.message", is("success")))
+                .andExpect(jsonPath("$.status", is(0)))
+                .andExpect(jsonPath("$.errMsg").isEmpty())
                 .andExpect(jsonPath("$.data.theme", is("dark")))
                 .andExpect(jsonPath("$.data.compact", is(true)))
                 .andExpect(jsonPath("$.data.desktopNotify", is(true)))
@@ -93,7 +93,7 @@ class SettingsControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(settings)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code", is(200)))
+                .andExpect(jsonPath("$.status", is(0)))
                 .andExpect(jsonPath("$.data").doesNotExist());
 
         verify(settingsService).saveGeneralSettings(any(GeneralSettingsVO.class));
@@ -109,7 +109,7 @@ class SettingsControllerTest {
 
         mockMvc.perform(get("/api/settings/datasources"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code", is(200)))
+                .andExpect(jsonPath("$.status", is(0)))
                 .andExpect(jsonPath("$.data", hasSize(2)))
                 .andExpect(jsonPath("$.data[0].key", is("ds-1")))
                 .andExpect(jsonPath("$.data[0].name", is("Production")))
@@ -124,7 +124,7 @@ class SettingsControllerTest {
 
         mockMvc.perform(get("/api/settings/datasources"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code", is(200)))
+                .andExpect(jsonPath("$.status", is(0)))
                 .andExpect(jsonPath("$.data", hasSize(0)));
     }
 
@@ -140,7 +140,7 @@ class SettingsControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(input)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code", is(200)))
+                .andExpect(jsonPath("$.status", is(0)))
                 .andExpect(jsonPath("$.data.key", is("ds-new")))
                 .andExpect(jsonPath("$.data.name", is("New DS")))
                 .andExpect(jsonPath("$.data.status", is("connected")));
@@ -156,7 +156,7 @@ class SettingsControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(input)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code", is(200)))
+                .andExpect(jsonPath("$.status", is(0)))
                 .andExpect(jsonPath("$.data.key", is("ds-1")))
                 .andExpect(jsonPath("$.data.name", is("Updated DS")));
     }
@@ -168,7 +168,7 @@ class SettingsControllerTest {
         mockMvc.perform(post("/api/settings/datasources/delete")
                         .param("key", "ds-1"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code", is(200)));
+                .andExpect(jsonPath("$.status", is(0)));
 
         verify(settingsService).deleteDataSource("ds-1");
     }
@@ -189,7 +189,7 @@ class SettingsControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code", is(200)))
+                .andExpect(jsonPath("$.status", is(0)))
                 .andExpect(jsonPath("$.data.success", is(true)))
                 .andExpect(jsonPath("$.data.message", is("Connection successful")));
     }

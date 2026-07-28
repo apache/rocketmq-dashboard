@@ -17,25 +17,16 @@
 package org.apache.rocketmq.dashboard.controller;
 
 import com.alibaba.fastjson.JSON;
-import com.google.common.cache.Cache;
-import org.apache.rocketmq.client.QueryResult;
-import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
-import org.apache.rocketmq.client.consumer.PullResult;
-import org.apache.rocketmq.client.consumer.PullStatus;
-import org.apache.rocketmq.client.exception.MQBrokerException;
-import org.apache.rocketmq.client.exception.MQClientException;
-import org.apache.rocketmq.common.message.MessageClientIDSetter;
-import org.apache.rocketmq.common.message.MessageExt;
-import org.apache.rocketmq.common.message.MessageQueue;
-import org.apache.rocketmq.dashboard.model.QueueOffsetInfo;
+import org.apache.rocketmq.common.Pair;
+import org.apache.rocketmq.dashboard.architecture.ClusterProvider;
+import org.apache.rocketmq.dashboard.architecture.MetadataProvider;
+import org.apache.rocketmq.dashboard.model.ClusterCapability;
+import org.apache.rocketmq.dashboard.model.MessageInfo;
+import org.apache.rocketmq.dashboard.model.MessageView;
 import org.apache.rocketmq.dashboard.model.request.MessageQuery;
 import org.apache.rocketmq.dashboard.service.impl.MessageServiceImpl;
-import org.apache.rocketmq.dashboard.support.AutoCloseConsumerWrapper;
-import org.apache.rocketmq.dashboard.util.MockObjectUtil;
-import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.remoting.protocol.body.CMResult;
 import org.apache.rocketmq.remoting.protocol.body.ConsumeMessageDirectlyResult;
-import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.tools.admin.api.MessageTrack;
 import org.apache.rocketmq.tools.admin.api.TrackType;
 import org.junit.Before;
@@ -46,20 +37,22 @@ import org.mockito.Spy;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
-import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 public class MessageControllerTest extends BaseControllerTest {
+
+    private static final String MSG_ID = "0A9A003F00002A9F0000000000000319";
 
     @InjectMocks
     private MessageController messageController;
@@ -67,94 +60,64 @@ public class MessageControllerTest extends BaseControllerTest {
     @Spy
     private MessageServiceImpl messageService;
 
-    private Set<MessageQueue> messageQueues;
-
-    private DefaultMQPullConsumer defaultMQPullConsumer;
+    @Mock
+    private MetadataProvider metadataProvider;
 
     @Mock
-    private AutoCloseConsumerWrapper autoCloseConsumerWrapper;
+    private ClusterProvider clusterProvider;
 
     @Before
     public void init() throws Exception {
         super.mockRmqConfigure();
-        {
-            List<MessageExt> wrappers = new ArrayList<>(1);
-            wrappers.add(MockObjectUtil.createMessageExt());
-            defaultMQPullConsumer = mock(DefaultMQPullConsumer.class);
-            messageQueues = new HashSet<>(1);
-            MessageQueue messageQueue = new MessageQueue("topic_test", "broker-a", 0);
-            messageQueues.add(messageQueue);
-            when(defaultMQPullConsumer.fetchSubscribeMessageQueues(anyString())).thenReturn(messageQueues);
-            when(defaultMQPullConsumer.searchOffset(messageQueue, Long.MIN_VALUE)).thenReturn(Long.MIN_VALUE);
-            when(defaultMQPullConsumer.searchOffset(messageQueue, Long.MAX_VALUE)).thenReturn(Long.MAX_VALUE - 10L);
-            PullResult pullResult = mock(PullResult.class);
-            when(defaultMQPullConsumer.pull(any(), anyString(), anyLong(), anyInt())).thenReturn(pullResult);
-            when(pullResult.getNextBeginOffset()).thenReturn(Long.MAX_VALUE);
-            when(pullResult.getPullStatus()).thenReturn(PullStatus.FOUND);
-            when(pullResult.getMsgFoundList()).thenReturn(wrappers);
+        // enable message related capabilities for the architecture abstraction layer
+        ClusterCapability capability = new ClusterCapability();
+        capability.setExtendedCapabilities(new HashSet<>(Arrays.asList(
+                "MESSAGE_QUERY", "MESSAGE_QUERY_BY_KEY", "MESSAGE_CONSUME_DIRECTLY")));
+        when(clusterProvider.getClusterCapability()).thenReturn(capability);
+    }
 
-            // Ensure searchOffset returns values that make sense for the test times
-            when(defaultMQPullConsumer.searchOffset(any(MessageQueue.class), anyLong())).thenAnswer(invocation -> {
-                long timestamp = invocation.getArgument(1);
-                if (timestamp <= System.currentTimeMillis()) {
-                    return 0L; // Beginning offset for timestamps in the past
-                } else {
-                    return Long.MAX_VALUE - 10L; // Near max offset for future timestamps
-                }
-            });
-
-            // Make sure that messageService.queryMessageByTopicAndKey returns some messages for the test
-            MessageExt messageExt = MockObjectUtil.createMessageExt();
-            List<MessageExt> foundMessages = new ArrayList<>();
-            foundMessages.add(messageExt);
-
-            // Ensure the PullResult always returns a message
-            PullResult pullResultWithMessages = mock(PullResult.class);
-            when(pullResultWithMessages.getPullStatus()).thenReturn(PullStatus.FOUND);
-            when(pullResultWithMessages.getMsgFoundList()).thenReturn(foundMessages);
-            when(pullResultWithMessages.getNextBeginOffset()).thenReturn(1L);
-
-            // Override the previous mock to ensure the test finds messages
-            when(defaultMQPullConsumer.pull(any(MessageQueue.class), anyString(), anyLong(), anyInt()))
-                    .thenReturn(pullResultWithMessages);
-            when(autoCloseConsumerWrapper.getConsumer(any(RPCHook.class), anyBoolean())).thenReturn(defaultMQPullConsumer);
-        }
+    private MessageInfo createMessageInfo() {
+        MessageInfo messageInfo = new MessageInfo();
+        messageInfo.setMsgId(MSG_ID);
+        messageInfo.setTopic("topic_test");
+        return messageInfo;
     }
 
     @Test
     public void testViewMessage() throws Exception {
         final String url = "/message/viewMessage.query";
         {
-            MessageExt messageExt = MockObjectUtil.createMessageExt();
-            when(mqAdminExt.viewMessage(anyString(), anyString()))
-                    .thenThrow(new MQClientException(208, "no message"))
-                    .thenReturn(messageExt);
+            MessageView messageView = new MessageView();
+            messageView.setTopic("topic_test");
+            messageView.setMsgId(MSG_ID);
             MessageTrack track = new MessageTrack();
             track.setConsumerGroup("group_test");
             track.setTrackType(TrackType.CONSUMED);
             List<MessageTrack> tracks = new ArrayList<>();
             tracks.add(track);
-            when(mqAdminExt.messageTrackDetail(any()))
-                    .thenThrow(new MQBrokerException(206, "consumer not online"))
-                    .thenReturn(tracks);
+            // 1st call: message not found -> error; 2nd: no track; 3rd: with track
+            doThrow(new RuntimeException("no message"))
+                    .doReturn(new Pair<>(messageView, new ArrayList<MessageTrack>()))
+                    .doReturn(new Pair<>(messageView, tracks))
+                    .when(messageService).viewMessage(anyString(), anyString());
         }
         // no message
         requestBuilder = MockMvcRequestBuilders.get(url);
         requestBuilder.param("topic", "topic_test");
-        requestBuilder.param("msgId", "0A9A003F00002A9F0000000000000319");
+        requestBuilder.param("msgId", MSG_ID);
         perform = mockMvc.perform(requestBuilder);
         performErrorExpect(perform);
 
         // consumer not online
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.messageView.msgId").value("0A9A003F00002A9F0000000000000319"))
+                .andExpect(jsonPath("$.data.messageView.msgId").value(MSG_ID))
                 .andExpect(jsonPath("$.data.messageTrackList", hasSize(0)));
 
         // query message success and has a group consumed.
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.messageView.msgId").value("0A9A003F00002A9F0000000000000319"))
+                .andExpect(jsonPath("$.data.messageView.msgId").value(MSG_ID))
                 .andExpect(jsonPath("$.data.messageTrackList", hasSize(1)))
                 .andExpect(jsonPath("$.data.messageTrackList[0].consumerGroup").value("group_test"))
                 .andExpect(jsonPath("$.data.messageTrackList[0].trackType").value(TrackType.CONSUMED.name()));
@@ -163,6 +126,12 @@ public class MessageControllerTest extends BaseControllerTest {
     @Test
     public void testQueryMessagePageByTopic() throws Exception {
         final String url = "/message/queryMessagePageByTopic.query";
+        {
+            // 1st query finds nothing, 2nd query returns one message
+            when(metadataProvider.queryMessageByTopic(anyString(), anyLong(), anyLong(), anyInt()))
+                    .thenReturn(new ArrayList<>())
+                    .thenReturn(List.of(createMessageInfo()));
+        }
         MessageQuery query = new MessageQuery();
         query.setPageNum(1);
         query.setPageSize(10);
@@ -171,7 +140,7 @@ public class MessageControllerTest extends BaseControllerTest {
         query.setBegin(System.currentTimeMillis() - 3 * 24 * 60 * 60 * 1000);
         query.setEnd(System.currentTimeMillis());
 
-        // missed cache
+        // no message found
         requestBuilder = MockMvcRequestBuilders.post(url);
         requestBuilder.contentType(MediaType.APPLICATION_JSON_UTF8);
         requestBuilder.content(JSON.toJSONString(query));
@@ -179,41 +148,20 @@ public class MessageControllerTest extends BaseControllerTest {
         perform.andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.page.content", hasSize(0)));
 
-        String taskId = MessageClientIDSetter.createUniqID();
-        {
-            List<QueueOffsetInfo> queueOffsetInfos = new ArrayList<>();
-            int idx = 0;
-            for (MessageQueue messageQueue : messageQueues) {
-                Long minOffset = defaultMQPullConsumer.searchOffset(messageQueue, query.getBegin());
-                Long maxOffset = defaultMQPullConsumer.searchOffset(messageQueue, query.getEnd()) + 1;
-                queueOffsetInfos.add(new QueueOffsetInfo(idx++, minOffset, maxOffset, minOffset, minOffset, messageQueue));
-            }
-            // Use reflection to add data to the CACHE
-            Field field = MessageServiceImpl.class.getDeclaredField("CACHE");
-            field.setAccessible(true);
-            Cache<String, List<QueueOffsetInfo>> cache = (Cache<String, List<QueueOffsetInfo>>) field.get(messageService);
-            cache.put(taskId, queueOffsetInfos);
-        }
-
-        // hit cache
-        query.setTaskId(taskId);
-        query.setPageNum(1);
+        // message found
         requestBuilder.content(JSON.toJSONString(query));
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.page.content", hasSize(1)))
-                .andExpect(jsonPath("$.data.page.content[0].msgId").value("0A9A003F00002A9F0000000000000319"));
+                .andExpect(jsonPath("$.data.page.content[0].msgId").value(MSG_ID));
     }
 
     @Test
     public void testQueryMessageByTopicAndKey() throws Exception {
         final String url = "/message/queryMessageByTopicAndKey.query";
         {
-            List<MessageExt> messageList = new ArrayList<>(2);
-            messageList.add(MockObjectUtil.createMessageExt());
-            QueryResult queryResult = new QueryResult(System.currentTimeMillis(), messageList);
-            when(mqAdminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
-                    .thenReturn(queryResult);
+            when(metadataProvider.queryMessageByTopicAndKey(anyString(), anyString(), anyLong(), anyLong()))
+                    .thenReturn(List.of(createMessageInfo()));
         }
         requestBuilder = MockMvcRequestBuilders.get(url);
         requestBuilder.param("topic", "topic_test");
@@ -221,12 +169,16 @@ public class MessageControllerTest extends BaseControllerTest {
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
                 .andExpect(jsonPath("$.data", hasSize(1)))
-                .andExpect(jsonPath("$.data[0].msgId").value("0A9A003F00002A9F0000000000000319"));
+                .andExpect(jsonPath("$.data[0].msgId").value(MSG_ID));
     }
 
     @Test
     public void testQueryMessageByTopic() throws Exception {
         final String url = "/message/queryMessageByTopic.query";
+        {
+            when(metadataProvider.queryMessageByTopic(anyString(), anyLong(), anyLong(), anyInt()))
+                    .thenReturn(List.of(createMessageInfo()));
+        }
         requestBuilder = MockMvcRequestBuilders.get(url);
         requestBuilder.param("topic", "topic_test")
                 .param("begin", Long.toString(System.currentTimeMillis() - 3 * 24 * 60 * 60 * 1000))
@@ -234,7 +186,7 @@ public class MessageControllerTest extends BaseControllerTest {
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
                 .andExpect(jsonPath("$.data", hasSize(1)))
-                .andExpect(jsonPath("$.data[0].msgId").value("0A9A003F00002A9F0000000000000319"));
+                .andExpect(jsonPath("$.data[0].msgId").value(MSG_ID));
     }
 
     @Test
@@ -245,18 +197,16 @@ public class MessageControllerTest extends BaseControllerTest {
             result1.setConsumeResult(CMResult.CR_SUCCESS);
             ConsumeMessageDirectlyResult result2 = new ConsumeMessageDirectlyResult();
             result2.setConsumeResult(CMResult.CR_LATER);
-            when(mqAdminExt.consumeMessageDirectly(anyString(), anyString(), anyString(), anyString()))
+            // clientId is optional so the second request passes null
+            when(metadataProvider.consumeMessageDirectly(anyString(), anyString(), anyString(), nullable(String.class)))
                     .thenReturn(result1).thenReturn(result2);
-            ConsumerConnection consumerConnection = MockObjectUtil.createConsumerConnection();
-            when(mqAdminExt.examineConsumerConnectionInfo(anyString()))
-                    .thenReturn(consumerConnection);
         }
 
         // clientId is not empty
         requestBuilder = MockMvcRequestBuilders.post(url);
         requestBuilder.param("topic", "topic_test")
                 .param("consumerGroup", "group_test")
-                .param("msgId", "0A9A003F00002A9F0000000000000319")
+                .param("msgId", MSG_ID)
                 .param("clientId", "127.0.0.1@37540#2295913058176000");
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
@@ -266,7 +216,7 @@ public class MessageControllerTest extends BaseControllerTest {
         requestBuilder = MockMvcRequestBuilders.post(url);
         requestBuilder.param("topic", "topic_test")
                 .param("consumerGroup", "group_test")
-                .param("msgId", "0A9A003F00002A9F0000000000000319");
+                .param("msgId", MSG_ID);
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.consumeResult").value(CMResult.CR_LATER.name()));

@@ -69,8 +69,8 @@ class BranchCompensateAlertRuleControllerTest {
 
         mockMvc.perform(get("/api/branch-compensate-alert-rules"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.message").value("success"))
+                .andExpect(jsonPath("$.status").value(0))
+                .andExpect(jsonPath("$.errMsg").isEmpty())
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data[0].id").value("1"))
                 .andExpect(jsonPath("$.data[0].name").value("Broker-A Lag"))
@@ -90,7 +90,7 @@ class BranchCompensateAlertRuleControllerTest {
 
         mockMvc.perform(get("/api/branch-compensate-alert-rules"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.status").value(0))
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data").isEmpty());
     }
@@ -112,7 +112,7 @@ class BranchCompensateAlertRuleControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(input)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.status").value(0))
                 .andExpect(jsonPath("$.data.id").value("uuid-1"))
                 .andExpect(jsonPath("$.data.name").value("New Rule"))
                 .andExpect(jsonPath("$.data.brokerName").value("broker-c"))
@@ -140,7 +140,7 @@ class BranchCompensateAlertRuleControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(input)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.status").value(0))
                 .andExpect(jsonPath("$.data.id").value("rule-1"))
                 .andExpect(jsonPath("$.data.name").value("Updated Rule"))
                 .andExpect(jsonPath("$.data.lagThreshold").value(2048))
@@ -163,7 +163,7 @@ class BranchCompensateAlertRuleControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(toggleRequest)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.status").value(0))
                 .andExpect(jsonPath("$.data.id").value("rule-1"))
                 .andExpect(jsonPath("$.data.enabled").value(true));
 
@@ -179,7 +179,7 @@ class BranchCompensateAlertRuleControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(deleteRequest)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200));
+                .andExpect(jsonPath("$.status").value(0));
 
         verify(branchCompensateAlertRuleService).deleteRule("rule-1");
     }

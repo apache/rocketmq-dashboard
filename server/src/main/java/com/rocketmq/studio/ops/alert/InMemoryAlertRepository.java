@@ -19,7 +19,6 @@ package com.rocketmq.studio.ops.alert;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -29,31 +28,7 @@ import java.util.stream.Collectors;
 @Component
 public class InMemoryAlertRepository implements AlertRepository {
 
-    private final Map<String, AlertRuleVO> rules = new ConcurrentHashMap<>();
     private final Map<String, SystemAlertVO> alerts = new ConcurrentHashMap<>();
-
-    @Override
-    public List<AlertRuleVO> findAllRules() {
-        return new ArrayList<>(rules.values());
-    }
-
-    @Override
-    public AlertRuleVO findRuleById(String id) {
-        return rules.get(id);
-    }
-
-    @Override
-    public AlertRuleVO saveRule(AlertRuleVO rule) {
-        rules.put(rule.getId(), rule);
-        log.debug("Saved alert rule id={}", rule.getId());
-        return rule;
-    }
-
-    @Override
-    public void deleteRule(String id) {
-        rules.remove(id);
-        log.debug("Deleted alert rule id={}", id);
-    }
 
     @Override
     public List<SystemAlertVO> findAlerts(String level) {

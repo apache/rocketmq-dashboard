@@ -67,7 +67,7 @@ class DLQControllerTest {
 
         mockMvc.perform(get("/api/dlq"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.status").value(0))
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data[0].groupName").value("test-group"))
                 .andExpect(jsonPath("$.data[0].dlqTopic").value("%DLQ%test-group"))
@@ -99,8 +99,8 @@ class DLQControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(body)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.message").value("success"));
+                .andExpect(jsonPath("$.status").value(0))
+                .andExpect(jsonPath("$.errMsg").isEmpty());
 
         verify(dlqService).resendMessages(
                 eq("test-group"), eq(1000L), eq(2000L), eq("target-topic"));
@@ -117,7 +117,7 @@ class DLQControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(body)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200));
+                .andExpect(jsonPath("$.status").value(0));
 
         verify(dlqService).resendMessages(
                 eq("test-group"), isNull(), isNull(), eq("target-topic"));

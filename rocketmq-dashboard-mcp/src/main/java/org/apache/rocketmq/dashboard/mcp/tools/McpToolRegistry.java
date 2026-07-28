@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.apache.rocketmq.dashboard.cli.executor.ToolExecutor;
 import org.apache.rocketmq.dashboard.cli.schema.ParamSchema;
 import org.apache.rocketmq.dashboard.cli.schema.ToolDefinition;
 import org.apache.rocketmq.dashboard.cli.schema.ToolRegistry;
@@ -39,9 +40,23 @@ public class McpToolRegistry {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final SecurityGate securityGate;
+    private final ToolExecutor toolExecutor;
 
+    /**
+     * Creates a registry backed by a real {@link ToolExecutor}: tools/call
+     * executes allowed operations against the cluster via MQAdminExt.
+     */
     public McpToolRegistry(SecurityGate securityGate) {
+        this(securityGate, new ToolExecutor());
+    }
+
+    /**
+     * Creates a registry with an explicit executor, mainly for tests that
+     * inject a stub {@link ToolExecutor}.
+     */
+    public McpToolRegistry(SecurityGate securityGate, ToolExecutor toolExecutor) {
         this.securityGate = securityGate;
+        this.toolExecutor = toolExecutor;
     }
 
     /**
@@ -129,9 +144,13 @@ public class McpToolRegistry {
 
         switch (checkResult.getAction()) {
             case ALLOW:
-                return buildSuccessResult(tool, arguments);
+                return buildLiveResult(tool, arguments);
 
             case DRY_RUN:
+                // A confirmed dry-run executes for real (mirrors CLI --confirm)
+                if (isConfirmed(arguments)) {
+                    return buildLiveResult(tool, arguments);
+                }
                 return buildDryRunResult(tool, arguments, checkResult);
 
             case BLOCK:
@@ -142,42 +161,47 @@ public class McpToolRegistry {
         }
     }
 
+    private boolean isConfirmed(Map<String, Object> arguments) {
+        if (arguments == null) {
+            return false;
+        }
+        Object confirm = arguments.get("confirm");
+        return Boolean.TRUE.equals(confirm) || "true".equalsIgnoreCase(String.valueOf(confirm));
+    }
+
     /**
-     * Build a success result for allowed operations (primarily L1 read-only tools).
-     * Returns a mock/simulated result since the MCP server does not connect
-     * to a live RocketMQ cluster by default.
+     * Execute the tool against the live cluster through the shared
+     * {@link ToolExecutor} and wrap the outcome in the MCP result envelope.
+     * Execution failures surface as explicit errors instead of silently
+     * falling back to mock data.
      */
-    private String buildSuccessResult(ToolDefinition tool, Map<String, Object> arguments) {
+    private String buildLiveResult(ToolDefinition tool, Map<String, Object> arguments) {
+        if (toolExecutor == null) {
+            return buildErrorResult("No tool executor configured", "EXECUTION_ERROR");
+        }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("tool", tool.getMcpToolName());
         result.put("resource", tool.getResource());
         result.put("verb", tool.getVerb());
         result.put("riskLevel", tool.getRiskLevel().name());
-        result.put("status", "success");
 
-        if (arguments != null && !arguments.isEmpty()) {
-            result.put("arguments", arguments);
-        }
-
-        // Generate mock data based on return type
-        switch (tool.getReturnType()) {
-            case "LIST":
-                result.put("data", generateMockList(tool));
-                break;
-            case "OBJECT":
-                result.put("data", generateMockObject(tool, arguments));
-                break;
-            case "VOID":
-                result.put("data", "OK");
-                break;
-            default:
-                result.put("data", generateMockObject(tool, arguments));
+        try {
+            Object data = toolExecutor.execute(tool, arguments);
+            result.put("status", "success");
+            result.put("live", true);
+            result.put("data", data != null ? data : "OK");
+        } catch (UnsupportedOperationException e) {
+            log.warn("Tool {} not supported for live execution: {}", tool.getName(), e.getMessage());
+            return buildErrorResult(e.getMessage(), "UNSUPPORTED");
+        } catch (Exception e) {
+            log.error("Live execution failed for tool {}: {}", tool.getName(), e.getMessage(), e);
+            return buildErrorResult("Execution failed: " + e.getMessage(), "EXECUTION_ERROR");
         }
 
         try {
             return objectMapper.writeValueAsString(result);
         } catch (JsonProcessingException e) {
-            log.error("Error serializing result: {}", e.getMessage(), e);
+            log.error("Error serializing live result: {}", e.getMessage(), e);
             return "{}";
         }
     }
@@ -245,77 +269,6 @@ public class McpToolRegistry {
         } catch (JsonProcessingException e) {
             return "{\"status\":\"error\",\"message\":\"" + message + "\"}";
         }
-    }
-
-    // ---- Mock data generators ------------------------------------------------
-
-    private List<Map<String, Object>> generateMockList(ToolDefinition tool) {
-        List<Map<String, Object>> list = new ArrayList<>();
-        for (int i = 1; i <= 3; i++) {
-            Map<String, Object> item = new LinkedHashMap<>();
-            switch (tool.getResource()) {
-                case "topic":
-                    item.put("name", "Topic-" + i);
-                    item.put("status", "ACTIVE");
-                    item.put("queueNums", 8);
-                    item.put("perm", 6);
-                    break;
-                case "group":
-                    item.put("name", "Group-" + i);
-                    item.put("status", "ACTIVE");
-                    item.put("consumeMode", "CLUSTER");
-                    break;
-                case "cluster":
-                    item.put("name", "Cluster-" + i);
-                    item.put("status", "HEALTHY");
-                    break;
-                case "namespace":
-                    item.put("name", "ns-" + i);
-                    item.put("status", "ACTIVE");
-                    break;
-                case "acl":
-                    item.put("policyId", "policy-" + i);
-                    item.put("username", "user-" + i);
-                    item.put("decision", "ALLOW");
-                    break;
-                case "broker":
-                    item.put("name", "broker-" + i);
-                    item.put("status", "RUNNING");
-                    item.put("version", "5.5.0");
-                    break;
-                case "client":
-                    item.put("clientId", "client-" + i);
-                    item.put("type", "CONSUMER");
-                    item.put("version", "5.5.0");
-                    break;
-                case "message":
-                    item.put("msgId", "7F00000100002A9F" + i);
-                    item.put("topic", "Topic-" + i);
-                    break;
-                case "capabilities":
-                    item.put("feature", "capability-" + i);
-                    item.put("supported", true);
-                    break;
-                default:
-                    item.put("id", "item-" + i);
-                    item.put("name", tool.getResource() + "-" + i);
-            }
-            list.add(item);
-        }
-        return list;
-    }
-
-    private Map<String, Object> generateMockObject(ToolDefinition tool, Map<String, Object> arguments) {
-        Map<String, Object> obj = new LinkedHashMap<>();
-        obj.put("name", arguments != null && arguments.containsKey("topic")
-                ? arguments.get("topic")
-                : tool.getResource() + "-detail");
-        obj.put("status", "ACTIVE");
-        obj.put("type", tool.getResource());
-        if (arguments != null) {
-            obj.put("requestedParams", arguments);
-        }
-        return obj;
     }
 
     private List<String> generateAffectedResources(ToolDefinition tool, Map<String, Object> arguments) {

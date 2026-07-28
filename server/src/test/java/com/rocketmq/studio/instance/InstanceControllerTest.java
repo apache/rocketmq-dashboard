@@ -63,7 +63,7 @@ class InstanceControllerTest {
 
         mockMvc.perform(get("/api/instances"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.status").value(0))
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data[0].id").value("inst-1"))
                 .andExpect(jsonPath("$.data[0].name").value("production-proxy"))
@@ -125,7 +125,7 @@ class InstanceControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(input)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.status").value(0))
                 .andExpect(jsonPath("$.data.id").value("new-id"))
                 .andExpect(jsonPath("$.data.name").value("new-instance"))
                 .andExpect(jsonPath("$.data.endpoint").value("10.0.2.1:8080"))
@@ -154,7 +154,7 @@ class InstanceControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(update)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.status").value(0))
                 .andExpect(jsonPath("$.data.id").value("inst-1"))
                 .andExpect(jsonPath("$.data.name").value("updated-name"));
     }
@@ -169,8 +169,8 @@ class InstanceControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(body)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.message").value("success"));
+                .andExpect(jsonPath("$.status").value(0))
+                .andExpect(jsonPath("$.errMsg").isEmpty());
 
         verify(instanceService).deleteInstance("inst-1");
     }

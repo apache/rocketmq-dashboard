@@ -1166,7 +1166,13 @@ public class V5ProxyMetadataProvider implements MetadataProvider {
         if (removed == null) {
             throw new IllegalArgumentException("ACL user '" + username + "' not found");
         }
-        aclPolicyStore.values().removeIf(p -> p.getUsers() != null && p.getUsers().contains(username));
+        // Detach the user from associated policies instead of deleting them, so that
+        // grants for other users sharing the same policy are preserved.
+        for (ACLPolicy policy : aclPolicyStore.values()) {
+            if (policy.getUsers() != null) {
+                policy.getUsers().remove(username);
+            }
+        }
         log.info("Deleted ACL 2.0 user: {}", username);
     }
 

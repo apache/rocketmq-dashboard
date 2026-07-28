@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.dashboard.mcp;
 
+import org.apache.rocketmq.dashboard.cli.executor.ToolExecutor;
 import org.apache.rocketmq.dashboard.mcp.resources.ResourceProvider;
 import org.apache.rocketmq.dashboard.mcp.tools.McpToolRegistry;
 import org.apache.rocketmq.dashboard.mcp.tools.SecurityGate;
@@ -96,7 +97,7 @@ public class McpServerApplication {
         } else {
             // Stdio mode: use StdioTransport directly, no Spring context
             SecurityGate securityGate = new SecurityGate(enableDangerousOps);
-            McpToolRegistry toolRegistry = new McpToolRegistry(securityGate);
+            McpToolRegistry toolRegistry = new McpToolRegistry(securityGate, new ToolExecutor());
             ResourceProvider resourceProvider = new ResourceProvider();
             McpProtocolHandler protocolHandler = new McpProtocolHandler(toolRegistry, resourceProvider);
 

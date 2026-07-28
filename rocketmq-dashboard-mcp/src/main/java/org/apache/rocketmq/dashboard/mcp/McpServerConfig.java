@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.dashboard.mcp;
 
+import org.apache.rocketmq.dashboard.cli.executor.ToolExecutor;
 import org.apache.rocketmq.dashboard.mcp.resources.ResourceProvider;
 import org.apache.rocketmq.dashboard.mcp.tools.McpToolRegistry;
 import org.apache.rocketmq.dashboard.mcp.tools.SecurityGate;
@@ -54,8 +55,13 @@ public class McpServerConfig {
     }
 
     @Bean
-    public McpToolRegistry mcpToolRegistry(SecurityGate securityGate) {
-        return new McpToolRegistry(securityGate);
+    public ToolExecutor toolExecutor() {
+        return new ToolExecutor();
+    }
+
+    @Bean
+    public McpToolRegistry mcpToolRegistry(SecurityGate securityGate, ToolExecutor toolExecutor) {
+        return new McpToolRegistry(securityGate, toolExecutor);
     }
 
     @Bean

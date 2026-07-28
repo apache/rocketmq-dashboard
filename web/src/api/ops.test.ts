@@ -131,7 +131,7 @@ describe('Ops API - Alert Rules', () => {
         description: 'CPU alert',
       },
     ];
-    mock.onGet('/alert-rules').reply(200, { code: 200, data: rules });
+    mock.onGet('/alert/rules').reply(200, { code: 200, data: rules });
 
     const result = await listAlertRules();
     expect(result).toHaveLength(1);
@@ -139,12 +139,12 @@ describe('Ops API - Alert Rules', () => {
   });
 
   it('creates an alert rule', async () => {
-    mock.onPost('/alert-rules/create').reply(200, { code: 200 });
+    mock.onPost('/alert/rules').reply(200, { code: 200 });
     await createAlertRule({ name: 'TestAlert', metric: 'memory', operator: '>', threshold: 90 });
   });
 
   it('updates an alert rule', async () => {
-    mock.onPost('/alert-rules/update').reply((config) => {
+    mock.onPut('/alert/rules/1').reply((config) => {
       const body = JSON.parse(config.data);
       expect(body.id).toBe('1');
       expect(body.threshold).toBe(95);
@@ -154,21 +154,15 @@ describe('Ops API - Alert Rules', () => {
   });
 
   it('toggles an alert rule', async () => {
-    mock.onPost('/alert-rules/toggle').reply((config) => {
-      const body = JSON.parse(config.data);
-      expect(body.id).toBe('1');
-      expect(body.enabled).toBe(false);
+    mock.onPost('/alert/rules/1/enable').reply((config) => {
+      expect(config.params).toEqual({ enabled: false });
       return [200, { code: 200 }];
     });
     await toggleAlertRule('1', false);
   });
 
   it('deletes an alert rule', async () => {
-    mock.onPost('/alert-rules/delete').reply((config) => {
-      const body = JSON.parse(config.data);
-      expect(body.id).toBe('1');
-      return [200, { code: 200 }];
-    });
+    mock.onDelete('/alert/rules/1').reply(200, { code: 200 });
     await deleteAlertRule('1');
   });
 });
@@ -218,7 +212,7 @@ describe('Ops API - System Alerts & Audit', () => {
     mock.onGet('/audit-logs').reply(200, {
       code: 200,
       data: {
-        list: [
+        items: [
           {
             id: 'r1',
             timestamp: '2026-01-01',

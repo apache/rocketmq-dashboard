@@ -18,13 +18,18 @@ package org.apache.rocketmq.dashboard.mcp.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import org.apache.rocketmq.dashboard.cli.executor.ToolExecutor;
+import org.apache.rocketmq.dashboard.cli.schema.ToolDefinition;
 import org.junit.Before;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -34,11 +39,32 @@ public class McpToolRegistryExtTest {
     private McpToolRegistry registry;
     private SecurityGate securityGate;
 
+    /**
+     * Stub executor that returns canned data without connecting to a cluster.
+     */
+    private static ToolExecutor stubExecutor() {
+        return new ToolExecutor() {
+            @Override
+            public Object execute(ToolDefinition tool, Map<String, Object> arguments) {
+                if ("LIST".equals(tool.getReturnType())) {
+                    List<Map<String, Object>> list = new ArrayList<>();
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("name", tool.getResource() + "-1");
+                    list.add(item);
+                    return list;
+                }
+                Map<String, Object> obj = new LinkedHashMap<>();
+                obj.put("name", tool.getResource() + "-detail");
+                return obj;
+            }
+        };
+    }
+
     @Before
     public void setUp() {
         objectMapper = new ObjectMapper();
         securityGate = new SecurityGate();
-        registry = new McpToolRegistry(securityGate);
+        registry = new McpToolRegistry(securityGate, stubExecutor());
     }
 
     // ---- Tools list tests ------------------------------------------------------
@@ -191,63 +217,73 @@ public class McpToolRegistryExtTest {
         assertTrue("SecurityGate should be the same instance", gate == securityGate);
     }
 
-    // ---- Mock data generation coverage tests -----------------------------------
+    // ---- Live execution tests ----------------------------------------------------
 
     @Test
-    public void testCallClusterListGeneratesClusterData() throws Exception {
+    public void testCallClusterListReturnsLiveData() throws Exception {
         Map<String, Object> args = new LinkedHashMap<>();
         args.put("cluster", "test-cluster");
         String result = registry.handleToolsCall("rmq.cluster.list", args);
 
         JsonNode root = objectMapper.readTree(result);
         assertEquals("success", root.get("status").asText());
+        assertTrue("Result should be flagged as live execution", root.get("live").asBoolean());
         JsonNode data = root.get("data");
         assertTrue("Data should be array", data.isArray());
-        JsonNode first = data.get(0);
-        assertTrue("Should have name", first.has("name"));
-        assertEquals("Status should be HEALTHY", "HEALTHY", first.get("status").asText());
+        assertEquals("Data should come from the executor, not mock generators",
+                "cluster-1", data.get(0).get("name").asText());
     }
 
     @Test
-    public void testCallGroupListGeneratesGroupData() throws Exception {
+    public void testCallExecutorFailureReturnsExecutionError() throws Exception {
+        McpToolRegistry failingRegistry = new McpToolRegistry(securityGate, new ToolExecutor() {
+            @Override
+            public Object execute(ToolDefinition tool, Map<String, Object> arguments) throws Exception {
+                throw new IllegalStateException("connection refused");
+            }
+        });
+
         Map<String, Object> args = new LinkedHashMap<>();
         args.put("cluster", "test-cluster");
-        String result = registry.handleToolsCall("rmq.group.list", args);
+        String result = failingRegistry.handleToolsCall("rmq.topic.list", args);
 
         JsonNode root = objectMapper.readTree(result);
-        assertEquals("success", root.get("status").asText());
-        JsonNode data = root.get("data");
-        JsonNode first = data.get(0);
-        assertTrue("Should have consumeMode", first.has("consumeMode"));
-        assertEquals("CLUSTER", first.get("consumeMode").asText());
+        assertEquals("Status should be error, never mock fallback",
+                "error", root.get("status").asText());
+        assertEquals("EXECUTION_ERROR", root.get("code").asText());
+        assertTrue(root.get("message").asText().contains("connection refused"));
     }
 
     @Test
-    public void testCallBrokerListGeneratesBrokerData() throws Exception {
+    public void testCallUnsupportedToolReturnsUnsupported() throws Exception {
+        McpToolRegistry unsupportedRegistry = new McpToolRegistry(securityGate, new ToolExecutor() {
+            @Override
+            public Object execute(ToolDefinition tool, Map<String, Object> arguments) {
+                throw new UnsupportedOperationException("Namespace operations are not supported");
+            }
+        });
+
         Map<String, Object> args = new LinkedHashMap<>();
         args.put("cluster", "test-cluster");
-        String result = registry.handleToolsCall("rmq.broker.list", args);
+        String result = unsupportedRegistry.handleToolsCall("rmq.namespace.list", args);
 
         JsonNode root = objectMapper.readTree(result);
-        assertEquals("success", root.get("status").asText());
-        JsonNode data = root.get("data");
-        JsonNode first = data.get(0);
-        assertTrue("Should have version", first.has("version"));
-        assertEquals("Version should be 5.5.0", "5.5.0", first.get("version").asText());
+        assertEquals("error", root.get("status").asText());
+        assertEquals("UNSUPPORTED", root.get("code").asText());
     }
 
     @Test
-    public void testCallClientListGeneratesClientData() throws Exception {
+    public void testCallL2WithConfirmExecutesLive() throws Exception {
         Map<String, Object> args = new LinkedHashMap<>();
         args.put("cluster", "test-cluster");
-        String result = registry.handleToolsCall("rmq.client.list", args);
+        args.put("topic", "new-topic");
+        args.put("confirm", true);
+        String result = registry.handleToolsCall("rmq.topic.create", args);
 
         JsonNode root = objectMapper.readTree(result);
-        assertEquals("success", root.get("status").asText());
-        JsonNode data = root.get("data");
-        JsonNode first = data.get(0);
-        assertTrue("Should have clientId", first.has("clientId"));
-        assertTrue("Should have type", first.has("type"));
-        assertTrue("Should have version", first.has("version"));
+        assertEquals("Confirmed L2 call should execute for real",
+                "success", root.get("status").asText());
+        assertTrue(root.get("live").asBoolean());
+        assertFalse("Should not return dry-run preview", root.has("dryRunData"));
     }
 }

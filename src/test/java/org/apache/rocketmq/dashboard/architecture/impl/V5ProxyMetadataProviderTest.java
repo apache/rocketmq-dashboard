@@ -76,7 +76,6 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
-import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -1216,8 +1215,11 @@ public class V5ProxyMetadataProviderTest {
 
     @Test
     public void testResetConsumerGroupOffset_Success() throws Exception {
-        doNothing().when(mqAdminExt).resetOffsetByTimestamp(
-            eq("test-group"), eq("test-topic"), eq(1234567890L), eq(false));
+        // resetOffsetByTimestamp is not void (returns Map<MessageQueue, Long>),
+        // so stub it with when/thenReturn instead of doNothing()
+        when(mqAdminExt.resetOffsetByTimestamp(
+            eq("test-group"), eq("test-topic"), eq(1234567890L), eq(false)))
+            .thenReturn(new HashMap<>());
 
         provider.resetConsumerGroupOffset("test-group", "test-topic", 1234567890L);
         verify(mqAdminExt).resetOffsetByTimestamp("test-group", "test-topic", 1234567890L, false);
@@ -1302,6 +1304,10 @@ public class V5ProxyMetadataProviderTest {
 
     @Test
     public void testListLiteTopics_ReturnsEmptyList() throws Exception {
+        TopicList topicList = new TopicList();
+        topicList.setTopicList(new HashSet<>());
+        when(mqAdminExt.fetchAllTopicList()).thenReturn(topicList);
+
         List<LiteTopicSummary> result = provider.listLiteTopics("pattern-*", Optional.empty());
         assertNotNull("Result should not be null", result);
         assertTrue("Result should be empty", result.isEmpty());
@@ -1389,11 +1395,13 @@ public class V5ProxyMetadataProviderTest {
 
     @Test
     public void testUpdateNamespace_Valid() throws Exception {
+        // updateNamespace requires a non-empty namespaceName, so update the
+        // configured namespace instead of the default (empty-string) one
         NamespaceInfo ns = new NamespaceInfo();
-        ns.setNamespaceName("");
-        ns.setDisplayName("Updated Default");
+        ns.setNamespaceName("test-namespace");
+        ns.setDisplayName("Updated Display");
 
-        provider.updateNamespace(ns);
+        providerWithNamespace.updateNamespace(ns);
 
         assertNotNull("Update time should be set", ns.getUpdateTime());
     }

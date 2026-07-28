@@ -14,10 +14,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.rocketmq.studio.ops.alert;
+package org.apache.rocketmq.dashboard.controller;
 
-import com.rocketmq.studio.common.domain.Result;
-import lombok.RequiredArgsConstructor;
+import jakarta.annotation.Resource;
+import org.apache.rocketmq.dashboard.model.AlertRuleVO;
+import org.apache.rocketmq.dashboard.service.AlertRuleService;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -28,39 +29,50 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
-
+/**
+ * Alert rule CRUD endpoints, aligned with the frontend remoteApi calls:
+ * <table border="1">
+ *   <tr><th>Method</th><th>Path</th><th>Description</th></tr>
+ *   <tr><td>GET</td><td>/api/alert/rules</td><td>List all alert rules</td></tr>
+ *   <tr><td>POST</td><td>/api/alert/rules</td><td>Create an alert rule</td></tr>
+ *   <tr><td>PUT</td><td>/api/alert/rules/{id}</td><td>Update an alert rule</td></tr>
+ *   <tr><td>POST</td><td>/api/alert/rules/{id}/enable</td><td>Enable/disable an alert rule</td></tr>
+ *   <tr><td>DELETE</td><td>/api/alert/rules/{id}</td><td>Delete an alert rule</td></tr>
+ * </table>
+ * Responses are wrapped into {@code {status, data, errMsg}} by
+ * {@link org.apache.rocketmq.dashboard.support.GlobalRestfulResponseBodyAdvice}.
+ */
 @RestController
 @RequestMapping("/api/alert/rules")
-@RequiredArgsConstructor
 public class AlertRuleController {
 
-    private final AlertService alertService;
+    @Resource
+    private AlertRuleService alertRuleService;
 
     @GetMapping
-    public Result<List<AlertRuleVO>> listRules() {
-        return Result.ok(alertService.listRules());
+    public Object listRules() {
+        return alertRuleService.listRules();
     }
 
     @PostMapping
-    public Result<AlertRuleVO> createRule(@RequestBody AlertRuleVO rule) {
-        return Result.ok(alertService.createRule(rule));
+    public Object createRule(@RequestBody AlertRuleVO rule) {
+        return alertRuleService.createRule(rule);
     }
 
     @PutMapping("/{id}")
-    public Result<AlertRuleVO> updateRule(@PathVariable String id, @RequestBody AlertRuleVO rule) {
+    public Object updateRule(@PathVariable String id, @RequestBody AlertRuleVO rule) {
         rule.setId(id);
-        return Result.ok(alertService.updateRule(rule));
+        return alertRuleService.updateRule(rule);
     }
 
     @PostMapping("/{id}/enable")
-    public Result<AlertRuleVO> toggleRule(@PathVariable String id, @RequestParam boolean enabled) {
-        return Result.ok(alertService.toggleRule(id, enabled));
+    public Object toggleRule(@PathVariable String id, @RequestParam boolean enabled) {
+        return alertRuleService.toggleRule(id, enabled);
     }
 
     @DeleteMapping("/{id}")
-    public Result<Void> deleteRule(@PathVariable String id) {
-        alertService.deleteRule(id);
-        return Result.ok();
+    public Object deleteRule(@PathVariable String id) {
+        alertRuleService.deleteRule(id);
+        return true;
     }
 }

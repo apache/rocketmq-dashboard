@@ -30,6 +30,15 @@ public class MsgTraceDecodeUtilTest {
     private StringBuilder pubTraceDataBase;
     private StringBuilder subTraceDataBase;
 
+    /**
+     * Mirrors TraceBean's LOCAL_ADDRESS initialization: IPv4 hosts use ipToIPv4Str
+     * while IPv6 hosts use ipToIPv6Str.
+     */
+    private static String localAddress() {
+        byte[] ip = UtilAll.getIP();
+        return ip.length == 4 ? UtilAll.ipToIPv4Str(ip) : UtilAll.ipToIPv6Str(ip);
+    }
+
     @Before
     public void init() {
         pubTraceDataBase = new StringBuilder()
@@ -76,7 +85,7 @@ public class MsgTraceDecodeUtilTest {
         Assert.assertEquals(traceContextListV1.get(0).getTraceBeans().get(0).getMsgId(), "0A741C02622500000000080cc6980189");
         Assert.assertEquals(traceContextListV1.get(0).getTraceBeans().get(0).getOffsetMsgId(), "");
         Assert.assertEquals(traceContextListV1.get(0).getTraceBeans().get(0).getStoreHost(), "10.10.10.10:30911");
-        Assert.assertEquals(traceContextListV1.get(0).getTraceBeans().get(0).getClientHost(), UtilAll.ipToIPv4Str(UtilAll.getIP()));
+        Assert.assertEquals(traceContextListV1.get(0).getTraceBeans().get(0).getClientHost(), localAddress());
 
         String pubTraceData_V2 = new StringBuilder(pubTraceDataBase)
                 .append("false").append(TraceConstants.CONTENT_SPLITOR)
@@ -88,7 +97,7 @@ public class MsgTraceDecodeUtilTest {
         Assert.assertEquals(traceContextListV2.get(0).getTraceBeans().get(0).getMsgId(), "0A741C02622500000000080cc6980189");
         Assert.assertEquals(traceContextListV2.get(0).getTraceBeans().get(0).getOffsetMsgId(), "");
         Assert.assertEquals(traceContextListV2.get(0).getTraceBeans().get(0).getStoreHost(), "10.10.10.10:30911");
-        Assert.assertEquals(traceContextListV2.get(0).getTraceBeans().get(0).getClientHost(), UtilAll.ipToIPv4Str(UtilAll.getIP()));
+        Assert.assertEquals(traceContextListV2.get(0).getTraceBeans().get(0).getClientHost(), localAddress());
 
         String pubTraceData_V3 = new StringBuilder(pubTraceDataBase)
                 .append("0A741D02000078BF000000000132F7C9").append(TraceConstants.CONTENT_SPLITOR)
@@ -101,7 +110,7 @@ public class MsgTraceDecodeUtilTest {
         Assert.assertEquals(traceContextListV3.get(0).getTraceBeans().get(0).getMsgId(), "0A741C02622500000000080cc6980189");
         Assert.assertEquals(traceContextListV3.get(0).getTraceBeans().get(0).getOffsetMsgId(), "0A741D02000078BF000000000132F7C9");
         Assert.assertEquals(traceContextListV3.get(0).getTraceBeans().get(0).getStoreHost(), "10.10.10.10:30911");
-        Assert.assertEquals(traceContextListV3.get(0).getTraceBeans().get(0).getClientHost(), UtilAll.ipToIPv4Str(UtilAll.getIP()));
+        Assert.assertEquals(traceContextListV3.get(0).getTraceBeans().get(0).getClientHost(), localAddress());
 
         String pubTraceData_V4 = new StringBuilder(pubTraceDataBase)
                 .append("0A741D02000078BF000000000132F7C9").append(TraceConstants.CONTENT_SPLITOR)

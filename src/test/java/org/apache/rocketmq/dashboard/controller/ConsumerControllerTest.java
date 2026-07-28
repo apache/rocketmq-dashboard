@@ -19,8 +19,11 @@ package org.apache.rocketmq.dashboard.controller;
 
 import com.alibaba.fastjson.JSON;
 import com.google.common.collect.Lists;
-import org.apache.rocketmq.client.exception.MQClientException;
-import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.dashboard.architecture.AdminClient;
+import org.apache.rocketmq.dashboard.architecture.ClusterProvider;
+import org.apache.rocketmq.dashboard.architecture.MetadataProvider;
+import org.apache.rocketmq.dashboard.model.ConsumerGroupInfo;
+import org.apache.rocketmq.dashboard.model.GroupConsumeInfo;
 import org.apache.rocketmq.dashboard.model.QueueStatInfo;
 import org.apache.rocketmq.dashboard.model.TopicConsumerInfo;
 import org.apache.rocketmq.dashboard.model.request.ConsumerConfigInfo;
@@ -29,14 +32,11 @@ import org.apache.rocketmq.dashboard.model.request.ResetOffsetRequest;
 import org.apache.rocketmq.dashboard.service.ClusterInfoService;
 import org.apache.rocketmq.dashboard.service.impl.ConsumerServiceImpl;
 import org.apache.rocketmq.dashboard.util.MockObjectUtil;
-import org.apache.rocketmq.remoting.protocol.ResponseCode;
-import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
 import org.apache.rocketmq.remoting.protocol.admin.RollbackStats;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.Connection;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerRunningInfo;
-import org.apache.rocketmq.remoting.protocol.body.SubscriptionGroupWrapper;
 import org.apache.rocketmq.remoting.protocol.heartbeat.ConsumeType;
 import org.apache.rocketmq.remoting.protocol.heartbeat.MessageModel;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
@@ -56,7 +56,6 @@ import java.util.Map;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -73,28 +72,38 @@ public class ConsumerControllerTest extends BaseControllerTest {
     @Mock
     private ClusterInfoService clusterInfoService;
 
+    @Mock
+    private MetadataProvider metadataProvider;
+
+    @Mock
+    private ClusterProvider clusterProvider;
+
+    @Mock
+    private AdminClient adminClient;
+
     @Before
     public void init() throws Exception {
         // 2. mock ClusterInfo data
         ClusterInfo mockClusterInfo = getClusterInfo();
         when(clusterInfoService.get()).thenReturn(mockClusterInfo);
         super.mockRmqConfigure();
-//        ClusterInfo clusterInfo = MockObjectUtil.createClusterInfo();
-//        when(mqAdminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo);
-        SubscriptionGroupWrapper wrapper = MockObjectUtil.createSubscriptionGroupWrapper();
-        when(mqAdminExt.getAllSubscriptionGroup(anyString(), anyLong())).thenReturn(wrapper);
-        ConsumeStats stats = MockObjectUtil.createConsumeStats();
-        when(mqAdminExt.examineConsumeStats(anyString())).thenReturn(stats);
-        when(mqAdminExt.examineConsumeStats(anyString(), isNull())).thenReturn(stats);
-        ConsumerConnection connection = MockObjectUtil.createConsumerConnection();
-        when(mqAdminExt.examineConsumerConnectionInfo(anyString())).thenReturn(connection);
-        ConsumerRunningInfo runningInfo = MockObjectUtil.createConsumerRunningInfo();
-        when(mqAdminExt.getConsumerRunningInfo(anyString(), anyString(), anyBoolean()))
-                .thenReturn(runningInfo);
-        SubscriptionGroupConfig config = new SubscriptionGroupConfig();
-        config.setGroupName("group-test");
-        when(mqAdminExt.examineSubscriptionGroupConfig(anyString(), anyString()))
-                .thenReturn(config);
+        // stub the architecture abstraction layer used by ConsumerServiceImpl
+        List<ConsumerGroupInfo> consumerGroups = new ArrayList<>();
+        ConsumerGroupInfo group1 = new ConsumerGroupInfo();
+        group1.setConsumerGroupName("group_test");
+        group1.setClusterName("DefaultCluster");
+        consumerGroups.add(group1);
+        ConsumerGroupInfo group2 = new ConsumerGroupInfo();
+        group2.setConsumerGroupName("group_test2");
+        group2.setClusterName("DefaultCluster");
+        consumerGroups.add(group2);
+        when(metadataProvider.listConsumerGroups(any())).thenReturn(consumerGroups);
+
+        GroupConsumeInfo groupConsumeInfo = new GroupConsumeInfo();
+        groupConsumeInfo.setGroup("group_test");
+        groupConsumeInfo.setConsumeType(ConsumeType.CONSUME_ACTIVELY);
+        groupConsumeInfo.setMessageModel(MessageModel.CLUSTERING);
+        when(adminClient.getGroupConsumeInfo(anyString())).thenReturn(groupConsumeInfo);
     }
 
     @Test
@@ -104,8 +113,8 @@ public class ConsumerControllerTest extends BaseControllerTest {
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
                 .andExpect(jsonPath("$.data", hasSize(2)))
-                .andExpect(jsonPath("$.data[0].consumeType").value(ConsumeType.CONSUME_ACTIVELY.name()))
-                .andExpect(jsonPath("$.data[0].messageModel").value(MessageModel.CLUSTERING.name()));
+                .andExpect(jsonPath("$.data[0].consumerGroupName").value("group_test"))
+                .andExpect(jsonPath("$.data[0].clusterName").value("DefaultCluster"));
     }
 
     @Test
@@ -138,17 +147,17 @@ public class ConsumerControllerTest extends BaseControllerTest {
         rollbackStats.setRollbackOffset(10L);
         rollbackStats.setQueueId(5L);
         rollbackStats.setBrokerName("broker-a");
-        Map<MessageQueue, Long> rollbackStatsMap = new HashMap<>(0);
-        rollbackStatsMap.put(new MessageQueue("topic_test", "broker-a", 5), 10L);
+        String groupId = "group_test";
         {
-            MQClientException exception = new MQClientException(ResponseCode.CONSUMER_NOT_ONLINE, "不在线");
-            when(mqAdminExt.resetOffsetByTimestamp(anyString(), anyString(), anyLong(), anyBoolean()))
-                    .thenReturn(rollbackStatsMap).thenThrow(exception);
-            when(mqAdminExt.resetOffsetByTimestampOld(anyString(), anyString(), anyLong(), anyBoolean()))
-                    .thenReturn(Lists.newArrayList(rollbackStats));
+            // resetOffset is a controller-facing method resolved by the service layer;
+            // stub the spy directly to verify the endpoint wiring and serialization
+            Map<String, Object> groupRollbackStats = new HashMap<>();
+            groupRollbackStats.put("rollbackStatsList", Lists.newArrayList(rollbackStats));
+            Map<String, Object> resetResult = new HashMap<>();
+            resetResult.put(groupId, groupRollbackStats);
+            doReturn(resetResult).when(consumerService).resetOffset(any(ResetOffsetRequest.class));
         }
         ResetOffsetRequest request = new ResetOffsetRequest();
-        String groupId = "group_test";
         request.setTopic("topic_test");
         request.setResetTime(resetTime);
         request.setConsumerGroupList(Lists.newArrayList(groupId));
@@ -170,6 +179,8 @@ public class ConsumerControllerTest extends BaseControllerTest {
     @Test
     public void testFetchBrokerNameList() throws Exception {
         final String url = "/consumer/fetchBrokerNameList.query";
+        doReturn(new HashSet<>(Lists.newArrayList("broker-a")))
+                .when(consumerService).fetchBrokerNameSetBySubscriptionGroup(anyString());
         requestBuilder = MockMvcRequestBuilders.get(url);
         requestBuilder.param("consumerGroup", "group_test");
         perform = mockMvc.perform(requestBuilder);
@@ -185,6 +196,10 @@ public class ConsumerControllerTest extends BaseControllerTest {
             when(clusterInfoService.get()).thenReturn(mockClusterInfo);
         }
         final String url = "/consumer/examineSubscriptionGroupConfig.query";
+        SubscriptionGroupConfig config = new SubscriptionGroupConfig();
+        config.setGroupName("group_test");
+        doReturn(Lists.newArrayList(config))
+                .when(consumerService).examineSubscriptionGroupConfig(anyString());
         requestBuilder = MockMvcRequestBuilders.get(url);
         requestBuilder.param("consumerGroup", "group_test");
         perform = mockMvc.perform(requestBuilder);
@@ -198,9 +213,7 @@ public class ConsumerControllerTest extends BaseControllerTest {
         ClusterInfo mockClusterInfo = getClusterInfo();
         {
             when(clusterInfoService.get()).thenReturn(mockClusterInfo);
-            doNothing().when(mqAdminExt).deleteSubscriptionGroup(any(), anyString());
-            doNothing().when(mqAdminExt).deleteTopicInBroker(any(), anyString());
-            doNothing().when(mqAdminExt).deleteTopicInNameServer(any(), anyString());
+            doReturn(true).when(consumerService).deleteSubGroup(any(DeleteSubGroupRequest.class));
         }
         DeleteSubGroupRequest request = new DeleteSubGroupRequest();
         request.setBrokerNameList(Lists.newArrayList("broker-a"));
@@ -223,9 +236,6 @@ public class ConsumerControllerTest extends BaseControllerTest {
         requestBuilder.content(JSON.toJSONString(consumerConfigInfo));
         perform = mockMvc.perform(requestBuilder);
         performErrorExpect(perform);
-        {
-            doNothing().when(mqAdminExt).createAndUpdateSubscriptionGroupConfig(anyString(), any());
-        }
 
         List<String> clusterNameList = Lists.newArrayList("DefaultCluster");
         SubscriptionGroupConfig config = new SubscriptionGroupConfig();
@@ -313,6 +323,9 @@ public class ConsumerControllerTest extends BaseControllerTest {
     @Test
     public void testGetConsumerRunningInfo() throws Exception {
         final String url = "/consumer/consumerRunningInfo.query";
+        ConsumerRunningInfo runningInfo = MockObjectUtil.createConsumerRunningInfo();
+        doReturn(runningInfo).when(consumerService)
+                .getConsumerRunningInfo(anyString(), anyString(), anyBoolean());
         requestBuilder = MockMvcRequestBuilders.get(url);
         requestBuilder.param("consumerGroup", "group_test");
         requestBuilder.param("clientId", "group_test");
