@@ -33,6 +33,7 @@ import java.util.Collections;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -136,6 +137,89 @@ class K8sCertControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.id").value("cert-min"));
+    }
+
+    @Test
+    void createCertShouldRejectMissingName() throws Exception {
+        mockMvc.perform(post("/api/k8s-certs/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "namespace": "default",
+                                    "cluster": "test-cluster",
+                                    "type": "TLS",
+                                    "issuer": "vault"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("name is required"));
+
+        verifyNoInteractions(k8sCertService);
+    }
+
+    @Test
+    void createCertShouldRejectUnsupportedType() throws Exception {
+        mockMvc.perform(post("/api/k8s-certs/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "name": "new-cert",
+                                    "namespace": "default",
+                                    "cluster": "test-cluster",
+                                    "type": "PEM",
+                                    "issuer": "vault"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("type must be one of TLS, mTLS, ServiceAccount"));
+
+        verifyNoInteractions(k8sCertService);
+    }
+
+    @Test
+    void updateCertShouldRejectMissingId() throws Exception {
+        mockMvc.perform(post("/api/k8s-certs/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "name": "updated-cert"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("id is required"));
+
+        verifyNoInteractions(k8sCertService);
+    }
+
+    @Test
+    void renewCertShouldRejectBlankId() throws Exception {
+        mockMvc.perform(post("/api/k8s-certs/renew")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "id": " "
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("id is required"));
+
+        verifyNoInteractions(k8sCertService);
+    }
+
+    @Test
+    void deleteCertShouldRejectMissingId() throws Exception {
+        mockMvc.perform(post("/api/k8s-certs/delete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("id is required"));
+
+        verifyNoInteractions(k8sCertService);
     }
 
     private K8sCertVO buildCert(String id, String name, CertType type, CertStatus status) {
