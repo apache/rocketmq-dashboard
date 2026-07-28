@@ -44,11 +44,6 @@ public class TopicConfigInfo {
         this.clusterNameList = clusterNameList;
     }
 
-    /**
-     * topicConfig
-     */
-
-
     public List<String> getBrokerNameList() {
         return brokerNameList;
     }
