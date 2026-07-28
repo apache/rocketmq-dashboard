@@ -15,13 +15,19 @@
  * limitations under the License.
  */
 
-package org.apache.rocketmq.studio.ops;
+export const thresholdUnits: Record<string, string> = {
+  磁盘使用率: '%',
+  消费堆积量: '条',
+  'TPS 异常': 'TPS',
+  'Broker 离线': '个',
+  'Proxy 连接数': '个',
+};
 
-import jakarta.validation.constraints.NotNull;
-import lombok.Data;
-
-@Data
-public class OpsTlsDTO {
-    @NotNull(message = "useTLS is required")
-    private Boolean useTLS;
+export function attachThresholdUnit<T extends { metric: string }>(
+  values: T,
+): T & { thresholdUnit: string } {
+  return {
+    ...values,
+    thresholdUnit: thresholdUnits[values.metric] ?? '',
+  };
 }

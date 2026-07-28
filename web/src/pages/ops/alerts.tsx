@@ -43,6 +43,7 @@ import {
   toggleAlertRule,
   updateAlertRule,
 } from '../../services/opsService';
+import { attachThresholdUnit } from './alertRulePayload';
 
 const { TextArea } = Input;
 
@@ -55,14 +56,6 @@ const channelColors: Record<string, string> = {
 const metricOptions = ['磁盘使用率', '消费堆积量', 'TPS 异常', 'Broker 离线', 'Proxy 连接数'];
 
 const durationOptions = ['1分钟', '5分钟', '15分钟', '30分钟'];
-
-const thresholdUnits: Record<string, string> = {
-  磁盘使用率: '%',
-  消费堆积量: '条',
-  'TPS 异常': 'TPS',
-  'Broker 离线': '个',
-  'Proxy 连接数': '个',
-};
 
 const AlertsPage = () => {
   const { t } = useLang();
@@ -222,18 +215,16 @@ const AlertsPage = () => {
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
+      const payload = attachThresholdUnit(values);
       setSubmitting(true);
       if (editingRule) {
-        const updated = await updateAlertRule({ ...editingRule, ...values });
+        const updated = await updateAlertRule({ ...editingRule, ...payload });
         setRules((previous) =>
           previous.map((rule) => (rule.id === editingRule.id ? updated : rule)),
         );
         message.success('告警规则已更新');
       } else {
-        const created = await createAlertRule({
-          ...values,
-          thresholdUnit: thresholdUnits[values.metric] ?? '',
-        });
+        const created = await createAlertRule(payload);
         setRules((previous) => [...previous, created]);
         message.success(t('alerts.ruleCreated'));
       }

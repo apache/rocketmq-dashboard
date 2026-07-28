@@ -31,6 +31,7 @@ import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -81,6 +82,18 @@ class OpsControllerTest {
     }
 
     @Test
+    void updateNameSvrAddrShouldRejectMissingAddress() throws Exception {
+        mockMvc.perform(post("/api/ops/updateNameSvrAddr")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("namesrvAddr is required"));
+
+        verifyNoInteractions(opsService);
+    }
+
+    @Test
     void addNameSvrAddrShouldDelegateToService() throws Exception {
         mockMvc.perform(post("/api/ops/addNameSvrAddr")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -88,6 +101,18 @@ class OpsControllerTest {
                 .andExpect(status().isOk());
 
         verify(opsService).addNameServer(eq("10.0.0.2:9876"));
+    }
+
+    @Test
+    void addNameSvrAddrShouldRejectBlankAddress() throws Exception {
+        mockMvc.perform(post("/api/ops/addNameSvrAddr")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("namesrvAddr", " "))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("namesrvAddr is required"));
+
+        verifyNoInteractions(opsService);
     }
 
     @Test
@@ -101,6 +126,18 @@ class OpsControllerTest {
     }
 
     @Test
+    void updateVipChannelShouldRejectMissingFlag() throws Exception {
+        mockMvc.perform(post("/api/ops/updateIsVIPChannel")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("useVIPChannel is required"));
+
+        verifyNoInteractions(opsService);
+    }
+
+    @Test
     void updateUseTlsShouldDelegateToService() throws Exception {
         mockMvc.perform(post("/api/ops/updateUseTLS")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -108,5 +145,17 @@ class OpsControllerTest {
                 .andExpect(status().isOk());
 
         verify(opsService).updateUseTLS(true);
+    }
+
+    @Test
+    void updateUseTlsShouldRejectMissingFlag() throws Exception {
+        mockMvc.perform(post("/api/ops/updateUseTLS")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("useTLS is required"));
+
+        verifyNoInteractions(opsService);
     }
 }

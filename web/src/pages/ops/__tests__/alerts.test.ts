@@ -15,13 +15,29 @@
  * limitations under the License.
  */
 
-package org.apache.rocketmq.studio.ops;
+import { describe, expect, it } from 'vitest';
+import { attachThresholdUnit } from '../alertRulePayload';
 
-import jakarta.validation.constraints.NotNull;
-import lombok.Data;
+describe('attachThresholdUnit', () => {
+  it('derives the threshold unit from the selected metric', () => {
+    expect(attachThresholdUnit({ metric: 'Broker 离线', threshold: 1 })).toEqual({
+      metric: 'Broker 离线',
+      threshold: 1,
+      thresholdUnit: '个',
+    });
+  });
 
-@Data
-public class OpsTlsDTO {
-    @NotNull(message = "useTLS is required")
-    private Boolean useTLS;
-}
+  it('overwrites stale units when a metric changes', () => {
+    expect(
+      attachThresholdUnit({
+        metric: '消费堆积量',
+        threshold: 100,
+        thresholdUnit: '%',
+      }),
+    ).toEqual({
+      metric: '消费堆积量',
+      threshold: 100,
+      thresholdUnit: '条',
+    });
+  });
+});
