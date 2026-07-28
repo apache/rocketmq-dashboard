@@ -27,7 +27,8 @@ import java.util.List;
 public class MessageProviderStub implements MessageProvider {
 
     @Override
-    public List<MessageRecordVO> queryMessages(String topic, String msgId, String key, Long startTime, Long endTime) {
+    public List<MessageRecordVO> queryMessages(String topic, String msgId, String tag, String key, Long startTime,
+                                               Long endTime) {
         log.warn("MessageProviderStub.queryMessages called - returning empty list");
         return Collections.emptyList();
     }
