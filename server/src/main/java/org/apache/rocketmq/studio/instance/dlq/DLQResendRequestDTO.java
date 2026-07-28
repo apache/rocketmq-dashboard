@@ -14,17 +14,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-package org.apache.rocketmq.studio.instance.topic;
+package org.apache.rocketmq.studio.instance.dlq;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Positive;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Data
-public class LiteTopicTTLUpdateDTO {
-    @NotBlank(message = "topicPattern is required")
-    private String topicPattern;
-    @Positive(message = "newTTL must be positive")
-    private Long newTTL;
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class DLQResendRequestDTO {
+    @NotBlank(message = "groupName is required")
+    private String groupName;
+    private Long startTime;
+    private Long endTime;
+    private String targetTopic;
 }

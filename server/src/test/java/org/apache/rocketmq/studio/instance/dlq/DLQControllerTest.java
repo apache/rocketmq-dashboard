@@ -33,6 +33,7 @@ import java.util.Map;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -121,5 +122,42 @@ class DLQControllerTest {
 
         verify(dlqService).resendMessages(
                 eq("test-group"), isNull(), isNull(), eq("target-topic"));
+    }
+
+    @Test
+    void resendMessagesShouldRejectMissingGroupName() throws Exception {
+        Map<String, Object> body = Map.of(
+                "startTime", 1000,
+                "endTime", 2000,
+                "targetTopic", "target-topic"
+        );
+
+        mockMvc.perform(post("/api/dlq/resend")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("groupName is required"));
+
+        verifyNoInteractions(dlqService);
+    }
+
+    @Test
+    void resendMessagesShouldRejectInvalidTimeType() throws Exception {
+        Map<String, Object> body = Map.of(
+                "groupName", "test-group",
+                "startTime", "invalid",
+                "endTime", 2000,
+                "targetTopic", "target-topic"
+        );
+
+        mockMvc.perform(post("/api/dlq/resend")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("Invalid request body"));
+
+        verifyNoInteractions(dlqService);
     }
 }

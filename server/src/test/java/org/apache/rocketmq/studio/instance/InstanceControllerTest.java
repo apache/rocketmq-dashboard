@@ -36,6 +36,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -173,6 +174,30 @@ class InstanceControllerTest {
                 .andExpect(jsonPath("$.message").value("success"));
 
         verify(instanceService).deleteInstance("inst-1");
+    }
+
+    @Test
+    void deleteInstanceShouldRejectBlankId() throws Exception {
+        mockMvc.perform(post("/api/instances/delete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("id", " "))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("id is required"));
+
+        verifyNoInteractions(instanceService);
+    }
+
+    @Test
+    void deleteInstanceShouldRejectMissingId() throws Exception {
+        mockMvc.perform(post("/api/instances/delete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of())))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("id is required"));
+
+        verifyNoInteractions(instanceService);
     }
 
     private InstanceVO buildInstance(String id, String name, InstanceType type, String endpoint) {
