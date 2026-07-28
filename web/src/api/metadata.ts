@@ -124,12 +124,16 @@ export async function deleteTopic(name: string) {
 }
 
 export async function getTopicRoutes(name: string) {
-  const res = await client.get<{ data: BrokerRoute[] }>(`/topics/${name}/routes`);
+  const res = await client.get<{ data: BrokerRoute[] }>(
+    `/topics/${encodeURIComponent(name)}/routes`,
+  );
   return res.data.data;
 }
 
 export async function getTopicConsumers(name: string) {
-  const res = await client.get<{ data: ConsumerGroupInfo[] }>(`/topics/${name}/consumers`);
+  const res = await client.get<{ data: ConsumerGroupInfo[] }>(
+    `/topics/${encodeURIComponent(name)}/consumers`,
+  );
   return res.data.data;
 }
 
@@ -159,17 +163,23 @@ export async function listConsumerGroups(params?: ConsumerGroupQuery) {
 }
 
 export async function getConsumerGroup(name: string) {
-  const res = await client.get<{ data: ConsumerGroupDetail }>(`/groups/${name}`);
+  const res = await client.get<{ data: ConsumerGroupDetail }>(
+    `/groups/${encodeURIComponent(name)}`,
+  );
   return res.data.data;
 }
 
 export async function getConsumerProgress(name: string) {
-  const res = await client.get<{ data: QueueProgress[] }>(`/groups/${name}/progress`);
+  const res = await client.get<{ data: QueueProgress[] }>(
+    `/groups/${encodeURIComponent(name)}/progress`,
+  );
   return res.data.data;
 }
 
 export async function getConsumerSubscriptions(name: string) {
-  const res = await client.get<{ data: SubscriptionEntry[] }>(`/groups/${name}/subscriptions`);
+  const res = await client.get<{ data: SubscriptionEntry[] }>(
+    `/groups/${encodeURIComponent(name)}/subscriptions`,
+  );
   return res.data.data;
 }
 
