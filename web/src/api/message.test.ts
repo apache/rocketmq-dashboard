@@ -110,4 +110,14 @@ describe('message API', () => {
 
     await expect(getMessageTrace('msg-1')).resolves.toEqual(trace);
   });
+
+  it('encodes message IDs before requesting trace records', async () => {
+    const trace = {
+      nodes: [],
+      consumerStatus: [],
+    };
+    mock.onGet('/messages/AC1E0A64%2F0000%202A9F%3A1/trace').reply(200, { code: 200, data: trace });
+
+    await expect(getMessageTrace('AC1E0A64/0000 2A9F:1')).resolves.toEqual(trace);
+  });
 });

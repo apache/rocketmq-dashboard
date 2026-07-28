@@ -70,7 +70,7 @@ export async function queryMessages(params: MessageQuery) {
 }
 
 export async function getMessageTrace(msgId: string) {
-  const res = await client.get<{ data: TraceRecord }>(`/messages/${msgId}/trace`);
+  const res = await client.get<{ data: TraceRecord }>(`/messages/${encodeURIComponent(msgId)}/trace`);
   return res.data.data;
 }
 
