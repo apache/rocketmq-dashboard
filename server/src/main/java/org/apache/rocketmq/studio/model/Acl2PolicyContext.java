@@ -82,7 +82,7 @@ public class Acl2PolicyContext {
      * Authorization Rule - defines what actions are allowed/denied on which resources.
      * Supports wildcards in resource patterns following path pattern syntax.
      */
-        public static class AuthorizationRule {
+    public static class AuthorizationRule {
 
         /** Resource path pattern supporting wildcards (* matches any single level, ** matches all levels) */
         private String resourcePattern;
