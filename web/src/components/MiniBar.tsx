@@ -52,7 +52,7 @@ const MiniBar = ({ data, color = '#1677ff', height = 32, width = 120, label }: M
           key={i}
           style={{
             width: barWidth,
-            height: `${Math.max(4, (value / max) * height)}px`,
+            height: `${value === 0 ? 0 : Math.max(4, (value / max) * height)}px`,
             backgroundColor: color,
             borderRadius: 2,
             opacity: 0.3 + (i / data.length) * 0.7,
