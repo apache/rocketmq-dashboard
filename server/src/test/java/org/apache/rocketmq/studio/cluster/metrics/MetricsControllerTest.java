@@ -24,7 +24,11 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.List;
+
+import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -38,6 +42,74 @@ class MetricsControllerTest {
 
     @MockBean
     private MetricsService metricsService;
+
+    @MockBean
+    private MetricProfileService metricProfileService;
+
+    @Test
+    void listProfilesShouldReturnVersionAwareMappings() throws Exception {
+        MetricProfileVO profile = MetricProfileVO.builder()
+                .id("rocketmq5-native")
+                .name("RocketMQ 5.x Native")
+                .metrics(List.of(MetricProfileVO.MetricMappingVO.builder()
+                        .semanticMetric("message_in_tps")
+                        .prometheusMetric("rocketmq_messages_in_total")
+                        .promql("sum(rate(rocketmq_messages_in_total[1m])) by (cluster, node_id)")
+                        .labels(List.of("cluster", "node_id"))
+                        .build()))
+                .build();
+        when(metricProfileService.listProfiles()).thenReturn(List.of(profile));
+
+        mockMvc.perform(get("/api/metrics/profiles"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data[0].id").value("rocketmq5-native"))
+                .andExpect(jsonPath("$.data[0].metrics[0].semanticMetric").value("message_in_tps"))
+                .andExpect(jsonPath("$.data[0].metrics[0].prometheusMetric")
+                        .value("rocketmq_messages_in_total"));
+    }
+
+    @Test
+    void queryShouldReturnBadRequestWhenMetricIsBlank() throws Exception {
+        mockMvc.perform(post("/api/metrics/query")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"metric":" ","start":1784107658,"end":1784108558,"step":"30s"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("Metric query is required"));
+
+        verifyNoInteractions(metricsService);
+    }
+
+    @Test
+    void queryShouldReturnBadRequestWhenStartIsNotPositive() throws Exception {
+        mockMvc.perform(post("/api/metrics/query")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"metric":"up","start":0,"end":1784108558,"step":"30s"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("Metric query start must be positive"));
+
+        verifyNoInteractions(metricsService);
+    }
+
+    @Test
+    void queryShouldReturnBadRequestWhenStepIsBlank() throws Exception {
+        mockMvc.perform(post("/api/metrics/query")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"metric":"up","start":1784107658,"end":1784108558,"step":""}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("Metric query step is required"));
+
+        verifyNoInteractions(metricsService);
+    }
 
     @Test
     void queryShouldReturnBadRequestWhenFieldTypeIsInvalid() throws Exception {

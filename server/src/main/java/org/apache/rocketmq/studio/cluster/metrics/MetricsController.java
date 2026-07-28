@@ -22,10 +22,13 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/metrics")
@@ -33,6 +36,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class MetricsController {
 
     private final MetricsService metricsService;
+    private final MetricProfileService metricProfileService;
+
+    @Operation(summary = "List RocketMQ metric profiles",
+            description = "Returns version-aware semantic PromQL mappings for RocketMQ metrics")
+    @ApiResponse(responseCode = "200", description = "Metric profiles listed successfully",
+            useReturnTypeSchema = true)
+    @GetMapping("/profiles")
+    public Result<List<MetricProfileVO>> listProfiles() {
+        return Result.ok(metricProfileService.listProfiles());
+    }
 
     @Operation(summary = "Query Prometheus range metrics",
             description = "Executes a PromQL range query against the configured Prometheus server")

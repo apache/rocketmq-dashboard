@@ -245,6 +245,70 @@ class PrometheusMetricsSourceTest {
     }
 
     @Test
+    void queryShouldRejectBlankMetric() {
+        MetricQueryDTO invalidQuery = MetricQueryDTO.builder()
+                .metric(" ")
+                .start(1L)
+                .end(2L)
+                .step("30s")
+                .build();
+
+        assertThatThrownBy(() -> source(Duration.ofSeconds(2)).query(invalidQuery))
+                .isInstanceOf(PrometheusException.class)
+                .satisfies(exception -> assertThat(((PrometheusException) exception).getStatusCode())
+                        .isEqualTo(HttpStatus.BAD_REQUEST.value()))
+                .hasMessage("Metric query is required");
+    }
+
+    @Test
+    void queryShouldRejectNonPositiveStart() {
+        MetricQueryDTO invalidQuery = MetricQueryDTO.builder()
+                .metric("up")
+                .start(0L)
+                .end(2L)
+                .step("30s")
+                .build();
+
+        assertThatThrownBy(() -> source(Duration.ofSeconds(2)).query(invalidQuery))
+                .isInstanceOf(PrometheusException.class)
+                .satisfies(exception -> assertThat(((PrometheusException) exception).getStatusCode())
+                        .isEqualTo(HttpStatus.BAD_REQUEST.value()))
+                .hasMessage("Metric query start must be positive");
+    }
+
+    @Test
+    void queryShouldRejectNonPositiveEnd() {
+        MetricQueryDTO invalidQuery = MetricQueryDTO.builder()
+                .metric("up")
+                .start(1L)
+                .end(0L)
+                .step("30s")
+                .build();
+
+        assertThatThrownBy(() -> source(Duration.ofSeconds(2)).query(invalidQuery))
+                .isInstanceOf(PrometheusException.class)
+                .satisfies(exception -> assertThat(((PrometheusException) exception).getStatusCode())
+                        .isEqualTo(HttpStatus.BAD_REQUEST.value()))
+                .hasMessage("Metric query end must be positive");
+    }
+
+    @Test
+    void queryShouldRejectBlankStep() {
+        MetricQueryDTO invalidQuery = MetricQueryDTO.builder()
+                .metric("up")
+                .start(1L)
+                .end(2L)
+                .step(" ")
+                .build();
+
+        assertThatThrownBy(() -> source(Duration.ofSeconds(2)).query(invalidQuery))
+                .isInstanceOf(PrometheusException.class)
+                .satisfies(exception -> assertThat(((PrometheusException) exception).getStatusCode())
+                        .isEqualTo(HttpStatus.BAD_REQUEST.value()))
+                .hasMessage("Metric query step is required");
+    }
+
+    @Test
     void queryShouldFailLoudWhenPrometheusIsNotConfigured() {
         PrometheusProperties properties = new PrometheusProperties();
         PrometheusMetricsSource source = new PrometheusMetricsSource(
