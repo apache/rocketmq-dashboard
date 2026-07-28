@@ -52,18 +52,9 @@ import {
   type LlmConfig,
 } from '../../api/llm';
 import { buildLlmFailureResult, type TestResult } from './llmFailureResult';
+import { fallbackModelOptions } from './llmModelOptions';
 
 const { Text } = Typography;
-
-// Fallback models when API fetch fails
-const FALLBACK_MODELS: Record<string, string[]> = {
-  openai: ['gpt-4o', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'],
-  azure: ['gpt-4o', 'gpt-4', 'gpt-3.5-turbo'],
-  deepseek: ['deepseek-chat', 'deepseek-reasoner'],
-  tongyi: ['qwen-max', 'qwen-plus', 'qwen-turbo'],
-  ollama: ['llama3', 'mistral', 'gemma2', 'qwen2.5'],
-  bedrock: ['anthropic.claude-3-sonnet', 'anthropic.claude-3-haiku', 'meta.llama3-70b'],
-};
 
 interface ProviderDef {
   key: string;
@@ -168,7 +159,7 @@ const LlmSettingsPage: React.FC = () => {
   if (initialized.current == null) {
     initialized.current = true;
     fetchConfig();
-    fetchModels();
+    fetchModels('openai');
   }
 
   function fetchConfig() {
@@ -203,12 +194,14 @@ const LlmSettingsPage: React.FC = () => {
       });
   }
 
-  function fetchModels() {
+  function fetchModels(providerOverride?: string, modelOverride?: string) {
     setModelsLoading(true);
     getLlmConfig()
       .then((config) => {
+        const provider = providerOverride || config?.provider || 'openai';
+        const model = modelOverride || config?.model || '';
         if (!config || !config.enabled) {
-          setModelOptions([]);
+          setModelOptions(fallbackModelOptions(provider, model));
           return;
         }
         getLlmModels()
@@ -218,19 +211,16 @@ const LlmSettingsPage: React.FC = () => {
               models = result.data.map((m) => m.id || m.name || '').filter(Boolean);
             }
             if (models.length === 0) {
-              const provider = config.provider || 'openai';
-              models = FALLBACK_MODELS[provider] || [config.model || ''].filter(Boolean);
+              models = fallbackModelOptions(provider, config.model).map((option) => option.value);
             }
             setModelOptions(models.map((m) => ({ value: m, label: m })));
           })
           .catch(() => {
-            const provider = config.provider || 'openai';
-            const fallback = FALLBACK_MODELS[provider] || [config.model || ''].filter(Boolean);
-            setModelOptions(fallback.map((m) => ({ value: m, label: m })));
+            setModelOptions(fallbackModelOptions(provider, model));
           });
       })
       .catch(() => {
-        setModelOptions([]);
+        setModelOptions(fallbackModelOptions(providerOverride || selectedProvider, modelOverride));
       })
       .finally(() => {
         setModelsLoading(false);
@@ -254,6 +244,7 @@ const LlmSettingsPage: React.FC = () => {
           apiBase: provider.defaultBaseUrl,
           model: provider.defaultModel,
         });
+        setModelOptions(fallbackModelOptions(value, provider.defaultModel));
         if (!provider.requireApiKey) {
           form.setFieldsValue({ apiKey: '' });
           setSavedApiKey('');
@@ -302,6 +293,7 @@ const LlmSettingsPage: React.FC = () => {
                     form.setFieldsValue({ apiKey: maskApiKey(testConfig.apiKey) });
                     setApiKeyMasked(true);
                   }
+                  fetchModels(testConfig.provider, testConfig.model);
                 })
                 .catch(() => {
                   // auto-save failure is non-critical
@@ -346,6 +338,7 @@ const LlmSettingsPage: React.FC = () => {
                 form.setFieldsValue({ apiKey: maskApiKey(config.apiKey) });
                 setApiKeyMasked(true);
               }
+              fetchModels(config.provider, config.model);
             } else {
               message.error((result && result.errMsg) || t('llm.saveFailed'));
             }

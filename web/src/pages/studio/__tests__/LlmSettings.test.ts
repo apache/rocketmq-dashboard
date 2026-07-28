@@ -17,6 +17,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { buildLlmFailureResult } from '../llmFailureResult';
+import { fallbackModelOptions } from '../llmModelOptions';
 
 describe('LlmSettingsPage', () => {
   it('keeps structured LLM failure details for display', () => {
@@ -45,5 +46,20 @@ describe('LlmSettingsPage', () => {
       code: undefined,
       hint: undefined,
     });
+  });
+
+  it('keeps provider fallback models available before config is saved', () => {
+    expect(fallbackModelOptions('openai')).toEqual([
+      { value: 'gpt-4o', label: 'gpt-4o' },
+      { value: 'gpt-4-turbo', label: 'gpt-4-turbo' },
+      { value: 'gpt-4', label: 'gpt-4' },
+      { value: 'gpt-3.5-turbo', label: 'gpt-3.5-turbo' },
+    ]);
+  });
+
+  it('falls back to the current model for unknown providers', () => {
+    expect(fallbackModelOptions('custom', 'custom-model')).toEqual([
+      { value: 'custom-model', label: 'custom-model' },
+    ]);
   });
 });
