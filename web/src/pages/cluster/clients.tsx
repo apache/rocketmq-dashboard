@@ -16,8 +16,21 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { Table, Card, Tag, Space, Input, Select, Flex, Typography, message } from 'antd';
-import { MagnifyingGlass } from '@phosphor-icons/react';
+import {
+  Button,
+  Card,
+  Descriptions,
+  Flex,
+  Input,
+  Modal,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Typography,
+  message,
+} from 'antd';
+import { Eye, MagnifyingGlass } from '@phosphor-icons/react';
 import type { ColumnsType } from 'antd/es/table';
 
 import PageHeader from '../../components/PageHeader';
@@ -55,6 +68,7 @@ const ClientsPage = () => {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [clusterFilter, setClusterFilter] = useState<string>('ALL');
+  const [selectedConnection, setSelectedConnection] = useState<ClientConnection | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -221,6 +235,22 @@ const ClientsPage = () => {
         </Text>
       ),
     },
+    {
+      title: t('common.actions'),
+      key: 'actions',
+      width: 90,
+      fixed: 'right',
+      render: (_: unknown, record: ClientConnection) => (
+        <Button
+          size="small"
+          icon={<Eye size={14} />}
+          style={{ borderColor: '#1677ff', color: '#1677ff' }}
+          onClick={() => setSelectedConnection(record)}
+        >
+          {t('common.detail')}
+        </Button>
+      ),
+    },
   ];
 
   /* ═══════════════════════════════════════════
@@ -271,6 +301,53 @@ const ClientsPage = () => {
           size="small"
         />
       </Card>
+
+      <Modal
+        title={t('clients.detailTitle', { id: selectedConnection?.clientId ?? '' })}
+        open={Boolean(selectedConnection)}
+        onCancel={() => setSelectedConnection(null)}
+        footer={<Button onClick={() => setSelectedConnection(null)}>{t('common.close')}</Button>}
+        width={640}
+        destroyOnClose
+      >
+        {selectedConnection && (
+          <Descriptions column={1} bordered size="small">
+            <Descriptions.Item label={t('clients.clientId')}>
+              <Text copyable style={{ fontFamily: 'monospace' }}>
+                {selectedConnection.clientId}
+              </Text>
+            </Descriptions.Item>
+            <Descriptions.Item label={t('clients.cluster')}>
+              <Tag color="blue">{selectedConnection.clusterName}</Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label={t('common.type')}>
+              {typeConfig[selectedConnection.type]?.label ?? selectedConnection.type}
+            </Descriptions.Item>
+            <Descriptions.Item label={t('clients.groupOrTopic')}>
+              {selectedConnection.groupOrTopic}
+            </Descriptions.Item>
+            <Descriptions.Item label={t('clients.protocol')}>
+              <Tag color={protocolConfig[selectedConnection.protocol]?.color ?? 'default'}>
+                {protocolConfig[selectedConnection.protocol]?.label ?? selectedConnection.protocol}
+              </Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label={t('common.address')}>
+              <Text style={{ fontFamily: 'monospace' }}>{selectedConnection.address}</Text>
+            </Descriptions.Item>
+            <Descriptions.Item label={t('clients.language')}>
+              <Tag color={languageConfig[selectedConnection.language]?.color ?? 'default'}>
+                {languageConfig[selectedConnection.language]?.label ?? selectedConnection.language}
+              </Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label={t('common.version')}>
+              {selectedConnection.version}
+            </Descriptions.Item>
+            <Descriptions.Item label={t('cluster.heartbeat')}>
+              {selectedConnection.connectedAt}
+            </Descriptions.Item>
+          </Descriptions>
+        )}
+      </Modal>
     </div>
   );
 };

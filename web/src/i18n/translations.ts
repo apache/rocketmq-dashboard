@@ -187,6 +187,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'clients.cluster': { zh: '所属集群', en: 'Cluster' },
   'clients.allClusters': { zh: '全部集群', en: 'All Clusters' },
   'clients.searchPlaceholder': { zh: '搜索 Client ID 或地址', en: 'Search Client ID or address' },
+  'clients.detailTitle': { zh: '客户端详情 - {id}', en: 'Client Detail - {id}' },
 
   // ─── Alert Rules ───
   'alerts.title': { zh: '告警规则管理', en: 'Alert Rules' },
@@ -502,6 +503,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'cluster.readQueues': { zh: '读队列数', en: 'Read Queues' },
   'cluster.brokerPermission': { zh: 'Broker 权限', en: 'Broker Permission' },
   'cluster.viewDetail': { zh: '查看详情: {addr}', en: 'View detail: {addr}' },
+  'cluster.proxyDetailTitle': { zh: 'Proxy 详情 - {addr}', en: 'Proxy Detail - {addr}' },
   'cluster.restartProxyConfirm': {
     zh: '确定要重启 Proxy "{addr}" 吗？',
     en: 'Are you sure to restart Proxy "{addr}"?',
