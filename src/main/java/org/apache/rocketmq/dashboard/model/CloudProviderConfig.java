@@ -14,9 +14,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.dashboard.model;
+package org.apache.rocketmq.studio.model;
 
-import org.apache.rocketmq.dashboard.config.CredentialEncryptionService;
+import org.apache.rocketmq.studio.config.CredentialEncryptionService;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -39,14 +39,14 @@ import java.util.Map;
  * </ul>
  *
  * <p>Per RIP-1 ARCH-01, cloud providers are supported via SPI/Plugin pattern.
- * This config is used by {@link org.apache.rocketmq.dashboard.architecture.impl.cloud.CloudProviderFactory}
+ * This config is used by {@link org.apache.rocketmq.studio.architecture.impl.cloud.CloudProviderFactory}
  * to instantiate the correct provider implementation.</p>
  */
 public class CloudProviderConfig {
 
     /**
      * Cloud provider type identifier.
-     * Matches {@link org.apache.rocketmq.dashboard.architecture.ClusterAccessType} cloud enum values.
+     * Matches {@link org.apache.rocketmq.studio.architecture.ClusterAccessType} cloud enum values.
      * Example: "cloud-aliyun", "cloud-tencent", "cloud-huawei"
      */
     private String providerType;

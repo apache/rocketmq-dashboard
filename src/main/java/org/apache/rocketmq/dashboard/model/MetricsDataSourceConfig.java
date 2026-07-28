@@ -14,9 +14,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.dashboard.model;
+package org.apache.rocketmq.studio.model;
 
-import lombok.Data;
 
 import java.io.Serializable;
 import java.util.Map;
@@ -30,7 +29,6 @@ import java.util.Map;
  * password / bearerToken should be encrypted at rest in production.
  * </p>
  */
-@Data
 public class MetricsDataSourceConfig implements Serializable {
 
     private static final long serialVersionUID = 1L;
@@ -91,4 +89,100 @@ public class MetricsDataSourceConfig implements Serializable {
      * Whether this data source is currently activated.
      */
     private boolean enabled;
+    public static final long getSerialVersionUID() {
+        return serialVersionUID;
+    }
+
+    public void setSerialVersionUID(static final long serialVersionUID) {
+        this.serialVersionUID = serialVersionUID;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getUrl() {
+        return url;
+    }
+
+    public void setUrl(String url) {
+        this.url = url;
+    }
+
+    public String getAuthType() {
+        return authType;
+    }
+
+    public void setAuthType(String authType) {
+        this.authType = authType;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
+
+    public String getBearerToken() {
+        return bearerToken;
+    }
+
+    public void setBearerToken(String bearerToken) {
+        this.bearerToken = bearerToken;
+    }
+
+    public String getProviderType() {
+        return providerType;
+    }
+
+    public void setProviderType(String providerType) {
+        this.providerType = providerType;
+    }
+
+    public boolean isTlsEnabled() {
+        return tlsEnabled;
+    }
+
+    public void setTlsEnabled(boolean tlsEnabled) {
+        this.tlsEnabled = tlsEnabled;
+    }
+
+    public Map<String, String> getDefaultLabels() {
+        return defaultLabels;
+    }
+
+    public void setDefaultLabels(Map<String, String> defaultLabels) {
+        this.defaultLabels = defaultLabels;
+    }
+
+    public int getScrapeInterval() {
+        return scrapeInterval;
+    }
+
+    public void setScrapeInterval(int scrapeInterval) {
+        this.scrapeInterval = scrapeInterval;
+    }
+
+    public boolean isEnabled() {
+        return enabled;
+    }
+
+    public void setEnabled(boolean enabled) {
+        this.enabled = enabled;
+    }
+
 }

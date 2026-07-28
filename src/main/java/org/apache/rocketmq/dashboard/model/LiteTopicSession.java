@@ -14,13 +14,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.dashboard.model;
+package org.apache.rocketmq.studio.model;
 
-import lombok.Data;
 import java.util.Date;
 import java.util.Set;
 
-@Data
 public class LiteTopicSession {
 
     /**
@@ -78,8 +76,7 @@ public class LiteTopicSession {
         return (double) consumedMessages / totalMessages * 100.0;
     }
 
-    @Data
-    public static class PopConsumeProgress {
+        public static class PopConsumeProgress {
         private Integer ackTimeoutSeconds;
         private Integer maxReconsumeTimes;
         private Integer totalPopInFlightCount;
@@ -87,4 +84,140 @@ public class LiteTopicSession {
         private Integer popCheckpoint;
         private Integer totalPopCount;
     }
+    public String getSessionId() {
+        return sessionId;
+    }
+
+    public void setSessionId(String sessionId) {
+        this.sessionId = sessionId;
+    }
+
+    public String getClientId() {
+        return clientId;
+    }
+
+    public void setClientId(String clientId) {
+        this.clientId = clientId;
+    }
+
+    public String getClientAddress() {
+        return clientAddress;
+    }
+
+    public void setClientAddress(String clientAddress) {
+        this.clientAddress = clientAddress;
+    }
+
+    public Set<String> getLiteTopics() {
+        return liteTopics;
+    }
+
+    public void setLiteTopics(Set<String> liteTopics) {
+        this.liteTopics = liteTopics;
+    }
+
+    public String getParentTopic() {
+        return parentTopic;
+    }
+
+    public void setParentTopic(String parentTopic) {
+        this.parentTopic = parentTopic;
+    }
+
+    public String getConsumerGroup() {
+        return consumerGroup;
+    }
+
+    public void setConsumerGroup(String consumerGroup) {
+        this.consumerGroup = consumerGroup;
+    }
+
+    public Date getCreateTime() {
+        return createTime;
+    }
+
+    public void setCreateTime(Date createTime) {
+        this.createTime = createTime;
+    }
+
+    public Date getLastActiveTime() {
+        return lastActiveTime;
+    }
+
+    public void setLastActiveTime(Date lastActiveTime) {
+        this.lastActiveTime = lastActiveTime;
+    }
+
+    public Long getTtl() {
+        return ttl;
+    }
+
+    public void setTtl(Long ttl) {
+        this.ttl = ttl;
+    }
+
+    public Long getTtlRemaining() {
+        return ttlRemaining;
+    }
+
+    public void setTtlRemaining(Long ttlRemaining) {
+        this.ttlRemaining = ttlRemaining;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    public Long getTotalMessages() {
+        return totalMessages;
+    }
+
+    public void setTotalMessages(Long totalMessages) {
+        this.totalMessages = totalMessages;
+    }
+
+    public Long getConsumedMessages() {
+        return consumedMessages;
+    }
+
+    public void setConsumedMessages(Long consumedMessages) {
+        this.consumedMessages = consumedMessages;
+    }
+
+    public Long getPendingMessages() {
+        return pendingMessages;
+    }
+
+    public void setPendingMessages(Long pendingMessages) {
+        this.pendingMessages = pendingMessages;
+    }
+
+    public Double getConsumptionRate() {
+        return consumptionRate;
+    }
+
+    public void setConsumptionRate(Double consumptionRate) {
+        this.consumptionRate = consumptionRate;
+    }
+
+    public PopConsumeProgress getPopProgress() {
+        return popProgress;
+    }
+
+    public void setPopProgress(PopConsumeProgress popProgress) {
+        this.popProgress = popProgress;
+    }
+
+    public Integer getLiteTopicCreationCount() {
+        return liteTopicCreationCount;
+    }
+
+    public void setLiteTopicCreationCount(Integer liteTopicCreationCount) {
+        this.liteTopicCreationCount = liteTopicCreationCount;
+    }
+
 }

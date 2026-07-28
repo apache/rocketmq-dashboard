@@ -15,22 +15,18 @@
  * limitations under the License.
  */
 
-package org.apache.rocketmq.dashboard.model;
+package org.apache.rocketmq.studio.model;
 
 import com.alibaba.excel.annotation.ExcelProperty;
 import com.alibaba.excel.annotation.write.style.ColumnWidth;
 import com.alibaba.excel.metadata.BaseRowModel;
 import com.alibaba.excel.util.DateUtils;
 import com.google.common.base.Charsets;
-import lombok.Data;
-import lombok.NoArgsConstructor;
 import org.apache.rocketmq.common.message.MessageExt;
 
 import java.io.Serializable;
 import java.util.Date;
 
-@Data
-@NoArgsConstructor
 public class DlqMessageExcelModel extends BaseRowModel implements Serializable {
 
     @ExcelProperty(value = "topic", index = 0)
@@ -83,6 +79,86 @@ public class DlqMessageExcelModel extends BaseRowModel implements Serializable {
         this.properties = messageExt.getProperties().toString();
         this.messageBody = new String(messageExt.getBody(), Charsets.UTF_8);
         this.bodyCRC = messageExt.getBodyCRC();
+    }
+
+    public String getTopic() {
+        return topic;
+    }
+
+    public void setTopic(String topic) {
+        this.topic = topic;
+    }
+
+    public String getMsgId() {
+        return msgId;
+    }
+
+    public void setMsgId(String msgId) {
+        this.msgId = msgId;
+    }
+
+    public String getBornHost() {
+        return bornHost;
+    }
+
+    public void setBornHost(String bornHost) {
+        this.bornHost = bornHost;
+    }
+
+    public String getBornTimestamp() {
+        return bornTimestamp;
+    }
+
+    public void setBornTimestamp(String bornTimestamp) {
+        this.bornTimestamp = bornTimestamp;
+    }
+
+    public String getStoreTimestamp() {
+        return storeTimestamp;
+    }
+
+    public void setStoreTimestamp(String storeTimestamp) {
+        this.storeTimestamp = storeTimestamp;
+    }
+
+    public int getReconsumeTimes() {
+        return reconsumeTimes;
+    }
+
+    public void setReconsumeTimes(int reconsumeTimes) {
+        this.reconsumeTimes = reconsumeTimes;
+    }
+
+    public String getProperties() {
+        return properties;
+    }
+
+    public void setProperties(String properties) {
+        this.properties = properties;
+    }
+
+    public String getMessageBody() {
+        return messageBody;
+    }
+
+    public void setMessageBody(String messageBody) {
+        this.messageBody = messageBody;
+    }
+
+    public int getBodyCRC() {
+        return bodyCRC;
+    }
+
+    public void setBodyCRC(int bodyCRC) {
+        this.bodyCRC = bodyCRC;
+    }
+
+    public String getException() {
+        return exception;
+    }
+
+    public void setException(String exception) {
+        this.exception = exception;
     }
 
 }

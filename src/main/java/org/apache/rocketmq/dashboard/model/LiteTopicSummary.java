@@ -14,13 +14,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.dashboard.model;
+package org.apache.rocketmq.studio.model;
 
-import lombok.Data;
 import java.util.Date;
 import java.util.List;
 
-@Data
 public class LiteTopicSummary {
 
     private String topicPattern;
@@ -74,4 +72,92 @@ public class LiteTopicSummary {
     public boolean isEmptyAggregation() {
         return consumerCount == 0 && (totalBacklog == null || totalBacklog == 0);
     }
+    public String getTopicPattern() {
+        return topicPattern;
+    }
+
+    public void setTopicPattern(String topicPattern) {
+        this.topicPattern = topicPattern;
+    }
+
+    public Integer getTopicCount() {
+        return topicCount;
+    }
+
+    public void setTopicCount(Integer topicCount) {
+        this.topicCount = topicCount;
+    }
+
+    public List<String> getSessionIds() {
+        return sessionIds;
+    }
+
+    public void setSessionIds(List<String> sessionIds) {
+        this.sessionIds = sessionIds;
+    }
+
+    public Date getEarliestCreateTime() {
+        return earliestCreateTime;
+    }
+
+    public void setEarliestCreateTime(Date earliestCreateTime) {
+        this.earliestCreateTime = earliestCreateTime;
+    }
+
+    public Date getLastActiveTime() {
+        return lastActiveTime;
+    }
+
+    public void setLastActiveTime(Date lastActiveTime) {
+        this.lastActiveTime = lastActiveTime;
+    }
+
+    public Long getAverageTTL() {
+        return averageTTL;
+    }
+
+    public void setAverageTTL(Long averageTTL) {
+        this.averageTTL = averageTTL;
+    }
+
+    public Long getMinTTL() {
+        return minTTL;
+    }
+
+    public void setMinTTL(Long minTTL) {
+        this.minTTL = minTTL;
+    }
+
+    public Long getMaxTTL() {
+        return maxTTL;
+    }
+
+    public void setMaxTTL(Long maxTTL) {
+        this.maxTTL = maxTTL;
+    }
+
+    public Integer getConsumerCount() {
+        return consumerCount;
+    }
+
+    public void setConsumerCount(Integer consumerCount) {
+        this.consumerCount = consumerCount;
+    }
+
+    public Long getTotalBacklog() {
+        return totalBacklog;
+    }
+
+    public void setTotalBacklog(Long totalBacklog) {
+        this.totalBacklog = totalBacklog;
+    }
+
+    public boolean isActive() {
+        return active;
+    }
+
+    public void setActive(boolean active) {
+        this.active = active;
+    }
+
 }
