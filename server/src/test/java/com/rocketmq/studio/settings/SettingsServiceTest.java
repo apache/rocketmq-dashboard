@@ -16,15 +16,24 @@
  */
 package com.rocketmq.studio.settings;
 
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.web.client.RestClient;
 
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -38,8 +47,20 @@ class SettingsServiceTest {
     @Mock
     private SettingsRepository settingsRepository;
 
-    @InjectMocks
     private SettingsService settingsService;
+    private HttpServer server;
+
+    @BeforeEach
+    void setUp() {
+        settingsService = new SettingsService(settingsRepository, RestClient.builder());
+    }
+
+    @AfterEach
+    void tearDown() {
+        if (server != null) {
+            server.stop(0);
+        }
+    }
 
     @Test
     void getGeneralSettingsShouldReturnCurrentSettings() {
@@ -207,29 +228,140 @@ class SettingsServiceTest {
     }
 
     @Test
-    void testConnectionShouldReturnSuccess() {
+    void testConnectionShouldQueryPrometheusCompatibleApi() throws IOException {
+        AtomicReference<String> requestPath = new AtomicReference<>();
+        AtomicReference<String> requestQuery = new AtomicReference<>();
+        startServer(exchange -> {
+            requestPath.set(exchange.getRequestURI().getPath());
+            requestQuery.set(exchange.getRequestURI().getRawQuery());
+            respond(exchange, 200, """
+                    {
+                      "status": "success",
+                      "data": {
+                        "resultType": "vector",
+                        "result": [{"metric": {}, "value": [1784107658, "1"]}]
+                      }
+                    }
+                    """);
+        });
         DataSourceTestDTO request = DataSourceTestDTO.builder()
-                .url("localhost:9876")
-                .type("rocketmq")
+                .url(baseUrl() + "/")
+                .type("Prometheus")
+                .auth("None")
                 .build();
 
         DataSourceTestResultVO result = settingsService.testDataSource(request);
 
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getMessage()).isEqualTo("Connection successful");
+        assertThat(requestPath.get()).isEqualTo("/api/v1/query");
+        assertThat(URLDecoder.decode(requestQuery.get(), StandardCharsets.UTF_8))
+                .isEqualTo("query=vector(1)");
     }
 
     @Test
-    void testConnectionShouldReturnSuccessForAnyInput() {
+    void testConnectionShouldRejectUnsupportedTypeWithoutSendingRequest() {
         DataSourceTestDTO request = DataSourceTestDTO.builder()
-                .url("invalid-host:9999")
+                .url("http://localhost:9999")
                 .type("unknown")
-                .auth("bad-auth")
                 .build();
 
         DataSourceTestResultVO result = settingsService.testDataSource(request);
 
-        assertThat(result.isSuccess()).isTrue();
-        assertThat(result.getMessage()).isEqualTo("Connection successful");
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getMessage()).isEqualTo("Unsupported data source type");
+    }
+
+    @Test
+    void testConnectionShouldRejectInvalidUrl() {
+        DataSourceTestDTO request = DataSourceTestDTO.builder()
+                .url("localhost:9090")
+                .type("VictoriaMetrics")
+                .build();
+
+        DataSourceTestResultVO result = settingsService.testDataSource(request);
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getMessage()).isEqualTo("Invalid data source URL");
+    }
+
+    @Test
+    void testConnectionShouldRejectAuthenticatedSourceWithoutCredentials() {
+        DataSourceTestDTO request = DataSourceTestDTO.builder()
+                .url("http://localhost:9090")
+                .type("Thanos")
+                .auth("Bearer Token")
+                .build();
+
+        DataSourceTestResultVO result = settingsService.testDataSource(request);
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getMessage()).isEqualTo(
+                "Credentials are required to test authenticated data sources");
+    }
+
+    @Test
+    void testConnectionShouldReportUpstreamHttpStatus() throws IOException {
+        startServer(exchange -> respond(exchange, 503, "unavailable"));
+        DataSourceTestDTO request = DataSourceTestDTO.builder()
+                .url(baseUrl())
+                .type("VictoriaMetrics")
+                .auth("None")
+                .build();
+
+        DataSourceTestResultVO result = settingsService.testDataSource(request);
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getMessage()).isEqualTo("Connection failed: HTTP 503");
+    }
+
+    @Test
+    void testConnectionShouldFailWhenDataSourceIsUnreachable() throws IOException {
+        startServer(exchange -> respond(exchange, 200, "{}"));
+        String unavailableUrl = baseUrl();
+        server.stop(0);
+        server = null;
+        DataSourceTestDTO request = DataSourceTestDTO.builder()
+                .url(unavailableUrl)
+                .type("Prometheus")
+                .build();
+
+        DataSourceTestResultVO result = settingsService.testDataSource(request);
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getMessage()).isEqualTo("Failed to connect to data source");
+    }
+
+    @Test
+    void testConnectionShouldRejectNonPrometheusResponse() throws IOException {
+        startServer(exchange -> respond(exchange, 200, "{\"status\":\"ok\"}"));
+        DataSourceTestDTO request = DataSourceTestDTO.builder()
+                .url(baseUrl())
+                .type("Thanos")
+                .build();
+
+        DataSourceTestResultVO result = settingsService.testDataSource(request);
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getMessage()).isEqualTo(
+                "Data source returned an invalid Prometheus response");
+    }
+
+    private void startServer(com.sun.net.httpserver.HttpHandler handler) throws IOException {
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/v1/query", handler);
+        server.start();
+    }
+
+    private String baseUrl() {
+        return "http://127.0.0.1:" + server.getAddress().getPort();
+    }
+
+    private void respond(HttpExchange exchange, int statusCode, String body) throws IOException {
+        byte[] response = body.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        exchange.sendResponseHeaders(statusCode, response.length);
+        exchange.getResponseBody().write(response);
+        exchange.close();
     }
 }
