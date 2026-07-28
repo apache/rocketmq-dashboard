@@ -20,15 +20,9 @@ import lombok.Data;
 import java.util.Date;
 import java.util.Set;
 
-/**
- *
- */
 @Data
 public class ACLUser {
 
-    /**
- *
-     */
     private String userName;
 
     /**
@@ -36,66 +30,33 @@ public class ACLUser {
      */
     private String accessKey;
 
-    /**
- *
-     */
     private String userType;
 
-    /**
- *
-     */
     private String status;
 
-    /**
- *
-     */
     private Date createTime;
 
-    /**
- *
-     */
     private Date updateTime;
 
-    /**
- *
-     */
     private Date lastLoginTime;
 
-    /**
- *
-     */
     private Set<String> policyIds;
 
-    /**
- *
-     */
     private Set<String> ipWhiteList;
 
-    /**
- *
-     */
     private String description;
 
-    /**
- *
-     */
     public boolean isActive() {
         return "ACTIVE".equals(status);
     }
 
-    /**
- *
-     */
     public boolean isAdmin() {
         return "ADMIN".equals(userType);
     }
 
-    /**
- *
-     */
     public boolean isIpAllowed(String ip) {
         if (ipWhiteList == null || ipWhiteList.isEmpty()) {
-            return true; // Removed
+            return true;
         }
         return ipWhiteList.contains(ip);
     }

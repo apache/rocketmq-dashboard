@@ -20,85 +20,37 @@ import lombok.Data;
 import java.util.Date;
 import java.util.Set;
 
-/**
- *
- */
 @Data
 public class ACLPolicy {
 
-    /**
- *
-     */
     private String policyId;
 
-    /**
- *
-     */
     private String policyName;
 
-    /**
- *
-     */
     private String description;
 
-    /**
- *
-     */
     private Set<String> users;
 
-    /**
- *
-     */
     private Set<String> resources;
 
-    /**
- *
-     */
     private Set<String> actions;
 
-    /**
- *
-     */
     private String policyType;
 
-    /**
- *
-     */
     private Set<String> ipWhiteList;
 
-    /**
- *
-     */
     private Date effectiveTime;
 
-    /**
- *
-     */
     private Date expirationTime;
 
-    /**
- *
-     */
     private Date createTime;
 
-    /**
- *
-     */
     private Date updateTime;
 
-    /**
- *
-     */
     private String status;
 
-    /**
- *
-     */
     private Boolean defaultPolicy;
 
-    /**
- *
-     */
     public boolean isEffective() {
         Date now = new Date();
         if (effectiveTime != null && now.before(effectiveTime)) {
@@ -113,25 +65,19 @@ public class ACLPolicy {
         return true;
     }
 
-    /**
- *
-     */
     public boolean hasPermission(String user, String resource, String action) {
         if (!isEffective()) {
             return false;
         }
 
-        // Removed
         if (users != null && !users.isEmpty() && !users.contains(user)) {
             return false;
         }
 
-        // Removed
         if (resources != null && !resources.isEmpty() && !resources.contains(resource)) {
             return false;
         }
 
-        // Removed
         if (actions != null && !actions.contains(action)) {
             return false;
         }
