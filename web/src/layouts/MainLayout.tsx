@@ -40,6 +40,7 @@ import {
 } from '@phosphor-icons/react';
 import { useLang } from '../i18n/LangContext';
 import { useTheme } from '../theme/ThemeContext';
+import { useCapability } from '../contexts/CapabilityContext';
 import { logout as requestLogout } from '../api/auth';
 import useAuthStore from '../stores/authStore';
 import {
@@ -56,6 +57,7 @@ const MainLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { darkMode, toggleTheme } = useTheme();
+  const { capability } = useCapability();
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchText, setSearchText] = useState('');
   const { lang, setLang, t } = useLang();
@@ -270,6 +272,29 @@ const MainLayout = () => {
 
             {/* Right: Search + Lang + Theme + User */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              {/* Architecture indicator */}
+              {capability.grpcClientSupported && (
+                <div
+                  onClick={() => navigate('/settings')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    padding: '2px 8px',
+                    borderRadius: 4,
+                    fontSize: 11,
+                    fontWeight: 500,
+                    background: darkMode ? '#1a3a1a' : '#f0faf0',
+                    color: '#52c41a',
+                    border: '1px solid #52c41a33',
+                    cursor: 'pointer',
+                  }}
+                  title="V5 Proxy 架构 — 点击切换"
+                >
+                  <span style={{ fontSize: 10 }}>⚡</span> V5
+                </div>
+              )}
+
               {/* Search button */}
               <div
                 onClick={() => setSearchOpen(true)}

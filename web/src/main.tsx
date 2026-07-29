@@ -23,6 +23,7 @@ import zhCN from 'antd/locale/zh_CN';
 import enUS from 'antd/locale/en_US';
 import { LangProvider, useLang } from './i18n/LangContext';
 import { ThemeProvider, useTheme } from './theme/ThemeContext';
+import { CapabilityProvider } from './contexts/CapabilityContext';
 import App from './App';
 import './index.css';
 
@@ -71,7 +72,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <LangProvider>
       <ThemeProvider>
-        <ThemedApp />
+        <CapabilityProvider>
+          <ThemedApp />
+        </CapabilityProvider>
       </ThemeProvider>
     </LangProvider>
   </React.StrictMode>,
