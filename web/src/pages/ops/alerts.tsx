@@ -57,14 +57,6 @@ const metricOptions = ['磁盘使用率', '消费堆积量', 'TPS 异常', 'Brok
 
 const durationOptions = ['1分钟', '5分钟', '15分钟', '30分钟'];
 
-const thresholdUnits: Record<string, string> = {
-  磁盘使用率: '%',
-  消费堆积量: '条',
-  'TPS 异常': 'TPS',
-  'Broker 离线': '个',
-  'Proxy 连接数': '个',
-};
-
 const AlertsPage = () => {
   const { t } = useLang();
   const [rules, setRules] = useState<AlertRule[]>([]);

@@ -55,6 +55,12 @@ const ThemedApp = () => {
           Table: { borderRadius: 8 },
           Button: { borderRadius: 8 },
           Tag: { borderRadiusSM: 6 },
+          Menu: {
+            itemBorderRadius: 6,
+            itemMarginInline: 8,
+            itemHeight: 36,
+            subMenuItemBorderRadius: 6,
+          },
         },
       }}
     >

@@ -26,6 +26,7 @@ export interface LoginRequest {
 export interface LoginResponse {
   token: string;
   expiresIn: number;
+  role: string;
   user: {
     username: string;
     admin: boolean;

@@ -15,9 +15,7 @@
  * limitations under the License.
  */
 
-import { useMemo } from 'react';
-
-let _lineId = 0;
+import { useMemo, useId } from 'react';
 
 interface MiniLineProps {
   data: number[];
@@ -55,8 +53,9 @@ const MiniLine = ({
   const innerW = width - pad * 2;
   const innerH = height - pad * 2;
 
-  const gradientId = useMemo(() => `ml-grad-${++_lineId}`, []);
-  const glowId = useMemo(() => `ml-glow-${++_lineId}`, []);
+  const uid = useId();
+  const gradientId = useMemo(() => `ml-grad-${uid}`, [uid]);
+  const glowId = useMemo(() => `ml-glow-${uid}`, [uid]);
 
   if (data.length < 2) return null;
 
