@@ -29,7 +29,11 @@ export function filterNavigationEntries(
 ): NavigationSearchEntry[] {
   const normalizedQuery = query.trim().toLocaleLowerCase();
   if (!normalizedQuery) return entries;
-  return entries.filter((entry) => entry.label.toLocaleLowerCase().includes(normalizedQuery));
+  return entries.filter(
+    (entry) =>
+      entry.label.toLocaleLowerCase().includes(normalizedQuery) ||
+      entry.key.toLocaleLowerCase().includes(normalizedQuery),
+  );
 }
 
 export function isNavigationSearchShortcut(event: {
@@ -37,6 +41,18 @@ export function isNavigationSearchShortcut(event: {
   metaKey: boolean;
   ctrlKey: boolean;
   altKey: boolean;
+  target?: EventTarget | null;
 }): boolean {
-  return event.key.toLocaleLowerCase() === 'k' && (event.metaKey || event.ctrlKey) && !event.altKey;
+  const isEditableTarget =
+    event.target instanceof Element &&
+    event.target.closest(
+      'input, textarea, select, [contenteditable]:not([contenteditable="false"])',
+    ) !== null;
+
+  return (
+    event.key.toLocaleLowerCase() === 'k' &&
+    (event.metaKey || event.ctrlKey) &&
+    !event.altKey &&
+    !isEditableTarget
+  );
 }

@@ -26,10 +26,15 @@ export interface GeneralSettings {
   sessionTimeout: number;
   requireLogin: boolean;
   llmProvider: string;
-  apiKey: string;
+  apiKeyConfigured: boolean;
   model: string;
   baseUrl: string;
 }
+
+export type GeneralSettingsUpdate = Omit<GeneralSettings, 'apiKeyConfigured'> & {
+  apiKey?: string;
+  clearApiKey?: boolean;
+};
 
 export interface DataSource {
   key: string;
@@ -37,6 +42,9 @@ export interface DataSource {
   type: string;
   url: string;
   auth: string;
+  username?: string;
+  password?: string;
+  bearerToken?: string;
   status: string;
 }
 
@@ -46,8 +54,11 @@ export async function getGeneralSettings() {
   return res.data.data;
 }
 
-export async function saveGeneralSettings(data: Partial<GeneralSettings>) {
-  await client.post('/settings/general/save', data);
+export async function saveGeneralSettings(data: GeneralSettingsUpdate) {
+  const payload = { ...data } as GeneralSettingsUpdate & { apiKeyConfigured?: boolean };
+  delete payload.apiKeyConfigured;
+  if (!payload.apiKey?.trim()) delete payload.apiKey;
+  await client.post('/settings/general/save', payload);
 }
 
 // ─── Data Sources ───────────────────────────────────────────────
@@ -70,7 +81,14 @@ export async function deleteDataSource(key: string) {
   await client.post('/settings/datasources/delete', undefined, { params: { key } });
 }
 
-export async function testDataSource(data: { type: string; url: string; auth?: string }) {
+export async function testDataSource(data: {
+  type: string;
+  url: string;
+  auth?: string;
+  username?: string;
+  password?: string;
+  bearerToken?: string;
+}) {
   const res = await client.post<{ data: { success: boolean; message: string } }>(
     '/settings/datasources/test',
     data,

@@ -18,7 +18,14 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { chatStream, executeAiCommand, listTools, type AiExecuteRequest, type McpTool } from './ai';
+import {
+  AiStreamError,
+  chatStream,
+  executeAiCommand,
+  listTools,
+  type AiExecuteRequest,
+  type McpTool,
+} from './ai';
 
 const mock = new MockAdapter(client);
 const encoder = new TextEncoder();
@@ -106,6 +113,30 @@ describe('AI API', () => {
       );
 
       expect(chunks).toEqual(['hello', 'raw text']);
+    });
+
+    it('throws structured errors from SSE error events', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValue(
+            streamResponse([
+              'event: error\n',
+              'data: {"status":400,"code":"llm.config.incomplete","message":"LLM provider is not configured or enabled","hint":"Configure and enable an LLM provider."}\n\n',
+            ]),
+          ),
+      );
+
+      await expect(
+        chatStream({ message: 'hello', mode: 'chat', model: 'stub' }, vi.fn()),
+      ).rejects.toMatchObject({
+        name: 'AiStreamError',
+        message: 'LLM provider is not configured or enabled',
+        code: 'llm.config.incomplete',
+        hint: 'Configure and enable an LLM provider.',
+        status: 400,
+      } satisfies Partial<AiStreamError>);
     });
   });
 

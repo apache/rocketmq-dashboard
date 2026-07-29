@@ -41,6 +41,24 @@ export interface AiChatRequest {
 interface AiStreamPayload {
   content?: unknown;
   text?: unknown;
+  code?: unknown;
+  message?: unknown;
+  hint?: unknown;
+  status?: unknown;
+}
+
+export class AiStreamError extends Error {
+  code?: string;
+  hint?: string;
+  status?: number;
+
+  constructor(message: string, code?: string, hint?: string, status?: number) {
+    super(message);
+    this.name = 'AiStreamError';
+    this.code = code;
+    this.hint = hint;
+    this.status = status;
+  }
 }
 
 function getEventBoundary(buffer: string): { index: number; length: number } | null {
@@ -60,10 +78,33 @@ function getEventData(event: string): string | null {
   return dataLines.length ? dataLines.join('\n') : null;
 }
 
+function getEventName(event: string): string {
+  const eventLine = event.split(/\r\n|\r|\n/).find((line) => line.startsWith('event:'));
+  if (!eventLine) return 'message';
+  const value = eventLine.slice(6);
+  return value.startsWith(' ') ? value.slice(1) : value;
+}
+
+function parseStreamError(payload: string): AiStreamError {
+  try {
+    const parsed = JSON.parse(payload) as AiStreamPayload;
+    const message = typeof parsed.message === 'string' ? parsed.message : payload;
+    const code = typeof parsed.code === 'string' ? parsed.code : undefined;
+    const hint = typeof parsed.hint === 'string' ? parsed.hint : undefined;
+    const status = typeof parsed.status === 'number' ? parsed.status : undefined;
+    return new AiStreamError(message, code, hint, status);
+  } catch {
+    return new AiStreamError(payload);
+  }
+}
+
 function emitEvent(event: string, onChunk: (text: string) => void): boolean {
   const payload = getEventData(event);
   if (payload === null) return false;
   if (payload === '[DONE]') return true;
+  if (getEventName(event) === 'error') {
+    throw parseStreamError(payload);
+  }
 
   try {
     const parsed = JSON.parse(payload) as AiStreamPayload;

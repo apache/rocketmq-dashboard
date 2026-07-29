@@ -36,11 +36,22 @@ export interface TraceRecord {
 
 export interface MessageQuery {
   topic?: string;
+  tag?: string;
   key?: string;
   msgId?: string;
   startTime?: number;
   endTime?: number;
 }
+
+const toStoreTimestamp = (storeTime: MessageRecord['storeTime']): number => {
+  if (typeof storeTime === 'number') return storeTime;
+
+  const parsed = Date.parse(storeTime);
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+export const sortMessagesByStoreTimeDesc = (messages: MessageRecord[]): MessageRecord[] =>
+  [...messages].sort((a, b) => toStoreTimestamp(b.storeTime) - toStoreTimestamp(a.storeTime));
 
 // Matches mock/dlq.ts
 export interface DLQGroup {
@@ -55,11 +66,13 @@ export interface DLQGroup {
 // ─── Messages ───────────────────────────────────────────────────
 export async function queryMessages(params: MessageQuery) {
   const res = await client.get<{ data: MessageRecord[] }>('/messages', { params });
-  return res.data.data;
+  return sortMessagesByStoreTimeDesc(res.data.data);
 }
 
 export async function getMessageTrace(msgId: string) {
-  const res = await client.get<{ data: TraceRecord }>(`/messages/${msgId}/trace`);
+  const res = await client.get<{ data: TraceRecord }>(
+    `/messages/${encodeURIComponent(msgId)}/trace`,
+  );
   return res.data.data;
 }
 

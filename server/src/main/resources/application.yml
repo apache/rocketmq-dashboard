@@ -14,6 +14,12 @@ springdoc:
     path: /swagger-ui.html
 
 studio:
+  auth:
+    login-required: ${STUDIO_AUTH_LOGIN_REQUIRED:false}
+    users:
+      - username: ${STUDIO_AUTH_ADMIN_USERNAME:}
+        password: ${STUDIO_AUTH_ADMIN_PASSWORD:}
+        admin: true
   metrics:
     prometheus:
       base-url: ${STUDIO_METRICS_PROMETHEUS_BASE_URL:}

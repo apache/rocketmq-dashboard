@@ -6,6 +6,20 @@ import { aclRules as mockRules, aclUsers as mockUsers } from '../mock/acl';
 const aclRulesState = mockRules as unknown as AclRule[];
 const aclUsersState = mockUsers as unknown as AclUser[];
 
+function copyAclRule(rule: AclRule): AclRule {
+  return {
+    ...rule,
+    actions: [...rule.actions],
+  };
+}
+
+function copyAclUser(user: AclUser): AclUser {
+  return {
+    ...user,
+    clusters: [...user.clusters],
+  };
+}
+
 export async function listAclRules(params?: AclRuleQuery): Promise<AclRule[]> {
   if (USE_MOCK) {
     let result = [...aclRulesState];
@@ -13,7 +27,7 @@ export async function listAclRules(params?: AclRuleQuery): Promise<AclRule[]> {
       const principal = params.principal.toLowerCase();
       result = result.filter((rule) => rule.principal.toLowerCase().includes(principal));
     }
-    return result;
+    return result.map(copyAclRule);
   }
   return aclApi.listAclRules(params);
 }
@@ -25,7 +39,7 @@ export async function listAclUsers(params?: { keyword?: string }): Promise<AclUs
       const kw = params.keyword.toLowerCase();
       result = result.filter((u) => u.username.toLowerCase().includes(kw));
     }
-    return result;
+    return result.map(copyAclUser);
   }
   return aclApi.listAclUsers(params);
 }
@@ -38,17 +52,31 @@ export async function createAclRule(data: Partial<AclRule>): Promise<AclRule> {
       resource: '',
       resourceType: '',
       resourcePattern: '',
-      actions: [],
       decision: '',
       scope: '',
       aclVersion: 2,
       createdAt: new Date().toISOString(),
       ...data,
+      actions: [...(data.actions ?? [])],
     };
     aclRulesState.push(rule);
-    return rule;
+    return copyAclRule(rule);
   }
   return aclApi.createAclRule(data);
+}
+
+export async function updateAclRule(data: Partial<AclRule>): Promise<AclRule> {
+  if (USE_MOCK) {
+    const idx = aclRulesState.findIndex((rule) => rule.id === data.id);
+    if (idx < 0) throw new Error(`ACL rule not found: ${data.id}`);
+    aclRulesState[idx] = {
+      ...aclRulesState[idx],
+      ...data,
+      actions: data.actions ? [...data.actions] : [...aclRulesState[idx].actions],
+    };
+    return copyAclRule(aclRulesState[idx]);
+  }
+  return aclApi.updateAclRule(data);
 }
 
 export async function deleteAclRule(id: string): Promise<void> {
@@ -68,14 +96,28 @@ export async function createAclUser(data: Partial<AclUser>): Promise<AclUser> {
       accessKey: '',
       secretKey: '',
       admin: false,
-      clusters: [],
       createdAt: new Date().toISOString(),
       ...data,
+      clusters: [...(data.clusters ?? [])],
     };
     aclUsersState.push(user);
-    return user;
+    return copyAclUser(user);
   }
   return aclApi.createAclUser(data);
+}
+
+export async function updateAclUser(data: Partial<AclUser>): Promise<AclUser> {
+  if (USE_MOCK) {
+    const idx = aclUsersState.findIndex((user) => user.id === data.id);
+    if (idx < 0) throw new Error(`ACL user not found: ${data.id}`);
+    aclUsersState[idx] = {
+      ...aclUsersState[idx],
+      ...data,
+      clusters: data.clusters ? [...data.clusters] : [...aclUsersState[idx].clusters],
+    };
+    return copyAclUser(aclUsersState[idx]);
+  }
+  return aclApi.updateAclUser(data);
 }
 
 export async function deleteAclUser(id: string): Promise<void> {

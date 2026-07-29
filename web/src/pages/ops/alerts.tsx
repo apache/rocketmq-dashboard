@@ -43,6 +43,7 @@ import {
   toggleAlertRule,
   updateAlertRule,
 } from '../../services/opsService';
+import { attachThresholdUnit } from './alertRulePayload';
 
 const { TextArea } = Input;
 
@@ -222,18 +223,16 @@ const AlertsPage = () => {
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
+      const payload = attachThresholdUnit(values);
       setSubmitting(true);
       if (editingRule) {
-        const updated = await updateAlertRule({ ...editingRule, ...values });
+        const updated = await updateAlertRule({ ...editingRule, ...payload });
         setRules((previous) =>
           previous.map((rule) => (rule.id === editingRule.id ? updated : rule)),
         );
         message.success('告警规则已更新');
       } else {
-        const created = await createAlertRule({
-          ...values,
-          thresholdUnit: thresholdUnits[values.metric] ?? '',
-        });
+        const created = await createAlertRule(payload);
         setRules((previous) => [...previous, created]);
         message.success(t('alerts.ruleCreated'));
       }

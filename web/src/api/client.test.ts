@@ -97,6 +97,19 @@ describe('API client response contract', () => {
     expect(message.error).toHaveBeenCalledWith('请求失败');
   });
 
+  it('passes through domain payloads with string code fields', async () => {
+    const payload = {
+      status: 1,
+      errMsg: 'LLM API key is required',
+      code: 'llm.config.missing_api_key',
+      hint: 'Configure an API key for provider openai.',
+    };
+    mock.onPost('/llm/config/test').reply(200, payload);
+
+    await expect(client.post('/llm/config/test', {})).resolves.toMatchObject({ data: payload });
+    expect(message.error).not.toHaveBeenCalled();
+  });
+
   it('attaches the stored bearer token to outgoing requests', async () => {
     localStorage.setItem('token', 'test-token');
     mock.onGet('/clusters').reply((config) => {

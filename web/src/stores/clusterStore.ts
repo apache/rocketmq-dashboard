@@ -16,12 +16,11 @@
  */
 
 import { create } from 'zustand';
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Cluster = any;
+import { listClusters } from '../services/clusterService';
+import type { ClusterInfo } from '../api/cluster';
 
 interface ClusterState {
-  clusters: Cluster[];
+  clusters: ClusterInfo[];
   loading: boolean;
   fetchClusters: () => Promise<void>;
 }
@@ -31,8 +30,12 @@ const useClusterStore = create<ClusterState>((set) => ({
   loading: false,
   fetchClusters: async () => {
     set({ loading: true });
-    // TODO: call API to fetch clusters
-    set({ clusters: [], loading: false });
+    try {
+      const clusters = await listClusters();
+      set({ clusters });
+    } finally {
+      set({ loading: false });
+    }
   },
 }));
 

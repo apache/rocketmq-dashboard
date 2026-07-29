@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useState, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Table,
   Card,
@@ -59,13 +59,21 @@ import type { Dayjs } from 'dayjs';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import { TOPIC_TYPE_MAP, PROTOCOL_MAP } from '../../constants/theme';
-import { mockConsumerGroups, mockQueueProgress, mockSubscriptions } from '../../mock/consumers';
 import type {
   ConsumerGroup,
   ConsumerInstance,
   QueueProgress,
   SubscriptionEntry,
-} from '../../mock/consumers';
+} from '../../api/metadata';
+import {
+  batchDeleteConsumerGroups,
+  createConsumerGroup,
+  deleteConsumerGroup,
+  getConsumerProgress,
+  getConsumerSubscriptions,
+  listConsumerGroups,
+  resetConsumerOffset,
+} from '../../services/consumerService';
 
 const { Text } = Typography;
 
@@ -112,7 +120,8 @@ const formatDateTime = (dateStr: string): string => {
    ═══════════════════════════════════════════ */
 const ConsumerPage = () => {
   const { t } = useLang();
-  const [groups, setGroups] = useState<ConsumerGroup[]>(mockConsumerGroups);
+  const [groups, setGroups] = useState<ConsumerGroup[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [search, setSearch] = useState('');
   const [modeFilter, setModeFilter] = useState<string>('ALL');
@@ -125,6 +134,56 @@ const ConsumerPage = () => {
   const [resetModalOpen, setResetModalOpen] = useState(false);
   const [resetGroup, setResetGroup] = useState<ConsumerGroup | null>(null);
   const [resetTime, setResetTime] = useState<Dayjs>(dayjs().subtract(3, 'hour'));
+  const [subscriptionsByGroup, setSubscriptionsByGroup] = useState<
+    Record<string, SubscriptionEntry[]>
+  >({});
+  const [progressByGroup, setProgressByGroup] = useState<Record<string, QueueProgress[]>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchGroups = async () => {
+      try {
+        const nextGroups = await listConsumerGroups();
+        if (!cancelled) setGroups(nextGroups);
+      } catch {
+        if (!cancelled) message.error('消费组列表加载失败，请稍后重试');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    void fetchGroups();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const loadSubscriptions = useCallback(
+    async (groupName: string) => {
+      if (subscriptionsByGroup[groupName]) return;
+      try {
+        const subscriptions = await getConsumerSubscriptions(groupName);
+        setSubscriptionsByGroup((prev) => ({ ...prev, [groupName]: subscriptions }));
+      } catch {
+        message.error(`消费组 ${groupName} 订阅关系加载失败`);
+      }
+    },
+    [subscriptionsByGroup],
+  );
+
+  const loadProgress = useCallback(
+    async (groupName: string) => {
+      if (progressByGroup[groupName]) return;
+      try {
+        const progress = await getConsumerProgress(groupName);
+        setProgressByGroup((prev) => ({ ...prev, [groupName]: progress }));
+      } catch {
+        message.error(`消费组 ${groupName} 消费进度加载失败`);
+      }
+    },
+    [progressByGroup],
+  );
 
   /* ─── Filtered & sorted data ─── */
   const filtered = useMemo(() => {
@@ -152,7 +211,14 @@ const ConsumerPage = () => {
   const openModal = (group: ConsumerGroup) => {
     setSelectedGroup(group);
     setModalOpen(true);
+    void loadSubscriptions(group.name);
+    void loadProgress(group.name);
   };
+
+  const selectedSubscriptions = selectedGroup
+    ? (subscriptionsByGroup[selectedGroup.name] ?? [])
+    : [];
+  const selectedProgress = selectedGroup ? (progressByGroup[selectedGroup.name] ?? []) : [];
 
   /* ═══════════════════════════════════════════
      Main Table Columns
@@ -177,8 +243,8 @@ const ConsumerPage = () => {
       width: 110,
       sorter: (a, b) => a.subscriptionDataType.localeCompare(b.subscriptionDataType),
       render: (type: string) => {
-        const config = TOPIC_TYPE_MAP[type] || { label: type, color: 'default' };
-        return <Tag color={config.color}>{config.label}</Tag>;
+        const config = TOPIC_TYPE_MAP[type] || { labelKey: type, color: 'default' };
+        return <Tag color={config.color}>{t(config.labelKey)}</Tag>;
       },
     },
     {
@@ -279,7 +345,12 @@ const ConsumerPage = () => {
                 okText: '删除',
                 okButtonProps: { danger: true },
                 cancelText: '取消',
-                onOk: () => message.success(`消费组 ${record.name} 已删除`),
+                onOk: async () => {
+                  await deleteConsumerGroup(record.name);
+                  setGroups((prev) => prev.filter((group) => group.name !== record.name));
+                  setSelectedRowKeys((prev) => prev.filter((key) => key !== record.name));
+                  message.success(`消费组 ${record.name} 已删除`);
+                },
               });
             }}
           >
@@ -374,8 +445,8 @@ const ConsumerPage = () => {
       key: 'protocol',
       width: 100,
       render: (protocol: string) => {
-        const config = PROTOCOL_MAP[protocol] || { label: protocol, color: 'default' };
-        return <Tag color={config.color}>{config.label}</Tag>;
+        const config = PROTOCOL_MAP[protocol] || { labelKey: protocol, color: 'default' };
+        return <Tag color={config.color}>{t(config.labelKey)}</Tag>;
       },
     },
     {
@@ -517,8 +588,10 @@ const ConsumerPage = () => {
                   okText: '删除',
                   okButtonProps: { danger: true },
                   cancelText: '取消',
-                  onOk: () => {
-                    setGroups((prev) => prev.filter((g) => !selectedRowKeys.includes(g.name)));
+                  onOk: async () => {
+                    const names = selectedRowKeys.map(String);
+                    await batchDeleteConsumerGroups(names);
+                    setGroups((prev) => prev.filter((g) => !names.includes(g.name)));
                     message.success(`已删除 ${selectedRowKeys.length} 个 Group`);
                     setSelectedRowKeys([]);
                   },
@@ -552,6 +625,7 @@ const ConsumerPage = () => {
         <Table
           columns={columns}
           dataSource={filtered}
+          loading={loading}
           rowKey="name"
           rowSelection={{
             selectedRowKeys,
@@ -564,11 +638,14 @@ const ConsumerPage = () => {
           }}
           size="small"
           expandable={{
+            onExpand: (expanded, record) => {
+              if (expanded) void loadSubscriptions(record.name);
+            },
             expandedRowRender: (record) => (
               <div style={{ padding: '8px 0' }}>
                 <Table
                   columns={subscriptionSubColumns}
-                  dataSource={mockSubscriptions[record.name] || []}
+                  dataSource={subscriptionsByGroup[record.name] ?? []}
                   rowKey="topic"
                   pagination={false}
                   size="small"
@@ -710,8 +787,9 @@ const ConsumerPage = () => {
                             TOPIC_TYPE_MAP[selectedGroup.subscriptionDataType]?.color || 'default'
                           }
                         >
-                          {TOPIC_TYPE_MAP[selectedGroup.subscriptionDataType]?.label ||
-                            selectedGroup.subscriptionDataType}
+                          {TOPIC_TYPE_MAP[selectedGroup.subscriptionDataType]
+                            ? t(TOPIC_TYPE_MAP[selectedGroup.subscriptionDataType].labelKey)
+                            : selectedGroup.subscriptionDataType}
                         </Tag>
                       </Descriptions.Item>
                       <Descriptions.Item label="消费延迟">
@@ -747,7 +825,7 @@ const ConsumerPage = () => {
                       </Flex>
                       <Table
                         columns={subscriptionSubColumns}
-                        dataSource={mockSubscriptions[selectedGroup.name] || []}
+                        dataSource={selectedSubscriptions}
                         rowKey="topic"
                         pagination={false}
                         size="small"
@@ -799,17 +877,11 @@ const ConsumerPage = () => {
                       <Space size={24}>
                         <Space size={4}>
                           <Text type="secondary">总 Broker 数:</Text>
-                          <Text strong>
-                            {
-                              new Set(
-                                (mockQueueProgress[selectedGroup.name] || []).map((q) => q.broker),
-                              ).size
-                            }
-                          </Text>
+                          <Text strong>{new Set(selectedProgress.map((q) => q.broker)).size}</Text>
                         </Space>
                         <Space size={4}>
                           <Text type="secondary">总 Queue 数:</Text>
-                          <Text strong>{(mockQueueProgress[selectedGroup.name] || []).length}</Text>
+                          <Text strong>{selectedProgress.length}</Text>
                         </Space>
                         <Space size={4}>
                           <Text type="secondary">总堆积:</Text>
@@ -827,7 +899,7 @@ const ConsumerPage = () => {
 
                     <Table
                       columns={queueColumns}
-                      dataSource={mockQueueProgress[selectedGroup.name] || []}
+                      dataSource={selectedProgress}
                       rowKey={(r) => `${r.broker}-${r.queueId}`}
                       pagination={false}
                       size="small"
@@ -866,7 +938,21 @@ const ConsumerPage = () => {
                 content: `将创建消费组 "${values.name}"，命名空间: ${values.namespace || 'default'}`,
                 okText: '确认创建',
                 cancelText: '取消',
-                onOk: () => {
+                onOk: async () => {
+                  const created = await createConsumerGroup({
+                    name: values.name,
+                    namespace: values.namespace || 'default',
+                    subscriptionMode: values.subscriptionMode,
+                    consumeType: values.consumeType,
+                    retryMaxTimes: values.retryMaxTimes,
+                    subscriptionDataType: values.dataType || 'NORMAL',
+                    deliveryOrderType: values.deliveryOrderType,
+                    subscribedTopics: [],
+                  });
+                  setGroups((prev) => [
+                    created,
+                    ...prev.filter((group) => group.name !== created.name),
+                  ]);
                   message.success(`消费组 ${values.name} 创建成功`);
                   setCreateModalOpen(false);
                   form.resetFields();
@@ -975,8 +1061,12 @@ const ConsumerPage = () => {
           setResetModalOpen(false);
           setResetGroup(null);
         }}
-        onOk={() => {
+        onOk={async () => {
           if (resetGroup) {
+            await resetConsumerOffset({
+              name: resetGroup.name,
+              timestamp: resetTime.valueOf(),
+            });
             message.success(
               `${resetGroup.name} 消费位点已重置到 ${resetTime.format('YYYY-MM-DD HH:mm:ss')}`,
             );

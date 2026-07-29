@@ -23,8 +23,10 @@ import {
   createNameServer,
   deleteK8sCert,
   deleteNameServer,
+  getCluster,
   listK8sCerts,
   renewK8sCert,
+  restartBroker,
   restartNameServer,
   restartProxy,
   updateK8sCert,
@@ -101,6 +103,33 @@ describe('K8s certificate API', () => {
     });
 
     await expect(deleteK8sCert(cert.id)).resolves.toBeUndefined();
+  });
+
+  it('encodes cluster path parameters', async () => {
+    const cluster = {
+      id: 'cloud/prod cluster:1',
+      name: 'prod',
+    };
+    mock.onGet('/clusters/cloud%2Fprod%20cluster%3A1').reply(200, {
+      code: 200,
+      data: cluster,
+    });
+
+    await expect(getCluster(cluster.id)).resolves.toEqual(cluster);
+  });
+
+  it('encodes broker restart path parameters', async () => {
+    mock
+      .onPost('/clusters/cloud%2Fprod%20cluster%3A1/brokers/broker%2Fmain%3A10911/restart')
+      .reply(200, {
+        code: 200,
+        data: { success: true, message: 'restarted' },
+      });
+
+    await expect(restartBroker('cloud/prod cluster:1', 'broker/main:10911')).resolves.toEqual({
+      success: true,
+      message: 'restarted',
+    });
   });
 
   it('sends NameServer operation payloads to their endpoints', async () => {

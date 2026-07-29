@@ -40,8 +40,11 @@ describe('Auth API', () => {
   it('login should post credentials and return token data', async () => {
     const mockResponse = {
       token: 'jwt-token-123',
-      username: 'admin',
-      role: 'ADMIN',
+      expiresIn: 86400,
+      user: {
+        username: 'admin',
+        admin: true,
+      },
     };
     mock.onPost('/auth/login', { username: 'admin', password: 'secret' }).reply(200, {
       data: mockResponse,
@@ -50,8 +53,9 @@ describe('Auth API', () => {
     const result = await login('admin', 'secret');
     expect(result).toEqual(mockResponse);
     expect(result.token).toBe('jwt-token-123');
-    expect(result.username).toBe('admin');
-    expect(result.role).toBe('ADMIN');
+    expect(result.expiresIn).toBe(86400);
+    expect(result.user.username).toBe('admin');
+    expect(result.user.admin).toBe(true);
   });
 
   it('login should handle error response', async () => {

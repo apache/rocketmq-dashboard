@@ -36,6 +36,7 @@ describe('message API', () => {
   it('sends the backend-supported query fields with epoch timestamps', async () => {
     const params = {
       topic: 'orders',
+      tag: 'created',
       key: 'order-1',
       startTime: 1784246400000,
       endTime: 1784332800000,
@@ -46,6 +47,43 @@ describe('message API', () => {
     });
 
     await expect(queryMessages(params)).resolves.toEqual([]);
+  });
+
+  it('sorts message query results by store time descending', async () => {
+    mock.onGet('/messages').reply(200, {
+      code: 200,
+      data: [
+        {
+          msgId: 'msg-old',
+          topic: 'orders',
+          tag: 'created',
+          key: 'order-1',
+          body: '{}',
+          storeTime: '2026-07-23T10:00:00.000Z',
+          bornHost: '10.0.0.1:1000',
+          storeHost: '10.0.0.2:10911',
+          properties: {},
+          size: 2,
+        },
+        {
+          msgId: 'msg-new',
+          topic: 'orders',
+          tag: 'created',
+          key: 'order-2',
+          body: '{}',
+          storeTime: 1784804400000,
+          bornHost: '10.0.0.1:1001',
+          storeHost: '10.0.0.2:10911',
+          properties: {},
+          size: 2,
+        },
+      ],
+    });
+
+    await expect(queryMessages({ topic: 'orders' })).resolves.toMatchObject([
+      { msgId: 'msg-new' },
+      { msgId: 'msg-old' },
+    ]);
   });
 
   it('unwraps trace records with numeric timestamps', async () => {
@@ -71,5 +109,15 @@ describe('message API', () => {
     mock.onGet('/messages/msg-1/trace').reply(200, { code: 200, data: trace });
 
     await expect(getMessageTrace('msg-1')).resolves.toEqual(trace);
+  });
+
+  it('encodes message IDs before requesting trace records', async () => {
+    const trace = {
+      nodes: [],
+      consumerStatus: [],
+    };
+    mock.onGet('/messages/AC1E0A64%2F0000%202A9F%3A1/trace').reply(200, { code: 200, data: trace });
+
+    await expect(getMessageTrace('AC1E0A64/0000 2A9F:1')).resolves.toEqual(trace);
   });
 });

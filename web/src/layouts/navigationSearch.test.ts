@@ -29,6 +29,11 @@ describe('navigation search helpers', () => {
     expect(filterNavigationEntries(entries, '集群')).toEqual([entries[0]]);
   });
 
+  it('filters by route keys case-insensitively', () => {
+    expect(filterNavigationEntries(entries, 'CLUSTER')).toEqual([entries[0]]);
+    expect(filterNavigationEntries(entries, '/settings')).toEqual([entries[1]]);
+  });
+
   it('recognizes Control/Command-K but rejects alternative shortcuts', () => {
     expect(
       isNavigationSearchShortcut({ key: 'k', ctrlKey: true, metaKey: false, altKey: false }),
@@ -42,5 +47,27 @@ describe('navigation search helpers', () => {
     expect(
       isNavigationSearchShortcut({ key: 'k', ctrlKey: true, metaKey: false, altKey: true }),
     ).toBe(false);
+  });
+
+  it('does not capture the shortcut from editable elements', () => {
+    const input = document.createElement('input');
+    const textarea = document.createElement('textarea');
+    const select = document.createElement('select');
+    const editable = document.createElement('div');
+    editable.setAttribute('contenteditable', 'true');
+    const editableChild = document.createElement('span');
+    editable.appendChild(editableChild);
+
+    for (const target of [input, textarea, select, editable, editableChild]) {
+      expect(
+        isNavigationSearchShortcut({
+          key: 'k',
+          ctrlKey: true,
+          metaKey: false,
+          altKey: false,
+          target,
+        }),
+      ).toBe(false);
+    }
   });
 });

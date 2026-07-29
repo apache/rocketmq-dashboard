@@ -65,6 +65,7 @@ const DLQPage = () => {
   ]);
   const [retryTargetTopic, setRetryTargetTopic] = useState('');
   const [retrySubmitting, setRetrySubmitting] = useState(false);
+  const [detailGroup, setDetailGroup] = useState<DLQGroup | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -129,7 +130,28 @@ const DLQPage = () => {
   };
 
   const handleExport = (group: DLQGroup) => {
-    message.success(`已导出 ${group.groupName} 的死信消息（模拟）`);
+    const rows = [
+      ['Group Name', 'DLQ Topic', 'Message Count', 'Retry Count', 'Status', 'Last Enqueue Time'],
+      [
+        group.groupName,
+        group.dlqTopic,
+        String(group.messageCount),
+        String(group.retryCount),
+        group.status,
+        group.lastEnqueueTime,
+      ],
+    ];
+    const csv = rows
+      .map((row) => row.map((value) => `"${value.replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${group.groupName}-dlq.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    message.success(`已导出 ${group.groupName} 的死信队列摘要`);
   };
 
   /* ─── Table Columns ─── */
@@ -196,7 +218,7 @@ const DLQPage = () => {
             size="small"
             icon={<Eye size={14} />}
             style={{ borderColor: '#1677ff', color: '#1677ff' }}
-            onClick={() => message.info(`查看 ${record.groupName} 详情（模拟）`)}
+            onClick={() => setDetailGroup(record)}
           >
             查看详情
           </Button>
@@ -341,6 +363,69 @@ const DLQPage = () => {
                 value={retryTargetTopic}
                 onChange={(e) => setRetryTargetTopic(e.target.value)}
               />
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        title="死信队列详情"
+        open={Boolean(detailGroup)}
+        onCancel={() => setDetailGroup(null)}
+        footer={<Button onClick={() => setDetailGroup(null)}>关闭</Button>}
+        width={560}
+        destroyOnClose
+      >
+        {detailGroup && (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ marginBottom: 16 }}>
+              <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>
+                Group 名称
+              </Text>
+              <Text strong copyable style={{ fontSize: 14, fontFamily: 'monospace' }}>
+                {detailGroup.groupName}
+              </Text>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>
+                DLQ Topic
+              </Text>
+              <Text copyable style={{ fontSize: 14, fontFamily: 'monospace' }}>
+                {detailGroup.dlqTopic}
+              </Text>
+            </div>
+            <Flex gap={24} wrap="wrap">
+              <div>
+                <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>
+                  死信数量
+                </Text>
+                <Text
+                  strong
+                  style={{ color: detailGroup.messageCount > 0 ? '#fa8c16' : undefined }}
+                >
+                  {detailGroup.messageCount.toLocaleString()}
+                </Text>
+              </div>
+              <div>
+                <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>
+                  重试次数
+                </Text>
+                <Text>{detailGroup.retryCount.toLocaleString()}</Text>
+              </div>
+              <div>
+                <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>
+                  状态
+                </Text>
+                <Text>{detailGroup.status}</Text>
+              </div>
+            </Flex>
+            <div style={{ marginTop: 16 }}>
+              <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>
+                最近入队时间
+              </Text>
+              <Text style={{ fontFamily: 'monospace' }}>
+                {formatDateTime(detailGroup.lastEnqueueTime)}
+              </Text>
             </div>
           </div>
         )}

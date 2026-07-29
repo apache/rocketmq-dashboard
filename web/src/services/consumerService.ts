@@ -12,6 +12,32 @@ import { mockConsumerGroups, mockQueueProgress, mockSubscriptions } from '../moc
 
 const consumerGroupsState = mockConsumerGroups as unknown as ConsumerGroup[];
 
+function copyConsumerInstance(
+  instance: ConsumerGroup['instances'][number],
+): ConsumerGroup['instances'][number] {
+  return {
+    ...instance,
+    subscribedTopics: [...instance.subscribedTopics],
+    topicLag: { ...instance.topicLag },
+  };
+}
+
+function copyConsumerGroup(group: ConsumerGroup): ConsumerGroup {
+  return {
+    ...group,
+    subscribedTopics: [...group.subscribedTopics],
+    instances: group.instances.map(copyConsumerInstance),
+  };
+}
+
+function copyQueueProgress(progress: QueueProgress): QueueProgress {
+  return { ...progress };
+}
+
+function copySubscription(subscription: SubscriptionEntry): SubscriptionEntry {
+  return { ...subscription };
+}
+
 export async function listConsumerGroups(params?: ConsumerGroupQuery): Promise<ConsumerGroup[]> {
   if (USE_MOCK) {
     let result = [...consumerGroupsState];
@@ -20,13 +46,15 @@ export async function listConsumerGroups(params?: ConsumerGroupQuery): Promise<C
       const kw = params.search.toLowerCase();
       result = result.filter((g) => g.name.toLowerCase().includes(kw));
     }
-    return result;
+    return result.map(copyConsumerGroup);
   }
   return metadataApi.listConsumerGroups(params);
 }
 
 export async function getConsumerProgress(name: string): Promise<QueueProgress[]> {
-  if (USE_MOCK) return (mockQueueProgress[name] as unknown as QueueProgress[]) ?? [];
+  if (USE_MOCK) {
+    return ((mockQueueProgress[name] as unknown as QueueProgress[]) ?? []).map(copyQueueProgress);
+  }
   return metadataApi.getConsumerProgress(name);
 }
 
@@ -34,13 +62,17 @@ export async function getConsumerGroup(name: string): Promise<ConsumerGroupDetai
   if (USE_MOCK) {
     const group = mockConsumerGroups.find((item) => item.name === name);
     if (!group) throw new Error(`Consumer group not found: ${name}`);
-    return group as unknown as ConsumerGroupDetail;
+    return copyConsumerGroup(group as unknown as ConsumerGroupDetail) as ConsumerGroupDetail;
   }
   return metadataApi.getConsumerGroup(name);
 }
 
 export async function getConsumerSubscriptions(name: string): Promise<SubscriptionEntry[]> {
-  if (USE_MOCK) return (mockSubscriptions[name] as unknown as SubscriptionEntry[]) ?? [];
+  if (USE_MOCK) {
+    return ((mockSubscriptions[name] as unknown as SubscriptionEntry[]) ?? []).map(
+      copySubscription,
+    );
+  }
   return metadataApi.getConsumerSubscriptions(name);
 }
 
@@ -62,9 +94,9 @@ export async function createConsumerGroup(data: Partial<ConsumerGroup>): Promise
       updatedAt: now,
       delaySeconds: 0,
       instances: [],
-    };
+    } as ConsumerGroup;
     mockConsumerGroups.unshift(group as never);
-    return group as ConsumerGroup;
+    return copyConsumerGroup(group);
   }
   return metadataApi.createConsumerGroup(data);
 }

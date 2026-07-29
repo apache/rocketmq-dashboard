@@ -17,6 +17,7 @@
 
 import { Badge, Space, Typography } from 'antd';
 import { STATUS_MAP } from '../constants/theme';
+import { useLang } from '../i18n/LangContext';
 
 const { Text } = Typography;
 
@@ -27,10 +28,11 @@ interface StatusBadgeProps {
 }
 
 const StatusBadge = ({ status, text, showDot = true }: StatusBadgeProps) => {
+  const { t } = useLang();
   const config = STATUS_MAP[status] || STATUS_MAP.offline;
-  const label = text || config.label;
+  const label = text || t(config.labelKey);
   return (
-    <Space size={4} role="status" aria-label={`状态：${label}`}>
+    <Space size={4} role="status" aria-label={label}>
       {showDot && <Badge color={config.dot} aria-hidden="true" />}
       <Text style={{ color: config.color, fontSize: 13 }}>{label}</Text>
     </Space>

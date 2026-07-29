@@ -19,7 +19,7 @@ import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
 import { getGeneralSettings, saveGeneralSettings } from './settings';
-import type { GeneralSettings } from './settings';
+import type { GeneralSettings, GeneralSettingsUpdate } from './settings';
 
 const mock = new MockAdapter(client);
 const settings: GeneralSettings = {
@@ -30,9 +30,20 @@ const settings: GeneralSettings = {
   sessionTimeout: 60,
   requireLogin: true,
   llmProvider: 'openai',
-  apiKey: 'sk-test',
+  apiKeyConfigured: true,
   model: 'gpt-5',
   baseUrl: 'https://api.example.com/v1',
+};
+const editableSettings: GeneralSettingsUpdate = {
+  theme: settings.theme,
+  compact: settings.compact,
+  desktopNotify: settings.desktopNotify,
+  notifySound: settings.notifySound,
+  sessionTimeout: settings.sessionTimeout,
+  requireLogin: settings.requireLogin,
+  llmProvider: settings.llmProvider,
+  model: settings.model,
+  baseUrl: settings.baseUrl,
 };
 
 describe('general settings API', () => {
@@ -52,12 +63,38 @@ describe('general settings API', () => {
     await expect(getGeneralSettings()).resolves.toEqual(settings);
   });
 
-  it('persists all editable settings fields', async () => {
+  it('sends a replacement API key without requiring the stored secret', async () => {
+    const update: GeneralSettingsUpdate = { ...editableSettings, apiKey: 'sk-new' };
     mock.onPost('/settings/general/save').reply((config) => {
-      expect(JSON.parse(config.data)).toEqual(settings);
+      expect(JSON.parse(config.data)).toEqual(update);
       return [200, { code: 200, data: null }];
     });
 
-    await expect(saveGeneralSettings(settings)).resolves.toBeUndefined();
+    await expect(saveGeneralSettings(update)).resolves.toBeUndefined();
+  });
+
+  it('omits blank and response-only API key fields when preserving the stored secret', async () => {
+    const update = {
+      ...settings,
+      apiKey: '  ',
+    } as GeneralSettingsUpdate & { apiKeyConfigured: boolean };
+    mock.onPost('/settings/general/save').reply((config) => {
+      const body = JSON.parse(config.data);
+      expect(body).not.toHaveProperty('apiKey');
+      expect(body).not.toHaveProperty('apiKeyConfigured');
+      return [200, { code: 200, data: null }];
+    });
+
+    await expect(saveGeneralSettings(update)).resolves.toBeUndefined();
+  });
+
+  it('sends the explicit API key clear flag', async () => {
+    const update: GeneralSettingsUpdate = { ...editableSettings, clearApiKey: true };
+    mock.onPost('/settings/general/save').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual(update);
+      return [200, { code: 200, data: null }];
+    });
+
+    await expect(saveGeneralSettings(update)).resolves.toBeUndefined();
   });
 });

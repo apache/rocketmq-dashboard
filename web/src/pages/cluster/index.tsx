@@ -29,6 +29,7 @@ import {
   Switch,
   InputNumber,
   Progress,
+  Descriptions,
   Flex,
   Space,
   Typography,
@@ -46,20 +47,53 @@ import {
 import { Cpu, HardDrives, Globe } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
-import clusters, {
-  type BrokerInfo,
-  type ProxyInfo,
-  type NameServerInfo,
-  type ClusterConfig,
-  type ClusterInfo,
-} from '../../mock/clusters';
+import type {
+  BrokerInfo,
+  ProxyInfo,
+  NameServerInfo,
+  ClusterConfig,
+  ClusterInfo,
+} from '../../api/cluster';
+import {
+  createNameServer,
+  listClusters,
+  restartProxy,
+  updateClusterConfig,
+  updateNameServer,
+} from '../../services/clusterService';
 
 const { Text } = Typography;
+
+const buildBrokerTpsMap = (
+  clusters: ClusterInfo[],
+): Record<string, { tpsIn: number; tpsOut: number }> => {
+  const result: Record<string, { tpsIn: number; tpsOut: number }> = {};
+  clusters.forEach((cluster) =>
+    cluster.brokers.forEach((broker) => {
+      result[broker.addr] = { tpsIn: broker.tpsIn, tpsOut: broker.tpsOut };
+    }),
+  );
+  return result;
+};
+
+const buildProxyConnMap = (clusters: ClusterInfo[]): Record<string, number> => {
+  const result: Record<string, number> = {};
+  clusters.forEach((cluster) =>
+    cluster.proxies.forEach((proxy) => {
+      result[proxy.addr] = proxy.connections;
+    }),
+  );
+  return result;
+};
+
+type ProxyDetail = ProxyInfo & { clusterId: string; clusterName: string; nsClusterName: string };
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 const ClusterPage = () => {
   const { t } = useLang();
+  const [clusters, setClusters] = useState<ClusterInfo[]>([]);
+  const [loading, setLoading] = useState(true);
   const [nsSearch, setNsSearch] = useState('');
   const [brokerSearch, setBrokerSearch] = useState('');
   const [brokerNsClusterFilter, setBrokerNsClusterFilter] = useState<string>('');
@@ -69,33 +103,57 @@ const ClusterPage = () => {
   const [selectedCluster, setSelectedCluster] = useState<ClusterInfo | null>(null);
   const [nsModalOpen, setNsModalOpen] = useState(false);
   const [nsModalMode, setNsModalMode] = useState<'create' | 'edit'>('create');
+  const [selectedProxy, setSelectedProxy] = useState<ProxyDetail | null>(null);
   const [nsForm] = Form.useForm();
   const [configForm] = Form.useForm();
 
   // ─── Auto-refresh TPS / connections every 2s ──────────────────────────────
   const [autoRefresh, setAutoRefresh] = useState(true);
-  // Initialize from mock base values
-  const initBrokerTps = (): Record<string, { tpsIn: number; tpsOut: number }> => {
-    const m: Record<string, { tpsIn: number; tpsOut: number }> = {};
-    clusters.forEach((c) =>
-      c.brokers.forEach((b) => {
-        m[b.addr] = { tpsIn: b.tpsIn, tpsOut: b.tpsOut };
-      }),
-    );
-    return m;
-  };
-  const initProxyConn = (): Record<string, number> => {
-    const m: Record<string, number> = {};
-    clusters.forEach((c) =>
-      c.proxies.forEach((p) => {
-        m[p.addr] = p.connections;
-      }),
-    );
-    return m;
+  const [brokerTpsMap, setBrokerTpsMap] = useState<
+    Record<string, { tpsIn: number; tpsOut: number }>
+  >({});
+  const [proxyConnMap, setProxyConnMap] = useState<Record<string, number>>({});
+
+  const applyClusters = (nextClusters: ClusterInfo[]) => {
+    setClusters(nextClusters);
+    setBrokerTpsMap(buildBrokerTpsMap(nextClusters));
+    setProxyConnMap(buildProxyConnMap(nextClusters));
   };
 
-  const [brokerTpsMap, setBrokerTpsMap] = useState(initBrokerTps);
-  const [proxyConnMap, setProxyConnMap] = useState(initProxyConn);
+  const refreshClusters = async (showLoading = false) => {
+    if (showLoading) setLoading(true);
+    try {
+      applyClusters(await listClusters());
+    } catch {
+      message.error(t('common.fetchDataFailed'));
+    } finally {
+      if (showLoading) setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchClusters = async () => {
+      try {
+        const nextClusters = await listClusters();
+        if (!cancelled) {
+          setClusters(nextClusters);
+          setBrokerTpsMap(buildBrokerTpsMap(nextClusters));
+          setProxyConnMap(buildProxyConnMap(nextClusters));
+        }
+      } catch {
+        if (!cancelled) message.error(t('common.fetchDataFailed'));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    void fetchClusters();
+    return () => {
+      cancelled = true;
+    };
+  }, [t]);
 
   useEffect(() => {
     if (!autoRefresh) return;
@@ -133,7 +191,7 @@ const ClusterPage = () => {
     }, 2000);
 
     return () => clearInterval(timer);
-  }, [autoRefresh]);
+  }, [autoRefresh, clusters]);
 
   // Broker config handler
   const handleConfigOpen = (cluster: ClusterInfo) => {
@@ -363,7 +421,7 @@ const ClusterPage = () => {
           <Button
             type="primary"
             icon={<PlusOutlined />}
-            onClick={() => message.info('新建集群功能开发中')}
+            onClick={() => message.info(t('cluster.createClusterWip'))}
           >
             {t('cluster.createCluster')}
           </Button>
@@ -372,6 +430,7 @@ const ClusterPage = () => {
           <Table
             columns={brokerColumns}
             dataSource={allBrokers}
+            loading={loading}
             rowKey="addr"
             pagination={{ pageSize: 20 }}
             size="small"
@@ -380,51 +439,70 @@ const ClusterPage = () => {
 
         {selectedCluster && (
           <Modal
-            title={`配置 - ${selectedCluster.name}`}
+            title={t('cluster.configTitle', { name: selectedCluster.name })}
             open={configModalOpen}
             onCancel={() => setConfigModalOpen(false)}
             onOk={() => {
-              configForm.validateFields().then(() => {
-                message.success('配置已更新');
+              configForm.validateFields().then(async (values) => {
+                if (!selectedCluster) return;
+                const { maxMessageSizeMB, ...configValues } = values;
+                const nextConfig: ClusterConfig = {
+                  ...selectedCluster.config,
+                  ...configValues,
+                  maxMessageSize: maxMessageSizeMB * 1048576,
+                };
+                await updateClusterConfig({
+                  id: selectedCluster.id,
+                  ...nextConfig,
+                });
+                setClusters((prev) =>
+                  prev.map((cluster) =>
+                    cluster.id === selectedCluster.id
+                      ? { ...cluster, config: nextConfig }
+                      : cluster,
+                  ),
+                );
+                setSelectedCluster((prev) => (prev ? { ...prev, config: nextConfig } : prev));
+                message.success(t('cluster.configUpdated'));
                 setConfigModalOpen(false);
               });
             }}
             width={560}
           >
             <Form form={configForm} layout="vertical">
-              <Form.Item label="刷盘方式" name="flushDiskType">
+              <Form.Item label={t('cluster.flushDiskType')} name="flushDiskType">
                 <Radio.Group>
-                  <Radio value="SYNC_FLUSH">同步刷盘</Radio>
-                  <Radio value="ASYNC_FLUSH">异步刷盘</Radio>
+                  <Radio value="SYNC_FLUSH">{t('cluster.syncFlush')}</Radio>
+                  <Radio value="ASYNC_FLUSH">{t('cluster.asyncFlush')}</Radio>
                 </Radio.Group>
               </Form.Item>
               <Form.Item
-                label="自动创建 Topic"
+                label={t('cluster.autoCreateTopic')}
                 name="autoCreateTopicEnable"
                 valuePropName="checked"
               >
                 <Switch />
               </Form.Item>
               <Form.Item
-                label="自动创建订阅组"
+                label={t('cluster.autoCreateSubGroup')}
                 name="autoCreateSubscriptionGroup"
                 valuePropName="checked"
               >
                 <Switch />
               </Form.Item>
-              <Form.Item label="最大消息大小 (MB)" name="maxMessageSizeMB">
+              <Form.Item label={t('cluster.maxMessageSize')} name="maxMessageSizeMB">
                 <InputNumber min={1} max={128} style={{ width: '100%' }} />
               </Form.Item>
-              <Form.Item label="文件保留时长 (小时)" name="fileReservedTime">
+              <Form.Item label={t('cluster.fileReservedTime')} name="fileReservedTime">
                 <InputNumber min={1} max={720} style={{ width: '100%' }} />
               </Form.Item>
-              <Form.Item label="写队列数" name="writeQueueNums">
+              <Form.Item label={t('cluster.writeQueues')} name="writeQueueNums">
                 <InputNumber min={1} max={256} style={{ width: '100%' }} />
               </Form.Item>
-              <Form.Item label="读队列数" name="readQueueNums">
+              <Form.Item label={t('cluster.readQueues')} name="readQueueNums">
                 <InputNumber min={1} max={256} style={{ width: '100%' }} />
               </Form.Item>
-              <Form.Item label="Broker 权限" name="brokerPermission">
+              <Form.Item label={t('cluster.brokerPermission')} name="brokerPermission">
                 <InputNumber min={0} max={7} style={{ width: '100%' }} />
               </Form.Item>
             </Form>
@@ -468,9 +546,9 @@ const ClusterPage = () => {
         render: (status: string) => {
           const map: Record<string, { color: string; label: string }> = {
             healthy: { color: 'green', label: t('cluster.running') },
-            warning: { color: 'gold', label: '告警' },
-            error: { color: 'red', label: '异常' },
-            offline: { color: 'default', label: '离线' },
+            warning: { color: 'gold', label: t('cluster.warning') },
+            error: { color: 'red', label: t('cluster.error') },
+            offline: { color: 'default', label: t('cluster.offline') },
           };
           const cfg = map[status] ?? { color: 'default', label: status };
           return <Tag color={cfg.color}>{cfg.label}</Tag>;
@@ -530,9 +608,9 @@ const ClusterPage = () => {
         render: (status: string) => {
           const map: Record<string, { color: string; label: string }> = {
             healthy: { color: 'green', label: t('cluster.running') },
-            warning: { color: 'gold', label: '告警' },
-            error: { color: 'red', label: '异常' },
-            offline: { color: 'default', label: '离线' },
+            warning: { color: 'gold', label: t('cluster.warning') },
+            error: { color: 'red', label: t('cluster.error') },
+            offline: { color: 'default', label: t('cluster.offline') },
           };
           const cfg = map[status] ?? { color: 'default', label: status };
           return <Tag color={cfg.color}>{cfg.label}</Tag>;
@@ -583,6 +661,7 @@ const ClusterPage = () => {
           <Table
             columns={clusterColumns}
             dataSource={filteredClusters}
+            loading={loading}
             rowKey="id"
             pagination={{ pageSize: 20 }}
             size="small"
@@ -608,7 +687,7 @@ const ClusterPage = () => {
   // ─── Tab 3: Proxy 管理 (flat table) ────────────────────────────────────────
 
   function renderProxyTab() {
-    type ProxyRow = ProxyInfo & { clusterName: string; nsClusterName: string };
+    type ProxyRow = ProxyDetail;
 
     const allProxies: ProxyRow[] = clusters
       .filter((c) => c.proxies.length > 0)
@@ -622,6 +701,7 @@ const ClusterPage = () => {
           .map((p) => ({
             ...p,
             connections: proxyConnMap[p.addr] ?? p.connections,
+            clusterId: c.id,
             clusterName: c.name,
             nsClusterName: c.nsClusterName,
           })),
@@ -661,9 +741,9 @@ const ClusterPage = () => {
         render: (status: string) => {
           const map: Record<string, { color: string; label: string }> = {
             healthy: { color: 'green', label: t('cluster.running') },
-            warning: { color: 'gold', label: '告警' },
-            error: { color: 'red', label: '异常' },
-            offline: { color: 'default', label: '离线' },
+            warning: { color: 'gold', label: t('cluster.warning') },
+            error: { color: 'red', label: t('cluster.error') },
+            offline: { color: 'default', label: t('cluster.offline') },
           };
           const cfg = map[status] ?? { color: 'default', label: status };
           return <Tag color={cfg.color}>{cfg.label}</Tag>;
@@ -704,7 +784,7 @@ const ClusterPage = () => {
               size="small"
               icon={<EyeOutlined />}
               style={{ borderColor: '#1677ff', color: '#1677ff' }}
-              onClick={() => message.info(`查看详情: ${record.addr}`)}
+              onClick={() => setSelectedProxy(record)}
             >
               {t('common.detail')}
             </Button>
@@ -715,10 +795,14 @@ const ClusterPage = () => {
               onClick={() => {
                 Modal.confirm({
                   title: t('cluster.confirmRestart'),
-                  content: `确定要重启 Proxy "${record.addr}" 吗？`,
-                  okText: '确认',
-                  cancelText: '取消',
-                  onOk: () => message.success(`Proxy 重启已提交: ${record.addr}`),
+                  content: t('cluster.restartProxyConfirm', { addr: record.addr }),
+                  okText: t('common.confirm'),
+                  cancelText: t('common.cancel'),
+                  onOk: async () => {
+                    await restartProxy({ clusterId: record.clusterId, addr: record.addr });
+                    await refreshClusters();
+                    message.success(t('cluster.restartProxySubmitted', { addr: record.addr }));
+                  },
                 });
               }}
             >
@@ -744,7 +828,7 @@ const ClusterPage = () => {
           <Button
             type="primary"
             icon={<PlusOutlined />}
-            onClick={() => message.info('新建集群功能开发中')}
+            onClick={() => message.info(t('cluster.createClusterWip'))}
           >
             {t('cluster.createCluster')}
           </Button>
@@ -753,6 +837,7 @@ const ClusterPage = () => {
           <Table
             columns={proxyColumns}
             dataSource={allProxies}
+            loading={loading}
             rowKey={(r) => `${r.clusterName}-${r.addr}`}
             pagination={{ pageSize: 20 }}
             size="small"
@@ -810,14 +895,21 @@ const ClusterPage = () => {
         open={nsModalOpen}
         onCancel={() => setNsModalOpen(false)}
         onOk={() => {
-          nsForm.validateFields().then((values: Record<string, string>) => {
+          nsForm.validateFields().then(async (values: Record<string, string>) => {
             if (nsModalMode === 'create') {
+              await createNameServer({ clusterId: values.clusterId, addr: values.addr });
               message.success(`${t('cluster.nsCreated')}: ${values.addr}`);
             } else {
+              await updateNameServer({
+                clusterId: values.clusterId,
+                addr: values.addr,
+                newAddr: values.newAddr,
+              });
               message.success(
                 `${t('cluster.nsUpdated')}: ${values.addr}${values.newAddr ? ` → ${values.newAddr}` : ''}`,
               );
             }
+            await refreshClusters();
             setNsModalOpen(false);
           });
         }}
@@ -853,6 +945,54 @@ const ClusterPage = () => {
         </Form>
       </Modal>
       <Tabs items={tabItems} defaultActiveKey="broker" />
+      <Modal
+        title={t('cluster.proxyDetailTitle', { addr: selectedProxy?.addr ?? '' })}
+        open={Boolean(selectedProxy)}
+        onCancel={() => setSelectedProxy(null)}
+        footer={<Button onClick={() => setSelectedProxy(null)}>{t('common.close')}</Button>}
+        width={560}
+        destroyOnClose
+      >
+        {selectedProxy && (
+          <Descriptions column={1} bordered size="small">
+            <Descriptions.Item label={t('cluster.k8sName')}>
+              {selectedProxy.clusterName}
+            </Descriptions.Item>
+            <Descriptions.Item label={t('cluster.nsClusterName')}>
+              {selectedProxy.nsClusterName}
+            </Descriptions.Item>
+            <Descriptions.Item label={t('cluster.proxyAddr')}>
+              <Text copyable code>
+                {selectedProxy.addr}
+              </Text>
+            </Descriptions.Item>
+            <Descriptions.Item label={t('common.status')}>
+              <Tag
+                color={
+                  selectedProxy.status === 'healthy'
+                    ? 'green'
+                    : selectedProxy.status === 'warning'
+                      ? 'gold'
+                      : selectedProxy.status === 'error'
+                        ? 'red'
+                        : 'default'
+                }
+              >
+                {selectedProxy.status}
+              </Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label={t('cluster.connections')}>
+              {selectedProxy.connections.toLocaleString()}
+            </Descriptions.Item>
+            <Descriptions.Item label={t('cluster.grpcPort')}>
+              {selectedProxy.grpcPort}
+            </Descriptions.Item>
+            <Descriptions.Item label={t('cluster.remotingPort')}>
+              {selectedProxy.remotingPort}
+            </Descriptions.Item>
+          </Descriptions>
+        )}
+      </Modal>
     </div>
   );
 };
