@@ -18,13 +18,13 @@ package org.apache.rocketmq.studio.common.exception;
 
 import org.apache.rocketmq.studio.cluster.metrics.PrometheusException;
 import org.apache.rocketmq.studio.common.domain.Result;
+import org.apache.rocketmq.studio.ops.ai.LlmGatewayException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
-import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -48,6 +48,13 @@ public class GlobalExceptionHandler {
                 .body(Result.error(ex.getStatusCode(), ex.getMessage()));
     }
 
+    @ExceptionHandler(LlmGatewayException.class)
+    public ResponseEntity<Result<?>> handleLlmGatewayException(LlmGatewayException ex) {
+        log.warn("LLM gateway exception: code={}, message={}", ex.getCode(), ex.getMessage());
+        return ResponseEntity.status(ex.getStatusCode())
+                .body(Result.error(ex.getStatusCode(), ex.getMessage()));
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public Result<?> handleValidationException(MethodArgumentNotValidException ex) {
@@ -63,13 +70,6 @@ public class GlobalExceptionHandler {
     public Result<?> handleHttpMessageNotReadableException(HttpMessageNotReadableException ex) {
         log.warn("Invalid request body");
         return Result.error(HttpStatus.BAD_REQUEST.value(), "Invalid request body");
-    }
-
-    @ExceptionHandler(MissingServletRequestParameterException.class)
-    @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public Result<?> handleMissingServletRequestParameterException(MissingServletRequestParameterException ex) {
-        String message = ex.getParameterName() + " is required";
-        return Result.error(HttpStatus.BAD_REQUEST.value(), message);
     }
 
     @ExceptionHandler(Exception.class)

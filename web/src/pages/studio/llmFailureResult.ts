@@ -15,31 +15,23 @@
  * limitations under the License.
  */
 
-package org.apache.rocketmq.studio.ops.ai;
+import type { LlmTestResult } from '../../api/llm';
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+export interface TestResult {
+  success: boolean;
+  msg: string;
+  code?: string;
+  hint?: string;
+}
 
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class LlmOperationResultVO {
-    private int status;
-    private String msg;
-    private String errMsg;
-    private String code;
-    private String hint;
-
-    public static LlmOperationResultVO success(String message) {
-        return new LlmOperationResultVO(0, message, null, null, null);
-    }
-
-    public static LlmOperationResultVO failure(String message) {
-        return failure("llm.config.invalid", message, null);
-    }
-
-    public static LlmOperationResultVO failure(String code, String message, String hint) {
-        return new LlmOperationResultVO(1, null, message, code, hint);
-    }
+export function buildLlmFailureResult(
+  result: LlmTestResult | null | undefined,
+  fallbackMessage: string,
+): TestResult {
+  return {
+    success: false,
+    msg: result?.errMsg || fallbackMessage,
+    code: result?.code,
+    hint: result?.hint,
+  };
 }

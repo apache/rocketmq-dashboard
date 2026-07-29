@@ -19,6 +19,20 @@
 @tailwind components;
 @tailwind utilities;
 
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  overscroll-behavior: none;
+}
+
 /* === CSS Variables === */
 :root {
   --bolt-elements-bg-depth-1: #ffffff;
@@ -170,8 +184,8 @@
   padding: 16px 56px 16px 51px;
   font-size: 14px;
   line-height: 1.625;
-  min-height: 132px;
-  max-height: 300px;
+  min-height: 108px;
+  max-height: 180px;
   resize: none;
   border: none;
   outline: none;
@@ -181,4 +195,92 @@
 }
 .chat-input::placeholder {
   color: var(--bolt-elements-textTertiary);
+}
+
+/* === AI Markdown === */
+.ai-markdown {
+  color: #595959;
+  font-size: 14px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.ai-markdown > :first-child {
+  margin-top: 0;
+}
+.ai-markdown > :last-child {
+  margin-bottom: 0;
+}
+.ai-markdown h1,
+.ai-markdown h2,
+.ai-markdown h3,
+.ai-markdown h4 {
+  margin: 14px 0 8px;
+  color: #262626;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.ai-markdown h1 {
+  font-size: 18px;
+}
+.ai-markdown h2 {
+  font-size: 16px;
+}
+.ai-markdown h3,
+.ai-markdown h4 {
+  font-size: 15px;
+}
+.ai-markdown p,
+.ai-markdown ul,
+.ai-markdown ol,
+.ai-markdown blockquote,
+.ai-markdown pre,
+.ai-markdown table {
+  margin: 0 0 10px;
+}
+.ai-markdown ul,
+.ai-markdown ol {
+  padding-left: 20px;
+}
+.ai-markdown li + li {
+  margin-top: 4px;
+}
+.ai-markdown code {
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: #f5f5f5;
+  color: #d4380d;
+  font-size: 13px;
+}
+.ai-markdown pre {
+  padding: 12px;
+  overflow: auto;
+  border-radius: 8px;
+  background: #1f2937;
+}
+.ai-markdown pre code {
+  padding: 0;
+  background: transparent;
+  color: #f9fafb;
+}
+.ai-markdown blockquote {
+  padding-left: 12px;
+  border-left: 3px solid #d9d9d9;
+  color: #6b7280;
+}
+.ai-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+}
+.ai-markdown th,
+.ai-markdown td {
+  padding: 6px 8px;
+  border: 1px solid #f0f0f0;
+  text-align: left;
+}
+.ai-markdown th {
+  background: #fafafa;
+  color: #262626;
+  font-weight: 600;
 }

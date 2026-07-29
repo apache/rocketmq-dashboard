@@ -26,6 +26,7 @@ export interface LlmConfig {
   maxTokens: number;
   temperature: number;
   enabled: boolean;
+  ready?: boolean;
   deploymentName?: string;
   apiVersion?: string;
   awsRegion?: string;
@@ -35,6 +36,8 @@ export interface LlmTestResult {
   status: number;
   msg?: string;
   errMsg?: string;
+  code?: string;
+  hint?: string;
 }
 
 export interface LlmModelItem {
@@ -45,6 +48,10 @@ export interface LlmModelItem {
 export interface LlmModelsResult {
   status: number;
   data?: LlmModelItem[];
+  source?: 'provider' | 'builtin' | 'fallback';
+  warning?: string;
+  warningCode?: string;
+  hint?: string;
 }
 
 export async function getLlmConfig(): Promise<LlmConfig> {

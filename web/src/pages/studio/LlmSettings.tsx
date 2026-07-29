@@ -51,18 +51,11 @@ import {
   getLlmModels,
   type LlmConfig,
 } from '../../api/llm';
+import { buildLlmFailureResult, type TestResult } from './llmFailureResult';
+import { fallbackModelOptions } from './llmModelOptions';
 
 const { Text } = Typography;
-
-// Fallback models when API fetch fails
-const FALLBACK_MODELS: Record<string, string[]> = {
-  openai: ['gpt-4o', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'],
-  azure: ['gpt-4o', 'gpt-4', 'gpt-3.5-turbo'],
-  deepseek: ['deepseek-chat', 'deepseek-reasoner'],
-  tongyi: ['qwen-max', 'qwen-plus', 'qwen-turbo'],
-  ollama: ['llama3', 'mistral', 'gemma2', 'qwen2.5'],
-  bedrock: ['anthropic.claude-3-sonnet', 'anthropic.claude-3-haiku', 'meta.llama3-70b'],
-};
+const MASKED_API_KEY = '••••••••';
 
 interface ProviderDef {
   key: string;
@@ -148,13 +141,6 @@ const PROVIDERS: ProviderDef[] = [
   },
 ];
 
-interface TestResult {
-  success: boolean;
-  msg: string;
-}
-
-const MASKED_API_KEY = '••••••••';
-
 const LlmSettingsPage: React.FC = () => {
   const { t } = useLang();
   const { message } = App.useApp();
@@ -166,7 +152,7 @@ const LlmSettingsPage: React.FC = () => {
   const [enabled, setEnabled] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState('openai');
   const [apiKeyMasked, setApiKeyMasked] = useState(true);
-  const [apiKeyConfigured, setApiKeyConfigured] = useState(false);
+  const [savedApiKey, setSavedApiKey] = useState('');
   const [modelOptions, setModelOptions] = useState<{ value: string; label: string }[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
 
@@ -174,7 +160,7 @@ const LlmSettingsPage: React.FC = () => {
   if (initialized.current == null) {
     initialized.current = true;
     fetchConfig();
-    fetchModels();
+    fetchModels('openai');
   }
 
   function fetchConfig() {
@@ -186,13 +172,9 @@ const LlmSettingsPage: React.FC = () => {
           setSelectedProvider(provider);
           setEnabled(config.enabled || false);
           if (config.apiKeyConfigured) {
-            setApiKeyConfigured(true);
-            setApiKeyMasked(true);
+            setSavedApiKey(MASKED_API_KEY);
             form.setFieldsValue({ apiKey: MASKED_API_KEY });
-          } else {
-            setApiKeyConfigured(false);
-            setApiKeyMasked(false);
-            form.setFieldsValue({ apiKey: '' });
+            setApiKeyMasked(true);
           }
           form.setFieldsValue({
             provider,
@@ -214,12 +196,14 @@ const LlmSettingsPage: React.FC = () => {
       });
   }
 
-  function fetchModels() {
+  function fetchModels(providerOverride?: string, modelOverride?: string) {
     setModelsLoading(true);
     getLlmConfig()
       .then((config) => {
+        const provider = providerOverride || config?.provider || 'openai';
+        const model = modelOverride || config?.model || '';
         if (!config || !config.enabled) {
-          setModelOptions([]);
+          setModelOptions(fallbackModelOptions(provider, model));
           return;
         }
         getLlmModels()
@@ -228,30 +212,50 @@ const LlmSettingsPage: React.FC = () => {
             if (result && result.status === 0 && result.data) {
               models = result.data.map((m) => m.id || m.name || '').filter(Boolean);
             }
+            if (result?.source === 'fallback') {
+              message.warning(
+                result.hint ||
+                  result.warning ||
+                  '已回退到内置模型列表，请检查 Provider 凭证或模型接口。',
+              );
+            }
             if (models.length === 0) {
-              const provider = config.provider || 'openai';
-              models = FALLBACK_MODELS[provider] || [config.model || ''].filter(Boolean);
+              models = fallbackModelOptions(provider, config.model).map((option) => option.value);
             }
             setModelOptions(models.map((m) => ({ value: m, label: m })));
           })
           .catch(() => {
-            const provider = config.provider || 'openai';
-            const fallback = FALLBACK_MODELS[provider] || [config.model || ''].filter(Boolean);
-            setModelOptions(fallback.map((m) => ({ value: m, label: m })));
+            setModelOptions(fallbackModelOptions(provider, model));
           });
       })
       .catch(() => {
-        setModelOptions([]);
+        setModelOptions(fallbackModelOptions(providerOverride || selectedProvider, modelOverride));
       })
       .finally(() => {
         setModelsLoading(false);
       });
   }
 
+  const maskApiKey = (key: string) => {
+    if (key === MASKED_API_KEY) return MASKED_API_KEY;
+    if (!key || key.length < 8) return key ? '••••••••' : '';
+    return key.slice(0, 4) + '••••••••' + key.slice(-4);
+  };
+
   const currentProvider = PROVIDERS.find((p) => p.key === selectedProvider) || PROVIDERS[0];
+
+  const buildConfig = (values: LlmConfig, forceEnabled: boolean): LlmConfig => {
+    const apiKey = apiKeyMasked && savedApiKey ? undefined : values.apiKey || '';
+    return {
+      ...values,
+      apiKey,
+      enabled: forceEnabled,
+    };
+  };
 
   const handleProviderChange = useCallback(
     (value: string) => {
+      const providerChanged = value !== selectedProvider;
       setSelectedProvider(value);
       setTestResult(null);
       const provider = PROVIDERS.find((p) => p.key === value);
@@ -260,15 +264,11 @@ const LlmSettingsPage: React.FC = () => {
           apiBase: provider.defaultBaseUrl,
           model: provider.defaultModel,
         });
-        if (value !== selectedProvider) {
+        setModelOptions(fallbackModelOptions(value, provider.defaultModel));
+        if (providerChanged || !provider.requireApiKey) {
           form.setFieldsValue({ apiKey: '' });
-          setApiKeyConfigured(false);
-          setApiKeyMasked(false);
-        }
-        if (!provider.requireApiKey) {
-          form.setFieldsValue({ apiKey: '' });
-          setApiKeyConfigured(false);
-          setApiKeyMasked(false);
+          setSavedApiKey('');
+          setApiKeyMasked(true);
         }
       }
     },
@@ -276,7 +276,7 @@ const LlmSettingsPage: React.FC = () => {
   );
 
   const handleApiKeyFocus = () => {
-    if (apiKeyMasked && apiKeyConfigured) {
+    if (apiKeyMasked && savedApiKey) {
       form.setFieldsValue({ apiKey: '' });
       setApiKeyMasked(false);
     }
@@ -284,14 +284,11 @@ const LlmSettingsPage: React.FC = () => {
 
   const handleApiKeyBlur = () => {
     const val = form.getFieldValue('apiKey');
-    if (!val && apiKeyConfigured) {
-      form.setFieldsValue({ apiKey: MASKED_API_KEY });
+    if (!val && savedApiKey) {
+      form.setFieldsValue({ apiKey: maskApiKey(savedApiKey) });
       setApiKeyMasked(true);
     }
   };
-
-  const effectiveApiKey = (value: unknown) =>
-    apiKeyMasked && apiKeyConfigured ? '' : String(value || '');
 
   const handleTestConnection = () => {
     setTestLoading(true);
@@ -299,11 +296,7 @@ const LlmSettingsPage: React.FC = () => {
     form
       .validateFields()
       .then((values) => {
-        const testConfig: LlmConfig = {
-          ...values,
-          apiKey: effectiveApiKey(values.apiKey),
-          enabled: true,
-        };
+        const testConfig = buildConfig(values, true);
         testLlmConnection(testConfig)
           .then((result) => {
             if (result && result.status === 0) {
@@ -313,22 +306,17 @@ const LlmSettingsPage: React.FC = () => {
               saveLlmConfig(testConfig)
                 .then(() => {
                   if (testConfig.apiKey) {
-                    setApiKeyConfigured(true);
-                    form.setFieldsValue({ apiKey: MASKED_API_KEY });
-                    setApiKeyMasked(true);
-                  } else if (apiKeyConfigured) {
+                    setSavedApiKey(MASKED_API_KEY);
                     form.setFieldsValue({ apiKey: MASKED_API_KEY });
                     setApiKeyMasked(true);
                   }
+                  fetchModels(testConfig.provider, testConfig.model);
                 })
                 .catch(() => {
                   // auto-save failure is non-critical
                 });
             } else {
-              setTestResult({
-                success: false,
-                msg: (result && result.errMsg) || t('llm.testFailedMsg'),
-              });
+              setTestResult(buildLlmFailureResult(result, t('llm.testFailedMsg')));
               message.error(t('llm.testFailed'));
             }
           })
@@ -353,23 +341,17 @@ const LlmSettingsPage: React.FC = () => {
     form
       .validateFields()
       .then((values) => {
-        const config: LlmConfig = {
-          ...values,
-          apiKey: effectiveApiKey(values.apiKey),
-          enabled,
-        };
+        const config = buildConfig(values, enabled);
         saveLlmConfig(config)
           .then((result) => {
             if (result && result.status === 0) {
               message.success(t('llm.saveSuccess'));
               if (config.apiKey) {
-                setApiKeyConfigured(true);
-                form.setFieldsValue({ apiKey: MASKED_API_KEY });
-                setApiKeyMasked(true);
-              } else if (apiKeyConfigured) {
+                setSavedApiKey(MASKED_API_KEY);
                 form.setFieldsValue({ apiKey: MASKED_API_KEY });
                 setApiKeyMasked(true);
               }
+              fetchModels(config.provider, config.model);
             } else {
               message.error((result && result.errMsg) || t('llm.saveFailed'));
             }
@@ -545,7 +527,7 @@ const LlmSettingsPage: React.FC = () => {
                   </span>
                 }
                 rules={
-                  currentProvider.requireApiKey
+                  currentProvider.requireApiKey && !savedApiKey
                     ? [{ required: true, message: t('llm.apiKeyRequired') }]
                     : []
                 }
@@ -785,6 +767,14 @@ const LlmSettingsPage: React.FC = () => {
                 )
               }
               message={testResult.msg}
+              description={
+                !testResult.success && (testResult.hint || testResult.code) ? (
+                  <Space direction="vertical" size={4}>
+                    {testResult.hint && <Text>{testResult.hint}</Text>}
+                    {testResult.code && <Text code>{testResult.code}</Text>}
+                  </Space>
+                ) : undefined
+              }
               closable
               onClose={() => setTestResult(null)}
             />

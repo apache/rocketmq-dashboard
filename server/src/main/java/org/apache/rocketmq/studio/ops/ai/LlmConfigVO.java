@@ -47,4 +47,13 @@ public class LlmConfigVO {
     public boolean isApiKeyConfigured() {
         return StringUtils.hasText(apiKey);
     }
+
+    @JsonProperty(value = "ready", access = JsonProperty.Access.READ_ONLY)
+    public boolean isReady() {
+        boolean keyRequired = !"ollama".equalsIgnoreCase(provider);
+        return enabled
+                && StringUtils.hasText(apiBase)
+                && StringUtils.hasText(model)
+                && (!keyRequired || StringUtils.hasText(apiKey));
+    }
 }

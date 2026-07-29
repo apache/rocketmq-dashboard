@@ -16,6 +16,8 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Card,
@@ -30,15 +32,17 @@ import {
   Flex,
   Divider,
   Select,
+  Alert,
   message,
 } from 'antd';
 import { ArrowUp, Sparkle, SlidersHorizontal, CaretDown } from '@phosphor-icons/react';
 import type { ColumnsType } from 'antd/es/table';
 import { useLang } from '../../i18n/LangContext';
-import { chatStream } from '../../api/ai';
+import { AiStreamError, chatStream } from '../../api/ai';
+import { getLlmConfig, getLlmModels, type LlmConfig } from '../../api/llm';
 import { getChatDraft } from './chatDraft';
 
-const { Text, Paragraph } = Typography;
+const { Text } = Typography;
 
 /* ─── Types ─── */
 
@@ -79,25 +83,6 @@ interface Message {
   actions?: { label: string; type?: 'primary' | 'default' }[];
 }
 
-/* ─── Model Options ─── */
-
-const modelOptions = [
-  {
-    value: 'qwen3.7-max',
-    label: (
-      <span className="inline-flex items-center gap-1.5">
-        Qwen3.7-Max
-        <span className="px-1 py-0.5 rounded text-[0.625rem] leading-none bg-purple-50 text-purple-600 font-medium">
-          推荐
-        </span>
-      </span>
-    ),
-  },
-  { value: 'qwen3.7-plus', label: 'Qwen3.7-Plus' },
-  { value: 'claude-opus-4.7', label: 'Claude Opus 4.7' },
-  { value: 'gpt-5.4', label: 'GPT-5.4' },
-];
-
 /* ─── Mock Data ─── */
 
 const initialMessages: Message[] = [];
@@ -133,7 +118,7 @@ const UserBubble = ({ text }: { text: string }) => (
   </Flex>
 );
 
-const AiMessage = ({ msg }: { msg: Message }) => (
+export const AiMessage = ({ msg }: { msg: Message }) => (
   <Flex gap={12} align="flex-start" style={{ marginBottom: 16 }}>
     <div
       style={{
@@ -245,7 +230,9 @@ const AiMessage = ({ msg }: { msg: Message }) => (
 
       {/* Summary text */}
       {msg.summary && (
-        <Paragraph style={{ margin: 0, fontSize: 14, color: '#595959' }}>{msg.summary}</Paragraph>
+        <div className="ai-markdown">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.summary}</ReactMarkdown>
+        </div>
       )}
 
       {/* Action buttons */}
@@ -276,7 +263,10 @@ const AiPage = () => {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(false);
-  const [selectedModel, setSelectedModel] = useState('qwen3.7-max');
+  const [llmConfig, setLlmConfig] = useState<LlmConfig | null>(null);
+  const [modelOptions, setModelOptions] = useState<{ value: string; label: string }[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [selectedModel, setSelectedModel] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -291,6 +281,37 @@ const AiPage = () => {
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
+  const loadLlmRuntime = useCallback(async () => {
+    setModelsLoading(true);
+    try {
+      const config = await getLlmConfig();
+      setLlmConfig(config);
+      if (config?.model) {
+        setSelectedModel((current) => current || config.model);
+      }
+      const result = await getLlmModels();
+      const models = result?.status === 0 && result.data ? result.data : [];
+      const options = models
+        .map((item) => item.id || item.name || '')
+        .filter(Boolean)
+        .map((id) => ({ value: id, label: id }));
+      if (options.length > 0) {
+        setModelOptions(options);
+        setSelectedModel((current) => current || config?.model || options[0].value);
+      } else if (config?.model) {
+        setModelOptions([{ value: config.model, label: config.model }]);
+      }
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'AI 配置加载失败');
+    } finally {
+      setModelsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void Promise.resolve().then(loadLlmRuntime);
+  }, [loadLlmRuntime]);
+
   useEffect(() => {
     const draft = getChatDraft(location.state);
     if (!draft || consumedDraftRef.current) return;
@@ -298,7 +319,15 @@ const AiPage = () => {
 
     void Promise.resolve().then(() => {
       setInputValue(draft.prompt);
-      if (draft.model) setSelectedModel(draft.model);
+      const draftModel = draft.model;
+      if (draftModel) {
+        setSelectedModel(draftModel);
+        setModelOptions((options) =>
+          options.some((option) => option.value === draftModel)
+            ? options
+            : [{ value: draftModel, label: draftModel }, ...options],
+        );
+      }
       navigate('/ai', { replace: true, state: null });
       textareaRef.current?.focus();
     });
@@ -310,7 +339,7 @@ const AiPage = () => {
     if (!ta) return;
     const handler = () => {
       ta.style.height = 'auto';
-      ta.style.height = `${Math.min(ta.scrollHeight, 300)}px`;
+      ta.style.height = `${Math.min(ta.scrollHeight, 180)}px`;
     };
     ta.addEventListener('input', handler);
     return () => ta.removeEventListener('input', handler);
@@ -320,9 +349,15 @@ const AiPage = () => {
     return () => abortControllerRef.current?.abort();
   }, []);
 
+  const llmReady = Boolean((llmConfig?.ready ?? llmConfig?.enabled) && selectedModel);
+
   const handleSend = useCallback(async () => {
     const text = inputValue.trim();
     if (!text || loading) return;
+    if (!llmReady) {
+      message.warning('请先配置并启用 LLM Provider');
+      return;
+    }
 
     if (!conversationIdRef.current) {
       conversationIdRef.current = `conversation-${Date.now()}`;
@@ -369,18 +404,21 @@ const AiPage = () => {
           ),
         );
       } else {
+        const errorMessage = error instanceof Error ? error.message : 'AI 请求失败';
+        const errorHint = error instanceof AiStreamError && error.hint ? error.hint : '';
+        const summary = errorHint ? `${errorMessage}\n\n> ${errorHint}` : errorMessage;
         setMessages((prev) =>
           prev.map((item) =>
-            item.id === responseId ? { ...item, summary: 'AI 服务暂时不可用，请稍后重试。' } : item,
+            item.id === responseId ? { ...item, summary } : item,
           ),
         );
-        message.error(error instanceof Error ? error.message : 'AI 请求失败');
+        message.error(errorMessage);
       }
     } finally {
       if (abortControllerRef.current === controller) abortControllerRef.current = null;
       setLoading(false);
     }
-  }, [inputValue, loading, selectedModel]);
+  }, [inputValue, llmReady, loading, selectedModel]);
 
   const handleStop = useCallback(() => {
     abortControllerRef.current?.abort();
@@ -402,12 +440,13 @@ const AiPage = () => {
   }, []);
 
   return (
-    <Flex vertical style={{ height: 'calc(100vh - 48px)', padding: 24 }}>
+    <Flex vertical style={{ height: '100%', minHeight: 0, padding: 24, overflow: 'hidden' }}>
       {/* Chat Area */}
       <div
         className="w-full scrollbar-hide"
         style={{
           flex: 1,
+          minHeight: 0,
           overflowY: 'auto',
           padding: '16px 24px',
           scrollBehavior: 'smooth',
@@ -499,7 +538,7 @@ const AiPage = () => {
       </div>
 
       {/* Input Area */}
-      <div className="w-full" style={{ flexShrink: 0, padding: '0 24px' }}>
+      <div className="w-full" style={{ flexShrink: 0, padding: '0 24px 4px' }}>
         {/* Quick Actions */}
         <Flex align="center" gap={8} style={{ marginBottom: 12 }} wrap="wrap">
           <Text type="secondary" style={{ fontSize: 13, flexShrink: 0 }}>
@@ -524,6 +563,21 @@ const AiPage = () => {
           ))}
         </Flex>
 
+        {llmConfig && !llmReady && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message="AI 助手未启用"
+            description="请先在 Studio LLM Settings 中配置并启用 LLM Provider，启用前不会发送请求或返回 stub 回复。"
+            action={
+              <Button size="small" onClick={() => navigate('/studio/llm-settings')}>
+                去配置
+              </Button>
+            }
+          />
+        )}
+
         {/* Main Input Box */}
         <div className="relative overflow-visible border-[1.5px] backdrop-blur-xl border-white rounded-2xl bg-white/80 shadow-[0_20px_60px_-20px_rgba(80,90,180,0.18)]">
           {/* Model Selector */}
@@ -531,15 +585,23 @@ const AiPage = () => {
             <div className="flex flex-1 min-w-0 items-center gap-2">
               <Select
                 size="small"
-                value={selectedModel}
+                value={selectedModel || undefined}
                 onChange={(val) => setSelectedModel(val)}
                 options={modelOptions}
+                loading={modelsLoading}
                 variant="borderless"
+                placeholder={modelsLoading ? '加载模型中...' : '选择模型'}
                 popupMatchSelectWidth={false}
                 suffixIcon={<CaretDown size={10} color="#9CA3AF" />}
                 className="model-selector"
                 style={{ fontSize: '0.893rem' }}
               />
+              {llmConfig && (
+                <Tag color={llmReady ? 'green' : 'default'} style={{ borderRadius: 6 }}>
+                  {llmConfig.provider || 'openai'}
+                  {llmReady ? ' 已就绪' : ' 未就绪'}
+                </Tag>
+              )}
             </div>
           </div>
 
@@ -584,10 +646,11 @@ const AiPage = () => {
                   <button
                     className="flex items-center justify-center w-9 h-9 rounded-full bg-gradient-to-r from-purple-500 to-violet-600 text-white shadow-lg hover:shadow-xl transition-all hover:scale-105"
                     onClick={handleSend}
-                    disabled={loading || !inputValue.trim()}
+                    disabled={loading || !inputValue.trim() || !llmReady}
                     style={{
-                      opacity: loading || !inputValue.trim() ? 0.5 : 1,
-                      cursor: loading || !inputValue.trim() ? 'not-allowed' : 'pointer',
+                      opacity: loading || !inputValue.trim() || !llmReady ? 0.5 : 1,
+                      cursor:
+                        loading || !inputValue.trim() || !llmReady ? 'not-allowed' : 'pointer',
                     }}
                   >
                     <ArrowUp size={19} weight="bold" />

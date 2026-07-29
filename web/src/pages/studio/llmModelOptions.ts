@@ -15,31 +15,16 @@
  * limitations under the License.
  */
 
-package org.apache.rocketmq.studio.ops.ai;
+export const FALLBACK_MODELS: Record<string, string[]> = {
+  openai: ['gpt-4o', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'],
+  azure: ['gpt-4o', 'gpt-4', 'gpt-3.5-turbo'],
+  deepseek: ['deepseek-chat', 'deepseek-reasoner'],
+  tongyi: ['qwen-max', 'qwen-plus', 'qwen-turbo'],
+  ollama: ['llama3', 'mistral', 'gemma2', 'qwen2.5'],
+  bedrock: ['anthropic.claude-3-sonnet', 'anthropic.claude-3-haiku', 'meta.llama3-70b'],
+};
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class LlmOperationResultVO {
-    private int status;
-    private String msg;
-    private String errMsg;
-    private String code;
-    private String hint;
-
-    public static LlmOperationResultVO success(String message) {
-        return new LlmOperationResultVO(0, message, null, null, null);
-    }
-
-    public static LlmOperationResultVO failure(String message) {
-        return failure("llm.config.invalid", message, null);
-    }
-
-    public static LlmOperationResultVO failure(String code, String message, String hint) {
-        return new LlmOperationResultVO(1, null, message, code, hint);
-    }
+export function fallbackModelOptions(provider: string, model?: string) {
+  const fallback = FALLBACK_MODELS[provider] || [model || ''].filter(Boolean);
+  return fallback.map((item) => ({ value: item, label: item }));
 }
