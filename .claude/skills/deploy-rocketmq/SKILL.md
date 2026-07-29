@@ -16,7 +16,7 @@ description: 部署 studio 测试集群。从 Apache RocketMQ 开源 develop 分
 - 已安装 `docker`（含 `docker compose`）。
 - 网络可访问 `github.com`（构建阶段 git clone）；国内环境由 `build.sh` 自动切换
   apt / Maven 阿里源。
-- 宿主机端口 9876、10909、10911、10912、10919、10921、10922、8080、8081 未被占用
+- 宿主机端口 9876、10909、10911、10912、20909、20911、20912、8080、8081 未被占用
   （与 studio 主 compose 的端口约定一致，不冲突）。
 
 ## 执行步骤
@@ -51,8 +51,9 @@ docker compose up -d
 | producer | 编译并运行 `clients/TraceProducer.java`，1 TPS 发送到 `StudioTest`（带 Key `studio-key-<n>`），`enableMsgTrace=true`，接入点 `proxy:8080`（流量经 proxy 转发） |
 | consumer | 编译并运行 `clients/TraceConsumer.java`，Push 消费 `StudioTest`，`enableMsgTrace=true`，接入点 `proxy:8080` |
 
-- 两个 broker 容器内都监听 10909/10911/10912，broker-1 的宿主机端口错开为
-  10919/10921/10922 避免冲突；容器网络内互访始终走 `broker-{0,1}:10911`。
+- broker-0 监听 10909/10911/10912，broker-1 在 broker-1.conf 里通过 `listenPort=20911`
+  直接监听 20909/20911/20912（fast/ha 端口自动 -2/+1），容器与宿主机端口 1:1 映射，
+  容器网络内访问 `broker-0:10911` / `broker-1:20911`。
 - 堆内存通过 `JAVA_OPT_EXT` 环境变量收敛（开源启动脚本会将其追加到 JVM 参数末尾，
   覆盖脚本内置的大堆默认值），适合本地小内存环境。
 - producer / consumer 直接用运行镜像自带 JDK + `lib/*` 依赖现场编译，无需额外构建。
