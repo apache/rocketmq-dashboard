@@ -18,10 +18,11 @@
 package org.apache.rocketmq.studio.auth;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.time.Clock;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -29,14 +30,24 @@ import java.util.UUID;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class AuthService {
 
     private static final int TOKEN_TTL_SECONDS = 86400;
     private static final String TOKEN_PREFIX = "Bearer ";
 
     private final AuthProperties authProperties;
+    private final Clock clock;
     private final Map<String, AuthSession> activeTokens = new ConcurrentHashMap<>();
+
+    @Autowired
+    public AuthService(AuthProperties authProperties) {
+        this(authProperties, Clock.systemUTC());
+    }
+
+    AuthService(AuthProperties authProperties, Clock clock) {
+        this.authProperties = authProperties;
+        this.clock = clock;
+    }
 
     public LoginVO login(LoginDTO request) {
         log.info("Login attempt for user: {}", request.getUsername());
@@ -49,9 +60,10 @@ public class AuthService {
         }
 
         LoginVO.UserInfo user = authenticate(request);
+        long now = clock.millis();
+        activeTokens.entrySet().removeIf(entry -> entry.getValue().expiresAtMillis() <= now);
         String token = "studio-jwt-" + UUID.randomUUID();
-        activeTokens.put(token, new AuthSession(user, System.currentTimeMillis()
-                + TOKEN_TTL_SECONDS * 1000L));
+        activeTokens.put(token, new AuthSession(user, now + TOKEN_TTL_SECONDS * 1000L));
 
         LoginVO response = LoginVO.builder()
                 .token(token)
@@ -72,7 +84,7 @@ public class AuthService {
         if (session == null) {
             return false;
         }
-        if (session.expiresAtMillis() <= System.currentTimeMillis()) {
+        if (session.expiresAtMillis() <= clock.millis()) {
             activeTokens.remove(token.get());
             return false;
         }
@@ -106,7 +118,8 @@ public class AuthService {
     }
 
     private Optional<String> tokenFromAuthorization(String authorization) {
-        if (authorization == null || !authorization.startsWith(TOKEN_PREFIX)) {
+        if (authorization == null || !authorization.regionMatches(true, 0, TOKEN_PREFIX, 0,
+                TOKEN_PREFIX.length())) {
             return Optional.empty();
         }
         String token = authorization.substring(TOKEN_PREFIX.length()).trim();
