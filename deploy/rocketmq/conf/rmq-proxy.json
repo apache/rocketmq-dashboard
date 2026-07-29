@@ -1,0 +1,7 @@
+{
+  "rocketMQClusterName": "rocketmq-studio",
+  "namesrvAddr": "nameserver:9876",
+  "remotingListenPort": 8080,
+  "grpcServerPort": 8081,
+  "enableTopicMessageTypeCheck": false
+}
