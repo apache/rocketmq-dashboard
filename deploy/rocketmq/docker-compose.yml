@@ -47,11 +47,11 @@ services:
       - ./conf/broker-1.conf:/etc/rocketmq/broker-1.conf:ro
       - broker-1-store:/home/rocketmq/store
       - broker-1-logs:/home/rocketmq/logs
-    # 容器内仍监听 10911，宿主机端口错开避免冲突
+    # broker-1 在配置里直接监听 20909/20911/20912，宿主机 1:1 映射
     ports:
-      - "10919:10909"
-      - "10921:10911"
-      - "10922:10912"
+      - "20909:20909"
+      - "20911:20911"
+      - "20912:20912"
     depends_on:
       - nameserver
 

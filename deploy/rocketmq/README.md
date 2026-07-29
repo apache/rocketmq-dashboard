@@ -56,7 +56,7 @@ docker compose exec broker-0 sh bin/mqadmin consumeMessage \
 |------|-----------|-----------|
 | NameServer | nameserver:9876 | localhost:9876 |
 | Broker-0 | broker-0:10911 | localhost:10911 |
-| Broker-1 | broker-1:10911 | localhost:10921（宿主机端口错开） |
+| Broker-1 | broker-1:20911 | localhost:20911 |
 | Proxy remoting | proxy:8080 | localhost:8080 |
 | Proxy gRPC | proxy:8081 | localhost:8081 |
 
