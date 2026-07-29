@@ -30,6 +30,8 @@ public interface SettingsRepository {
 
     DataSourceVO saveDataSource(DataSourceVO dataSource);
 
+    boolean replaceDataSource(DataSourceVO dataSource);
+
     void deleteDataSource(String key);
 
     Optional<DataSourceVO> findDataSourceByKey(String key);
