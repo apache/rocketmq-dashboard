@@ -32,7 +32,9 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -46,8 +48,47 @@ class AuthControllerTest {
     @MockBean
     private AuthService authService;
 
+    @MockBean
+    private AuthProperties authProperties;
+
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Test
+    void statusShouldReportDisabledLoginProtection() throws Exception {
+        when(authProperties.isLoginRequired()).thenReturn(false);
+        when(authService.isAuthenticated(null)).thenReturn(false);
+
+        mockMvc.perform(get("/api/auth/status"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.loginRequired").value(false))
+                .andExpect(jsonPath("$.data.authenticated").value(false));
+    }
+
+    @Test
+    void statusShouldReportUnauthenticatedWhenTokenIsMissing() throws Exception {
+        when(authProperties.isLoginRequired()).thenReturn(true);
+        when(authService.isAuthenticated(null)).thenReturn(false);
+
+        mockMvc.perform(get("/api/auth/status"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.loginRequired").value(true))
+                .andExpect(jsonPath("$.data.authenticated").value(false));
+    }
+
+    @Test
+    void statusShouldReportAuthenticatedForActiveToken() throws Exception {
+        when(authProperties.isLoginRequired()).thenReturn(true);
+        when(authService.isAuthenticated("Bearer token-1")).thenReturn(true);
+
+        mockMvc.perform(get("/api/auth/status")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer token-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.loginRequired").value(true))
+                .andExpect(jsonPath("$.data.authenticated").value(true));
+    }
 
     @Test
     void loginShouldReturnTokenOnValidRequest() throws Exception {

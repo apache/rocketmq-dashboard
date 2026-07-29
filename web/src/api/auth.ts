@@ -32,7 +32,17 @@ export interface LoginResponse {
   };
 }
 
+export interface AuthStatus {
+  loginRequired: boolean;
+  authenticated: boolean;
+}
+
 // ─── Auth ───────────────────────────────────────────────────────
+export async function getAuthStatus() {
+  const res = await client.get<{ data: AuthStatus }>('/auth/status');
+  return res.data.data;
+}
+
 export async function login(username: string, password: string) {
   const res = await client.post<{ data: LoginResponse }>('/auth/login', { username, password });
   return res.data.data;
