@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Table,
   Tabs,
@@ -64,27 +64,9 @@ import {
 
 const { Text } = Typography;
 
-const buildBrokerTpsMap = (
-  clusters: ClusterInfo[],
-): Record<string, { tpsIn: number; tpsOut: number }> => {
-  const result: Record<string, { tpsIn: number; tpsOut: number }> = {};
-  clusters.forEach((cluster) =>
-    cluster.brokers.forEach((broker) => {
-      result[broker.addr] = { tpsIn: broker.tpsIn, tpsOut: broker.tpsOut };
-    }),
-  );
-  return result;
-};
+const REFRESH_INTERVAL_MS = 2000;
 
-const buildProxyConnMap = (clusters: ClusterInfo[]): Record<string, number> => {
-  const result: Record<string, number> = {};
-  clusters.forEach((cluster) =>
-    cluster.proxies.forEach((proxy) => {
-      result[proxy.addr] = proxy.connections;
-    }),
-  );
-  return result;
-};
+type RefreshSource = 'initial' | 'manual' | 'operation' | 'background';
 
 type ProxyDetail = ProxyInfo & { clusterId: string; clusterName: string; nsClusterName: string };
 
@@ -107,91 +89,147 @@ const ClusterPage = () => {
   const [nsForm] = Form.useForm();
   const [configForm] = Form.useForm();
 
-  // ─── Auto-refresh TPS / connections every 2s ──────────────────────────────
+  // ─── Cluster refresh coordinator ──────────────────────────────────────────
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [brokerTpsMap, setBrokerTpsMap] = useState<
-    Record<string, { tpsIn: number; tpsOut: number }>
-  >({});
-  const [proxyConnMap, setProxyConnMap] = useState<Record<string, number>>({});
+  const [refreshFailed, setRefreshFailed] = useState(false);
+  const mountedRef = useRef(false);
+  const autoRefreshRef = useRef(true);
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inFlightRefreshRef = useRef<Promise<void> | null>(null);
+  const queuedForegroundRef = useRef<RefreshSource | null>(null);
+  const queuedBackgroundRef = useRef(false);
+  const requestRefreshRef = useRef<(source: RefreshSource) => Promise<void>>(() =>
+    Promise.resolve(),
+  );
+  const tRef = useRef(t);
 
-  const applyClusters = (nextClusters: ClusterInfo[]) => {
-    setClusters(nextClusters);
-    setBrokerTpsMap(buildBrokerTpsMap(nextClusters));
-    setProxyConnMap(buildProxyConnMap(nextClusters));
-  };
-
-  const refreshClusters = async (showLoading = false) => {
-    if (showLoading) setLoading(true);
-    try {
-      applyClusters(await listClusters());
-    } catch {
-      message.error(t('common.fetchDataFailed'));
-    } finally {
-      if (showLoading) setLoading(false);
+  const clearRefreshTimer = useCallback(() => {
+    if (refreshTimerRef.current !== null) {
+      clearTimeout(refreshTimerRef.current);
+      refreshTimerRef.current = null;
     }
-  };
+  }, []);
+
+  const requestRefresh = useCallback(
+    (source: RefreshSource): Promise<void> => {
+      clearRefreshTimer();
+      if (!mountedRef.current) return Promise.resolve();
+
+      if (source !== 'background') setLoading(true);
+
+      if (inFlightRefreshRef.current) {
+        if (source === 'background') {
+          if (autoRefreshRef.current) queuedBackgroundRef.current = true;
+        } else if (source !== 'initial' && !queuedForegroundRef.current) {
+          queuedForegroundRef.current = source;
+        }
+        return inFlightRefreshRef.current;
+      }
+
+      const runRefreshes = async () => {
+        let currentSource: RefreshSource | null = source;
+
+        while (currentSource && mountedRef.current) {
+          try {
+            const nextClusters = await listClusters();
+            if (!mountedRef.current) return;
+            setClusters(nextClusters);
+            setSelectedProxy((current) => {
+              if (!current) return null;
+              const cluster = nextClusters.find((item) => item.id === current.clusterId);
+              const proxy = cluster?.proxies.find((item) => item.addr === current.addr);
+              if (!cluster || !proxy) return null;
+              return {
+                ...proxy,
+                clusterId: cluster.id,
+                clusterName: cluster.name,
+                nsClusterName: cluster.nsClusterName,
+              };
+            });
+            setRefreshFailed(false);
+          } catch {
+            if (!mountedRef.current) return;
+            setRefreshFailed(true);
+            if (currentSource !== 'background') {
+              message.error(tRef.current('common.fetchDataFailed'));
+            }
+          }
+
+          if (!mountedRef.current) return;
+          if (queuedForegroundRef.current) {
+            currentSource = queuedForegroundRef.current;
+            queuedForegroundRef.current = null;
+            queuedBackgroundRef.current = false;
+          } else if (queuedBackgroundRef.current && autoRefreshRef.current) {
+            currentSource = 'background';
+            queuedBackgroundRef.current = false;
+          } else {
+            queuedBackgroundRef.current = false;
+            currentSource = null;
+          }
+        }
+      };
+
+      const refreshCycle = runRefreshes().finally(() => {
+        inFlightRefreshRef.current = null;
+        if (!mountedRef.current) return;
+
+        if (queuedForegroundRef.current) {
+          const queuedSource = queuedForegroundRef.current;
+          queuedForegroundRef.current = null;
+          queuedBackgroundRef.current = false;
+          return requestRefreshRef.current(queuedSource);
+        }
+        if (queuedBackgroundRef.current && autoRefreshRef.current) {
+          queuedBackgroundRef.current = false;
+          return requestRefreshRef.current('background');
+        }
+
+        queuedBackgroundRef.current = false;
+        setLoading(false);
+        if (autoRefreshRef.current) {
+          refreshTimerRef.current = setTimeout(() => {
+            refreshTimerRef.current = null;
+            void requestRefreshRef.current('background');
+          }, REFRESH_INTERVAL_MS);
+        }
+      });
+      inFlightRefreshRef.current = refreshCycle;
+      return refreshCycle;
+    },
+    [clearRefreshTimer],
+  );
 
   useEffect(() => {
-    let cancelled = false;
-
-    const fetchClusters = async () => {
-      try {
-        const nextClusters = await listClusters();
-        if (!cancelled) {
-          setClusters(nextClusters);
-          setBrokerTpsMap(buildBrokerTpsMap(nextClusters));
-          setProxyConnMap(buildProxyConnMap(nextClusters));
-        }
-      } catch {
-        if (!cancelled) message.error(t('common.fetchDataFailed'));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    void fetchClusters();
-    return () => {
-      cancelled = true;
-    };
+    tRef.current = t;
   }, [t]);
 
   useEffect(() => {
-    if (!autoRefresh) return;
+    requestRefreshRef.current = requestRefresh;
+  }, [requestRefresh]);
 
-    const timer = setInterval(() => {
-      setBrokerTpsMap((prev) => {
-        const next = { ...prev };
-        clusters.forEach((c) => {
-          c.brokers.forEach((b) => {
-            const cur = next[b.addr] ?? { tpsIn: b.tpsIn, tpsOut: b.tpsOut };
-            const fluctuate = (base: number, v: number) =>
-              base === 0 ? 0 : Math.max(0, Math.round(v + (Math.random() - 0.5) * base * 0.12));
-            next[b.addr] = {
-              tpsIn: fluctuate(b.tpsIn, cur.tpsIn),
-              tpsOut: fluctuate(b.tpsOut, cur.tpsOut),
-            };
-          });
-        });
-        return next;
-      });
+  useEffect(() => {
+    mountedRef.current = true;
+    autoRefreshRef.current = true;
+    void requestRefreshRef.current('initial');
+    return () => {
+      mountedRef.current = false;
+      clearRefreshTimer();
+      queuedForegroundRef.current = null;
+      queuedBackgroundRef.current = false;
+    };
+  }, [clearRefreshTimer]);
 
-      setProxyConnMap((prev) => {
-        const next = { ...prev };
-        clusters.forEach((c) => {
-          c.proxies.forEach((p) => {
-            const cur = prev[p.addr] ?? p.connections;
-            next[p.addr] = Math.max(
-              0,
-              Math.round(cur + (Math.random() - 0.5) * p.connections * 0.08),
-            );
-          });
-        });
-        return next;
-      });
-    }, 2000);
-
-    return () => clearInterval(timer);
-  }, [autoRefresh, clusters]);
+  const handleAutoRefreshChange = (checked: boolean) => {
+    autoRefreshRef.current = checked;
+    setAutoRefresh(checked);
+    clearRefreshTimer();
+    if (!checked) {
+      queuedBackgroundRef.current = false;
+      return;
+    }
+    void requestRefresh('background');
+  };
 
   // Broker config handler
   const handleConfigOpen = (cluster: ClusterInfo) => {
@@ -263,17 +301,12 @@ const ClusterPage = () => {
             !brokerNsClusterFilter || c.nsClusterName === brokerNsClusterFilter;
           return matchSearch && matchNsCluster;
         })
-        .map((b) => {
-          const tpsOverride = brokerTpsMap[b.addr];
-          return {
-            ...b,
-            tpsIn: tpsOverride?.tpsIn ?? b.tpsIn,
-            tpsOut: tpsOverride?.tpsOut ?? b.tpsOut,
-            clusterName: c.name,
-            nsClusterName: c.nsClusterName,
-            cluster: c,
-          };
-        }),
+        .map((b) => ({
+          ...b,
+          clusterName: c.name,
+          nsClusterName: c.nsClusterName,
+          cluster: c,
+        })),
     );
 
     const brokerColumns: ColumnsType<BrokerWithCluster> = [
@@ -455,14 +488,7 @@ const ClusterPage = () => {
                   id: selectedCluster.id,
                   ...nextConfig,
                 });
-                setClusters((prev) =>
-                  prev.map((cluster) =>
-                    cluster.id === selectedCluster.id
-                      ? { ...cluster, config: nextConfig }
-                      : cluster,
-                  ),
-                );
-                setSelectedCluster((prev) => (prev ? { ...prev, config: nextConfig } : prev));
+                await requestRefresh('operation');
                 message.success(t('cluster.configUpdated'));
                 setConfigModalOpen(false);
               });
@@ -700,7 +726,6 @@ const ClusterPage = () => {
           })
           .map((p) => ({
             ...p,
-            connections: proxyConnMap[p.addr] ?? p.connections,
             clusterId: c.id,
             clusterName: c.name,
             nsClusterName: c.nsClusterName,
@@ -800,7 +825,7 @@ const ClusterPage = () => {
                   cancelText: t('common.cancel'),
                   onOk: async () => {
                     await restartProxy({ clusterId: record.clusterId, addr: record.addr });
-                    await refreshClusters();
+                    await requestRefresh('operation');
                     message.success(t('cluster.restartProxySubmitted', { addr: record.addr }));
                   },
                 });
@@ -861,23 +886,49 @@ const ClusterPage = () => {
         title={t('cluster.title')}
         subtitle={`${t('common.total')} ${clusters.length} ${t('cluster.title')} · ${totalBrokers} Broker · ${totalNameServers} NameServer · ${totalProxies} Proxy`}
         extra={
-          <Flex align="center" gap={6}>
-            {autoRefresh && (
-              <span
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: '50%',
-                  background: '#52c41a',
-                  display: 'inline-block',
-                  animation: 'livePulse 1.5s ease-in-out infinite',
-                }}
+          <Flex align="center" gap={8}>
+            <Button
+              size="small"
+              icon={<ReloadOutlined spin={loading} />}
+              aria-label={t('common.refresh')}
+              onClick={() => void requestRefresh('manual')}
+            >
+              {t('common.refresh')}
+            </Button>
+            <Flex align="center" gap={6}>
+              {(autoRefresh || refreshFailed) && (
+                <span
+                  title={
+                    refreshFailed
+                      ? t('common.refreshFailed')
+                      : autoRefresh
+                        ? t('common.liveRefresh')
+                        : t('common.autoRefresh')
+                  }
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    background: refreshFailed ? '#ff4d4f' : '#52c41a',
+                    display: 'inline-block',
+                    animation: refreshFailed ? undefined : 'livePulse 1.5s ease-in-out infinite',
+                  }}
+                />
+              )}
+              <Text type={refreshFailed ? 'danger' : 'secondary'} style={{ fontSize: 12 }}>
+                {refreshFailed
+                  ? t('common.refreshFailed')
+                  : autoRefresh
+                    ? t('common.liveRefresh')
+                    : t('common.autoRefresh')}
+              </Text>
+              <Switch
+                size="small"
+                checked={autoRefresh}
+                aria-label={t('common.autoRefresh')}
+                onChange={handleAutoRefreshChange}
               />
-            )}
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {autoRefresh ? t('common.liveRefresh') : t('common.autoRefresh')}
-            </Text>
-            <Switch size="small" checked={autoRefresh} onChange={setAutoRefresh} />
+            </Flex>
           </Flex>
         }
       />
@@ -909,7 +960,7 @@ const ClusterPage = () => {
                 `${t('cluster.nsUpdated')}: ${values.addr}${values.newAddr ? ` → ${values.newAddr}` : ''}`,
               );
             }
-            await refreshClusters();
+            await requestRefresh('operation');
             setNsModalOpen(false);
           });
         }}

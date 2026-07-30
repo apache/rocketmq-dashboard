@@ -22,7 +22,7 @@ vi.mock('../config', () => ({
   API_BASE_URL: '/api',
 }));
 
-import { getCluster, listClusters } from './clusterService';
+import { getCluster, listClusters, updateClusterConfig } from './clusterService';
 
 describe('clusterService mock clusters', () => {
   it('returns defensive copies from cluster detail reads', async () => {
@@ -60,5 +60,29 @@ describe('clusterService mock clusters', () => {
     expect(detail.nameServers).not.toBe(listed.nameServers);
     expect(detail.config).not.toBe(listed.config);
     expect(detail.tpsHistory).not.toBe(listed.tpsHistory);
+  });
+
+  it('persists partial mock config updates without copying id into config', async () => {
+    const before = await getCluster('cluster-prod');
+    const originalConfig = { ...before.config };
+    const nextQueueCount = originalConfig.writeQueueNums + 1;
+
+    try {
+      await updateClusterConfig({
+        id: before.id,
+        writeQueueNums: nextQueueCount,
+      });
+
+      const updated = (await listClusters()).find((cluster) => cluster.id === before.id);
+      expect(updated?.config.writeQueueNums).toBe(nextQueueCount);
+      expect(updated?.config.readQueueNums).toBe(originalConfig.readQueueNums);
+      expect(updated?.config.flushDiskType).toBe(originalConfig.flushDiskType);
+      expect(updated?.config).not.toHaveProperty('id');
+    } finally {
+      await updateClusterConfig({
+        id: before.id,
+        ...originalConfig,
+      });
+    }
   });
 });
