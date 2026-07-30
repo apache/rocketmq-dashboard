@@ -30,11 +30,17 @@ class LiteTopicServiceTest {
 
     @Test
     void listLiteTopicsShouldFilterByPatternAndNamespace() {
-        List<LiteTopicItemVO> result = liteTopicService.listLiteTopics("chat", "default");
+        List<LiteTopicItemVO> result = liteTopicService.listLiteTopics("hat", " DEFAULT ");
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getTopicPattern()).isEqualTo("chat/{sessionId}");
         assertThat(result.get(0).getNamespace()).isEqualTo("default");
+    }
+
+    @Test
+    void listLiteTopicsShouldMatchNamespaceExactly() {
+        assertThat(liteTopicService.listLiteTopics(null, "def")).isEmpty();
+        assertThat(liteTopicService.listLiteTopics(null, "  ")).hasSize(2);
     }
 
     @Test

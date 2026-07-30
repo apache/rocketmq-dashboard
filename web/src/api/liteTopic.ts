@@ -35,6 +35,7 @@ export interface LiteTopicQuota {
 }
 
 export interface LiteTopicItem {
+  namespace: string;
   topicPattern: string;
   topicCount?: number;
   consumerCount?: number;
