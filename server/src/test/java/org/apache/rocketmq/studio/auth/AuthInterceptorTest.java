@@ -88,4 +88,16 @@ class AuthInterceptorTest {
 
         assertThat(allowed).isTrue();
     }
+
+    @Test
+    void shouldAllowAuthStatusEndpointWhenLoginIsEnabled() throws Exception {
+        AuthProperties properties = new AuthProperties();
+        properties.setLoginRequired(true);
+        AuthInterceptor interceptor = new AuthInterceptor(properties, new AuthService(properties));
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/auth/status");
+
+        boolean allowed = interceptor.preHandle(request, new MockHttpServletResponse(), new Object());
+
+        assertThat(allowed).isTrue();
+    }
 }

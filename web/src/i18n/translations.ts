@@ -70,6 +70,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'common.liveRefresh': { zh: '实时刷新', en: 'Live Refresh' },
   'common.yes': { zh: '是', en: 'Yes' },
   'common.no': { zh: '否', en: 'No' },
+  'common.retry': { zh: '重试', en: 'Retry' },
 
   // ─── Dashboard ───
   'dashboard.title': { zh: '监控面板', en: 'Dashboard' },
@@ -641,6 +642,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'login.success': { zh: '登录成功', en: 'Login successful' },
   'login.failed': { zh: '登录失败', en: 'Login failed' },
   'login.welcome': { zh: '欢迎使用 RocketMQ 仪表盘', en: 'Welcome to RocketMQ Dashboard' },
+  'login.statusCheckFailed': {
+    zh: '无法验证登录状态',
+    en: 'Unable to verify login status',
+  },
 
   // ─── Ops ───
   'ops.title': { zh: '运维', en: 'Ops' },

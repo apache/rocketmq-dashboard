@@ -18,7 +18,7 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { login, logout } from './auth';
+import { getAuthStatus, login, logout } from './auth';
 
 const mock = new MockAdapter(client);
 
@@ -35,6 +35,13 @@ describe('Auth API', () => {
   afterEach(() => {
     mock.reset();
     vi.unstubAllGlobals();
+  });
+
+  it('status should return the login requirement and session state', async () => {
+    const authStatus = { loginRequired: true, authenticated: false };
+    mock.onGet('/auth/status').reply(200, { data: authStatus });
+
+    await expect(getAuthStatus()).resolves.toEqual(authStatus);
   });
 
   it('login should post credentials and return token data', async () => {

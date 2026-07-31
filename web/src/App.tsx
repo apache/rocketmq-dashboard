@@ -15,7 +15,13 @@
  * limitations under the License.
  */
 
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { useCallback, useEffect, useState } from 'react';
+import { Button, Result, Spin } from 'antd';
+import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { getAuthStatus } from './api/auth';
+import { USE_MOCK } from './config';
+import { useLang } from './i18n/LangContext';
+import useAuthStore from './stores/authStore';
 import MainLayout from './layouts/MainLayout';
 import HomePage from './pages/home';
 import InstancePage from './pages/instance';
@@ -44,37 +50,103 @@ import ProducerPage from './pages/studio/Producer';
 import OpsPage from './pages/studio/Ops';
 import LoginPage from './pages/login';
 
+type AuthGateState = 'checking' | 'allowed' | 'denied' | 'error';
+
+export function AuthGate() {
+  const { t } = useLang();
+  const clearAuth = useAuthStore((state) => state.logout);
+  const [gateState, setGateState] = useState<AuthGateState>(USE_MOCK ? 'allowed' : 'checking');
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    if (USE_MOCK) return;
+
+    let cancelled = false;
+    void getAuthStatus()
+      .then((status) => {
+        if (cancelled) return;
+        if (!status.loginRequired || status.authenticated) {
+          setGateState('allowed');
+          return;
+        }
+        clearAuth();
+        setGateState('denied');
+      })
+      .catch(() => {
+        if (!cancelled) setGateState('error');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [attempt, clearAuth]);
+
+  const retry = useCallback(() => {
+    setGateState('checking');
+    setAttempt((current) => current + 1);
+  }, []);
+
+  if (gateState === 'checking') {
+    return (
+      <div
+        role="status"
+        aria-label={t('common.loading')}
+        style={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}
+      >
+        <Spin size="large" />
+      </div>
+    );
+  }
+  if (gateState === 'denied') return <Navigate to="/login" replace />;
+  if (gateState === 'error') {
+    return (
+      <Result
+        status="error"
+        title={t('login.statusCheckFailed')}
+        extra={
+          <Button type="primary" onClick={retry}>
+            {t('common.retry')}
+          </Button>
+        }
+      />
+    );
+  }
+  return <Outlet />;
+}
+
 function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/" element={<MainLayout />}>
-        <Route index element={<HomePage />} />
-        <Route path="instance" element={<InstancePage />} />
-        <Route path="instance/topic" element={<TopicPage />} />
-        <Route path="instance/consumer" element={<ConsumerPage />} />
-        <Route path="instance/message" element={<MessagePage />} />
-        <Route path="instance/acl" element={<AclPage />} />
-        <Route path="instance/dlq" element={<DlqPage />} />
-        <Route path="cluster" element={<ClusterPage />} />
-        <Route path="cluster/certs" element={<K8sCertsPage />} />
-        <Route path="cluster/clients" element={<ClientsPage />} />
-        <Route path="ops/dashboard" element={<DashboardOpsPage />} />
-        <Route path="ops/alerts" element={<AlertsPage />} />
-        <Route path="ops/system-alerts" element={<SystemAlertsPage />} />
-        <Route path="ops/audit" element={<AuditPage />} />
-        <Route path="ai" element={<AiPage />} />
-        <Route path="settings" element={<SettingsPage />} />
-        <Route path="studio/llm-settings" element={<LlmSettingsPage />} />
-        <Route path="studio/proxy" element={<ProxyPage />} />
-        <Route path="studio/lite-topic" element={<LiteTopicPage />} />
-        <Route path="studio/group-management" element={<GroupManagementPage />} />
-        <Route path="studio/broker-cluster" element={<BrokerClusterPage />} />
-        <Route path="studio/ssl-settings" element={<SslSettingsPage />} />
-        <Route path="studio/alert-management" element={<AlertManagementPage />} />
-        <Route path="studio/producer" element={<ProducerPage />} />
-        <Route path="studio/ops" element={<OpsPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+      <Route element={<AuthGate />}>
+        <Route path="/" element={<MainLayout />}>
+          <Route index element={<HomePage />} />
+          <Route path="instance" element={<InstancePage />} />
+          <Route path="instance/topic" element={<TopicPage />} />
+          <Route path="instance/consumer" element={<ConsumerPage />} />
+          <Route path="instance/message" element={<MessagePage />} />
+          <Route path="instance/acl" element={<AclPage />} />
+          <Route path="instance/dlq" element={<DlqPage />} />
+          <Route path="cluster" element={<ClusterPage />} />
+          <Route path="cluster/certs" element={<K8sCertsPage />} />
+          <Route path="cluster/clients" element={<ClientsPage />} />
+          <Route path="ops/dashboard" element={<DashboardOpsPage />} />
+          <Route path="ops/alerts" element={<AlertsPage />} />
+          <Route path="ops/system-alerts" element={<SystemAlertsPage />} />
+          <Route path="ops/audit" element={<AuditPage />} />
+          <Route path="ai" element={<AiPage />} />
+          <Route path="settings" element={<SettingsPage />} />
+          <Route path="studio/llm-settings" element={<LlmSettingsPage />} />
+          <Route path="studio/proxy" element={<ProxyPage />} />
+          <Route path="studio/lite-topic" element={<LiteTopicPage />} />
+          <Route path="studio/group-management" element={<GroupManagementPage />} />
+          <Route path="studio/broker-cluster" element={<BrokerClusterPage />} />
+          <Route path="studio/ssl-settings" element={<SslSettingsPage />} />
+          <Route path="studio/alert-management" element={<AlertManagementPage />} />
+          <Route path="studio/producer" element={<ProducerPage />} />
+          <Route path="studio/ops" element={<OpsPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
       </Route>
     </Routes>
   );

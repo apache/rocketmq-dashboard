@@ -19,7 +19,10 @@ package org.apache.rocketmq.studio.auth;
 
 import org.apache.rocketmq.studio.common.domain.Result;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -32,6 +35,19 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AuthService authService;
+    private final AuthProperties authProperties;
+
+    @GetMapping("/status")
+    public ResponseEntity<Result<AuthStatusVO>> status(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization) {
+        AuthStatusVO status = AuthStatusVO.builder()
+                .loginRequired(authProperties.isLoginRequired())
+                .authenticated(authService.isAuthenticated(authorization))
+                .build();
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(Result.ok(status));
+    }
 
     @PostMapping("/login")
     public Result<LoginVO> login(@RequestBody LoginDTO request) {
