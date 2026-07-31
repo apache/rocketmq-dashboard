@@ -16,6 +16,8 @@
  */
 package org.apache.rocketmq.studio.cluster.config;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -33,9 +35,24 @@ public class UpdateConfigDTO {
     private String flushDiskType;
     private Boolean autoCreateTopicEnable;
     private Boolean autoCreateSubscriptionGroup;
+
+    @Min(value = 1_048_576, message = "maxMessageSize must be between 1048576 and 134217728")
+    @Max(value = 134_217_728, message = "maxMessageSize must be between 1048576 and 134217728")
     private Integer maxMessageSize;
+
+    @Min(value = 1, message = "fileReservedTime must be between 1 and 720")
+    @Max(value = 720, message = "fileReservedTime must be between 1 and 720")
     private Integer fileReservedTime;
+
+    @Min(value = 1, message = "writeQueueNums must be between 1 and 256")
+    @Max(value = 256, message = "writeQueueNums must be between 1 and 256")
     private Integer writeQueueNums;
+
+    @Min(value = 1, message = "readQueueNums must be between 1 and 256")
+    @Max(value = 256, message = "readQueueNums must be between 1 and 256")
     private Integer readQueueNums;
+
+    @Min(value = 0, message = "brokerPermission must be between 0 and 7")
+    @Max(value = 7, message = "brokerPermission must be between 0 and 7")
     private Integer brokerPermission;
 }

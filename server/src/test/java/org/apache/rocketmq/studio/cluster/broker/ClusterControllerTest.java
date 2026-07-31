@@ -20,10 +20,14 @@ import org.apache.rocketmq.studio.cluster.config.ClusterConfigVO;
 import org.apache.rocketmq.studio.cluster.config.UpdateConfigDTO;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
 import org.apache.rocketmq.studio.common.domain.enums.FlushDiskType;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -33,8 +37,10 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.stream.Stream;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -170,6 +176,57 @@ class ClusterControllerTest {
         verifyNoInteractions(clusterService);
     }
 
+    @ParameterizedTest(name = "{0}={1} should be rejected")
+    @MethodSource("outOfRangeConfigValues")
+    void updateConfigShouldRejectOutOfRangeValues(String field, int value, String expectedMessage)
+            throws Exception {
+        ObjectNode command = objectMapper.createObjectNode()
+                .put("id", "cluster-1")
+                .put(field, value);
+
+        mockMvc.perform(post("/api/clusters/config/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(command)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value(expectedMessage));
+
+        verifyNoInteractions(clusterService);
+    }
+
+    @ParameterizedTest(name = "{0}={1} should be accepted")
+    @MethodSource("boundaryConfigValues")
+    void updateConfigShouldAcceptBoundaryValues(String field, int value) throws Exception {
+        when(clusterService.updateClusterConfig(any(UpdateConfigDTO.class)))
+                .thenReturn(buildCluster("cluster-1", "production-cluster", ClusterStatus.healthy));
+        ObjectNode command = objectMapper.createObjectNode()
+                .put("id", "cluster-1")
+                .put(field, value);
+
+        mockMvc.perform(post("/api/clusters/config/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(command)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(clusterService).updateClusterConfig(any(UpdateConfigDTO.class));
+    }
+
+    @Test
+    void updateConfigShouldAcceptIdOnlyPartialRequest() throws Exception {
+        when(clusterService.updateClusterConfig(any(UpdateConfigDTO.class)))
+                .thenReturn(buildCluster("cluster-1", "production-cluster", ClusterStatus.healthy));
+        ObjectNode command = objectMapper.createObjectNode().put("id", "cluster-1");
+
+        mockMvc.perform(post("/api/clusters/config/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(command)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(clusterService).updateClusterConfig(any(UpdateConfigDTO.class));
+    }
+
     @Test
     void restartBrokerShouldReturnSuccess() throws Exception {
         when(clusterService.restartBroker("cluster-1", "broker-0")).thenReturn(true);
@@ -196,5 +253,45 @@ class ClusterControllerTest {
                 .build();
         cluster.setId(id);
         return cluster;
+    }
+
+    private static Stream<Arguments> outOfRangeConfigValues() {
+        return Stream.of(
+                Arguments.of("maxMessageSize", 1_048_575,
+                        "maxMessageSize must be between 1048576 and 134217728"),
+                Arguments.of("maxMessageSize", 134_217_729,
+                        "maxMessageSize must be between 1048576 and 134217728"),
+                Arguments.of("fileReservedTime", 0,
+                        "fileReservedTime must be between 1 and 720"),
+                Arguments.of("fileReservedTime", 721,
+                        "fileReservedTime must be between 1 and 720"),
+                Arguments.of("writeQueueNums", 0,
+                        "writeQueueNums must be between 1 and 256"),
+                Arguments.of("writeQueueNums", 257,
+                        "writeQueueNums must be between 1 and 256"),
+                Arguments.of("readQueueNums", 0,
+                        "readQueueNums must be between 1 and 256"),
+                Arguments.of("readQueueNums", 257,
+                        "readQueueNums must be between 1 and 256"),
+                Arguments.of("brokerPermission", -1,
+                        "brokerPermission must be between 0 and 7"),
+                Arguments.of("brokerPermission", 8,
+                        "brokerPermission must be between 0 and 7")
+        );
+    }
+
+    private static Stream<Arguments> boundaryConfigValues() {
+        return Stream.of(
+                Arguments.of("maxMessageSize", 1_048_576),
+                Arguments.of("maxMessageSize", 134_217_728),
+                Arguments.of("fileReservedTime", 1),
+                Arguments.of("fileReservedTime", 720),
+                Arguments.of("writeQueueNums", 1),
+                Arguments.of("writeQueueNums", 256),
+                Arguments.of("readQueueNums", 1),
+                Arguments.of("readQueueNums", 256),
+                Arguments.of("brokerPermission", 0),
+                Arguments.of("brokerPermission", 7)
+        );
     }
 }

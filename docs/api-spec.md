@@ -432,16 +432,18 @@ POST /api/clusters/config/update
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `id` | `string` | 是 | 集群 ID |
-| `flushDiskType` | `string` | 是 | `ASYNC_FLUSH` / `SYNC_FLUSH` |
-| `autoCreateTopicEnable` | `boolean` | 是 | 自动创建 Topic |
-| `autoCreateSubscriptionGroup` | `boolean` | 是 | 自动创建订阅组 |
-| `maxMessageSize` | `number` | 是 | 最大消息大小（字节） |
-| `fileReservedTime` | `number` | 是 | 文件保留时间（小时，1-720） |
-| `writeQueueNums` | `number` | 是 | 写队列数（1-256） |
-| `readQueueNums` | `number` | 是 | 读队列数（1-256） |
-| `brokerPermission` | `number` | 是 | Broker 权限（0-7） |
+| `flushDiskType` | `string` | 否 | `ASYNC_FLUSH` / `SYNC_FLUSH` |
+| `autoCreateTopicEnable` | `boolean` | 否 | 自动创建 Topic |
+| `autoCreateSubscriptionGroup` | `boolean` | 否 | 自动创建订阅组 |
+| `maxMessageSize` | `number` | 否 | 最大消息大小（字节，1,048,576-134,217,728） |
+| `fileReservedTime` | `number` | 否 | 文件保留时间（小时，1-720） |
+| `writeQueueNums` | `number` | 否 | 写队列数（1-256） |
+| `readQueueNums` | `number` | 否 | 读队列数（1-256） |
+| `brokerPermission` | `number` | 否 | Broker 权限（0-7） |
 
-**Response `data`:** `null`
+未提供的可选字段保持原配置不变。
+
+**Response `data`:** `ClusterInfo`（同 4.1 的单条记录）
 
 ### 4.4 重启 Broker
 
