@@ -20,6 +20,7 @@ package org.apache.rocketmq.dashboard.interceptor;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.apache.rocketmq.dashboard.service.LoginService;
+import org.apache.rocketmq.dashboard.util.UserInfoContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
@@ -40,6 +41,13 @@ public class AuthInterceptor implements HandlerInterceptor {
             return true;
         }
         return loginService.login(request, response);
+    }
+
+    @Override
+    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
+        // Clear the user info held in ThreadLocal, otherwise it will be leaked to the
+        // next request processed by the same thread (Tomcat worker threads are reused).
+        UserInfoContext.clear();
     }
 
 

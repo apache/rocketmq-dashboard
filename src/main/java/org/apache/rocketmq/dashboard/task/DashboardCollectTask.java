@@ -156,9 +156,7 @@ public class DashboardCollectTask {
                 Throwables.throwIfUnchecked(e1);
                 throw new RuntimeException(e1);
             }
-            fetchBrokerRuntimeStats(brokerAddr, retryTime - 1);
-            Throwables.throwIfUnchecked(e);
-            throw new RuntimeException(e);
+            return fetchBrokerRuntimeStats(brokerAddr, retryTime - 1);
         }
     }
 

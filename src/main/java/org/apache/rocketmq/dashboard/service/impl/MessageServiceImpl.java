@@ -243,18 +243,22 @@ public class MessageServiceImpl implements MessageService {
                 query.getBegin(),
                 query.getEnd());
 
-        List<QueueOffsetInfo> queueOffsetInfos = CACHE.getIfPresent(query.getTaskId());
+        String taskId = query.getTaskId();
+        if (StringUtils.isBlank(taskId)) {
+            taskId = MessageClientIDSetter.createUniqID();
+            query.setTaskId(taskId);
+        }
+        List<QueueOffsetInfo> queueOffsetInfos = CACHE.getIfPresent(taskId);
 
         if (queueOffsetInfos == null) {
             query.setPageNum(1);
             MessagePageTask task = this.queryFirstMessagePage(queryByPage);
-            String taskId = MessageClientIDSetter.createUniqID();
             CACHE.put(taskId, task.getQueueOffsetInfos());
 
             return new MessagePage(task.getPage(), taskId);
         }
         Page<MessageView> messageViews = queryMessageByTaskPage(queryByPage, queueOffsetInfos);
-        return new MessagePage(messageViews, query.getTaskId());
+        return new MessagePage(messageViews, taskId);
 
     }
 
