@@ -303,3 +303,66 @@ tools:
             type: integer
     viewHint: table
     deprecated: false
+  - name: rmq.alert.rule.list
+    cli:
+      resource: alert-rule
+      verb: list
+    description: List RocketMQ Studio alert rules.
+    riskLevel: L1
+    permission: alert:read
+    requiredCapabilities: []
+    inputSchema:
+      type: object
+      required:
+        - cluster
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        search:
+          type: string
+          minLength: 1
+        enabled:
+          type: boolean
+    outputSchema:
+      type: array
+      items:
+        type: object
+        required:
+          - id
+          - name
+          - metric
+          - operator
+          - threshold
+          - thresholdUnit
+          - duration
+          - channels
+          - enabled
+          - description
+        additionalProperties: false
+        properties:
+          id:
+            type: string
+          name:
+            type: string
+          metric:
+            type: string
+          operator:
+            type: string
+          threshold:
+            type: number
+          thresholdUnit:
+            type: string
+          duration:
+            type: string
+          channels:
+            type: array
+            items:
+              type: string
+          enabled:
+            type: boolean
+          description:
+            type: string
+    viewHint: table
+    deprecated: false
