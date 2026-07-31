@@ -191,6 +191,8 @@ public class MessageServiceImpl implements MessageService {
         } catch (Exception e) {
             Throwables.throwIfUnchecked(e);
             throw new RuntimeException(e);
+        } finally {
+            autoCloseConsumerWrapper.releaseConsumer();
         }
     }
 
@@ -395,6 +397,8 @@ public class MessageServiceImpl implements MessageService {
         } catch (Exception e) {
             Throwables.throwIfUnchecked(e);
             throw new RuntimeException(e);
+        } finally {
+            autoCloseConsumerWrapper.releaseConsumer();
         }
     }
 
@@ -461,6 +465,8 @@ public class MessageServiceImpl implements MessageService {
         } catch (Exception e) {
             Throwables.throwIfUnchecked(e);
             throw new RuntimeException(e);
+        } finally {
+            autoCloseConsumerWrapper.releaseConsumer();
         }
     }
 

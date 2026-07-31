@@ -82,14 +82,22 @@ public class MQAdminAspect {
         try {
             if (isPoolConfigIsolatedByUser(rmqConfigure.isLoginRequired(), rmqConfigure.getAuthMode(), methodName)) {
                 currentUserInfo = (UserInfo) UserInfoContext.get(WebUtil.USER_NAME);
-                // 2. Borrow the user-specific MQAdminExt instance.
-                //    currentUser.getName() is assumed to be the AccessKey, and currentUser.getPassword() is SecretKey.
-                mqAdminExt = userMQAdminPoolManager.borrowMQAdminExt(currentUserInfo.getUsername(), currentUserInfo.getPassword());
+                if (currentUserInfo == null) {
+                    // The method is invoked outside of a request thread (e.g. a scheduled task) or
+                    // the login context is missing. Fall back to the default pool instead of NPE.
+                    log.warn("No user info in context for method {}, falling back to the default pool.", methodName);
+                    mqAdminExt = mqAdminExtPool.borrowObject();
+                    MQAdminInstance.setCurrentMQAdminExt(mqAdminExt);
+                } else {
+                    // 2. Borrow the user-specific MQAdminExt instance.
+                    //    currentUser.getName() is assumed to be the AccessKey, and currentUser.getPassword() is SecretKey.
+                    mqAdminExt = userMQAdminPoolManager.borrowMQAdminExt(currentUserInfo.getUsername(), currentUserInfo.getPassword());
 
-                // 3. Set the borrowed MQAdminExt instance into the ThreadLocal for MQAdminInstance.
-                //    This makes it available to MQAdminExtImpl methods.
-                MQAdminInstance.setCurrentMQAdminExt(mqAdminExt);
-                log.debug("MQAdminExt borrowed for user {} and set in ThreadLocal.", currentUserInfo.getUsername());
+                    // 3. Set the borrowed MQAdminExt instance into the ThreadLocal for MQAdminInstance.
+                    //    This makes it available to MQAdminExtImpl methods.
+                    MQAdminInstance.setCurrentMQAdminExt(mqAdminExt);
+                    log.debug("MQAdminExt borrowed for user {} and set in ThreadLocal.", currentUserInfo.getUsername());
+                }
             } else {
                 mqAdminExt = mqAdminExtPool.borrowObject(); // Fallback to a default MQAdminExt if no user is provided
                 MQAdminInstance.setCurrentMQAdminExt(mqAdminExt);

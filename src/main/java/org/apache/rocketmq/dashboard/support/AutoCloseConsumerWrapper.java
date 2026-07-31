@@ -31,6 +31,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 @Component
@@ -42,6 +43,9 @@ public class AutoCloseConsumerWrapper {
     private final AtomicBoolean isTaskScheduled = new AtomicBoolean(false);
     private final AtomicBoolean isClosing = new AtomicBoolean(false);
     private static volatile Instant lastUsedTime = Instant.now();
+    // Number of threads currently using the consumer. The idle-close task must never
+    // shut the consumer down while any thread is still using it.
+    private final AtomicInteger inUseCount = new AtomicInteger(0);
 
 
     private static final ScheduledExecutorService SCHEDULER =
@@ -55,25 +59,35 @@ public class AutoCloseConsumerWrapper {
     public DefaultMQPullConsumer getConsumer(RPCHook rpcHook, Boolean useTLS) {
         lastUsedTime = Instant.now();
 
-        DefaultMQPullConsumer consumer = CONSUMER_REF.get();
-        if (consumer == null) {
-            synchronized (this) {
-                consumer = CONSUMER_REF.get();
-                if (consumer == null) {
-                    consumer = createNewConsumer(rpcHook, useTLS);
-                    CONSUMER_REF.set(consumer);
-                }
+        // The whole acquisition must happen while holding the lock: close() also runs under
+        // this lock, so the consumer we return cannot be shut down by the idle-close task in
+        // between (without the lock, close() could run right after the null-check and shut
+        // down a consumer that is about to be handed to the caller).
+        synchronized (this) {
+            DefaultMQPullConsumer consumer = CONSUMER_REF.get();
+            if (consumer == null) {
+                consumer = createNewConsumer(rpcHook, useTLS);
+                CONSUMER_REF.set(consumer);
                 try {
                     consumer.start();
                 } catch (MQClientException e) {
                     consumer.shutdown();
                     CONSUMER_REF.set(null);
                     throw new RuntimeException("Failed to start consumer", e);
-
                 }
             }
+            inUseCount.incrementAndGet();
+            return consumer;
         }
-        return consumer;
+    }
+
+    /**
+     * Marks one usage of the consumer as finished. Must be called from a finally block after
+     * every successful {@link #getConsumer} call, otherwise the in-use count never drops to
+     * zero and the consumer will never be closed by the idle-close task again.
+     */
+    public void releaseConsumer() {
+        inUseCount.decrementAndGet();
     }
 
 
@@ -104,9 +118,11 @@ public class AutoCloseConsumerWrapper {
     }
 
     public void checkAndCloseIdleConsumer() {
-        if (shouldClose()) {
+        if (inUseCount.get() == 0 && shouldClose()) {
             synchronized (this) {
-                if (shouldClose()) {
+                // Re-check under the lock: a thread may have acquired the consumer while we
+                // were waiting for the lock.
+                if (inUseCount.get() == 0 && shouldClose()) {
                     close();
                 }
             }
