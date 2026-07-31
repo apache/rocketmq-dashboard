@@ -223,6 +223,8 @@ const TopicPage = () => {
   const [searchText, setSearchText] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [nsFilter, setNsFilter] = useState('');
+  const [tablePage, setTablePage] = useState(1);
+  const [tablePageSize, setTablePageSize] = useState(20);
   const [viewMode, setViewMode] = useState<string>('列表');
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
@@ -265,6 +267,13 @@ const TopicPage = () => {
         .sort((a, b) => a.name.localeCompare(b.name)),
     [topics, searchText, typeFilter, nsFilter],
   );
+
+  const maxTablePage = Math.max(1, Math.ceil(filteredTopics.length / tablePageSize));
+  const currentTablePage = Math.min(tablePage, maxTablePage);
+
+  const resetTablePage = () => {
+    setTablePage(1);
+  };
 
   // ─── Open detail modal ────────────────────────────────────────
   const openDetail = async (topic: Topic) => {
@@ -621,22 +630,34 @@ const TopicPage = () => {
             placeholder="搜索 Topic 名称"
             allowClear
             style={{ width: 260 }}
-            onSearch={setSearchText}
+            onSearch={(value) => {
+              setSearchText(value);
+              resetTablePage();
+            }}
             onChange={(e) => {
-              if (!e.target.value) setSearchText('');
+              if (!e.target.value) {
+                setSearchText('');
+                resetTablePage();
+              }
             }}
           />
           <Select
             placeholder="类型筛选"
             value={typeFilter}
-            onChange={setTypeFilter}
+            onChange={(value) => {
+              setTypeFilter(value);
+              resetTablePage();
+            }}
             options={TYPE_OPTIONS}
             style={{ width: 140 }}
           />
           <Select
             placeholder="命名空间"
             value={nsFilter}
-            onChange={setNsFilter}
+            onChange={(value) => {
+              setNsFilter(value);
+              resetTablePage();
+            }}
             options={NAMESPACE_OPTIONS}
             style={{ width: 140 }}
           />
@@ -708,9 +729,14 @@ const TopicPage = () => {
               onChange: (keys) => setSelectedRowKeys(keys),
             }}
             pagination={{
-              pageSize: 20,
+              current: currentTablePage,
+              pageSize: tablePageSize,
               showSizeChanger: true,
               showTotal: (t) => `共 ${t} 条`,
+              onChange: (page, pageSize) => {
+                setTablePage(page);
+                setTablePageSize(pageSize);
+              },
             }}
             size="small"
             onRow={(record) => ({

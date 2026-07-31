@@ -122,6 +122,8 @@ const ConsumerPage = () => {
   const { t } = useLang();
   const [groups, setGroups] = useState<ConsumerGroup[]>([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [resetSubmitting, setResetSubmitting] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [search, setSearch] = useState('');
   const [modeFilter, setModeFilter] = useState<string>('ALL');
@@ -147,7 +149,7 @@ const ConsumerPage = () => {
         const nextGroups = await listConsumerGroups();
         if (!cancelled) setGroups(nextGroups);
       } catch {
-        if (!cancelled) message.error('消费组列表加载失败，请稍后重试');
+        if (!cancelled) message.error(t('consumer.fetchListFailed'));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -157,7 +159,7 @@ const ConsumerPage = () => {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [t]);
 
   const loadSubscriptions = useCallback(
     async (groupName: string) => {
@@ -166,10 +168,10 @@ const ConsumerPage = () => {
         const subscriptions = await getConsumerSubscriptions(groupName);
         setSubscriptionsByGroup((prev) => ({ ...prev, [groupName]: subscriptions }));
       } catch {
-        message.error(`消费组 ${groupName} 订阅关系加载失败`);
+        message.error(t('consumer.fetchSubscriptionsFailed', { name: groupName }));
       }
     },
-    [subscriptionsByGroup],
+    [subscriptionsByGroup, t],
   );
 
   const loadProgress = useCallback(
@@ -179,10 +181,10 @@ const ConsumerPage = () => {
         const progress = await getConsumerProgress(groupName);
         setProgressByGroup((prev) => ({ ...prev, [groupName]: progress }));
       } catch {
-        message.error(`消费组 ${groupName} 消费进度加载失败`);
+        message.error(t('consumer.fetchProgressFailed', { name: groupName }));
       }
     },
-    [progressByGroup],
+    [progressByGroup, t],
   );
 
   /* ─── Filtered & sorted data ─── */
@@ -939,29 +941,38 @@ const ConsumerPage = () => {
                 okText: '确认创建',
                 cancelText: '取消',
                 onOk: async () => {
-                  const created = await createConsumerGroup({
-                    name: values.name,
-                    namespace: values.namespace || 'default',
-                    subscriptionMode: values.subscriptionMode,
-                    consumeType: values.consumeType,
-                    retryMaxTimes: values.retryMaxTimes,
-                    subscriptionDataType: values.dataType || 'NORMAL',
-                    deliveryOrderType: values.deliveryOrderType,
-                    subscribedTopics: [],
-                  });
-                  setGroups((prev) => [
-                    created,
-                    ...prev.filter((group) => group.name !== created.name),
-                  ]);
-                  message.success(`消费组 ${values.name} 创建成功`);
-                  setCreateModalOpen(false);
-                  form.resetFields();
-                  setDataTypeValue(undefined);
+                  setSubmitting(true);
+                  try {
+                    const created = await createConsumerGroup({
+                      name: values.name,
+                      namespace: values.namespace || 'default',
+                      subscriptionMode: values.subscriptionMode,
+                      consumeType: values.consumeType,
+                      retryMaxTimes: values.retryMaxTimes,
+                      subscriptionDataType: values.dataType || 'NORMAL',
+                      deliveryOrderType: values.deliveryOrderType,
+                      subscribedTopics: [],
+                    });
+                    setGroups((prev) => [
+                      created,
+                      ...prev.filter((group) => group.name !== created.name),
+                    ]);
+                    message.success(`消费组 ${values.name} 创建成功`);
+                    setCreateModalOpen(false);
+                    form.resetFields();
+                    setDataTypeValue(undefined);
+                  } catch {
+                    message.error(t('consumer.createFailed'));
+                    throw new Error(t('consumer.createFailed'));
+                  } finally {
+                    setSubmitting(false);
+                  }
                 },
               });
             })
             .catch(() => {});
         }}
+        confirmLoading={submitting}
         okText="创建"
         cancelText="取消"
         width={560}
@@ -1063,17 +1074,26 @@ const ConsumerPage = () => {
         }}
         onOk={async () => {
           if (resetGroup) {
-            await resetConsumerOffset({
-              name: resetGroup.name,
-              timestamp: resetTime.valueOf(),
-            });
-            message.success(
-              `${resetGroup.name} 消费位点已重置到 ${resetTime.format('YYYY-MM-DD HH:mm:ss')}`,
-            );
+            setResetSubmitting(true);
+            try {
+              await resetConsumerOffset({
+                name: resetGroup.name,
+                timestamp: resetTime.valueOf(),
+              });
+              message.success(
+                `${resetGroup.name} 消费位点已重置到 ${resetTime.format('YYYY-MM-DD HH:mm:ss')}`,
+              );
+            } catch {
+              message.error(t('consumer.resetFailed'));
+              return;
+            } finally {
+              setResetSubmitting(false);
+            }
           }
           setResetModalOpen(false);
           setResetGroup(null);
         }}
+        confirmLoading={resetSubmitting}
         okText="确认重置"
         cancelText="取消"
         width={480}

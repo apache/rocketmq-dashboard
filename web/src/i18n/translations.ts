@@ -414,6 +414,20 @@ const translations: Record<string, Record<Lang, string>> = {
   'consumer.viewDistribution': { zh: '查看分布', en: 'View Distribution' },
   'consumer.resetToTime': { zh: '重置到指定时间', en: 'Reset to Time' },
   'consumer.resetSuccess': { zh: '位点重置成功', en: 'Offset reset successfully' },
+  'consumer.fetchListFailed': {
+    zh: '消费组列表加载失败，请稍后重试',
+    en: 'Failed to load consumer groups. Please try again later.',
+  },
+  'consumer.fetchSubscriptionsFailed': {
+    zh: '消费组 {name} 订阅关系加载失败',
+    en: 'Failed to load subscriptions for consumer group {name}',
+  },
+  'consumer.fetchProgressFailed': {
+    zh: '消费组 {name} 消费进度加载失败',
+    en: 'Failed to load consume progress for consumer group {name}',
+  },
+  'consumer.createFailed': { zh: '消费组创建失败', en: 'Failed to create consumer group' },
+  'consumer.resetFailed': { zh: '消费位点重置失败', en: 'Failed to reset consume offset' },
 
   // ─── Home Page (additional) ───
   'home.banner': {
