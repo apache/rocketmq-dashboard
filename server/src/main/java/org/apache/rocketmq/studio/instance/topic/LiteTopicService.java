@@ -27,8 +27,8 @@ public class LiteTopicService {
 
     public List<LiteTopicItemVO> listLiteTopics(String pattern, String namespace) {
         return sampleItems().stream()
-                .filter(item -> matches(pattern, item.getTopicPattern()))
-                .filter(item -> matches(namespace, item.getNamespace()))
+                .filter(item -> matchesPattern(pattern, item.getTopicPattern()))
+                .filter(item -> matchesNamespace(namespace, item.getNamespace()))
                 .toList();
     }
 
@@ -113,10 +113,17 @@ public class LiteTopicService {
                         .build());
     }
 
-    private boolean matches(String filter, String value) {
+    private boolean matchesPattern(String filter, String value) {
         if (filter == null || filter.isBlank()) {
             return true;
         }
         return value != null && value.toLowerCase(Locale.ROOT).contains(filter.toLowerCase(Locale.ROOT));
+    }
+
+    private boolean matchesNamespace(String namespace, String value) {
+        if (namespace == null || namespace.isBlank()) {
+            return true;
+        }
+        return value != null && value.equalsIgnoreCase(namespace.trim());
     }
 }

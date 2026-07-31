@@ -32,6 +32,7 @@ import {
 const mock = new MockAdapter(client);
 
 const sampleItem: LiteTopicItem = {
+  namespace: 'default',
   topicPattern: 'order-*',
   topicCount: 15,
   consumerCount: 3,
@@ -88,6 +89,7 @@ describe('LiteTopic API', () => {
 
     const result = await queryLiteTopicList();
     expect(result).toHaveLength(1);
+    expect(result[0].namespace).toBe('default');
     expect(result[0].topicPattern).toBe('order-*');
   });
 

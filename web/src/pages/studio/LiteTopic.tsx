@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useState, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Table,
   Button,
@@ -78,9 +78,30 @@ const getProgressStatus = (percent: number): 'exception' | 'active' | 'normal' =
   return 'normal';
 };
 
+const collectNamespaces = (items: LiteTopicItem[]): string[] => {
+  const namespaces = new Map<string, string>();
+
+  items.forEach((item) => {
+    const namespace = item.namespace?.trim() || '';
+    if (!namespace) return;
+
+    const normalized = namespace.toLowerCase();
+    if (!namespaces.has(normalized)) {
+      namespaces.set(normalized, namespace);
+    }
+  });
+
+  return Array.from(namespaces.values()).sort((left, right) => {
+    const normalizedOrder = left.toLowerCase().localeCompare(right.toLowerCase());
+    return normalizedOrder || left.localeCompare(right);
+  });
+};
+
 const LiteTopicPage: React.FC = () => {
   const { t } = useLang();
   const { message } = App.useApp();
+  const messageRef = useRef(message);
+  const translationRef = useRef(t);
 
   const [loading, setLoading] = useState(false);
   const [topicList, setTopicList] = useState<LiteTopicItem[]>([]);
@@ -88,6 +109,7 @@ const LiteTopicPage: React.FC = () => {
   const [capabilitySupported, setCapabilitySupported] = useState(true);
   const [patternFilter, setPatternFilter] = useState('');
   const [namespaceFilter, setNamespaceFilter] = useState('');
+  const [namespaceOptions, setNamespaceOptions] = useState<string[]>([]);
 
   // Session drawer
   const [sessionDrawerOpen, setSessionDrawerOpen] = useState(false);
@@ -102,92 +124,121 @@ const LiteTopicPage: React.FC = () => {
   }>({ topicPattern: '', newTTL: null });
   const [extendTTLLoading, setExtendTTLLoading] = useState(false);
 
-  const initialized = useRef<boolean | null>(null);
-  if (initialized.current == null) {
-    initialized.current = true;
-    const init = async () => {
+  const mountedRef = useRef(false);
+  const bootstrapRequestId = useRef(0);
+  const displayRequestId = useRef(0);
+
+  useEffect(() => {
+    messageRef.current = message;
+    translationRef.current = t;
+  }, [message, t]);
+
+  const fetchData = useCallback(
+    async (
+      pattern: string | undefined,
+      namespace: string | undefined,
+      options: { clear?: boolean; collectNamespaceOptions?: boolean } = {},
+    ) => {
+      const requestId = ++displayRequestId.current;
+
+      if (options.clear) {
+        setTopicList([]);
+        setQuota(null);
+      }
+      setLoading(true);
+
+      const [quotaResult, listResult] = await Promise.allSettled([
+        queryLiteTopicQuota(namespace),
+        queryLiteTopicList(pattern, namespace),
+      ]);
+
+      if (!mountedRef.current) return;
+
+      if (listResult.status === 'fulfilled' && options.collectNamespaceOptions) {
+        setNamespaceOptions(collectNamespaces(listResult.value));
+      }
+
+      if (requestId !== displayRequestId.current) return;
+
+      if (quotaResult.status === 'fulfilled') {
+        setQuota(quotaResult.value);
+      }
+
+      if (listResult.status === 'fulfilled') {
+        setTopicList(listResult.value);
+      } else {
+        setTopicList([]);
+        messageRef.current.error(translationRef.current('liteTopic.fetchListFailed'));
+      }
+
+      setLoading(false);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const mountedState = mountedRef;
+    const bootstrapCounter = bootstrapRequestId;
+    const displayCounter = displayRequestId;
+    mountedState.current = true;
+
+    const bootstrapId = ++bootstrapCounter.current;
+    const initialDisplayRequestId = displayCounter.current;
+    const bootstrapIsActive = () =>
+      mountedState.current && bootstrapId === bootstrapCounter.current;
+
+    const initialize = async () => {
       try {
-        const cap = await queryLiteTopicCapability();
-        if (cap && cap.supported === false) {
+        const capability = await queryLiteTopicCapability();
+        if (!bootstrapIsActive()) return;
+        if (capability && capability.supported === false) {
+          ++displayCounter.current;
           setCapabilitySupported(false);
+          setTopicList([]);
+          setQuota(null);
+          setLoading(false);
           return;
         }
       } catch {
-        // Assume supported on error
+        if (!bootstrapIsActive()) return;
+        // Assume supported when capability detection is unavailable.
       }
-      try {
-        const q = await queryLiteTopicQuota();
-        setQuota(q);
-      } catch {
-        // ignore
-      }
-      setLoading(true);
-      try {
-        const list = await queryLiteTopicList();
-        setTopicList(list);
-      } catch {
-        message.error(t('liteTopic.fetchListFailed'));
-      } finally {
-        setLoading(false);
+
+      if (displayCounter.current === initialDisplayRequestId) {
+        await fetchData(undefined, undefined, { collectNamespaceOptions: true });
+      } else {
+        try {
+          const list = await queryLiteTopicList();
+          if (bootstrapIsActive()) {
+            setNamespaceOptions(collectNamespaces(list));
+          }
+        } catch {
+          // The active display request owns user-visible error handling.
+        }
       }
     };
-    init();
-  }
 
-  const fetchQuota = async () => {
-    try {
-      const q = await queryLiteTopicQuota(namespaceFilter || undefined);
-      setQuota(q);
-    } catch {
-      // ignore
-    }
-  };
+    void initialize();
 
-  const fetchTopicList = async () => {
-    setLoading(true);
-    try {
-      const list = await queryLiteTopicList(
-        patternFilter || undefined,
-        namespaceFilter || undefined,
-      );
-      setTopicList(list);
-    } catch {
-      message.error(t('liteTopic.fetchListFailed'));
-      setTopicList([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+    return () => {
+      mountedState.current = false;
+      ++bootstrapCounter.current;
+      ++displayCounter.current;
+    };
+  }, [fetchData]);
 
   const handleSearch = () => {
-    fetchTopicList();
+    void fetchData(patternFilter || undefined, namespaceFilter || undefined);
   };
 
   const handleRefresh = () => {
-    fetchQuota();
-    fetchTopicList();
+    void fetchData(patternFilter || undefined, namespaceFilter || undefined);
   };
 
   const handleNamespaceChange = (val: string | undefined) => {
-    setNamespaceFilter(val || '');
-    // Re-fetch with new namespace
-    const doFetch = async () => {
-      setLoading(true);
-      try {
-        const ns = val || undefined;
-        const [q, list] = await Promise.all([
-          queryLiteTopicQuota(ns),
-          queryLiteTopicList(patternFilter || undefined, ns),
-        ]);
-        setQuota(q);
-        setTopicList(list);
-      } catch {
-        message.error(t('liteTopic.fetchListFailed'));
-      } finally {
-        setLoading(false);
-      }
-    };
-    doFetch();
+    const namespace = val || undefined;
+    setNamespaceFilter(namespace || '');
+    void fetchData(patternFilter || undefined, namespace, { clear: true });
   };
 
   const handleViewSessions = async (sessionId: string) => {
@@ -219,8 +270,7 @@ const LiteTopicPage: React.FC = () => {
       await extendLiteTopicTTL(extendTTLForm.topicPattern, extendTTLForm.newTTL);
       message.success(t('liteTopic.extendTtlSuccess'));
       setExtendTTLModalOpen(false);
-      fetchTopicList();
-      fetchQuota();
+      void fetchData(patternFilter || undefined, namespaceFilter || undefined);
     } catch {
       message.error(t('liteTopic.extendTtlFailed'));
     } finally {
@@ -241,6 +291,13 @@ const LiteTopicPage: React.FC = () => {
   // ─── Columns ─────────────────────────────────────────────────
 
   const columns: ColumnsType<LiteTopicItem> = [
+    {
+      title: t('liteTopic.namespace'),
+      dataIndex: 'namespace',
+      key: 'namespace',
+      render: (text: string) => text || '-',
+      ellipsis: true,
+    },
     {
       title: t('liteTopic.pattern'),
       dataIndex: 'topicPattern',
@@ -663,6 +720,11 @@ const LiteTopicPage: React.FC = () => {
             allowClear
           >
             <Select.Option value="">{t('liteTopic.allNamespaces')}</Select.Option>
+            {namespaceOptions.map((namespace) => (
+              <Select.Option key={namespace.toLowerCase()} value={namespace}>
+                {namespace}
+              </Select.Option>
+            ))}
           </Select>
           <Button type="primary" icon={<MagnifyingGlass size={14} />} onClick={handleSearch}>
             {t('common.search')}
@@ -675,7 +737,7 @@ const LiteTopicPage: React.FC = () => {
         <Table
           columns={columns}
           dataSource={topicList}
-          rowKey={(record) => record.topicPattern || Math.random().toString()}
+          rowKey={(record) => JSON.stringify([record.namespace, record.topicPattern])}
           loading={loading}
           pagination={{
             pageSize: 10,
