@@ -70,6 +70,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -101,7 +102,9 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
 
     private final List<GroupConsumeInfo> cacheConsumeInfoList = Collections.synchronizedList(new ArrayList<>());
 
-    private final HashMap<String, List<String>> consumerGroupMap = Maps.newHashMap();
+    // Shared across request threads (queryGroupList/makeGroupListCache) and refreshAllGroup,
+    // so it must be thread-safe; a plain HashMap would risk ConcurrentModificationException.
+    private final Map<String, List<String>> consumerGroupMap = new ConcurrentHashMap<>();
 
     @Override
     public void afterPropertiesSet() {
@@ -194,7 +197,7 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
             throw new RuntimeException(err);
         }
 
-        if (subscriptionGroupWrapper != null && subscriptionGroupWrapper.getSubscriptionGroupTable().isEmpty()) {
+        if (subscriptionGroupWrapper == null || subscriptionGroupWrapper.getSubscriptionGroupTable().isEmpty()) {
             logger.warn("No subscription group information available");
             isCacheBeingBuilt = false;
             return;
