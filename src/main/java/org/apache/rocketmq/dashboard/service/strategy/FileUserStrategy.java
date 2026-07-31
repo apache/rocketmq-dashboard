@@ -94,7 +94,12 @@ public class FileUserStrategy implements UserStrategy, InitializingBean {
                 } else if (arrs.length == 1) {
                     role = 0;
                 } else {
-                    role = Integer.parseInt(arrs[1].trim());
+                    try {
+                        role = Integer.parseInt(arrs[1].trim());
+                    } catch (NumberFormatException e) {
+                        log.error("Invalid role '{}' for user '{}', defaulting to normal user", arrs[1].trim(), key);
+                        role = 0;
+                    }
                 }
 
                 loadUserMap.put(key, new User(key, arrs[0].trim(), role));

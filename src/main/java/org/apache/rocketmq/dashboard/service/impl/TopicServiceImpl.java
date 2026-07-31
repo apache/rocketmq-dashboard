@@ -38,6 +38,7 @@ import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.topic.TopicValidator;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
+import org.apache.rocketmq.dashboard.exception.ServiceException;
 import org.apache.rocketmq.dashboard.model.request.SendTopicMessageRequest;
 import org.apache.rocketmq.dashboard.model.request.TopicConfigInfo;
 import org.apache.rocketmq.dashboard.model.request.TopicTypeList;
@@ -380,6 +381,9 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
     @Override
     public SendResult sendTopicMessageRequest(SendTopicMessageRequest sendTopicMessageRequest) {
         List<TopicConfigInfo> topicConfigInfos = examineTopicConfig(sendTopicMessageRequest.getTopic());
+        if (topicConfigInfos.isEmpty()) {
+            throw new ServiceException(-1, String.format("Topic [%s] has no broker route, cannot send message", sendTopicMessageRequest.getTopic()));
+        }
         String messageType = topicConfigInfos.get(0).getMessageType();
         AclClientRPCHook rpcHook = null;
         if (configure.isACLEnabled()) {

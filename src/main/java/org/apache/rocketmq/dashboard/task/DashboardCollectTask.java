@@ -127,7 +127,11 @@ public class DashboardCollectTask {
                 if (kvTable == null) {
                     continue;
                 }
-                String[] tpsArray = kvTable.getTable().get("getTotalTps").split(" ");
+                String totalTpsStr = kvTable.getTable().get("getTotalTps");
+                if (totalTpsStr == null || totalTpsStr.trim().isEmpty()) {
+                    continue;
+                }
+                String[] tpsArray = totalTpsStr.trim().split(" ");
                 BigDecimal totalTps = new BigDecimal(0);
                 for (String tps : tpsArray) {
                     totalTps = totalTps.add(new BigDecimal(tps));

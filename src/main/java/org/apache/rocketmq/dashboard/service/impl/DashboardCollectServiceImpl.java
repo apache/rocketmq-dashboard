@@ -115,7 +115,12 @@ public class DashboardCollectServiceImpl implements DashboardCollectService {
         for (String string : strings) {
             sb.append(string);
         }
-        JSONObject json = (JSONObject) JSONObject.parse(sb.toString());
+        Object parsed = JSONObject.parse(sb.toString());
+        if (parsed == null) {
+            log.warn("No valid dashboard data in file: {}", file.getAbsolutePath());
+            return Maps.newHashMap();
+        }
+        JSONObject json = (JSONObject) parsed;
         Set<Map.Entry<String, Object>> entries = json.entrySet();
         Map<String, List<String>> map = Maps.newHashMap();
         for (Map.Entry<String, Object> entry : entries) {
