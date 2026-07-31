@@ -74,24 +74,25 @@ describe('GroupManagement Page', () => {
     expect(screen.getByText('重置')).toBeInTheDocument();
   });
 
-  it('should display mock consumer group data in table', () => {
+  it('should show an explicit unavailable state instead of mock consumer groups', () => {
     renderWithProviders(<GroupManagement />);
-    expect(screen.getByText('order-consumer-group')).toBeInTheDocument();
-    expect(screen.getByText('payment-consumer-group')).toBeInTheDocument();
+    expect(screen.getByText('当前版本尚未接入真实消费组管理接口，已停止展示模拟消费组数据。')).toBeInTheDocument();
+    expect(screen.queryByText('order-consumer-group')).not.toBeInTheDocument();
+    expect(screen.queryByText('payment-consumer-group')).not.toBeInTheDocument();
   });
 
-  it('should render detail action buttons for each row', () => {
+  it('should not render row actions without real consumer group data', () => {
     renderWithProviders(<GroupManagement />);
-    const detailButtons = screen.getAllByText('详情');
-    expect(detailButtons.length).toBeGreaterThan(0);
+    expect(screen.queryByText('详情')).not.toBeInTheDocument();
   });
 
-  it('should filter groups by search text', async () => {
+  it('should keep mock groups hidden when filtering by search text', async () => {
     const user = userEvent.setup();
     renderWithProviders(<GroupManagement />);
     const searchInput = screen.getByPlaceholderText('搜索消费组');
     await user.type(searchInput, 'ORDER');
-    expect(screen.getByText('order-consumer-group')).toBeInTheDocument();
+    expect(screen.getByText('当前版本尚未接入真实消费组管理接口，已停止展示模拟消费组数据。')).toBeInTheDocument();
+    expect(screen.queryByText('order-consumer-group')).not.toBeInTheDocument();
     expect(screen.queryByText('payment-consumer-group')).not.toBeInTheDocument();
   });
 });

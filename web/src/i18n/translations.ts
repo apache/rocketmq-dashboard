@@ -956,6 +956,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'groupMgmt.stopped': { zh: '已停止', en: 'Stopped' },
   'groupMgmt.createGroup': { zh: '创建消费组', en: 'Create Group' },
   'groupMgmt.searchPlaceholder': { zh: '搜索消费组', en: 'Search group' },
+  'groupMgmt.providerUnavailable': {
+    zh: '当前版本尚未接入真实消费组管理接口，已停止展示模拟消费组数据。',
+    en: 'The real consumer group management API is not connected yet, so mock consumer group data is no longer displayed.',
+  },
   'groupMgmt.manual': { zh: '手动', en: 'Manual' },
   'groupMgmt.overview': { zh: '概览', en: 'Overview' },
   'groupMgmt.totalDiff': { zh: '总堆积量', en: 'Total Diff' },
