@@ -14,20 +14,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.rocketmq.studio.ops.dashboard;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
+import org.junit.jupiter.api.Test;
 
-@Slf4j
-@Component
-public class DashboardProviderStub implements DashboardProvider {
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-    @Override
-    public DashboardDataVO getDashboardData() {
-        log.warn("DashboardProviderStub.getDashboardData called without a real dashboard provider");
-        throw new BusinessException(501, "Dashboard provider is not configured");
+class DashboardProviderStubTest {
+
+    private final DashboardProviderStub provider = new DashboardProviderStub();
+
+    @Test
+    void getDashboardDataShouldFailWhenRealProviderIsMissing() {
+        assertThatThrownBy(provider::getDashboardData)
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Dashboard provider is not configured")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(501));
     }
 }
