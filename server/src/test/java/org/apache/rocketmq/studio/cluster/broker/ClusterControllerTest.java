@@ -61,6 +61,51 @@ class ClusterControllerTest {
     @MockBean
     private ClusterService clusterService;
 
+    @MockBean
+    private ClusterConnectionService clusterConnectionService;
+
+    @Test
+    void testConnectionShouldReturnProbeResult() throws Exception {
+        ClusterProbeResult probe = ClusterProbeResult.builder()
+                .connected(true)
+                .namesrvAddr("10.0.0.1:9876")
+                .clusterName("DefaultCluster")
+                .brokerCount(2)
+                .brokerNames(Arrays.asList("broker-a", "broker-b"))
+                .elapsedMillis(12L)
+                .message("Connected to 2 broker(s) in 12ms")
+                .build();
+        when(clusterConnectionService.testConnection(any(TestConnectionDTO.class))).thenReturn(probe);
+
+        ObjectNode command = objectMapper.createObjectNode().put("namesrvAddr", "10.0.0.1:9876");
+
+        mockMvc.perform(post("/api/clusters/test-connection")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(command)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.connected").value(true))
+                .andExpect(jsonPath("$.data.clusterName").value("DefaultCluster"))
+                .andExpect(jsonPath("$.data.brokerCount").value(2))
+                .andExpect(jsonPath("$.data.brokerNames.length()").value(2));
+
+        verify(clusterConnectionService).testConnection(any(TestConnectionDTO.class));
+    }
+
+    @Test
+    void testConnectionShouldRejectBlankNamesrvAddr() throws Exception {
+        ObjectNode command = objectMapper.createObjectNode().put("namesrvAddr", " ");
+
+        mockMvc.perform(post("/api/clusters/test-connection")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(command)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("namesrvAddr is required"));
+
+        verifyNoInteractions(clusterConnectionService);
+    }
+
     @Test
     void listClustersShouldReturnAllClusters() throws Exception {
         ClusterVO cluster1 = buildCluster("cluster-1", "production-cluster", ClusterStatus.healthy);

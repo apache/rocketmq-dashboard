@@ -1,6 +1,6 @@
 import { USE_MOCK } from '../config';
 import * as clusterApi from '../api/cluster';
-import type { ClusterConfig, ClusterInfo, K8sCertInfo } from '../api/cluster';
+import type { ClusterConfig, ClusterInfo, ClusterProbeResult, K8sCertInfo } from '../api/cluster';
 import clusters, { mockK8sCerts } from '../mock/clusters';
 
 const mockCertStore: K8sCertInfo[] = mockK8sCerts.map((cert) => ({
@@ -32,6 +32,24 @@ export async function listClusters(): Promise<ClusterInfo[]> {
     return clusters.map(copyCluster);
   }
   return clusterApi.listClusters();
+}
+
+export async function testClusterConnection(namesrvAddr: string): Promise<ClusterProbeResult> {
+  if (USE_MOCK) {
+    const trimmed = namesrvAddr.trim();
+    const cluster = clusters[0];
+    const brokerNames = cluster ? cluster.brokers.map((broker) => broker.name) : [];
+    return {
+      connected: true,
+      namesrvAddr: trimmed,
+      clusterName: cluster?.nsClusterName ?? 'DefaultCluster',
+      brokerCount: brokerNames.length,
+      brokerNames,
+      elapsedMillis: 12,
+      message: `Connected to ${brokerNames.length} broker(s) (mock)`,
+    };
+  }
+  return clusterApi.testClusterConnection(namesrvAddr);
 }
 
 export async function getCluster(id: string): Promise<ClusterInfo> {
