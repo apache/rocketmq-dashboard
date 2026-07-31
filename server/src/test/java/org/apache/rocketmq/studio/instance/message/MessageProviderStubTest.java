@@ -14,32 +14,33 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.apache.rocketmq.studio.instance.message;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
+import org.junit.jupiter.api.Test;
 
-import java.util.List;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@Component
-@Slf4j
-public class MessageProviderStub implements MessageProvider {
+class MessageProviderStubTest {
 
-    @Override
-    public List<MessageRecordVO> queryMessages(String topic, String msgId, String tag, String key, Long startTime,
-                                               Long endTime) {
-        log.warn("MessageProviderStub.queryMessages called but no real message provider is configured");
-        throw unsupported();
+    private final MessageProviderStub provider = new MessageProviderStub();
+
+    @Test
+    void queryMessagesShouldFailExplicitlyWhenRealProviderIsMissing() {
+        assertThatThrownBy(() -> provider.queryMessages("orders", null, null, null, null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Message query provider is not configured")
+                .extracting("code")
+                .isEqualTo(501);
     }
 
-    @Override
-    public TraceRecordVO getMessageTrace(String msgId) {
-        log.warn("MessageProviderStub.getMessageTrace called but no real message provider is configured");
-        throw unsupported();
-    }
-
-    private BusinessException unsupported() {
-        return new BusinessException(501, "Message query provider is not configured");
+    @Test
+    void getMessageTraceShouldFailExplicitlyWhenRealProviderIsMissing() {
+        assertThatThrownBy(() -> provider.getMessageTrace("msg-001"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Message query provider is not configured")
+                .extracting("code")
+                .isEqualTo(501);
     }
 }
