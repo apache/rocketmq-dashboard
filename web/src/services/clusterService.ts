@@ -1,6 +1,6 @@
 import { USE_MOCK } from '../config';
 import * as clusterApi from '../api/cluster';
-import type { ClusterInfo, K8sCertInfo } from '../api/cluster';
+import type { ClusterConfig, ClusterInfo, K8sCertInfo } from '../api/cluster';
 import clusters, { mockK8sCerts } from '../mock/clusters';
 
 const mockCertStore: K8sCertInfo[] = mockK8sCerts.map((cert) => ({
@@ -110,8 +110,12 @@ export async function deleteK8sCert(id: string): Promise<void> {
   return clusterApi.deleteK8sCert(id);
 }
 
-export async function updateClusterConfig(data: { id: string } & Record<string, unknown>) {
-  if (USE_MOCK) return;
+export async function updateClusterConfig(data: { id: string } & Partial<ClusterConfig>) {
+  if (USE_MOCK) {
+    const { id, ...config } = data;
+    Object.assign(getMockCluster(id).config, config);
+    return;
+  }
   return clusterApi.updateClusterConfig(data);
 }
 
