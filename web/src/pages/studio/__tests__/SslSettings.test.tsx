@@ -96,6 +96,34 @@ describe('SslSettings Page', () => {
     expect(screen.getByText('KeyStore 密码')).toBeInTheDocument();
   });
 
+  it('should restore the saved SSL state when resetting the form', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<SslSettings />);
+    const switchEl = screen.getByRole('switch');
+
+    await user.click(switchEl);
+    expect(switchEl).toBeChecked();
+    expect(screen.getByText('KeyStore 配置')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /重\s*置/ }));
+
+    expect(switchEl).not.toBeChecked();
+    expect(screen.queryByText('KeyStore 配置')).not.toBeInTheDocument();
+  });
+
+  it('should keep form actions available after disabling SSL', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<SslSettings />);
+    const switchEl = screen.getByRole('switch');
+
+    await user.click(switchEl);
+    await user.click(switchEl);
+
+    expect(switchEl).not.toBeChecked();
+    expect(screen.getByRole('button', { name: /保\s*存/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /重\s*置/ })).toBeInTheDocument();
+  });
+
   it('should show TrustStore fields when client authentication is required', async () => {
     const user = userEvent.setup();
     renderWithProviders(<SslSettings />);

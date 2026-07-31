@@ -67,7 +67,6 @@ interface FormValues {
 const SslSettingsPage = () => {
   const [form] = Form.useForm<FormValues>();
   const [loading, setLoading] = useState(false);
-  const [sslEnabled, setSslEnabled] = useState(false);
   const [sslConfig, setSslConfig] = useState<SslConfig>({
     enabled: false,
     protocol: 'TLSv1.3',
@@ -81,6 +80,7 @@ const SslSettingsPage = () => {
     certificateExpiry: '2025-12-31',
     certificateIssuer: "Let's Encrypt",
   });
+  const sslEnabled = Form.useWatch('enabled', form) ?? sslConfig.enabled;
   const clientAuth = Form.useWatch('clientAuth', form) ?? sslConfig.clientAuth;
   const { t } = useLang();
   const { message } = App.useApp();
@@ -92,11 +92,6 @@ const SslSettingsPage = () => {
       message.success(t('ssl.saveSuccess'));
       setSslConfig({ ...sslConfig, ...values });
     }, 1000);
-  };
-
-  const handleToggleSsl = (checked: boolean) => {
-    setSslEnabled(checked);
-    form.setFieldsValue({ enabled: checked });
   };
 
   const uploadProps = {
@@ -144,8 +139,6 @@ const SslSettingsPage = () => {
         <Form form={form} layout="vertical" onFinish={handleSave} initialValues={sslConfig}>
           <Form.Item name="enabled" label={t('ssl.enabled')} valuePropName="checked">
             <Switch
-              checked={sslEnabled}
-              onChange={handleToggleSsl}
               checkedChildren={<CheckCircle size={12} />}
               unCheckedChildren={<XCircle size={12} />}
             />
@@ -276,19 +269,19 @@ const SslSettingsPage = () => {
                   </Form.Item>
                 </>
               )}
-
-              <Divider />
-
-              <Form.Item>
-                <Space>
-                  <Button type="primary" htmlType="submit" loading={loading}>
-                    {t('ssl.save')}
-                  </Button>
-                  <Button onClick={() => form.resetFields()}>{t('common.reset')}</Button>
-                </Space>
-              </Form.Item>
             </>
           )}
+
+          <Divider />
+
+          <Form.Item>
+            <Space>
+              <Button type="primary" htmlType="submit" loading={loading}>
+                {t('ssl.save')}
+              </Button>
+              <Button onClick={() => form.setFieldsValue(sslConfig)}>{t('common.reset')}</Button>
+            </Space>
+          </Form.Item>
         </Form>
       </Card>
 
