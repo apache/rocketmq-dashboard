@@ -941,6 +941,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'brokerCluster.restart': { zh: '重启', en: 'Restart' },
   'brokerCluster.manual': { zh: '手动', en: 'Manual' },
   'brokerCluster.createCluster': { zh: '创建集群', en: 'Create Cluster' },
+  'brokerCluster.providerUnavailable': {
+    zh: '当前版本尚未接入真实集群拓扑接口，已停止展示模拟 Broker / NameServer / Proxy 数据。',
+    en: 'The real cluster topology API is not connected yet, so mock Broker, NameServer, and Proxy data is no longer displayed.',
+  },
   'brokerCluster.nsName': { zh: 'NameServer 名称', en: 'NameServer Name' },
   'brokerCluster.nsManagement': { zh: 'NameServer 管理', en: 'NameServer Management' },
   'brokerCluster.brokerManagement': { zh: 'Broker 管理', en: 'Broker Management' },
