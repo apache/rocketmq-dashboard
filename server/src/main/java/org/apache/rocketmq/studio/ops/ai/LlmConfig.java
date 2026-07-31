@@ -14,32 +14,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.rocketmq.studio.ops.ai;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class LlmOperationResultVO {
-    private int status;
-    private String msg;
-    private String errMsg;
-    private String code;
-    private String hint;
-
-    public static LlmOperationResultVO success(String message) {
-        return new LlmOperationResultVO(0, message, null, null, null);
-    }
-
-    public static LlmOperationResultVO failure(String message) {
-        return failure("llm.config.invalid", message, null);
-    }
-
-    public static LlmOperationResultVO failure(String code, String message, String hint) {
-        return new LlmOperationResultVO(1, null, message, code, hint);
-    }
+/** Resolved LLM connection settings. */
+public class LlmConfig {
+    public String provider;
+    public String apiKey;
+    public String model;
+    public String baseUrl;
+    public boolean configured;
 }

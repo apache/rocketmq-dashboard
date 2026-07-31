@@ -17,7 +17,6 @@
 package org.apache.rocketmq.studio.common.exception;
 
 import org.apache.rocketmq.studio.common.domain.Result;
-import org.apache.rocketmq.studio.ops.ai.LlmGatewayException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
@@ -57,26 +56,12 @@ class GlobalExceptionHandlerTest {
                 .andExpect(jsonPath("$.message").value("failure-400"));
     }
 
-    @Test
-    void preservesLlmGatewayStatusAndEnvelope() throws Exception {
-        mockMvc.perform(get("/test/llm-timeout"))
-                .andExpect(status().isGatewayTimeout())
-                .andExpect(jsonPath("$.code").value(504))
-                .andExpect(jsonPath("$.message").value("LLM provider request timed out"));
-    }
-
     @RestController
     static class FailingController {
 
         @GetMapping("/test/business/{code}")
         Result<Void> fail(@PathVariable int code) {
             throw new BusinessException(code, "failure-" + code);
-        }
-
-        @GetMapping("/test/llm-timeout")
-        Result<Void> failLlm() {
-            throw new LlmGatewayException(504, "llm.provider.timeout",
-                    "LLM provider request timed out", "Retry later.");
         }
     }
 }

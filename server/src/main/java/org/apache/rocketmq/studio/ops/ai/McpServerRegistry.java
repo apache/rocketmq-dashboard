@@ -18,19 +18,8 @@ package org.apache.rocketmq.studio.ops.ai;
 
 
 import java.util.List;
-import java.util.Map;
 
 public interface McpServerRegistry {
 
     List<AiToolVO> listTools();
-
-    List<AiToolVO> listTools(String clusterId);
-
-    Object execute(String name, Map<String, Object> input);
-
-    String catalogVersion();
-
-    String catalogDigest();
-
-    String minimumClientVersion();
 }

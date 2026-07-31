@@ -18,7 +18,6 @@ package org.apache.rocketmq.studio.common.exception;
 
 import org.apache.rocketmq.studio.cluster.metrics.PrometheusException;
 import org.apache.rocketmq.studio.common.domain.Result;
-import org.apache.rocketmq.studio.ops.ai.LlmGatewayException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -44,13 +43,6 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(PrometheusException.class)
     public ResponseEntity<Result<?>> handlePrometheusException(PrometheusException ex) {
         log.warn("Prometheus exception: status={}, message={}", ex.getStatusCode(), ex.getMessage());
-        return ResponseEntity.status(ex.getStatusCode())
-                .body(Result.error(ex.getStatusCode(), ex.getMessage()));
-    }
-
-    @ExceptionHandler(LlmGatewayException.class)
-    public ResponseEntity<Result<?>> handleLlmGatewayException(LlmGatewayException ex) {
-        log.warn("LLM gateway exception: code={}, message={}", ex.getCode(), ex.getMessage());
         return ResponseEntity.status(ex.getStatusCode())
                 .body(Result.error(ex.getStatusCode(), ex.getMessage()));
     }

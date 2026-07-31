@@ -18,9 +18,13 @@ package org.apache.rocketmq.studio.ops.ai;
 
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.util.Map;
+
 public interface LlmGateway {
 
     SseEmitter chat(ChatDTO request);
 
     String execute(AiCommandDTO command);
+
+    Map<String, Object> testConnection(AiLlmConfigDTO config);
 }
