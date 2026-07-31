@@ -57,7 +57,6 @@ const ProxyPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [proxyNodes, setProxyNodes] = useState<ProxyNode[]>([]);
   const [selectedNode, setSelectedNode] = useState<ProxyNode | null>(null);
-  const [nodeConfig, setNodeConfig] = useState<Record<string, string>>({});
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [addNodeModalOpen, setAddNodeModalOpen] = useState(false);
   const [form] = Form.useForm();
@@ -119,19 +118,6 @@ const ProxyPage: React.FC = () => {
 
   const handleViewConfig = (node: ProxyNode) => {
     setSelectedNode(node);
-    // Simulated config data (API doesn't provide config endpoint)
-    setNodeConfig({
-      'proxy.name': `proxy-${node.address.split(':')[0]}`,
-      'proxy.listenPort': node.address.split(':')[1] || '8081',
-      'proxy.grpcPort': '8080',
-      'proxy.maxConnections': '10000',
-      'proxy.threadPoolSize': '64',
-      'proxy.messageMaxSize': '4194304',
-      'proxy.enableACL': 'true',
-      'proxy.tls.enabled': 'false',
-      'rocketmq.namesrv.addr': localStorage.getItem('namesrvAddr') || '127.0.0.1:9876',
-      'proxy.clusterName': 'DefaultCluster',
-    });
     setConfigModalOpen(true);
   };
 
@@ -288,6 +274,7 @@ const ProxyPage: React.FC = () => {
               type="link"
               size="small"
               icon={<GearSix size={14} />}
+              aria-label={t('proxy.viewConfig')}
               onClick={() => handleViewConfig(record)}
             />
           </Tooltip>
@@ -392,15 +379,9 @@ const ProxyPage: React.FC = () => {
         width={700}
       >
         <Descriptions bordered column={1} size="small">
-          {Object.entries(nodeConfig).length > 0 ? (
-            Object.entries(nodeConfig).map(([key, value]) => (
-              <Descriptions.Item key={key} label={key}>
-                {value}
-              </Descriptions.Item>
-            ))
-          ) : (
-            <Descriptions.Item label={t('proxy.noConfigData')}>-</Descriptions.Item>
-          )}
+          <Descriptions.Item label={t('proxy.configUnavailable')}>
+            {t('proxy.configUnavailableHint')}
+          </Descriptions.Item>
         </Descriptions>
       </Modal>
 

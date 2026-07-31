@@ -905,6 +905,11 @@ const translations: Record<string, Record<Lang, string>> = {
   'proxy.removeFailed': { zh: '移除代理失败', en: 'Failed to remove proxy' },
   'proxy.addrRequired': { zh: '请输入代理地址', en: 'Proxy address is required' },
   'proxy.noConfigData': { zh: '无配置数据', en: 'No config data' },
+  'proxy.configUnavailable': { zh: '配置接口未接入', en: 'Config API unavailable' },
+  'proxy.configUnavailableHint': {
+    zh: '当前版本尚未接入真实 Proxy 配置查询接口，已停止展示模拟配置。',
+    en: 'This version does not have a real Proxy config query API yet. Simulated config values are not shown.',
+  },
   'proxy.version': { zh: '版本', en: 'Version' },
   'proxy.status': { zh: '状态', en: 'Status' },
   'proxy.healthy': { zh: '健康', en: 'Healthy' },
