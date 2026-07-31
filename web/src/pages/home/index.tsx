@@ -32,6 +32,7 @@ import {
   MegaphoneSimple,
   Database,
 } from '@phosphor-icons/react';
+import { getLlmConfig, getLlmModels } from '../../api/llm';
 import { useLang } from '../../i18n/LangContext';
 
 /* ─── Time-aware greeting key ─── */
@@ -52,26 +53,57 @@ const modes = [
   { key: 'chat', labelKey: 'home.mode.chat', icon: ChatCircleDots },
 ];
 
-/* ─── Model option values ─── */
-const modelOptions = [
-  { value: 'qwen3.7-max', recommended: true },
-  { value: 'qwen3.7-plus', recommended: false },
-  { value: 'claude-opus-4.7', recommended: false },
-  { value: 'gpt-5.4', recommended: false },
-];
+interface ModelOption {
+  value: string;
+  recommended: boolean;
+}
 
 /* ═══════════════════════════════════════════════════════
    HomePage Component
    ═══════════════════════════════════════════════════════ */
 const HomePage = () => {
   const [activeMode, setActiveMode] = useState('query');
-  const [selectedModel, setSelectedModel] = useState('qwen3.7-max');
+  const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
+  const [selectedModel, setSelectedModel] = useState('');
   const [inputValue, setInputValue] = useState('');
   const [indicatorStyle, setIndicatorStyle] = useState({ width: 83, left: 6 });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const modeBarRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const { t, lang } = useLang();
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadModels = async () => {
+      const [config, modelsResult] = await Promise.all([
+        getLlmConfig().catch(() => null),
+        getLlmModels().catch(() => null),
+      ]);
+      if (cancelled) return;
+
+      const configuredModel = config?.model?.trim() ?? '';
+      const providerModels = modelsResult?.status === 0 && modelsResult.data
+        ? modelsResult.data.map((item) => item.id || item.name || '').filter(Boolean)
+        : [];
+      const values = Array.from(new Set([
+        ...(configuredModel ? [configuredModel] : []),
+        ...providerModels,
+      ]));
+
+      setModelOptions(values.map((value, index) => ({
+        value,
+        recommended: configuredModel ? value === configuredModel : index === 0,
+      })));
+      setSelectedModel((current) => (current && values.includes(current) ? current : values[0] || ''));
+    };
+
+    void loadModels();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   /* ─── Mode switch handler ─── */
   const handleModeSwitch = useCallback((key: string, btn: HTMLButtonElement) => {
@@ -124,7 +156,7 @@ const HomePage = () => {
 
   const handlePromptSubmit = () => {
     const prompt = inputValue.trim();
-    navigate('/ai', { state: prompt ? { prompt, model: selectedModel } : null });
+    navigate('/ai', { state: prompt ? { prompt, ...(selectedModel ? { model: selectedModel } : {}) } : null });
   };
 
   return (
@@ -292,8 +324,11 @@ const HomePage = () => {
                   <div className="flex flex-1 min-w-0 items-center gap-2">
                     <Select
                       size="small"
-                      value={selectedModel}
+                      value={selectedModel || undefined}
                       onChange={(val) => setSelectedModel(val)}
+                      disabled={modelOptions.length === 0}
+                      placeholder={lang === 'zh' ? '选择模型' : 'Select model'}
+                      notFoundContent={lang === 'zh' ? '未配置模型' : 'No configured models'}
                       options={modelOptions.map((m) => ({
                         value: m.value,
                         label: m.recommended ? (
