@@ -22,11 +22,18 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
@@ -37,7 +44,7 @@ class AuthServiceTest {
     @BeforeEach
     void setUp() {
         authProperties = new AuthProperties();
-        authService = new AuthService(authProperties);
+        authService = new AuthService(authProperties, Clock.fixed(Instant.EPOCH, ZoneOffset.UTC));
     }
 
     @Test
@@ -59,6 +66,8 @@ class AuthServiceTest {
         assertThat(response.getUser().getUsername()).isEqualTo("testuser");
         assertThat(response.getUser().isAdmin()).isFalse();
         assertThat(authService.isAuthenticated("Bearer " + response.getToken())).isTrue();
+        assertThat(authService.isAuthenticated("bearer " + response.getToken())).isTrue();
+        assertThat(authService.isAuthenticated("bEaReR " + response.getToken())).isTrue();
     }
 
     @Test
@@ -142,7 +151,7 @@ class AuthServiceTest {
     }
 
     @Test
-    void logoutShouldRevokeActiveToken() {
+    void logoutShouldRevokeActiveTokenWithCaseInsensitiveBearerScheme() {
         AuthProperties.User user = new AuthProperties.User();
         user.setUsername("testuser");
         user.setPassword("testpass");
@@ -152,9 +161,31 @@ class AuthServiceTest {
         request.setPassword("testpass");
         LoginVO response = authService.login(request);
 
-        authService.logout("Bearer " + response.getToken());
+        authService.logout("bEaReR " + response.getToken());
 
         assertThat(authService.isAuthenticated("Bearer " + response.getToken())).isFalse();
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void loginShouldRemoveExpiredSessions() {
+        Clock clock = mock(Clock.class);
+        when(clock.millis()).thenReturn(0L);
+        authService = new AuthService(authProperties, clock);
+        AuthProperties.User user = new AuthProperties.User();
+        user.setUsername("testuser");
+        user.setPassword("testpass");
+        authProperties.setUsers(List.of(user));
+        LoginDTO request = new LoginDTO();
+        request.setUsername("testuser");
+        request.setPassword("testpass");
+        LoginVO expiredSession = authService.login(request);
+        when(clock.millis()).thenReturn(expiredSession.getExpiresIn() * 1000L);
+
+        LoginVO activeSession = authService.login(request);
+
+        Map<String, ?> activeTokens = (Map<String, ?>) ReflectionTestUtils.getField(authService, "activeTokens");
+        assertThat(activeTokens).containsOnlyKeys(activeSession.getToken());
     }
 
     @Test
