@@ -75,47 +75,46 @@ const ProxyPage: React.FC = () => {
     loadProxyNodes();
   }
 
-  function loadProxyNodes() {
+  async function loadProxyNodes() {
     setLoading(true);
-    queryProxyHomePage()
-      .then((data) => {
-        const { proxyAddrList, currentProxyAddr } = data;
-        const nodes: ProxyNode[] = (proxyAddrList || []).map((addr) => ({
-          key: addr,
-          address: addr,
-          status: 'healthy' as const,
-          version: '5.3.0',
-          connections: Math.floor(Math.random() * 1000) + 100,
-          tps: Math.floor(Math.random() * 5000) + 1000,
-          memory: Math.floor(Math.random() * 60) + 20,
-          cpu: Math.floor(Math.random() * 50) + 10,
-          uptime: `${Math.floor(Math.random() * 30) + 1}d`,
-          isSelected: addr === currentProxyAddr,
-        }));
-        setProxyNodes(nodes);
+    try {
+      const { proxyAddrList, currentProxyAddr } = await queryProxyHomePage();
+      const nodes: ProxyNode[] = (proxyAddrList || []).map((addr) => ({
+        key: addr,
+        address: addr,
+        status: 'healthy' as const,
+        version: '5.3.0',
+        connections: Math.floor(Math.random() * 1000) + 100,
+        tps: Math.floor(Math.random() * 5000) + 1000,
+        memory: Math.floor(Math.random() * 60) + 20,
+        cpu: Math.floor(Math.random() * 50) + 10,
+        uptime: `${Math.floor(Math.random() * 30) + 1}d`,
+        isSelected: addr === currentProxyAddr,
+      }));
+      setProxyNodes(nodes);
 
-        const healthyCount = nodes.filter((n) => n.status === 'healthy').length;
-        const totalConn = nodes.reduce((sum, n) => sum + n.connections, 0);
-        const totalTPS = nodes.reduce((sum, n) => sum + n.tps, 0);
-        setClusterStats({
-          totalNodes: nodes.length,
-          healthyNodes: healthyCount,
-          totalConnections: totalConn,
-          totalTPS,
-        });
-
-        if (currentProxyAddr) {
-          localStorage.setItem('proxyAddr', currentProxyAddr);
-        } else if (proxyAddrList && proxyAddrList.length > 0) {
-          localStorage.setItem('proxyAddr', proxyAddrList[0]);
-        }
-      })
-      .catch(() => {
-        message.error(t('proxy.fetchListFailed'));
-      })
-      .finally(() => {
-        setLoading(false);
+      const healthyCount = nodes.filter((n) => n.status === 'healthy').length;
+      const totalConn = nodes.reduce((sum, n) => sum + n.connections, 0);
+      const totalTPS = nodes.reduce((sum, n) => sum + n.tps, 0);
+      setClusterStats({
+        totalNodes: nodes.length,
+        healthyNodes: healthyCount,
+        totalConnections: totalConn,
+        totalTPS,
       });
+
+      if (currentProxyAddr) {
+        localStorage.setItem('proxyAddr', currentProxyAddr);
+      } else if (proxyAddrList && proxyAddrList.length > 0) {
+        localStorage.setItem('proxyAddr', proxyAddrList[0]);
+      }
+      return true;
+    } catch {
+      message.error(t('proxy.fetchListFailed'));
+      return false;
+    } finally {
+      setLoading(false);
+    }
   }
 
   const handleViewConfig = (node: ProxyNode) => {
@@ -175,9 +174,10 @@ const ProxyPage: React.FC = () => {
       });
   };
 
-  const handleRefresh = () => {
-    loadProxyNodes();
-    message.success(t('common.refreshSuccess'));
+  const handleRefresh = async () => {
+    if (await loadProxyNodes()) {
+      message.success(t('common.refreshSuccess'));
+    }
   };
 
   const renderStatus = (status: string) => {
