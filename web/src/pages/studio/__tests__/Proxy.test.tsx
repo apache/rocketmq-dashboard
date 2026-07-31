@@ -89,4 +89,19 @@ describe('ProxyPage', () => {
     expect(screen.queryByText('刷新成功')).not.toBeInTheDocument();
     await waitFor(() => expect(queryProxyHomePage).toHaveBeenCalledTimes(2));
   });
+
+  it('does not render simulated proxy configuration values', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('127.0.0.1:8081');
+
+    await user.click(screen.getByRole('button', { name: '查看配置' }));
+
+    expect(await screen.findByText('配置接口未接入')).toBeInTheDocument();
+    expect(
+      screen.getByText('当前版本尚未接入真实 Proxy 配置查询接口，已停止展示模拟配置。'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('proxy.maxConnections')).not.toBeInTheDocument();
+    expect(screen.queryByText('rocketmq.namesrv.addr')).not.toBeInTheDocument();
+  });
 });
