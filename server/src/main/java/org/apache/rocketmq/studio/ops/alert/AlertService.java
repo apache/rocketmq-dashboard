@@ -168,7 +168,7 @@ public class AlertService {
                 alertName(rule),
                 expression(rule),
                 duration(rule),
-                "warning",
+                severity(rule),
                 team,
                 summary(rule),
                 description(rule));
@@ -194,7 +194,35 @@ public class AlertService {
     private String expression(AlertRuleVO rule) {
         String metric = hasText(rule.getMetric()) ? rule.getMetric() : "rocketmq_consumer_lag_messages";
         String operator = hasText(rule.getOperator()) ? rule.getOperator() : ">";
-        return metric + " " + operator + " " + formatThreshold(rule.getThreshold());
+        return metric + labelSelector(rule) + " " + operator + " " + formatThreshold(rule.getThreshold());
+    }
+
+    private String labelSelector(AlertRuleVO rule) {
+        StringBuilder selector = new StringBuilder();
+        appendLabel(selector, "cluster", rule.getClusterName());
+        appendLabel(selector, "broker", rule.getBrokerName());
+        return selector.isEmpty() ? "" : "{" + selector + "}";
+    }
+
+    private void appendLabel(StringBuilder selector, String label, String value) {
+        if (!hasText(value) || "*".equals(value.trim())) {
+            return;
+        }
+        if (!selector.isEmpty()) {
+            selector.append(',');
+        }
+        selector.append(label).append("=\"").append(value.trim()).append('"');
+    }
+
+    private String severity(AlertRuleVO rule) {
+        String severity = rule.getSeverity();
+        if (hasText(severity)) {
+            String normalized = severity.trim().toLowerCase();
+            if ("critical".equals(normalized) || "warning".equals(normalized) || "info".equals(normalized)) {
+                return normalized;
+            }
+        }
+        return "warning";
     }
 
     private String formatThreshold(double threshold) {
@@ -210,6 +238,9 @@ public class AlertService {
 
     private String inferTeam(String metric) {
         if (!hasText(metric)) {
+            return "broker";
+        }
+        if (metric.contains("replication") || metric.contains("fall_behind") || metric.contains("slave")) {
             return "broker";
         }
         if (metric.contains("consumer") || metric.contains("lag")) {
