@@ -39,4 +39,10 @@ public class AlertRuleVO {
     private boolean enabled;
     private String lastTriggered;
     private String description;
+    /** Target broker name pattern (e.g. "broker-a", or "*" for all) */
+    private String brokerName;
+    /** Target cluster name pattern (e.g. "DefaultCluster", or "*" for all) */
+    private String clusterName;
+    /** Alert severity: critical, warning, info */
+    private String severity;
 }

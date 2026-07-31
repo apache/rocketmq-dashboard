@@ -109,6 +109,73 @@ class AlertServiceTest {
     }
 
     @Test
+    void exportPrometheusRulesYamlShouldRenderReplicationLagRuleWithScopeAndSeverity() {
+        AlertRuleVO rule = AlertRuleVO.builder()
+                .name("Replication Lag High")
+                .metric("rocketmq_broker_replication_lag_bytes")
+                .operator(">")
+                .threshold(104857600)
+                .duration("5m")
+                .brokerName("broker-a")
+                .clusterName("DefaultCluster")
+                .severity("critical")
+                .description("Slave falls behind master")
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+
+        String result = alertService.exportPrometheusRulesYaml();
+
+        assertThat(result)
+                .contains("rocketmq-broker.rules")
+                .contains("expr: rocketmq_broker_replication_lag_bytes{cluster=\"DefaultCluster\",broker=\"broker-a\"} > 104857600")
+                .contains("for: 5m")
+                .contains("severity: critical");
+    }
+
+    @Test
+    void exportPrometheusRulesYamlShouldIgnoreWildcardScopeAndInvalidSeverity() {
+        AlertRuleVO rule = AlertRuleVO.builder()
+                .name("Replication Lag Any Broker")
+                .metric("rocketmq_broker_replication_lag_bytes")
+                .operator(">")
+                .threshold(1024)
+                .brokerName("*")
+                .clusterName(" ")
+                .severity("fatal")
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+
+        String result = alertService.exportPrometheusRulesYaml();
+
+        assertThat(result)
+                .contains("expr: rocketmq_broker_replication_lag_bytes > 1024")
+                .contains("severity: warning");
+    }
+
+    @Test
+    void createRuleShouldPreserveReplicationScopeFields() {
+        AlertRuleVO input = AlertRuleVO.builder()
+                .name("Replication Lag High")
+                .metric("rocketmq_broker_replication_lag_bytes")
+                .operator(">")
+                .threshold(104857600)
+                .thresholdUnit("B")
+                .brokerName("broker-a")
+                .clusterName("DefaultCluster")
+                .severity("critical")
+                .build();
+        when(alertRepository.saveRule(any(AlertRuleVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        AlertRuleVO result = alertService.createRule(input);
+
+        assertThat(result.getId()).isNotNull().isNotEmpty();
+        assertThat(result.getBrokerName()).isEqualTo("broker-a");
+        assertThat(result.getClusterName()).isEqualTo("DefaultCluster");
+        assertThat(result.getSeverity()).isEqualTo("critical");
+        verify(alertRepository).saveRule(result);
+    }
+
+    @Test
     void createRuleShouldAssignId() {
         AlertRuleVO input = AlertRuleVO.builder().name("New Rule").metric("tps")
                 .operator(">").threshold(1000.0).build();
