@@ -31,10 +31,6 @@ public class ClientService {
 
     public List<ClientConnectionVO> listConnections(String clusterId, String type) {
         log.info("Listing client connections, clusterId={}, type={}", clusterId, type);
-        return clientProvider.findConnections(normalizeFilter(clusterId), normalizeFilter(type));
-    }
-
-    private String normalizeFilter(String value) {
-        return value == null || value.isBlank() ? null : value.trim();
+        return clientProvider.findConnections(clusterId, type);
     }
 }

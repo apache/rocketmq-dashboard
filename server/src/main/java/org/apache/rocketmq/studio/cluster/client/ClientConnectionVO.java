@@ -34,7 +34,6 @@ public class ClientConnectionVO {
     private String clientId;
     private ClientType type;
     private String groupOrTopic;
-    private String producerGroup;
     private Protocol protocol;
     private String address;
     private ClientLanguage language;
