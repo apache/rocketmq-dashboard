@@ -209,8 +209,9 @@ const DeployHistoryList = () => {
         if (filterDLQ && type.includes("DLQ")) return true;
         if (filterSystem && type.includes("SYSTEM")) return true;
         if (rmqVersion && filterUnspecified && type.includes("UNSPECIFIED")) return true;
-        if (filterNormal && type.includes("NORMAL")) return true;
-        if (!rmqVersion && filterNormal && type.includes("UNSPECIFIED")) return true;
+        // Topics without a message type attribute (e.g. 4.x clusters) report UNSPECIFIED,
+        // which semantically is a normal topic and should be shown when NORMAL is selected.
+        if (filterNormal && (type.includes("NORMAL") || type.includes("UNSPECIFIED"))) return true;
         if (rmqVersion && filterDelay && type.includes("DELAY")) return true;
         if (rmqVersion && filterFifo && type.includes("FIFO")) return true;
         if (rmqVersion && filterTransaction && type.includes("TRANSACTION")) return true;
