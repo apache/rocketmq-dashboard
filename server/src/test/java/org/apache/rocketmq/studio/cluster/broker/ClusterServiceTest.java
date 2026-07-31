@@ -18,6 +18,13 @@ package org.apache.rocketmq.studio.cluster.broker;
 
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigVO;
 import org.apache.rocketmq.studio.cluster.config.UpdateConfigDTO;
+import org.apache.rocketmq.studio.cluster.nameserver.DeleteNameServerDTO;
+import org.apache.rocketmq.studio.cluster.nameserver.NameServerVO;
+import org.apache.rocketmq.studio.cluster.nameserver.RestartNameServerDTO;
+import org.apache.rocketmq.studio.cluster.nameserver.UpdateNameServerDTO;
+import org.apache.rocketmq.studio.cluster.nameserver.UpgradeNameServerDTO;
+import org.apache.rocketmq.studio.cluster.proxy.ProxyVO;
+import org.apache.rocketmq.studio.cluster.proxy.RestartProxyDTO;
 
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
@@ -36,6 +43,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -66,9 +74,15 @@ class ClusterServiceTest {
                 .endpoint("10.0.0.1:9876")
                 .status(ClusterStatus.healthy)
                 .version("5.1.0")
-                .brokers(Collections.emptyList())
-                .proxies(Collections.emptyList())
-                .nameServers(Collections.emptyList())
+                .brokers(List.of(BrokerVO.builder()
+                        .name("broker-0")
+                        .build()))
+                .proxies(List.of(ProxyVO.builder()
+                        .addr("10.0.0.10:8081")
+                        .build()))
+                .nameServers(List.of(NameServerVO.builder()
+                        .addr("10.0.0.20:9876")
+                        .build()))
                 .config(ClusterConfigVO.builder()
                         .flushDiskType(FlushDiskType.ASYNC_FLUSH)
                         .writeQueueNums(8)
@@ -265,5 +279,124 @@ class ClusterServiceTest {
         assertThatThrownBy(() -> clusterService.restartBroker("missing", "broker-0"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Cluster not found: missing");
+    }
+
+    @Test
+    void restartBrokerShouldThrowWhenBrokerNotFound() {
+        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+
+        assertThatThrownBy(() -> clusterService.restartBroker("cluster-1", "missing-broker"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Broker not found: missing-broker")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
+    }
+
+    @Test
+    void nameServerOperationsShouldAcceptExistingNameServer() {
+        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+        UpdateNameServerDTO update = UpdateNameServerDTO.builder()
+                .clusterId("cluster-1")
+                .addr("10.0.0.20:9876")
+                .build();
+        RestartNameServerDTO restart = RestartNameServerDTO.builder()
+                .clusterId("cluster-1")
+                .addr("10.0.0.20:9876")
+                .build();
+        UpgradeNameServerDTO upgrade = UpgradeNameServerDTO.builder()
+                .clusterId("cluster-1")
+                .addr("10.0.0.20:9876")
+                .targetVersion("5.3.0")
+                .build();
+        DeleteNameServerDTO delete = DeleteNameServerDTO.builder()
+                .clusterId("cluster-1")
+                .addr("10.0.0.20:9876")
+                .build();
+
+        assertThatCode(() -> clusterService.updateNameServer(update)).doesNotThrowAnyException();
+        assertThat(clusterService.restartNameServer(restart)).isTrue();
+        assertThat(clusterService.upgradeNameServer(upgrade)).isTrue();
+        assertThat(clusterService.deleteNameServer(delete)).isTrue();
+    }
+
+    @Test
+    void restartProxyShouldReturnTrueWhenProxyExists() {
+        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+        RestartProxyDTO command = RestartProxyDTO.builder()
+                .clusterId("cluster-1")
+                .addr("10.0.0.10:8081")
+                .build();
+
+        assertThat(clusterService.restartProxy(command)).isTrue();
+    }
+
+    @Test
+    void updateNameServerShouldThrowWhenNameServerNotFound() {
+        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+        UpdateNameServerDTO command = UpdateNameServerDTO.builder()
+                .clusterId("cluster-1")
+                .addr("missing:9876")
+                .build();
+
+        assertThatThrownBy(() -> clusterService.updateNameServer(command))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("NameServer not found: missing:9876")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
+    }
+
+    @Test
+    void restartNameServerShouldThrowWhenNameServerNotFound() {
+        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+        RestartNameServerDTO command = RestartNameServerDTO.builder()
+                .clusterId("cluster-1")
+                .addr("missing:9876")
+                .build();
+
+        assertThatThrownBy(() -> clusterService.restartNameServer(command))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("NameServer not found: missing:9876")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
+    }
+
+    @Test
+    void upgradeNameServerShouldThrowWhenNameServerNotFound() {
+        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+        UpgradeNameServerDTO command = UpgradeNameServerDTO.builder()
+                .clusterId("cluster-1")
+                .addr("missing:9876")
+                .targetVersion("5.3.0")
+                .build();
+
+        assertThatThrownBy(() -> clusterService.upgradeNameServer(command))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("NameServer not found: missing:9876")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
+    }
+
+    @Test
+    void deleteNameServerShouldThrowWhenNameServerNotFound() {
+        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+        DeleteNameServerDTO command = DeleteNameServerDTO.builder()
+                .clusterId("cluster-1")
+                .addr("missing:9876")
+                .build();
+
+        assertThatThrownBy(() -> clusterService.deleteNameServer(command))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("NameServer not found: missing:9876")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
+    }
+
+    @Test
+    void restartProxyShouldThrowWhenProxyNotFound() {
+        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+        RestartProxyDTO command = RestartProxyDTO.builder()
+                .clusterId("cluster-1")
+                .addr("missing:8081")
+                .build();
+
+        assertThatThrownBy(() -> clusterService.restartProxy(command))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Proxy not found: missing:8081")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
     }
 }

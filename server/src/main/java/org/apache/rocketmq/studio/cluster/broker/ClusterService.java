@@ -105,8 +105,12 @@ public class ClusterService {
 
     public boolean restartBroker(String clusterId, String brokerName) {
         log.info("Restarting broker: {} in cluster: {}", brokerName, clusterId);
-        clusterRepository.findById(clusterId)
+        ClusterVO cluster = clusterRepository.findById(clusterId)
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + clusterId));
+        if (cluster.getBrokers() == null || cluster.getBrokers().stream()
+                .noneMatch(broker -> brokerName.equals(broker.getName()))) {
+            throw new BusinessException(404, "Broker not found: " + brokerName);
+        }
         log.info("Broker restart initiated for: {} in cluster: {}", brokerName, clusterId);
         return true;
     }
@@ -125,15 +129,17 @@ public class ClusterService {
 
     public void updateNameServer(UpdateNameServerDTO command) {
         log.info("Updating NameServer: {} in cluster: {}", command.getAddr(), command.getClusterId());
-        clusterRepository.findById(command.getClusterId())
+        ClusterVO cluster = clusterRepository.findById(command.getClusterId())
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getClusterId()));
+        requireNameServer(cluster, command.getAddr());
         log.info("NameServer updated: {}", command.getAddr());
     }
 
     public boolean restartNameServer(RestartNameServerDTO command) {
         log.info("Restarting NameServer: {} in cluster: {}", command.getAddr(), command.getClusterId());
-        clusterRepository.findById(command.getClusterId())
+        ClusterVO cluster = clusterRepository.findById(command.getClusterId())
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getClusterId()));
+        requireNameServer(cluster, command.getAddr());
         log.info("NameServer restart initiated: {}", command.getAddr());
         return true;
     }
@@ -141,25 +147,42 @@ public class ClusterService {
     public boolean upgradeNameServer(UpgradeNameServerDTO command) {
         log.info("Upgrading NameServer: {} to version: {} in cluster: {}",
                 command.getAddr(), command.getTargetVersion(), command.getClusterId());
-        clusterRepository.findById(command.getClusterId())
+        ClusterVO cluster = clusterRepository.findById(command.getClusterId())
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getClusterId()));
+        requireNameServer(cluster, command.getAddr());
         log.info("NameServer upgrade initiated: {}", command.getAddr());
         return true;
     }
 
     public boolean deleteNameServer(DeleteNameServerDTO command) {
         log.info("Deleting NameServer: {} from cluster: {}", command.getAddr(), command.getClusterId());
-        clusterRepository.findById(command.getClusterId())
+        ClusterVO cluster = clusterRepository.findById(command.getClusterId())
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getClusterId()));
+        requireNameServer(cluster, command.getAddr());
         log.info("NameServer deleted: {}", command.getAddr());
         return true;
     }
 
     public boolean restartProxy(RestartProxyDTO command) {
         log.info("Restarting Proxy: {} in cluster: {}", command.getAddr(), command.getClusterId());
-        clusterRepository.findById(command.getClusterId())
+        ClusterVO cluster = clusterRepository.findById(command.getClusterId())
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getClusterId()));
+        requireProxy(cluster, command.getAddr());
         log.info("Proxy restart initiated: {}", command.getAddr());
         return true;
+    }
+
+    private void requireNameServer(ClusterVO cluster, String addr) {
+        if (cluster.getNameServers() == null || cluster.getNameServers().stream()
+                .noneMatch(nameServer -> addr.equals(nameServer.getAddr()))) {
+            throw new BusinessException(404, "NameServer not found: " + addr);
+        }
+    }
+
+    private void requireProxy(ClusterVO cluster, String addr) {
+        if (cluster.getProxies() == null || cluster.getProxies().stream()
+                .noneMatch(proxy -> addr.equals(proxy.getAddr()))) {
+            throw new BusinessException(404, "Proxy not found: " + addr);
+        }
     }
 }
