@@ -43,13 +43,14 @@ export async function fetchTopicList(): Promise<string[]> {
   return topics.sort();
 }
 
-/** Query producer connections by topic and group */
+/** Query producer connections by topic and an optional group */
 export async function queryProducerConnection(
   topic: string,
-  producerGroup: string,
+  producerGroup?: string,
 ): Promise<ProducerConnection[]> {
+  const params = producerGroup ? { topic, producerGroup } : { topic };
   const res = await client.get<{ connectionSet: ProducerConnection[] }>('/producer/connection', {
-    params: { topic, producerGroup },
+    params,
   });
   return res.data?.connectionSet ?? [];
 }

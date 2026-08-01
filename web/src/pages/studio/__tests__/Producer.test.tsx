@@ -16,12 +16,12 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
 import ProducerPage from '../Producer';
-import { fetchTopicList } from '../../../api/producer';
+import { fetchTopicList, queryProducerConnection } from '../../../api/producer';
 
 vi.mock('../../../api/producer', () => ({
   fetchTopicList: vi.fn(),
@@ -56,6 +56,7 @@ describe('ProducerPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(fetchTopicList).mockResolvedValue(['order-events', 'payment-events']);
+    vi.mocked(queryProducerConnection).mockResolvedValue([]);
   });
 
   it('loads topic options after mount', async () => {
@@ -77,5 +78,31 @@ describe('ProducerPage', () => {
     await user.click(screen.getByRole('combobox'));
     await screen.findByRole('option', { name: 'order-events' });
     expect(await screen.findByRole('option', { name: 'payment-events' })).toBeInTheDocument();
+  });
+
+  it('queries all producer connections for a topic without requiring a group', async () => {
+    const user = userEvent.setup();
+    vi.mocked(queryProducerConnection).mockResolvedValue([
+      {
+        clientId: 'producer-1',
+        clientAddr: '192.168.1.10',
+        language: 'JAVA',
+        versionDesc: '5.1.0',
+      },
+    ]);
+    renderWithProviders(<ProducerPage />);
+
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
+    const topicSelect = screen.getByRole('combobox');
+    fireEvent.mouseDown(topicSelect.parentElement!);
+    await user.click(
+      await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.click(screen.getByRole('button', { name: /搜索/ }));
+
+    await waitFor(() => {
+      expect(queryProducerConnection).toHaveBeenCalledWith('order-events', undefined);
+    });
+    expect(await screen.findByText('producer-1')).toBeInTheDocument();
   });
 });
