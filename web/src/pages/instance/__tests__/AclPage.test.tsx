@@ -169,4 +169,70 @@ describe('ACL page', () => {
     expect(payload).not.toHaveProperty('accessKey');
     expect(payload).not.toHaveProperty('secretKey');
   });
+
+  it('creates a user with the selected cluster scope', async () => {
+    const user = userEvent.setup();
+    vi.mocked(aclService.createAclUser).mockResolvedValue({
+      id: 'user-created',
+      username: 'orders-service',
+      accessKey: 'acce****3456',
+      secretKey: 'secr****7654',
+      admin: false,
+      clusters: ['cluster-a', 'cluster-b'],
+      createdAt: '2026-08-01T00:00:00Z',
+    });
+    renderWithProviders(<AclPage />);
+
+    await user.click(await screen.findByText('用户管理'));
+    const userPanel = screen.getByRole('tabpanel', { name: '用户管理' });
+    await user.click(within(userPanel).getByRole('button', { name: /添加用户/ }));
+    const dialog = await screen.findByRole('dialog');
+
+    await user.type(
+      within(dialog).getByPlaceholderText('例：user-order-service'),
+      'orders-service',
+    );
+    const clusterInput = within(dialog).getByRole('combobox');
+    await user.type(clusterInput, 'cluster-a,cluster-b,');
+    await user.click(within(dialog).getByRole('button', { name: /添\s*加/ }));
+
+    await waitFor(() => expect(aclService.createAclUser).toHaveBeenCalledTimes(1));
+    expect(aclService.createAclUser).toHaveBeenCalledWith({
+      username: 'orders-service',
+      admin: false,
+      clusters: ['cluster-a', 'cluster-b'],
+    });
+  });
+
+  it('replaces the cluster scope of an existing user', async () => {
+    const user = userEvent.setup();
+    vi.mocked(aclService.updateAclUser).mockResolvedValue({
+      id: 'user-remote',
+      username: 'remote-admin',
+      accessKey: 'acce****3456',
+      secretKey: 'secr****7654',
+      admin: true,
+      clusters: ['cluster-b'],
+      createdAt: '2026-07-23T00:00:00Z',
+    });
+    renderWithProviders(<AclPage />);
+
+    await user.click(await screen.findByText('用户管理'));
+    await user.click(screen.getByRole('button', { name: /编辑/ }));
+    const dialog = await screen.findByRole('dialog');
+
+    const clusterInput = within(dialog).getByRole('combobox');
+    await user.click(clusterInput);
+    await user.keyboard('{Backspace}');
+    await user.type(clusterInput, 'cluster-b{enter}');
+    await user.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+
+    await waitFor(() => expect(aclService.updateAclUser).toHaveBeenCalledTimes(1));
+    expect(aclService.updateAclUser).toHaveBeenCalledWith({
+      id: 'user-remote',
+      username: 'remote-admin',
+      admin: true,
+      clusters: ['cluster-b'],
+    });
+  });
 });
