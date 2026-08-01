@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useState, useRef, useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Form,
   Input,
@@ -156,19 +156,34 @@ const LlmSettingsPage: React.FC = () => {
   const [modelOptions, setModelOptions] = useState<{ value: string; label: string }[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
 
-  const initialized = useRef<boolean | null>(null);
-  if (initialized.current == null) {
-    initialized.current = true;
-    fetchConfig();
-    fetchModels('openai');
-  }
+  const mountedRef = useRef(false);
+  const lifecycleGeneration = useRef(0);
+  const providerInteractionGeneration = useRef(0);
+  const configRequestGeneration = useRef(0);
+  const selectedProviderRef = useRef('openai');
+  const modelRequestGeneration = useRef(0);
 
-  function fetchConfig() {
-    setLoading(true);
-    getLlmConfig()
-      .then((config) => {
+  const fetchConfig = useCallback(
+    async (
+      configPromise: Promise<LlmConfig>,
+      requestLifecycle: number,
+      requestGeneration: number,
+      requestProviderGeneration: number,
+    ) => {
+      const ownsRequest = () =>
+        mountedRef.current &&
+        requestLifecycle === lifecycleGeneration.current &&
+        requestGeneration === configRequestGeneration.current &&
+        requestProviderGeneration === providerInteractionGeneration.current;
+      if (ownsRequest()) {
+        setLoading(true);
+      }
+      try {
+        const config = await configPromise;
+        if (!ownsRequest()) return;
         if (config) {
           const provider = config.provider || 'openai';
+          selectedProviderRef.current = provider;
           setSelectedProvider(provider);
           setEnabled(config.enabled || false);
           if (config.apiKeyConfigured) {
@@ -187,54 +202,127 @@ const LlmSettingsPage: React.FC = () => {
             awsRegion: config.awsRegion || 'us-east-1',
           });
         }
-      })
-      .catch(() => {
-        message.error(t('llm.loadFailed'));
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  }
+        return config;
+      } catch {
+        if (ownsRequest()) {
+          message.error(t('llm.loadFailed'));
+        }
+      } finally {
+        if (ownsRequest()) {
+          setLoading(false);
+        }
+      }
+    },
+    [form, message, t],
+  );
 
-  function fetchModels(providerOverride?: string, modelOverride?: string) {
-    setModelsLoading(true);
-    getLlmConfig()
-      .then((config) => {
-        const provider = providerOverride || config?.provider || 'openai';
-        const model = modelOverride || config?.model || '';
+  const fetchModels = useCallback(
+    async (
+      providerOverride?: string,
+      modelOverride?: string,
+      expectedProviderGeneration = providerInteractionGeneration.current,
+    ) => {
+      if (!mountedRef.current) return;
+      const requestedProvider = providerOverride || selectedProviderRef.current;
+      if (
+        requestedProvider !== selectedProviderRef.current ||
+        expectedProviderGeneration !== providerInteractionGeneration.current
+      ) {
+        return;
+      }
+      const requestLifecycle = lifecycleGeneration.current;
+      const requestGeneration = ++modelRequestGeneration.current;
+      const ownsRequest = () =>
+        mountedRef.current &&
+        requestLifecycle === lifecycleGeneration.current &&
+        requestGeneration === modelRequestGeneration.current &&
+        expectedProviderGeneration === providerInteractionGeneration.current &&
+        requestedProvider === selectedProviderRef.current;
+      let model = modelOverride;
+
+      setModelsLoading(true);
+      try {
+        const config = await getLlmConfig();
+        if (!ownsRequest()) return;
+
+        const configuredProvider = config?.provider || requestedProvider;
+        if (configuredProvider !== requestedProvider) return;
+
+        model = modelOverride || config?.model || '';
         if (!config || !config.enabled) {
-          setModelOptions(fallbackModelOptions(provider, model));
+          setModelOptions(fallbackModelOptions(requestedProvider, model));
           return;
         }
-        getLlmModels()
-          .then((result) => {
-            let models: string[] = [];
-            if (result && result.status === 0 && result.data) {
-              models = result.data.map((m) => m.id || m.name || '').filter(Boolean);
-            }
-            if (result?.source === 'fallback') {
-              message.warning(
-                result.hint ||
-                  result.warning ||
-                  '已回退到内置模型列表，请检查 Provider 凭证或模型接口。',
-              );
-            }
-            if (models.length === 0) {
-              models = fallbackModelOptions(provider, config.model).map((option) => option.value);
-            }
-            setModelOptions(models.map((m) => ({ value: m, label: m })));
-          })
-          .catch(() => {
-            setModelOptions(fallbackModelOptions(provider, model));
-          });
-      })
-      .catch(() => {
-        setModelOptions(fallbackModelOptions(providerOverride || selectedProvider, modelOverride));
-      })
-      .finally(() => {
-        setModelsLoading(false);
+
+        const result = await getLlmModels();
+        if (!ownsRequest()) return;
+
+        let models: string[] = [];
+        if (result && result.status === 0 && result.data) {
+          models = result.data.map((m) => m.id || m.name || '').filter(Boolean);
+        }
+        if (result?.source === 'fallback') {
+          message.warning(
+            result.hint ||
+              result.warning ||
+              '已回退到内置模型列表，请检查 Provider 凭证或模型接口。',
+          );
+        }
+        if (models.length === 0) {
+          models = fallbackModelOptions(requestedProvider, config.model).map(
+            (option) => option.value,
+          );
+        }
+        setModelOptions(models.map((item) => ({ value: item, label: item })));
+      } catch {
+        if (ownsRequest()) {
+          setModelOptions(fallbackModelOptions(requestedProvider, model));
+        }
+      } finally {
+        if (ownsRequest()) {
+          setModelsLoading(false);
+        }
+      }
+    },
+    [message],
+  );
+
+  useEffect(() => {
+    const currentLifecycle = ++lifecycleGeneration.current;
+    const currentConfigRequest = ++configRequestGeneration.current;
+    const currentProviderGeneration = providerInteractionGeneration.current;
+    mountedRef.current = true;
+    const configPromise = getLlmConfig();
+    queueMicrotask(() => {
+      void fetchConfig(
+        configPromise,
+        currentLifecycle,
+        currentConfigRequest,
+        currentProviderGeneration,
+      ).then((config) => {
+        if (
+          !mountedRef.current ||
+          currentLifecycle !== lifecycleGeneration.current ||
+          currentConfigRequest !== configRequestGeneration.current ||
+          currentProviderGeneration !== providerInteractionGeneration.current
+        ) {
+          return;
+        }
+        void fetchModels(
+          config?.provider || selectedProviderRef.current,
+          config?.model,
+          currentProviderGeneration,
+        );
       });
-  }
+    });
+
+    return () => {
+      mountedRef.current = false;
+      lifecycleGeneration.current += 1;
+      configRequestGeneration.current += 1;
+      modelRequestGeneration.current += 1;
+    };
+  }, [fetchConfig, fetchModels]);
 
   const maskApiKey = (key: string) => {
     if (key === MASKED_API_KEY) return MASKED_API_KEY;
@@ -255,7 +343,15 @@ const LlmSettingsPage: React.FC = () => {
 
   const handleProviderChange = useCallback(
     (value: string) => {
-      const providerChanged = value !== selectedProvider;
+      const providerChanged = value !== selectedProviderRef.current;
+      selectedProviderRef.current = value;
+      if (providerChanged) {
+        providerInteractionGeneration.current += 1;
+        configRequestGeneration.current += 1;
+        modelRequestGeneration.current += 1;
+        setLoading(false);
+        setModelsLoading(false);
+      }
       setSelectedProvider(value);
       setTestResult(null);
       const provider = PROVIDERS.find((p) => p.key === value);
@@ -272,7 +368,7 @@ const LlmSettingsPage: React.FC = () => {
         }
       }
     },
-    [form, selectedProvider],
+    [form],
   );
 
   const handleApiKeyFocus = () => {
@@ -291,6 +387,7 @@ const LlmSettingsPage: React.FC = () => {
   };
 
   const handleTestConnection = () => {
+    const requestProviderGeneration = providerInteractionGeneration.current;
     setTestLoading(true);
     setTestResult(null);
     form
@@ -310,7 +407,7 @@ const LlmSettingsPage: React.FC = () => {
                     form.setFieldsValue({ apiKey: MASKED_API_KEY });
                     setApiKeyMasked(true);
                   }
-                  fetchModels(testConfig.provider, testConfig.model);
+                  fetchModels(testConfig.provider, testConfig.model, requestProviderGeneration);
                 })
                 .catch(() => {
                   // auto-save failure is non-critical
@@ -337,6 +434,7 @@ const LlmSettingsPage: React.FC = () => {
   };
 
   const handleSave = () => {
+    const requestProviderGeneration = providerInteractionGeneration.current;
     setLoading(true);
     form
       .validateFields()
@@ -351,7 +449,7 @@ const LlmSettingsPage: React.FC = () => {
                 form.setFieldsValue({ apiKey: MASKED_API_KEY });
                 setApiKeyMasked(true);
               }
-              fetchModels(config.provider, config.model);
+              fetchModels(config.provider, config.model, requestProviderGeneration);
             } else {
               message.error((result && result.errMsg) || t('llm.saveFailed'));
             }
