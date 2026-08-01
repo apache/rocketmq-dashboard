@@ -52,8 +52,13 @@ public class ClusterServiceImpl implements ClusterService {
             for (BrokerData brokerData : clusterInfo.getBrokerAddrTable().values()) {
                 Map<Long, Object> brokerMasterSlaveMap = Maps.newHashMap();
                 for (Map.Entry<Long/* brokerId */, String/* broker address */> brokerAddr : brokerData.getBrokerAddrs().entrySet()) {
-                    KVTable kvTable = mqAdminExt.fetchBrokerRuntimeStats(brokerAddr.getValue());
-                    brokerMasterSlaveMap.put(brokerAddr.getKey(), kvTable.getTable());
+                    try {
+                        KVTable kvTable = mqAdminExt.fetchBrokerRuntimeStats(brokerAddr.getValue());
+                        brokerMasterSlaveMap.put(brokerAddr.getKey(), kvTable.getTable());
+                    } catch (Exception e) {
+                        // A single unreachable broker must not fail the whole cluster view.
+                        logger.warn("Failed to fetch runtime stats for broker: {}", brokerAddr.getValue(), e);
+                    }
                 }
                 brokerServer.put(brokerData.getBrokerName(), brokerMasterSlaveMap);
             }
