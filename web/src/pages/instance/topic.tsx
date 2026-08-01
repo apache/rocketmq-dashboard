@@ -685,12 +685,24 @@ const TopicPage = () => {
                   onOk: async () => {
                     try {
                       const names = selectedRowKeys.map(String);
-                      await batchDeleteTopics(names);
-                      setTopics((previous) =>
-                        previous.filter((topic) => !names.includes(topic.name)),
-                      );
-                      message.success(`已删除 ${names.length} 个 Topic`);
-                      setSelectedRowKeys([]);
+                      const { deleted, failed } = await batchDeleteTopics(names);
+                      if (deleted.length > 0) {
+                        const deletedNames = new Set(deleted);
+                        setTopics((previous) =>
+                          previous.filter((topic) => !deletedNames.has(topic.name)),
+                        );
+                      }
+                      setSelectedRowKeys(failed);
+
+                      if (failed.length === 0) {
+                        message.success(`已删除 ${deleted.length} 个 Topic`);
+                      } else if (deleted.length > 0) {
+                        message.warning(
+                          `已删除 ${deleted.length} 个 Topic，${failed.length} 个删除失败`,
+                        );
+                      } else {
+                        message.error(`${failed.length} 个 Topic 删除失败，请稍后重试`);
+                      }
                     } catch {
                       message.error('批量删除 Topic 失败，请稍后重试');
                     }

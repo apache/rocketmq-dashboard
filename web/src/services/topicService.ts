@@ -64,11 +64,23 @@ export async function deleteTopic(name: string): Promise<void> {
   return metadataApi.deleteTopic(name);
 }
 
-// Batch delete: loop through single delete calls
-export async function batchDeleteTopics(names: string[]): Promise<void> {
+export interface BatchDeleteTopicsResult {
+  deleted: string[];
+  failed: string[];
+}
+
+// Batch delete: attempt every selected topic and report partial failures.
+export async function batchDeleteTopics(names: string[]): Promise<BatchDeleteTopicsResult> {
+  const result: BatchDeleteTopicsResult = { deleted: [], failed: [] };
   for (const name of names) {
-    await deleteTopic(name);
+    try {
+      await deleteTopic(name);
+      result.deleted.push(name);
+    } catch {
+      result.failed.push(name);
+    }
   }
+  return result;
 }
 
 export async function getTopicRoutes(name: string): Promise<BrokerRoute[]> {
@@ -77,7 +89,8 @@ export async function getTopicRoutes(name: string): Promise<BrokerRoute[]> {
 }
 
 export async function getTopicConsumers(name: string): Promise<ConsumerGroupInfo[]> {
-  if (USE_MOCK) return cloneConsumers((topicConsumers[name] as unknown as ConsumerGroupInfo[]) ?? []);
+  if (USE_MOCK)
+    return cloneConsumers((topicConsumers[name] as unknown as ConsumerGroupInfo[]) ?? []);
   return metadataApi.getTopicConsumers(name);
 }
 
