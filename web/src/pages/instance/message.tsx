@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Card,
   Table,
@@ -129,18 +129,32 @@ const MessagePage = () => {
   const [selectedMsg, setSelectedMsg] = useState<MessageRecord | null>(null);
   const [traceData, setTraceData] = useState<TraceRecord | null>(null);
   const [traceLoading, setTraceLoading] = useState(false);
+  const queryGenerationRef = useRef(0);
+  const traceGenerationRef = useRef(0);
+
+  useEffect(
+    () => () => {
+      queryGenerationRef.current += 1;
+      traceGenerationRef.current += 1;
+    },
+    [],
+  );
 
   /* ─── Handlers ─── */
   const handleReset = () => {
+    queryGenerationRef.current += 1;
     setSelectedTopic(undefined);
     setTagInput('');
     setKeyInput('');
     setMsgIdInput('');
     setDateRange(getDefaultRange());
     setMessages([]);
+    setQueryLoading(false);
   };
 
   const handleQuery = async () => {
+    const requestGeneration = queryGenerationRef.current + 1;
+    queryGenerationRef.current = requestGeneration;
     const params =
       queryMode === 'topic'
         ? {
@@ -156,12 +170,17 @@ const MessagePage = () => {
     setQueryLoading(true);
     try {
       const result = await queryMessages(params);
+      if (queryGenerationRef.current !== requestGeneration) return;
       setMessages(result);
       message.success(`查询完成，共 ${result.length} 条`);
     } catch {
-      message.error('消息查询失败，请稍后重试');
+      if (queryGenerationRef.current === requestGeneration) {
+        message.error('消息查询失败，请稍后重试');
+      }
     } finally {
-      setQueryLoading(false);
+      if (queryGenerationRef.current === requestGeneration) {
+        setQueryLoading(false);
+      }
     }
   };
 
@@ -170,18 +189,32 @@ const MessagePage = () => {
   };
 
   const openDetail = async (record: MessageRecord, tab = 'content') => {
+    const requestGeneration = traceGenerationRef.current + 1;
+    traceGenerationRef.current = requestGeneration;
     setSelectedMsg(record);
     setModalTab(tab);
     setModalOpen(true);
     setTraceData(null);
     setTraceLoading(true);
     try {
-      setTraceData(await getMessageTrace(record.msgId));
+      const result = await getMessageTrace(record.msgId);
+      if (traceGenerationRef.current !== requestGeneration) return;
+      setTraceData(result);
     } catch {
-      message.error('消息轨迹加载失败，请稍后重试');
+      if (traceGenerationRef.current === requestGeneration) {
+        message.error('消息轨迹加载失败，请稍后重试');
+      }
     } finally {
-      setTraceLoading(false);
+      if (traceGenerationRef.current === requestGeneration) {
+        setTraceLoading(false);
+      }
     }
+  };
+
+  const closeDetail = () => {
+    traceGenerationRef.current += 1;
+    setModalOpen(false);
+    setTraceLoading(false);
   };
 
   const handleDownload = (record: MessageRecord) => {
@@ -565,11 +598,11 @@ const MessagePage = () => {
         title="消息详情"
         width={800}
         open={modalOpen}
-        onCancel={() => setModalOpen(false)}
+        onCancel={closeDetail}
         destroyOnClose
         footer={
           <Flex justify="flex-end" gap={8}>
-            <Button onClick={() => setModalOpen(false)}>关闭</Button>
+            <Button onClick={closeDetail}>关闭</Button>
             <Button type="primary" icon={<SendOutlined />} onClick={handleResend}>
               重新发送
             </Button>
