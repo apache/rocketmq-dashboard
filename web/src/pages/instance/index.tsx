@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Table,
   Card,
@@ -34,7 +34,7 @@ import { useLang } from '../../i18n/LangContext';
 import { Plus, MagnifyingGlass } from '@phosphor-icons/react';
 import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import type { Instance } from '../../api/instance';
+import type { Instance, InstanceQuery } from '../../api/instance';
 import {
   createInstance,
   deleteInstance,
@@ -50,6 +50,8 @@ const typeLabel: Record<string, { text: string; color: string }> = {
   DIRECT: { text: 'Direct 模式', color: 'orange' },
 };
 
+type InstanceTypeFilter = 'ALL' | Instance['type'];
+
 /* ═══════════════════════════════════════════
    InstancePage
    ═══════════════════════════════════════════ */
@@ -58,38 +60,60 @@ const InstancePage = () => {
   const [instances, setInstances] = useState<Instance[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState('ALL');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState<InstanceTypeFilter>('ALL');
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [addForm] = Form.useForm();
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingInstance, setEditingInstance] = useState<Instance | null>(null);
   const [editForm] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
-    let cancelled = false;
-    void listInstances()
-      .then((nextInstances) => {
-        if (!cancelled) setInstances(nextInstances);
-      })
-      .catch(() => {
-        if (!cancelled) message.error('实例列表加载失败，请稍后重试');
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  const loadInstances = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
+    const query: InstanceQuery = {
+      ...(typeFilter === 'ALL' ? {} : { type: typeFilter }),
+      ...(debouncedSearch ? { search: debouncedSearch } : {}),
+    };
+
+    setLoading(true);
+    try {
+      const nextInstances = await listInstances(query);
+      if (requestId === requestIdRef.current) {
+        setInstances(nextInstances);
+      }
+    } catch {
+      if (requestId === requestIdRef.current) {
+        message.error('实例列表加载失败，请稍后重试');
+      }
+    } finally {
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+      }
+    }
+  }, [debouncedSearch, typeFilter]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadInstances(), 0);
 
     return () => {
-      cancelled = true;
+      window.clearTimeout(timer);
+      requestIdRef.current += 1;
     };
-  }, []);
+  }, [loadInstances]);
 
   const handleCreate = async () => {
     try {
       const values = await addForm.validateFields();
       setSubmitting(true);
       const created = await createInstance(values);
-      setInstances((previous) => [...previous, created]);
+      await loadInstances();
       message.success(`实例「${created.name}」添加成功`);
       setAddModalOpen(false);
       addForm.resetFields();
@@ -106,9 +130,7 @@ const InstancePage = () => {
       const values = await editForm.validateFields();
       setSubmitting(true);
       const updated = await updateInstance({ id: editingInstance.id, remark: values.remark || '' });
-      setInstances((previous) =>
-        previous.map((instance) => (instance.id === updated.id ? updated : instance)),
-      );
+      await loadInstances();
       message.success(`实例「${updated.name}」备注已更新`);
       setEditModalOpen(false);
       editForm.resetFields();
@@ -122,20 +144,14 @@ const InstancePage = () => {
   const handleDelete = async (instance: Instance) => {
     try {
       await deleteInstance(instance.id);
-      setInstances((previous) => previous.filter((item) => item.id !== instance.id));
+      await loadInstances();
       message.success('已删除');
     } catch {
       message.error('删除实例失败，请稍后重试');
     }
   };
 
-  const filtered = instances
-    .filter((i) => {
-      const matchSearch = i.name.includes(search) || i.endpoint.includes(search);
-      const matchType = typeFilter === 'ALL' || i.type === typeFilter;
-      return matchSearch && matchType;
-    })
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const sortedInstances = [...instances].sort((a, b) => a.name.localeCompare(b.name));
 
   const columns: ColumnsType<Instance> = [
     {
@@ -258,7 +274,7 @@ const InstancePage = () => {
       <div style={{ marginBottom: 20 }}>
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>{t('instance.title')}</h2>
         <span style={{ fontSize: 13, color: '#9CA3AF' }}>
-          管理 RocketMQ 集群连接，共 {instances.length} 个实例
+          管理 RocketMQ 集群连接，当前显示 {instances.length} 个实例
         </span>
       </div>
 
@@ -279,7 +295,7 @@ const InstancePage = () => {
             style={{ width: 240 }}
             allowClear
           />
-          <Select
+          <Select<InstanceTypeFilter>
             value={typeFilter}
             onChange={setTypeFilter}
             style={{ width: 140 }}
@@ -303,7 +319,7 @@ const InstancePage = () => {
       <Card bodyStyle={{ padding: 0 }}>
         <Table
           columns={columns}
-          dataSource={filtered}
+          dataSource={sortedInstances}
           loading={loading}
           rowKey="id"
           pagination={false}

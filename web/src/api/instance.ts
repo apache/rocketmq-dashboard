@@ -45,9 +45,19 @@ export interface UpdateInstanceRequest {
   remark?: string;
 }
 
+export interface InstanceQuery {
+  type?: Instance['type'];
+  search?: string;
+}
+
 // ─── Instance CRUD ──────────────────────────────────────────────
-export async function listInstances() {
-  const res = await client.get<{ data: Instance[] }>('/instances');
+export async function listInstances(query: InstanceQuery = {}) {
+  const search = query.search?.trim();
+  const params = {
+    ...(query.type ? { type: query.type } : {}),
+    ...(search ? { search } : {}),
+  };
+  const res = await client.get<{ data: Instance[] }>('/instances', { params });
   return res.data.data;
 }
 

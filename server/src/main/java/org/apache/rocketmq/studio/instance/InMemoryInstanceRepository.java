@@ -23,6 +23,7 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -80,21 +81,29 @@ public class InMemoryInstanceRepository implements InstanceRepository {
 
     @Override
     public List<InstanceVO> search(String keyword) {
-        String lower = keyword.toLowerCase();
+        String lower = keyword.toLowerCase(Locale.ROOT);
         return store.values().stream()
-                .filter(i -> i.getName().toLowerCase().contains(lower)
-                        || i.getRemark() != null && i.getRemark().toLowerCase().contains(lower))
+                .filter(instance -> matchesSearch(instance, lower))
                 .collect(Collectors.toList());
     }
 
     @Override
     public List<InstanceVO> findByTypeAndSearch(InstanceType type, String keyword) {
-        String lower = keyword.toLowerCase();
+        String lower = keyword.toLowerCase(Locale.ROOT);
         return store.values().stream()
                 .filter(i -> i.getType() == type)
-                .filter(i -> i.getName().toLowerCase().contains(lower)
-                        || i.getRemark() != null && i.getRemark().toLowerCase().contains(lower))
+                .filter(instance -> matchesSearch(instance, lower))
                 .collect(Collectors.toList());
+    }
+
+    private boolean matchesSearch(InstanceVO instance, String lowerKeyword) {
+        return containsIgnoreCase(instance.getName(), lowerKeyword)
+                || containsIgnoreCase(instance.getEndpoint(), lowerKeyword)
+                || containsIgnoreCase(instance.getRemark(), lowerKeyword);
+    }
+
+    private boolean containsIgnoreCase(String value, String lowerKeyword) {
+        return value != null && value.toLowerCase(Locale.ROOT).contains(lowerKeyword);
     }
 
     @Override

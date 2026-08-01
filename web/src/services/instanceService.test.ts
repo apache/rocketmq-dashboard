@@ -40,6 +40,17 @@ describe('instanceService mock instances', () => {
     expect(fresh[0]).not.toBe(instances[0]);
   });
 
+  it('filters mock instances with the same type and search semantics as the API', async () => {
+    const byType = await listInstances({ type: 'DIRECT' });
+    expect(byType.map((instance) => instance.id)).toEqual(['4']);
+
+    const byEndpoint = await listInstances({ search: '  PROXY-HZ  ' });
+    expect(byEndpoint.map((instance) => instance.id)).toEqual(['1']);
+
+    const combined = await listInstances({ type: 'DIRECT', search: 'namesrv-legacy' });
+    expect(combined.map((instance) => instance.id)).toEqual(['4']);
+  });
+
   it('does not expose created or updated store records by reference', async () => {
     const created = await createInstance({
       name: 'rocketmq-copy-test',

@@ -56,6 +56,26 @@ describe('instance API', () => {
     await expect(updateInstance({ id: instance.id, remark: 'updated' })).resolves.toEqual(instance);
   });
 
+  it('sends normalized instance filters', async () => {
+    mock.onGet('/instances').reply((config) => {
+      expect(config.params).toEqual({ type: 'PROXY', search: 'proxy:8080' });
+      return [200, { code: 200, data: [instance] }];
+    });
+
+    await expect(listInstances({ type: 'PROXY', search: '  proxy:8080  ' })).resolves.toEqual([
+      instance,
+    ]);
+  });
+
+  it('omits blank instance filters', async () => {
+    mock.onGet('/instances').reply((config) => {
+      expect(config.params).toEqual({});
+      return [200, { code: 200, data: [instance] }];
+    });
+
+    await expect(listInstances({ search: '   ' })).resolves.toEqual([instance]);
+  });
+
   it('sends the instance id when deleting', async () => {
     mock.onPost('/instances/delete').reply((config) => {
       expect(JSON.parse(config.data)).toEqual({ id: instance.id });
