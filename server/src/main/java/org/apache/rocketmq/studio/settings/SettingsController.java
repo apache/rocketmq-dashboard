@@ -62,7 +62,7 @@ public class SettingsController {
     }
 
     @PostMapping("/datasources/delete")
-    public Result<Void> deleteDataSource(@RequestParam String key) {
+    public Result<Void> deleteDataSource(@RequestParam(required = false) String key) {
         settingsService.deleteDataSource(key);
         return Result.ok();
     }

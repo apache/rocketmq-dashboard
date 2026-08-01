@@ -32,7 +32,7 @@ public interface SettingsRepository {
 
     boolean replaceDataSource(DataSourceVO dataSource);
 
-    void deleteDataSource(String key);
+    boolean deleteDataSource(String key);
 
     Optional<DataSourceVO> findDataSourceByKey(String key);
 }
