@@ -68,6 +68,7 @@ const typeTagColor: Record<string, string> = {
   Prometheus: 'orange',
   VictoriaMetrics: 'blue',
   Thanos: 'purple',
+  Mimir: 'cyan',
 };
 
 type DataSourceFormValues = Partial<DataSource>;
@@ -377,7 +378,9 @@ export const DataSourceTab = () => {
             icon={<ApiOutlined />}
             loading={testingKey === record.key}
             disabled={authNeedsSecret(record.auth)}
-            title={authNeedsSecret(record.auth) ? '认证数据源请编辑后输入凭据再测试连接' : undefined}
+            title={
+              authNeedsSecret(record.auth) ? '认证数据源请编辑后输入凭据再测试连接' : undefined
+            }
             onClick={() => void handleTestConnection(record, record.key)}
           >
             测试连接
@@ -454,6 +457,7 @@ export const DataSourceTab = () => {
                 { value: 'Prometheus', label: 'Prometheus' },
                 { value: 'VictoriaMetrics', label: 'VictoriaMetrics' },
                 { value: 'Thanos', label: 'Thanos' },
+                { value: 'Mimir', label: 'Grafana Mimir' },
               ]}
             />
           </Form.Item>
@@ -470,7 +474,11 @@ export const DataSourceTab = () => {
             <Select
               virtual={false}
               onChange={() => {
-                dsForm.setFieldsValue({ username: undefined, password: undefined, bearerToken: undefined });
+                dsForm.setFieldsValue({
+                  username: undefined,
+                  password: undefined,
+                  bearerToken: undefined,
+                });
               }}
               options={[
                 { value: 'None', label: 'None' },
