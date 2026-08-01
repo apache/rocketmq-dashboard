@@ -208,6 +208,33 @@ const translations: Record<string, Record<Lang, string>> = {
   'alerts.lastTriggered': { zh: '最近触发', en: 'Last Triggered' },
   'alerts.neverTriggered': { zh: '从未触发', en: 'Never' },
   'alerts.ruleCreated': { zh: '规则创建成功', en: 'Rule created successfully' },
+  'alerts.selectedRules': { zh: '已选择 {count} 条告警规则', en: 'Selected alert rules: {count}' },
+  'alerts.bulkEnable': { zh: '批量启用', en: 'Enable Selected' },
+  'alerts.bulkDisable': { zh: '批量禁用', en: 'Disable Selected' },
+  'alerts.bulkEnableSuccess': {
+    zh: '已启用 {count} 条告警规则',
+    en: 'Enabled {count} alert rules',
+  },
+  'alerts.bulkDisableSuccess': {
+    zh: '已禁用 {count} 条告警规则',
+    en: 'Disabled {count} alert rules',
+  },
+  'alerts.bulkEnableFailed': {
+    zh: '{count} 条告警规则启用失败',
+    en: '{count} alert rules failed to enable',
+  },
+  'alerts.bulkDisableFailed': {
+    zh: '{count} 条告警规则禁用失败',
+    en: '{count} alert rules failed to disable',
+  },
+  'alerts.bulkEnablePartial': {
+    zh: '已启用 {success} 条告警规则，{failed} 条失败',
+    en: 'Enabled {success} alert rules, {failed} failed',
+  },
+  'alerts.bulkDisablePartial': {
+    zh: '已禁用 {success} 条告警规则，{failed} 条失败',
+    en: 'Disabled {success} alert rules, {failed} failed',
+  },
 
   // ─── System Alerts ───
   'sysAlerts.title': { zh: '系统告警', en: 'System Alerts' },

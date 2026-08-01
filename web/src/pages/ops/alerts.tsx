@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type Key } from 'react';
 import { Plus, Pencil, Trash } from '@phosphor-icons/react';
 import {
   Button,
@@ -31,8 +31,9 @@ import {
   Checkbox,
   Flex,
   message,
+  theme,
 } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
+import type { ColumnsType, TableRowSelection } from 'antd/es/table/interface';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import type { AlertRule } from '../../api/ops';
@@ -59,12 +60,15 @@ const durationOptions = ['1分钟', '5分钟', '15分钟', '30分钟'];
 
 const AlertsPage = () => {
   const { t } = useLang();
+  const { token } = theme.useToken();
   const [rules, setRules] = useState<AlertRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRule, setEditingRule] = useState<AlertRule | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [actionId, setActionId] = useState<string | null>(null);
+  const [selectedRuleIds, setSelectedRuleIds] = useState<Key[]>([]);
+  const [bulkAction, setBulkAction] = useState<'enable' | 'disable' | null>(null);
   const [form] = Form.useForm();
 
   const channelLabels: Record<string, string> = {
@@ -93,6 +97,10 @@ const AlertsPage = () => {
   }, []);
 
   const enabledCount = rules.filter((r) => r.enabled).length;
+  const selectedCount = selectedRuleIds.length;
+  const hasSelectedRules = selectedCount > 0;
+  const isBulkRunning = bulkAction !== null;
+  const isActionRunning = actionId !== null || isBulkRunning;
 
   // eslint-disable-next-line react-hooks/purity
   const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
@@ -113,6 +121,7 @@ const AlertsPage = () => {
   };
 
   const handleToggle = async (rule: AlertRule, enabled: boolean) => {
+    if (isActionRunning) return;
     setActionId(`toggle-${rule.id}`);
     try {
       const updated = await toggleAlertRule(rule.id, enabled);
@@ -125,16 +134,82 @@ const AlertsPage = () => {
   };
 
   const handleDelete = async (rule: AlertRule) => {
+    if (isActionRunning) return;
     setActionId(`delete-${rule.id}`);
     try {
       await deleteAlertRule(rule.id);
       setRules((previous) => previous.filter((item) => item.id !== rule.id));
+      setSelectedRuleIds((previous) => previous.filter((id) => id !== rule.id));
       message.success('告警规则已删除');
     } catch {
       message.error('删除告警规则失败，请稍后重试');
     } finally {
       setActionId(null);
     }
+  };
+
+  const handleBulkToggle = async (enabled: boolean) => {
+    const targetIds = selectedRuleIds.map(String);
+    if (targetIds.length === 0 || isActionRunning) return;
+
+    setBulkAction(enabled ? 'enable' : 'disable');
+    try {
+      const results = await Promise.allSettled(
+        targetIds.map(async (id) => ({
+          id,
+          rule: await toggleAlertRule(id, enabled),
+        })),
+      );
+
+      const updatedRules = new Map<string, AlertRule>();
+      const failedIds: string[] = [];
+
+      results.forEach((result, index) => {
+        const id = targetIds[index];
+        if (result.status === 'fulfilled') {
+          updatedRules.set(result.value.id, result.value.rule);
+        } else {
+          failedIds.push(id);
+        }
+      });
+
+      if (updatedRules.size > 0) {
+        setRules((previous) => previous.map((rule) => updatedRules.get(rule.id) ?? rule));
+      }
+
+      setSelectedRuleIds(failedIds);
+
+      if (failedIds.length === 0) {
+        message.success(
+          t(enabled ? 'alerts.bulkEnableSuccess' : 'alerts.bulkDisableSuccess', {
+            count: updatedRules.size,
+          }),
+        );
+      } else if (updatedRules.size === 0) {
+        message.error(
+          t(enabled ? 'alerts.bulkEnableFailed' : 'alerts.bulkDisableFailed', {
+            count: targetIds.length,
+          }),
+        );
+      } else {
+        message.warning(
+          t(enabled ? 'alerts.bulkEnablePartial' : 'alerts.bulkDisablePartial', {
+            success: updatedRules.size,
+            failed: failedIds.length,
+          }),
+        );
+      }
+    } finally {
+      setBulkAction(null);
+    }
+  };
+
+  const rowSelection: TableRowSelection<AlertRule> = {
+    selectedRowKeys: selectedRuleIds,
+    onChange: (keys) => setSelectedRuleIds(keys),
+    getCheckboxProps: () => ({
+      disabled: isActionRunning,
+    }),
   };
 
   const columns: ColumnsType<AlertRule> = [
@@ -172,6 +247,7 @@ const AlertsPage = () => {
         <Switch
           checked={record.enabled}
           loading={actionId === `toggle-${record.id}`}
+          disabled={isActionRunning}
           onChange={(enabled) => void handleToggle(record, enabled)}
         />
       ),
@@ -192,6 +268,7 @@ const AlertsPage = () => {
           <Button
             size="small"
             icon={<Pencil size={14} />}
+            disabled={isActionRunning}
             style={{ borderColor: '#1890ff', color: '#1890ff' }}
             onClick={() => openEditModal(record)}
           >
@@ -202,6 +279,7 @@ const AlertsPage = () => {
             icon={<Trash size={14} />}
             danger
             loading={actionId === `delete-${record.id}`}
+            disabled={isActionRunning}
             style={{ borderColor: '#ff4d4f', color: '#ff4d4f' }}
             onClick={() => void handleDelete(record)}
           >
@@ -263,7 +341,12 @@ const AlertsPage = () => {
                 {triggered24h}
               </span>
             </Flex>
-            <Button type="primary" icon={<Plus />} onClick={openCreateModal}>
+            <Button
+              type="primary"
+              icon={<Plus />}
+              disabled={isActionRunning}
+              onClick={openCreateModal}
+            >
               {t('alerts.newRule')}
             </Button>
           </Flex>
@@ -272,12 +355,43 @@ const AlertsPage = () => {
 
       {/* ─── Table ─── */}
       <Card bodyStyle={{ padding: 0 }}>
+        <Flex
+          align="center"
+          justify="space-between"
+          style={{
+            padding: '12px 16px',
+            borderBottom: `1px solid ${token.colorBorderSecondary}`,
+          }}
+        >
+          <span style={{ color: token.colorTextSecondary }}>
+            {t('alerts.selectedRules', { count: selectedCount })}
+          </span>
+          <Flex gap={8}>
+            <Button
+              size="small"
+              disabled={!hasSelectedRules || isActionRunning}
+              loading={bulkAction === 'enable'}
+              onClick={() => void handleBulkToggle(true)}
+            >
+              {t('alerts.bulkEnable')}
+            </Button>
+            <Button
+              size="small"
+              disabled={!hasSelectedRules || isActionRunning}
+              loading={bulkAction === 'disable'}
+              onClick={() => void handleBulkToggle(false)}
+            >
+              {t('alerts.bulkDisable')}
+            </Button>
+          </Flex>
+        </Flex>
         <Table<AlertRule>
           columns={columns}
           dataSource={rules}
           rowKey="id"
           size="small"
           loading={loading}
+          rowSelection={rowSelection}
           pagination={false}
         />
       </Card>
