@@ -17,15 +17,17 @@
 
 import type { ReactElement } from 'react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
 import OpsPage from '../Ops';
-import { queryOpsHomePage } from '../../../api/ops';
+import { deleteNameSvrAddr, queryOpsHomePage } from '../../../api/ops';
 import useAuthStore from '../../../stores/authStore';
 
 vi.mock('../../../api/ops', () => ({
   addNameSvrAddr: vi.fn(),
+  deleteNameSvrAddr: vi.fn(),
   queryOpsHomePage: vi.fn(),
   updateIsVIPChannel: vi.fn(),
   updateNameSvrAddr: vi.fn(),
@@ -106,5 +108,45 @@ describe('OpsPage', () => {
 
     expect(await screen.findByPlaceholderText('NamesrvAddr')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /新增|添加/ })).toBeInTheDocument();
+  });
+
+  it('deletes a non-current NameServer and restores the current selection', async () => {
+    const user = userEvent.setup();
+    const { container } = renderWithProviders(<OpsPage />);
+
+    await waitFor(() => {
+      expect(queryOpsHomePage).toHaveBeenCalledTimes(1);
+    });
+
+    const deleteButton = screen.getByRole('button', { name: /删除|Delete/ });
+    expect(deleteButton).toBeDisabled();
+
+    fireEvent.mouseDown(container.querySelector('.ant-select-selector') as Element);
+    fireEvent.click(
+      await screen.findByText('127.0.0.2:9876', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+    await waitFor(() => {
+      expect(deleteButton).toBeEnabled();
+    });
+
+    await user.click(deleteButton);
+    await user.click(await screen.findByRole('button', { name: /确\s*认|Confirm/ }));
+
+    await waitFor(() => {
+      expect(deleteNameSvrAddr).toHaveBeenCalledWith('127.0.0.2:9876');
+    });
+    expect(container.querySelector('.ant-select-selection-item')).toHaveTextContent(
+      '127.0.0.1:9876',
+    );
+    fireEvent.mouseDown(container.querySelector('.ant-select-selector') as Element);
+    await waitFor(() => {
+      expect(
+        screen.queryAllByText('127.0.0.2:9876', {
+          selector: '.ant-select-item-option-content',
+        }),
+      ).toHaveLength(0);
+    });
   });
 });

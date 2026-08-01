@@ -57,6 +57,21 @@ public class OpsService {
         log.info("Added NameServer address {}", normalized);
     }
 
+    public synchronized void deleteNameServer(String namesrvAddr) {
+        String normalized = normalizeNameServer(namesrvAddr);
+        if (!namesrvAddrs.contains(normalized)) {
+            throw new BusinessException(404, "NameServer address not found: " + normalized);
+        }
+        if (namesrvAddrs.size() == 1) {
+            throw new BusinessException(409, "Cannot delete the last NameServer address");
+        }
+        if (normalized.equals(currentNamesrv)) {
+            throw new BusinessException(409, "Cannot delete the current NameServer address");
+        }
+        namesrvAddrs.remove(normalized);
+        log.info("Deleted NameServer address {}", normalized);
+    }
+
     public synchronized void updateVipChannel(boolean enabled) {
         useVIPChannel = enabled;
         log.info("Updated VIP channel setting to {}", enabled);

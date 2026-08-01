@@ -50,6 +50,37 @@ class OpsServiceTest {
     }
 
     @Test
+    void deleteNameServerShouldRemoveNonCurrentAddress() {
+        opsService.addNameServer("10.0.0.1:9876");
+
+        opsService.deleteNameServer(" 10.0.0.1:9876 ");
+
+        OpsHomeVO home = opsService.getHomePage();
+        assertThat(home.getNamesvrAddrList()).containsExactly("127.0.0.1:9876");
+        assertThat(home.getCurrentNamesrv()).isEqualTo("127.0.0.1:9876");
+    }
+
+    @Test
+    void deleteNameServerShouldRejectUnknownCurrentAndLastAddress() {
+        assertThatThrownBy(() -> opsService.deleteNameServer("10.0.0.1:9876"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("NameServer address not found: 10.0.0.1:9876")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
+
+        assertThatThrownBy(() -> opsService.deleteNameServer("127.0.0.1:9876"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Cannot delete the last NameServer address")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
+
+        opsService.addNameServer("10.0.0.1:9876");
+        opsService.updateNameServer("10.0.0.1:9876");
+        assertThatThrownBy(() -> opsService.deleteNameServer("10.0.0.1:9876"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Cannot delete the current NameServer address")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
+    }
+
+    @Test
     void togglesShouldUpdateHomePageSettings() {
         opsService.updateVipChannel(false);
         opsService.updateUseTLS(true);
@@ -66,6 +97,9 @@ class OpsServiceTest {
                 .hasMessage("namesrvAddr is required")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
         assertThatThrownBy(() -> opsService.updateNameServer(null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("namesrvAddr is required");
+        assertThatThrownBy(() -> opsService.deleteNameServer(" "))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("namesrvAddr is required");
     }

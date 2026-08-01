@@ -50,6 +50,12 @@ public class OpsController {
         return Result.ok();
     }
 
+    @PostMapping("/deleteNameSvrAddr")
+    public Result<Void> deleteNameSvrAddr(@Valid @RequestBody OpsNameServerDTO request) {
+        opsService.deleteNameServer(request.getNamesrvAddr());
+        return Result.ok();
+    }
+
     @PostMapping("/updateIsVIPChannel")
     public Result<Void> updateIsVIPChannel(@Valid @RequestBody OpsVipChannelDTO request) {
         opsService.updateVipChannel(request.getUseVIPChannel());
