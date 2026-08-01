@@ -31,12 +31,15 @@ import {
   message,
 } from 'antd';
 import { Trash } from '@phosphor-icons/react';
+import { DownloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
+import type { AuditFilter } from '../../api/audit';
 import type { AuditRecord } from '../../api/ops';
-import { cleanupAuditLogs, listAuditRecords } from '../../services/opsService';
+import { cleanupAuditLogs, exportAuditLogs, listAuditRecords } from '../../services/opsService';
 
 const operationTypeColors: Record<string, string> = {
   创建Topic: 'blue',
@@ -58,6 +61,19 @@ const operationTypeOptions = [
   '删除消费组',
 ];
 
+const buildAuditFilter = (
+  searchText: string,
+  selectedType: string | undefined,
+  dateRange: [Dayjs | null, Dayjs | null] | null,
+  resultFilter: string,
+): AuditFilter => ({
+  search: searchText || undefined,
+  operationType: selectedType,
+  startDate: dateRange?.[0]?.format('YYYY-MM-DD'),
+  endDate: dateRange?.[1]?.format('YYYY-MM-DD'),
+  result: resultFilter === 'all' ? undefined : resultFilter,
+});
+
 const AuditPage: React.FC = () => {
   const { t } = useLang();
   const [records, setRecords] = useState<AuditRecord[]>([]);
@@ -72,20 +88,15 @@ const AuditPage: React.FC = () => {
   const [resultFilter, setResultFilter] = useState('all');
   const [cleanupModalOpen, setCleanupModalOpen] = useState(false);
   const [cleanupDays, setCleanupDays] = useState(30);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    const startDate = dateRange?.[0]?.format('YYYY-MM-DD');
-    const endDate = dateRange?.[1]?.format('YYYY-MM-DD');
 
     void listAuditRecords({
       page,
       pageSize,
-      search: searchText || undefined,
-      operationType: selectedType,
-      startDate,
-      endDate,
-      result: resultFilter === 'all' ? undefined : resultFilter,
+      ...buildAuditFilter(searchText, selectedType, dateRange, resultFilter),
     })
       .then((result) => {
         if (cancelled) return;
@@ -115,6 +126,26 @@ const AuditPage: React.FC = () => {
       setCleanupModalOpen(false);
     } catch {
       message.error('清理审计日志失败，请稍后重试');
+    }
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const csv = await exportAuditLogs(
+        buildAuditFilter(searchText, selectedType, dateRange, resultFilter),
+      );
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `rocketmq-audit-logs-${dayjs().format('YYYY-MM-DD')}.csv`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      message.error('导出审计日志失败，请稍后重试');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -214,9 +245,18 @@ const AuditPage: React.FC = () => {
             ]}
           />
         </Flex>
-        <Button danger icon={<Trash size={14} />} onClick={() => setCleanupModalOpen(true)}>
-          {t('audit.cleanup')}
-        </Button>
+        <Flex gap={8}>
+          <Button
+            icon={<DownloadOutlined />}
+            loading={exporting}
+            onClick={() => void handleExport()}
+          >
+            {t('common.export')}
+          </Button>
+          <Button danger icon={<Trash size={14} />} onClick={() => setCleanupModalOpen(true)}>
+            {t('audit.cleanup')}
+          </Button>
+        </Flex>
       </Flex>
 
       {/* ─── Table ─── */}

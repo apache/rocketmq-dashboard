@@ -49,6 +49,16 @@ public class AuditController {
                 operationType, startDate, endDate, result));
     }
 
+    @GetMapping("/export")
+    public Result<String> exportLogs(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String operationType,
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate,
+            @RequestParam(required = false) String result) {
+        return Result.ok(auditService.exportLogs(search, operationType, startDate, endDate, result));
+    }
+
     @PostMapping("/cleanup")
     public Result<Map<String, Integer>> cleanupLogs(@Valid @RequestBody(required = false) AuditCleanupDTO request) {
         int beforeDays = request == null || request.getBeforeDays() == null ? 30 : request.getBeforeDays();

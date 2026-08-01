@@ -261,4 +261,29 @@ class AuditServiceTest {
         verify(auditRepository).findAll(eq("admin"), eq("DELETE"), any(LocalDateTime.class),
                 any(LocalDateTime.class), eq("FAILURE"));
     }
+
+    @Test
+    void exportLogsShouldUseFiltersAndEscapeCsvValues() {
+        AuditRecordVO record = AuditRecordVO.builder()
+                .timestamp(LocalDateTime.of(2026, 8, 1, 9, 30))
+                .operator("=cmd")
+                .operationType("DELETE")
+                .target("topic,a")
+                .detail("removed \"topic\"\nfrom cluster")
+                .ipAddress("\n=127.0.0.1")
+                .result("SUCCESS")
+                .build();
+        when(auditRepository.findAll(eq("topic"), eq("DELETE"), any(LocalDateTime.class),
+                any(LocalDateTime.class), eq("SUCCESS")))
+                .thenReturn(List.of(record));
+
+        String csv = auditService.exportLogs(
+                "topic", "DELETE", "2026-08-01", "2026-08-02", "SUCCESS");
+
+        assertThat(csv).isEqualTo("\uFEFFtimestamp,operator,operationType,target,detail,ipAddress,result\r\n"
+                + "\"2026-08-01T09:30\",\"'=cmd\",\"DELETE\",\"topic,a\","
+                + "\"removed \"\"topic\"\"\nfrom cluster\",\"'\n=127.0.0.1\",\"SUCCESS\"\r\n");
+        verify(auditRepository).findAll(eq("topic"), eq("DELETE"), any(LocalDateTime.class),
+                any(LocalDateTime.class), eq("SUCCESS"));
+    }
 }

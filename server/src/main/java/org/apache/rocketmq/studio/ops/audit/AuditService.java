@@ -34,6 +34,9 @@ import java.util.List;
 @RequiredArgsConstructor
 public class AuditService {
 
+    private static final String CSV_HEADER =
+            "timestamp,operator,operationType,target,detail,ipAddress,result\r\n";
+
     private final AuditRepository auditRepository;
 
 
@@ -44,13 +47,7 @@ public class AuditService {
         log.info("Querying audit logs, page={}, pageSize={}, search={}, operationType={}, result={}",
                 page, pageSize, search, operationType, result);
 
-        LocalDateTime start = parseDate(startDate, true, "startDate");
-        LocalDateTime end = parseDate(endDate, false, "endDate");
-        if (start != null && end != null && start.isAfter(end)) {
-            throw new BusinessException(400, "startDate must not be after endDate");
-        }
-
-        List<AuditRecordVO> allRecords = auditRepository.findAll(search, operationType, start, end, result);
+        List<AuditRecordVO> allRecords = findRecords(search, operationType, startDate, endDate, result);
         long total = allRecords.size();
 
         long offset = (long) (page - 1) * pageSize;
@@ -59,6 +56,23 @@ public class AuditService {
         List<AuditRecordVO> pageRecords = allRecords.subList(fromIndex, toIndex);
 
         return PageResult.of(pageRecords, total, page, pageSize);
+    }
+
+    public String exportLogs(String search, String operationType, String startDate,
+                             String endDate, String result) {
+        List<AuditRecordVO> records = findRecords(search, operationType, startDate, endDate, result);
+        StringBuilder csv = new StringBuilder("\uFEFF").append(CSV_HEADER);
+        for (AuditRecordVO record : records) {
+            appendCsvRow(csv,
+                    record.getTimestamp(),
+                    record.getOperator(),
+                    record.getOperationType(),
+                    record.getTarget(),
+                    record.getDetail(),
+                    record.getIpAddress(),
+                    record.getResult());
+        }
+        return csv.toString();
     }
 
 
@@ -78,6 +92,34 @@ public class AuditService {
         if (pageSize <= 0) {
             throw new BusinessException(400, "pageSize must be greater than 0");
         }
+    }
+
+    private List<AuditRecordVO> findRecords(String search, String operationType, String startDate,
+                                            String endDate, String result) {
+        LocalDateTime start = parseDate(startDate, true, "startDate");
+        LocalDateTime end = parseDate(endDate, false, "endDate");
+        if (start != null && end != null && start.isAfter(end)) {
+            throw new BusinessException(400, "startDate must not be after endDate");
+        }
+        return auditRepository.findAll(search, operationType, start, end, result);
+    }
+
+    private void appendCsvRow(StringBuilder csv, Object... values) {
+        for (int i = 0; i < values.length; i++) {
+            if (i > 0) {
+                csv.append(',');
+            }
+            csv.append(toCsvCell(values[i]));
+        }
+        csv.append("\r\n");
+    }
+
+    private String toCsvCell(Object value) {
+        String text = value == null ? "" : value.toString();
+        if (!text.isEmpty() && "=+-@\t\r\n".indexOf(text.charAt(0)) >= 0) {
+            text = "'" + text;
+        }
+        return '"' + text.replace("\"", "\"\"") + '"';
     }
 
     private LocalDateTime parseDate(String dateStr, boolean startOfDay, String parameterName) {

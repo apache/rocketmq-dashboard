@@ -99,18 +99,19 @@
 | 56 | POST | `/api/system-alerts/acknowledge` | 确认告警 |
 | 57 | POST | `/api/system-alerts/clear-acknowledged` | 清除已确认告警 |
 | 58 | GET | `/api/audit-logs` | 审计日志列表 |
-| 59 | POST | `/api/audit-logs/cleanup` | 清理审计日志 |
-| 60 | GET | `/api/settings/general` | 获取通用设置 |
-| 61 | POST | `/api/settings/general/save` | 保存通用设置 |
-| 62 | GET | `/api/settings/datasources` | 数据源列表 |
-| 63 | POST | `/api/settings/datasources/create` | 创建数据源 |
-| 64 | POST | `/api/settings/datasources/update` | 更新数据源 |
-| 65 | POST | `/api/settings/datasources/delete` | 删除数据源 |
-| 66 | POST | `/api/settings/datasources/test` | 测试数据源连接 |
-| 67 | POST | `/api/ai/chat` | AI 对话（SSE） |
-| 68 | POST | `/api/ai/execute` | 执行 AI 指令 |
-| 69 | GET | `/api/ai/tools` | 可用工具列表 |
-| 70 | POST | `/api/metrics/query` | 查询监控指标数据 |
+| 59 | GET | `/api/audit-logs/export` | 导出审计日志 |
+| 60 | POST | `/api/audit-logs/cleanup` | 清理审计日志 |
+| 61 | GET | `/api/settings/general` | 获取通用设置 |
+| 62 | POST | `/api/settings/general/save` | 保存通用设置 |
+| 63 | GET | `/api/settings/datasources` | 数据源列表 |
+| 64 | POST | `/api/settings/datasources/create` | 创建数据源 |
+| 65 | POST | `/api/settings/datasources/update` | 更新数据源 |
+| 66 | POST | `/api/settings/datasources/delete` | 删除数据源 |
+| 67 | POST | `/api/settings/datasources/test` | 测试数据源连接 |
+| 68 | POST | `/api/ai/chat` | AI 对话（SSE） |
+| 69 | POST | `/api/ai/execute` | 执行 AI 指令 |
+| 70 | GET | `/api/ai/tools` | 可用工具列表 |
+| 71 | POST | `/api/metrics/query` | 查询监控指标数据 |
 
 ## 通用响应格式
 
@@ -1469,7 +1470,19 @@ GET /api/audit-logs?page={page}&pageSize={pageSize}&search={search}&operationTyp
 | `ipAddress` | `string` | 操作 IP 地址 |
 | `result` | `string` | 结果: `success` / `failure` |
 
-### 13.2 清理审计日志
+### 13.2 导出审计日志
+
+```
+GET /api/audit-logs/export?search={search}&operationType={type}&startDate={start}&endDate={end}&result={result}
+```
+
+查询参数与列表接口相同，但不包含 `page` 和 `pageSize`。接口返回全部匹配记录，不受当前表格分页影响。
+
+**Response `data`:** 带 UTF-8 BOM 的 CSV 字符串。CSV 字段使用双引号包裹，并转义逗号、双引号和换行符。以 `=`、`+`、`-`、`@`、制表符或换行符开头的字段会添加单引号前缀，避免电子表格将其作为公式执行。
+
+`startDate` 或 `endDate` 格式错误，以及 `startDate` 晚于 `endDate` 时，接口返回 HTTP 400。
+
+### 13.3 清理审计日志
 
 ```
 POST /api/audit-logs/cleanup

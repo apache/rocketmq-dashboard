@@ -157,4 +157,24 @@ class AuditControllerTest {
 
         verify(auditService).queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), isNull(), isNull());
     }
+
+    @Test
+    void exportLogsShouldForwardFilters() throws Exception {
+        String csv = "\uFEFFtimestamp,operator\r\n\"2026-08-01T09:30\",\"admin\"\r\n";
+        when(auditService.exportLogs(eq("topic"), eq("DELETE"), eq("2026-08-01"),
+                eq("2026-08-02"), eq("SUCCESS"))).thenReturn(csv);
+
+        mockMvc.perform(get("/api/audit-logs/export")
+                        .param("search", "topic")
+                        .param("operationType", "DELETE")
+                        .param("startDate", "2026-08-01")
+                        .param("endDate", "2026-08-02")
+                        .param("result", "SUCCESS"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data").value(csv));
+
+        verify(auditService).exportLogs(eq("topic"), eq("DELETE"), eq("2026-08-01"),
+                eq("2026-08-02"), eq("SUCCESS"));
+    }
 }

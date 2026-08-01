@@ -17,6 +17,7 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import MockAdapter from 'axios-mock-adapter';
+import { exportAuditLogs } from './audit';
 import client from './client';
 import { cleanupAuditLogs, listAuditRecords } from './ops';
 
@@ -48,5 +49,15 @@ describe('audit log API', () => {
     });
 
     await expect(cleanupAuditLogs(30)).resolves.toEqual({ deleted: 3 });
+  });
+
+  it('exports all records matching the supplied filters', async () => {
+    const csv = '\uFEFFtimestamp,operator\r\n"2026-08-01T09:30","admin"\r\n';
+    mock.onGet('/audit-logs/export').reply((config) => {
+      expect(config.params).toEqual({ search: 'topic', result: 'SUCCESS' });
+      return [200, { code: 200, data: csv }];
+    });
+
+    await expect(exportAuditLogs({ search: 'topic', result: 'SUCCESS' })).resolves.toBe(csv);
   });
 });
