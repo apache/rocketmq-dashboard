@@ -74,7 +74,7 @@ const MainLayout = () => {
       message.warning('服务端退出失败，已清除本地登录状态');
     } finally {
       clearAuth();
-      navigate('/');
+      navigate('/login', { replace: true });
     }
   };
 
