@@ -16,6 +16,9 @@
  */
 package org.apache.rocketmq.studio.ops.alert;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import org.apache.rocketmq.studio.common.domain.enums.AlertLevel;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
@@ -150,6 +153,49 @@ class AlertServiceTest {
         assertThat(result)
                 .contains("expr: rocketmq_broker_replication_lag_bytes > 1024")
                 .contains("severity: warning");
+    }
+
+    @Test
+    void exportPrometheusRulesYamlShouldEscapeSpecialCharacters() throws Exception {
+        AlertRuleVO rule = AlertRuleVO.builder()
+                .name("Scoped rule")
+                .metric("rocketmq_consumer_lag_messages")
+                .operator(">")
+                .threshold(1)
+                .clusterName("prod\"east\\dc\nline")
+                .brokerName("broker\tone")
+                .description("Summary \"quoted\" \\ path\nnext - Details\twith\rline")
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+
+        String result = alertService.exportPrometheusRulesYaml();
+
+        assertThat(result).contains(
+                "expr: rocketmq_consumer_lag_messages{cluster=\"prod\\\"east\\\\dc\\nline\","
+                        + "broker=\"broker\\tone\"} > 1");
+        JsonNode exportedRule = new ObjectMapper(new YAMLFactory()).readTree(result)
+                .path("groups").get(0).path("rules").get(0);
+        assertThat(exportedRule.path("annotations").path("summary").asText())
+                .isEqualTo("Summary \"quoted\" \\ path\nnext");
+        assertThat(exportedRule.path("annotations").path("description").asText())
+                .isEqualTo("Details\twith\rline");
+    }
+
+    @Test
+    void exportPrometheusRulesYamlShouldUseFallbackWhenAlertNameHasNoValidCharacters() throws Exception {
+        AlertRuleVO rule = AlertRuleVO.builder()
+                .name(" - !")
+                .metric("rocketmq_consumer_lag_messages")
+                .operator(">")
+                .threshold(1)
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+
+        String result = alertService.exportPrometheusRulesYaml();
+
+        JsonNode exportedRule = new ObjectMapper(new YAMLFactory()).readTree(result)
+                .path("groups").get(0).path("rules").get(0);
+        assertThat(exportedRule.path("alert").asText()).isEqualTo("RocketMQAlert");
     }
 
     @Test
