@@ -17,9 +17,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Table,
   Card,
   Button,
+  Checkbox,
   Tag,
   Space,
   Input,
@@ -115,6 +117,20 @@ const formatDateTime = (dateStr: string): string => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 };
 
+const normalizedConsistency = (value?: string | null): string => value?.trim().toLowerCase() ?? '';
+
+const isConsistentValue = (value?: string | null): boolean =>
+  ['consistent', '一致'].includes(normalizedConsistency(value));
+
+const isInconsistentValue = (value?: string | null): boolean =>
+  ['inconsistent', '不一致'].includes(normalizedConsistency(value));
+
+const isConsistentSubscription = (subscription: SubscriptionEntry): boolean =>
+  isConsistentValue(subscription.consistency);
+
+const isInconsistentSubscription = (subscription: SubscriptionEntry): boolean =>
+  isInconsistentValue(subscription.consistency);
+
 /* ═══════════════════════════════════════════
    ConsumerPage
    ═══════════════════════════════════════════ */
@@ -139,6 +155,13 @@ const ConsumerPage = () => {
   const [subscriptionsByGroup, setSubscriptionsByGroup] = useState<
     Record<string, SubscriptionEntry[]>
   >({});
+  const [subscriptionLoadingByGroup, setSubscriptionLoadingByGroup] = useState<
+    Record<string, boolean>
+  >({});
+  const [subscriptionErrorByGroup, setSubscriptionErrorByGroup] = useState<Record<string, boolean>>(
+    {},
+  );
+  const [showOnlyInconsistent, setShowOnlyInconsistent] = useState(false);
   const [progressByGroup, setProgressByGroup] = useState<Record<string, QueueProgress[]>>({});
 
   useEffect(() => {
@@ -162,13 +185,18 @@ const ConsumerPage = () => {
   }, [t]);
 
   const loadSubscriptions = useCallback(
-    async (groupName: string) => {
-      if (subscriptionsByGroup[groupName]) return;
+    async (groupName: string, force = false) => {
+      if (!force && subscriptionsByGroup[groupName]) return;
+      setSubscriptionLoadingByGroup((prev) => ({ ...prev, [groupName]: true }));
+      setSubscriptionErrorByGroup((prev) => ({ ...prev, [groupName]: false }));
       try {
         const subscriptions = await getConsumerSubscriptions(groupName);
         setSubscriptionsByGroup((prev) => ({ ...prev, [groupName]: subscriptions }));
       } catch {
+        setSubscriptionErrorByGroup((prev) => ({ ...prev, [groupName]: true }));
         message.error(t('consumer.fetchSubscriptionsFailed', { name: groupName }));
+      } finally {
+        setSubscriptionLoadingByGroup((prev) => ({ ...prev, [groupName]: false }));
       }
     },
     [subscriptionsByGroup, t],
@@ -212,6 +240,7 @@ const ConsumerPage = () => {
   /* ─── Open detail modal ─── */
   const openModal = (group: ConsumerGroup) => {
     setSelectedGroup(group);
+    setShowOnlyInconsistent(false);
     setModalOpen(true);
     void loadSubscriptions(group.name);
     void loadProgress(group.name);
@@ -220,6 +249,14 @@ const ConsumerPage = () => {
   const selectedSubscriptions = selectedGroup
     ? (subscriptionsByGroup[selectedGroup.name] ?? [])
     : [];
+  const inconsistentSubscriptions = selectedSubscriptions.filter(isInconsistentSubscription);
+  const unknownSubscriptions = selectedSubscriptions.filter(
+    (subscription) =>
+      !isConsistentSubscription(subscription) && !isInconsistentSubscription(subscription),
+  );
+  const visibleSubscriptions = showOnlyInconsistent
+    ? inconsistentSubscriptions
+    : selectedSubscriptions;
   const selectedProgress = selectedGroup ? (progressByGroup[selectedGroup.name] ?? []) : [];
 
   /* ═══════════════════════════════════════════
@@ -383,7 +420,15 @@ const ConsumerPage = () => {
       dataIndex: 'consistency',
       key: 'consistency',
       width: 110,
-      render: (v: string) => <Tag color={v === '一致' ? 'green' : 'orange'}>{v}</Tag>,
+      render: (value: string) => (
+        <Tag
+          color={
+            isConsistentValue(value) ? 'green' : isInconsistentValue(value) ? 'orange' : 'default'
+          }
+        >
+          {value}
+        </Tag>
+      ),
     },
     {
       title: '订阅模式',
@@ -649,6 +694,7 @@ const ConsumerPage = () => {
                   columns={subscriptionSubColumns}
                   dataSource={subscriptionsByGroup[record.name] ?? []}
                   rowKey="topic"
+                  loading={subscriptionLoadingByGroup[record.name]}
                   pagination={false}
                   size="small"
                 />
@@ -679,6 +725,7 @@ const ConsumerPage = () => {
         onCancel={() => {
           setModalOpen(false);
           setSelectedGroup(null);
+          setShowOnlyInconsistent(false);
         }}
         width={800}
         destroyOnClose
@@ -819,16 +866,67 @@ const ConsumerPage = () => {
 
                     {/* 订阅关系 */}
                     <div style={{ marginTop: 24 }}>
-                      <Flex align="center" gap={6} style={{ marginBottom: 12 }}>
-                        <ListBullets size={15} color="#1677ff" />
-                        <Text strong style={{ fontSize: 14 }}>
-                          订阅关系
-                        </Text>
+                      <Flex justify="space-between" align="center" style={{ marginBottom: 12 }}>
+                        <Flex align="center" gap={6}>
+                          <ListBullets size={15} color="#1677ff" />
+                          <Text strong style={{ fontSize: 14 }}>
+                            订阅一致性检查
+                          </Text>
+                        </Flex>
+                        <Button
+                          size="small"
+                          icon={<ArrowsClockwise size={14} />}
+                          loading={subscriptionLoadingByGroup[selectedGroup.name]}
+                          onClick={() => {
+                            setShowOnlyInconsistent(false);
+                            void loadSubscriptions(selectedGroup.name, true);
+                          }}
+                        >
+                          重新检查
+                        </Button>
                       </Flex>
+                      <Alert
+                        showIcon
+                        type={
+                          subscriptionErrorByGroup[selectedGroup.name]
+                            ? 'error'
+                            : inconsistentSubscriptions.length > 0 ||
+                                unknownSubscriptions.length > 0
+                              ? 'warning'
+                              : selectedSubscriptions.length > 0
+                                ? 'success'
+                                : 'info'
+                        }
+                        message={
+                          subscriptionErrorByGroup[selectedGroup.name]
+                            ? '订阅一致性检查失败，当前保留上次检查结果'
+                            : subscriptionLoadingByGroup[selectedGroup.name] &&
+                                selectedSubscriptions.length === 0
+                              ? '正在检查订阅一致性'
+                              : inconsistentSubscriptions.length > 0
+                                ? `发现 ${inconsistentSubscriptions.length} 个订阅配置不一致`
+                                : unknownSubscriptions.length > 0
+                                  ? `${unknownSubscriptions.length} 个订阅配置状态未知`
+                                  : selectedSubscriptions.length > 0
+                                    ? `全部 ${selectedSubscriptions.length} 个订阅配置一致`
+                                    : '暂无订阅关系可检查'
+                        }
+                        action={
+                          <Checkbox
+                            checked={showOnlyInconsistent}
+                            disabled={inconsistentSubscriptions.length === 0}
+                            onChange={(event) => setShowOnlyInconsistent(event.target.checked)}
+                          >
+                            仅看不一致
+                          </Checkbox>
+                        }
+                        style={{ marginBottom: 12 }}
+                      />
                       <Table
                         columns={subscriptionSubColumns}
-                        dataSource={selectedSubscriptions}
+                        dataSource={visibleSubscriptions}
                         rowKey="topic"
+                        loading={subscriptionLoadingByGroup[selectedGroup.name]}
                         pagination={false}
                         size="small"
                       />
