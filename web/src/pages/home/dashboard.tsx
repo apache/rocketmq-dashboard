@@ -6,6 +6,7 @@ import { ListDashes, ArrowDown } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
 import StatusBadge from '../../components/StatusBadge';
 import MiniBar from '../../components/MiniBar';
+import MetricsExplorer from '../../components/MetricsExplorer';
 import { CLUSTER_TYPE_MAP } from '../../constants/theme';
 import { getDashboard } from '../../services/dashboardService';
 import type { DashboardData } from '../../api/metrics';
@@ -240,6 +241,8 @@ const DashboardPage = () => {
           })}
         />
       </Card>
+
+      <MetricsExplorer />
     </div>
   );
 };
