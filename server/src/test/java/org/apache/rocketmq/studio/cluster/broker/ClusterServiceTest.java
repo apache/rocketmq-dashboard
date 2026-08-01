@@ -47,6 +47,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -88,8 +89,10 @@ class ClusterServiceTest {
                         .writeQueueNums(8)
                         .readQueueNums(8)
                         .maxMessageSize(4194304)
+                        .msgTraceTopicName("RMQ_SYS_TRACE_TOPIC")
                         .autoCreateTopicEnable(true)
                         .autoCreateSubscriptionGroup(true)
+                        .deleteWhen("04")
                         .fileReservedTime(72)
                         .brokerPermission(6)
                         .build())
@@ -196,6 +199,7 @@ class ClusterServiceTest {
     @Test
     void updateConfigShouldPreserveExistingValuesWhenCommandFieldsAreNull() {
         when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+        ClusterConfigVO storedConfig = sampleCluster.getConfig();
 
         UpdateConfigDTO command = UpdateConfigDTO.builder()
                 .id("cluster-1")
@@ -205,10 +209,18 @@ class ClusterServiceTest {
         ClusterVO result = clusterService.updateClusterConfig(command);
 
         ClusterConfigVO config = result.getConfig();
+        assertThat(config).isNotSameAs(storedConfig);
         assertThat(config.getFlushDiskType()).isEqualTo(FlushDiskType.SYNC_FLUSH);
         assertThat(config.getWriteQueueNums()).isEqualTo(8);
         assertThat(config.getReadQueueNums()).isEqualTo(8);
+        assertThat(config.getMaxMessageSize()).isEqualTo(4194304);
+        assertThat(config.getMsgTraceTopicName()).isEqualTo("RMQ_SYS_TRACE_TOPIC");
         assertThat(config.isAutoCreateTopicEnable()).isTrue();
+        assertThat(config.isAutoCreateSubscriptionGroup()).isTrue();
+        assertThat(config.getDeleteWhen()).isEqualTo("04");
+        assertThat(config.getFileReservedTime()).isEqualTo(72);
+        assertThat(config.getBrokerPermission()).isEqualTo(6);
+        assertThat(storedConfig.getFlushDiskType()).isEqualTo(FlushDiskType.ASYNC_FLUSH);
     }
 
     @Test
@@ -261,6 +273,50 @@ class ClusterServiceTest {
 
         assertThat(result.getConfig()).isNotNull();
         assertThat(result.getConfig().getFlushDiskType()).isEqualTo(FlushDiskType.ASYNC_FLUSH);
+    }
+
+    @Test
+    void updateConfigShouldNotMutateStoredConfigWhenRepositoryUpdateFails() {
+        ClusterConfigVO storedConfig = sampleCluster.getConfig();
+        RuntimeException persistenceFailure = new RuntimeException("persistence failed");
+        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+        doThrow(persistenceFailure).when(clusterRepository)
+                .updateConfig(eq("cluster-1"), any(ClusterConfigVO.class));
+
+        UpdateConfigDTO command = UpdateConfigDTO.builder()
+                .id("cluster-1")
+                .flushDiskType("SYNC_FLUSH")
+                .writeQueueNums(16)
+                .build();
+
+        assertThatThrownBy(() -> clusterService.updateClusterConfig(command))
+                .isSameAs(persistenceFailure);
+        assertThat(sampleCluster.getConfig()).isSameAs(storedConfig);
+        assertThat(storedConfig.getFlushDiskType()).isEqualTo(FlushDiskType.ASYNC_FLUSH);
+        assertThat(storedConfig.getWriteQueueNums()).isEqualTo(8);
+    }
+
+    @Test
+    void updateConfigShouldLeaveNullStoredConfigWhenRepositoryUpdateFails() {
+        ClusterVO clusterWithNullConfig = ClusterVO.builder()
+                .name("null-config-cluster")
+                .status(ClusterStatus.healthy)
+                .config(null)
+                .build();
+        clusterWithNullConfig.setId("cluster-nc");
+        RuntimeException persistenceFailure = new RuntimeException("persistence failed");
+        when(clusterRepository.findById("cluster-nc")).thenReturn(Optional.of(clusterWithNullConfig));
+        doThrow(persistenceFailure).when(clusterRepository)
+                .updateConfig(eq("cluster-nc"), any(ClusterConfigVO.class));
+
+        UpdateConfigDTO command = UpdateConfigDTO.builder()
+                .id("cluster-nc")
+                .flushDiskType("ASYNC_FLUSH")
+                .build();
+
+        assertThatThrownBy(() -> clusterService.updateClusterConfig(command))
+                .isSameAs(persistenceFailure);
+        assertThat(clusterWithNullConfig.getConfig()).isNull();
     }
 
     @Test
