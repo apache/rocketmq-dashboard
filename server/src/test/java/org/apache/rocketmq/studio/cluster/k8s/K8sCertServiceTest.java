@@ -23,11 +23,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -42,16 +44,19 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class K8sCertServiceTest {
 
+    private static final Clock CLOCK = Clock.fixed(
+            Instant.parse("2025-07-01T00:00:00Z"), ZoneOffset.UTC);
+
     @Mock
     private K8sCertRepository k8sCertRepository;
 
-    @InjectMocks
     private K8sCertService k8sCertService;
 
     private K8sCertVO sampleCert;
 
     @BeforeEach
     void setUp() {
+        k8sCertService = new K8sCertService(k8sCertRepository, CLOCK);
         sampleCert = K8sCertVO.builder()
                 .name("rocketmq-tls")
                 .namespace("mq-system")
@@ -100,6 +105,35 @@ class K8sCertServiceTest {
     }
 
     @Test
+    void listCertsShouldRefreshTimeDerivedExpiryFields() {
+        LocalDateTime now = LocalDateTime.now(CLOCK);
+        sampleCert.setNotAfter(now.minusDays(1));
+        sampleCert.setStatus(CertStatus.valid);
+        sampleCert.setDaysRemaining(180);
+        K8sCertVO expiresNowCert = copyWithExpiry("cert-expires-now", now,
+                CertStatus.valid, 180);
+        K8sCertVO expiringCert = copyWithExpiry("cert-expiring", now.plusDays(30),
+                CertStatus.expired, -1);
+        K8sCertVO validCert = copyWithExpiry("cert-valid", now.plusDays(31),
+                CertStatus.expired, -1);
+        when(k8sCertRepository.findAll())
+                .thenReturn(List.of(sampleCert, expiresNowCert, expiringCert, validCert));
+
+        List<K8sCertVO> result = k8sCertService.listCerts();
+
+        assertThat(result).extracting(K8sCertVO::getStatus)
+                .containsExactly(CertStatus.expired, CertStatus.expired,
+                        CertStatus.expiring, CertStatus.valid);
+        assertThat(result).extracting(K8sCertVO::getDaysRemaining)
+                .containsExactly(-1, 0, 30, 31);
+        assertThat(result.get(0)).isNotSameAs(sampleCert);
+        assertThat(sampleCert.getStatus()).isEqualTo(CertStatus.valid);
+        assertThat(sampleCert.getDaysRemaining()).isEqualTo(180);
+        assertThat(expiringCert.getStatus()).isEqualTo(CertStatus.expired);
+        assertThat(expiringCert.getDaysRemaining()).isEqualTo(-1);
+    }
+
+    @Test
     void createCertShouldCreateAndSaveCert() {
         CreateCertDTO command = CreateCertDTO.builder()
                 .name("new-tls-cert")
@@ -119,6 +153,7 @@ class K8sCertServiceTest {
         });
 
         K8sCertVO result = k8sCertService.createCert(command);
+        LocalDateTime now = LocalDateTime.now(CLOCK);
 
         assertThat(result.getName()).isEqualTo("new-tls-cert");
         assertThat(result.getNamespace()).isEqualTo("default");
@@ -127,9 +162,11 @@ class K8sCertServiceTest {
         assertThat(result.getIssuer()).isEqualTo("vault");
         assertThat(result.getStatus()).isEqualTo(CertStatus.valid);
         assertThat(result.getSan()).containsExactly("svc.example.com");
-        assertThat(result.getNotBefore()).isNotNull();
-        assertThat(result.getNotAfter()).isAfter(result.getNotBefore());
-        assertThat(result.getDaysRemaining()).isGreaterThan(0);
+        assertThat(result.getNotBefore()).isEqualTo(now);
+        assertThat(result.getNotAfter()).isEqualTo(now.plusYears(1));
+        assertThat(result.getDaysRemaining()).isEqualTo(365);
+        assertThat(result.getCreatedAt()).isEqualTo(now);
+        assertThat(result.getUpdatedAt()).isEqualTo(now);
         verify(k8sCertRepository).save(any(K8sCertVO.class));
     }
 
@@ -149,9 +186,10 @@ class K8sCertServiceTest {
         k8sCertService.createCert(command);
 
         K8sCertVO saved = captor.getValue();
-        assertThat(saved.getNotAfter()).isAfter(saved.getNotBefore());
-        long expectedDays = java.time.temporal.ChronoUnit.DAYS.between(saved.getNotBefore(), saved.getNotAfter());
-        assertThat(saved.getDaysRemaining()).isEqualTo((int) expectedDays);
+        LocalDateTime now = LocalDateTime.now(CLOCK);
+        assertThat(saved.getNotBefore()).isEqualTo(now);
+        assertThat(saved.getNotAfter()).isEqualTo(now.plusYears(1));
+        assertThat(saved.getDaysRemaining()).isEqualTo(365);
     }
 
     @Test
@@ -179,12 +217,34 @@ class K8sCertServiceTest {
         assertThat(result.getSan()).containsExactly("new.example.com");
         assertThat(result.getId()).isEqualTo("cert-1");
         assertThat(result.getCreatedAt()).isEqualTo(LocalDateTime.of(2024, 12, 1, 0, 0));
-        assertThat(result.getUpdatedAt()).isAfter(sampleCert.getUpdatedAt());
+        assertThat(result.getUpdatedAt()).isEqualTo(LocalDateTime.now(CLOCK));
         assertThat(result).isNotSameAs(sampleCert);
         assertThat(sampleCert.getName()).isEqualTo("rocketmq-tls");
         assertThat(sampleCert.getType()).isEqualTo(CertType.TLS);
         assertThat(sampleCert.getUpdatedAt()).isEqualTo(LocalDateTime.of(2025, 1, 2, 0, 0));
         verify(k8sCertRepository).save(any(K8sCertVO.class));
+    }
+
+    @Test
+    void updateCertShouldRefreshTimeDerivedExpiryFields() {
+        LocalDateTime now = LocalDateTime.now(CLOCK);
+        sampleCert.setNotAfter(now.minusDays(1));
+        sampleCert.setStatus(CertStatus.valid);
+        sampleCert.setDaysRemaining(180);
+        when(k8sCertRepository.findById("cert-1")).thenReturn(Optional.of(sampleCert));
+        when(k8sCertRepository.save(any(K8sCertVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        UpdateCertDTO command = UpdateCertDTO.builder()
+                .id("cert-1")
+                .name("updated-expired-cert")
+                .build();
+
+        K8sCertVO result = k8sCertService.updateCert(command);
+
+        assertThat(result.getStatus()).isEqualTo(CertStatus.expired);
+        assertThat(result.getDaysRemaining()).isEqualTo(-1);
+        assertThat(sampleCert.getStatus()).isEqualTo(CertStatus.valid);
+        assertThat(sampleCert.getDaysRemaining()).isEqualTo(180);
+        verify(k8sCertRepository).save(result);
     }
 
     @Test
@@ -253,12 +313,13 @@ class K8sCertServiceTest {
         RenewCertDTO command = RenewCertDTO.builder().id("cert-1").build();
 
         K8sCertVO result = k8sCertService.renewCert(command);
+        LocalDateTime now = LocalDateTime.now(CLOCK);
 
         assertThat(result.getStatus()).isEqualTo(CertStatus.valid);
-        assertThat(result.getDaysRemaining()).isGreaterThan(0);
-        assertThat(result.getNotBefore()).isNotNull();
-        assertThat(result.getNotAfter()).isAfter(result.getNotBefore());
-        assertThat(result.getUpdatedAt()).isNotNull();
+        assertThat(result.getDaysRemaining()).isEqualTo(365);
+        assertThat(result.getNotBefore()).isEqualTo(now);
+        assertThat(result.getNotAfter()).isEqualTo(now.plusYears(1));
+        assertThat(result.getUpdatedAt()).isEqualTo(now);
         assertThat(result.getId()).isEqualTo("cert-1");
         assertThat(result.getCreatedAt()).isEqualTo(sampleCert.getCreatedAt());
         assertThat(result).isNotSameAs(sampleCert);
@@ -323,5 +384,25 @@ class K8sCertServiceTest {
         assertThatThrownBy(() -> k8sCertService.deleteCert(command))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Certificate not found: nonexistent");
+    }
+
+    private K8sCertVO copyWithExpiry(String id, LocalDateTime notAfter, CertStatus status,
+                                     int daysRemaining) {
+        K8sCertVO cert = K8sCertVO.builder()
+                .name(sampleCert.getName())
+                .namespace(sampleCert.getNamespace())
+                .cluster(sampleCert.getCluster())
+                .type(sampleCert.getType())
+                .issuer(sampleCert.getIssuer())
+                .notBefore(sampleCert.getNotBefore())
+                .notAfter(notAfter)
+                .status(status)
+                .daysRemaining(daysRemaining)
+                .san(sampleCert.getSan())
+                .build();
+        cert.setId(id);
+        cert.setCreatedAt(sampleCert.getCreatedAt());
+        cert.setUpdatedAt(sampleCert.getUpdatedAt());
+        return cert;
     }
 }

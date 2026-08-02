@@ -19,31 +19,49 @@ package org.apache.rocketmq.studio.cluster.k8s;
 import org.apache.rocketmq.studio.common.domain.enums.CertStatus;
 import org.apache.rocketmq.studio.common.domain.enums.CertType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class K8sCertService {
 
+    private static final int EXPIRING_THRESHOLD_DAYS = 30;
+
     private final K8sCertRepository k8sCertRepository;
+    private final Clock clock;
+
+    @Autowired
+    public K8sCertService(K8sCertRepository k8sCertRepository) {
+        this(k8sCertRepository, Clock.systemDefaultZone());
+    }
+
+    K8sCertService(K8sCertRepository k8sCertRepository, Clock clock) {
+        this.k8sCertRepository = k8sCertRepository;
+        this.clock = clock;
+    }
 
     public List<K8sCertVO> listCerts() {
         log.info("Listing all K8s certificates");
-        return k8sCertRepository.findAll();
+        LocalDateTime now = LocalDateTime.now(clock);
+        return k8sCertRepository.findAll().stream()
+                .map(cert -> refreshExpirationState(cert, now))
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
     public K8sCertVO createCert(CreateCertDTO command) {
         log.info("Creating K8s certificate: {}", command.getName());
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(clock);
         LocalDateTime notAfter = now.plusYears(1);
 
         K8sCertVO cert = K8sCertVO.builder()
@@ -91,9 +109,10 @@ public class K8sCertService {
         if (command.getSan() != null) {
             updated.setSan(command.getSan());
         }
-        updated.setUpdatedAt(LocalDateTime.now());
+        LocalDateTime now = LocalDateTime.now(clock);
+        updated.setUpdatedAt(now);
 
-        K8sCertVO saved = k8sCertRepository.save(updated);
+        K8sCertVO saved = k8sCertRepository.save(refreshExpirationState(updated, now));
         log.info("K8s certificate updated: {} (id={})", saved.getName(), saved.getId());
         return saved;
     }
@@ -103,7 +122,7 @@ public class K8sCertService {
         K8sCertVO existing = k8sCertRepository.findById(command.getId())
                 .orElseThrow(() -> new BusinessException(404, "Certificate not found: " + command.getId()));
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(clock);
         LocalDateTime notAfter = now.plusYears(1);
 
         K8sCertVO renewed = copyOf(existing);
@@ -124,6 +143,25 @@ public class K8sCertService {
                 .orElseThrow(() -> new BusinessException(404, "Certificate not found: " + command.getId()));
         k8sCertRepository.deleteById(command.getId());
         log.info("K8s certificate deleted: {}", command.getId());
+    }
+
+    private K8sCertVO refreshExpirationState(K8sCertVO cert, LocalDateTime now) {
+        K8sCertVO refreshed = copyOf(cert);
+        LocalDateTime notAfter = refreshed.getNotAfter();
+        if (notAfter == null) {
+            return refreshed;
+        }
+
+        int daysRemaining = (int) ChronoUnit.DAYS.between(now, notAfter);
+        refreshed.setDaysRemaining(daysRemaining);
+        if (!notAfter.isAfter(now)) {
+            refreshed.setStatus(CertStatus.expired);
+        } else if (daysRemaining <= EXPIRING_THRESHOLD_DAYS) {
+            refreshed.setStatus(CertStatus.expiring);
+        } else {
+            refreshed.setStatus(CertStatus.valid);
+        }
+        return refreshed;
     }
 
     private K8sCertVO copyOf(K8sCertVO cert) {
