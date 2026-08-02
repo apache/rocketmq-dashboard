@@ -16,8 +16,9 @@
  */
 
 import type { ReactElement } from 'react';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
 import AlertManagementPage from '../AlertManagement';
@@ -41,6 +42,16 @@ groups:
       annotations:
         summary: "Broker unavailable"
         description: "Broker has been unavailable for five minutes"
+    # Rule 2:
+    - alert: ConsumerLagHigh
+      expr: rocketmq_consumer_lag_messages > 100000
+      for: 10m
+      labels:
+        severity: warning
+        team: consumer
+      annotations:
+        summary: "Consumer lag is high"
+        description: "Consumer lag has exceeded the threshold"
 `;
 
 beforeAll(() => {
@@ -68,10 +79,29 @@ const renderWithProviders = (ui: ReactElement) => {
 };
 
 describe('AlertManagementPage', () => {
+  let createObjectURL: ReturnType<typeof vi.fn>;
+  let revokeObjectURL: ReturnType<typeof vi.fn>;
+  let clickSpy: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    createObjectURL = vi.fn().mockReturnValue('blob:alert-rules');
+    revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      value: revokeObjectURL,
+    });
+    clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     vi.mocked(queryAlertRules).mockResolvedValue({ rules: rulesYaml });
+  });
+
+  afterEach(() => {
+    clickSpy.mockRestore();
   });
 
   it('loads alert rules after mount', async () => {
@@ -82,5 +112,79 @@ describe('AlertManagementPage', () => {
     });
 
     expect(await screen.findByText('BrokerDown')).toBeInTheDocument();
+  });
+
+  it('exports only the selected enabled alert rules when rows are selected', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<AlertManagementPage />);
+
+    const brokerRule = await screen.findByText('BrokerDown');
+    expect(screen.getByText('ConsumerLagHigh')).toBeInTheDocument();
+
+    const brokerRow = brokerRule.closest('tr');
+    expect(brokerRow).not.toBeNull();
+    await user.click(within(brokerRow!).getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: '导出 YAML (1)' }));
+
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    const blob = createObjectURL.mock.calls[0][0] as Blob;
+    const yaml = await blob.text();
+    expect(yaml).toContain('alert: BrokerDown');
+    expect(yaml).not.toContain('alert: ConsumerLagHigh');
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:alert-rules');
+  });
+
+  it('exports all enabled alert rules when no rows are selected', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<AlertManagementPage />);
+
+    await screen.findByText('BrokerDown');
+    await user.click(screen.getByRole('button', { name: '导出 YAML' }));
+
+    const blob = createObjectURL.mock.calls[0][0] as Blob;
+    const yaml = await blob.text();
+    expect(yaml).toContain('alert: BrokerDown');
+    expect(yaml).toContain('alert: ConsumerLagHigh');
+  });
+
+  it('removes a selected rule when it is disabled', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<AlertManagementPage />);
+
+    const brokerRule = await screen.findByText('BrokerDown');
+    const brokerRow = brokerRule.closest('tr');
+    expect(brokerRow).not.toBeNull();
+
+    await user.click(within(brokerRow!).getByRole('checkbox'));
+    expect(screen.getByRole('button', { name: '导出 YAML (1)' })).toBeInTheDocument();
+
+    await user.click(within(brokerRow!).getByRole('switch'));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '导出 YAML' })).toBeInTheDocument();
+    });
+    expect(within(brokerRow!).getByRole('checkbox')).toBeDisabled();
+  });
+
+  it('preserves selected rules while filtering the table', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<AlertManagementPage />);
+
+    const brokerRule = await screen.findByText('BrokerDown');
+    const brokerRow = brokerRule.closest('tr');
+    expect(brokerRow).not.toBeNull();
+    await user.click(within(brokerRow!).getByRole('checkbox'));
+
+    await user.type(screen.getByRole('textbox'), 'ConsumerLagHigh');
+
+    expect(screen.queryByText('BrokerDown')).not.toBeInTheDocument();
+    expect(screen.getByText('ConsumerLagHigh')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '导出 YAML (1)' }));
+
+    const blob = createObjectURL.mock.calls[0][0] as Blob;
+    const yaml = await blob.text();
+    expect(yaml).toContain('alert: BrokerDown');
+    expect(yaml).not.toContain('alert: ConsumerLagHigh');
   });
 });
