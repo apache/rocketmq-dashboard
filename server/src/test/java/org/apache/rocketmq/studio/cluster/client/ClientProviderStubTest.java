@@ -14,27 +14,31 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.apache.rocketmq.studio.cluster.client;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Component;
 
-import java.util.List;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * Placeholder {@link ClientProvider} used until a real Remoting/gRPC client provider is connected.
- *
- * <p>Rather than returning hard-coded sample connections (which could mislead operators into
- * believing real clients are online), the operation fails explicitly with a structured
- * "not implemented" response.
- */
-@Component
-public class ClientProviderStub implements ClientProvider {
+class ClientProviderStubTest {
 
-    @Override
-    public List<ClientConnectionVO> findConnections(String clusterId, String type) {
-        throw new BusinessException(HttpStatus.NOT_IMPLEMENTED.value(),
-                "Client connection listing is not yet implemented: no client provider is connected");
+    private final ClientProviderStub provider = new ClientProviderStub();
+
+    @Test
+    void findConnectionsShouldFailAsNotImplemented() {
+        assertThatThrownBy(() -> provider.findConnections(null, null))
+                .isInstanceOfSatisfying(BusinessException.class, ex ->
+                        assertThat(ex.getCode()).isEqualTo(HttpStatus.NOT_IMPLEMENTED.value()));
+    }
+
+    @Test
+    void findConnectionsShouldFailAsNotImplementedForAnyFilter() {
+        assertThatThrownBy(() -> provider.findConnections("production-cluster", "Producer"))
+                .isInstanceOfSatisfying(BusinessException.class, ex ->
+                        assertThat(ex.getCode()).isEqualTo(HttpStatus.NOT_IMPLEMENTED.value()));
     }
 }
