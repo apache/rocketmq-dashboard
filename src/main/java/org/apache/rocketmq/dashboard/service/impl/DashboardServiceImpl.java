@@ -68,6 +68,10 @@ public class DashboardServiceImpl implements DashboardService {
         List<String> result = Lists.newArrayList();
         for (Map.Entry<String, List<String>> entry : topicCache.entrySet()) {
             List<String> value = entry.getValue();
+            // A topic may have no collected data points yet; skip it instead of calling get(-1).
+            if (value == null || value.isEmpty()) {
+                continue;
+            }
             result.add(entry.getKey() + "," + value.get(value.size() - 1).split(",")[4]);
         }
         return result;
