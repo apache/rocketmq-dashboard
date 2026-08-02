@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -80,6 +80,29 @@ const LlmSettingsPage: React.FC = () => {
   const [apiKeyConfigured, setApiKeyConfigured] = useState(false);
   const [modelOptions, setModelOptions] = useState<{ value: string; label: string }[]>([]);
   const [testResult, setTestResult] = useState<TestState | null>(null);
+  const mountedRef = useRef(false);
+  const lifecycleGeneration = useRef(0);
+  const operationGeneration = useRef(0);
+  const testRequestGeneration = useRef(0);
+  const saveRequestGeneration = useRef(0);
+
+  const beginOperation = () => {
+    const lifecycle = lifecycleGeneration.current;
+    const operation = ++operationGeneration.current;
+    return () =>
+      mountedRef.current &&
+      lifecycleGeneration.current === lifecycle &&
+      operationGeneration.current === operation;
+  };
+
+  const invalidateOperation = useCallback(() => {
+    operationGeneration.current += 1;
+    testRequestGeneration.current += 1;
+    if (mountedRef.current) {
+      setTesting(false);
+      setTestResult(null);
+    }
+  }, []);
 
   const buildModelOptions = (
     nextProvider: string,
@@ -112,6 +135,8 @@ const LlmSettingsPage: React.FC = () => {
   };
 
   useEffect(() => {
+    const lifecycle = ++lifecycleGeneration.current;
+    mountedRef.current = true;
     let cancelled = false;
     Promise.all([getLlmConfig(), getLlmModels().catch(() => null)])
       .then(([config, models]) => {
@@ -126,11 +151,19 @@ const LlmSettingsPage: React.FC = () => {
       });
     return () => {
       cancelled = true;
+      if (lifecycleGeneration.current === lifecycle) {
+        mountedRef.current = false;
+        lifecycleGeneration.current += 1;
+        operationGeneration.current += 1;
+        testRequestGeneration.current += 1;
+        saveRequestGeneration.current += 1;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleProviderChange = (nextProvider: string) => {
+    invalidateOperation();
     setModelOptions(fallbackModelOptions(nextProvider));
     const fallbackModel = fallbackModelOptions(nextProvider)[0]?.value;
     form.setFieldsValue({
@@ -138,7 +171,6 @@ const LlmSettingsPage: React.FC = () => {
       model: fallbackModel,
       apiBase: DEFAULT_BASE_URL[nextProvider] || form.getFieldValue('apiBase'),
     });
-    setTestResult(null);
   };
 
   const buildPayload = async (): Promise<LlmConfig | null> => {
@@ -175,25 +207,38 @@ const LlmSettingsPage: React.FC = () => {
   };
 
   const handleTest = async () => {
+    const ownsOperation = beginOperation();
     const payload = await buildPayload();
-    if (!payload) return;
+    if (!payload || !ownsOperation()) return;
+    const request = ++testRequestGeneration.current;
     setTesting(true);
     setTestResult(null);
     try {
-      applyTestResult(await testLlmConnection(payload));
+      const result = await testLlmConnection(payload);
+      if (ownsOperation()) applyTestResult(result);
     } catch {
-      setTestResult({ success: false, msg: '连接测试请求失败，请稍后重试' });
+      if (ownsOperation()) {
+        setTestResult({ success: false, msg: '连接测试请求失败，请稍后重试' });
+      }
     } finally {
-      setTesting(false);
+      if (mountedRef.current && testRequestGeneration.current === request) {
+        setTesting(false);
+      }
     }
   };
 
   const handleSave = async () => {
+    const ownsOperation = beginOperation();
+    testRequestGeneration.current += 1;
+    setTesting(false);
+    setTestResult(null);
     const payload = await buildPayload();
-    if (!payload) return;
+    if (!payload || !ownsOperation()) return;
+    const request = ++saveRequestGeneration.current;
     setSaving(true);
     try {
       const result = await saveLlmConfig(payload);
+      if (!ownsOperation()) return;
       if (result.status === 0) {
         message.success('保存成功');
         if (payload.apiKey) {
@@ -204,9 +249,11 @@ const LlmSettingsPage: React.FC = () => {
         message.error(result.errMsg || '保存失败');
       }
     } catch {
-      message.error('保存请求失败，请稍后重试');
+      if (ownsOperation()) message.error('保存请求失败，请稍后重试');
     } finally {
-      setSaving(false);
+      if (mountedRef.current && saveRequestGeneration.current === request) {
+        setSaving(false);
+      }
     }
   };
 
@@ -219,6 +266,7 @@ const LlmSettingsPage: React.FC = () => {
           form={form}
           layout="vertical"
           initialValues={{ provider: 'tongyi', engine: 'claude-code' }}
+          onValuesChange={invalidateOperation}
         >
           <Form.Item
             label="执行引擎"
@@ -302,7 +350,7 @@ const LlmSettingsPage: React.FC = () => {
               <Button type="primary" loading={saving} onClick={() => void handleSave()}>
                 保存
               </Button>
-              <Button loading={testing} onClick={() => void handleTest()}>
+              <Button disabled={saving} loading={testing} onClick={() => void handleTest()}>
                 测试连接
               </Button>
             </Space>
