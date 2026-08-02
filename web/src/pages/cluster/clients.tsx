@@ -25,10 +25,12 @@ import {
   Modal,
   Select,
   Space,
+  Statistic,
   Table,
   Tag,
   Typography,
   message,
+  theme,
 } from 'antd';
 import { Eye, MagnifyingGlass } from '@phosphor-icons/react';
 import type { ColumnsType } from 'antd/es/table';
@@ -57,13 +59,28 @@ const languageConfig: Record<string, { color: string; label: string }> = {
   Go: { color: 'cyan', label: 'Go' },
   Python: { color: 'purple', label: 'Python' },
   Rust: { color: 'orange', label: 'Rust' },
+  Cpp: { color: 'geekblue', label: 'C++' },
+  CSharp: { color: 'magenta', label: 'C#' },
+  NodeJS: { color: 'lime', label: 'Node.js' },
+  PHP: { color: 'gold', label: 'PHP' },
 };
+
+const countBy = (values: string[]) =>
+  [
+    ...values.reduce(
+      (counts, value) => counts.set(value, (counts.get(value) ?? 0) + 1),
+      new Map<string, number>(),
+    ),
+  ]
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
 
 /* ═══════════════════════════════════════════
    ClientsPage
    ═══════════════════════════════════════════ */
 const ClientsPage = () => {
   const { t } = useLang();
+  const { token } = theme.useToken();
   const [connections, setConnections] = useState<ClientConnection[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -100,18 +117,36 @@ const ClientsPage = () => {
     ];
   }, [connections, t]);
 
+  const clusterConnections = useMemo(
+    () =>
+      clusterFilter === 'ALL'
+        ? connections
+        : connections.filter((connection) => connection.clusterName === clusterFilter),
+    [connections, clusterFilter],
+  );
+
+  const connectionStats = useMemo(
+    () => ({
+      total: clusterConnections.length,
+      producers: clusterConnections.filter((connection) => connection.type === 'Producer').length,
+      consumers: clusterConnections.filter((connection) => connection.type === 'Consumer').length,
+      protocols: countBy(clusterConnections.map((connection) => connection.protocol)),
+      languageVersions: countBy(
+        clusterConnections.map((connection) => `${connection.language} ${connection.version}`),
+      ),
+    }),
+    [clusterConnections],
+  );
+
   /* ─── Filtered data (search + cluster only, table handles column filters) ─── */
   const filtered = useMemo(() => {
-    let data = connections.filter(
-      (c) => c.clientId.toLowerCase().includes(search.toLowerCase()) || c.address.includes(search),
+    const normalizedSearch = search.toLowerCase();
+    return clusterConnections.filter(
+      (connection) =>
+        connection.clientId.toLowerCase().includes(normalizedSearch) ||
+        connection.address.includes(search),
     );
-
-    if (clusterFilter !== 'ALL') {
-      data = data.filter((c) => c.clusterName === clusterFilter);
-    }
-
-    return data;
-  }, [connections, search, clusterFilter]);
+  }, [clusterConnections, search]);
 
   /* ═══════════════════════════════════════════
      Table Columns (with built-in filters)
@@ -205,12 +240,10 @@ const ClientsPage = () => {
       dataIndex: 'language',
       key: 'language',
       width: 100,
-      filters: [
-        { text: 'Java', value: 'Java' },
-        { text: 'Go', value: 'Go' },
-        { text: 'Python', value: 'Python' },
-        { text: 'Rust', value: 'Rust' },
-      ],
+      filters: Object.entries(languageConfig).map(([value, config]) => ({
+        text: config.label,
+        value,
+      })),
       onFilter: (value, record) => record.language === value,
       render: (lang: string) => {
         const cfg = languageConfig[lang] ?? { color: 'default', label: lang };
@@ -268,6 +301,7 @@ const ClientsPage = () => {
       <Flex justify="space-between" align="center" style={{ marginBottom: 16 }}>
         <Space size={12} wrap>
           <Select
+            aria-label={t('clients.cluster')}
             value={clusterFilter}
             onChange={setClusterFilter}
             style={{ width: 180 }}
@@ -283,6 +317,67 @@ const ClientsPage = () => {
             prefix={<MagnifyingGlass size={14} color="#9CA3AF" />}
           />
         </Space>
+      </Flex>
+
+      <Flex
+        data-testid="connection-statistics"
+        gap={32}
+        align="flex-start"
+        wrap
+        style={{
+          marginBottom: 16,
+          padding: '12px 16px',
+          background: token.colorBgContainer,
+          border: `1px solid ${token.colorBorderSecondary}`,
+          borderRadius: token.borderRadiusLG,
+        }}
+      >
+        <div data-testid="connection-total">
+          <Statistic title={t('clients.title')} value={connectionStats.total} />
+        </div>
+        <div data-testid="producer-total">
+          <Statistic title="Producer" value={connectionStats.producers} />
+        </div>
+        <div data-testid="consumer-total">
+          <Statistic title="Consumer" value={connectionStats.consumers} />
+        </div>
+        <div data-testid="protocol-distribution" style={{ minWidth: 180 }}>
+          <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
+            {t('clients.protocol')}
+          </Text>
+          <Flex gap={4} wrap>
+            {connectionStats.protocols.length > 0 ? (
+              connectionStats.protocols.map(({ label, count }) => (
+                <Tag key={label} color={protocolConfig[label]?.color ?? 'default'}>
+                  {label}: {count}
+                </Tag>
+              ))
+            ) : (
+              <Text type="secondary">{t('common.noData')}</Text>
+            )}
+          </Flex>
+        </div>
+        <div data-testid="language-version-distribution" style={{ minWidth: 220 }}>
+          <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
+            {t('clients.language')} / {t('common.version')}
+          </Text>
+          <Flex gap={4} wrap style={{ maxHeight: 76, overflowY: 'auto' }}>
+            {connectionStats.languageVersions.length > 0 ? (
+              connectionStats.languageVersions.map(({ label, count }) => {
+                const [language, ...versionParts] = label.split(' ');
+                const version = versionParts.join(' ');
+                const config = languageConfig[language] ?? { color: 'default', label: language };
+                return (
+                  <Tag key={label} color={config.color}>
+                    {config.label} {version}: {count}
+                  </Tag>
+                );
+              })
+            ) : (
+              <Text type="secondary">{t('common.noData')}</Text>
+            )}
+          </Flex>
+        </div>
       </Flex>
 
       {/* ─── Table ─── */}

@@ -16,7 +16,7 @@
  */
 
 import { App } from 'antd';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -40,6 +40,32 @@ const connection: ClientConnection = {
   connectedAt: '2026-07-01 08:30:00',
   clusterName: 'ns-prod',
 };
+
+const connections: ClientConnection[] = [
+  connection,
+  {
+    clientId: 'payment-svc-0@10.0.1.13:49153',
+    type: 'Consumer',
+    groupOrTopic: 'payment-consumer',
+    protocol: 'gRPC',
+    address: '10.0.1.13:49153',
+    language: 'Go',
+    version: '2.1.0',
+    connectedAt: '2026-07-01 08:31:00',
+    clusterName: 'ns-prod',
+  },
+  {
+    clientId: 'audit-svc-0@10.0.2.10:49154',
+    type: 'Consumer',
+    groupOrTopic: 'audit-consumer',
+    protocol: 'Remoting',
+    address: '10.0.2.10:49154',
+    language: 'Cpp',
+    version: '4.9.8',
+    connectedAt: '2026-07-01 08:32:00',
+    clusterName: 'ns-audit',
+  },
+];
 
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
@@ -73,6 +99,94 @@ const renderWithProviders = (ui: React.ReactElement) =>
   );
 
 describe('Clients page', () => {
+  it('summarizes connection types, protocols, and language versions', async () => {
+    vi.mocked(connectionsService.listConnections).mockResolvedValue(connections);
+    renderWithProviders(<ClientsPage />);
+
+    expect(
+      within(await screen.findByTestId('connection-total')).getByText('3'),
+    ).toBeInTheDocument();
+    expect(within(screen.getByTestId('producer-total')).getByText('1')).toBeInTheDocument();
+    expect(within(screen.getByTestId('consumer-total')).getByText('2')).toBeInTheDocument();
+
+    const protocols = screen.getByTestId('protocol-distribution');
+    expect(within(protocols).getByText('gRPC: 2')).toBeInTheDocument();
+    expect(within(protocols).getByText('Remoting: 1')).toBeInTheDocument();
+
+    const languageVersions = screen.getByTestId('language-version-distribution');
+    expect(within(languageVersions).getByText('Java 5.0.7: 1')).toBeInTheDocument();
+    expect(within(languageVersions).getByText('Go 2.1.0: 1')).toBeInTheDocument();
+    expect(within(languageVersions).getByText('C++ 4.9.8: 1')).toBeInTheDocument();
+  });
+
+  it('updates statistics when the selected cluster changes', async () => {
+    const user = userEvent.setup();
+    vi.mocked(connectionsService.listConnections).mockResolvedValue(connections);
+    renderWithProviders(<ClientsPage />);
+
+    await screen.findByText('audit-svc-0@10.0.2.10:49154');
+    await user.click(screen.getByRole('combobox', { name: '所属集群' }));
+    await user.click(
+      await screen.findByText('ns-prod', { selector: '.ant-select-item-option-content' }),
+    );
+
+    await waitFor(() => {
+      expect(within(screen.getByTestId('connection-total')).getByText('2')).toBeInTheDocument();
+    });
+    expect(within(screen.getByTestId('producer-total')).getByText('1')).toBeInTheDocument();
+    expect(within(screen.getByTestId('consumer-total')).getByText('1')).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('protocol-distribution')).getByText('gRPC: 2'),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('protocol-distribution')).queryByText('Remoting: 1'),
+    ).toBeNull();
+    expect(
+      within(screen.getByTestId('language-version-distribution')).getByText('Java 5.0.7: 1'),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('language-version-distribution')).queryByText('C++ 4.9.8: 1'),
+    ).toBeNull();
+  });
+
+  it('keeps cluster statistics stable when text search narrows the table', async () => {
+    const user = userEvent.setup();
+    vi.mocked(connectionsService.listConnections).mockResolvedValue(connections);
+    renderWithProviders(<ClientsPage />);
+
+    await screen.findByText('audit-svc-0@10.0.2.10:49154');
+    await user.type(screen.getByPlaceholderText('搜索 Client ID 或地址'), 'order-svc');
+
+    expect(within(screen.getByTestId('connection-total')).getByText('3')).toBeInTheDocument();
+    expect(within(screen.getByTestId('producer-total')).getByText('1')).toBeInTheDocument();
+    expect(within(screen.getByTestId('consumer-total')).getByText('2')).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('protocol-distribution')).getByText('Remoting: 1'),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('language-version-distribution')).getByText('C++ 4.9.8: 1'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('order-svc-0@10.0.1.12:49152')).toBeInTheDocument();
+    expect(screen.queryByText('audit-svc-0@10.0.2.10:49154')).toBeNull();
+  });
+
+  it('renders empty distributions when no connections are available', async () => {
+    vi.mocked(connectionsService.listConnections).mockResolvedValue([]);
+    renderWithProviders(<ClientsPage />);
+
+    expect(
+      within(await screen.findByTestId('connection-total')).getByText('0'),
+    ).toBeInTheDocument();
+    expect(within(screen.getByTestId('producer-total')).getByText('0')).toBeInTheDocument();
+    expect(within(screen.getByTestId('consumer-total')).getByText('0')).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('protocol-distribution')).getByText('暂无数据'),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('language-version-distribution')).getByText('暂无数据'),
+    ).toBeInTheDocument();
+  });
+
   it('opens a client detail dialog from the connection table', async () => {
     const user = userEvent.setup();
     renderWithProviders(<ClientsPage />);
