@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { Button, Result, Spin } from 'antd';
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { getAuthStatus } from './api/auth';
@@ -23,32 +23,33 @@ import { USE_MOCK } from './config';
 import { useLang } from './i18n/LangContext';
 import useAuthStore from './stores/authStore';
 import MainLayout from './layouts/MainLayout';
-import HomePage from './pages/home';
-import InstancePage from './pages/instance';
-import TopicPage from './pages/instance/topic';
-import ConsumerPage from './pages/instance/consumer';
-import MessagePage from './pages/instance/message';
-import AclPage from './pages/instance/acl';
-import DlqPage from './pages/instance/dlq';
-import ClusterPage from './pages/cluster';
-import K8sCertsPage from './pages/cluster/certs';
-import ClientsPage from './pages/cluster/clients';
-import DashboardOpsPage from './pages/home/dashboard';
-import AlertsPage from './pages/ops/alerts';
-import SystemAlertsPage from './pages/ops/systemAlerts';
-import AuditPage from './pages/ops/audit';
-import AiPage from './pages/ai';
-import SettingsPage from './pages/settings';
-import LlmSettingsPage from './pages/studio/LlmSettings';
-import ProxyPage from './pages/studio/Proxy';
-import LiteTopicPage from './pages/studio/LiteTopic';
-import GroupManagementPage from './pages/studio/GroupManagement';
-import BrokerClusterPage from './pages/studio/BrokerCluster';
-import SslSettingsPage from './pages/studio/SslSettings';
-import AlertManagementPage from './pages/studio/AlertManagement';
-import ProducerPage from './pages/studio/Producer';
-import OpsPage from './pages/studio/Ops';
 import LoginPage from './pages/login';
+
+const HomePage = lazy(() => import('./pages/home'));
+const InstancePage = lazy(() => import('./pages/instance'));
+const TopicPage = lazy(() => import('./pages/instance/topic'));
+const ConsumerPage = lazy(() => import('./pages/instance/consumer'));
+const MessagePage = lazy(() => import('./pages/instance/message'));
+const AclPage = lazy(() => import('./pages/instance/acl'));
+const DlqPage = lazy(() => import('./pages/instance/dlq'));
+const ClusterPage = lazy(() => import('./pages/cluster'));
+const K8sCertsPage = lazy(() => import('./pages/cluster/certs'));
+const ClientsPage = lazy(() => import('./pages/cluster/clients'));
+const DashboardOpsPage = lazy(() => import('./pages/home/dashboard'));
+const AlertsPage = lazy(() => import('./pages/ops/alerts'));
+const SystemAlertsPage = lazy(() => import('./pages/ops/systemAlerts'));
+const AuditPage = lazy(() => import('./pages/ops/audit'));
+const AiPage = lazy(() => import('./pages/ai'));
+const SettingsPage = lazy(() => import('./pages/settings'));
+const LlmSettingsPage = lazy(() => import('./pages/studio/LlmSettings'));
+const ProxyPage = lazy(() => import('./pages/studio/Proxy'));
+const LiteTopicPage = lazy(() => import('./pages/studio/LiteTopic'));
+const GroupManagementPage = lazy(() => import('./pages/studio/GroupManagement'));
+const BrokerClusterPage = lazy(() => import('./pages/studio/BrokerCluster'));
+const SslSettingsPage = lazy(() => import('./pages/studio/SslSettings'));
+const AlertManagementPage = lazy(() => import('./pages/studio/AlertManagement'));
+const ProducerPage = lazy(() => import('./pages/studio/Producer'));
+const OpsPage = lazy(() => import('./pages/studio/Ops'));
 
 type AuthGateState = 'checking' | 'allowed' | 'denied' | 'error';
 
@@ -114,38 +115,60 @@ export function AuthGate() {
   return <Outlet />;
 }
 
+export function LazyRouteOutlet() {
+  const { t } = useLang();
+
+  return (
+    <Suspense
+      fallback={
+        <div
+          role="status"
+          aria-label={t('common.loading')}
+          style={{ minHeight: 240, display: 'grid', placeItems: 'center' }}
+        >
+          <Spin size="large" />
+        </div>
+      }
+    >
+      <Outlet />
+    </Suspense>
+  );
+}
+
 function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route element={<AuthGate />}>
         <Route path="/" element={<MainLayout />}>
-          <Route index element={<HomePage />} />
-          <Route path="instance" element={<InstancePage />} />
-          <Route path="instance/topic" element={<TopicPage />} />
-          <Route path="instance/consumer" element={<ConsumerPage />} />
-          <Route path="instance/message" element={<MessagePage />} />
-          <Route path="instance/acl" element={<AclPage />} />
-          <Route path="instance/dlq" element={<DlqPage />} />
-          <Route path="cluster" element={<ClusterPage />} />
-          <Route path="cluster/certs" element={<K8sCertsPage />} />
-          <Route path="cluster/clients" element={<ClientsPage />} />
-          <Route path="ops/dashboard" element={<DashboardOpsPage />} />
-          <Route path="ops/alerts" element={<AlertsPage />} />
-          <Route path="ops/system-alerts" element={<SystemAlertsPage />} />
-          <Route path="ops/audit" element={<AuditPage />} />
-          <Route path="ai" element={<AiPage />} />
-          <Route path="settings" element={<SettingsPage />} />
-          <Route path="studio/llm-settings" element={<LlmSettingsPage />} />
-          <Route path="studio/proxy" element={<ProxyPage />} />
-          <Route path="studio/lite-topic" element={<LiteTopicPage />} />
-          <Route path="studio/group-management" element={<GroupManagementPage />} />
-          <Route path="studio/broker-cluster" element={<BrokerClusterPage />} />
-          <Route path="studio/ssl-settings" element={<SslSettingsPage />} />
-          <Route path="studio/alert-management" element={<AlertManagementPage />} />
-          <Route path="studio/producer" element={<ProducerPage />} />
-          <Route path="studio/ops" element={<OpsPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route element={<LazyRouteOutlet />}>
+            <Route index element={<HomePage />} />
+            <Route path="instance" element={<InstancePage />} />
+            <Route path="instance/topic" element={<TopicPage />} />
+            <Route path="instance/consumer" element={<ConsumerPage />} />
+            <Route path="instance/message" element={<MessagePage />} />
+            <Route path="instance/acl" element={<AclPage />} />
+            <Route path="instance/dlq" element={<DlqPage />} />
+            <Route path="cluster" element={<ClusterPage />} />
+            <Route path="cluster/certs" element={<K8sCertsPage />} />
+            <Route path="cluster/clients" element={<ClientsPage />} />
+            <Route path="ops/dashboard" element={<DashboardOpsPage />} />
+            <Route path="ops/alerts" element={<AlertsPage />} />
+            <Route path="ops/system-alerts" element={<SystemAlertsPage />} />
+            <Route path="ops/audit" element={<AuditPage />} />
+            <Route path="ai" element={<AiPage />} />
+            <Route path="settings" element={<SettingsPage />} />
+            <Route path="studio/llm-settings" element={<LlmSettingsPage />} />
+            <Route path="studio/proxy" element={<ProxyPage />} />
+            <Route path="studio/lite-topic" element={<LiteTopicPage />} />
+            <Route path="studio/group-management" element={<GroupManagementPage />} />
+            <Route path="studio/broker-cluster" element={<BrokerClusterPage />} />
+            <Route path="studio/ssl-settings" element={<SslSettingsPage />} />
+            <Route path="studio/alert-management" element={<AlertManagementPage />} />
+            <Route path="studio/producer" element={<ProducerPage />} />
+            <Route path="studio/ops" element={<OpsPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
         </Route>
       </Route>
     </Routes>

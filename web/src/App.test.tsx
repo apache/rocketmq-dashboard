@@ -15,11 +15,12 @@
  * limitations under the License.
  */
 
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { lazy, type ComponentType } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getAuthStatus } from './api/auth';
-import { AuthGate } from './App';
+import { AuthGate, LazyRouteOutlet } from './App';
 import { LangProvider } from './i18n/LangContext';
 
 vi.mock('./api/auth', async (importOriginal) => {
@@ -30,6 +31,40 @@ vi.mock('./api/auth', async (importOriginal) => {
 vi.mock('./config', () => ({ API_BASE_URL: '/api', USE_MOCK: false }));
 
 const mockedGetAuthStatus = vi.mocked(getAuthStatus);
+
+describe('LazyRouteOutlet', () => {
+  afterEach(() => cleanup());
+
+  it('shows a localized fallback until the route module loads', async () => {
+    let resolvePage!: (module: { default: ComponentType }) => void;
+    const pageModule = new Promise<{ default: ComponentType }>((resolve) => {
+      resolvePage = resolve;
+    });
+    const LazyPage = lazy(() => pageModule);
+
+    render(
+      <LangProvider>
+        <MemoryRouter initialEntries={['/lazy']}>
+          <Routes>
+            <Route element={<LazyRouteOutlet />}>
+              <Route path="/lazy" element={<LazyPage />} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </LangProvider>,
+    );
+
+    expect(screen.getByRole('status', { name: '加载中' })).toBeInTheDocument();
+
+    await act(async () => {
+      resolvePage({ default: () => <div>lazy page loaded</div> });
+      await pageModule;
+    });
+
+    expect(await screen.findByText('lazy page loaded')).toBeInTheDocument();
+    expect(screen.queryByRole('status', { name: '加载中' })).not.toBeInTheDocument();
+  });
+});
 
 function renderGate() {
   return render(
