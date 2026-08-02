@@ -23,17 +23,45 @@ export interface NavigationSearchEntry {
   icon?: ReactNode;
 }
 
+function normalizeSearchText(value: string): string {
+  return value
+    .normalize('NFKC')
+    .toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
+function matchScore(entry: NavigationSearchEntry, query: string, terms: string[]): number | null {
+  const label = normalizeSearchText(entry.label);
+  const key = normalizeSearchText(entry.key);
+  const searchableText = `${label} ${key}`;
+
+  if (!terms.every((term) => searchableText.includes(term))) return null;
+  if (label === query) return 0;
+  if (key === query) return 1;
+  if (label.startsWith(query)) return 2;
+  if (key.startsWith(query)) return 3;
+  if (label.includes(query)) return 4;
+  if (key.includes(query)) return 5;
+  return 6;
+}
+
 export function filterNavigationEntries(
   entries: NavigationSearchEntry[],
   query: string,
 ): NavigationSearchEntry[] {
-  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const normalizedQuery = normalizeSearchText(query);
   if (!normalizedQuery) return entries;
-  return entries.filter(
-    (entry) =>
-      entry.label.toLocaleLowerCase().includes(normalizedQuery) ||
-      entry.key.toLocaleLowerCase().includes(normalizedQuery),
-  );
+  const terms = normalizedQuery.split(' ');
+
+  return entries
+    .map((entry, index) => ({ entry, index, score: matchScore(entry, normalizedQuery, terms) }))
+    .filter(
+      (match): match is { entry: NavigationSearchEntry; index: number; score: number } =>
+        match.score !== null,
+    )
+    .sort((left, right) => left.score - right.score || left.index - right.index)
+    .map(({ entry }) => entry);
 }
 
 export function isNavigationSearchShortcut(event: {
