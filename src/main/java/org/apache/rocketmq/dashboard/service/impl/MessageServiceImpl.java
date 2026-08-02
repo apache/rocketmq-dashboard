@@ -528,6 +528,12 @@ public class MessageServiceImpl implements MessageService {
 
     private void moveEndOffset(List<QueueOffsetInfo> queueOffsets, MessageQueryByPage query, int next) {
         int size = queueOffsets.size();
+        // The loop below indexes queueOffsets and computes (next + 1) % size; with an empty
+        // list (e.g. a topic that has no message queues) that would throw
+        // IndexOutOfBoundsException and divide by zero.
+        if (size == 0) {
+            return;
+        }
         for (int j = 0; j < query.getPageSize(); j++) {
             QueueOffsetInfo nextQueueOffset = queueOffsets.get(next);
             next = (next + 1) % size;
