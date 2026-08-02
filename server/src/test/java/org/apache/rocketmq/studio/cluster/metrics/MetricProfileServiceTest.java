@@ -24,6 +24,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 class MetricProfileServiceTest {
 
@@ -82,6 +83,26 @@ class MetricProfileServiceTest {
         assertThat(messageOut.getName()).isEqualTo("Message Out TPS");
     }
 
+    @Test
+    void resolvePromqlShouldReturnVersionSpecificMapping() {
+        assertThat(service.resolvePromql("rocketmq4-exporter", "consumer_lag_messages"))
+                .isEqualTo("sum(rocketmq_message_accumulation) by (cluster, group, topic)");
+        assertThat(service.resolvePromql("rocketmq5-native", "consumer_lag_messages"))
+                .isEqualTo("sum(rocketmq_consumer_lag_messages) by (cluster, topic, consumer_group)");
+    }
+
+    @Test
+    void resolvePromqlShouldRejectUnknownProfile() {
+        assertBadRequest(() -> service.resolvePromql("rocketmq6-native", "message_in_tps"),
+                "Unknown metric profile: rocketmq6-native");
+    }
+
+    @Test
+    void resolvePromqlShouldRejectUnknownSemanticMetric() {
+        assertBadRequest(() -> service.resolvePromql("rocketmq5-native", "queue_depth"),
+                "Unknown semantic metric 'queue_depth' for profile 'rocketmq5-native'");
+    }
+
     private MetricProfileVO findProfile(String id) {
         return service.listProfiles().stream()
                 .filter(profile -> profile.getId().equals(id))
@@ -106,5 +127,14 @@ class MetricProfileServiceTest {
         return List.of(SemanticMetric.values()).stream()
                 .map(SemanticMetric::getKey)
                 .toList();
+    }
+
+    private void assertBadRequest(Runnable action, String message) {
+        assertThatExceptionOfType(PrometheusException.class)
+                .isThrownBy(action::run)
+                .satisfies(exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(400);
+                    assertThat(exception.getMessage()).isEqualTo(message);
+                });
     }
 }

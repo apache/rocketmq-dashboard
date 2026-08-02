@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.cluster.metrics;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -38,6 +39,9 @@ class MetricsServiceTest {
 
     @Mock
     private MetricsSource metricsSource;
+
+    @Mock
+    private MetricProfileService metricProfileService;
 
     @InjectMocks
     private MetricsService metricsService;
@@ -98,6 +102,59 @@ class MetricsServiceTest {
         metricsService.query(query);
 
         verify(metricsSource).query(query);
+    }
+
+    @Test
+    void queryShouldResolveSemanticMetricBeforeCallingSource() {
+        MetricQueryDTO query = MetricQueryDTO.builder()
+                .profileId("rocketmq5-native")
+                .semanticMetric("consumer_lag_messages")
+                .start(1700000000L)
+                .end(1700003600L)
+                .step("1m")
+                .build();
+        String promql = "sum(rocketmq_consumer_lag_messages) by (cluster, topic, consumer_group)";
+        when(metricProfileService.resolvePromql("rocketmq5-native", "consumer_lag_messages"))
+                .thenReturn(promql);
+        when(metricsSource.query(any(MetricQueryDTO.class))).thenReturn(emptyMetricData());
+
+        metricsService.query(query);
+
+        ArgumentCaptor<MetricQueryDTO> captor = ArgumentCaptor.forClass(MetricQueryDTO.class);
+        verify(metricsSource).query(captor.capture());
+        assertThat(captor.getValue())
+                .extracting(MetricQueryDTO::getMetric, MetricQueryDTO::getStart,
+                        MetricQueryDTO::getEnd, MetricQueryDTO::getStep)
+                .containsExactly(promql, 1700000000L, 1700003600L, "1m");
+        assertThat(query.getMetric()).isNull();
+    }
+
+    @Test
+    void queryShouldRejectIncompleteSemanticMetricSelection() {
+        MetricQueryDTO query = MetricQueryDTO.builder()
+                .profileId("rocketmq5-native")
+                .start(1700000000L)
+                .end(1700003600L)
+                .step("1m")
+                .build();
+
+        assertBadRequest(query, "Metric profile and semantic metric are required together");
+        verifyNoInteractions(metricsSource, metricProfileService);
+    }
+
+    @Test
+    void queryShouldRejectMixedRawAndSemanticMetricSelection() {
+        MetricQueryDTO query = MetricQueryDTO.builder()
+                .metric("up")
+                .profileId("rocketmq5-native")
+                .semanticMetric("broker_health")
+                .start(1700000000L)
+                .end(1700003600L)
+                .step("1m")
+                .build();
+
+        assertBadRequest(query, "Metric query cannot be combined with a semantic metric selection");
+        verifyNoInteractions(metricsSource, metricProfileService);
     }
 
     @Test

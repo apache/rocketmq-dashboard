@@ -26,7 +26,10 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -79,6 +82,45 @@ class MetricsControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.message").value("Metric query is required"));
+
+        verifyNoInteractions(metricsService);
+    }
+
+    @Test
+    void queryShouldAcceptSemanticMetricSelection() throws Exception {
+        when(metricsService.query(any(MetricQueryDTO.class))).thenReturn(MetricDataVO.builder()
+                .resultType("matrix")
+                .series(List.of())
+                .warnings(List.of())
+                .build());
+
+        mockMvc.perform(post("/api/metrics/query")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"profileId":"rocketmq5-native","semanticMetric":"consumer_lag_messages",
+                                 "start":1784107658,"end":1784108558,"step":"30s"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(metricsService).query(argThat(query ->
+                "rocketmq5-native".equals(query.getProfileId())
+                        && "consumer_lag_messages".equals(query.getSemanticMetric())
+                        && query.getMetric() == null));
+    }
+
+    @Test
+    void queryShouldRejectIncompleteSemanticMetricSelection() throws Exception {
+        mockMvc.perform(post("/api/metrics/query")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"profileId":"rocketmq5-native",
+                                 "start":1784107658,"end":1784108558,"step":"30s"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message")
+                        .value("Metric profile and semantic metric are required together"));
 
         verifyNoInteractions(metricsService);
     }

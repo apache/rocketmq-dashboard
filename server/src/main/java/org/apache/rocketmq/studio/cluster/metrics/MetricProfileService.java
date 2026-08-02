@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.cluster.metrics;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -28,6 +29,19 @@ public class MetricProfileService {
                 profile(MetricProfile.ROCKETMQ_4_EXPORTER, rocketmq4ExporterMetrics()),
                 profile(MetricProfile.ROCKETMQ_5_NATIVE, rocketmq5NativeMetrics())
         );
+    }
+
+    public String resolvePromql(String profileId, String semanticMetric) {
+        MetricProfileVO profile = listProfiles().stream()
+                .filter(candidate -> candidate.getId().equals(profileId))
+                .findFirst()
+                .orElseThrow(() -> badRequest("Unknown metric profile: " + profileId));
+        return profile.getMetrics().stream()
+                .filter(metric -> metric.getSemanticMetric().equals(semanticMetric))
+                .map(MetricProfileVO.MetricMappingVO::getPromql)
+                .findFirst()
+                .orElseThrow(() -> badRequest("Unknown semantic metric '" + semanticMetric
+                        + "' for profile '" + profileId + "'"));
     }
 
     private MetricProfileVO profile(MetricProfile profile,
@@ -102,5 +116,9 @@ public class MetricProfileService {
                 .promql(promql)
                 .labels(List.of(labels))
                 .build();
+    }
+
+    private PrometheusException badRequest(String message) {
+        return new PrometheusException(HttpStatus.BAD_REQUEST.value(), message);
     }
 }
