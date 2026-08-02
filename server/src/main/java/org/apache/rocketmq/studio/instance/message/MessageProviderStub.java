@@ -16,29 +16,31 @@
  */
 package org.apache.rocketmq.studio.instance.message;
 
-import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
-import java.util.Collections;
 import java.util.List;
 
+/**
+ * Placeholder {@link MessageProvider} used until a real message query provider is connected.
+ *
+ * <p>Rather than returning empty results (which could mislead operators into thinking no message
+ * or trace exists), both operations fail explicitly with a structured "not implemented" response.
+ */
 @Component
-@Slf4j
 public class MessageProviderStub implements MessageProvider {
 
     @Override
     public List<MessageRecordVO> queryMessages(String topic, String msgId, String tag, String key, Long startTime,
                                                Long endTime) {
-        log.warn("MessageProviderStub.queryMessages called - returning empty list");
-        return Collections.emptyList();
+        throw new BusinessException(HttpStatus.NOT_IMPLEMENTED.value(),
+                "Message query is not yet implemented: no message provider is connected");
     }
 
     @Override
     public TraceRecordVO getMessageTrace(String msgId) {
-        log.warn("MessageProviderStub.getMessageTrace called - returning empty trace");
-        return TraceRecordVO.builder()
-                .nodes(Collections.emptyList())
-                .consumerStatus(Collections.emptyList())
-                .build();
+        throw new BusinessException(HttpStatus.NOT_IMPLEMENTED.value(),
+                "Message trace is not yet implemented: no message provider is connected");
     }
 }
