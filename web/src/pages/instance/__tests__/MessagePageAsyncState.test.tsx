@@ -110,7 +110,7 @@ describe('MessagePage async request ownership', () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(screen.getByRole('button', { name: /查询/ }));
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
     await waitFor(() => expect(serviceMocks.queryMessages).toHaveBeenCalledTimes(1));
     await user.click(screen.getByRole('button', { name: /重置/ }));
 
@@ -130,7 +130,7 @@ describe('MessagePage async request ownership', () => {
     const user = userEvent.setup();
     renderPage();
 
-    const queryButton = screen.getByRole('button', { name: /查询/ });
+    const queryButton = screen.getByRole('button', { name: /^search查询$/ });
     await user.click(queryButton);
     await user.click(queryButton);
     await waitFor(() => expect(serviceMocks.queryMessages).toHaveBeenCalledTimes(2));
@@ -164,7 +164,7 @@ describe('MessagePage async request ownership', () => {
       const user = userEvent.setup();
       renderPage();
 
-      await user.click(screen.getByRole('button', { name: /查询/ }));
+      await user.click(screen.getByRole('button', { name: /^search查询$/ }));
       const row = await screen.findByRole('row', { name: /message-a/ });
       await user.click(within(row).getByRole('button', { name: /轨迹/ }));
       const dialog = await screen.findByRole('dialog', { name: '消息详情' });
@@ -201,7 +201,7 @@ describe('MessagePage async request ownership', () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(screen.getByRole('button', { name: /查询/ }));
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
     const firstRow = await screen.findByRole('row', { name: /message-a/ });
     await user.click(within(firstRow).getByRole('button', { name: /轨迹/ }));
     const firstDialog = await screen.findByRole('dialog', { name: '消息详情' });
@@ -240,7 +240,7 @@ describe('MessagePage async request ownership', () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(screen.getByRole('button', { name: /查询/ }));
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
     const firstRow = await screen.findByRole('row', { name: /message-a/ });
     await user.click(within(firstRow).getByRole('button', { name: /轨迹/ }));
     const firstDialog = await screen.findByRole('dialog', { name: '消息详情' });
