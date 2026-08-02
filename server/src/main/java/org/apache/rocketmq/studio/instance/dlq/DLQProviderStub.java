@@ -16,70 +16,31 @@
  */
 package org.apache.rocketmq.studio.instance.dlq;
 
-import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
+/**
+ * Placeholder {@link DLQProvider} used until a real DLQ provider is connected.
+ *
+ * <p>Rather than returning sample DLQ groups (which could mislead operators into believing real
+ * DLQ data exists) or silently accepting resend requests as a no-op, both operations fail
+ * explicitly with a structured "not implemented" response.
+ */
 @Component
-@Slf4j
 public class DLQProviderStub implements DLQProvider {
-
-    private final List<StubDLQGroup> stubData = List.of(
-            new StubDLQGroup("rmq-cn-v5-prod-01", DLQGroupVO.builder()
-                    .groupName("cg-order-payment")
-                    .dlqTopic("%DLQ%cg-order-payment")
-                    .messageCount(128)
-                    .lastEnqueueTime(LocalDateTime.of(2026, 7, 24, 10, 15, 30))
-                    .retryCount(16)
-                    .status("ACTIVE")
-                    .build()),
-            new StubDLQGroup("rmq-cn-v5-prod-01", DLQGroupVO.builder()
-                    .groupName("cg-inventory-sync")
-                    .dlqTopic("%DLQ%cg-inventory-sync")
-                    .messageCount(24)
-                    .lastEnqueueTime(LocalDateTime.of(2026, 7, 24, 9, 40, 12))
-                    .retryCount(8)
-                    .status("ACTIVE")
-                    .build()),
-            new StubDLQGroup("rmq-cn-v4-prod-02", DLQGroupVO.builder()
-                    .groupName("legacy-order-consumer")
-                    .dlqTopic("%DLQ%legacy-order-consumer")
-                    .messageCount(6)
-                    .lastEnqueueTime(LocalDateTime.of(2026, 7, 23, 22, 5, 0))
-                    .retryCount(3)
-                    .status("ACKED")
-                    .build())
-    );
 
     @Override
     public List<DLQGroupVO> listDLQGroups(String clusterId) {
-        log.info("DLQProviderStub.listDLQGroups called. clusterId={}", clusterId);
-        return stubData.stream()
-                .filter(item -> !StringUtils.hasText(clusterId) || item.clusterId().equals(clusterId))
-                .map(StubDLQGroup::group)
-                .map(DLQProviderStub::copyGroup)
-                .toList();
+        throw new BusinessException(HttpStatus.NOT_IMPLEMENTED.value(),
+                "DLQ listing is not yet implemented: no DLQ provider is connected");
     }
 
     @Override
     public void resendMessages(String groupName, Long startTime, Long endTime, String targetTopic) {
-        log.warn("DLQProviderStub.resendMessages called - no-op. group={}, targetTopic={}", groupName, targetTopic);
-    }
-
-    private static DLQGroupVO copyGroup(DLQGroupVO group) {
-        return DLQGroupVO.builder()
-                .groupName(group.getGroupName())
-                .dlqTopic(group.getDlqTopic())
-                .messageCount(group.getMessageCount())
-                .lastEnqueueTime(group.getLastEnqueueTime())
-                .retryCount(group.getRetryCount())
-                .status(group.getStatus())
-                .build();
-    }
-
-    private record StubDLQGroup(String clusterId, DLQGroupVO group) {
+        throw new BusinessException(HttpStatus.NOT_IMPLEMENTED.value(),
+                "DLQ message resend is not yet implemented: no DLQ provider is connected");
     }
 }

@@ -17,53 +17,35 @@
 
 package org.apache.rocketmq.studio.instance.dlq;
 
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
-
-import java.util.List;
+import org.springframework.http.HttpStatus;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class DLQProviderStubTest {
 
     private final DLQProviderStub provider = new DLQProviderStub();
 
     @Test
-    void listDLQGroupsShouldReturnSampleGroupsForAllClusters() {
-        List<DLQGroupVO> groups = provider.listDLQGroups(null);
-
-        assertThat(groups)
-                .extracting(DLQGroupVO::getGroupName)
-                .containsExactly("cg-order-payment", "cg-inventory-sync", "legacy-order-consumer");
-        assertThat(groups)
-                .allSatisfy(group -> {
-                    assertThat(group.getDlqTopic()).startsWith("%DLQ%");
-                    assertThat(group.getMessageCount()).isPositive();
-                    assertThat(group.getLastEnqueueTime()).isNotNull();
-                    assertThat(group.getStatus()).isNotBlank();
-                });
+    void listDLQGroupsShouldFailAsNotImplemented() {
+        assertThatThrownBy(() -> provider.listDLQGroups(null))
+                .isInstanceOfSatisfying(BusinessException.class, ex ->
+                        assertThat(ex.getCode()).isEqualTo(HttpStatus.NOT_IMPLEMENTED.value()));
     }
 
     @Test
-    void listDLQGroupsShouldFilterByClusterId() {
-        List<DLQGroupVO> groups = provider.listDLQGroups("rmq-cn-v5-prod-01");
-
-        assertThat(groups)
-                .extracting(DLQGroupVO::getGroupName)
-                .containsExactly("cg-order-payment", "cg-inventory-sync");
+    void listDLQGroupsShouldFailAsNotImplementedForAnyCluster() {
+        assertThatThrownBy(() -> provider.listDLQGroups("rmq-cn-v5-prod-01"))
+                .isInstanceOfSatisfying(BusinessException.class, ex ->
+                        assertThat(ex.getCode()).isEqualTo(HttpStatus.NOT_IMPLEMENTED.value()));
     }
 
     @Test
-    void listDLQGroupsShouldReturnEmptyForUnknownCluster() {
-        assertThat(provider.listDLQGroups("missing-cluster")).isEmpty();
-    }
-
-    @Test
-    void listDLQGroupsShouldReturnDefensiveCopies() {
-        List<DLQGroupVO> firstRead = provider.listDLQGroups("rmq-cn-v5-prod-01");
-        firstRead.get(0).setGroupName("mutated");
-
-        List<DLQGroupVO> secondRead = provider.listDLQGroups("rmq-cn-v5-prod-01");
-
-        assertThat(secondRead.get(0).getGroupName()).isEqualTo("cg-order-payment");
+    void resendMessagesShouldFailAsNotImplemented() {
+        assertThatThrownBy(() -> provider.resendMessages("cg-order-payment", null, null, "target-topic"))
+                .isInstanceOfSatisfying(BusinessException.class, ex ->
+                        assertThat(ex.getCode()).isEqualTo(HttpStatus.NOT_IMPLEMENTED.value()));
     }
 }
