@@ -80,9 +80,7 @@ const createQuota = (currentTopicCount: number): LiteTopicQuota => ({
 const selectNamespace = async (name: string) => {
   const user = userEvent.setup();
   await user.click(screen.getAllByRole('combobox')[0]);
-  await user.click(
-    await screen.findByText(name, { selector: '.ant-select-item-option-content' }),
-  );
+  await user.click(await screen.findByText(name, { selector: '.ant-select-item-option-content' }));
 };
 
 describe('LiteTopic Page', () => {
@@ -144,13 +142,58 @@ describe('LiteTopic Page', () => {
     expect(await screen.findByText('filtered-*')).toBeInTheDocument();
 
     await user.click(screen.getAllByRole('combobox')[0]);
-    const dropdown = document.querySelector('.ant-select-dropdown:not(.ant-select-dropdown-hidden)');
+    const dropdown = document.querySelector(
+      '.ant-select-dropdown:not(.ant-select-dropdown-hidden)',
+    );
     expect(dropdown).not.toBeNull();
     expect(
       Array.from(dropdown!.querySelectorAll('.ant-select-item-option-content')).map(
         (option) => option.textContent,
       ),
     ).toEqual(['全部命名空间', 'Alpha', 'zeta']);
+  });
+
+  it('filters the current results by TTL status without requesting the list again', async () => {
+    apiMocks.queryLiteTopicList.mockResolvedValue([
+      { namespace: 'default', topicPattern: 'active-*', ttlStatus: 'ACTIVE' },
+      { namespace: 'default', topicPattern: 'expiring-*', ttlStatus: 'EXPIRING_SOON' },
+      { namespace: 'default', topicPattern: 'expired-*', ttlStatus: 'EXPIRED' },
+      { namespace: 'default', topicPattern: 'unknown-*', ttlStatus: 'UNKNOWN' },
+      { namespace: 'default', topicPattern: 'missing-status-*' },
+    ]);
+
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(await screen.findByText('active-*')).toBeInTheDocument();
+    expect(screen.getByText('expiring-*')).toBeInTheDocument();
+    expect(screen.getByText('expired-*')).toBeInTheDocument();
+    expect(screen.getByText('unknown-*')).toBeInTheDocument();
+    expect(screen.getByText('missing-status-*')).toBeInTheDocument();
+
+    const initialListRequestCount = apiMocks.queryLiteTopicList.mock.calls.length;
+    await user.click(screen.getByRole('combobox', { name: '状态' }));
+    await user.click(
+      await screen.findByText('即将过期', { selector: '.ant-select-item-option-content' }),
+    );
+
+    expect(screen.queryByText('active-*')).not.toBeInTheDocument();
+    expect(screen.getByText('expiring-*')).toBeInTheDocument();
+    expect(screen.queryByText('expired-*')).not.toBeInTheDocument();
+    expect(screen.queryByText('unknown-*')).not.toBeInTheDocument();
+    expect(screen.queryByText('missing-status-*')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('combobox', { name: '状态' }));
+    await user.click(
+      await screen.findByText('未知', { selector: '.ant-select-item-option-content' }),
+    );
+
+    expect(screen.queryByText('active-*')).not.toBeInTheDocument();
+    expect(screen.queryByText('expiring-*')).not.toBeInTheDocument();
+    expect(screen.queryByText('expired-*')).not.toBeInTheDocument();
+    expect(screen.getByText('unknown-*')).toBeInTheDocument();
+    expect(screen.getByText('missing-status-*')).toBeInTheDocument();
+    expect(apiMocks.queryLiteTopicList).toHaveBeenCalledTimes(initialListRequestCount);
   });
 
   it('keeps an early filtered display while a delayed bootstrap supplies namespace options', async () => {
@@ -194,7 +237,9 @@ describe('LiteTopic Page', () => {
     expect(apiMocks.queryLiteTopicQuota).toHaveBeenCalledTimes(1);
 
     await user.click(screen.getAllByRole('combobox')[0]);
-    const dropdown = document.querySelector('.ant-select-dropdown:not(.ant-select-dropdown-hidden)');
+    const dropdown = document.querySelector(
+      '.ant-select-dropdown:not(.ant-select-dropdown-hidden)',
+    );
     expect(dropdown).not.toBeNull();
     expect(
       Array.from(dropdown!.querySelectorAll('.ant-select-item-option-content')).map(
@@ -241,7 +286,9 @@ describe('LiteTopic Page', () => {
     expect(screen.queryByText('90 / 100')).not.toBeInTheDocument();
 
     await user.click(screen.getAllByRole('combobox')[0]);
-    const dropdown = document.querySelector('.ant-select-dropdown:not(.ant-select-dropdown-hidden)');
+    const dropdown = document.querySelector(
+      '.ant-select-dropdown:not(.ant-select-dropdown-hidden)',
+    );
     expect(dropdown).not.toBeNull();
     expect(
       Array.from(dropdown!.querySelectorAll('.ant-select-item-option-content')).map(
@@ -269,7 +316,9 @@ describe('LiteTopic Page', () => {
     await act(async () => {
       capability.resolve({ supported: false });
     });
-    expect(await screen.findByText('当前集群不支持 LiteTopic，请升级到 RocketMQ 5.x')).toBeInTheDocument();
+    expect(
+      await screen.findByText('当前集群不支持 LiteTopic，请升级到 RocketMQ 5.x'),
+    ).toBeInTheDocument();
 
     await act(async () => {
       earlyQuota.resolve(createQuota(20));
