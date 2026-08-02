@@ -29,6 +29,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
@@ -127,22 +128,75 @@ class AclServiceTest {
     }
 
     @Test
-    void updateRuleShouldSaveExistingRule() {
+    void updateRuleShouldReplaceExistingRule() {
+        LocalDateTime createdAt = LocalDateTime.of(2026, 1, 1, 0, 0);
         AclRuleVO input = AclRuleVO.builder()
                 .id("rule-1")
                 .principal("user1")
                 .resource("topic-1")
                 .decision("DENY")
+                .createdAt(createdAt)
                 .build();
 
-        when(aclRepository.saveRule(any(AclRuleVO.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(aclRepository.replaceRule(input)).thenReturn(Optional.of(input));
 
         AclRuleVO result = aclService.updateRule(input);
 
         assertThat(result.getId()).isEqualTo("rule-1");
-        assertThat(result.getCreatedAt()).isNotNull();
+        assertThat(result.getCreatedAt()).isEqualTo(createdAt);
         assertThat(result.getDecision()).isEqualTo("DENY");
-        verify(aclRepository).saveRule(any(AclRuleVO.class));
+        verify(aclRepository).replaceRule(input);
+        verify(aclRepository, never()).saveRule(any(AclRuleVO.class));
+    }
+
+    @Test
+    void updateRuleShouldRejectUnknownIdInsteadOfCreatingRule() {
+        InMemoryAclRepository repository = new InMemoryAclRepository();
+        AclService service = new AclService(repository);
+        AclRuleVO update = AclRuleVO.builder()
+                .id("missing-rule")
+                .principal("orders")
+                .resource("orders-topic")
+                .decision("DENY")
+                .build();
+
+        assertThatThrownBy(() -> service.updateRule(update))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("ACL rule not found: missing-rule")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
+        assertThat(service.listRules(null, null)).isEmpty();
+    }
+
+    @Test
+    void updateRuleShouldPreserveStoredCreationTimestamp() {
+        InMemoryAclRepository repository = new InMemoryAclRepository();
+        AclService service = new AclService(repository);
+        AclRuleVO created = service.createRule(AclRuleVO.builder()
+                .principal("orders")
+                .resource("orders-topic")
+                .decision("ALLOW")
+                .build());
+        LocalDateTime originalCreatedAt = created.getCreatedAt();
+
+        LocalDateTime clientCreatedAt = originalCreatedAt.plusDays(1);
+        AclRuleVO update = AclRuleVO.builder()
+                .id(created.getId())
+                .principal("orders")
+                .resource("orders-topic")
+                .decision("DENY")
+                .createdAt(clientCreatedAt)
+                .build();
+
+        AclRuleVO updated = service.updateRule(update);
+        AclRuleVO stored = service.listRules(null, null).get(0);
+
+        assertThat(updated.getCreatedAt()).isEqualTo(originalCreatedAt);
+        assertThat(updated.getDecision()).isEqualTo("DENY");
+        assertThat(update.getCreatedAt()).isEqualTo(clientCreatedAt);
+        assertThat(service.listRules(null, null)).hasSize(1);
+        assertThat(stored.getId()).isEqualTo(created.getId());
+        assertThat(stored.getDecision()).isEqualTo("DENY");
+        assertThat(stored.getCreatedAt()).isEqualTo(originalCreatedAt);
     }
 
     @Test

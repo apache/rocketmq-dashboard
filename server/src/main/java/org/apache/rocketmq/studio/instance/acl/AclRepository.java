@@ -25,6 +25,12 @@ public interface AclRepository {
 
     AclRuleVO saveRule(AclRuleVO rule);
 
+    /**
+     * Replaces an existing rule atomically without creating a missing rule.
+     * Implementations must preserve the original creation timestamp.
+     */
+    Optional<AclRuleVO> replaceRule(AclRuleVO rule);
+
     void deleteRule(String id);
 
     List<AclUserVO> findUsers();
