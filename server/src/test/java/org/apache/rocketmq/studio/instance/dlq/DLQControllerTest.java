@@ -125,6 +125,18 @@ class DLQControllerTest {
     }
 
     @Test
+    void resendMessagesShouldRejectNullRequestBody() throws Exception {
+        mockMvc.perform(post("/api/dlq/resend")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("null"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("DLQ resend request is required"));
+
+        verifyNoInteractions(dlqService);
+    }
+
+    @Test
     void resendMessagesShouldRejectMissingGroupName() throws Exception {
         Map<String, Object> body = Map.of(
                 "startTime", 1000,
