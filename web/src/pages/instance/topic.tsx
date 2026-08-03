@@ -96,6 +96,49 @@ const TYPE_OPTIONS = [
 // ─── Perm label ───────────────────────────────────────────────────
 const PERM_LABEL: Record<string, string> = { RW: '读写', RO: '只读', WO: '只写' };
 
+const TOPIC_EXPORT_COLUMNS: Array<{ header: string; value: (topic: Topic) => unknown }> = [
+  { header: 'Name', value: (topic) => topic.name },
+  { header: 'Namespace', value: (topic) => topic.namespace },
+  { header: 'Type', value: (topic) => topic.type },
+  { header: 'Cluster ID', value: (topic) => topic.clusterId },
+  { header: 'Write Queues', value: (topic) => topic.writeQueues },
+  { header: 'Read Queues', value: (topic) => topic.readQueues },
+  { header: 'Permission', value: (topic) => topic.perm },
+  { header: 'Message Count', value: (topic) => topic.messageCount },
+  { header: 'TPS', value: (topic) => topic.tps },
+  { header: 'Consumer Groups', value: (topic) => topic.consumerGroupCount },
+  { header: 'Remark', value: (topic) => topic.remark },
+  { header: 'Created At', value: (topic) => topic.createdAt },
+  { header: 'Updated At', value: (topic) => topic.updatedAt },
+];
+
+const escapeCsvCell = (value: unknown) => {
+  const text = value == null ? '' : String(value);
+  const formulaSafeText = /^[=+\-@]/.test(text) ? `'${text}` : text;
+  return `"${formulaSafeText.replace(/"/g, '""')}"`;
+};
+
+const buildTopicCsv = (topics: Topic[]) =>
+  [
+    TOPIC_EXPORT_COLUMNS.map((column) => escapeCsvCell(column.header)).join(','),
+    ...topics.map((topic) =>
+      TOPIC_EXPORT_COLUMNS.map((column) => escapeCsvCell(column.value(topic))).join(','),
+    ),
+  ].join('\n');
+
+const downloadCsv = (filename: string, csv: string) => {
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.style.display = 'none';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+};
+
 // ─── Random message body generators ──────────────────────────────
 const randomOrderBody = () =>
   JSON.stringify(
@@ -748,7 +791,13 @@ const TopicPage = () => {
           </Button>
           <Button
             icon={<ExportOutlined />}
-            onClick={() => message.success(`已导出 ${filteredTopics.length} 个 Topic`)}
+            onClick={() => {
+              downloadCsv(
+                `rocketmq-topics-${new Date().toISOString().slice(0, 10)}.csv`,
+                buildTopicCsv(filteredTopics),
+              );
+              message.success(`已导出 ${filteredTopics.length} 个 Topic`);
+            }}
           >
             导出
           </Button>
