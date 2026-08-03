@@ -17,6 +17,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Card,
   Table,
   Button,
@@ -42,8 +43,31 @@ import { downloadBlob } from '../../utils/download';
 
 const { Text } = Typography;
 const { RangePicker } = DatePicker;
+const DEFAULT_LOAD_ERROR = '死信队列加载失败，请稍后重试';
+const DEFAULT_RETRY_ERROR = '提交重投任务失败，请稍后重试';
 
 /* ─── Helpers ─── */
+
+type ApiErrorLike = {
+  message?: unknown;
+  response?: {
+    data?: {
+      message?: unknown;
+    };
+  };
+};
+
+const getErrorMessage = (error: unknown, fallback: string): string => {
+  const apiError = error as ApiErrorLike;
+  const responseMessage = apiError.response?.data?.message;
+  if (typeof responseMessage === 'string' && responseMessage.trim()) {
+    return responseMessage;
+  }
+  if (typeof apiError.message === 'string' && apiError.message.trim()) {
+    return apiError.message;
+  }
+  return fallback;
+};
 
 const formatDateTime = (iso: string): string => {
   const d = new Date(iso);
@@ -93,6 +117,8 @@ const DLQPage = () => {
   const [retrySubmitting, setRetrySubmitting] = useState(false);
   const [detailGroup, setDetailGroup] = useState<DLQGroup | null>(null);
   const [selectedGroupNames, setSelectedGroupNames] = useState<string[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryError, setRetryError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -101,6 +127,7 @@ const DLQPage = () => {
       .then((nextGroups) => {
         if (!cancelled) {
           setGroups(nextGroups);
+          setLoadError(null);
           const availableGroups = new Set(
             nextGroups.filter((group) => group.messageCount > 0).map((group) => group.groupName),
           );
@@ -109,8 +136,8 @@ const DLQPage = () => {
           );
         }
       })
-      .catch(() => {
-        if (!cancelled) message.error('死信队列加载失败，请稍后重试');
+      .catch((error) => {
+        if (!cancelled) setLoadError(getErrorMessage(error, DEFAULT_LOAD_ERROR));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -140,6 +167,7 @@ const DLQPage = () => {
     setRetryGroup(group);
     setRetryRange([dayjs().subtract(1, 'day'), dayjs()]);
     setRetryTargetTopic('');
+    setRetryError(null);
     setRetryModalOpen(true);
   };
 
@@ -151,6 +179,7 @@ const DLQPage = () => {
     if (!retryGroup) return;
 
     setRetrySubmitting(true);
+    setRetryError(null);
     try {
       await resendDLQ({
         groupName: retryGroup.groupName,
@@ -162,8 +191,9 @@ const DLQPage = () => {
       message.success(`已提交重投任务：${retryGroup.groupName} → ${retryTargetTopic}`);
       setRetryModalOpen(false);
       setRetryGroup(null);
-    } catch {
-      message.error('提交重投任务失败，请稍后重试');
+      setRetryError(null);
+    } catch (error) {
+      setRetryError(getErrorMessage(error, DEFAULT_RETRY_ERROR));
     } finally {
       setRetrySubmitting(false);
     }
@@ -308,6 +338,10 @@ const DLQPage = () => {
         </Button>
       </Flex>
 
+      {loadError && (
+        <Alert showIcon type="warning" message={loadError} style={{ marginBottom: 16 }} />
+      )}
+
       {/* ── Table ── */}
       <Card bodyStyle={{ padding: 0 }}>
         <Table
@@ -344,6 +378,7 @@ const DLQPage = () => {
         onCancel={() => {
           setRetryModalOpen(false);
           setRetryGroup(null);
+          setRetryError(null);
         }}
         onOk={handleRetry}
         confirmLoading={retrySubmitting}
@@ -354,6 +389,10 @@ const DLQPage = () => {
       >
         {retryGroup && (
           <div style={{ marginTop: 16 }}>
+            {retryError && (
+              <Alert showIcon type="warning" message={retryError} style={{ marginBottom: 16 }} />
+            )}
+
             <div
               style={{
                 marginBottom: 16,

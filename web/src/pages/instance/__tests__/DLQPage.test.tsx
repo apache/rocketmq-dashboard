@@ -110,6 +110,15 @@ describe('DLQ page', () => {
     expect(messageService.listDLQGroups).toHaveBeenCalledTimes(1);
   });
 
+  it('surfaces unavailable DLQ provider errors when loading groups', async () => {
+    vi.mocked(messageService.listDLQGroups).mockRejectedValue(
+      new Error('DLQ provider is not configured'),
+    );
+    renderWithProviders(<DLQPage />);
+
+    expect(await screen.findByText('DLQ provider is not configured')).toBeInTheDocument();
+  });
+
   it('opens a detail dialog with the selected group metadata', async () => {
     const user = userEvent.setup();
     renderWithProviders(<DLQPage />);
@@ -180,5 +189,22 @@ describe('DLQ page', () => {
     await waitFor(() => expect(messageService.listDLQGroups).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(within(orderRow).getByRole('checkbox')).toBeDisabled());
     expect(screen.getByRole('button', { name: /批量导出/ })).toBeDisabled();
+  });
+
+  it('surfaces unavailable DLQ provider errors when retry submission fails', async () => {
+    vi.mocked(messageService.resendDLQ).mockRejectedValue(
+      new Error('DLQ provider is not configured'),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<DLQPage />);
+
+    const orderRow = (await screen.findByText('cg-order')).closest('tr');
+    if (!orderRow) throw new Error('DLQ group row not found');
+
+    await user.click(within(orderRow).getByRole('button', { name: '重投消息' }));
+    await user.type(screen.getByPlaceholderText('输入目标 Topic 名称'), 'orders-retry');
+    await user.click(screen.getByRole('button', { name: '确认重投' }));
+
+    expect(await screen.findByText('DLQ provider is not configured')).toBeInTheDocument();
   });
 });
