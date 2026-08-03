@@ -14,31 +14,29 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.rocketmq.studio.auth;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-import lombok.ToString;
+import org.junit.jupiter.api.Test;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class LoginVO {
-    @ToString.Exclude
-    private String token;
-    private int expiresIn;
-    private UserInfo user;
+import static org.assertj.core.api.Assertions.assertThat;
 
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class UserInfo {
-        private String username;
-        private boolean admin;
+class LoginVOTest {
+
+    @Test
+    void toStringShouldNotExposeToken() {
+        LoginVO response = LoginVO.builder()
+            .token("studio-jwt-secret")
+            .expiresIn(3600)
+            .user(LoginVO.UserInfo.builder()
+                .username("admin")
+                .admin(true)
+                .build())
+            .build();
+
+        String value = response.toString();
+
+        assertThat(value).contains("expiresIn=3600");
+        assertThat(value).contains("username=admin");
+        assertThat(value).doesNotContain("studio-jwt-secret");
     }
 }
