@@ -50,6 +50,10 @@ public class AuthService {
     }
 
     public LoginVO login(LoginDTO request) {
+        if (request == null) {
+            throw new BusinessException(400, "Login request is required");
+        }
+
         log.info("Login attempt for user: {}", request.getUsername());
 
         if (request.getUsername() == null || request.getUsername().isBlank()) {
