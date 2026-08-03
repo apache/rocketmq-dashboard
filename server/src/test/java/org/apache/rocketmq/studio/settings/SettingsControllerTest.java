@@ -223,6 +223,18 @@ class SettingsControllerTest {
     }
 
     @Test
+    void createDataSourceShouldRejectNullRequestBody() throws Exception {
+        mockMvc.perform(post("/api/settings/datasources/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("null"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is(400)))
+                .andExpect(jsonPath("$.message", is("Data source request is required")));
+
+        verifyNoInteractions(settingsService);
+    }
+
+    @Test
     void updateDataSourceShouldReturnUpdatedSource() throws Exception {
         DataSourceVO input = DataSourceVO.builder().key("ds-1").name("Updated DS").type("rocketmq")
                 .url("updated:9876").build();
@@ -251,6 +263,18 @@ class SettingsControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code", is(400)))
                 .andExpect(jsonPath("$.message", is("name is required")));
+
+        verifyNoInteractions(settingsService);
+    }
+
+    @Test
+    void updateDataSourceShouldRejectNullRequestBody() throws Exception {
+        mockMvc.perform(post("/api/settings/datasources/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("null"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is(400)))
+                .andExpect(jsonPath("$.message", is("Data source request is required")));
 
         verifyNoInteractions(settingsService);
     }

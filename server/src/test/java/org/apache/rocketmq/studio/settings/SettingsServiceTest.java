@@ -42,6 +42,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -215,6 +216,17 @@ class SettingsServiceTest {
     }
 
     @Test
+    void createDataSourceShouldRejectNullRequest() {
+        assertThatThrownBy(() -> settingsService.createDataSource(null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Data source request is required")
+                .extracting("code")
+                .isEqualTo(400);
+
+        verifyNoInteractions(settingsRepository);
+    }
+
+    @Test
     void updateDataSourceShouldDelegateToRepository() {
         DataSourceVO input = DataSourceVO.builder().key("ds-1").name("Updated DS").type("rocketmq")
                 .url("updated-host:9876").build();
@@ -225,6 +237,17 @@ class SettingsServiceTest {
         assertThat(result.getKey()).isEqualTo("ds-1");
         assertThat(result.getName()).isEqualTo("Updated DS");
         verify(settingsRepository).replaceDataSource(input);
+    }
+
+    @Test
+    void updateDataSourceShouldRejectNullRequest() {
+        assertThatThrownBy(() -> settingsService.updateDataSource(null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Data source request is required")
+                .extracting("code")
+                .isEqualTo(400);
+
+        verifyNoInteractions(settingsRepository);
     }
 
     @Test
