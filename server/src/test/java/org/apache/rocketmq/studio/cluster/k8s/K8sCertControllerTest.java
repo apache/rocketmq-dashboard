@@ -140,6 +140,27 @@ class K8sCertControllerTest {
     }
 
     @Test
+    void certWriteEndpointsShouldRejectNullRequestBody() throws Exception {
+        String[] paths = {
+            "/api/k8s-certs/create",
+            "/api/k8s-certs/update",
+            "/api/k8s-certs/renew",
+            "/api/k8s-certs/delete"
+        };
+
+        for (String path : paths) {
+            mockMvc.perform(post(path)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("null"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value(400))
+                    .andExpect(jsonPath("$.message").value("K8s certificate request is required"));
+        }
+
+        verifyNoInteractions(k8sCertService);
+    }
+
+    @Test
     void createCertShouldRejectMissingName() throws Exception {
         mockMvc.perform(post("/api/k8s-certs/create")
                         .contentType(MediaType.APPLICATION_JSON)
