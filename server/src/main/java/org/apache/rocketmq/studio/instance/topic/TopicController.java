@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.instance.topic;
 
 import org.apache.rocketmq.studio.common.domain.Result;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -45,17 +46,20 @@ public class TopicController {
     }
 
     @PostMapping("/create")
-    public Result<TopicVO> createTopic(@RequestBody TopicVO topic) {
+    public Result<TopicVO> createTopic(@RequestBody(required = false) TopicVO topic) {
+        requireTopicRequest(topic);
         return Result.ok(metadataService.createTopic(topic));
     }
 
     @PostMapping("/update")
-    public Result<TopicVO> updateTopic(@RequestBody TopicVO topic) {
+    public Result<TopicVO> updateTopic(@RequestBody(required = false) TopicVO topic) {
+        requireTopicRequest(topic);
         return Result.ok(metadataService.updateTopic(topic));
     }
 
     @PostMapping("/delete")
-    public Result<Void> deleteTopic(@Valid @RequestBody DeleteTopicDTO request) {
+    public Result<Void> deleteTopic(@Valid @RequestBody(required = false) DeleteTopicDTO request) {
+        requireDeleteTopicRequest(request);
         metadataService.deleteTopic(request.getName());
         return Result.ok();
     }
@@ -71,7 +75,26 @@ public class TopicController {
     }
 
     @PostMapping("/send")
-    public Result<SendMessageVO> sendMessage(@RequestBody SendMessageDTO request) {
+    public Result<SendMessageVO> sendMessage(@RequestBody(required = false) SendMessageDTO request) {
+        requireSendMessageRequest(request);
         return Result.ok(metadataService.sendMessage(request));
+    }
+
+    private void requireTopicRequest(TopicVO topic) {
+        if (topic == null) {
+            throw new BusinessException(400, "Topic request is required");
+        }
+    }
+
+    private void requireDeleteTopicRequest(DeleteTopicDTO request) {
+        if (request == null) {
+            throw new BusinessException(400, "Topic delete request is required");
+        }
+    }
+
+    private void requireSendMessageRequest(SendMessageDTO request) {
+        if (request == null) {
+            throw new BusinessException(400, "Topic send message request is required");
+        }
     }
 }

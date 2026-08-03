@@ -109,6 +109,39 @@ class TopicControllerTest {
     }
 
     @Test
+    void topicWriteEndpointsShouldRejectNullRequestBody() throws Exception {
+        mockMvc.perform(post("/api/topics/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("null"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("Topic request is required"));
+
+        mockMvc.perform(post("/api/topics/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("null"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("Topic request is required"));
+
+        mockMvc.perform(post("/api/topics/delete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("null"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("Topic delete request is required"));
+
+        mockMvc.perform(post("/api/topics/send")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("null"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("Topic send message request is required"));
+
+        verifyNoInteractions(metadataService);
+    }
+
+    @Test
     void sendMessageShouldReturnResult() throws Exception {
         SendMessageDTO request = SendMessageDTO.builder()
                 .topic("test-topic")
