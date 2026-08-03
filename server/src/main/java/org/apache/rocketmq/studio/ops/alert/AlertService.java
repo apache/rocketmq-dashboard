@@ -58,8 +58,9 @@ public class AlertService {
             yaml.append("          severity: ").append(rule.severity()).append('\n');
             yaml.append("          team: ").append(rule.team()).append('\n');
             yaml.append("        annotations:\n");
-            yaml.append("          summary: \"").append(escapeYaml(rule.summary())).append("\"\n");
-            yaml.append("          description: \"").append(escapeYaml(rule.description())).append("\"\n");
+            yaml.append("          summary: \"").append(escapeDoubleQuotedValue(rule.summary())).append("\"\n");
+            yaml.append("          description: \"").append(escapeDoubleQuotedValue(rule.description()))
+                    .append("\"\n");
         }
         return yaml.toString();
     }
@@ -188,7 +189,8 @@ public class AlertService {
     }
 
     private String alertName(AlertRuleVO rule) {
-        return hasText(rule.getName()) ? rule.getName().replaceAll("[^A-Za-z0-9_]", "") : "RocketMQAlert";
+        String alertName = hasText(rule.getName()) ? rule.getName().replaceAll("[^A-Za-z0-9_]", "") : "";
+        return alertName.isEmpty() ? "RocketMQAlert" : alertName;
     }
 
     private String expression(AlertRuleVO rule) {
@@ -211,7 +213,7 @@ public class AlertService {
         if (!selector.isEmpty()) {
             selector.append(',');
         }
-        selector.append(label).append("=\"").append(value.trim()).append('"');
+        selector.append(label).append("=\"").append(escapeDoubleQuotedValue(value.trim())).append('"');
     }
 
     private String severity(AlertRuleVO rule) {
@@ -271,8 +273,28 @@ public class AlertService {
         return hasText(description) ? description : "RocketMQ alert condition matched.";
     }
 
-    private String escapeYaml(String value) {
-        return value.replace("\\", "\\\\").replace("\"", "\\\"");
+    private String escapeDoubleQuotedValue(String value) {
+        StringBuilder escaped = new StringBuilder(value.length());
+        for (int index = 0; index < value.length(); index++) {
+            char character = value.charAt(index);
+            switch (character) {
+                case '\\' -> escaped.append("\\\\");
+                case '"' -> escaped.append("\\\"");
+                case '\b' -> escaped.append("\\b");
+                case '\f' -> escaped.append("\\f");
+                case '\n' -> escaped.append("\\n");
+                case '\r' -> escaped.append("\\r");
+                case '\t' -> escaped.append("\\t");
+                default -> {
+                    if (character < 0x20) {
+                        escaped.append(String.format("\\u%04x", (int) character));
+                    } else {
+                        escaped.append(character);
+                    }
+                }
+            }
+        }
+        return escaped.toString();
     }
 
     private boolean hasText(String value) {
