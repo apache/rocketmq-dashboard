@@ -60,6 +60,7 @@ const K8sCertsPage = () => {
   const [renewingId, setRenewingId] = useState<string | null>(null);
   const [certSearch, setCertSearch] = useState('');
   const [certTypeFilter, setCertTypeFilter] = useState<string>('');
+  const [certNamespaceFilter, setCertNamespaceFilter] = useState<string>('');
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingCert, setEditingCert] = useState<K8sCertInfo | null>(null);
   const [editForm] = Form.useForm();
@@ -130,13 +131,18 @@ const K8sCertsPage = () => {
   };
 
   const normalizedCertSearch = certSearch.trim().toLowerCase();
+  const namespaceOptions = Array.from(new Set(certs.map((cert) => cert.namespace)))
+    .sort((a, b) => a.localeCompare(b))
+    .map((namespace) => ({ value: namespace, label: namespace }));
   const filteredCerts = certs.filter((cert) => {
     const matchSearch =
       !normalizedCertSearch ||
-      cert.name.toLowerCase().includes(normalizedCertSearch) ||
-      cert.cluster.toLowerCase().includes(normalizedCertSearch);
+      [cert.name, cert.cluster, cert.namespace, ...(cert.san ?? [])].some((value) =>
+        value.toLowerCase().includes(normalizedCertSearch),
+      );
     const matchType = !certTypeFilter || cert.type === certTypeFilter;
-    return matchSearch && matchType;
+    const matchNamespace = !certNamespaceFilter || cert.namespace === certNamespaceFilter;
+    return matchSearch && matchType && matchNamespace;
   });
 
   const renewCert = async (cert: K8sCertInfo) => {
@@ -171,6 +177,30 @@ const K8sCertsPage = () => {
       render: (name: string) => (
         <Text style={{ fontFamily: 'monospace', fontSize: 13 }}>{name}</Text>
       ),
+    },
+    {
+      title: '命名空间',
+      dataIndex: 'namespace',
+      key: 'namespace',
+      width: 150,
+      sorter: (a, b) => a.namespace.localeCompare(b.namespace),
+      render: (namespace: string) => <Text code>{namespace}</Text>,
+    },
+    {
+      title: 'SAN',
+      dataIndex: 'san',
+      key: 'san',
+      width: 260,
+      render: (san: string[] | null) =>
+        san?.length ? (
+          <Flex wrap gap={4}>
+            {san.map((value) => (
+              <Tag key={value}>{value}</Tag>
+            ))}
+          </Flex>
+        ) : (
+          <Text type="secondary">-</Text>
+        ),
     },
     {
       title: '类型',
@@ -257,7 +287,7 @@ const K8sCertsPage = () => {
                 issuer: record.issuer,
                 namespace: record.namespace,
                 cluster: record.cluster,
-                san: record.san.join(', '),
+                san: record.san?.join(', ') ?? '',
               });
               setEditModalOpen(true);
             }}
@@ -325,11 +355,18 @@ const K8sCertsPage = () => {
       <Flex justify="space-between" style={{ marginBottom: 16 }}>
         <Space>
           <Input.Search
-            placeholder="搜索证书名称或集群"
+            placeholder="搜索证书名称、集群、命名空间或 SAN"
             allowClear
             onSearch={setCertSearch}
             onChange={(e) => !e.target.value && setCertSearch('')}
-            style={{ width: 240 }}
+            style={{ width: 320 }}
+          />
+          <Select
+            aria-label="按命名空间筛选"
+            value={certNamespaceFilter}
+            onChange={setCertNamespaceFilter}
+            style={{ width: 180 }}
+            options={[{ value: '', label: '全部命名空间' }, ...namespaceOptions]}
           />
           <Select
             value={certTypeFilter}
@@ -352,6 +389,7 @@ const K8sCertsPage = () => {
           loading={loading}
           pagination={{ pageSize: 20 }}
           size="small"
+          scroll={{ x: 1750 }}
         />
       </Card>
 

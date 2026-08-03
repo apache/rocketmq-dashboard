@@ -16,7 +16,7 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import type { K8sCertInfo } from '../../../api/cluster';
@@ -48,7 +48,7 @@ const certs: K8sCertInfo[] = [
   {
     id: 'cert-staging',
     name: 'rocketmq-staging-tls',
-    namespace: 'rocketmq',
+    namespace: 'platform',
     cluster: 'staging-cluster',
     type: 'TLS',
     issuer: 'kubernetes-ca',
@@ -56,7 +56,8 @@ const certs: K8sCertInfo[] = [
     notAfter: '2027-01-01T00:00:00Z',
     status: 'valid',
     daysRemaining: 365,
-    san: ['broker.staging.example.com'],
+    // The backend returns null when SAN is omitted.
+    san: null as unknown as string[],
   },
 ];
 
@@ -81,16 +82,70 @@ describe('K8sCertsPage', () => {
     vi.mocked(listK8sCerts).mockResolvedValue(certs);
   });
 
-  it('trims certificate search text before filtering', async () => {
-    const user = userEvent.setup();
+  const renderPage = () =>
     render(
       <App>
         <K8sCertsPage />
       </App>,
     );
 
+  it('displays certificate namespace and SAN metadata', async () => {
+    renderPage();
+
     await screen.findByText('rocketmq-prod-tls');
-    await user.type(screen.getByPlaceholderText('搜索证书名称或集群'), '  prod-cluster  {enter}');
+
+    expect(screen.getByText('rocketmq')).toBeInTheDocument();
+    expect(screen.getByText('platform')).toBeInTheDocument();
+    expect(screen.getByText('broker.prod.example.com')).toBeInTheDocument();
+    expect(screen.getByText('-')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['platform', 'rocketmq-staging-tls', 'rocketmq-prod-tls'],
+    ['broker.prod.example.com', 'rocketmq-prod-tls', 'rocketmq-staging-tls'],
+  ])('searches certificate metadata by %s', async (query, expected, hidden) => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('rocketmq-prod-tls');
+    await user.type(
+      screen.getByPlaceholderText('搜索证书名称、集群、命名空间或 SAN'),
+      `${query}{enter}`,
+    );
+
+    expect(screen.getByText(expected)).toBeInTheDocument();
+    expect(screen.queryByText(hidden)).not.toBeInTheDocument();
+  });
+
+  it('filters certificates by namespace', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('rocketmq-prod-tls');
+    const namespaceFilter = screen.getByRole('combobox', { name: '按命名空间筛选' });
+    const selector = namespaceFilter
+      .closest('.ant-select')
+      ?.querySelector<HTMLElement>('.ant-select-selector');
+
+    expect(selector).not.toBeNull();
+    fireEvent.mouseDown(selector!);
+    await user.click(
+      await screen.findByText('platform', { selector: '.ant-select-item-option-content' }),
+    );
+
+    expect(screen.getByText('rocketmq-staging-tls')).toBeInTheDocument();
+    expect(screen.queryByText('rocketmq-prod-tls')).not.toBeInTheDocument();
+  });
+
+  it('trims certificate search text before filtering', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('rocketmq-prod-tls');
+    await user.type(
+      screen.getByPlaceholderText('搜索证书名称、集群、命名空间或 SAN'),
+      '  prod-cluster  {enter}',
+    );
 
     expect(screen.getByText('rocketmq-prod-tls')).toBeInTheDocument();
     expect(screen.queryByText('rocketmq-staging-tls')).not.toBeInTheDocument();
