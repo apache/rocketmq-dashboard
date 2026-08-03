@@ -92,6 +92,30 @@ class AlertRuleControllerTest {
     }
 
     @Test
+    void createRuleShouldRejectNullRequestBody() throws Exception {
+        mockMvc.perform(post("/api/alert-rules/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("null"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("Alert rule request is required"));
+
+        verifyNoInteractions(alertService);
+    }
+
+    @Test
+    void updateRuleShouldRejectNullRequestBody() throws Exception {
+        mockMvc.perform(post("/api/alert-rules/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("null"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("Alert rule request is required"));
+
+        verifyNoInteractions(alertService);
+    }
+
+    @Test
     void toggleRuleShouldPassValidatedRequest() throws Exception {
         AlertRuleVO toggled = AlertRuleVO.builder()
                 .id("rule-1")
