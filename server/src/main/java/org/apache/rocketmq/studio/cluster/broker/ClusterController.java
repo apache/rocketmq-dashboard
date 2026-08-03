@@ -37,10 +37,16 @@ import java.util.Map;
 public class ClusterController {
 
     private final ClusterService clusterService;
+    private final ClusterConnectionService clusterConnectionService;
 
     @GetMapping
     public Result<List<ClusterVO>> listClusters() {
         return Result.ok(clusterService.listClusters());
+    }
+
+    @PostMapping("/test-connection")
+    public Result<ClusterProbeResult> testConnection(@Valid @RequestBody TestConnectionDTO command) {
+        return Result.ok(clusterConnectionService.testConnection(command));
     }
 
     @GetMapping("/{id}")

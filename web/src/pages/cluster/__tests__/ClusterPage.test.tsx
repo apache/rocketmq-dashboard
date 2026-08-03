@@ -27,6 +27,7 @@ const clusterServiceMocks = vi.hoisted(() => ({
   createNameServer: vi.fn(),
   listClusters: vi.fn(),
   restartProxy: vi.fn(),
+  testClusterConnection: vi.fn(),
   updateClusterConfig: vi.fn(),
   updateNameServer: vi.fn(),
 }));
@@ -134,6 +135,7 @@ describe('Cluster page', () => {
     clusterServiceMocks.createNameServer.mockReset().mockResolvedValue(undefined);
     clusterServiceMocks.listClusters.mockReset().mockResolvedValue([buildCluster()]);
     clusterServiceMocks.restartProxy.mockReset().mockResolvedValue(undefined);
+    clusterServiceMocks.testClusterConnection.mockReset();
     clusterServiceMocks.updateClusterConfig.mockReset().mockResolvedValue(undefined);
     clusterServiceMocks.updateNameServer.mockReset().mockResolvedValue(undefined);
   });

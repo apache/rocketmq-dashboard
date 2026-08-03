@@ -73,6 +73,16 @@ export interface ClusterConfig {
   deleteWhen: string;
 }
 
+export interface ClusterProbeResult {
+  connected: boolean;
+  namesrvAddr: string;
+  clusterName: string;
+  brokerCount: number;
+  brokerNames: string[];
+  elapsedMillis: number;
+  message: string;
+}
+
 export interface K8sCertInfo {
   id: string;
   name: string;
@@ -90,6 +100,13 @@ export interface K8sCertInfo {
 // ─── Cluster ────────────────────────────────────────────────────
 export async function listClusters() {
   const res = await client.get<{ data: ClusterInfo[] }>('/clusters');
+  return res.data.data;
+}
+
+export async function testClusterConnection(namesrvAddr: string) {
+  const res = await client.post<{ data: ClusterProbeResult }>('/clusters/test-connection', {
+    namesrvAddr,
+  });
   return res.data.data;
 }
 

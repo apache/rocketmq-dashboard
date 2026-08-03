@@ -53,11 +53,13 @@ import type {
   NameServerInfo,
   ClusterConfig,
   ClusterInfo,
+  ClusterProbeResult,
 } from '../../api/cluster';
 import {
   createNameServer,
   listClusters,
   restartProxy,
+  testClusterConnection,
   updateClusterConfig,
   updateNameServer,
 } from '../../services/clusterService';
@@ -88,6 +90,44 @@ const ClusterPage = () => {
   const [selectedProxy, setSelectedProxy] = useState<ProxyDetail | null>(null);
   const [nsForm] = Form.useForm();
   const [configForm] = Form.useForm();
+
+  // ─── Connection test ──────────────────────────────────────────────────────
+  const [connectModalOpen, setConnectModalOpen] = useState(false);
+  const [connectTesting, setConnectTesting] = useState(false);
+  const [probeResult, setProbeResult] = useState<ClusterProbeResult | null>(null);
+  const [connectForm] = Form.useForm();
+
+  const openConnectModal = useCallback(() => {
+    setProbeResult(null);
+    setConnectModalOpen(true);
+  }, []);
+
+  const closeConnectModal = useCallback(() => {
+    setConnectModalOpen(false);
+    setConnectTesting(false);
+    setProbeResult(null);
+    connectForm.resetFields();
+  }, [connectForm]);
+
+  const handleTestConnection = useCallback(async () => {
+    let namesrvAddr: string;
+    try {
+      ({ namesrvAddr } = await connectForm.validateFields());
+    } catch {
+      return;
+    }
+    setConnectTesting(true);
+    setProbeResult(null);
+    try {
+      const result = await testClusterConnection(namesrvAddr);
+      setProbeResult(result);
+      message.success(t('cluster.testConnectionSuccess'));
+    } catch {
+      message.error(t('cluster.testConnectionFailed'));
+    } finally {
+      setConnectTesting(false);
+    }
+  }, [connectForm, t]);
 
   // ─── Cluster refresh coordinator ──────────────────────────────────────────
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -451,11 +491,7 @@ const ClusterPage = () => {
               options={nsClusterOptions}
             />
           </Space>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => message.info(t('cluster.createClusterWip'))}
-          >
+          <Button type="primary" icon={<PlusOutlined />} onClick={openConnectModal}>
             {t('cluster.createCluster')}
           </Button>
         </Flex>
@@ -850,11 +886,7 @@ const ClusterPage = () => {
               style={{ width: 240 }}
             />
           </Space>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => message.info(t('cluster.createClusterWip'))}
-          >
+          <Button type="primary" icon={<PlusOutlined />} onClick={openConnectModal}>
             {t('cluster.createCluster')}
           </Button>
         </Flex>
@@ -1040,6 +1072,54 @@ const ClusterPage = () => {
             </Descriptions.Item>
             <Descriptions.Item label={t('cluster.remotingPort')}>
               {selectedProxy.remotingPort}
+            </Descriptions.Item>
+          </Descriptions>
+        )}
+      </Modal>
+      <Modal
+        title={t('cluster.testConnectionTitle')}
+        open={connectModalOpen}
+        onCancel={closeConnectModal}
+        okText={t('cluster.testConnection')}
+        cancelText={t('common.close')}
+        confirmLoading={connectTesting}
+        onOk={handleTestConnection}
+        width={560}
+        destroyOnClose
+      >
+        <Text type="secondary">{t('cluster.testConnectionDesc')}</Text>
+        <Form form={connectForm} layout="vertical" style={{ marginTop: 16 }}>
+          <Form.Item
+            name="namesrvAddr"
+            label={t('cluster.nsAddr')}
+            rules={[{ required: true, message: t('cluster.nsAddrPlaceholder') }]}
+          >
+            <Input
+              placeholder={t('cluster.nsAddrPlaceholder')}
+              onPressEnter={handleTestConnection}
+            />
+          </Form.Item>
+        </Form>
+        {probeResult && (
+          <Descriptions column={1} bordered size="small">
+            <Descriptions.Item label={t('common.status')}>
+              <Tag color={probeResult.connected ? 'green' : 'red'}>
+                {probeResult.connected
+                  ? t('cluster.testConnectionSuccess')
+                  : t('cluster.testConnectionFailed')}
+              </Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label={t('cluster.probeClusterName')}>
+              {probeResult.clusterName}
+            </Descriptions.Item>
+            <Descriptions.Item label={t('cluster.probeBrokerCount')}>
+              {probeResult.brokerCount}
+            </Descriptions.Item>
+            <Descriptions.Item label={t('cluster.probeBrokers')}>
+              {probeResult.brokerNames.length > 0 ? probeResult.brokerNames.join(', ') : '-'}
+            </Descriptions.Item>
+            <Descriptions.Item label={t('cluster.probeElapsed')}>
+              {probeResult.elapsedMillis}
             </Descriptions.Item>
           </Descriptions>
         )}
