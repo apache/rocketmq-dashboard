@@ -69,8 +69,8 @@ public class ConsumerGroupController {
     }
 
     @PostMapping("/create")
-    public Result<ConsumerGroupVO> createConsumerGroup(@RequestBody ConsumerGroupVO group) {
-        return Result.ok(metadataService.createConsumerGroup(group));
+    public Result<ConsumerGroupVO> createConsumerGroup(@Valid @RequestBody CreateConsumerGroupDTO group) {
+        return Result.ok(metadataService.createConsumerGroup(group.toConsumerGroupVO()));
     }
 
     @PostMapping("/delete")
