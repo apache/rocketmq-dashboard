@@ -67,6 +67,9 @@ public class AlertService {
 
 
     public AlertRuleVO createRule(AlertRuleVO rule) {
+        if (rule == null) {
+            throw new BusinessException(400, "Alert rule request is required");
+        }
         log.info("Creating alert rule: {}", rule.getName());
         rule.setId(UUID.randomUUID().toString());
         return alertRepository.saveRule(rule);
@@ -74,7 +77,10 @@ public class AlertService {
 
 
     public AlertRuleVO updateRule(AlertRuleVO rule) {
-        String id = rule == null ? null : rule.getId();
+        if (rule == null) {
+            throw new BusinessException(400, "Alert rule request is required");
+        }
+        String id = rule.getId();
         log.info("Updating alert rule: {}", id);
         validateRuleId(id);
         if (!alertRepository.replaceRule(rule)) {
