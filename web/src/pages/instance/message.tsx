@@ -69,6 +69,7 @@ type RecentQuery = {
 
 const QUERY_HISTORY_STORAGE_KEY = 'rocketmq-studio-message-query-history';
 const MAX_QUERY_HISTORY = 5;
+const RESEND_UNAVAILABLE_MESSAGE = '当前版本尚未接入普通消息重新发送接口';
 
 const QUERY_OPTIONS = [
   { value: 'topic' as const, label: '按 Topic 查询' },
@@ -325,10 +326,6 @@ const MessagePage = () => {
     }
     const recentQuery = recentQueries[Number(key)];
     if (recentQuery) replayRecentQuery(recentQuery);
-  };
-
-  const handleResend = () => {
-    message.success('消息重新发送成功（模拟）');
   };
 
   const openDetail = async (record: MessageRecord, tab = 'content') => {
@@ -755,7 +752,12 @@ const MessagePage = () => {
         footer={
           <Flex justify="flex-end" gap={8}>
             <Button onClick={closeDetail}>关闭</Button>
-            <Button type="primary" icon={<SendOutlined />} onClick={handleResend}>
+            <Button
+              type="primary"
+              icon={<SendOutlined />}
+              disabled
+              title={RESEND_UNAVAILABLE_MESSAGE}
+            >
               重新发送
             </Button>
           </Flex>

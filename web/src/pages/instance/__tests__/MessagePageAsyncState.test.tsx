@@ -121,6 +121,21 @@ describe('MessagePage async request ownership', () => {
     expect(screen.queryByText('late-after-reset')).not.toBeInTheDocument();
   });
 
+  it('keeps normal message resend disabled until a real API is wired', async () => {
+    serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const row = await screen.findByRole('row', { name: /message-a/ });
+    await user.click(within(row).getByRole('button', { name: /详情/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: '消息详情' });
+    const resendButton = within(dialog).getByRole('button', { name: /重新发送/ });
+    expect(resendButton).toBeDisabled();
+    expect(resendButton).toHaveAttribute('title', '当前版本尚未接入普通消息重新发送接口');
+  });
+
   it('keeps the latest query loading and ignores an earlier query result', async () => {
     const firstQuery = createDeferred<MessageRecord[]>();
     const secondQuery = createDeferred<MessageRecord[]>();
