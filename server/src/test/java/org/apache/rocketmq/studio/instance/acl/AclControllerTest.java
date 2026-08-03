@@ -20,6 +20,7 @@ package org.apache.rocketmq.studio.instance.acl;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -31,6 +32,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -221,11 +223,39 @@ class AclControllerTest {
 
         mockMvc.perform(post("/api/acl/users/create")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"username\":\"new-user\"}"))
+                        .content("""
+                                {
+                                  "username": "new-user",
+                                  "admin": true,
+                                  "clusters": ["cluster-a"]
+                                }
+                                """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.accessKey").value("access-key-123456"))
                 .andExpect(jsonPath("$.data.secretKey").value("secret-key-987654"));
+
+        ArgumentCaptor<AclUserVO> captor = ArgumentCaptor.forClass(AclUserVO.class);
+        verify(aclService).createUser(captor.capture());
+        assertThat(captor.getValue().getUsername()).isEqualTo("new-user");
+        assertThat(captor.getValue().isAdmin()).isTrue();
+        assertThat(captor.getValue().getClusters()).containsExactly("cluster-a");
+    }
+
+    @Test
+    void createUserShouldRejectMissingUsername() throws Exception {
+        mockMvc.perform(post("/api/acl/users/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "admin": false
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("username is required"));
+
+        verifyNoInteractions(aclService);
     }
 
     @Test

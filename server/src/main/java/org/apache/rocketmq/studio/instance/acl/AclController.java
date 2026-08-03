@@ -70,8 +70,8 @@ public class AclController {
     }
 
     @PostMapping("/users/create")
-    public Result<AclUserVO> createUser(@RequestBody AclUserVO user) {
-        return Result.ok(aclService.createUser(user));
+    public Result<AclUserVO> createUser(@Valid @RequestBody CreateAclUserDTO user) {
+        return Result.ok(aclService.createUser(user.toAclUserVO()));
     }
 
     @PostMapping("/users/update")
