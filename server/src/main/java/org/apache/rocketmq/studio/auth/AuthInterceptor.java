@@ -23,6 +23,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.web.cors.CorsUtils;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 @RequiredArgsConstructor
@@ -34,7 +35,8 @@ public class AuthInterceptor implements HandlerInterceptor {
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response,
                              Object handler) throws Exception {
-        if (!authProperties.isLoginRequired() || isPublicPath(requestPath(request))) {
+        if (!authProperties.isLoginRequired() || CorsUtils.isPreFlightRequest(request)
+                || isPublicPath(requestPath(request))) {
             return true;
         }
         if (authService.isAuthenticated(request.getHeader(HttpHeaders.AUTHORIZATION))) {
