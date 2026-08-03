@@ -134,6 +134,18 @@ class InstanceControllerTest {
     }
 
     @Test
+    void createInstanceShouldRejectNullRequestBody() throws Exception {
+        mockMvc.perform(post("/api/instances/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("null"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("Instance request is required"));
+
+        verifyNoInteractions(instanceService);
+    }
+
+    @Test
     void updateInstanceShouldReturnUpdatedInstance() throws Exception {
         InstanceVO update = InstanceVO.builder()
                 .name("updated-name")
@@ -158,6 +170,18 @@ class InstanceControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.id").value("inst-1"))
                 .andExpect(jsonPath("$.data.name").value("updated-name"));
+    }
+
+    @Test
+    void updateInstanceShouldRejectNullRequestBody() throws Exception {
+        mockMvc.perform(post("/api/instances/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("null"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("Instance request is required"));
+
+        verifyNoInteractions(instanceService);
     }
 
     @Test

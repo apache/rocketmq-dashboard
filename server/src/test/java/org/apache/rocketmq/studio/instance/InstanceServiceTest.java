@@ -34,6 +34,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -133,6 +134,16 @@ class InstanceServiceTest {
 
         assertThat(result).hasSize(1);
         verify(instanceRepository).findAll();
+    }
+
+    @Test
+    void createInstanceShouldThrowWhenRequestIsNull() {
+        assertThatThrownBy(() -> instanceService.createInstance(null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Instance request is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(instanceRepository);
     }
 
     @Test
@@ -285,6 +296,16 @@ class InstanceServiceTest {
         assertThat(stored.getId()).isEqualTo("inst-1");
         assertThat(stored.getCreatedAt()).isEqualTo(originalCreatedAt);
         assertThat(stored.getUpdatedAt()).isEqualTo(originalUpdatedAt);
+    }
+
+    @Test
+    void updateInstanceShouldThrowWhenRequestIsNull() {
+        assertThatThrownBy(() -> instanceService.updateInstance(null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Instance request is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(instanceRepository);
     }
 
     @Test
