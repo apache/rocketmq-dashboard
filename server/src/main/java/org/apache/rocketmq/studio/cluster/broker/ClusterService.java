@@ -59,10 +59,7 @@ public class ClusterService {
         ClusterVO cluster = clusterRepository.findById(command.getId())
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getId()));
 
-        ClusterConfigVO config = cluster.getConfig();
-        if (config == null) {
-            config = new ClusterConfigVO();
-        }
+        ClusterConfigVO config = copyConfig(cluster.getConfig());
 
         if (command.getFlushDiskType() != null) {
             config.setFlushDiskType(parseFlushDiskType(command.getFlushDiskType()));
@@ -89,10 +86,28 @@ public class ClusterService {
             config.setBrokerPermission(command.getBrokerPermission());
         }
 
-        cluster.setConfig(config);
         clusterRepository.updateConfig(command.getId(), config);
+        cluster.setConfig(config);
         log.info("Cluster config updated successfully for: {}", command.getId());
         return cluster;
+    }
+
+    private ClusterConfigVO copyConfig(ClusterConfigVO config) {
+        if (config == null) {
+            return new ClusterConfigVO();
+        }
+        return ClusterConfigVO.builder()
+                .writeQueueNums(config.getWriteQueueNums())
+                .readQueueNums(config.getReadQueueNums())
+                .maxMessageSize(config.getMaxMessageSize())
+                .msgTraceTopicName(config.getMsgTraceTopicName())
+                .autoCreateTopicEnable(config.isAutoCreateTopicEnable())
+                .autoCreateSubscriptionGroup(config.isAutoCreateSubscriptionGroup())
+                .deleteWhen(config.getDeleteWhen())
+                .fileReservedTime(config.getFileReservedTime())
+                .flushDiskType(config.getFlushDiskType())
+                .brokerPermission(config.getBrokerPermission())
+                .build();
     }
 
     private FlushDiskType parseFlushDiskType(String value) {
