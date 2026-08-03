@@ -14,21 +14,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.rocketmq.studio.instance.group;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
+import org.junit.jupiter.api.Test;
 
-@Slf4j
-@Component
-public class ConsumerDiagnosticsProviderStub implements ConsumerDiagnosticsProvider {
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-    @Override
-    public ConsumerStackTraceVO getConsumerStack(String groupName, String clientId) {
-        log.warn("ConsumerDiagnosticsProviderStub.getConsumerStack called without a real diagnostics provider. "
-                + "groupName={}, clientId={}", groupName, clientId);
-        throw new BusinessException(501, "Consumer diagnostics provider is not configured");
+class ConsumerDiagnosticsProviderStubTest {
+
+    private final ConsumerDiagnosticsProviderStub provider = new ConsumerDiagnosticsProviderStub();
+
+    @Test
+    void getConsumerStackShouldFailWhenRealProviderIsMissing() {
+        assertThatThrownBy(() -> provider.getConsumerStack("cg-orders", "client-1"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Consumer diagnostics provider is not configured")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(501));
     }
 }
