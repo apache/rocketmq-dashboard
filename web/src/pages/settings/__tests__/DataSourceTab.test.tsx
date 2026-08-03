@@ -82,7 +82,7 @@ describe('DataSourceTab', () => {
       }),
     );
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     render(
       <App>
         <DataSourceTab />
@@ -104,7 +104,7 @@ describe('DataSourceTab', () => {
   it('submits basic auth credentials when testing from the modal', async () => {
     vi.mocked(testDataSource).mockResolvedValue({ success: true, message: 'ok' });
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     render(
       <App>
         <DataSourceTab />
@@ -136,7 +136,7 @@ describe('DataSourceTab', () => {
   it('submits bearer token when testing from the modal', async () => {
     vi.mocked(testDataSource).mockResolvedValue({ success: true, message: 'ok' });
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     render(
       <App>
         <DataSourceTab />
@@ -174,7 +174,7 @@ describe('DataSourceTab', () => {
       status: 'healthy',
     });
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     render(
       <App>
         <DataSourceTab />
@@ -222,7 +222,7 @@ describe('DataSourceTab', () => {
       status: 'healthy',
     });
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
     render(
       <App>
         <DataSourceTab />
@@ -251,6 +251,8 @@ describe('DataSourceTab', () => {
   });
 });
 
+// antd's Select dropdown keeps `pointer-events: none` while its open animation runs,
+// so userEvent refuses to click the option; the interaction itself is valid.
 async function selectAntdOption(
   user: ReturnType<typeof userEvent.setup>,
   label: string,
