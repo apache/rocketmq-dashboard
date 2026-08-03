@@ -16,27 +16,30 @@
  */
 package org.apache.rocketmq.studio.instance.acl;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-import lombok.ToString;
+import org.junit.jupiter.api.Test;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class AclUserVO {
-    private String id;
-    private String username;
-    @ToString.Exclude
-    private String accessKey;
-    @ToString.Exclude
-    private String secretKey;
-    private boolean admin;
-    private List<String> clusters;
-    private LocalDateTime createdAt;
+import static org.assertj.core.api.Assertions.assertThat;
+
+class AclUserVOTest {
+
+    @Test
+    void toStringShouldNotExposeCredentials() {
+        AclUserVO user = AclUserVO.builder()
+            .id("user-1")
+            .username("ops-admin")
+            .accessKey("plain-access-key")
+            .secretKey("plain-secret-key")
+            .admin(true)
+            .clusters(List.of("prod"))
+            .build();
+
+        String value = user.toString();
+
+        assertThat(value).contains("username=ops-admin");
+        assertThat(value).contains("admin=true");
+        assertThat(value).doesNotContain("plain-access-key");
+        assertThat(value).doesNotContain("plain-secret-key");
+    }
 }
