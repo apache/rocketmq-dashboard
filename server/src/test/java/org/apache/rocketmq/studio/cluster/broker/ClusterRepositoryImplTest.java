@@ -26,11 +26,18 @@ class ClusterRepositoryImplTest {
 
     @Test
     void findAllShouldReturnClustersInStableNameOrder() {
-        ClusterRepositoryImpl repository = new ClusterRepositoryImpl();
+        ClusterRepositoryImpl repository = new ClusterRepositoryImpl(true);
 
         List<ClusterVO> clusters = repository.findAll();
 
         assertThat(clusters).extracting(ClusterVO::getName)
                 .containsExactly("rmq-cluster-prod", "rmq-cluster-staging");
+    }
+
+    @Test
+    void findAllShouldBeEmptyWhenDemoDataIsDisabled() {
+        ClusterRepositoryImpl repository = new ClusterRepositoryImpl(false);
+
+        assertThat(repository.findAll()).isEmpty();
     }
 }

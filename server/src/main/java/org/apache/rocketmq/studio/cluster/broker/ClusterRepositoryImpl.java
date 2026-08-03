@@ -25,6 +25,7 @@ import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
 import org.apache.rocketmq.studio.common.domain.enums.FlushDiskType;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
@@ -40,8 +41,11 @@ public class ClusterRepositoryImpl implements ClusterRepository {
 
     private final Map<String, ClusterVO> store = new ConcurrentHashMap<>();
 
-    public ClusterRepositoryImpl() {
-        initStubData();
+    public ClusterRepositoryImpl(@Value("${studio.cluster.seed-demo-data:false}") boolean seedDemoData) {
+        if (seedDemoData) {
+            initStubData();
+            log.info("Initialized demo cluster data for Studio cluster repository");
+        }
     }
 
     @Override
