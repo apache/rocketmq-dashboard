@@ -22,6 +22,13 @@ export interface McpTool {
   name: string;
   description: string;
   parameters: Record<string, unknown>;
+  riskLevel?: string;
+  permission?: string;
+  requiredCapabilities?: string[];
+  outputSchema?: Record<string, unknown>;
+  viewHint?: string;
+  deprecated?: boolean;
+  replacement?: string;
 }
 
 export interface AiExecuteRequest {
@@ -172,7 +179,17 @@ export async function executeAiCommand(data: AiExecuteRequest) {
   return res.data.data;
 }
 
-export async function listTools() {
-  const res = await client.get<{ data: McpTool[] }>('/ai/tools');
+export async function listTools(cluster?: string) {
+  const res = await client.get<{ data: McpTool[] }>('/ai/tools', {
+    params: cluster ? { cluster } : undefined,
+  });
+  return res.data.data;
+}
+
+export async function executeTool(name: string, input: Record<string, unknown>) {
+  const res = await client.post<{ data: unknown }>(
+    `/ai/tools/${encodeURIComponent(name)}/execute`,
+    input,
+  );
   return res.data.data;
 }

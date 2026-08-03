@@ -22,6 +22,7 @@ import {
   AiStreamError,
   chatStream,
   executeAiCommand,
+  executeTool,
   listTools,
   type AiExecuteRequest,
   type McpTool,
@@ -118,12 +119,14 @@ describe('AI API', () => {
     it('throws structured errors from SSE error events', async () => {
       vi.stubGlobal(
         'fetch',
-        vi.fn().mockResolvedValue(
-          streamResponse([
-            'event: error\n',
-            'data: {"status":400,"code":"llm.config.incomplete","message":"LLM provider is not configured or enabled","hint":"Configure and enable an LLM provider."}\n\n',
-          ]),
-        ),
+        vi
+          .fn()
+          .mockResolvedValue(
+            streamResponse([
+              'event: error\n',
+              'data: {"status":400,"code":"llm.config.incomplete","message":"LLM provider is not configured or enabled","hint":"Configure and enable an LLM provider."}\n\n',
+            ]),
+          ),
       );
 
       await expect(
@@ -195,9 +198,25 @@ describe('AI API', () => {
       expect(result).toEqual([]);
     });
 
+    it('scopes tool discovery to the selected cluster', async () => {
+      mock.onGet('/ai/tools', { params: { cluster: 'cluster-a' } }).reply(200, { data: [] });
+
+      await expect(listTools('cluster-a')).resolves.toEqual([]);
+    });
+
     it('should handle server error', async () => {
       mock.onGet('/ai/tools').reply(500);
       await expect(listTools()).rejects.toThrow();
+    });
+  });
+
+  describe('executeTool', () => {
+    it('posts structured input and returns structured output', async () => {
+      const input = { cluster: 'cluster-a', topic: 'orders' };
+      const output = { items: [{ name: 'orders' }], total: 1 };
+      mock.onPost('/ai/tools/rmq.topic.list/execute', input).reply(200, { data: output });
+
+      await expect(executeTool('rmq.topic.list', input)).resolves.toEqual(output);
     });
   });
 });

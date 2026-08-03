@@ -33,12 +33,17 @@ import {
   Divider,
   Select,
   Alert,
+  Input,
+  Modal,
+  Space,
+  theme,
   message,
 } from 'antd';
 import { ArrowUp, Sparkle, SlidersHorizontal, CaretDown } from '@phosphor-icons/react';
 import type { ColumnsType } from 'antd/es/table';
 import { useLang } from '../../i18n/LangContext';
-import { AiStreamError, chatStream } from '../../api/ai';
+import { AiStreamError, chatStream, executeTool, listTools, type McpTool } from '../../api/ai';
+import { listClusters } from '../../api/cluster';
 import { getLlmConfig, getLlmModels, type LlmConfig } from '../../api/llm';
 import { getChatDraft } from './chatDraft';
 
@@ -97,6 +102,47 @@ const quickActions = [
   '消息轨迹查询',
   '扩缩容评估',
 ];
+
+const GLOBAL_TOOL_SCOPE = '__global__';
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const defaultSchemaValue = (schema: unknown): unknown => {
+  if (!isRecord(schema)) return '';
+  if ('default' in schema) return schema.default;
+  if (Array.isArray(schema.enum) && schema.enum.length > 0) return schema.enum[0];
+  switch (schema.type) {
+    case 'boolean':
+      return false;
+    case 'integer':
+    case 'number':
+      return 0;
+    case 'array':
+      return [];
+    case 'object':
+      return {};
+    default:
+      return '';
+  }
+};
+
+const buildToolInputTemplate = (tool: McpTool, cluster?: string): string => {
+  const required = Array.isArray(tool.parameters.required)
+    ? tool.parameters.required.filter((field): field is string => typeof field === 'string')
+    : [];
+  const properties = isRecord(tool.parameters.properties) ? tool.parameters.properties : {};
+  const input = Object.fromEntries(
+    required.map((field) => [
+      field,
+      field === 'cluster' && cluster ? cluster : defaultSchemaValue(properties[field]),
+    ]),
+  );
+  return JSON.stringify(input, null, 2);
+};
+
+const formatToolResult = (result: unknown): string =>
+  typeof result === 'string' ? result : (JSON.stringify(result, null, 2) ?? 'null');
 
 /* ─── Sub-components ─── */
 
@@ -260,6 +306,7 @@ const AiPage = () => {
   const { t } = useLang();
   const location = useLocation();
   const navigate = useNavigate();
+  const { token } = theme.useToken();
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(false);
@@ -267,6 +314,16 @@ const AiPage = () => {
   const [modelOptions, setModelOptions] = useState<{ value: string; label: string }[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState('');
+  const [toolModalOpen, setToolModalOpen] = useState(false);
+  const [tools, setTools] = useState<McpTool[]>([]);
+  const [toolsLoading, setToolsLoading] = useState(false);
+  const [clusterOptions, setClusterOptions] = useState<{ value: string; label: string }[]>([]);
+  const [clustersLoading, setClustersLoading] = useState(false);
+  const [selectedClusterId, setSelectedClusterId] = useState('');
+  const [selectedToolName, setSelectedToolName] = useState('');
+  const [toolInput, setToolInput] = useState('{}');
+  const [toolResult, setToolResult] = useState<unknown>(undefined);
+  const [toolExecuting, setToolExecuting] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -408,9 +465,7 @@ const AiPage = () => {
         const errorHint = error instanceof AiStreamError && error.hint ? error.hint : '';
         const summary = errorHint ? `${errorMessage}\n\n> ${errorHint}` : errorMessage;
         setMessages((prev) =>
-          prev.map((item) =>
-            item.id === responseId ? { ...item, summary } : item,
-          ),
+          prev.map((item) => (item.id === responseId ? { ...item, summary } : item)),
         );
         message.error(errorMessage);
       }
@@ -438,6 +493,96 @@ const AiPage = () => {
     setInputValue(action);
     textareaRef.current?.focus();
   }, []);
+
+  const selectTool = useCallback(
+    (name: string, availableTools: McpTool[] = tools, clusterId: string = selectedClusterId) => {
+      const tool = availableTools.find((item) => item.name === name);
+      setSelectedToolName(name);
+      setToolInput(tool ? buildToolInputTemplate(tool, clusterId) : '{}');
+      setToolResult(undefined);
+    },
+    [selectedClusterId, tools],
+  );
+
+  const loadTools = useCallback(
+    async (clusterId: string) => {
+      setSelectedToolName('');
+      setToolResult(undefined);
+      setToolsLoading(true);
+      try {
+        const availableTools = await listTools(clusterId || undefined);
+        setTools(availableTools);
+        const firstTool = availableTools.find((tool) => !tool.deprecated);
+        if (firstTool) selectTool(firstTool.name, availableTools, clusterId);
+      } catch {
+        setTools([]);
+        message.error('AI 工具目录加载失败');
+      } finally {
+        setToolsLoading(false);
+      }
+    },
+    [selectTool],
+  );
+
+  const handleOpenTools = useCallback(async () => {
+    setToolModalOpen(true);
+    setToolResult(undefined);
+    if (tools.length > 0 || toolsLoading || clustersLoading) return;
+
+    let clusterId = '';
+    setClustersLoading(true);
+    try {
+      const clusters = await listClusters();
+      const options = clusters.map((cluster) => ({ value: cluster.id, label: cluster.name }));
+      setClusterOptions(options);
+      clusterId = options[0]?.value ?? '';
+      setSelectedClusterId(clusterId);
+    } catch {
+      message.warning('集群列表加载失败，已显示全局工具');
+    } finally {
+      setClustersLoading(false);
+    }
+
+    await loadTools(clusterId);
+  }, [clustersLoading, loadTools, tools.length, toolsLoading]);
+
+  const handleClusterChange = useCallback(
+    async (scope: string) => {
+      const clusterId = scope === GLOBAL_TOOL_SCOPE ? '' : scope;
+      setSelectedClusterId(clusterId);
+      await loadTools(clusterId);
+    },
+    [loadTools],
+  );
+
+  const handleExecuteTool = useCallback(async () => {
+    if (!selectedToolName || toolExecuting) return;
+
+    let parsedInput: unknown;
+    try {
+      parsedInput = JSON.parse(toolInput || '{}');
+    } catch {
+      message.error('工具参数必须是有效的 JSON 对象');
+      return;
+    }
+    if (!isRecord(parsedInput)) {
+      message.error('工具参数必须是有效的 JSON 对象');
+      return;
+    }
+
+    setToolExecuting(true);
+    setToolResult(undefined);
+    try {
+      setToolResult(await executeTool(selectedToolName, parsedInput));
+      message.success('工具执行成功');
+    } catch {
+      message.error('工具执行失败');
+    } finally {
+      setToolExecuting(false);
+    }
+  }, [selectedToolName, toolExecuting, toolInput]);
+
+  const selectedTool = tools.find((tool) => tool.name === selectedToolName);
 
   return (
     <Flex vertical style={{ height: '100%', minHeight: 0, padding: 24, overflow: 'hidden' }}>
@@ -632,7 +777,7 @@ const AiPage = () => {
               <div className="flex items-center gap-2 w-full">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide max-w-full py-2">
-                    <button className="tool-btn">
+                    <button className="tool-btn" onClick={() => void handleOpenTools()}>
                       <SlidersHorizontal size={17} />
                       <span>工具</span>
                     </button>
@@ -666,6 +811,98 @@ const AiPage = () => {
           </div>
         </div>
       </div>
+
+      <Modal
+        title="AI 工具"
+        open={toolModalOpen}
+        onCancel={() => setToolModalOpen(false)}
+        onOk={() => void handleExecuteTool()}
+        okText="执行"
+        cancelText="关闭"
+        width={720}
+        styles={{ body: { maxHeight: 'calc(100vh - 260px)', overflowY: 'auto' } }}
+        okButtonProps={{
+          loading: toolExecuting,
+          disabled: toolsLoading || !selectedToolName,
+        }}
+      >
+        <Flex vertical gap={16} style={{ paddingTop: 8 }}>
+          <Select
+            aria-label="选择集群"
+            loading={clustersLoading}
+            value={selectedClusterId || GLOBAL_TOOL_SCOPE}
+            onChange={(scope) => void handleClusterChange(scope)}
+            options={[{ value: GLOBAL_TOOL_SCOPE, label: '全局工具' }, ...clusterOptions]}
+          />
+
+          <Select
+            aria-label="选择工具"
+            showSearch
+            loading={toolsLoading}
+            value={selectedToolName || undefined}
+            placeholder="选择工具"
+            optionFilterProp="label"
+            onChange={(name) => selectTool(name)}
+            options={tools.map((tool) => ({
+              value: tool.name,
+              label: tool.name,
+              disabled: tool.deprecated,
+            }))}
+          />
+
+          {selectedTool && (
+            <Flex vertical gap={8}>
+              <Space size={8} wrap>
+                {selectedTool.riskLevel && (
+                  <Tag color={selectedTool.riskLevel === 'L1' ? 'green' : 'orange'}>
+                    {selectedTool.riskLevel}
+                  </Tag>
+                )}
+                {selectedTool.permission && <Tag>{selectedTool.permission}</Tag>}
+              </Space>
+              <Text type="secondary">{selectedTool.description}</Text>
+            </Flex>
+          )}
+
+          <div>
+            <Text strong style={{ display: 'block', marginBottom: 8 }}>
+              输入参数 (JSON)
+            </Text>
+            <Input.TextArea
+              aria-label="工具参数 JSON"
+              value={toolInput}
+              onChange={(event) => setToolInput(event.target.value)}
+              autoSize={{ minRows: 6, maxRows: 12 }}
+              spellCheck={false}
+            />
+          </div>
+
+          {toolResult !== undefined && (
+            <div>
+              <Text strong style={{ display: 'block', marginBottom: 8 }}>
+                执行结果
+              </Text>
+              <pre
+                data-testid="tool-result"
+                style={{
+                  maxHeight: 280,
+                  margin: 0,
+                  padding: 12,
+                  overflow: 'auto',
+                  color: token.colorText,
+                  border: `1px solid ${token.colorBorderSecondary}`,
+                  borderRadius: 6,
+                  background: token.colorFillQuaternary,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                }}
+              >
+                {formatToolResult(toolResult)}
+              </pre>
+            </div>
+          )}
+        </Flex>
+      </Modal>
 
       {/* Keyframes for loading animation */}
       <style>{`
