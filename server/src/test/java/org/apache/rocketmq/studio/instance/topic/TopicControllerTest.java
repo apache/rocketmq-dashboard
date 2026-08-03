@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.instance.topic;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -29,6 +30,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.List;
 import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -106,6 +108,47 @@ class TopicControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.name").value("new-topic"))
                 .andExpect(jsonPath("$.data.writeQueues").value(16));
+
+        ArgumentCaptor<TopicVO> captor = ArgumentCaptor.forClass(TopicVO.class);
+        verify(metadataService).createTopic(captor.capture());
+        assertThat(captor.getValue().getName()).isEqualTo("new-topic");
+        assertThat(captor.getValue().getWriteQueues()).isEqualTo(16);
+        assertThat(captor.getValue().getReadQueues()).isEqualTo(16);
+    }
+
+    @Test
+    void createTopicShouldRejectMissingName() throws Exception {
+        mockMvc.perform(post("/api/topics/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "writeQueues": 8,
+                                  "readQueues": 8
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("name is required"));
+
+        verifyNoInteractions(metadataService);
+    }
+
+    @Test
+    void createTopicShouldRejectNegativeQueueCount() throws Exception {
+        mockMvc.perform(post("/api/topics/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "new-topic",
+                                  "writeQueues": -1,
+                                  "readQueues": 8
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("writeQueues must be zero or positive"));
+
+        verifyNoInteractions(metadataService);
     }
 
     @Test

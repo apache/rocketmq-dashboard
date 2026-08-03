@@ -45,8 +45,8 @@ public class TopicController {
     }
 
     @PostMapping("/create")
-    public Result<TopicVO> createTopic(@RequestBody TopicVO topic) {
-        return Result.ok(metadataService.createTopic(topic));
+    public Result<TopicVO> createTopic(@Valid @RequestBody CreateTopicDTO topic) {
+        return Result.ok(metadataService.createTopic(topic.toTopicVO()));
     }
 
     @PostMapping("/update")
