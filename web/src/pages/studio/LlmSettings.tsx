@@ -44,10 +44,8 @@ import { fallbackModelOptions } from './llmModelOptions';
 const PROVIDER_OPTIONS = [
   { value: 'tongyi', label: '通义千问（DashScope）' },
   { value: 'openai', label: 'OpenAI' },
-  { value: 'azure', label: 'Azure OpenAI' },
   { value: 'deepseek', label: 'DeepSeek' },
   { value: 'ollama', label: 'Ollama（本地）' },
-  { value: 'bedrock', label: 'AWS Bedrock' },
 ];
 
 const ENGINE_OPTIONS = [
