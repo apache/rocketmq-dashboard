@@ -72,6 +72,28 @@ class NameServerControllerTest {
     }
 
     @Test
+    void nameServerWriteEndpointsShouldRejectNullRequestBody() throws Exception {
+        String[] paths = {
+            "/api/nameservers/create",
+            "/api/nameservers/update",
+            "/api/nameservers/restart",
+            "/api/nameservers/upgrade",
+            "/api/nameservers/delete"
+        };
+
+        for (String path : paths) {
+            mockMvc.perform(post(path)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("null"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value(400))
+                    .andExpect(jsonPath("$.message").value("NameServer request is required"));
+        }
+
+        verifyNoInteractions(clusterService);
+    }
+
+    @Test
     void updateNameServerShouldRejectBlankAddr() throws Exception {
         UpdateNameServerDTO request = UpdateNameServerDTO.builder()
                 .clusterId("cluster-1")
