@@ -16,7 +16,7 @@
  */
 
 import { App } from 'antd';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -36,6 +36,15 @@ const dlqGroup: DLQGroup = {
   messageCount: 7,
   lastEnqueueTime: '2026-07-24T10:00:00Z',
   retryCount: 3,
+  status: 'ACTIVE',
+};
+
+const secondDlqGroup: DLQGroup = {
+  groupName: '-cg-"payment"',
+  dlqTopic: '%DLQ%cg-payment',
+  messageCount: 2,
+  lastEnqueueTime: '2026-07-24T11:00:00Z',
+  retryCount: 1,
   status: 'ACTIVE',
 };
 
@@ -113,12 +122,57 @@ describe('DLQ page', () => {
     renderWithProviders(<DLQPage />);
 
     await screen.findByText('cg-order');
-    await user.click(screen.getByRole('button', { name: /导出/ }));
+    await user.click(screen.getByRole('button', { name: '导出' }));
 
     expect(createObjectURL).toHaveBeenCalledTimes(1);
     const blob = createObjectURL.mock.calls[0][0] as Blob;
     await expect(blob.text()).resolves.toContain('"cg-order","%DLQ%cg-order","7","3","ACTIVE"');
     expect(clickSpy).toHaveBeenCalledTimes(1);
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:dlq');
+  });
+
+  it('exports summaries for the selected groups in one CSV file', async () => {
+    vi.mocked(messageService.listDLQGroups).mockResolvedValue([dlqGroup, secondDlqGroup]);
+    const user = userEvent.setup();
+    renderWithProviders(<DLQPage />);
+
+    const batchExport = screen.getByRole('button', { name: /批量导出/ });
+    expect(batchExport).toBeDisabled();
+
+    const orderRow = (await screen.findByText('cg-order')).closest('tr');
+    const paymentRow = screen.getByText('-cg-"payment"').closest('tr');
+    if (!orderRow || !paymentRow) throw new Error('DLQ group row not found');
+
+    await user.click(within(orderRow).getByRole('checkbox'));
+    await user.click(within(paymentRow).getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: /批量导出/ }));
+
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    const blob = createObjectURL.mock.calls[0][0] as Blob;
+    const csv = await blob.text();
+    expect(csv).toContain('"cg-order","%DLQ%cg-order","7","3","ACTIVE"');
+    expect(csv).toContain('"\'-cg-""payment""","%DLQ%cg-payment","2","1","ACTIVE"');
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:dlq');
+  });
+
+  it('clears a selected group when refreshed data shows no dead-letter messages', async () => {
+    vi.mocked(messageService.listDLQGroups)
+      .mockResolvedValueOnce([dlqGroup])
+      .mockResolvedValueOnce([{ ...dlqGroup, messageCount: 0 }]);
+    const user = userEvent.setup();
+    renderWithProviders(<DLQPage />);
+
+    const orderRow = (await screen.findByText('cg-order')).closest('tr');
+    if (!orderRow) throw new Error('DLQ group row not found');
+
+    await user.click(within(orderRow).getByRole('checkbox'));
+    await user.click(within(orderRow).getByRole('button', { name: '重投消息' }));
+    await user.type(screen.getByPlaceholderText('输入目标 Topic 名称'), 'orders-retry');
+    await user.click(screen.getByRole('button', { name: '确认重投' }));
+
+    await waitFor(() => expect(messageService.listDLQGroups).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(within(orderRow).getByRole('checkbox')).toBeDisabled());
+    expect(screen.getByRole('button', { name: /批量导出/ })).toBeDisabled();
   });
 });

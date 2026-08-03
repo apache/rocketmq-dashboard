@@ -48,6 +48,33 @@ const formatDateTime = (iso: string): string => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 };
 
+const escapeCSVValue = (value: string) => {
+  const safeValue = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+  return `"${safeValue.replace(/"/g, '""')}"`;
+};
+
+const exportDLQGroups = (groups: DLQGroup[], filename: string) => {
+  const rows = [
+    ['Group Name', 'DLQ Topic', 'Message Count', 'Retry Count', 'Status', 'Last Enqueue Time'],
+    ...groups.map((group) => [
+      group.groupName,
+      group.dlqTopic,
+      String(group.messageCount),
+      String(group.retryCount),
+      group.status,
+      group.lastEnqueueTime,
+    ]),
+  ];
+  const csv = rows.map((row) => row.map(escapeCSVValue).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+};
+
 /* ═══════════════════════════════════════════
    DLQPage
    ═══════════════════════════════════════════ */
@@ -66,13 +93,22 @@ const DLQPage = () => {
   const [retryTargetTopic, setRetryTargetTopic] = useState('');
   const [retrySubmitting, setRetrySubmitting] = useState(false);
   const [detailGroup, setDetailGroup] = useState<DLQGroup | null>(null);
+  const [selectedGroupNames, setSelectedGroupNames] = useState<string[]>([]);
 
   useEffect(() => {
     let cancelled = false;
 
     void listDLQGroups()
       .then((nextGroups) => {
-        if (!cancelled) setGroups(nextGroups);
+        if (!cancelled) {
+          setGroups(nextGroups);
+          const availableGroups = new Set(
+            nextGroups.filter((group) => group.messageCount > 0).map((group) => group.groupName),
+          );
+          setSelectedGroupNames((selected) =>
+            selected.filter((groupName) => availableGroups.has(groupName)),
+          );
+        }
       })
       .catch(() => {
         if (!cancelled) message.error('死信队列加载失败，请稍后重试');
@@ -94,6 +130,11 @@ const DLQPage = () => {
         g.groupName.includes(search) || g.dlqTopic.toLowerCase().includes(search.toLowerCase()),
     );
   }, [groups, search]);
+
+  const selectedGroups = useMemo(() => {
+    const selected = new Set(selectedGroupNames);
+    return groups.filter((group) => selected.has(group.groupName));
+  }, [groups, selectedGroupNames]);
 
   /* ─── Handlers ─── */
   const openRetryModal = (group: DLQGroup) => {
@@ -130,28 +171,13 @@ const DLQPage = () => {
   };
 
   const handleExport = (group: DLQGroup) => {
-    const rows = [
-      ['Group Name', 'DLQ Topic', 'Message Count', 'Retry Count', 'Status', 'Last Enqueue Time'],
-      [
-        group.groupName,
-        group.dlqTopic,
-        String(group.messageCount),
-        String(group.retryCount),
-        group.status,
-        group.lastEnqueueTime,
-      ],
-    ];
-    const csv = rows
-      .map((row) => row.map((value) => `"${value.replace(/"/g, '""')}"`).join(','))
-      .join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${group.groupName}-dlq.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    exportDLQGroups([group], `${group.groupName}-dlq.csv`);
     message.success(`已导出 ${group.groupName} 的死信队列摘要`);
+  };
+
+  const handleBatchExport = () => {
+    if (selectedGroups.length === 0) return;
+    exportDLQGroups(selectedGroups, 'dlq-groups.csv');
   };
 
   /* ─── Table Columns ─── */
@@ -263,6 +289,14 @@ const DLQPage = () => {
           style={{ width: 320 }}
           prefix={<MagnifyingGlass size={14} color="#9CA3AF" />}
         />
+        <Button
+          icon={<Download size={16} />}
+          disabled={selectedGroups.length === 0}
+          onClick={handleBatchExport}
+        >
+          {t('message.batchExport')}
+          {selectedGroups.length > 0 ? ` (${selectedGroups.length})` : ''}
+        </Button>
       </Flex>
 
       {/* ── Table ── */}
@@ -272,6 +306,12 @@ const DLQPage = () => {
           dataSource={filtered}
           rowKey="groupName"
           loading={loading}
+          rowSelection={{
+            selectedRowKeys: selectedGroupNames,
+            preserveSelectedRowKeys: true,
+            onChange: (keys) => setSelectedGroupNames(keys.map(String)),
+            getCheckboxProps: (record) => ({ disabled: record.messageCount === 0 }),
+          }}
           pagination={{
             pageSize: 20,
             showSizeChanger: true,
