@@ -38,22 +38,19 @@ class OpsServiceTest {
     }
 
     @Test
-    void addAndUpdateNameServerShouldMaintainUniqueAddressList() {
-        opsService.addNameServer(" 10.0.0.1:9876 ");
-        opsService.addNameServer("10.0.0.1:9876");
-        opsService.updateNameServer("10.0.0.2:9876");
-
-        OpsHomeVO home = opsService.getHomePage();
-        assertThat(home.getNamesvrAddrList())
-                .containsExactly("127.0.0.1:9876", "10.0.0.1:9876", "10.0.0.2:9876");
-        assertThat(home.getCurrentNamesrv()).isEqualTo("10.0.0.2:9876");
-    }
-
-    @Test
-    void deleteNameServerShouldRemoveNonCurrentAddress() {
-        opsService.addNameServer("10.0.0.1:9876");
-
-        opsService.deleteNameServer(" 10.0.0.1:9876 ");
+    void nameServerWritesShouldReturnUnavailable() {
+        assertThatThrownBy(() -> opsService.addNameServer(" 10.0.0.1:9876 "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Ops settings are not connected to the cluster admin configuration")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(501));
+        assertThatThrownBy(() -> opsService.updateNameServer("10.0.0.2:9876"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Ops settings are not connected to the cluster admin configuration")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(501));
+        assertThatThrownBy(() -> opsService.deleteNameServer("127.0.0.1:9876"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Ops settings are not connected to the cluster admin configuration")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(501));
 
         OpsHomeVO home = opsService.getHomePage();
         assertThat(home.getNamesvrAddrList()).containsExactly("127.0.0.1:9876");
@@ -61,33 +58,19 @@ class OpsServiceTest {
     }
 
     @Test
-    void deleteNameServerShouldRejectUnknownCurrentAndLastAddress() {
-        assertThatThrownBy(() -> opsService.deleteNameServer("10.0.0.1:9876"))
+    void togglesShouldReturnUnavailable() {
+        assertThatThrownBy(() -> opsService.updateVipChannel(false))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("NameServer address not found: 10.0.0.1:9876")
-                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
-
-        assertThatThrownBy(() -> opsService.deleteNameServer("127.0.0.1:9876"))
+                .hasMessage("Ops settings are not connected to the cluster admin configuration")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(501));
+        assertThatThrownBy(() -> opsService.updateUseTLS(true))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("Cannot delete the last NameServer address")
-                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
-
-        opsService.addNameServer("10.0.0.1:9876");
-        opsService.updateNameServer("10.0.0.1:9876");
-        assertThatThrownBy(() -> opsService.deleteNameServer("10.0.0.1:9876"))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("Cannot delete the current NameServer address")
-                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
-    }
-
-    @Test
-    void togglesShouldUpdateHomePageSettings() {
-        opsService.updateVipChannel(false);
-        opsService.updateUseTLS(true);
+                .hasMessage("Ops settings are not connected to the cluster admin configuration")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(501));
 
         OpsHomeVO home = opsService.getHomePage();
-        assertThat(home.isUseVIPChannel()).isFalse();
-        assertThat(home.isUseTLS()).isTrue();
+        assertThat(home.isUseVIPChannel()).isTrue();
+        assertThat(home.isUseTLS()).isFalse();
     }
 
     @Test
