@@ -1,0 +1,16 @@
+# ============================================================================
+# RocketMQ 5.x Monitoring - Alert Rule
+# Compatible with Prometheus / VictoriaMetrics / Thanos / Cortex / Mimir
+# ============================================================================
+groups:
+  - name: rocketmq-consumer.rules
+    rules:
+      - alert: RocketMQConsumerLagCritical
+        expr: rocketmq_consumer_lag_messages > 1000000
+        for: 5m
+        labels:
+          severity: critical
+          team: consumer
+        annotations:
+          summary: "Consumer lag critical"
+          description: "A consumer group lag is above 1 million messages."

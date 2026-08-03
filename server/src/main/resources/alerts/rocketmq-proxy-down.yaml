@@ -1,0 +1,16 @@
+# ============================================================================
+# RocketMQ 5.x Monitoring - Alert Rule
+# Compatible with Prometheus / VictoriaMetrics / Thanos / Cortex / Mimir
+# ============================================================================
+groups:
+  - name: rocketmq-proxy.rules
+    rules:
+      - alert: RocketMQProxyDown
+        expr: up{job=~".*rocketmq.*proxy.*"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: proxy
+        annotations:
+          summary: "RocketMQ proxy is down"
+          description: "A RocketMQ 5.x proxy target has been down for more than 1 minute."

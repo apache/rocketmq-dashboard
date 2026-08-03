@@ -1,0 +1,16 @@
+# ============================================================================
+# RocketMQ 5.x Monitoring - Alert Rule
+# Compatible with Prometheus / VictoriaMetrics / Thanos / Cortex / Mimir
+# ============================================================================
+groups:
+  - name: rocketmq-errors.rules
+    rules:
+      - alert: RocketMQBrokerExceptions
+        expr: rate(rocketmq_broker_exception_count[5m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+          team: broker
+        annotations:
+          summary: "Broker exceptions"
+          description: "Broker runtime exceptions have been observed."

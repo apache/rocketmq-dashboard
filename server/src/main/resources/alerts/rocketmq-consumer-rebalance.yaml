@@ -1,0 +1,16 @@
+# ============================================================================
+# RocketMQ 5.x Monitoring - Alert Rule
+# Compatible with Prometheus / VictoriaMetrics / Thanos / Cortex / Mimir
+# ============================================================================
+groups:
+  - name: rocketmq-consumer.rules
+    rules:
+      - alert: RocketMQConsumerRebalance
+        expr: increase(rocketmq_consumer_rebalance_times[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          team: consumer
+        annotations:
+          summary: "Frequent consumer rebalances"
+          description: "More than 10 consumer rebalances happened in 5 minutes."

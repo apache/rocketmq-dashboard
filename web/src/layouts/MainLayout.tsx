@@ -38,6 +38,7 @@ import {
   PlugsConnected,
   BellRinging,
   Notebook,
+  Warning,
 } from '@phosphor-icons/react';
 import { useLang } from '../i18n/LangContext';
 import { useTheme } from '../theme/ThemeContext';
@@ -133,6 +134,11 @@ const MainLayout = () => {
         { key: '/ops/alerts', icon: <BellRinging size={16} />, label: t('nav.alertRules') },
         { key: '/ops/system-alerts', icon: <BellRinging size={16} />, label: t('nav.alertEvents') },
         { key: '/ops/audit', icon: <Notebook size={16} />, label: t('nav.audit') },
+        {
+          key: '/ops/alert-rule-templates',
+          icon: <Warning size={16} />,
+          label: t('nav.alertRuleAssets'),
+        },
       ],
     },
     { key: '/ai', icon: <Sparkle size={iconSize} weight="duotone" />, label: t('nav.ai') },
@@ -160,6 +166,7 @@ const MainLayout = () => {
     '/ops/system-alerts': t('nav.alertEvents'),
     '/ops/alerts': t('nav.alertRules'),
     '/ops/audit': t('nav.audit'),
+    '/ops/alert-rule-templates': t('nav.alertRuleAssets'),
     '/ai': t('nav.ai'),
     '/settings': t('nav.settings'),
   };

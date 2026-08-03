@@ -21,7 +21,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -31,6 +30,7 @@ import java.util.UUID;
 public class AlertService {
 
     private final AlertRepository alertRepository;
+    private final AlertRuleAssetService alertRuleAssetService;
 
 
     public List<AlertRuleVO> listRules() {
@@ -126,40 +126,7 @@ public class AlertService {
     }
 
     private List<PrometheusAlertRule> defaultPrometheusRules() {
-        List<PrometheusAlertRule> rules = new ArrayList<>();
-        rules.add(rule("rocketmq-broker.rules", "RocketMQBrokerDown", "up{job=~\".*rocketmq.*\"} == 0", "1m",
-                "critical", "broker", "RocketMQ broker is down",
-                "A RocketMQ broker scrape target has been unavailable for more than 1 minute."));
-        rules.add(rule("rocketmq-consumer.rules", "RocketMQConsumerLagHigh",
-                "rocketmq_consumer_lag_messages > 100000", "5m",
-                "warning", "consumer", "Consumer lag is high",
-                "A consumer group has accumulated more than 100000 messages."));
-        rules.add(rule("rocketmq-consumer.rules", "RocketMQConsumerLagCritical",
-                "rocketmq_consumer_lag_messages > 1000000", "5m",
-                "critical", "consumer", "Consumer lag is critical",
-                "A consumer group has accumulated more than 1000000 messages."));
-        rules.add(rule("rocketmq-client.rules", "RocketMQProducerSendLatencyHigh",
-                "rocketmq_producer_send_to_back_rt > 1000", "5m",
-                "warning", "client", "Producer send latency is high",
-                "Producer send-to-broker latency has stayed above 1000 ms."));
-        rules.add(rule("rocketmq-broker.rules", "RocketMQProcessorWatermarkHigh",
-                "rocketmq_processor_watermark > 80", "5m",
-                "warning", "broker", "Processor watermark is high",
-                "Broker processor watermark is above 80 percent."));
-        rules.add(rule("rocketmq-topic.rules", "RocketMQMessageInDrop",
-                "rate(rocketmq_messages_in_total[5m]) == 0", "10m",
-                "info", "topic", "No incoming messages",
-                "No incoming messages have been observed for 10 minutes."));
-        rules.add(rule("rocketmq-consumer.rules", "RocketMQMessageOutDrop",
-                "rate(rocketmq_messages_out_total[5m]) == 0", "10m",
-                "info", "consumer", "No outgoing messages",
-                "No outgoing messages have been observed for 10 minutes."));
-        return rules;
-    }
-
-    private PrometheusAlertRule rule(String group, String alert, String expr, String duration,
-                                     String severity, String team, String summary, String description) {
-        return new PrometheusAlertRule(group, alert, expr, duration, severity, team, summary, description);
+        return alertRuleAssetService.loadDefaultRules();
     }
 
     private PrometheusAlertRule toPrometheusRule(AlertRuleVO rule) {
@@ -299,10 +266,6 @@ public class AlertService {
 
     private boolean hasText(String value) {
         return value != null && !value.trim().isEmpty();
-    }
-
-    private record PrometheusAlertRule(String group, String alert, String expr, String duration,
-                                       String severity, String team, String summary, String description) {
     }
 
     private void validateRuleId(String id) {

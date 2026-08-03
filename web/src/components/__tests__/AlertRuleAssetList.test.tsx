@@ -1,0 +1,127 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { App as AntdApp } from 'antd';
+import AlertRuleAssetList from '../AlertRuleAssetList';
+import { LangProvider } from '../../i18n/LangContext';
+import * as alertRuleAssetService from '../../services/alertRuleAssetService';
+
+vi.mock('../../services/alertRuleAssetService', () => ({
+  listAlertRuleAssets: vi.fn(),
+  getAlertRuleAsset: vi.fn(),
+  exportAlertRuleAsset: vi.fn(),
+}));
+
+const sampleAssets = [
+  {
+    name: 'rocketmq-broker-down',
+    group: 'rocketmq-broker.rules',
+    ruleCount: 1,
+    severities: ['critical'],
+  },
+  {
+    name: 'rocketmq-consumer-lag-high',
+    group: 'rocketmq-consumer.rules',
+    ruleCount: 1,
+    severities: ['warning'],
+  },
+];
+
+const renderWithProviders = (ui: React.ReactElement) =>
+  render(
+    <LangProvider>
+      <AntdApp>{ui}</AntdApp>
+    </LangProvider>,
+  );
+
+describe('AlertRuleAssetList', () => {
+  beforeAll(() => {
+    window.matchMedia =
+      window.matchMedia ||
+      ((query: string) =>
+        ({
+          matches: false,
+          media: query,
+          onchange: null,
+          addListener: () => {},
+          removeListener: () => {},
+          addEventListener: () => {},
+          removeEventListener: () => {},
+          dispatchEvent: () => false,
+        }) as unknown as MediaQueryList);
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+  });
+
+  it('renders asset rows from the service', async () => {
+    vi.mocked(alertRuleAssetService.listAlertRuleAssets).mockResolvedValue(sampleAssets);
+
+    renderWithProviders(<AlertRuleAssetList />);
+
+    expect(await screen.findByText('rocketmq-broker-down')).toBeInTheDocument();
+    expect(screen.getByText('rocketmq-consumer-lag-high')).toBeInTheDocument();
+  });
+
+  it('opens a modal with yaml content when View is clicked', async () => {
+    vi.mocked(alertRuleAssetService.listAlertRuleAssets).mockResolvedValue(sampleAssets);
+    vi.mocked(alertRuleAssetService.getAlertRuleAsset).mockResolvedValue(
+      'groups:\n  - name: rocketmq-broker.rules\n    rules:\n      - alert: RocketMQBrokerDown\n',
+    );
+
+    renderWithProviders(<AlertRuleAssetList />);
+
+    const viewButtons = await screen.findAllByRole('button', { name: /查看|View/ });
+    fireEvent.click(viewButtons[0]);
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(/rocketmq-broker.rules/)).toBeInTheDocument();
+    expect(alertRuleAssetService.getAlertRuleAsset).toHaveBeenCalledWith('rocketmq-broker-down');
+  });
+
+  it('downloads the yaml when Export is clicked', async () => {
+    const createObjectURLSpy = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:url');
+    const revokeSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    vi.mocked(alertRuleAssetService.listAlertRuleAssets).mockResolvedValue(sampleAssets);
+    vi.mocked(alertRuleAssetService.exportAlertRuleAsset).mockResolvedValue(
+      new Blob(['groups:\n  - name: rocketmq-broker.rules\n'], { type: 'text/yaml' }),
+    );
+
+    renderWithProviders(<AlertRuleAssetList />);
+
+    const exportButtons = await screen.findAllByRole('button', { name: /导出|Export/ });
+    fireEvent.click(exportButtons[0]);
+
+    await waitFor(() =>
+      expect(alertRuleAssetService.exportAlertRuleAsset).toHaveBeenCalledWith(
+        'rocketmq-broker-down',
+      ),
+    );
+    expect(createObjectURLSpy).toHaveBeenCalled();
+    expect(clickSpy).toHaveBeenCalled();
+
+    createObjectURLSpy.mockRestore();
+    revokeSpy.mockRestore();
+    clickSpy.mockRestore();
+  });
+});

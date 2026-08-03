@@ -1,0 +1,16 @@
+# ============================================================================
+# RocketMQ 5.x Monitoring - Alert Rule
+# Compatible with Prometheus / VictoriaMetrics / Thanos / Cortex / Mimir
+# ============================================================================
+groups:
+  - name: rocketmq-consumer.rules
+    rules:
+      - alert: RocketMQConsumerGroupEmpty
+        expr: absent(rocketmq_consumer_lag_messages) == 1
+        for: 10m
+        labels:
+          severity: info
+          team: consumer
+        annotations:
+          summary: "Consumer group missing"
+          description: "No consumer lag metrics observed for a consumer group."

@@ -1,0 +1,16 @@
+# ============================================================================
+# RocketMQ 5.x Monitoring - Alert Rule
+# Compatible with Prometheus / VictoriaMetrics / Thanos / Cortex / Mimir
+# ============================================================================
+groups:
+  - name: rocketmq-client.rules
+    rules:
+      - alert: RocketMQProducerTPSDrop
+        expr: rate(rocketmq_messages_in_total[5m]) < 0.1 * rate(rocketmq_messages_in_total[1h] offset 1h)
+        for: 10m
+        labels:
+          severity: warning
+          team: client
+        annotations:
+          summary: "Producer TPS dropped"
+          description: "Ingress TPS dropped by more than 90% compared with one hour ago."

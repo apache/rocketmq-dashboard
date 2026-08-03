@@ -1,0 +1,16 @@
+# ============================================================================
+# RocketMQ 5.x Monitoring - Alert Rule
+# Compatible with Prometheus / VictoriaMetrics / Thanos / Cortex / Mimir
+# ============================================================================
+groups:
+  - name: rocketmq-proxy.rules
+    rules:
+      - alert: RocketMQProxyLatencyHigh
+        expr: histogram_quantile(0.99, rate(rocketmq_proxy_process_time_bucket[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+          team: proxy
+        annotations:
+          summary: "Proxy latency high"
+          description: "99th percentile proxy process time is above 1 second."

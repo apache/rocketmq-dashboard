@@ -51,6 +51,7 @@ const AlertManagementPage = lazy(() => import('./pages/studio/AlertManagement'))
 const GrafanaDashboardsPage = lazy(() => import('./pages/studio/GrafanaDashboards'));
 const ProducerPage = lazy(() => import('./pages/studio/Producer'));
 const OpsPage = lazy(() => import('./pages/studio/Ops'));
+const AlertRuleAssetsPage = lazy(() => import('./pages/studio/AlertRuleAssets'));
 
 type AuthGateState = 'checking' | 'allowed' | 'denied' | 'error';
 
@@ -174,6 +175,7 @@ function App() {
             <Route path="studio/alert-management" element={<AlertManagementPage />} />
             <Route path="studio/producer" element={<ProducerPage />} />
             <Route path="studio/ops" element={<OpsPage />} />
+            <Route path="ops/alert-rule-templates" element={<AlertRuleAssetsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Route>

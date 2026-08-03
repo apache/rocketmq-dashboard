@@ -1,0 +1,16 @@
+# ============================================================================
+# RocketMQ 5.x Monitoring - Alert Rule
+# Compatible with Prometheus / VictoriaMetrics / Thanos / Cortex / Mimir
+# ============================================================================
+groups:
+  - name: rocketmq-topic.rules
+    rules:
+      - alert: RocketMQTopicAccumulation
+        expr: rocketmq_dispatch_behind_bytes > 1073741824
+        for: 5m
+        labels:
+          severity: warning
+          team: topic
+        annotations:
+          summary: "Topic dispatch backlog high"
+          description: "Topic dispatch behind bytes is above 1GiB."

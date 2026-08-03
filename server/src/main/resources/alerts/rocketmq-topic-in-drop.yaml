@@ -1,0 +1,16 @@
+# ============================================================================
+# RocketMQ 5.x Monitoring - Alert Rule
+# Compatible with Prometheus / VictoriaMetrics / Thanos / Cortex / Mimir
+# ============================================================================
+groups:
+  - name: rocketmq-topic.rules
+    rules:
+      - alert: RocketMQTopicMessageInDrop
+        expr: rate(rocketmq_messages_in_total[10m]) == 0
+        for: 10m
+        labels:
+          severity: info
+          team: topic
+        annotations:
+          summary: "No incoming messages"
+          description: "No incoming messages have been observed for 10 minutes."
