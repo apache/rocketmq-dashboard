@@ -39,6 +39,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -168,6 +169,28 @@ class K8sCertServiceTest {
         assertThat(result.getCreatedAt()).isEqualTo(now);
         assertThat(result.getUpdatedAt()).isEqualTo(now);
         verify(k8sCertRepository).save(any(K8sCertVO.class));
+    }
+
+    @Test
+    void certWriteOperationsShouldRejectNullCommand() {
+        assertThatThrownBy(() -> k8sCertService.createCert(null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("K8s certificate request is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        assertThatThrownBy(() -> k8sCertService.updateCert(null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("K8s certificate request is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        assertThatThrownBy(() -> k8sCertService.renewCert(null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("K8s certificate request is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        assertThatThrownBy(() -> k8sCertService.deleteCert(null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("K8s certificate request is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(k8sCertRepository);
     }
 
     @Test

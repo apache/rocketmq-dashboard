@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.cluster.k8s;
 
 import org.apache.rocketmq.studio.common.domain.Result;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -40,23 +41,33 @@ public class K8sCertController {
     }
 
     @PostMapping("/create")
-    public Result<K8sCertVO> createCert(@Valid @RequestBody CreateCertDTO command) {
+    public Result<K8sCertVO> createCert(@Valid @RequestBody(required = false) CreateCertDTO command) {
+        requireCommand(command);
         return Result.ok(k8sCertService.createCert(command));
     }
 
     @PostMapping("/update")
-    public Result<K8sCertVO> updateCert(@Valid @RequestBody UpdateCertDTO command) {
+    public Result<K8sCertVO> updateCert(@Valid @RequestBody(required = false) UpdateCertDTO command) {
+        requireCommand(command);
         return Result.ok(k8sCertService.updateCert(command));
     }
 
     @PostMapping("/renew")
-    public Result<K8sCertVO> renewCert(@Valid @RequestBody RenewCertDTO command) {
+    public Result<K8sCertVO> renewCert(@Valid @RequestBody(required = false) RenewCertDTO command) {
+        requireCommand(command);
         return Result.ok(k8sCertService.renewCert(command));
     }
 
     @PostMapping("/delete")
-    public Result<Void> deleteCert(@Valid @RequestBody DeleteCertDTO command) {
+    public Result<Void> deleteCert(@Valid @RequestBody(required = false) DeleteCertDTO command) {
+        requireCommand(command);
         k8sCertService.deleteCert(command);
         return Result.ok();
+    }
+
+    private void requireCommand(Object command) {
+        if (command == null) {
+            throw new BusinessException(400, "K8s certificate request is required");
+        }
     }
 }
