@@ -15,12 +15,18 @@
  * limitations under the License.
  */
 
-import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
+import { listClusters } from '../../../services/clusterService';
+import type { ClusterInfo } from '../../../api/cluster';
 import BrokerCluster from '../BrokerCluster';
+
+vi.mock('../../../services/clusterService', () => ({
+  listClusters: vi.fn(),
+}));
 
 // Mock matchMedia for antd responsive components
 beforeAll(() => {
@@ -45,6 +51,63 @@ vi.mock('react-router-dom', () => ({
   useParams: () => ({}),
 }));
 
+const clusterFixture: ClusterInfo[] = [
+  {
+    id: 'cluster-1',
+    name: 'prod-cn-east-1',
+    nsClusterName: 'prod-cn-east-1',
+    type: 'V5_PROXY_CLUSTER',
+    endpoint: '10.0.1.20:9876',
+    status: 'healthy',
+    version: '5.3.0',
+    brokers: [
+      {
+        name: 'broker-a',
+        addr: '10.0.1.10:10911',
+        version: '5.3.0',
+        status: 'running',
+        diskUsage: 62,
+        tpsIn: 12580,
+        tpsOut: 8340,
+      },
+      {
+        name: 'broker-b',
+        addr: '10.0.1.11:10911',
+        version: '5.3.0',
+        status: 'readonly',
+        diskUsage: 89,
+        tpsIn: 0,
+        tpsOut: 3120,
+      },
+    ],
+    proxies: [
+      {
+        addr: '10.0.1.30:8080',
+        status: 'healthy',
+        connections: 2340,
+        grpcPort: 8081,
+        remotingPort: 8080,
+      },
+    ],
+    nameServers: [{ addr: 'nameserver-a', status: 'healthy' }],
+    config: {
+      flushDiskType: 'SYNC_FLUSH',
+      autoCreateTopicEnable: false,
+      autoCreateSubscriptionGroup: false,
+      maxMessageSize: 4194304,
+      msgTraceTopicName: 'RMQ_SYS_TRACE_TOPIC4',
+      fileReservedTime: 72,
+      writeQueueNums: 16,
+      readQueueNums: 16,
+      brokerPermission: 6,
+      deleteWhen: '04',
+    },
+    topicCount: 10,
+    groupCount: 5,
+    tpsHistory: [],
+  },
+];
+
 const renderWithProviders = (ui: React.ReactElement) => {
   return render(
     <App>
@@ -54,6 +117,11 @@ const renderWithProviders = (ui: React.ReactElement) => {
 };
 
 describe('BrokerCluster Page', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(listClusters).mockResolvedValue(clusterFixture);
+  });
+
   it('should render the page title', () => {
     renderWithProviders(<BrokerCluster />);
     expect(screen.getByText('Broker 集群')).toBeInTheDocument();
@@ -69,44 +137,58 @@ describe('BrokerCluster Page', () => {
     expect(screen.getByText('重置')).toBeInTheDocument();
   });
 
-  it('should show an explicit unavailable state instead of mock broker data', () => {
+  it('should display broker tab with data from the API', async () => {
     renderWithProviders(<BrokerCluster />);
-    expect(screen.getByText('当前版本尚未接入真实集群拓扑接口，已停止展示模拟 Broker / NameServer / Proxy 数据。')).toBeInTheDocument();
-    expect(screen.queryByText('broker-a')).not.toBeInTheDocument();
-    expect(screen.queryByText('broker-b')).not.toBeInTheDocument();
+    // Default tab is broker - data is loaded asynchronously from the service
+    const brokerA = await screen.findAllByText('broker-a');
+    expect(brokerA.length).toBeGreaterThan(0);
+    expect(screen.getAllByText('broker-b').length).toBeGreaterThan(0);
   });
 
-  it('should not render row status tags without real broker data', () => {
+  it('should display broker status tags', async () => {
     renderWithProviders(<BrokerCluster />);
-    expect(screen.queryByText('运行中')).not.toBeInTheDocument();
-    expect(screen.queryByText('只读')).not.toBeInTheDocument();
+    await screen.findAllByText('broker-a');
+    const runningTags = screen.getAllByText('运行中');
+    expect(runningTags.length).toBeGreaterThan(0);
+    const readonlyTags = screen.getAllByText('只读');
+    expect(readonlyTags.length).toBeGreaterThan(0);
   });
 
   it('should switch to NameServer tab on click', async () => {
     const user = userEvent.setup();
     renderWithProviders(<BrokerCluster />);
+    await screen.findByText('broker-a');
     const nsTab = screen.getByText('NameServer 管理');
     await user.click(nsTab);
-    expect(
-      screen.getAllByText('当前版本尚未接入真实集群拓扑接口，已停止展示模拟 Broker / NameServer / Proxy 数据。').length,
-    ).toBeGreaterThan(0);
-    expect(screen.queryByText('nameserver-a')).not.toBeInTheDocument();
+    // After clicking, NameServer data should be visible (name equals address, so it appears twice)
+    expect(screen.getAllByText('nameserver-a').length).toBeGreaterThan(0);
   });
 
   it('should switch to Proxy tab on click', async () => {
     const user = userEvent.setup();
     renderWithProviders(<BrokerCluster />);
+    await screen.findByText('broker-a');
     const proxyTab = screen.getByText('Proxy 管理');
     await user.click(proxyTab);
-    expect(
-      screen.getAllByText('当前版本尚未接入真实集群拓扑接口，已停止展示模拟 Broker / NameServer / Proxy 数据。').length,
-    ).toBeGreaterThan(0);
-    expect(screen.queryByText('proxy-a')).not.toBeInTheDocument();
+    // After clicking, Proxy data should be visible (proxy name equals its address, so it appears twice)
+    expect(screen.getAllByText('10.0.1.30:8080').length).toBeGreaterThan(0);
   });
 
-  it('should not render row action buttons without real infrastructure data', () => {
+  it('should render config and restart action buttons', async () => {
     renderWithProviders(<BrokerCluster />);
-    expect(screen.queryByText('配置')).not.toBeInTheDocument();
-    expect(screen.queryByText('重启')).not.toBeInTheDocument();
+    await screen.findByText('broker-a');
+    const configButtons = screen.getAllByText('配置');
+    expect(configButtons.length).toBeGreaterThan(0);
+    const restartButtons = screen.getAllByText('重启');
+    expect(restartButtons.length).toBeGreaterThan(0);
+  });
+
+  it('should fall back to mock data when the API fails', async () => {
+    vi.mocked(listClusters).mockRejectedValueOnce(new Error('network error'));
+    renderWithProviders(<BrokerCluster />);
+    // Initial state holds the mock fallback rows
+    await waitFor(() => {
+      expect(screen.getByText('broker-a')).toBeInTheDocument();
+    });
   });
 });

@@ -1,4 +1,4 @@
-import { USE_MOCK } from '../config';
+import { isMockMode } from './dataMode';
 import * as metadataApi from '../api/metadata';
 import type {
   ConsumerGroup,
@@ -12,7 +12,9 @@ import { mockConsumerGroups, mockQueueProgress, mockSubscriptions } from '../moc
 
 const consumerGroupsState = mockConsumerGroups as unknown as ConsumerGroup[];
 
-function copyConsumerInstance(instance: ConsumerGroup['instances'][number]): ConsumerGroup['instances'][number] {
+function copyConsumerInstance(
+  instance: ConsumerGroup['instances'][number],
+): ConsumerGroup['instances'][number] {
   return {
     ...instance,
     subscribedTopics: [...instance.subscribedTopics],
@@ -37,7 +39,7 @@ function copySubscription(subscription: SubscriptionEntry): SubscriptionEntry {
 }
 
 export async function listConsumerGroups(params?: ConsumerGroupQuery): Promise<ConsumerGroup[]> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     let result = [...consumerGroupsState];
     if (params?.clusterId) result = result.filter((group) => group.clusterId === params.clusterId);
     if (params?.search) {
@@ -50,14 +52,14 @@ export async function listConsumerGroups(params?: ConsumerGroupQuery): Promise<C
 }
 
 export async function getConsumerProgress(name: string): Promise<QueueProgress[]> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     return ((mockQueueProgress[name] as unknown as QueueProgress[]) ?? []).map(copyQueueProgress);
   }
   return metadataApi.getConsumerProgress(name);
 }
 
 export async function getConsumerGroup(name: string): Promise<ConsumerGroupDetail> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const group = mockConsumerGroups.find((item) => item.name === name);
     if (!group) throw new Error(`Consumer group not found: ${name}`);
     return copyConsumerGroup(group as unknown as ConsumerGroupDetail) as ConsumerGroupDetail;
@@ -66,14 +68,16 @@ export async function getConsumerGroup(name: string): Promise<ConsumerGroupDetai
 }
 
 export async function getConsumerSubscriptions(name: string): Promise<SubscriptionEntry[]> {
-  if (USE_MOCK) {
-    return ((mockSubscriptions[name] as unknown as SubscriptionEntry[]) ?? []).map(copySubscription);
+  if (isMockMode()) {
+    return ((mockSubscriptions[name] as unknown as SubscriptionEntry[]) ?? []).map(
+      copySubscription,
+    );
   }
   return metadataApi.getConsumerSubscriptions(name);
 }
 
 export async function createConsumerGroup(data: Partial<ConsumerGroup>): Promise<ConsumerGroup> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const now = new Date().toISOString();
     const group = {
       name: data.name ?? '',
@@ -98,7 +102,7 @@ export async function createConsumerGroup(data: Partial<ConsumerGroup>): Promise
 }
 
 export async function deleteConsumerGroup(name: string): Promise<void> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const idx = consumerGroupsState.findIndex((group) => group.name === name);
     if (idx >= 0) consumerGroupsState.splice(idx, 1);
     return;
@@ -107,7 +111,7 @@ export async function deleteConsumerGroup(name: string): Promise<void> {
 }
 
 export async function resetConsumerOffset(data: ResetConsumerOffsetRequest): Promise<void> {
-  if (USE_MOCK) return;
+  if (isMockMode()) return;
   return metadataApi.resetConsumerOffset(data);
 }
 

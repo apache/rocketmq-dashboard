@@ -17,6 +17,7 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import {
+  Alert,
   Table,
   Card,
   Tag,
@@ -227,6 +228,8 @@ const TopicPage = () => {
   const [tablePageSize, setTablePageSize] = useState(20);
   const [viewMode, setViewMode] = useState<string>('列表');
   const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [rebuilding, setRebuilding] = useState(false);
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [form] = Form.useForm();
@@ -279,6 +282,7 @@ const TopicPage = () => {
   const openDetail = async (topic: Topic) => {
     setSelectedTopic(topic);
     setDetailModalOpen(true);
+    setDetailLoading(true);
     try {
       const [routes, consumers] = await Promise.all([
         getTopicRoutes(topic.name),
@@ -288,6 +292,28 @@ const TopicPage = () => {
       setConsumersByTopic((previous) => ({ ...previous, [topic.name]: consumers }));
     } catch {
       message.error('Topic 详情加载失败，请稍后重试');
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  // Metadata lives in the database, so a record can exist without a broker route.
+  const rebuildTopic = async (topic: Topic) => {
+    setRebuilding(true);
+    try {
+      await createTopic({
+        name: topic.name,
+        type: topic.type,
+        writeQueues: topic.writeQueues,
+        readQueues: topic.readQueues,
+      });
+      const routes = await getTopicRoutes(topic.name);
+      setRoutesByTopic((previous) => ({ ...previous, [topic.name]: routes }));
+      message.success(`Topic「${topic.name}」已在 Broker 上重建`);
+    } catch {
+      message.error('重建 Topic 失败，请检查 Broker 状态后重试');
+    } finally {
+      setRebuilding(false);
     }
   };
 
@@ -333,7 +359,7 @@ const TopicPage = () => {
       width: 220,
       sorter: (a, b) => a.name.localeCompare(b.name),
       render: (name: string) => (
-        <Text strong style={{ fontSize: 14 }}>
+        <Text strong style={{ fontSize: 14, display: 'block' }} ellipsis={{ tooltip: name }}>
           {name}
         </Text>
       ),
@@ -345,7 +371,11 @@ const TopicPage = () => {
       width: 200,
       sorter: (a, b) => a.remark.localeCompare(b.remark),
       render: (remark: string) => (
-        <Text type="secondary" style={{ fontSize: 13 }}>
+        <Text
+          type="secondary"
+          style={{ fontSize: 13, display: 'block' }}
+          ellipsis={{ tooltip: remark }}
+        >
           {remark}
         </Text>
       ),
@@ -784,12 +814,32 @@ const TopicPage = () => {
             <Text strong style={{ fontSize: 14, display: 'block', marginBottom: 12 }}>
               路由信息
             </Text>
+            {!detailLoading && getRoutes(selectedTopic.name).length === 0 && (
+              <Alert
+                type="warning"
+                showIcon
+                style={{ marginBottom: 12 }}
+                message="Broker 上没有该 Topic 的路由"
+                description="元数据库中存在这条记录，但 Broker 未返回路由信息，可能尚未在 Broker 上创建或已被删除。可按库中记录的队列数重建。"
+                action={
+                  <Button
+                    size="small"
+                    type="primary"
+                    loading={rebuilding}
+                    onClick={() => void rebuildTopic(selectedTopic)}
+                  >
+                    在 Broker 上重建
+                  </Button>
+                }
+              />
+            )}
             <Table<BrokerRoute>
               columns={routeColumns}
               dataSource={getRoutes(selectedTopic.name)}
               rowKey="brokerName"
               pagination={false}
               size="small"
+              loading={detailLoading}
             />
 
             <Divider style={{ margin: '20px 0 16px' }} />

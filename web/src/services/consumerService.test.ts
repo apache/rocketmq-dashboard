@@ -24,9 +24,9 @@ import {
   listConsumerGroups,
 } from './consumerService';
 
+vi.mock('./dataMode', () => ({ isMockMode: () => true }));
 vi.mock('../config', () => ({
   API_BASE_URL: '/api',
-  USE_MOCK: true,
 }));
 
 describe('consumer service mock data', () => {

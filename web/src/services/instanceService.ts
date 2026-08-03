@@ -1,4 +1,4 @@
-import { USE_MOCK } from '../config';
+import { isMockMode } from './dataMode';
 import * as instanceApi from '../api/instance';
 import type {
   Instance,
@@ -9,14 +9,13 @@ import type {
 import { mockInstances } from '../mock/instances';
 
 // Compile-time switch: mock or real API
-// Vite replaces USE_MOCK with a literal at build time → tree-shaking removes unused branch
 
 function copyInstance(instance: Instance): Instance {
   return { ...instance };
 }
 
 export async function listInstances(query: InstanceQuery = {}): Promise<Instance[]> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const search = query.search?.trim().toLowerCase();
     return mockInstances
       .filter((instance) => !query.type || instance.type === query.type)
@@ -33,7 +32,7 @@ export async function listInstances(query: InstanceQuery = {}): Promise<Instance
 }
 
 export async function createInstance(data: CreateInstanceRequest): Promise<Instance> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const instance: Instance = {
       id: String(Date.now()),
       ...data,
@@ -50,7 +49,7 @@ export async function createInstance(data: CreateInstanceRequest): Promise<Insta
 }
 
 export async function updateInstance(data: UpdateInstanceRequest): Promise<Instance> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const idx = mockInstances.findIndex((i) => i.id === data.id);
     if (idx >= 0) {
       Object.assign(mockInstances[idx], data, {
@@ -64,7 +63,7 @@ export async function updateInstance(data: UpdateInstanceRequest): Promise<Insta
 }
 
 export async function deleteInstance(id: string): Promise<void> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const idx = mockInstances.findIndex((i) => i.id === id);
     if (idx >= 0) mockInstances.splice(idx, 1);
     return;

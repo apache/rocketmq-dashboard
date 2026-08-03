@@ -39,6 +39,7 @@ import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import type { ClientConnection } from '../../api/connections';
 import { listConnections } from '../../services/connectionsService';
+import { formatDateTime } from '../../utils/format';
 
 const { Text } = Typography;
 
@@ -264,7 +265,7 @@ const ClientsPage = () => {
       sorter: (a, b) => a.connectedAt.localeCompare(b.connectedAt),
       render: (d: string) => (
         <Text type="secondary" style={{ fontSize: 13 }}>
-          {d}
+          {formatDateTime(d)}
         </Text>
       ),
     },

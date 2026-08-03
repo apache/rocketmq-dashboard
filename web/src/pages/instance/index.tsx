@@ -35,6 +35,7 @@ import { Plus, MagnifyingGlass } from '@phosphor-icons/react';
 import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { Instance, InstanceQuery } from '../../api/instance';
+import { formatDateTime } from '../../utils/format';
 import {
   createInstance,
   deleteInstance,
@@ -213,7 +214,7 @@ const InstancePage = () => {
       sorter: (a, b) => a.createdAt.localeCompare(b.createdAt),
       render: (d: string) => (
         <Text type="secondary" style={{ fontSize: 13 }}>
-          {d}
+          {formatDateTime(d)}
         </Text>
       ),
     },
@@ -225,7 +226,7 @@ const InstancePage = () => {
       sorter: (a, b) => a.updatedAt.localeCompare(b.updatedAt),
       render: (d: string) => (
         <Text type="secondary" style={{ fontSize: 13 }}>
-          {d}
+          {formatDateTime(d)}
         </Text>
       ),
     },

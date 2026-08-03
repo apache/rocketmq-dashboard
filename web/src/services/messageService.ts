@@ -1,4 +1,4 @@
-import { USE_MOCK } from '../config';
+import { isMockMode } from './dataMode';
 import * as messageApi from '../api/message';
 import { sortMessagesByStoreTimeDesc } from '../api/message';
 import type { MessageQuery, MessageRecord, TraceRecord, DLQGroup } from '../api/message';
@@ -18,7 +18,7 @@ const cloneTrace = (trace: TraceRecord): TraceRecord => ({
 const cloneDLQGroup = (group: DLQGroup): DLQGroup => ({ ...group });
 
 export async function queryMessages(params: MessageQuery): Promise<MessageRecord[]> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     let result = [...mockMessages];
     if (params.topic) result = result.filter((m) => m.topic === params.topic);
     if (params.tag) result = result.filter((m) => m.tag === params.tag);
@@ -30,7 +30,7 @@ export async function queryMessages(params: MessageQuery): Promise<MessageRecord
 }
 
 export async function getMessageTrace(msgId: string): Promise<TraceRecord | null> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const trace = mockMessageTraces[msgId] as unknown as TraceRecord | undefined;
     return trace ? cloneTrace(trace) : null;
   }
@@ -38,7 +38,7 @@ export async function getMessageTrace(msgId: string): Promise<TraceRecord | null
 }
 
 export async function listDLQGroups(): Promise<DLQGroup[]> {
-  if (USE_MOCK) return (mockDLQGroups as unknown as DLQGroup[]).map(cloneDLQGroup);
+  if (isMockMode()) return (mockDLQGroups as unknown as DLQGroup[]).map(cloneDLQGroup);
   return messageApi.listDLQGroups();
 }
 
@@ -48,6 +48,6 @@ export async function resendDLQ(data: {
   endTime: number;
   targetTopic?: string;
 }): Promise<void> {
-  if (USE_MOCK) return;
+  if (isMockMode()) return;
   return messageApi.resendDLQ(data);
 }

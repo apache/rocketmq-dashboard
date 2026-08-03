@@ -284,3 +284,12 @@ body {
   color: #262626;
   font-weight: 600;
 }
+
+/* Tables keep every cell on one line: wrapped cells make rows uneven and hard to scan.
+   Long values are truncated with an ellipsis, and the table scrolls horizontally instead. */
+.ant-table-cell {
+  white-space: nowrap;
+}
+.ant-table-cell .ant-typography {
+  margin-bottom: 0;
+}

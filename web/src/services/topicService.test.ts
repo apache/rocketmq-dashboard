@@ -17,9 +17,9 @@
 
 import { getTopicConsumers, getTopicRoutes, listTopics } from './topicService';
 
+vi.mock('./dataMode', () => ({ isMockMode: () => true }));
 vi.mock('../config', () => ({
   API_BASE_URL: '/api',
-  USE_MOCK: true,
 }));
 
 describe('topic service mock data', () => {

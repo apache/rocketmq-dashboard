@@ -28,9 +28,9 @@ import {
   updateAlertRule,
 } from './opsService';
 
+vi.mock('./dataMode', () => ({ isMockMode: () => true }));
 vi.mock('../config', () => ({
   API_BASE_URL: '/api',
-  USE_MOCK: true,
 }));
 
 describe('ops service mock data', () => {

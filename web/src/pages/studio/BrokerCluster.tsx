@@ -15,8 +15,8 @@
  * limitations under the License.
  */
 
-import { useState } from 'react';
-import { Table, Button, Tag, Tabs, Card, Space, Switch, Progress, Tooltip } from 'antd';
+import { useCallback, useRef, useState } from 'react';
+import { Table, Button, Tag, Tabs, Card, Space, Switch, Progress, Tooltip, Spin, App } from 'antd';
 import {
   Plus,
   ArrowClockwise,
@@ -27,25 +27,29 @@ import {
   PlugsConnected,
 } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
+import { listClusters } from '../../services/clusterService';
+import type { ClusterInfo } from '../../api/cluster';
 
 // ─── Types ──────────────────────────────────────────────────────
+type NodeStatus = 'running' | 'readonly' | 'maintenance';
+
 interface BrokerRecord {
   key: string;
   k8sCluster: string;
   brokerName: string;
-  status: 'running' | 'readonly' | 'maintenance';
+  status: NodeStatus;
   version: string;
   diskUsage: number;
   address: string;
-  tpsIn: string;
-  tpsOut: string;
+  tpsIn: number;
+  tpsOut: number;
 }
 
 interface NameServerRecord {
   key: string;
   k8sCluster: string;
   name: string;
-  status: 'running' | 'readonly' | 'maintenance';
+  status: NodeStatus;
   version: string;
   address: string;
   connections: number;
@@ -55,22 +59,233 @@ interface ProxyRecord {
   key: string;
   k8sCluster: string;
   name: string;
-  status: 'running' | 'readonly' | 'maintenance';
+  status: NodeStatus;
   version: string;
   address: string;
   grpcPort: string;
   connections: number;
 }
 
-const brokerData: BrokerRecord[] = [];
-const nameServerData: NameServerRecord[] = [];
-const proxyData: ProxyRecord[] = [];
+// ─── Mock Data (fallback when the API is unavailable) ───────────
+const mockBrokerData: BrokerRecord[] = [
+  {
+    key: '1',
+    k8sCluster: 'prod-cn-east-1',
+    brokerName: 'broker-a',
+    status: 'running',
+    version: '5.3.0',
+    diskUsage: 62,
+    address: '10.0.1.10:10911',
+    tpsIn: 12580,
+    tpsOut: 8340,
+  },
+  {
+    key: '2',
+    k8sCluster: 'prod-cn-east-1',
+    brokerName: 'broker-b',
+    status: 'readonly',
+    version: '5.3.0',
+    diskUsage: 89,
+    address: '10.0.1.11:10911',
+    tpsIn: 0,
+    tpsOut: 3120,
+  },
+  {
+    key: '3',
+    k8sCluster: 'prod-cn-east-1',
+    brokerName: 'broker-c',
+    status: 'running',
+    version: '5.2.0',
+    diskUsage: 45,
+    address: '10.0.1.12:10911',
+    tpsIn: 9750,
+    tpsOut: 6280,
+  },
+  {
+    key: '4',
+    k8sCluster: 'prod-cn-south-1',
+    brokerName: 'broker-d',
+    status: 'maintenance',
+    version: '5.3.0',
+    diskUsage: 33,
+    address: '10.0.2.10:10911',
+    tpsIn: 0,
+    tpsOut: 0,
+  },
+  {
+    key: '5',
+    k8sCluster: 'prod-cn-south-1',
+    brokerName: 'broker-e',
+    status: 'running',
+    version: '5.3.0',
+    diskUsage: 51,
+    address: '10.0.2.11:10911',
+    tpsIn: 7890,
+    tpsOut: 5430,
+  },
+  {
+    key: '6',
+    k8sCluster: 'staging-cn-east-1',
+    brokerName: 'broker-staging-a',
+    status: 'running',
+    version: '5.3.1',
+    diskUsage: 28,
+    address: '10.0.10.10:10911',
+    tpsIn: 1230,
+    tpsOut: 980,
+  },
+];
+
+const mockNameServerData: NameServerRecord[] = [
+  {
+    key: '1',
+    k8sCluster: 'prod-cn-east-1',
+    name: 'nameserver-a',
+    status: 'running',
+    version: '5.3.0',
+    address: '10.0.1.20:9876',
+    connections: 156,
+  },
+  {
+    key: '2',
+    k8sCluster: 'prod-cn-east-1',
+    name: 'nameserver-b',
+    status: 'running',
+    version: '5.3.0',
+    address: '10.0.1.21:9876',
+    connections: 148,
+  },
+  {
+    key: '3',
+    k8sCluster: 'prod-cn-south-1',
+    name: 'nameserver-c',
+    status: 'running',
+    version: '5.3.0',
+    address: '10.0.2.20:9876',
+    connections: 92,
+  },
+];
+
+const mockProxyData: ProxyRecord[] = [
+  {
+    key: '1',
+    k8sCluster: 'prod-cn-east-1',
+    name: 'proxy-a',
+    status: 'running',
+    version: '5.3.0',
+    address: '10.0.1.30:8080',
+    grpcPort: '10.0.1.30:8081',
+    connections: 2340,
+  },
+  {
+    key: '2',
+    k8sCluster: 'prod-cn-south-1',
+    name: 'proxy-b',
+    status: 'running',
+    version: '5.3.0',
+    address: '10.0.2.30:8080',
+    grpcPort: '10.0.2.30:8081',
+    connections: 1560,
+  },
+];
+
+// ─── Helpers ────────────────────────────────────────────────────
+const normalizeStatus = (status: string): NodeStatus => {
+  const value = (status || '').toLowerCase();
+  if (value === 'readonly' || value === 'warning') return 'readonly';
+  if (value === 'maintenance' || value === 'error' || value === 'offline') return 'maintenance';
+  return 'running';
+};
+
+const hostOf = (addr: string): string => addr.split(':')[0] ?? addr;
+
+function mapClusters(clusters: ClusterInfo[]): {
+  brokers: BrokerRecord[];
+  nameServers: NameServerRecord[];
+  proxies: ProxyRecord[];
+} {
+  const brokers: BrokerRecord[] = [];
+  const nameServers: NameServerRecord[] = [];
+  const proxies: ProxyRecord[] = [];
+
+  clusters.forEach((cluster) => {
+    const clusterLabel = cluster.nsClusterName || cluster.name || cluster.id;
+
+    cluster.brokers.forEach((broker, index) => {
+      brokers.push({
+        key: `${cluster.id}-broker-${broker.addr || index}`,
+        k8sCluster: clusterLabel,
+        brokerName: broker.name || broker.addr,
+        status: normalizeStatus(broker.status),
+        version: broker.version || cluster.version,
+        diskUsage: broker.diskUsage ?? 0,
+        address: broker.addr,
+        tpsIn: broker.tpsIn ?? 0,
+        tpsOut: broker.tpsOut ?? 0,
+      });
+    });
+
+    cluster.nameServers.forEach((nameServer, index) => {
+      nameServers.push({
+        key: `${cluster.id}-ns-${nameServer.addr || index}`,
+        k8sCluster: clusterLabel,
+        name: nameServer.addr,
+        status: normalizeStatus(nameServer.status),
+        version: cluster.version,
+        address: nameServer.addr,
+        connections: 0,
+      });
+    });
+
+    cluster.proxies.forEach((proxy, index) => {
+      const host = hostOf(proxy.addr);
+      proxies.push({
+        key: `${cluster.id}-proxy-${proxy.addr || index}`,
+        k8sCluster: clusterLabel,
+        name: proxy.addr,
+        status: normalizeStatus(proxy.status),
+        version: cluster.version,
+        address: proxy.addr,
+        grpcPort: proxy.grpcPort ? `${host}:${proxy.grpcPort}` : '-',
+        connections: proxy.connections ?? 0,
+      });
+    });
+  });
+
+  return { brokers, nameServers, proxies };
+}
 
 // ─── Component ──────────────────────────────────────────────────
 const BrokerClusterPage = () => {
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [activeTab, setActiveTab] = useState('broker');
+  const [loading, setLoading] = useState(false);
+  const [brokerData, setBrokerData] = useState<BrokerRecord[]>(mockBrokerData);
+  const [nameServerData, setNameServerData] = useState<NameServerRecord[]>(mockNameServerData);
+  const [proxyData, setProxyData] = useState<ProxyRecord[]>(mockProxyData);
   const { t } = useLang();
+  const { message } = App.useApp();
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const clusters = await listClusters();
+      const mapped = mapClusters(clusters);
+      setBrokerData(mapped.brokers);
+      setNameServerData(mapped.nameServers);
+      setProxyData(mapped.proxies);
+    } catch {
+      message.error(t('common.refreshFailed'));
+    } finally {
+      setLoading(false);
+    }
+  }, [message, t]);
+
+  const initialized = useRef<boolean | null>(null);
+  if (initialized.current == null) {
+    initialized.current = true;
+    void loadData();
+  }
 
   const renderStatus = (status: string) => {
     const config: Record<string, { color: string; label: string }> = {
@@ -157,17 +372,15 @@ const BrokerClusterPage = () => {
       title: t('brokerCluster.tpsIn'),
       dataIndex: 'tpsIn',
       key: 'tpsIn',
-      render: (text: string) => <span style={{ fontWeight: 500 }}>{text}</span>,
-      sorter: (a: BrokerRecord, b: BrokerRecord) =>
-        parseFloat(a.tpsIn.replace(/,/g, '')) - parseFloat(b.tpsIn.replace(/,/g, '')),
+      render: (value: number) => <span style={{ fontWeight: 500 }}>{value.toLocaleString()}</span>,
+      sorter: (a: BrokerRecord, b: BrokerRecord) => a.tpsIn - b.tpsIn,
     },
     {
       title: t('brokerCluster.tpsOut'),
       dataIndex: 'tpsOut',
       key: 'tpsOut',
-      render: (text: string) => <span style={{ fontWeight: 500 }}>{text}</span>,
-      sorter: (a: BrokerRecord, b: BrokerRecord) =>
-        parseFloat(a.tpsOut.replace(/,/g, '')) - parseFloat(b.tpsOut.replace(/,/g, '')),
+      render: (value: number) => <span style={{ fontWeight: 500 }}>{value.toLocaleString()}</span>,
+      sorter: (a: BrokerRecord, b: BrokerRecord) => a.tpsOut - b.tpsOut,
     },
     {
       title: t('common.actions'),
@@ -230,7 +443,7 @@ const BrokerClusterPage = () => {
       title: t('brokerCluster.connections'),
       dataIndex: 'connections',
       key: 'connections',
-      render: (text: number) => <span style={{ fontWeight: 500 }}>{text}</span>,
+      render: (text: number) => <span style={{ fontWeight: 500 }}>{text.toLocaleString()}</span>,
     },
     {
       title: t('common.actions'),
@@ -306,7 +519,7 @@ const BrokerClusterPage = () => {
       title: t('brokerCluster.connections'),
       dataIndex: 'connections',
       key: 'connections',
-      render: (text: number) => <span style={{ fontWeight: 500 }}>{text}</span>,
+      render: (text: number) => <span style={{ fontWeight: 500 }}>{text.toLocaleString()}</span>,
     },
     {
       title: t('common.actions'),
@@ -354,7 +567,7 @@ const BrokerClusterPage = () => {
             unCheckedChildren={t('brokerCluster.manual')}
             size="small"
           />
-          <Button icon={<ArrowClockwise size={14} />} size="small">
+          <Button icon={<ArrowClockwise size={14} />} size="small" onClick={() => void loadData()}>
             {t('common.reset')}
           </Button>
           <Button type="primary" icon={<Plus size={14} />}>
@@ -363,71 +576,70 @@ const BrokerClusterPage = () => {
         </Space>
       </div>
 
-      <Card bordered={false} style={{ borderRadius: 8, boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}>
-        <Tabs
-          activeKey={activeTab}
-          onChange={setActiveTab}
-          items={[
-            {
-              key: 'nameserver',
-              label: (
-                <span>
-                  <ChartBar size={16} style={{ marginRight: 4, verticalAlign: 'middle' }} />
-                  {t('brokerCluster.nsManagement')}
-                </span>
-              ),
-              children: (
-                <Table
-                  columns={nsColumns}
-                  dataSource={nameServerData}
-                  locale={{ emptyText: t('brokerCluster.providerUnavailable') }}
-                  pagination={false}
-                  size="middle"
-                />
-              ),
-            },
-            {
-              key: 'broker',
-              label: (
-                <span>
-                  <Cloud size={16} style={{ marginRight: 4, verticalAlign: 'middle' }} />
-                  {t('brokerCluster.brokerManagement')}
-                </span>
-              ),
-              children: (
-                <Table
-                  columns={brokerColumns}
-                  dataSource={brokerData}
-                  locale={{ emptyText: t('brokerCluster.providerUnavailable') }}
-                  pagination={{
-                    pageSize: 10,
-                    showTotal: (total) => `${t('common.total')} ${total} Broker`,
-                  }}
-                  size="middle"
-                />
-              ),
-            },
-            {
-              key: 'proxy',
-              label: (
-                <span>
-                  <PlugsConnected size={16} style={{ marginRight: 4, verticalAlign: 'middle' }} />
-                  {t('brokerCluster.proxyManagement')}
-                </span>
-              ),
-              children: (
-                <Table
-                  columns={proxyColumns}
-                  dataSource={proxyData}
-                  locale={{ emptyText: t('brokerCluster.providerUnavailable') }}
-                  pagination={false}
-                  size="middle"
-                />
-              ),
-            },
-          ]}
-        />
-      </Card>
+      <Spin spinning={loading} tip={t('common.loading')}>
+        <Card bordered={false} style={{ borderRadius: 8, boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}>
+          <Tabs
+            activeKey={activeTab}
+            onChange={setActiveTab}
+            items={[
+              {
+                key: 'nameserver',
+                label: (
+                  <span>
+                    <ChartBar size={16} style={{ marginRight: 4, verticalAlign: 'middle' }} />
+                    {t('brokerCluster.nsManagement')}
+                  </span>
+                ),
+                children: (
+                  <Table
+                    columns={nsColumns}
+                    dataSource={nameServerData}
+                    pagination={false}
+                    size="middle"
+                  />
+                ),
+              },
+              {
+                key: 'broker',
+                label: (
+                  <span>
+                    <Cloud size={16} style={{ marginRight: 4, verticalAlign: 'middle' }} />
+                    {t('brokerCluster.brokerManagement')}
+                  </span>
+                ),
+                children: (
+                  <Table
+                    columns={brokerColumns}
+                    dataSource={brokerData}
+                    pagination={{
+                      pageSize: 10,
+                      showTotal: (total) => `${t('common.total')} ${total} Broker`,
+                    }}
+                    size="middle"
+                  />
+                ),
+              },
+              {
+                key: 'proxy',
+                label: (
+                  <span>
+                    <PlugsConnected size={16} style={{ marginRight: 4, verticalAlign: 'middle' }} />
+                    {t('brokerCluster.proxyManagement')}
+                  </span>
+                ),
+                children: (
+                  <Table
+                    columns={proxyColumns}
+                    dataSource={proxyData}
+                    pagination={false}
+                    size="middle"
+                  />
+                ),
+              },
+            ]}
+          />
+        </Card>
+      </Spin>
     </div>
   );
 };

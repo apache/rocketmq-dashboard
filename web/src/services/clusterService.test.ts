@@ -17,8 +17,8 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
+vi.mock('./dataMode', () => ({ isMockMode: () => true }));
 vi.mock('../config', () => ({
-  USE_MOCK: true,
   API_BASE_URL: '/api',
 }));
 

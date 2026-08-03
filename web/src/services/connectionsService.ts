@@ -1,4 +1,4 @@
-import { USE_MOCK } from '../config';
+import { isMockMode } from './dataMode';
 import * as connApi from '../api/connections';
 import type { ClientConnection, ClientConnectionQuery } from '../api/connections';
 import { mockClients } from '../mock/clients';
@@ -8,7 +8,7 @@ function copyConnection(connection: ClientConnection): ClientConnection {
 }
 
 export async function listConnections(params?: ClientConnectionQuery): Promise<ClientConnection[]> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     let result = [...mockClients];
     if (params?.clusterId)
       result = result.filter((connection) => connection.clusterName === params.clusterId);

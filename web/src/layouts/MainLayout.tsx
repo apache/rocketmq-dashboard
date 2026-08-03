@@ -47,6 +47,7 @@ import {
   isNavigationSearchShortcut,
   type NavigationSearchEntry,
 } from './navigationSearch';
+import { useDataModeStore } from '../stores/dataModeStore';
 
 const { Sider, Content } = Layout;
 
@@ -60,6 +61,14 @@ const MainLayout = () => {
   const [searchText, setSearchText] = useState('');
   const { lang, setLang, t } = useLang();
   const clearAuth = useAuthStore((state) => state.logout);
+  const useMock = useDataModeStore((state) => state.useMock);
+  const toggleDataMode = useDataModeStore((state) => state.toggle);
+
+  // Pages fetch on mount, so reload to re-request everything from the new data source.
+  const handleDataModeToggle = () => {
+    toggleDataMode();
+    window.location.reload();
+  };
 
   const handleUserMenuClick = async ({ key }: { key: string }) => {
     if (key === 'profile') {
@@ -300,6 +309,40 @@ const MainLayout = () => {
                 >
                   ⌘K
                 </span>
+              </div>
+
+              {/* Data mode toggle */}
+              <div
+                onClick={handleDataModeToggle}
+                style={{
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '4px 10px',
+                  borderRadius: 6,
+                  border: `1px solid ${borderColor}`,
+                  fontSize: 12,
+                  fontWeight: 500,
+                  color: useMock ? '#d48806' : '#389e0d',
+                  transition: 'all 0.2s',
+                }}
+                title={
+                  useMock
+                    ? 'Data Mode: Mock (click to switch to Real)'
+                    : 'Data Mode: Real (click to switch to Mock)'
+                }
+              >
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    background: useMock ? '#faad14' : '#52c41a',
+                    display: 'inline-block',
+                  }}
+                />
+                {useMock ? 'Mock' : 'Real'}
               </div>
 
               {/* Language toggle */}
