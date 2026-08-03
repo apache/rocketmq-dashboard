@@ -20,6 +20,7 @@ package org.apache.rocketmq.studio.instance.group;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.instance.topic.MetadataService;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -31,6 +32,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
@@ -55,6 +58,70 @@ class ConsumerGroupControllerTest {
 
     @MockBean
     private ConsumerDiagnosticsService consumerDiagnosticsService;
+
+    @Test
+    void createConsumerGroupShouldPassValidatedRequest() throws Exception {
+        Map<String, Object> body = Map.of(
+                "name", "cg-orders",
+                "clusterId", "cluster-a",
+                "retryMaxTimes", 8,
+                "delaySeconds", 0
+        );
+        ConsumerGroupVO created = new ConsumerGroupVO();
+        created.setName("cg-orders");
+        created.setClusterId("cluster-a");
+        created.setRetryMaxTimes(8);
+
+        when(metadataService.createConsumerGroup(any(ConsumerGroupVO.class))).thenReturn(created);
+
+        mockMvc.perform(post("/api/groups/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.name").value("cg-orders"))
+                .andExpect(jsonPath("$.data.retryMaxTimes").value(8));
+
+        ArgumentCaptor<ConsumerGroupVO> captor = ArgumentCaptor.forClass(ConsumerGroupVO.class);
+        verify(metadataService).createConsumerGroup(captor.capture());
+        assertThat(captor.getValue().getName()).isEqualTo("cg-orders");
+        assertThat(captor.getValue().getClusterId()).isEqualTo("cluster-a");
+        assertThat(captor.getValue().getRetryMaxTimes()).isEqualTo(8);
+    }
+
+    @Test
+    void createConsumerGroupShouldRejectMissingName() throws Exception {
+        Map<String, Object> body = Map.of(
+                "clusterId", "cluster-a",
+                "retryMaxTimes", 8
+        );
+
+        mockMvc.perform(post("/api/groups/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("name is required"));
+
+        verifyNoInteractions(metadataService);
+    }
+
+    @Test
+    void createConsumerGroupShouldRejectNegativeRetryMaxTimes() throws Exception {
+        Map<String, Object> body = Map.of(
+                "name", "cg-orders",
+                "retryMaxTimes", -1
+        );
+
+        mockMvc.perform(post("/api/groups/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("retryMaxTimes must be zero or positive"));
+
+        verifyNoInteractions(metadataService);
+    }
 
     @Test
     void getConsumerStackShouldReturnStackTrace() throws Exception {
