@@ -163,6 +163,55 @@ describe('DataSourceTab', () => {
     });
   });
 
+  it('creates and tests a Grafana Mimir data source', async () => {
+    vi.mocked(testDataSource).mockResolvedValue({ success: true, message: 'ok' });
+    vi.mocked(createDataSource).mockResolvedValue({
+      key: 'mimir-prod',
+      name: 'Mimir prod',
+      type: 'Mimir',
+      url: 'http://mimir:9009',
+      auth: 'None',
+      status: 'healthy',
+    });
+
+    const user = userEvent.setup();
+    render(
+      <App>
+        <DataSourceTab />
+      </App>,
+    );
+
+    await screen.findByText('Prometheus prod');
+    await user.click(screen.getByRole('button', { name: /添加数据源/ }));
+    await user.type(screen.getByLabelText('名称'), 'Mimir prod');
+    await selectAntdOption(user, '类型', 'Grafana Mimir');
+    await user.type(screen.getByLabelText('URL'), 'http://mimir:9009');
+
+    const testButtons = screen.getAllByRole('button', { name: /测试连接/ });
+    await user.click(testButtons[testButtons.length - 1]);
+
+    await waitFor(() => {
+      expect(testDataSource).toHaveBeenCalledWith({
+        type: 'Mimir',
+        url: 'http://mimir:9009',
+        auth: 'None',
+      });
+    });
+
+    await user.click(screen.getByRole('button', { name: 'OK' }));
+
+    await waitFor(() => {
+      expect(createDataSource).toHaveBeenCalledWith({
+        name: 'Mimir prod',
+        type: 'Mimir',
+        url: 'http://mimir:9009',
+        auth: 'None',
+      });
+    });
+    expect(await screen.findByText('Mimir prod')).toBeInTheDocument();
+    expect(screen.getByText('Mimir')).toHaveClass('ant-tag-cyan');
+  });
+
   it('does not persist modal-only credentials when creating a data source', async () => {
     vi.mocked(createDataSource).mockResolvedValue({
       key: 'prom-secure',
@@ -202,7 +251,11 @@ describe('DataSourceTab', () => {
   });
 });
 
-async function selectAntdOption(user: ReturnType<typeof userEvent.setup>, label: string, option: string) {
+async function selectAntdOption(
+  user: ReturnType<typeof userEvent.setup>,
+  label: string,
+  option: string,
+) {
   await user.click(screen.getByLabelText(label));
   const popupId = label === '类型' ? 'type_list' : 'auth_list';
   const popup = await waitFor(() => {
