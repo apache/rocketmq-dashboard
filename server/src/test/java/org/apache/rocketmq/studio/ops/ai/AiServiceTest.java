@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.ops.ai;
 
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -30,7 +31,9 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -78,6 +81,16 @@ class AiServiceTest {
     }
 
     @Test
+    void chatShouldRejectNullRequest() {
+        assertThatThrownBy(() -> aiService.chat(null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("chat request is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verify(llmGateway, never()).chat(any());
+    }
+
+    @Test
     void executeShouldReturnSuccessResult() {
         AiCommandDTO command = AiCommandDTO.builder()
                 .command("list_topics")
@@ -107,6 +120,16 @@ class AiServiceTest {
 
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.getResult()).contains("Error: Permission denied");
+    }
+
+    @Test
+    void executeShouldRejectNullRequest() {
+        assertThatThrownBy(() -> aiService.execute(null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("AI command request is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verify(llmGateway, never()).execute(any());
     }
 
     @Test

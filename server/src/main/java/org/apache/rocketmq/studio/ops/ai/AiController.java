@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.ai;
 
 import org.apache.rocketmq.studio.common.domain.Result;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -41,12 +42,18 @@ public class AiController {
     private final AiService aiService;
 
     @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter chat(@RequestBody ChatDTO request) {
+    public SseEmitter chat(@RequestBody(required = false) ChatDTO request) {
+        if (request == null) {
+            throw new BusinessException(400, "chat request is required");
+        }
         return aiService.chat(request);
     }
 
     @PostMapping("/execute")
-    public Result<AiExecuteResultVO> execute(@RequestBody AiCommandDTO command) {
+    public Result<AiExecuteResultVO> execute(@RequestBody(required = false) AiCommandDTO command) {
+        if (command == null) {
+            throw new BusinessException(400, "AI command request is required");
+        }
         return Result.ok(aiService.execute(command));
     }
 
