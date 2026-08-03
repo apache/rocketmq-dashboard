@@ -331,6 +331,10 @@ const MessagePage = () => {
     message.success('消息重新发送成功（模拟）');
   };
 
+  const handleVerifyConsume = () => {
+    message.warning('消费验证接口尚未接入，无法确认该消息的真实消费状态');
+  };
+
   const openDetail = async (record: MessageRecord, tab = 'content') => {
     const requestGeneration = traceGenerationRef.current + 1;
     traceGenerationRef.current = requestGeneration;
@@ -459,7 +463,7 @@ const MessagePage = () => {
             size="small"
             icon={<CheckCircleOutlined />}
             style={{ borderColor: '#52c41a', color: '#52c41a' }}
-            onClick={() => message.success(`消息 ${record.msgId.slice(0, 16)}... 消费验证成功`)}
+            onClick={handleVerifyConsume}
           >
             验证
           </Button>
