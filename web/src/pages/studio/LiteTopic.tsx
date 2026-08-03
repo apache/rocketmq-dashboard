@@ -78,6 +78,8 @@ const getProgressStatus = (percent: number): 'exception' | 'active' | 'normal' =
   return 'normal';
 };
 
+const knownTTLStatuses = new Set(['ACTIVE', 'EXPIRING_SOON', 'EXPIRED']);
+
 const collectNamespaces = (items: LiteTopicItem[]): string[] => {
   const namespaces = new Map<string, string>();
 
@@ -109,6 +111,7 @@ const LiteTopicPage: React.FC = () => {
   const [capabilitySupported, setCapabilitySupported] = useState(true);
   const [patternFilter, setPatternFilter] = useState('');
   const [namespaceFilter, setNamespaceFilter] = useState('');
+  const [ttlStatusFilter, setTTLStatusFilter] = useState('');
   const [namespaceOptions, setNamespaceOptions] = useState<string[]>([]);
 
   // Session drawer
@@ -287,6 +290,14 @@ const LiteTopicPage: React.FC = () => {
     const cfg = map[status || ''] || { color: 'default', label: t('liteTopic.unknown') };
     return <Tag color={cfg.color}>{cfg.label}</Tag>;
   };
+
+  const filteredTopicList = topicList.filter((item) => {
+    if (!ttlStatusFilter) return true;
+    if (ttlStatusFilter === 'UNKNOWN') {
+      return !item.ttlStatus || !knownTTLStatuses.has(item.ttlStatus);
+    }
+    return item.ttlStatus === ttlStatusFilter;
+  });
 
   // ─── Columns ─────────────────────────────────────────────────
 
@@ -726,6 +737,20 @@ const LiteTopicPage: React.FC = () => {
               </Select.Option>
             ))}
           </Select>
+          <Select
+            aria-label={t('liteTopic.status')}
+            placeholder={t('liteTopic.status')}
+            value={ttlStatusFilter || undefined}
+            onChange={(value) => setTTLStatusFilter(value || '')}
+            style={{ width: 160 }}
+            allowClear
+            options={[
+              { value: 'ACTIVE', label: t('liteTopic.active') },
+              { value: 'EXPIRING_SOON', label: t('liteTopic.expiringSoon') },
+              { value: 'EXPIRED', label: t('liteTopic.expired') },
+              { value: 'UNKNOWN', label: t('liteTopic.unknown') },
+            ]}
+          />
           <Button type="primary" icon={<MagnifyingGlass size={14} />} onClick={handleSearch}>
             {t('common.search')}
           </Button>
@@ -736,7 +761,7 @@ const LiteTopicPage: React.FC = () => {
       <Card bordered={false} style={{ borderRadius: 8 }}>
         <Table
           columns={columns}
-          dataSource={topicList}
+          dataSource={filteredTopicList}
           rowKey={(record) => JSON.stringify([record.namespace, record.topicPattern])}
           loading={loading}
           pagination={{
