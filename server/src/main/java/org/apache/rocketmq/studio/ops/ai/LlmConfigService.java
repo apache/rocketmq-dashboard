@@ -80,9 +80,8 @@ public class LlmConfigService {
         if (validation.getStatus() != 0) {
             throw new LlmGatewayException(400, validation.getCode(), validation.getErrMsg(), validation.getHint());
         }
-        overrides = copy(normalized);
         GeneralSettingsVO current = settingsService.getGeneralSettings();
-        settingsService.saveGeneralSettings(GeneralSettingsVO.builder()
+        GeneralSettingsVO updated = GeneralSettingsVO.builder()
                 .theme(current.getTheme())
                 .compact(current.isCompact())
                 .desktopNotify(current.isDesktopNotify())
@@ -93,7 +92,10 @@ public class LlmConfigService {
                 .apiKey(normalized.getApiKey())
                 .model(normalized.getModel())
                 .baseUrl(normalized.getApiBase())
-                .build());
+                .build();
+        LlmConfigVO nextOverrides = copy(normalized);
+        settingsService.saveGeneralSettings(updated);
+        overrides = nextOverrides;
     }
 
     public LlmOperationResultVO testConfig(LlmConfigVO config) {

@@ -27,6 +27,8 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -151,6 +153,27 @@ class LlmConfigServiceTest {
         assertThat(saved.getModel()).isEqualTo("deepseek-chat");
         assertThat(saved.getBaseUrl()).isEqualTo("https://api.deepseek.com/v1");
         assertThat(llmConfigService.getConfig().getProvider()).isEqualTo("deepseek");
+    }
+
+    @Test
+    void saveConfigShouldKeepCurrentConfigWhenPersistenceFails() {
+        doThrow(new IllegalStateException("persistence failed"))
+                .when(settingsService).saveGeneralSettings(any(GeneralSettingsVO.class));
+
+        assertThatThrownBy(() -> llmConfigService.saveConfig(LlmConfigVO.builder()
+                .provider("deepseek")
+                .apiKey("sk-deepseek")
+                .apiBase("https://api.deepseek.com/v1")
+                .model("deepseek-chat")
+                .maxTokens(8192)
+                .temperature(0.2)
+                .enabled(true)
+                .build()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("persistence failed");
+
+        assertThat(llmConfigService.getConfig().getProvider()).isEqualTo("openai");
+        assertThat(llmConfigService.getConfig().getModel()).isEqualTo("gpt-4o");
     }
 
     @Test
