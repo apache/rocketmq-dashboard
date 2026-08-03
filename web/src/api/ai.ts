@@ -16,6 +16,7 @@
  */
 
 import client from './client';
+import { API_BASE_URL } from '../config';
 
 // ─── Types ──────────────────────────────────────────────────────
 export interface McpTool {
@@ -135,7 +136,7 @@ export async function chatStream(
   onChunk: (text: string) => void,
   signal?: AbortSignal,
 ) {
-  const response = await fetch('/api/ai/chat', {
+  const response = await fetch(`${API_BASE_URL}/ai/chat`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

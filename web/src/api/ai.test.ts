@@ -28,6 +28,8 @@ import {
   type McpTool,
 } from './ai';
 
+vi.mock('../config', () => ({ API_BASE_URL: '/studio-api' }));
+
 const mock = new MockAdapter(client);
 const encoder = new TextEncoder();
 
@@ -58,23 +60,25 @@ describe('AI API', () => {
 
   describe('chatStream (SSE)', () => {
     it('reassembles an event split across network chunks', async () => {
-      vi.stubGlobal(
-        'fetch',
-        vi
-          .fn()
-          .mockResolvedValue(
-            streamResponse([
-              'event: message\r\ndata: {"text":"hel',
-              'lo"}\r\n\r\nevent: done\r\ndata: [DONE]\r\n\r\n',
-            ]),
-          ),
-      );
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(
+          streamResponse([
+            'event: message\r\ndata: {"text":"hel',
+            'lo"}\r\n\r\nevent: done\r\ndata: [DONE]\r\n\r\n',
+          ]),
+        );
+      vi.stubGlobal('fetch', fetchMock);
       const chunks: string[] = [];
 
       await chatStream({ message: 'hello', mode: 'chat', model: 'stub' }, (text) =>
         chunks.push(text),
       );
 
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/studio-api/ai/chat',
+        expect.objectContaining({ method: 'POST' }),
+      );
       expect(chunks).toEqual(['hello']);
     });
 
