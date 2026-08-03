@@ -553,13 +553,13 @@ const AboutTab = () => (
 
     <Title level={5}>相关链接</Title>
     <Space size="middle" style={{ marginBottom: 24 }}>
-      <TypoLink href="https://github.com/apache/rocketmq" target="_blank">
+      <TypoLink href="https://github.com/apache/rocketmq" target="_blank" rel="noopener noreferrer">
         <GithubOutlined /> GitHub
       </TypoLink>
-      <TypoLink href="https://rocketmq.apache.org/docs/" target="_blank">
+      <TypoLink href="https://rocketmq.apache.org/docs/" target="_blank" rel="noopener noreferrer">
         <BookOutlined /> 文档中心
       </TypoLink>
-      <TypoLink href="https://rocketmq.apache.org/" target="_blank">
+      <TypoLink href="https://rocketmq.apache.org/" target="_blank" rel="noopener noreferrer">
         <GlobalOutlined /> RocketMQ 社区
       </TypoLink>
     </Space>
