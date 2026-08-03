@@ -154,6 +154,14 @@ body {
 .tool-btn:hover {
   background: #f3f4f6;
 }
+.tool-btn:disabled {
+  color: #9ca3af;
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+.tool-btn:disabled:hover {
+  background: #f9fafb;
+}
 
 /* === Mode Toggle === */
 .mode-btn {

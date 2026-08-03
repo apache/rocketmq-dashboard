@@ -136,6 +136,12 @@ describe('AiPage tool runner', () => {
     expect(within(dialog).getByTestId('tool-result')).toHaveTextContent('"GRPC"');
   });
 
+  it('marks prompt enhancement unavailable until the feature is wired', () => {
+    renderPage();
+
+    expect(screen.getByRole('button', { name: /Prompt 增强/ })).toBeDisabled();
+  });
+
   it('reloads the available tools and template when the cluster changes', async () => {
     const user = userEvent.setup();
     vi.mocked(listTools).mockImplementation(async (cluster) => [

@@ -387,7 +387,7 @@ const HomePage = () => {
                             <SlidersHorizontal size={17} />
                             <span>工具</span>
                           </button>
-                          <button className="tool-btn">
+                          <button className="tool-btn" disabled title="Prompt 增强暂未接入">
                             <Sparkle size={17} />
                             <span>Prompt 增强</span>
                           </button>

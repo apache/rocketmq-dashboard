@@ -85,6 +85,12 @@ describe('HomePage LLM models', () => {
     expect(screen.queryByText('qwen3.7-max')).not.toBeInTheDocument();
   });
 
+  it('marks prompt enhancement unavailable until the feature is wired', () => {
+    renderHome();
+
+    expect(screen.getByRole('button', { name: /Prompt 增强/ })).toBeDisabled();
+  });
+
   it('submits the configured provider model to the AI page', async () => {
     const user = userEvent.setup();
     renderHome();
