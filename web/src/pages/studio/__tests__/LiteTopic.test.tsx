@@ -328,6 +328,18 @@ describe('LiteTopic Page', () => {
     expect(screen.queryByText('late-result-*')).not.toBeInTheDocument();
   });
 
+  it('fails closed when capability detection is unavailable', async () => {
+    apiMocks.queryLiteTopicCapability.mockRejectedValue(new Error('capability unavailable'));
+
+    renderPage();
+
+    expect(
+      await screen.findByText('当前集群不支持 LiteTopic，请升级到 RocketMQ 5.x'),
+    ).toBeInTheDocument();
+    expect(apiMocks.queryLiteTopicList).not.toHaveBeenCalled();
+    expect(apiMocks.queryLiteTopicQuota).not.toHaveBeenCalled();
+  });
+
   it('ignores stale list and quota responses when namespaces change quickly', async () => {
     const alphaList = createDeferred<LiteTopicItem[]>();
     const betaList = createDeferred<LiteTopicItem[]>();
