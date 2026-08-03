@@ -78,6 +78,7 @@ const renderWithProviders = (ui: React.ReactElement) =>
 
 describe('Consumer page', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.mocked(consumerService.listConsumerGroups).mockResolvedValue([group]);
     vi.mocked(consumerService.getConsumerProgress).mockResolvedValue([
       {
@@ -121,5 +122,90 @@ describe('Consumer page', () => {
     );
     expect(consumerService.getConsumerGroup).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.getAllByText('remote-topic').length).toBeGreaterThan(0));
+  });
+
+  it('highlights inconsistent subscriptions and refreshes the check result', async () => {
+    vi.mocked(consumerService.getConsumerSubscriptions)
+      .mockResolvedValueOnce([
+        {
+          topic: 'remote-topic',
+          expression: '*',
+          type: 'NORMAL',
+          filterMode: '全量',
+          consistency: 'consistent',
+        },
+        {
+          topic: 'stale-topic',
+          expression: 'important',
+          type: 'NORMAL',
+          filterMode: 'Tag 过滤',
+          consistency: 'inconsistent',
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          topic: 'remote-topic',
+          expression: '*',
+          type: 'NORMAL',
+          filterMode: '全量',
+          consistency: 'consistent',
+        },
+        {
+          topic: 'stale-topic',
+          expression: 'important',
+          type: 'NORMAL',
+          filterMode: 'Tag 过滤',
+          consistency: 'consistent',
+        },
+      ]);
+
+    const user = userEvent.setup();
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+
+    expect(await screen.findByText('发现 1 个订阅配置不一致')).toBeInTheDocument();
+    expect(screen.getByText('consistent').closest('.ant-tag')).toHaveClass('ant-tag-green');
+    expect(screen.getByText('inconsistent').closest('.ant-tag')).toHaveClass('ant-tag-orange');
+    await user.click(screen.getByRole('checkbox', { name: '仅看不一致' }));
+    expect(screen.getByText('stale-topic')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '重新检查' }));
+
+    expect(await screen.findByText('全部 2 个订阅配置一致')).toBeInTheDocument();
+    expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps unknown consistency values separate from mismatches', async () => {
+    vi.mocked(consumerService.getConsumerSubscriptions).mockResolvedValue([
+      {
+        topic: 'unknown-topic',
+        expression: '*',
+        type: 'NORMAL',
+        filterMode: '全量',
+        consistency: 'UNKNOWN',
+      },
+    ]);
+
+    const user = userEvent.setup();
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+
+    expect(await screen.findByText('1 个订阅配置状态未知')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: '仅看不一致' })).toBeDisabled();
+  });
+
+  it('reports a failed consistency check without presenting stale data as current', async () => {
+    vi.mocked(consumerService.getConsumerSubscriptions).mockRejectedValue(
+      new Error('request failed'),
+    );
+
+    const user = userEvent.setup();
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+
+    expect(await screen.findByText('订阅一致性检查失败，当前保留上次检查结果')).toBeInTheDocument();
   });
 });
