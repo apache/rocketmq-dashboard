@@ -75,6 +75,22 @@ export interface MetricQuery {
   step: string;
 }
 
+export interface MetricMapping {
+  semanticMetric: string;
+  name: string;
+  unit: string;
+  prometheusMetric: string;
+  promql: string;
+  labels: string[];
+}
+
+export interface MetricProfile {
+  id: string;
+  name: string;
+  description: string;
+  metrics: MetricMapping[];
+}
+
 // ─── Dashboard ──────────────────────────────────────────────────
 export async function getDashboard() {
   const res = await client.get<{ data: DashboardData }>('/dashboard');
@@ -84,5 +100,10 @@ export async function getDashboard() {
 // ─── Metrics ────────────────────────────────────────────────────
 export async function queryMetrics(query: MetricQuery) {
   const res = await client.post<{ data: MetricData }>('/metrics/query', query);
+  return res.data.data;
+}
+
+export async function listMetricProfiles() {
+  const res = await client.get<{ data: MetricProfile[] }>('/metrics/profiles');
   return res.data.data;
 }

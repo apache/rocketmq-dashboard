@@ -18,7 +18,7 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { getDashboard, queryMetrics } from './metrics';
+import { getDashboard, listMetricProfiles, queryMetrics } from './metrics';
 
 const mock = new MockAdapter(client);
 const dashboard = {
@@ -78,5 +78,29 @@ describe('metrics API', () => {
     });
 
     await expect(queryMetrics(query)).resolves.toEqual(result);
+  });
+
+  it('loads version-aware metric profiles', async () => {
+    const profiles = [
+      {
+        id: 'rocketmq5-native',
+        name: 'RocketMQ 5.x Native',
+        description: 'RocketMQ 5.x native Prometheus metrics',
+        metrics: [
+          {
+            semanticMetric: 'message_in_tps',
+            name: 'Message In TPS',
+            unit: 'messages/s',
+            prometheusMetric: 'rocketmq_messages_in_total',
+            promql: 'sum(rate(rocketmq_messages_in_total[1m])) by (cluster, node_id)',
+            labels: ['cluster', 'node_id'],
+          },
+        ],
+      },
+    ];
+
+    mock.onGet('/metrics/profiles').reply(200, { code: 200, data: profiles });
+
+    await expect(listMetricProfiles()).resolves.toEqual(profiles);
   });
 });
