@@ -17,43 +17,22 @@
 
 package org.apache.rocketmq.studio.instance.topic;
 
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.Locale;
 
 @Service
 public class LiteTopicService {
+    private static final String PROVIDER_UNAVAILABLE_MESSAGE = "LiteTopic provider integration is not available";
+    private static final int NOT_IMPLEMENTED = 501;
 
     public List<LiteTopicItemVO> listLiteTopics(String pattern, String namespace) {
-        return sampleItems().stream()
-                .filter(item -> matchesPattern(pattern, item.getTopicPattern()))
-                .filter(item -> matchesNamespace(namespace, item.getNamespace()))
-                .toList();
+        return List.of();
     }
 
     public LiteTopicSessionVO getSession(String sessionId) {
-        long now = System.currentTimeMillis();
-        return LiteTopicSessionVO.builder()
-                .sessionId(sessionId)
-                .clientId("grpc-client-" + sessionId)
-                .clientAddress("192.168.1.10:8081")
-                .parentTopic("chat/{sessionId}")
-                .consumerGroup("cg-chat-session")
-                .createTime(now - 3_600_000L)
-                .lastActiveTime(now - 30_000L)
-                .ttl(3_600_000L)
-                .ttlRemaining(1_800_000L)
-                .status("ACTIVE")
-                .totalMessages(5_000L)
-                .consumedMessages(4_800L)
-                .pendingMessages(200L)
-                .popProgress(96)
-                .liteTopicCreationCount(2)
-                .liteTopics(List.of(
-                        new LiteTopicSessionVO.SessionLiteTopic("chat/" + sessionId, "ACTIVE", 1_800_000L),
-                        new LiteTopicSessionVO.SessionLiteTopic("agent/" + sessionId, "ACTIVE", 1_200_000L)))
-                .build();
+        throw new BusinessException(NOT_IMPLEMENTED, PROVIDER_UNAVAILABLE_MESSAGE);
     }
 
     public void extendTTL(String topicPattern, Long newTTL) {
@@ -63,67 +42,14 @@ public class LiteTopicService {
         if (newTTL == null || newTTL <= 0) {
             throw new IllegalArgumentException("newTTL must be positive");
         }
+        throw new BusinessException(NOT_IMPLEMENTED, PROVIDER_UNAVAILABLE_MESSAGE);
     }
 
     public LiteTopicQuotaVO getQuota(String namespace) {
-        return LiteTopicQuotaVO.builder()
-                .currentTopicCount(128)
-                .maxTopicCount(1_000_000)
-                .currentSessionCount(32)
-                .maxSessionCount(100_000)
-                .currentCreationRate(12)
-                .maxCreationRate(1_000)
-                .usageRate(0.000128)
-                .sessionUsageRate(0.00032)
-                .defaultTTL(3_600_000L)
-                .maxTTL(86_400_000L)
-                .remainingQuota(999_872)
-                .consumerDensity(0.25)
-                .build();
+        throw new BusinessException(NOT_IMPLEMENTED, PROVIDER_UNAVAILABLE_MESSAGE);
     }
 
     public LiteTopicCapabilityVO getCapability() {
-        return new LiteTopicCapabilityVO(true);
-    }
-
-    private List<LiteTopicItemVO> sampleItems() {
-        long now = System.currentTimeMillis();
-        return List.of(
-                LiteTopicItemVO.builder()
-                        .topicPattern("chat/{sessionId}")
-                        .namespace("default")
-                        .topicCount(96)
-                        .consumerCount(12)
-                        .totalBacklog(1_200L)
-                        .averageTTL(3_600_000L)
-                        .ttlStatus("ACTIVE")
-                        .lastActiveTime(now - 60_000L)
-                        .sessionIds(List.of("sess-001", "sess-002"))
-                        .build(),
-                LiteTopicItemVO.builder()
-                        .topicPattern("agent/{sessionId}")
-                        .namespace("ai")
-                        .topicCount(32)
-                        .consumerCount(4)
-                        .totalBacklog(180L)
-                        .averageTTL(1_800_000L)
-                        .ttlStatus("EXPIRING_SOON")
-                        .lastActiveTime(now - 120_000L)
-                        .sessionIds(List.of("agent-001"))
-                        .build());
-    }
-
-    private boolean matchesPattern(String filter, String value) {
-        if (filter == null || filter.isBlank()) {
-            return true;
-        }
-        return value != null && value.toLowerCase(Locale.ROOT).contains(filter.toLowerCase(Locale.ROOT));
-    }
-
-    private boolean matchesNamespace(String namespace, String value) {
-        if (namespace == null || namespace.isBlank()) {
-            return true;
-        }
-        return value != null && value.equalsIgnoreCase(namespace.trim());
+        return new LiteTopicCapabilityVO(false);
     }
 }
