@@ -18,6 +18,7 @@
 package org.apache.rocketmq.studio.instance.topic;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -29,6 +30,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -124,6 +126,23 @@ class LiteTopicControllerTest {
                 .andExpect(jsonPath("$.code").value(200));
 
         verify(liteTopicService).extendTTL(eq("chat/{sessionId}"), eq(7_200_000L));
+    }
+
+    @Test
+    void extendTTLShouldReturnUnsupportedWhenProviderIsUnavailable() throws Exception {
+        LiteTopicTTLUpdateDTO request = new LiteTopicTTLUpdateDTO();
+        request.setTopicPattern("chat/{sessionId}");
+        request.setNewTTL(7_200_000L);
+        doThrow(new BusinessException(501, "LiteTopic provider integration is not available"))
+                .when(liteTopicService)
+                .extendTTL(eq("chat/{sessionId}"), eq(7_200_000L));
+
+        mockMvc.perform(post("/api/liteTopic/extendTTL")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isNotImplemented())
+                .andExpect(jsonPath("$.code").value(501))
+                .andExpect(jsonPath("$.message").value("LiteTopic provider integration is not available"));
     }
 
     @Test
