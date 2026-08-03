@@ -20,6 +20,7 @@ import type { AuditRecord } from '../api/ops';
 import { mockAuditRecords } from '../mock/audit';
 import {
   createAlertRule,
+  exportAuditLogs,
   listAlertRules,
   listAuditRecords,
   listSystemAlerts,
@@ -118,5 +119,28 @@ describe('ops service mock data', () => {
     const result = await listAuditRecords({ search: 'grpc client', pageSize: 100 });
 
     expect(result.items.map((item) => item.id)).toContain('audit-null-safe');
+  });
+
+  it('exports filtered audit records as escaped CSV', async () => {
+    const record = {
+      id: 'audit-csv-export',
+      timestamp: '2026-08-01 10:00:00',
+      operator: '=admin',
+      operationType: 'DELETE',
+      target: 'csv-export-target',
+      detail: 'removed "topic", safely',
+      ipAddress: '\n=127.0.0.1',
+      result: 'SUCCESS',
+    } as AuditRecord;
+    insertedRecords.push(record);
+    auditRecords.push(record);
+
+    const csv = await exportAuditLogs({ search: 'csv-export-target' });
+
+    expect(csv).toContain('timestamp,operator,operationType,target,detail,ipAddress,result');
+    expect(csv).toContain(
+      '"2026-08-01 10:00:00","\'=admin","DELETE","csv-export-target",' +
+        '"removed ""topic"", safely","\'\n=127.0.0.1","SUCCESS"',
+    );
   });
 });

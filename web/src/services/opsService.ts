@@ -1,4 +1,6 @@
 import { USE_MOCK } from '../config';
+import { exportAuditLogs as exportAuditLogsApi } from '../api/audit';
+import type { AuditFilter } from '../api/audit';
 import * as opsApi from '../api/ops';
 import type { AlertRule, SystemAlert, AuditQuery, AuditRecord, PageResult } from '../api/ops';
 import { mockAlertRules } from '../mock/alerts';
@@ -25,6 +27,48 @@ function copyAuditRecord(record: AuditRecord): AuditRecord {
 
 function includesIgnoreCase(value: string | null | undefined, search: string): boolean {
   return (value ?? '').toLowerCase().includes(search);
+}
+
+function filterAuditRecords(params: AuditFilter): AuditRecord[] {
+  return auditRecordsState.filter((record) => {
+    const search = params.search?.trim().toLowerCase();
+    if (
+      search &&
+      !includesIgnoreCase(record.operator, search) &&
+      !includesIgnoreCase(record.target, search) &&
+      !includesIgnoreCase(record.detail, search)
+    ) {
+      return false;
+    }
+    if (params.operationType && record.operationType !== params.operationType) return false;
+    if (params.startDate && record.timestamp < params.startDate) return false;
+    if (params.endDate && record.timestamp > `${params.endDate} 23:59:59`) return false;
+    return !params.result || record.result.toUpperCase() === params.result.toUpperCase();
+  });
+}
+
+function toCsvCell(value: string | null | undefined): string {
+  let text = value ?? '';
+  if (text.length > 0 && '=+-@\t\r\n'.includes(text[0])) text = `'${text}`;
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function formatAuditCsv(records: AuditRecord[]): string {
+  const header = 'timestamp,operator,operationType,target,detail,ipAddress,result\r\n';
+  const rows = records.map((record) =>
+    [
+      record.timestamp,
+      record.operator,
+      record.operationType,
+      record.target,
+      record.detail,
+      record.ipAddress,
+      record.result,
+    ]
+      .map(toCsvCell)
+      .join(','),
+  );
+  return `\uFEFF${header}${rows.length > 0 ? `${rows.join('\r\n')}\r\n` : ''}`;
 }
 
 export async function listAlertRules(): Promise<AlertRule[]> {
@@ -113,21 +157,7 @@ export async function listAuditRecords(params: AuditQuery = {}): Promise<PageRes
 
   const page = params.page ?? 1;
   const pageSize = params.pageSize ?? 20;
-  const records = auditRecordsState.filter((record) => {
-    const search = params.search?.trim().toLowerCase();
-    if (
-      search &&
-      !includesIgnoreCase(record.operator, search) &&
-      !includesIgnoreCase(record.target, search) &&
-      !includesIgnoreCase(record.detail, search)
-    ) {
-      return false;
-    }
-    if (params.operationType && record.operationType !== params.operationType) return false;
-    if (params.startDate && record.timestamp < params.startDate) return false;
-    if (params.endDate && record.timestamp > `${params.endDate} 23:59:59`) return false;
-    return !params.result || record.result.toUpperCase() === params.result.toUpperCase();
-  });
+  const records = filterAuditRecords(params);
   const from = (page - 1) * pageSize;
   return {
     items: records.slice(from, from + pageSize).map(copyAuditRecord),
@@ -135,6 +165,11 @@ export async function listAuditRecords(params: AuditQuery = {}): Promise<PageRes
     page,
     size: pageSize,
   };
+}
+
+export async function exportAuditLogs(params: AuditFilter = {}): Promise<string> {
+  if (!USE_MOCK) return exportAuditLogsApi(params);
+  return formatAuditCsv(filterAuditRecords(params));
 }
 
 export async function cleanupAuditLogs(beforeDays: number): Promise<number> {
