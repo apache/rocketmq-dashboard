@@ -92,6 +92,18 @@ class SystemAlertControllerTest {
     }
 
     @Test
+    void acknowledgeAlertShouldRejectNullRequestBody() throws Exception {
+        mockMvc.perform(post("/api/system-alerts/acknowledge")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("null"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("System alert acknowledge request is required"));
+
+        verifyNoInteractions(alertService);
+    }
+
+    @Test
     void acknowledgeAlertShouldRejectBlankId() throws Exception {
         mockMvc.perform(post("/api/system-alerts/acknowledge")
                         .contentType(MediaType.APPLICATION_JSON)
