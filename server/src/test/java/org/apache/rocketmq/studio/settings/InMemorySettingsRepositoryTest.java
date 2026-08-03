@@ -38,10 +38,16 @@ class InMemorySettingsRepositoryTest {
         assertThat(repository.findDataSourceByKey("source-1")).containsSame(dataSource);
         assertThat(repository.findAllDataSources()).containsExactly(dataSource);
 
-        repository.deleteDataSource("source-1");
+        boolean deleted = repository.deleteDataSource("source-1");
 
+        assertThat(deleted).isTrue();
         assertThat(repository.findDataSourceByKey("source-1")).isEmpty();
         assertThat(repository.findAllDataSources()).isEmpty();
+    }
+
+    @Test
+    void deleteDataSourceShouldReportMissingEntry() {
+        assertThat(repository.deleteDataSource("missing")).isFalse();
     }
 
     @Test

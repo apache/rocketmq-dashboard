@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.settings;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -32,6 +33,7 @@ import static org.hamcrest.Matchers.is;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -263,6 +265,33 @@ class SettingsControllerTest {
                 .andExpect(jsonPath("$.code", is(200)));
 
         verify(settingsService).deleteDataSource("ds-1");
+    }
+
+    @Test
+    void deleteDataSourceShouldRejectMissingKey() throws Exception {
+        doThrow(new BusinessException(400, "Data source key is required"))
+                .when(settingsService).deleteDataSource(null);
+
+        mockMvc.perform(post("/api/settings/datasources/delete"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is(400)))
+                .andExpect(jsonPath("$.message", is("Data source key is required")));
+
+        verify(settingsService).deleteDataSource(null);
+    }
+
+    @Test
+    void deleteDataSourceShouldRejectUnknownKey() throws Exception {
+        doThrow(new BusinessException(404, "Data source not found: missing"))
+                .when(settingsService).deleteDataSource("missing");
+
+        mockMvc.perform(post("/api/settings/datasources/delete")
+                        .param("key", "missing"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code", is(404)))
+                .andExpect(jsonPath("$.message", is("Data source not found: missing")));
+
+        verify(settingsService).deleteDataSource("missing");
     }
 
     @Test

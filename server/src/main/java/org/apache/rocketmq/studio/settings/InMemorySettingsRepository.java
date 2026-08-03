@@ -71,8 +71,8 @@ public class InMemorySettingsRepository implements SettingsRepository {
     }
 
     @Override
-    public void deleteDataSource(String key) {
-        dataSources.remove(key);
+    public boolean deleteDataSource(String key) {
+        return dataSources.remove(key) != null;
     }
 
     @Override

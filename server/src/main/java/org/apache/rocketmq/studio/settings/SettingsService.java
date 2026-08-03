@@ -101,17 +101,22 @@ public class SettingsService {
 
 
     public DataSourceVO updateDataSource(DataSourceVO dataSource) {
-        log.info("Updating data source: {}", dataSource.getKey());
+        String key = normalizeDataSourceKey(dataSource.getKey());
+        dataSource.setKey(key);
+        log.info("Updating data source: {}", key);
         if (!settingsRepository.replaceDataSource(dataSource)) {
-            throw new BusinessException(404, "Data source not found: " + dataSource.getKey());
+            throw new BusinessException(404, "Data source not found: " + key);
         }
         return dataSource;
     }
 
 
     public void deleteDataSource(String key) {
-        log.info("Deleting data source: {}", key);
-        settingsRepository.deleteDataSource(key);
+        String normalizedKey = normalizeDataSourceKey(key);
+        log.info("Deleting data source: {}", normalizedKey);
+        if (!settingsRepository.deleteDataSource(normalizedKey)) {
+            throw new BusinessException(404, "Data source not found: " + normalizedKey);
+        }
     }
 
 
@@ -152,6 +157,13 @@ public class SettingsService {
     private boolean isPrometheusCompatible(String type) {
         return StringUtils.hasText(type)
                 && PROMETHEUS_COMPATIBLE_TYPES.contains(type.replaceAll("\\s+", "").toLowerCase());
+    }
+
+    private String normalizeDataSourceKey(String key) {
+        if (!StringUtils.hasText(key)) {
+            throw new BusinessException(400, "Data source key is required");
+        }
+        return key.trim();
     }
 
     private void applyAuthentication(HttpHeaders headers, DataSourceTestDTO request) {

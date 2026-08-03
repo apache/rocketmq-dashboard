@@ -40,7 +40,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -239,12 +238,46 @@ class SettingsServiceTest {
     }
 
     @Test
+    void updateDataSourceShouldRejectBlankKey() {
+        SettingsService service = new SettingsService(new InMemorySettingsRepository(), RestClient.builder(), new ObjectMapper());
+        DataSourceVO input = DataSourceVO.builder().key(" ").name("Unexpected DS").type("rocketmq")
+                .url("unexpected-host:9876").build();
+
+        assertThatThrownBy(() -> service.updateDataSource(input))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Data source key is required")
+                .extracting("code")
+                .isEqualTo(400);
+        assertThat(service.listDataSources()).isEmpty();
+    }
+
+    @Test
     void deleteDataSourceShouldDelegateToRepository() {
-        doNothing().when(settingsRepository).deleteDataSource("ds-1");
+        when(settingsRepository.deleteDataSource("ds-1")).thenReturn(true);
 
         settingsService.deleteDataSource("ds-1");
 
         verify(settingsRepository).deleteDataSource("ds-1");
+    }
+
+    @Test
+    void deleteDataSourceShouldRejectUnknownKey() {
+        SettingsService service = new SettingsService(new InMemorySettingsRepository(), RestClient.builder(), new ObjectMapper());
+
+        assertThatThrownBy(() -> service.deleteDataSource("missing"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Data source not found: missing")
+                .extracting("code")
+                .isEqualTo(404);
+    }
+
+    @Test
+    void deleteDataSourceShouldRejectBlankKey() {
+        assertThatThrownBy(() -> settingsService.deleteDataSource(" "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Data source key is required")
+                .extracting("code")
+                .isEqualTo(400);
     }
 
     @Test
