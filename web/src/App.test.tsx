@@ -29,6 +29,7 @@ vi.mock('./api/auth', async (importOriginal) => {
 });
 
 vi.mock('./config', () => ({ API_BASE_URL: '/api', USE_MOCK: false }));
+vi.mock('./services/dataMode', () => ({ isMockMode: () => false }));
 
 const mockedGetAuthStatus = vi.mocked(getAuthStatus);
 

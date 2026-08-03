@@ -19,7 +19,7 @@ import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { Button, Result, Spin } from 'antd';
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { getAuthStatus } from './api/auth';
-import { USE_MOCK } from './config';
+import { isMockMode } from './services/dataMode';
 import { useLang } from './i18n/LangContext';
 import useAuthStore from './stores/authStore';
 import MainLayout from './layouts/MainLayout';
@@ -56,11 +56,11 @@ type AuthGateState = 'checking' | 'allowed' | 'denied' | 'error';
 export function AuthGate() {
   const { t } = useLang();
   const clearAuth = useAuthStore((state) => state.logout);
-  const [gateState, setGateState] = useState<AuthGateState>(USE_MOCK ? 'allowed' : 'checking');
+  const [gateState, setGateState] = useState<AuthGateState>(isMockMode() ? 'allowed' : 'checking');
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    if (USE_MOCK) return;
+    if (isMockMode()) return;
 
     let cancelled = false;
     void getAuthStatus()

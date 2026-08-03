@@ -61,6 +61,7 @@ import type { Dayjs } from 'dayjs';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import { TOPIC_TYPE_MAP, PROTOCOL_MAP } from '../../constants/theme';
+import { formatDateTime } from '../../utils/format';
 import type {
   ConsumerGroup,
   ConsumerInstance,
@@ -109,12 +110,6 @@ const formatDelay = (totalSeconds: number): string => {
   if (seconds > 0 && parts.length < 3) parts.push(`${seconds}秒`);
 
   return parts.length > 0 ? parts.join('') : '0秒';
-};
-
-const formatDateTime = (dateStr: string): string => {
-  const d = new Date(dateStr);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 };
 
 const normalizedConsistency = (value?: string | null): string => value?.trim().toLowerCase() ?? '';
@@ -326,7 +321,7 @@ const ConsumerPage = () => {
       sorter: (a, b) => a.createdAt.localeCompare(b.createdAt),
       render: (d: string) => (
         <Text type="secondary" style={{ fontSize: 13 }}>
-          {d}
+          {formatDateTime(d)}
         </Text>
       ),
     },
@@ -338,7 +333,7 @@ const ConsumerPage = () => {
       sorter: (a, b) => a.updatedAt.localeCompare(b.updatedAt),
       render: (d: string) => (
         <Text type="secondary" style={{ fontSize: 13 }}>
-          {d}
+          {formatDateTime(d)}
         </Text>
       ),
     },

@@ -18,9 +18,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { getMessageTrace, listDLQGroups, queryMessages } from './messageService';
 
+vi.mock('./dataMode', () => ({ isMockMode: () => true }));
 vi.mock('../config', () => ({
   API_BASE_URL: '/api',
-  USE_MOCK: true,
 }));
 
 describe('message service mock data', () => {

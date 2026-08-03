@@ -1,4 +1,4 @@
-import { USE_MOCK } from '../config';
+import { isMockMode } from './dataMode';
 import * as clusterApi from '../api/cluster';
 import type { ClusterConfig, ClusterInfo, ClusterProbeResult, K8sCertInfo } from '../api/cluster';
 import clusters, { mockK8sCerts } from '../mock/clusters';
@@ -28,14 +28,14 @@ function copyCluster(cluster: ClusterInfo): ClusterInfo {
 }
 
 export async function listClusters(): Promise<ClusterInfo[]> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     return clusters.map(copyCluster);
   }
   return clusterApi.listClusters();
 }
 
 export async function testClusterConnection(namesrvAddr: string): Promise<ClusterProbeResult> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const trimmed = namesrvAddr.trim();
     const cluster = clusters[0];
     const brokerNames = cluster ? cluster.brokers.map((broker) => broker.name) : [];
@@ -53,7 +53,7 @@ export async function testClusterConnection(namesrvAddr: string): Promise<Cluste
 }
 
 export async function getCluster(id: string): Promise<ClusterInfo> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const cluster = clusters.find((item) => item.id === id);
     if (!cluster) throw new Error('Cluster not found');
     return copyCluster(cluster);
@@ -62,12 +62,12 @@ export async function getCluster(id: string): Promise<ClusterInfo> {
 }
 
 export async function listK8sCerts(): Promise<K8sCertInfo[]> {
-  if (USE_MOCK) return mockCertStore.map((cert) => ({ ...cert, san: [...cert.san] }));
+  if (isMockMode()) return mockCertStore.map((cert) => ({ ...cert, san: [...cert.san] }));
   return clusterApi.listK8sCerts();
 }
 
 export async function createK8sCert(data: Partial<K8sCertInfo>): Promise<K8sCertInfo> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const now = new Date();
     const notAfter = new Date(now);
     notAfter.setFullYear(notAfter.getFullYear() + 1);
@@ -91,7 +91,7 @@ export async function createK8sCert(data: Partial<K8sCertInfo>): Promise<K8sCert
 }
 
 export async function updateK8sCert(data: Partial<K8sCertInfo>): Promise<K8sCertInfo> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const existing = mockCertStore.find((cert) => cert.id === data.id);
     if (!existing) throw new Error(`Certificate not found: ${data.id}`);
     Object.assign(existing, data, { san: data.san ?? existing.san });
@@ -101,7 +101,7 @@ export async function updateK8sCert(data: Partial<K8sCertInfo>): Promise<K8sCert
 }
 
 export async function renewK8sCert(id: string): Promise<K8sCertInfo> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const existing = mockCertStore.find((cert) => cert.id === id);
     if (!existing) throw new Error(`Certificate not found: ${id}`);
     const now = new Date();
@@ -119,7 +119,7 @@ export async function renewK8sCert(id: string): Promise<K8sCertInfo> {
 }
 
 export async function deleteK8sCert(id: string): Promise<void> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const index = mockCertStore.findIndex((cert) => cert.id === id);
     if (index < 0) throw new Error(`Certificate not found: ${id}`);
     mockCertStore.splice(index, 1);
@@ -129,7 +129,7 @@ export async function deleteK8sCert(id: string): Promise<void> {
 }
 
 export async function updateClusterConfig(data: { id: string } & Partial<ClusterConfig>) {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const { id, ...config } = data;
     Object.assign(getMockCluster(id).config, config);
     return;
@@ -138,7 +138,7 @@ export async function updateClusterConfig(data: { id: string } & Partial<Cluster
 }
 
 export async function restartBroker(clusterId: string, brokerName: string) {
-  if (USE_MOCK) return { success: true, message: `Broker ${brokerName} restarted (mock)` };
+  if (isMockMode()) return { success: true, message: `Broker ${brokerName} restarted (mock)` };
   return clusterApi.restartBroker(clusterId, brokerName);
 }
 
@@ -149,7 +149,7 @@ function getMockCluster(clusterId: string) {
 }
 
 export async function restartNameServer(data: { clusterId: string; addr: string }): Promise<void> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const nameServer = getMockCluster(data.clusterId).nameServers.find(
       (item) => item.addr === data.addr,
     );
@@ -165,7 +165,7 @@ export async function upgradeNameServer(data: {
   addr: string;
   version: string;
 }): Promise<void> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const exists = getMockCluster(data.clusterId).nameServers.some(
       (item) => item.addr === data.addr,
     );
@@ -176,7 +176,7 @@ export async function upgradeNameServer(data: {
 }
 
 export async function deleteNameServer(data: { clusterId: string; addr: string }): Promise<void> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const nameServers = getMockCluster(data.clusterId).nameServers;
     const index = nameServers.findIndex((item) => item.addr === data.addr);
     if (index < 0) throw new Error(`NameServer not found: ${data.addr}`);
@@ -187,7 +187,7 @@ export async function deleteNameServer(data: { clusterId: string; addr: string }
 }
 
 export async function createNameServer(data: { clusterId: string; addr: string }): Promise<void> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const nameServers = getMockCluster(data.clusterId).nameServers;
     if (nameServers.some((item) => item.addr === data.addr)) {
       throw new Error(`NameServer already exists: ${data.addr}`);
@@ -203,7 +203,7 @@ export async function updateNameServer(data: {
   addr: string;
   newAddr?: string;
 }): Promise<void> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const nameServer = getMockCluster(data.clusterId).nameServers.find(
       (item) => item.addr === data.addr,
     );
@@ -215,7 +215,7 @@ export async function updateNameServer(data: {
 }
 
 export async function restartProxy(data: { clusterId: string; addr: string }): Promise<void> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const proxy = getMockCluster(data.clusterId).proxies.find((item) => item.addr === data.addr);
     if (!proxy) throw new Error(`Proxy not found: ${data.addr}`);
     proxy.status = 'healthy';

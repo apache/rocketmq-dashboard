@@ -15,12 +15,20 @@
  * limitations under the License.
  */
 
-import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
+import type { ConsumerGroup } from '../../../api/metadata';
+import * as consumerService from '../../../services/consumerService';
 import GroupManagement from '../GroupManagement';
+
+vi.mock('../../../services/consumerService', () => ({
+  listConsumerGroups: vi.fn(),
+  getConsumerProgress: vi.fn(),
+  getConsumerSubscriptions: vi.fn(),
+}));
 
 // Mock matchMedia for antd responsive components
 beforeAll(() => {
@@ -45,6 +53,29 @@ vi.mock('react-router-dom', () => ({
   useParams: () => ({}),
 }));
 
+const makeGroup = (overrides: Partial<ConsumerGroup>): ConsumerGroup => ({
+  name: 'order-consumer-group',
+  namespace: 'default',
+  clusterId: 'cluster-production',
+  subscriptionMode: 'Push',
+  consumeType: 'CLUSTERING',
+  onlineInstances: 4,
+  totalLag: 1280,
+  subscribedTopics: ['ORDER_TOPIC'],
+  subscriptionDataType: 'NORMAL',
+  retryMaxTimes: 16,
+  createdAt: '2025-03-15 10:30:00',
+  updatedAt: '2025-03-15 10:30:00',
+  delaySeconds: 12,
+  instances: [],
+  ...overrides,
+});
+
+const groups: ConsumerGroup[] = [
+  makeGroup({ name: 'order-consumer-group' }),
+  makeGroup({ name: 'payment-consumer-group', totalLag: 0, onlineInstances: 2 }),
+];
+
 const renderWithProviders = (ui: React.ReactElement) => {
   return render(
     <App>
@@ -54,6 +85,12 @@ const renderWithProviders = (ui: React.ReactElement) => {
 };
 
 describe('GroupManagement Page', () => {
+  beforeEach(() => {
+    vi.mocked(consumerService.listConsumerGroups).mockResolvedValue(groups);
+    vi.mocked(consumerService.getConsumerProgress).mockResolvedValue([]);
+    vi.mocked(consumerService.getConsumerSubscriptions).mockResolvedValue([]);
+  });
+
   it('should render the page title', () => {
     renderWithProviders(<GroupManagement />);
     expect(screen.getByText('消费组管理')).toBeInTheDocument();
@@ -74,25 +111,32 @@ describe('GroupManagement Page', () => {
     expect(screen.getByText('重置')).toBeInTheDocument();
   });
 
-  it('should show an explicit unavailable state instead of mock consumer groups', () => {
+  it('should display consumer group data from the service in table', async () => {
     renderWithProviders(<GroupManagement />);
-    expect(screen.getByText('当前版本尚未接入真实消费组管理接口，已停止展示模拟消费组数据。')).toBeInTheDocument();
-    expect(screen.queryByText('order-consumer-group')).not.toBeInTheDocument();
-    expect(screen.queryByText('payment-consumer-group')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('order-consumer-group')).toBeInTheDocument();
+    });
+    expect(screen.getByText('payment-consumer-group')).toBeInTheDocument();
   });
 
-  it('should not render row actions without real consumer group data', () => {
+  it('should render detail action buttons for each row', async () => {
     renderWithProviders(<GroupManagement />);
-    expect(screen.queryByText('详情')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('order-consumer-group')).toBeInTheDocument();
+    });
+    const detailButtons = screen.getAllByText('详情');
+    expect(detailButtons.length).toBeGreaterThan(0);
   });
 
-  it('should keep mock groups hidden when filtering by search text', async () => {
+  it('should filter groups by search text', async () => {
     const user = userEvent.setup();
     renderWithProviders(<GroupManagement />);
+    await waitFor(() => {
+      expect(screen.getByText('order-consumer-group')).toBeInTheDocument();
+    });
     const searchInput = screen.getByPlaceholderText('搜索消费组');
     await user.type(searchInput, 'ORDER');
-    expect(screen.getByText('当前版本尚未接入真实消费组管理接口，已停止展示模拟消费组数据。')).toBeInTheDocument();
-    expect(screen.queryByText('order-consumer-group')).not.toBeInTheDocument();
+    expect(screen.getByText('order-consumer-group')).toBeInTheDocument();
     expect(screen.queryByText('payment-consumer-group')).not.toBeInTheDocument();
   });
 });

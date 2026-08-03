@@ -1,6 +1,6 @@
-import { USE_MOCK } from '../config';
 import { exportAuditLogs as exportAuditLogsApi } from '../api/audit';
 import type { AuditFilter } from '../api/audit';
+import { isMockMode } from './dataMode';
 import * as opsApi from '../api/ops';
 import type { AlertRule, SystemAlert, AuditQuery, AuditRecord, PageResult } from '../api/ops';
 import { mockAlertRules } from '../mock/alerts';
@@ -72,12 +72,12 @@ function formatAuditCsv(records: AuditRecord[]): string {
 }
 
 export async function listAlertRules(): Promise<AlertRule[]> {
-  if (USE_MOCK) return alertRulesState.map(copyAlertRule);
+  if (isMockMode()) return alertRulesState.map(copyAlertRule);
   return opsApi.listAlertRules();
 }
 
 export async function createAlertRule(data: Partial<AlertRule>): Promise<AlertRule> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const rule: AlertRule = {
       id: `alert-${Date.now()}`,
       name: '',
@@ -99,7 +99,7 @@ export async function createAlertRule(data: Partial<AlertRule>): Promise<AlertRu
 }
 
 export async function updateAlertRule(data: AlertRule): Promise<AlertRule> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const index = alertRulesState.findIndex((rule) => rule.id === data.id);
     const rule = copyAlertRule(data);
     if (index >= 0) alertRulesState[index] = rule;
@@ -109,7 +109,7 @@ export async function updateAlertRule(data: AlertRule): Promise<AlertRule> {
 }
 
 export async function toggleAlertRule(id: string, enabled: boolean): Promise<AlertRule> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const rule = alertRulesState.find((item) => item.id === id);
     if (!rule) throw new Error(`Alert rule not found: ${id}`);
     rule.enabled = enabled;
@@ -119,7 +119,7 @@ export async function toggleAlertRule(id: string, enabled: boolean): Promise<Ale
 }
 
 export async function deleteAlertRule(id: string): Promise<void> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const idx = alertRulesState.findIndex((rule) => rule.id === id);
     if (idx >= 0) alertRulesState.splice(idx, 1);
     return;
@@ -128,12 +128,12 @@ export async function deleteAlertRule(id: string): Promise<void> {
 }
 
 export async function listSystemAlerts(): Promise<SystemAlert[]> {
-  if (USE_MOCK) return (mockSystemAlerts as unknown as SystemAlert[]).map(copySystemAlert);
+  if (isMockMode()) return (mockSystemAlerts as unknown as SystemAlert[]).map(copySystemAlert);
   return opsApi.listSystemAlerts();
 }
 
 export async function acknowledgeAlert(id: string): Promise<void> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const a = mockSystemAlerts.find((a: Record<string, unknown>) => a.id === id);
     if (a) (a as Record<string, unknown>).acknowledged = true;
     return;
@@ -142,7 +142,7 @@ export async function acknowledgeAlert(id: string): Promise<void> {
 }
 
 export async function clearAcknowledgedAlerts(): Promise<number> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const acknowledged = mockSystemAlerts.filter((alert) => alert.acknowledged).length;
     const remaining = mockSystemAlerts.filter((alert) => !alert.acknowledged);
     mockSystemAlerts.splice(0, mockSystemAlerts.length, ...remaining);
@@ -153,7 +153,7 @@ export async function clearAcknowledgedAlerts(): Promise<number> {
 }
 
 export async function listAuditRecords(params: AuditQuery = {}): Promise<PageResult<AuditRecord>> {
-  if (!USE_MOCK) return opsApi.listAuditRecords(params);
+  if (!isMockMode()) return opsApi.listAuditRecords(params);
 
   const page = params.page ?? 1;
   const pageSize = params.pageSize ?? 20;
@@ -168,12 +168,12 @@ export async function listAuditRecords(params: AuditQuery = {}): Promise<PageRes
 }
 
 export async function exportAuditLogs(params: AuditFilter = {}): Promise<string> {
-  if (!USE_MOCK) return exportAuditLogsApi(params);
+  if (!isMockMode()) return exportAuditLogsApi(params);
   return formatAuditCsv(filterAuditRecords(params));
 }
 
 export async function cleanupAuditLogs(beforeDays: number): Promise<number> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const cutoff = new Date(Date.now() - beforeDays * 24 * 60 * 60 * 1000);
     const remaining = auditRecordsState.filter((record) => new Date(record.timestamp) >= cutoff);
     const deleted = auditRecordsState.length - remaining.length;

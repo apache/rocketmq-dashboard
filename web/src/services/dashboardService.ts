@@ -1,4 +1,4 @@
-import { USE_MOCK } from '../config';
+import { isMockMode } from './dataMode';
 import * as metricsApi from '../api/metrics';
 import { dashboardStats, clusterOverview } from '../mock/dashboard';
 import type { DashboardData } from '../api/metrics';
@@ -11,7 +11,7 @@ function copyClusterOverview(cluster: DashboardData['clusters'][number]) {
 }
 
 export async function getDashboard(): Promise<DashboardData> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     return {
       stats: { ...dashboardStats },
       clusters: (clusterOverview as DashboardData['clusters']).map(copyClusterOverview),

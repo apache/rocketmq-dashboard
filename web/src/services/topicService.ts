@@ -1,4 +1,4 @@
-import { USE_MOCK } from '../config';
+import { isMockMode } from './dataMode';
 import * as metadataApi from '../api/metadata';
 import type {
   Topic,
@@ -16,7 +16,7 @@ const cloneConsumers = (consumers: ConsumerGroupInfo[]): ConsumerGroupInfo[] =>
   consumers.map((consumer) => ({ ...consumer }));
 
 export async function listTopics(params?: TopicQuery): Promise<Topic[]> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     let result = [...mockTopics];
     if (params?.search) {
       const keyword = params.search.trim().toLowerCase();
@@ -30,7 +30,7 @@ export async function listTopics(params?: TopicQuery): Promise<Topic[]> {
 }
 
 export async function createTopic(data: Partial<Topic>): Promise<Topic> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const topic = {
       ...data,
       createdAt: new Date().toISOString(),
@@ -46,7 +46,7 @@ export async function createTopic(data: Partial<Topic>): Promise<Topic> {
 }
 
 export async function updateTopic(data: Partial<Topic>): Promise<Topic> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const idx = mockTopics.findIndex((t) => t.name === data.name);
     if (idx < 0) throw new Error(`Topic not found: ${data.name}`);
     Object.assign(mockTopics[idx], data, { updatedAt: new Date().toISOString() });
@@ -56,7 +56,7 @@ export async function updateTopic(data: Partial<Topic>): Promise<Topic> {
 }
 
 export async function deleteTopic(name: string): Promise<void> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const idx = mockTopics.findIndex((t) => t.name === name);
     if (idx >= 0) mockTopics.splice(idx, 1);
     return;
@@ -84,12 +84,12 @@ export async function batchDeleteTopics(names: string[]): Promise<BatchDeleteTop
 }
 
 export async function getTopicRoutes(name: string): Promise<BrokerRoute[]> {
-  if (USE_MOCK) return cloneRoutes((topicRoutes[name] as unknown as BrokerRoute[]) ?? []);
+  if (isMockMode()) return cloneRoutes((topicRoutes[name] as unknown as BrokerRoute[]) ?? []);
   return metadataApi.getTopicRoutes(name);
 }
 
 export async function getTopicConsumers(name: string): Promise<ConsumerGroupInfo[]> {
-  if (USE_MOCK)
+  if (isMockMode())
     return cloneConsumers((topicConsumers[name] as unknown as ConsumerGroupInfo[]) ?? []);
   return metadataApi.getTopicConsumers(name);
 }
@@ -97,7 +97,7 @@ export async function getTopicConsumers(name: string): Promise<ConsumerGroupInfo
 export async function sendTopicMessage(
   data: SendTopicMessageRequest,
 ): Promise<SendTopicMessageResult> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     // Simulate a short delay
     await new Promise((r) => setTimeout(r, 400));
     return {

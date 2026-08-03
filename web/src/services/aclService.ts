@@ -1,4 +1,4 @@
-import { USE_MOCK } from '../config';
+import { isMockMode } from './dataMode';
 import * as aclApi from '../api/acl';
 import type { AclRule, AclRuleQuery, AclUser } from '../api/acl';
 import { aclRules as mockRules, aclUsers as mockUsers } from '../mock/acl';
@@ -21,7 +21,7 @@ function copyAclUser(user: AclUser): AclUser {
 }
 
 export async function listAclRules(params?: AclRuleQuery): Promise<AclRule[]> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     let result = [...aclRulesState];
     if (params?.principal) {
       const principal = params.principal.toLowerCase();
@@ -33,7 +33,7 @@ export async function listAclRules(params?: AclRuleQuery): Promise<AclRule[]> {
 }
 
 export async function listAclUsers(params?: { keyword?: string }): Promise<AclUser[]> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     let result = [...aclUsersState];
     if (params?.keyword) {
       const kw = params.keyword.toLowerCase();
@@ -45,7 +45,7 @@ export async function listAclUsers(params?: { keyword?: string }): Promise<AclUs
 }
 
 export async function createAclRule(data: Partial<AclRule>): Promise<AclRule> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const rule: AclRule = {
       id: `acl-${Date.now()}`,
       principal: '',
@@ -66,7 +66,7 @@ export async function createAclRule(data: Partial<AclRule>): Promise<AclRule> {
 }
 
 export async function updateAclRule(data: Partial<AclRule>): Promise<AclRule> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const idx = aclRulesState.findIndex((rule) => rule.id === data.id);
     if (idx < 0) throw new Error(`ACL rule not found: ${data.id}`);
     aclRulesState[idx] = {
@@ -80,7 +80,7 @@ export async function updateAclRule(data: Partial<AclRule>): Promise<AclRule> {
 }
 
 export async function deleteAclRule(id: string): Promise<void> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const idx = aclRulesState.findIndex((rule) => rule.id === id);
     if (idx >= 0) aclRulesState.splice(idx, 1);
     return;
@@ -89,7 +89,7 @@ export async function deleteAclRule(id: string): Promise<void> {
 }
 
 export async function createAclUser(data: Partial<AclUser>): Promise<AclUser> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const user: AclUser = {
       id: `user-${Date.now()}`,
       username: '',
@@ -107,7 +107,7 @@ export async function createAclUser(data: Partial<AclUser>): Promise<AclUser> {
 }
 
 export async function updateAclUser(data: Partial<AclUser>): Promise<AclUser> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const idx = aclUsersState.findIndex((user) => user.id === data.id);
     if (idx < 0) throw new Error(`ACL user not found: ${data.id}`);
     aclUsersState[idx] = {
@@ -121,7 +121,7 @@ export async function updateAclUser(data: Partial<AclUser>): Promise<AclUser> {
 }
 
 export async function deleteAclUser(id: string): Promise<void> {
-  if (USE_MOCK) {
+  if (isMockMode()) {
     const idx = aclUsersState.findIndex((user) => user.id === id);
     if (idx >= 0) aclUsersState.splice(idx, 1);
     return;

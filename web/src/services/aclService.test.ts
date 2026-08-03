@@ -25,9 +25,9 @@ import {
   updateAclUser,
 } from './aclService';
 
+vi.mock('./dataMode', () => ({ isMockMode: () => true }));
 vi.mock('../config', () => ({
   API_BASE_URL: '/api',
-  USE_MOCK: true,
 }));
 
 describe('ACL service mock data', () => {
