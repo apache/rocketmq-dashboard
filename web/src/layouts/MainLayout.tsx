@@ -30,6 +30,7 @@ import {
   ListDashes,
   UserGear,
   ChartBar,
+  ChartLine,
   Sun,
   Moon,
   ShieldCheck,
@@ -125,6 +126,7 @@ const MainLayout = () => {
       label: t('nav.clusterOps'),
       children: [
         { key: '/ops/dashboard', icon: <ChartBar size={16} />, label: t('nav.dashboard') },
+        { key: '/ops/grafana', icon: <ChartLine size={16} />, label: t('nav.grafanaDashboards') },
         { key: '/cluster/certs', icon: <ShieldCheck size={16} />, label: t('nav.certs') },
         { key: '/cluster', icon: <Database size={16} />, label: t('nav.rocketmqCluster') },
         { key: '/cluster/clients', icon: <PlugsConnected size={16} />, label: t('nav.clients') },
@@ -154,6 +156,7 @@ const MainLayout = () => {
     '/cluster/certs': t('nav.certs'),
     '/cluster/clients': t('nav.clients'),
     '/ops/dashboard': t('nav.dashboard'),
+    '/ops/grafana': t('nav.grafanaDashboards'),
     '/ops/system-alerts': t('nav.alertEvents'),
     '/ops/alerts': t('nav.alertRules'),
     '/ops/audit': t('nav.audit'),

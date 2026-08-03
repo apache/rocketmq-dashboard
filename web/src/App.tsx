@@ -48,6 +48,7 @@ const GroupManagementPage = lazy(() => import('./pages/studio/GroupManagement'))
 const BrokerClusterPage = lazy(() => import('./pages/studio/BrokerCluster'));
 const SslSettingsPage = lazy(() => import('./pages/studio/SslSettings'));
 const AlertManagementPage = lazy(() => import('./pages/studio/AlertManagement'));
+const GrafanaDashboardsPage = lazy(() => import('./pages/studio/GrafanaDashboards'));
 const ProducerPage = lazy(() => import('./pages/studio/Producer'));
 const OpsPage = lazy(() => import('./pages/studio/Ops'));
 
@@ -158,6 +159,7 @@ function App() {
             <Route path="cluster/certs" element={<K8sCertsPage />} />
             <Route path="cluster/clients" element={<ClientsPage />} />
             <Route path="ops/dashboard" element={<DashboardOpsPage />} />
+            <Route path="ops/grafana" element={<GrafanaDashboardsPage />} />
             <Route path="ops/alerts" element={<AlertsPage />} />
             <Route path="ops/system-alerts" element={<SystemAlertsPage />} />
             <Route path="ops/audit" element={<AuditPage />} />

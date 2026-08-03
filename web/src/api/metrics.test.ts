@@ -18,7 +18,14 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { getDashboard, listMetricProfiles, queryMetrics } from './metrics';
+import {
+  getDashboard,
+  listGrafanaDashboards,
+  getGrafanaDashboard,
+  exportGrafanaDashboard,
+  listMetricProfiles,
+  queryMetrics,
+} from './metrics';
 
 const mock = new MockAdapter(client);
 const dashboard = {
@@ -102,5 +109,45 @@ describe('metrics API', () => {
     mock.onGet('/metrics/profiles').reply(200, { code: 200, data: profiles });
 
     await expect(listMetricProfiles()).resolves.toEqual(profiles);
+  });
+
+  it('lists bundled Grafana dashboards', async () => {
+    const dashboards = [
+      {
+        uid: 'rocketmq-overview',
+        title: 'RocketMQ Cluster Overview',
+        description: 'd',
+        tags: ['rocketmq'],
+      },
+      { uid: 'rocketmq-broker', title: 'RocketMQ Broker', description: 'd', tags: ['rocketmq'] },
+    ];
+
+    mock.onGet('/metrics/grafana/dashboards').reply(200, { code: 200, data: dashboards });
+
+    await expect(listGrafanaDashboards()).resolves.toEqual(dashboards);
+  });
+
+  it('loads a single Grafana dashboard model', async () => {
+    const model = {
+      uid: 'rocketmq-overview',
+      title: 'RocketMQ Cluster Overview',
+      schemaVersion: 39,
+    };
+
+    mock
+      .onGet('/metrics/grafana/dashboards/rocketmq-overview')
+      .reply(200, { code: 200, data: model });
+
+    await expect(getGrafanaDashboard('rocketmq-overview')).resolves.toEqual(model);
+  });
+
+  it('exports a Grafana dashboard as a blob', async () => {
+    const blob = new Blob(['{"uid":"rocketmq-overview"}'], { type: 'application/json' });
+
+    mock.onGet('/metrics/grafana/dashboards/rocketmq-overview/export').reply(200, blob);
+
+    const result = await exportGrafanaDashboard('rocketmq-overview');
+    expect(result).toBeInstanceOf(Blob);
+    await expect(result.text()).resolves.toContain('rocketmq-overview');
   });
 });
