@@ -85,10 +85,12 @@ describe('HomePage LLM models', () => {
     expect(screen.queryByText('qwen3.7-max')).not.toBeInTheDocument();
   });
 
-  it('marks prompt enhancement unavailable until the feature is wired', () => {
+  it('marks unavailable toolbar actions disabled until the features are wired', () => {
     renderHome();
 
+    expect(screen.getByRole('button', { name: '工具' })).toBeDisabled();
     expect(screen.getByRole('button', { name: /Prompt 增强/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '语音输入' })).toBeDisabled();
   });
 
   it('submits the configured provider model to the AI page', async () => {
