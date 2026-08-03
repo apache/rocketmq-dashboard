@@ -81,21 +81,22 @@ public class InstanceService {
             throw new BusinessException(400, "InstanceVO endpoint is required");
         }
 
+        InstanceVO updated = copyOf(existing);
         if (instance.getName() != null) {
-            existing.setName(instance.getName());
+            updated.setName(instance.getName());
         }
         if (instance.getType() != null) {
-            existing.setType(instance.getType());
+            updated.setType(instance.getType());
         }
         if (instance.getEndpoint() != null) {
-            existing.setEndpoint(instance.getEndpoint());
+            updated.setEndpoint(instance.getEndpoint());
         }
         if (instance.getRemark() != null) {
-            existing.setRemark(instance.getRemark());
+            updated.setRemark(instance.getRemark());
         }
-        existing.setUpdatedAt(LocalDateTime.now());
+        updated.setUpdatedAt(LocalDateTime.now());
 
-        return instanceRepository.save(existing);
+        return instanceRepository.save(updated);
     }
 
     public void deleteInstance(String id) {
@@ -108,5 +109,20 @@ public class InstanceService {
         instanceRepository.findById(id)
                 .orElseThrow(() -> new BusinessException(404, "InstanceVO not found: " + id));
         instanceRepository.deleteById(id);
+    }
+
+    private InstanceVO copyOf(InstanceVO instance) {
+        InstanceVO copy = InstanceVO.builder()
+                .name(instance.getName())
+                .remark(instance.getRemark())
+                .type(instance.getType())
+                .endpoint(instance.getEndpoint())
+                .topicCount(instance.getTopicCount())
+                .consumerGroupCount(instance.getConsumerGroupCount())
+                .build();
+        copy.setId(instance.getId());
+        copy.setCreatedAt(instance.getCreatedAt());
+        copy.setUpdatedAt(instance.getUpdatedAt());
+        return copy;
     }
 }

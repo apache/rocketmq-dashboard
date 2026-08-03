@@ -25,6 +25,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -203,13 +204,19 @@ class InstanceServiceTest {
 
     @Test
     void updateInstanceShouldMergeFieldsOntoExisting() {
+        LocalDateTime originalCreatedAt = LocalDateTime.of(2025, 1, 2, 3, 4, 5);
+        LocalDateTime originalUpdatedAt = LocalDateTime.of(2025, 2, 3, 4, 5, 6);
         InstanceVO existing = InstanceVO.builder()
                 .name("old-name")
                 .endpoint("10.0.1.1:8080")
                 .type(InstanceType.PROXY)
                 .remark("old remark")
+                .topicCount(7)
+                .consumerGroupCount(3)
                 .build();
         existing.setId("inst-1");
+        existing.setCreatedAt(originalCreatedAt);
+        existing.setUpdatedAt(originalUpdatedAt);
 
         InstanceVO update = InstanceVO.builder()
                 .name("new-name")
@@ -226,7 +233,58 @@ class InstanceServiceTest {
         assertThat(result.getEndpoint()).isEqualTo("10.0.1.1:8080");
         assertThat(result.getType()).isEqualTo(InstanceType.PROXY);
         assertThat(result.getRemark()).isEqualTo("new remark");
-        assertThat(result.getUpdatedAt()).isNotNull();
+        assertThat(result.getTopicCount()).isEqualTo(7);
+        assertThat(result.getConsumerGroupCount()).isEqualTo(3);
+        assertThat(result.getId()).isEqualTo("inst-1");
+        assertThat(result.getCreatedAt()).isEqualTo(originalCreatedAt);
+        assertThat(result.getUpdatedAt()).isAfter(originalUpdatedAt);
+        assertThat(result).isNotSameAs(existing);
+        assertThat(existing.getName()).isEqualTo("old-name");
+        assertThat(existing.getRemark()).isEqualTo("old remark");
+        assertThat(existing.getUpdatedAt()).isEqualTo(originalUpdatedAt);
+    }
+
+    @Test
+    void updateInstanceShouldNotMutateStoredInstanceWhenSaveFails() {
+        LocalDateTime originalCreatedAt = LocalDateTime.of(2025, 1, 2, 3, 4, 5);
+        LocalDateTime originalUpdatedAt = LocalDateTime.of(2025, 2, 3, 4, 5, 6);
+        InstanceVO stored = InstanceVO.builder()
+                .name("old-name")
+                .remark("old remark")
+                .type(InstanceType.PROXY)
+                .endpoint("10.0.1.1:8080")
+                .topicCount(7)
+                .consumerGroupCount(3)
+                .build();
+        stored.setId("inst-1");
+        stored.setCreatedAt(originalCreatedAt);
+        stored.setUpdatedAt(originalUpdatedAt);
+
+        InstanceVO update = InstanceVO.builder()
+                .name("new-name")
+                .remark("new remark")
+                .type(InstanceType.DIRECT)
+                .endpoint("10.0.2.2:10911")
+                .build();
+        update.setId("inst-1");
+
+        when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(stored));
+        when(instanceRepository.save(any(InstanceVO.class)))
+                .thenThrow(new IllegalStateException("storage unavailable"));
+
+        assertThatThrownBy(() -> instanceService.updateInstance(update))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("storage unavailable");
+
+        assertThat(stored.getName()).isEqualTo("old-name");
+        assertThat(stored.getRemark()).isEqualTo("old remark");
+        assertThat(stored.getType()).isEqualTo(InstanceType.PROXY);
+        assertThat(stored.getEndpoint()).isEqualTo("10.0.1.1:8080");
+        assertThat(stored.getTopicCount()).isEqualTo(7);
+        assertThat(stored.getConsumerGroupCount()).isEqualTo(3);
+        assertThat(stored.getId()).isEqualTo("inst-1");
+        assertThat(stored.getCreatedAt()).isEqualTo(originalCreatedAt);
+        assertThat(stored.getUpdatedAt()).isEqualTo(originalUpdatedAt);
     }
 
     @Test
