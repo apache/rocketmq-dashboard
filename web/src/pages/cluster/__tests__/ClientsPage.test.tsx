@@ -187,6 +187,18 @@ describe('Clients page', () => {
     ).toBeInTheDocument();
   });
 
+  it('surfaces unavailable provider errors from the client API', async () => {
+    vi.mocked(connectionsService.listConnections).mockRejectedValue(
+      new Error('Client connection provider is not configured'),
+    );
+    renderWithProviders(<ClientsPage />);
+
+    expect(
+      await screen.findByText('Client connection provider is not configured'),
+    ).toBeInTheDocument();
+    expect(within(screen.getByTestId('connection-total')).getByText('0')).toBeInTheDocument();
+  });
+
   it('opens a client detail dialog from the connection table', async () => {
     const user = userEvent.setup();
     renderWithProviders(<ClientsPage />);
