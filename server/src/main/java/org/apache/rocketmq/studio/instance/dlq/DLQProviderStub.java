@@ -18,11 +18,13 @@ package org.apache.rocketmq.studio.instance.dlq;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
 
 import java.util.List;
 
-@Component
+/**
+ * Fallback {@link DLQProvider} used only by tests; not registered as a Spring bean. The live
+ * implementation is {@code RocketMQDLQProvider}.
+ */
 @Slf4j
 public class DLQProviderStub implements DLQProvider {
 
