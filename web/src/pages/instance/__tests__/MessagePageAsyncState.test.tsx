@@ -121,6 +121,37 @@ describe('MessagePage async request ownership', () => {
     expect(screen.queryByText('late-after-reset')).not.toBeInTheDocument();
   });
 
+  it('surfaces unavailable message provider errors from query requests', async () => {
+    serviceMocks.queryMessages.mockRejectedValue(
+      new Error('Message query provider is not configured'),
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    expect(await screen.findByText('Message query provider is not configured')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /最近查询/ })).toBeDisabled();
+  });
+
+  it('surfaces unavailable message provider errors from trace requests', async () => {
+    serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
+    serviceMocks.getMessageTrace.mockRejectedValue(
+      new Error('Message query provider is not configured'),
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const row = await screen.findByRole('row', { name: /message-a/ });
+    await user.click(within(row).getByRole('button', { name: /轨迹/ }));
+
+    const dialog = await screen.findByRole('dialog', { name: '消息详情' });
+    expect(
+      await within(dialog).findByText('Message query provider is not configured'),
+    ).toBeInTheDocument();
+  });
+
   it('keeps the latest query loading and ignores an earlier query result', async () => {
     const firstQuery = createDeferred<MessageRecord[]>();
     const secondQuery = createDeferred<MessageRecord[]>();
