@@ -56,7 +56,7 @@ type AclRuleFormValues = Pick<
   AclRule,
   'principal' | 'resource' | 'resourceType' | 'resourcePattern' | 'actions' | 'decision' | 'scope'
 >;
-type AclUserFormValues = Pick<AclUser, 'username' | 'admin'>;
+type AclUserFormValues = Pick<AclUser, 'username' | 'admin' | 'clusters'>;
 
 const normalizeRule = (rule: AclRule): AclRule => ({
   ...rule,
@@ -246,7 +246,7 @@ const AclPage = () => {
   const openAddUserModal = () => {
     setEditingUser(null);
     userForm.resetFields();
-    userForm.setFieldsValue({ admin: false });
+    userForm.setFieldsValue({ admin: false, clusters: [] });
     setUserModalOpen(true);
   };
 
@@ -255,6 +255,7 @@ const AclPage = () => {
     userForm.setFieldsValue({
       username: user.username,
       admin: user.admin,
+      clusters: [...user.clusters],
     });
     setUserModalOpen(true);
   };
@@ -268,7 +269,7 @@ const AclPage = () => {
           id: editingUser.id,
           username: values.username,
           admin: values.admin ?? false,
-          clusters: editingUser.clusters,
+          clusters: values.clusters ?? [],
         });
         const normalized = normalizeUser(updated);
         setUsers((prev) => prev.map((u) => (u.id === editingUser.id ? normalized : u)));
@@ -277,7 +278,7 @@ const AclPage = () => {
         const created = await createAclUser({
           username: values.username,
           admin: values.admin ?? false,
-          clusters: ['rmq-cn-v5-prod-01'],
+          clusters: values.clusters ?? [],
         });
         setUsers((prev) => [normalizeUser(created), ...prev]);
         message.success(t('acl.userAdded'));
@@ -841,6 +842,10 @@ const AclPage = () => {
 
           <Form.Item name="admin" label={t('acl.admin')} valuePropName="checked">
             <Switch checkedChildren={t('common.yes')} unCheckedChildren={t('common.no')} />
+          </Form.Item>
+
+          <Form.Item name="clusters" label={t('acl.associatedClusters')}>
+            <Select mode="tags" tokenSeparators={[',']} allowClear />
           </Form.Item>
         </Form>
       </Modal>
