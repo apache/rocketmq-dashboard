@@ -107,3 +107,54 @@ export async function listMetricProfiles() {
   const res = await client.get<{ data: MetricProfile[] }>('/metrics/profiles');
   return res.data.data;
 }
+
+// ─── Metrics data sources (multi-backend) ──────────────────────
+export type MetricsProviderType =
+  'PROMETHEUS' | 'VICTORIAMETRICS' | 'THANOS' | 'CORTEX' | 'MIMIR' | 'ARMS' | 'CUSTOM';
+
+export interface MetricsDataSource {
+  name: string;
+  providerType: MetricsProviderType;
+  url: string;
+  authType?: string;
+  username?: string;
+  password?: string;
+  bearerToken?: string;
+  tlsEnabled?: boolean;
+  scrapeInterval?: number;
+  enabled?: boolean;
+}
+
+export async function listMetricDataSources(): Promise<MetricsDataSource[]> {
+  const res = await client.get<{ data: MetricsDataSource[] }>('/metrics/datasources');
+  return res.data.data;
+}
+
+export async function createMetricDataSource(
+  config: MetricsDataSource,
+): Promise<MetricsDataSource> {
+  const res = await client.post<{ data: MetricsDataSource }>('/metrics/datasources/create', config);
+  return res.data.data;
+}
+
+export async function updateMetricDataSource(
+  config: MetricsDataSource,
+): Promise<MetricsDataSource> {
+  const res = await client.post<{ data: MetricsDataSource }>('/metrics/datasources/update', config);
+  return res.data.data;
+}
+
+export async function deleteMetricDataSource(name: string): Promise<void> {
+  await client.delete<void>(`/metrics/datasources?name=${encodeURIComponent(name)}`);
+}
+
+export async function queryMetricDataSource(
+  dataSource: string,
+  query: MetricQuery,
+): Promise<MetricData> {
+  const res = await client.post<{ data: MetricData }>(
+    `/metrics/datasources/query?dataSource=${encodeURIComponent(dataSource)}`,
+    query,
+  );
+  return res.data.data;
+}

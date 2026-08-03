@@ -124,6 +124,11 @@ const MainLayout = () => {
         { key: '/ops/alerts', icon: <BellRinging size={16} />, label: t('nav.alertRules') },
         { key: '/ops/system-alerts', icon: <BellRinging size={16} />, label: t('nav.alertEvents') },
         { key: '/ops/audit', icon: <Notebook size={16} />, label: t('nav.audit') },
+        {
+          key: '/studio/metrics-datasources',
+          icon: <ChartBar size={16} />,
+          label: t('nav.metricsDataSources'),
+        },
       ],
     },
     { key: '/ai', icon: <Sparkle size={iconSize} weight="duotone" />, label: t('nav.ai') },

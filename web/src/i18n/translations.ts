@@ -35,6 +35,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'nav.alertEvents': { zh: '告警事件', en: 'Alert Events' },
   'nav.alertRules': { zh: '告警规则', en: 'Alert Rules' },
   'nav.audit': { zh: '审计日志', en: 'Audit Log' },
+  'nav.metricsDataSources': { zh: '指标数据源', en: 'Metrics Sources' },
   'nav.ai': { zh: 'AI 交互', en: 'AI Chat' },
   'nav.settings': { zh: '设置', en: 'Settings' },
 
@@ -1386,6 +1387,36 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'Claude / Titan / Llama (AWS)',
   },
   // ─── BrokerCluster ───
+
+  // ─── Metrics data sources (multi-backend) ───
+  'metricsDataSource.title': { zh: '指标数据源', en: 'Metrics Data Sources' },
+  'metricsDataSource.subtitle': {
+    zh: '管理 Prometheus 兼容的多后端监控数据源',
+    en: 'Manage Prometheus-compatible multi-backend monitoring data sources',
+  },
+  'metricsDataSource.add': { zh: '新增数据源', en: 'Add Data Source' },
+  'metricsDataSource.edit': { zh: '编辑数据源', en: 'Edit Data Source' },
+  'metricsDataSource.delete': { zh: '删除', en: 'Delete' },
+  'metricsDataSource.name': { zh: '名称', en: 'Name' },
+  'metricsDataSource.providerType': { zh: '后端类型', en: 'Backend Type' },
+  'metricsDataSource.url': { zh: '地址', en: 'URL' },
+  'metricsDataSource.authType': { zh: '鉴权方式', en: 'Auth Type' },
+  'metricsDataSource.enabled': { zh: '启用', en: 'Enabled' },
+  'metricsDataSource.enabledStatus': { zh: '已启用', en: 'Enabled' },
+  'metricsDataSource.disabledStatus': { zh: '已停用', en: 'Disabled' },
+  'metricsDataSource.confirmDelete': { zh: '确认删除该数据源？', en: 'Delete this data source?' },
+  'metricsDataSource.saved': { zh: '数据源已保存', en: 'Data source saved' },
+  'metricsDataSource.nameRequired': { zh: '名称不能为空', en: 'Name is required' },
+  'metricsDataSource.urlRequired': { zh: '地址不能为空', en: 'URL is required' },
+  'metricsDataSource.query': { zh: '查询', en: 'Query' },
+  'metricsDataSource.loadFailed': { zh: '加载数据源失败', en: 'Failed to load data sources' },
+  'metricsDataSource.providerPrometheus': { zh: 'Prometheus', en: 'Prometheus' },
+  'metricsDataSource.providerVictoriaMetrics': { zh: 'VictoriaMetrics', en: 'VictoriaMetrics' },
+  'metricsDataSource.providerThanos': { zh: 'Thanos', en: 'Thanos' },
+  'metricsDataSource.providerCortex': { zh: 'Cortex', en: 'Cortex' },
+  'metricsDataSource.providerMimir': { zh: 'Grafana Mimir', en: 'Grafana Mimir' },
+  'metricsDataSource.providerArms': { zh: '阿里云 ARMS', en: 'Alibaba Cloud ARMS' },
+  'metricsDataSource.providerCustom': { zh: '自定义', en: 'Custom' },
 };
 
 export default translations;

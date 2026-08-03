@@ -18,7 +18,16 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { getDashboard, listMetricProfiles, queryMetrics } from './metrics';
+import {
+  getDashboard,
+  listMetricProfiles,
+  queryMetrics,
+  listMetricDataSources,
+  createMetricDataSource,
+  updateMetricDataSource,
+  deleteMetricDataSource,
+  queryMetricDataSource,
+} from './metrics';
 
 const mock = new MockAdapter(client);
 const dashboard = {
@@ -102,5 +111,61 @@ describe('metrics API', () => {
     mock.onGet('/metrics/profiles').reply(200, { code: 200, data: profiles });
 
     await expect(listMetricProfiles()).resolves.toEqual(profiles);
+  });
+});
+
+describe('metrics data sources', () => {
+  it('lists configured data sources', async () => {
+    mock.onGet('/metrics/datasources').reply(200, {
+      code: 200,
+      data: [
+        { name: 'prometheus-prod', providerType: 'PROMETHEUS', url: 'http://prometheus:9090' },
+      ],
+    });
+
+    const sources = await listMetricDataSources();
+
+    expect(sources).toHaveLength(1);
+    expect(sources[0].name).toBe('prometheus-prod');
+    expect(sources[0].providerType).toBe('PROMETHEUS');
+  });
+
+  it('creates a data source', async () => {
+    const config = { name: 'cortex-prod', providerType: 'CORTEX', url: 'http://cortex:9009' };
+    mock.onPost('/metrics/datasources/create').reply(200, { code: 200, data: config });
+
+    const created = await createMetricDataSource(config);
+
+    expect(created.name).toBe('cortex-prod');
+    expect(created.providerType).toBe('CORTEX');
+  });
+
+  it('updates a data source', async () => {
+    const config = { name: 'cortex-prod', providerType: 'CORTEX', url: 'http://cortex:9010' };
+    mock.onPost('/metrics/datasources/update').reply(200, { code: 200, data: config });
+
+    const updated = await updateMetricDataSource(config);
+
+    expect(updated.url).toBe('http://cortex:9010');
+  });
+
+  it('deletes a data source', async () => {
+    mock.onDelete(/\/metrics\/datasources/).reply(200, { code: 200, data: null });
+
+    await expect(deleteMetricDataSource('cortex-prod')).resolves.toBeUndefined();
+  });
+
+  it('queries a named data source', async () => {
+    const data = { resultType: 'matrix', series: [], warnings: [] };
+    mock.onPost(/\/metrics\/datasources\/query/).reply(200, { code: 200, data });
+
+    const result = await queryMetricDataSource('victoriametrics-prod', {
+      metric: 'up',
+      start: 1,
+      end: 2,
+      step: '30s',
+    });
+
+    expect(result.resultType).toBe('matrix');
   });
 });

@@ -48,6 +48,7 @@ const GroupManagementPage = lazy(() => import('./pages/studio/GroupManagement'))
 const BrokerClusterPage = lazy(() => import('./pages/studio/BrokerCluster'));
 const SslSettingsPage = lazy(() => import('./pages/studio/SslSettings'));
 const AlertManagementPage = lazy(() => import('./pages/studio/AlertManagement'));
+const MetricsDataSourcesPage = lazy(() => import('./pages/studio/MetricsDataSources'));
 const ProducerPage = lazy(() => import('./pages/studio/Producer'));
 const OpsPage = lazy(() => import('./pages/studio/Ops'));
 
@@ -165,6 +166,7 @@ function App() {
             <Route path="studio/broker-cluster" element={<BrokerClusterPage />} />
             <Route path="studio/ssl-settings" element={<SslSettingsPage />} />
             <Route path="studio/alert-management" element={<AlertManagementPage />} />
+            <Route path="studio/metrics-datasources" element={<MetricsDataSourcesPage />} />
             <Route path="studio/producer" element={<ProducerPage />} />
             <Route path="studio/ops" element={<OpsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
