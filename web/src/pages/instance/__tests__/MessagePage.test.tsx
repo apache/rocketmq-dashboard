@@ -41,6 +41,19 @@ vi.mock('../../../services/topicService', () => ({
 
 import MessagePage from '../message';
 
+const createMessage = (msgId: string) => ({
+  msgId,
+  topic: `topic-${msgId}`,
+  tag: 'tag',
+  key: `key-${msgId}`,
+  body: '{}',
+  storeTime: '2026-07-31T00:00:00Z',
+  bornHost: '127.0.0.1:1000',
+  storeHost: '127.0.0.1:10911',
+  properties: {},
+  size: 2,
+});
+
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
@@ -221,5 +234,23 @@ describe('Message page query history', () => {
     expect(await screen.findByText('Message ID: MID-VALID')).toBeInTheDocument();
     expect(screen.queryByText(/invalid/)).not.toBeInTheDocument();
     expect(screen.queryByText(/order-create/)).not.toBeInTheDocument();
+  });
+
+  it('does not report consume verification success without a backend API', async () => {
+    const user = userEvent.setup();
+    messageServiceMocks.queryMessages.mockResolvedValue([createMessage('MID-CONSUME-VERIFY-001')]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-CONSUME-VERIFY-001');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    expect(await screen.findByText('MID-CONSUME-VERIFY-001')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /验证/ }));
+
+    expect(
+      await screen.findByText('消费验证接口尚未接入，无法确认该消息的真实消费状态'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/消费验证成功/)).not.toBeInTheDocument();
   });
 });
