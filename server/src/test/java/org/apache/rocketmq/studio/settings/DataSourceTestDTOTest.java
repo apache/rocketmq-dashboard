@@ -16,26 +16,28 @@
  */
 package org.apache.rocketmq.studio.settings;
 
-import jakarta.validation.constraints.NotBlank;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-import lombok.ToString;
+import org.junit.jupiter.api.Test;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class DataSourceTestDTO {
-    @NotBlank(message = "url is required")
-    private String url;
-    @NotBlank(message = "type is required")
-    private String type;
-    private String auth;
-    private String username;
-    @ToString.Exclude
-    private String password;
-    @ToString.Exclude
-    private String bearerToken;
+import static org.assertj.core.api.Assertions.assertThat;
+
+class DataSourceTestDTOTest {
+
+    @Test
+    void toStringShouldNotExposeCredentials() {
+        DataSourceTestDTO request = DataSourceTestDTO.builder()
+            .url("http://prometheus:9090")
+            .type("prometheus")
+            .auth("bearer token")
+            .username("prometheus-user")
+            .password("plain-password")
+            .bearerToken("plain-token")
+            .build();
+
+        String value = request.toString();
+
+        assertThat(value).contains("url=http://prometheus:9090");
+        assertThat(value).contains("username=prometheus-user");
+        assertThat(value).doesNotContain("plain-password");
+        assertThat(value).doesNotContain("plain-token");
+    }
 }
