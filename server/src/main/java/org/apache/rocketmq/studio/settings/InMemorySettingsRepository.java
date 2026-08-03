@@ -17,7 +17,6 @@
 package org.apache.rocketmq.studio.settings;
 
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -26,7 +25,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
-@Component
+// @Component — replaced by MybatisPlusSettingsRepository
 public class InMemorySettingsRepository implements SettingsRepository {
 
     private GeneralSettingsVO generalSettings = GeneralSettingsVO.builder()

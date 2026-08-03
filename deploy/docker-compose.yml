@@ -1,6 +1,29 @@
 name: rocketmq-studio
 
 services:
+  mysql:
+    image: mysql:8.0
+    container_name: rocketmq-studio-mysql
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      MYSQL_ROOT_PASSWORD: studio123
+      MYSQL_DATABASE: rocketmq_studio
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./mysql/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ../server/src/main/resources/db/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+      - mysql-data:/var/lib/mysql
+    networks:
+      - studio-net
+      - rocketmq
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-pstudio123"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   rocketmq-server:
     build:
       context: ../server
@@ -9,6 +32,7 @@ services:
     container_name: rocketmq-server
     restart: unless-stopped
     environment:
+      TZ: ${TZ:-Asia/Shanghai}
       STUDIO_AUTH_LOGIN_REQUIRED: ${STUDIO_AUTH_LOGIN_REQUIRED:-false}
       STUDIO_AUTH_ADMIN_USERNAME: ${STUDIO_AUTH_ADMIN_USERNAME:-}
       STUDIO_AUTH_ADMIN_PASSWORD: ${STUDIO_AUTH_ADMIN_PASSWORD:-}
@@ -16,8 +40,23 @@ services:
       STUDIO_METRICS_PROMETHEUS_USERNAME: ${STUDIO_METRICS_PROMETHEUS_USERNAME:-}
       STUDIO_METRICS_PROMETHEUS_PASSWORD: ${STUDIO_METRICS_PROMETHEUS_PASSWORD:-}
       STUDIO_METRICS_PROMETHEUS_BEARER_TOKEN: ${STUDIO_METRICS_PROMETHEUS_BEARER_TOKEN:-}
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/rocketmq_studio?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=UTF-8&connectionCollation=utf8mb4_unicode_ci
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: studio123
+      STUDIO_ROCKETMQ_NAMESRV_ADDR: ${STUDIO_ROCKETMQ_NAMESRV_ADDR:-nameserver:9876}
     expose:
       - "8888"
+    extra_hosts:
+      - "nameserver:10.89.2.10"
+      - "broker-0:10.89.2.11"
+      - "broker-1:10.89.2.12"
+    networks:
+      - studio-net
+      - rocketmq
+    depends_on:
+      mysql:
+        condition: service_healthy
 
   rocketmq-web:
     build:
@@ -30,3 +69,15 @@ services:
       - "6789:80"
     depends_on:
       - rocketmq-server
+    networks:
+      - studio-net
+
+networks:
+  studio-net:
+    driver: bridge
+  rocketmq:
+    external: true
+    name: rocketmq_default
+
+volumes:
+  mysql-data:

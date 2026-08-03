@@ -25,7 +25,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends git \
 RUN git clone --depth 1 -b ${ROCKETMQ_BRANCH} ${ROCKETMQ_REPO} /build/rocketmq
 
 WORKDIR /build/rocketmq
-RUN mvn -Prelease-all -DskipTests -Dspotbugs.skip=true -Dcheckstyle.skip=true \
+# 容器默认 nofile ulimit 过低，并行(-T 2C)构建时 javac 会报 "Too many open files"，先调高
+RUN ulimit -n 65535; mvn -Prelease-all -Dmaven.test.skip=true -Dspotbugs.skip=true -Dcheckstyle.skip=true \
         -Dmaven.javadoc.skip=true -T 2C clean install \
     && mkdir /dist \
     && cp -r distribution/target/rocketmq-*/rocketmq-*/* /dist/

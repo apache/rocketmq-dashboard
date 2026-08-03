@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.settings;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,6 +50,9 @@ class SettingsServiceTest {
     @Mock
     private SettingsRepository settingsRepository;
 
+    @Mock
+    private OperationAuditService operationAuditService;
+
     private SettingsService settingsService;
 
     private HttpServer prometheusServer;
@@ -56,7 +60,7 @@ class SettingsServiceTest {
 
     @BeforeEach
     void setUp() throws IOException {
-        settingsService = new SettingsService(settingsRepository, RestClient.builder(), new ObjectMapper());
+        settingsService = new SettingsService(settingsRepository, RestClient.builder(), new ObjectMapper(), operationAuditService);
         prometheusServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         prometheusBaseUrl = "http://127.0.0.1:" + prometheusServer.getAddress().getPort();
         prometheusServer.start();
@@ -225,7 +229,7 @@ class SettingsServiceTest {
 
     @Test
     void updateDataSourceShouldRejectUnknownKey() {
-        SettingsService service = new SettingsService(new InMemorySettingsRepository(), RestClient.builder(), new ObjectMapper());
+        SettingsService service = new SettingsService(new InMemorySettingsRepository(), RestClient.builder(), new ObjectMapper(), operationAuditService);
         DataSourceVO input = DataSourceVO.builder().key("missing").name("Unexpected DS").type("rocketmq")
                 .url("unexpected-host:9876").build();
 
@@ -239,7 +243,8 @@ class SettingsServiceTest {
 
     @Test
     void updateDataSourceShouldRejectBlankKey() {
-        SettingsService service = new SettingsService(new InMemorySettingsRepository(), RestClient.builder(), new ObjectMapper());
+        SettingsService service = new SettingsService(new InMemorySettingsRepository(), RestClient.builder(), new ObjectMapper(),
+                operationAuditService);
         DataSourceVO input = DataSourceVO.builder().key(" ").name("Unexpected DS").type("rocketmq")
                 .url("unexpected-host:9876").build();
 
@@ -262,7 +267,8 @@ class SettingsServiceTest {
 
     @Test
     void deleteDataSourceShouldRejectUnknownKey() {
-        SettingsService service = new SettingsService(new InMemorySettingsRepository(), RestClient.builder(), new ObjectMapper());
+        SettingsService service = new SettingsService(new InMemorySettingsRepository(), RestClient.builder(), new ObjectMapper(),
+                operationAuditService);
 
         assertThatThrownBy(() -> service.deleteDataSource("missing"))
                 .isInstanceOf(BusinessException.class)
