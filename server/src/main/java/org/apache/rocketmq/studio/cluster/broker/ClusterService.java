@@ -26,7 +26,6 @@ import org.apache.rocketmq.studio.cluster.nameserver.UpdateNameServerDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.UpgradeNameServerDTO;
 import org.apache.rocketmq.studio.cluster.proxy.RestartProxyDTO;
 
-import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.studio.common.domain.enums.FlushDiskType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.rocketmq.RocketMQBrokerConfigService;
@@ -202,8 +201,7 @@ public class ClusterService {
                 .noneMatch(broker -> brokerName.equals(broker.getName()))) {
             throw new BusinessException(404, "Broker not found: " + brokerName);
         }
-        log.info("Broker restart initiated for: {} in cluster: {}", brokerName, clusterId);
-        return true;
+        throw unsupportedOperation("Broker restart");
     }
 
     public NameServerVO createNameServer(CreateNameServerDTO command) {
@@ -211,12 +209,7 @@ public class ClusterService {
         log.info("Creating NameServer for cluster: {}", command.getClusterId());
         clusterRepository.findById(command.getClusterId())
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getClusterId()));
-        NameServerVO ns = NameServerVO.builder()
-                .addr(command.getAddr())
-                .status(ClusterStatus.healthy)
-                .build();
-        log.info("NameServer created: {}", command.getAddr());
-        return ns;
+        throw unsupportedOperation("NameServer create");
     }
 
     public void updateNameServer(UpdateNameServerDTO command) {
@@ -225,7 +218,7 @@ public class ClusterService {
         ClusterVO cluster = clusterRepository.findById(command.getClusterId())
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getClusterId()));
         requireNameServer(cluster, command.getAddr());
-        log.info("NameServer updated: {}", command.getAddr());
+        throw unsupportedOperation("NameServer update");
     }
 
     public boolean restartNameServer(RestartNameServerDTO command) {
@@ -234,8 +227,7 @@ public class ClusterService {
         ClusterVO cluster = clusterRepository.findById(command.getClusterId())
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getClusterId()));
         requireNameServer(cluster, command.getAddr());
-        log.info("NameServer restart initiated: {}", command.getAddr());
-        return true;
+        throw unsupportedOperation("NameServer restart");
     }
 
     public boolean upgradeNameServer(UpgradeNameServerDTO command) {
@@ -245,8 +237,7 @@ public class ClusterService {
         ClusterVO cluster = clusterRepository.findById(command.getClusterId())
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getClusterId()));
         requireNameServer(cluster, command.getAddr());
-        log.info("NameServer upgrade initiated: {}", command.getAddr());
-        return true;
+        throw unsupportedOperation("NameServer upgrade");
     }
 
     public boolean deleteNameServer(DeleteNameServerDTO command) {
@@ -255,8 +246,7 @@ public class ClusterService {
         ClusterVO cluster = clusterRepository.findById(command.getClusterId())
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getClusterId()));
         requireNameServer(cluster, command.getAddr());
-        log.info("NameServer deleted: {}", command.getAddr());
-        return true;
+        throw unsupportedOperation("NameServer delete");
     }
 
     public boolean restartProxy(RestartProxyDTO command) {
@@ -264,8 +254,7 @@ public class ClusterService {
         ClusterVO cluster = clusterRepository.findById(command.getClusterId())
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getClusterId()));
         requireProxy(cluster, command.getAddr());
-        log.info("Proxy restart initiated: {}", command.getAddr());
-        return true;
+        throw unsupportedOperation("Proxy restart");
     }
 
     private void requireNameServerCommand(Object command) {
@@ -286,5 +275,9 @@ public class ClusterService {
                 .noneMatch(proxy -> addr.equals(proxy.getAddr()))) {
             throw new BusinessException(404, "Proxy not found: " + addr);
         }
+    }
+
+    private BusinessException unsupportedOperation(String operation) {
+        return new BusinessException(501, operation + " is not implemented by the current cluster provider");
     }
 }

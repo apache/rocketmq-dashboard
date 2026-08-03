@@ -42,9 +42,9 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import org.assertj.core.api.ThrowableAssert;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -322,12 +322,11 @@ class ClusterServiceTest {
     }
 
     @Test
-    void restartBrokerShouldReturnTrue() {
+    void restartBrokerShouldThrowUnsupportedWhenBrokerExists() {
         when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
 
-        boolean result = clusterService.restartBroker("cluster-1", "broker-0");
-
-        assertThat(result).isTrue();
+        assertUnsupportedOperation(() -> clusterService.restartBroker("cluster-1", "broker-0"),
+                "Broker restart is not implemented");
     }
 
     @Test
@@ -350,7 +349,19 @@ class ClusterServiceTest {
     }
 
     @Test
-    void nameServerOperationsShouldAcceptExistingNameServer() {
+    void createNameServerShouldThrowUnsupportedWhenClusterExists() {
+        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+        CreateNameServerDTO command = CreateNameServerDTO.builder()
+                .clusterId("cluster-1")
+                .addr("10.0.0.21:9876")
+                .build();
+
+        assertUnsupportedOperation(() -> clusterService.createNameServer(command),
+                "NameServer create is not implemented");
+    }
+
+    @Test
+    void nameServerOperationsShouldThrowUnsupportedWhenNameServerExists() {
         when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
         UpdateNameServerDTO update = UpdateNameServerDTO.builder()
                 .clusterId("cluster-1")
@@ -370,10 +381,14 @@ class ClusterServiceTest {
                 .addr("10.0.0.20:9876")
                 .build();
 
-        assertThatCode(() -> clusterService.updateNameServer(update)).doesNotThrowAnyException();
-        assertThat(clusterService.restartNameServer(restart)).isTrue();
-        assertThat(clusterService.upgradeNameServer(upgrade)).isTrue();
-        assertThat(clusterService.deleteNameServer(delete)).isTrue();
+        assertUnsupportedOperation(() -> clusterService.updateNameServer(update),
+                "NameServer update is not implemented");
+        assertUnsupportedOperation(() -> clusterService.restartNameServer(restart),
+                "NameServer restart is not implemented");
+        assertUnsupportedOperation(() -> clusterService.upgradeNameServer(upgrade),
+                "NameServer upgrade is not implemented");
+        assertUnsupportedOperation(() -> clusterService.deleteNameServer(delete),
+                "NameServer delete is not implemented");
     }
 
     @Test
@@ -403,14 +418,15 @@ class ClusterServiceTest {
     }
 
     @Test
-    void restartProxyShouldReturnTrueWhenProxyExists() {
+    void restartProxyShouldThrowUnsupportedWhenProxyExists() {
         when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
         RestartProxyDTO command = RestartProxyDTO.builder()
                 .clusterId("cluster-1")
                 .addr("10.0.0.10:8081")
                 .build();
 
-        assertThat(clusterService.restartProxy(command)).isTrue();
+        assertUnsupportedOperation(() -> clusterService.restartProxy(command),
+                "Proxy restart is not implemented");
     }
 
     @Test
@@ -482,5 +498,12 @@ class ClusterServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Proxy not found: missing:8081")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
+    }
+
+    private void assertUnsupportedOperation(ThrowableAssert.ThrowingCallable callable, String message) {
+        assertThatThrownBy(callable)
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining(message)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(501));
     }
 }
