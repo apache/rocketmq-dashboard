@@ -78,7 +78,15 @@ describe('HomePage LLM models', () => {
     expect(await screen.findByText('qwen3.8-max')).toBeInTheDocument();
   });
 
-  it('submits the selected model and engine to the AI page', async () => {
+  it('marks unavailable toolbar actions disabled until the features are wired', () => {
+    renderHome();
+
+    expect(screen.getByRole('button', { name: '工具' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Prompt 增强/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '语音输入' })).toBeDisabled();
+  });
+
+  it('submits the selected model, mode, and engine to the AI page', async () => {
     const user = userEvent.setup();
     renderHome();
     await screen.findByText('qwen3.8-max');
@@ -93,6 +101,7 @@ describe('HomePage LLM models', () => {
         state: {
           prompt: '查看集群状态',
           model: 'qwen3.8-max',
+          mode: 'chat',
           engine: 'claude-code',
         },
       });

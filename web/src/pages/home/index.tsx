@@ -434,7 +434,7 @@ const HomePage = () => {
                     <div className="flex items-center gap-2 w-full">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide max-w-full py-2">
-                          <button className="tool-btn">
+                          <button className="tool-btn" disabled title="工具面板暂未在首页接入">
                             <SlidersHorizontal size={17} />
                             <span>工具</span>
                           </button>
@@ -461,6 +461,9 @@ const HomePage = () => {
                           </button>
                           <button
                             className="tool-btn"
+                            disabled
+                            aria-label="语音输入"
+                            title="语音输入暂未接入"
                             style={{ minHeight: 30, minWidth: 32, padding: 6 }}
                           >
                             <Microphone size={17} />
