@@ -188,6 +188,18 @@ class ClusterControllerTest {
     }
 
     @Test
+    void updateConfigShouldRejectNullRequestBody() throws Exception {
+        mockMvc.perform(post("/api/clusters/config/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("null"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("Cluster config update request is required"));
+
+        verifyNoInteractions(clusterService);
+    }
+
+    @Test
     void updateConfigShouldRejectMissingId() throws Exception {
         UpdateConfigDTO command = UpdateConfigDTO.builder()
                 .flushDiskType("SYNC_FLUSH")
