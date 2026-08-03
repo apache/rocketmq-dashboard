@@ -122,6 +122,39 @@ describe('LlmSettingsPage async request ownership', () => {
     ).toBeInTheDocument();
   });
 
+  it('only exposes providers supported by the current LLM gateway', async () => {
+    renderPage();
+
+    await waitFor(() => expect(apiMocks.getLlmModels).toHaveBeenCalledTimes(1));
+
+    expect(screen.getByText('OpenAI', { selector: 'div' })).toBeInTheDocument();
+    expect(screen.getByText('DeepSeek', { selector: 'div' })).toBeInTheDocument();
+    expect(screen.getByText('通义千问', { selector: 'div' })).toBeInTheDocument();
+    expect(screen.getByText('Ollama', { selector: 'div' })).toBeInTheDocument();
+    expect(screen.queryByText('Azure OpenAI', { selector: 'div' })).not.toBeInTheDocument();
+    expect(screen.queryByText('AWS Bedrock', { selector: 'div' })).not.toBeInTheDocument();
+  });
+
+  it('normalizes saved unsupported providers to OpenAI defaults', async () => {
+    apiMocks.getLlmConfig.mockResolvedValue({
+      ...OPENAI_CONFIG,
+      provider: 'bedrock',
+      apiBase: '',
+      model: 'anthropic.claude-3-sonnet',
+    });
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', { name: 'API Base URL' })).toHaveValue(
+        'https://api.openai.com/v1',
+      );
+    });
+    expect(screen.getByTitle('gpt-4o')).toBeInTheDocument();
+    expect(
+      screen.getByText('OpenAI', { selector: 'div' }).parentElement?.parentElement,
+    ).toHaveStyle('border: 2px solid rgb(16, 163, 127)');
+  });
+
   it('keeps the model selector loading while the provider model request is pending', async () => {
     const providerModels = createDeferred<LlmModelsResult>();
     apiMocks.getLlmModels.mockReturnValue(providerModels.promise);

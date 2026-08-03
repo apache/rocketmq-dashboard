@@ -67,7 +67,6 @@ interface ProviderDef {
   defaultModel: string;
   requireApiKey: boolean;
   requireBaseUrl: boolean;
-  extraFields?: string[];
 }
 
 const PROVIDERS: ProviderDef[] = [
@@ -81,18 +80,6 @@ const PROVIDERS: ProviderDef[] = [
     defaultModel: 'gpt-4o',
     requireApiKey: true,
     requireBaseUrl: false,
-  },
-  {
-    key: 'azure',
-    label: 'Azure OpenAI',
-    icon: '☁️',
-    color: '#0078d4',
-    descKey: 'llm.providerAzureDesc',
-    defaultBaseUrl: '',
-    defaultModel: 'gpt-4o',
-    requireApiKey: true,
-    requireBaseUrl: true,
-    extraFields: ['deploymentName', 'apiVersion'],
   },
   {
     key: 'deepseek',
@@ -127,19 +114,10 @@ const PROVIDERS: ProviderDef[] = [
     requireApiKey: false,
     requireBaseUrl: true,
   },
-  {
-    key: 'bedrock',
-    label: 'AWS Bedrock',
-    icon: '☁️',
-    color: '#ff9900',
-    descKey: 'llm.providerBedrockDesc',
-    defaultBaseUrl: '',
-    defaultModel: 'anthropic.claude-3-sonnet',
-    requireApiKey: true,
-    requireBaseUrl: false,
-    extraFields: ['awsRegion'],
-  },
 ];
+
+const resolveProvider = (provider?: string) =>
+  PROVIDERS.find((candidate) => candidate.key === provider) || PROVIDERS[0];
 
 const LlmSettingsPage: React.FC = () => {
   const { t } = useLang();
@@ -182,7 +160,11 @@ const LlmSettingsPage: React.FC = () => {
         const config = await configPromise;
         if (!ownsRequest()) return;
         if (config) {
-          const provider = config.provider || 'openai';
+          const providerDef = resolveProvider(config.provider);
+          const provider = providerDef.key;
+          const supportedConfig = config.provider === provider;
+          const apiBase = supportedConfig ? config.apiBase || '' : providerDef.defaultBaseUrl;
+          const model = supportedConfig ? config.model || '' : providerDef.defaultModel;
           selectedProviderRef.current = provider;
           setSelectedProvider(provider);
           setEnabled(config.enabled || false);
@@ -193,14 +175,17 @@ const LlmSettingsPage: React.FC = () => {
           }
           form.setFieldsValue({
             provider,
-            apiBase: config.apiBase || '',
-            model: config.model || '',
+            apiBase,
+            model,
             maxTokens: config.maxTokens || 4096,
             temperature: config.temperature !== undefined ? config.temperature : 0.7,
-            deploymentName: config.deploymentName || '',
-            apiVersion: config.apiVersion || '2024-02-15-preview',
-            awsRegion: config.awsRegion || 'us-east-1',
           });
+          return {
+            ...config,
+            provider,
+            apiBase,
+            model,
+          };
         }
         return config;
       } catch {
@@ -245,7 +230,7 @@ const LlmSettingsPage: React.FC = () => {
         const config = await getLlmConfig();
         if (!ownsRequest()) return;
 
-        const configuredProvider = config?.provider || requestedProvider;
+        const configuredProvider = resolveProvider(config?.provider).key;
         if (configuredProvider !== requestedProvider) return;
 
         model = modelOverride || config?.model || '';
@@ -330,7 +315,7 @@ const LlmSettingsPage: React.FC = () => {
     return key.slice(0, 4) + '••••••••' + key.slice(-4);
   };
 
-  const currentProvider = PROVIDERS.find((p) => p.key === selectedProvider) || PROVIDERS[0];
+  const currentProvider = resolveProvider(selectedProvider);
 
   const buildConfig = (values: LlmConfig, forceEnabled: boolean): LlmConfig => {
     const apiKey = apiKeyMasked && savedApiKey ? undefined : values.apiKey || '';
@@ -354,7 +339,7 @@ const LlmSettingsPage: React.FC = () => {
       }
       setSelectedProvider(value);
       setTestResult(null);
-      const provider = PROVIDERS.find((p) => p.key === value);
+      const provider = resolveProvider(value);
       if (provider) {
         form.setFieldsValue({
           apiBase: provider.defaultBaseUrl,
@@ -584,8 +569,6 @@ const LlmSettingsPage: React.FC = () => {
             apiBase: 'https://api.openai.com/v1',
             maxTokens: 4096,
             temperature: 0.7,
-            apiVersion: '2024-02-15-preview',
-            awsRegion: 'us-east-1',
           }}
         >
           {/* Provider Selection */}
@@ -670,51 +653,6 @@ const LlmSettingsPage: React.FC = () => {
               </Form.Item>
             </Col>
           </Row>
-
-          {/* Azure extra fields */}
-          {selectedProvider === 'azure' && (
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item
-                  name="deploymentName"
-                  label={t('llm.deploymentName')}
-                  rules={[{ required: true, message: t('llm.deploymentNameRequired') }]}
-                >
-                  <Input placeholder="my-gpt4-deployment" />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item
-                  name="apiVersion"
-                  label={t('llm.apiVersion')}
-                  rules={[{ required: true, message: t('llm.apiVersionRequired') }]}
-                >
-                  <Select placeholder={t('llm.apiVersion')}>
-                    <Select.Option value="2024-02-15-preview">2024-02-15-preview</Select.Option>
-                    <Select.Option value="2024-08-01-preview">2024-08-01-preview</Select.Option>
-                    <Select.Option value="2025-01-01-preview">2025-01-01-preview</Select.Option>
-                  </Select>
-                </Form.Item>
-              </Col>
-            </Row>
-          )}
-
-          {/* AWS Bedrock extra fields */}
-          {selectedProvider === 'bedrock' && (
-            <Form.Item
-              name="awsRegion"
-              label={t('llm.awsRegion')}
-              rules={[{ required: true, message: t('llm.awsRegionRequired') }]}
-            >
-              <Select placeholder={t('llm.awsRegion')}>
-                <Select.Option value="us-east-1">us-east-1</Select.Option>
-                <Select.Option value="us-west-2">us-west-2</Select.Option>
-                <Select.Option value="eu-west-1">eu-west-1</Select.Option>
-                <Select.Option value="ap-northeast-1">ap-northeast-1</Select.Option>
-                <Select.Option value="ap-southeast-1">ap-southeast-1</Select.Option>
-              </Select>
-            </Form.Item>
-          )}
 
           <Divider style={{ margin: '20px 0 16px' }} />
 
