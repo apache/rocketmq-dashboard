@@ -37,7 +37,7 @@ class OpenAiCompatibleLlmGatewayTest {
     private final LlmConfigService configService = mock(LlmConfigService.class);
     private final OpenAiCompatibleLlmClient llmClient = mock(OpenAiCompatibleLlmClient.class);
     private final OpenAiCompatibleLlmGateway gateway = new OpenAiCompatibleLlmGateway(
-            configService, llmClient, new ObjectMapper());
+            configService, llmClient, new ObjectMapper(), new LlmConversationMemory());
 
     @Test
     void chatShouldRejectIncompleteConfigWithoutCallingProvider() {

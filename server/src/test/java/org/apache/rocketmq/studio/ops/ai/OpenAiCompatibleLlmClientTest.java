@@ -137,6 +137,36 @@ class OpenAiCompatibleLlmClientTest {
     }
 
     @Test
+    void streamShouldSendConversationMessages() {
+        AtomicReference<JsonNode> requestBody = new AtomicReference<>();
+        server.createContext("/v1/chat/completions", exchange -> {
+            requestBody.set(objectMapper.readTree(exchange.getRequestBody()));
+            respond(exchange, 200, """
+                    data: {"choices":[{"delta":{"content":"ok"}}]}
+
+                    data: [DONE]
+
+                    """, "text/event-stream");
+        });
+
+        List<String> tokens = new ArrayList<>();
+        client.stream(config("openai", "sk-test"), List.of(
+                LlmChatMessage.user("first question"),
+                LlmChatMessage.assistant("first answer"),
+                LlmChatMessage.user("follow up")), null, tokens::add);
+
+        JsonNode messages = requestBody.get().path("messages");
+        assertThat(tokens).containsExactly("ok");
+        assertThat(messages).hasSize(3);
+        assertThat(messages.path(0).path("role").asText()).isEqualTo("user");
+        assertThat(messages.path(0).path("content").asText()).isEqualTo("first question");
+        assertThat(messages.path(1).path("role").asText()).isEqualTo("assistant");
+        assertThat(messages.path(1).path("content").asText()).isEqualTo("first answer");
+        assertThat(messages.path(2).path("role").asText()).isEqualTo("user");
+        assertThat(messages.path(2).path("content").asText()).isEqualTo("follow up");
+    }
+
+    @Test
     void ollamaShouldAllowMissingApiKeyAndOmitAuthorizationHeader() {
         AtomicReference<String> authorization = new AtomicReference<>();
         server.createContext("/v1/chat/completions", exchange -> {
