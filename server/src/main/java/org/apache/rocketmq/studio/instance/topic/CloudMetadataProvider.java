@@ -21,12 +21,13 @@ import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
 
 import java.util.List;
 
+/**
+ * Stub metadata provider. Disabled in favor of RocketMQMetadataProvider.
+ */
 @Slf4j
-@Component
 public class CloudMetadataProvider implements MetadataProvider {
 
     @Override

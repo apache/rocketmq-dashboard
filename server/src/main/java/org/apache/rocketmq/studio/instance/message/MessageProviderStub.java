@@ -18,11 +18,13 @@ package org.apache.rocketmq.studio.instance.message;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
 
 import java.util.List;
 
-@Component
+/**
+ * Fallback {@link MessageProvider} used only by tests; not registered as a Spring bean. The live
+ * implementation is {@code RocketMQMessageProvider}.
+ */
 @Slf4j
 public class MessageProviderStub implements MessageProvider {
 

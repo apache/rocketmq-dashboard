@@ -19,10 +19,11 @@ package org.apache.rocketmq.studio.instance.topic;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
 
+/**
+ * Stub admin client. Disabled in favor of RocketMQAdminClientImpl.
+ */
 @Slf4j
-@Component
 public class NameSrvAdminClient implements AdminClient {
 
     @Override
