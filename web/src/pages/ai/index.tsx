@@ -314,6 +314,7 @@ const AiPage = () => {
   const [modelOptions, setModelOptions] = useState<{ value: string; label: string }[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState('');
+  const [chatMode, setChatMode] = useState('chat');
   const [toolModalOpen, setToolModalOpen] = useState(false);
   const [tools, setTools] = useState<McpTool[]>([]);
   const [toolsLoading, setToolsLoading] = useState(false);
@@ -385,6 +386,9 @@ const AiPage = () => {
             : [{ value: draftModel, label: draftModel }, ...options],
         );
       }
+      if (draft.mode) {
+        setChatMode(draft.mode);
+      }
       navigate('/ai', { replace: true, state: null });
       textareaRef.current?.focus();
     });
@@ -440,7 +444,7 @@ const AiPage = () => {
       await chatStream(
         {
           message: text,
-          mode: 'chat',
+          mode: chatMode,
           model: selectedModel,
           conversationId: conversationIdRef.current,
         },
@@ -473,7 +477,7 @@ const AiPage = () => {
       if (abortControllerRef.current === controller) abortControllerRef.current = null;
       setLoading(false);
     }
-  }, [inputValue, llmReady, loading, selectedModel]);
+  }, [chatMode, inputValue, llmReady, loading, selectedModel]);
 
   const handleStop = useCallback(() => {
     abortControllerRef.current?.abort();

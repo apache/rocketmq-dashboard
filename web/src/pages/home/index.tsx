@@ -83,19 +83,23 @@ const HomePage = () => {
       if (cancelled) return;
 
       const configuredModel = config?.model?.trim() ?? '';
-      const providerModels = modelsResult?.status === 0 && modelsResult.data
-        ? modelsResult.data.map((item) => item.id || item.name || '').filter(Boolean)
-        : [];
-      const values = Array.from(new Set([
-        ...(configuredModel ? [configuredModel] : []),
-        ...providerModels,
-      ]));
+      const providerModels =
+        modelsResult?.status === 0 && modelsResult.data
+          ? modelsResult.data.map((item) => item.id || item.name || '').filter(Boolean)
+          : [];
+      const values = Array.from(
+        new Set([...(configuredModel ? [configuredModel] : []), ...providerModels]),
+      );
 
-      setModelOptions(values.map((value, index) => ({
-        value,
-        recommended: configuredModel ? value === configuredModel : index === 0,
-      })));
-      setSelectedModel((current) => (current && values.includes(current) ? current : values[0] || ''));
+      setModelOptions(
+        values.map((value, index) => ({
+          value,
+          recommended: configuredModel ? value === configuredModel : index === 0,
+        })),
+      );
+      setSelectedModel((current) =>
+        current && values.includes(current) ? current : values[0] || '',
+      );
     };
 
     void loadModels();
@@ -156,7 +160,11 @@ const HomePage = () => {
 
   const handlePromptSubmit = () => {
     const prompt = inputValue.trim();
-    navigate('/ai', { state: prompt ? { prompt, ...(selectedModel ? { model: selectedModel } : {}) } : null });
+    navigate('/ai', {
+      state: prompt
+        ? { prompt, mode: activeMode, ...(selectedModel ? { model: selectedModel } : {}) }
+        : null,
+    });
   };
 
   return (

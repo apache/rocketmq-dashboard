@@ -18,16 +18,21 @@
 export interface ChatDraft {
   prompt: string;
   model?: string;
+  mode?: string;
 }
+
+const SUPPORTED_MODES = new Set(['query', 'diagnose', 'manage', 'chat']);
 
 export function getChatDraft(state: unknown): ChatDraft | null {
   if (typeof state !== 'object' || state === null) return null;
   const candidate = state as Record<string, unknown>;
   if (typeof candidate.prompt !== 'string' || !candidate.prompt.trim()) return null;
   const model = typeof candidate.model === 'string' ? candidate.model.trim() : '';
+  const mode = typeof candidate.mode === 'string' ? candidate.mode.trim() : '';
 
   return {
     prompt: candidate.prompt.trim(),
     ...(model ? { model } : {}),
+    ...(SUPPORTED_MODES.has(mode) ? { mode } : {}),
   };
 }
