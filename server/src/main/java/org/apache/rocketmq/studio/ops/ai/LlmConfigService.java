@@ -110,6 +110,8 @@ public class LlmConfigService {
                 .apiKey(persistedApiKey)
                 .model(normalized.getModel())
                 .baseUrl(normalized.getApiBase())
+                .maxTokens(normalized.getMaxTokens())
+                .temperature(normalized.getTemperature())
                 .build();
         LlmConfigVO nextOverrides = copy(normalized);
         settingsService.saveGeneralSettings(updated);
@@ -213,8 +215,8 @@ public class LlmConfigService {
                 .apiKey(apiKey)
                 .apiBase(apiBase)
                 .model(model)
-                .maxTokens(DEFAULT_MAX_TOKENS)
-                .temperature(DEFAULT_TEMPERATURE)
+                .maxTokens(resolveMaxTokens(settings.getMaxTokens()))
+                .temperature(resolveTemperature(settings.getTemperature()))
                 .enabled(!requiresApiKey(provider) || !isBlank(apiKey))
                 .apiVersion("2024-02-15-preview")
                 .awsRegion("us-east-1")
@@ -289,6 +291,20 @@ public class LlmConfigService {
             case LlmConfigVO.ENGINE_HTTP, LlmConfigVO.ENGINE_CLAUDE_CODE, LlmConfigVO.ENGINE_QODER -> normalized;
             default -> LlmConfigVO.ENGINE_HTTP;
         };
+    }
+
+    private int resolveMaxTokens(Integer maxTokens) {
+        if (maxTokens == null || maxTokens <= 0 || maxTokens > MAX_TOKENS_LIMIT) {
+            return DEFAULT_MAX_TOKENS;
+        }
+        return maxTokens;
+    }
+
+    private double resolveTemperature(Double temperature) {
+        if (temperature == null || !Double.isFinite(temperature) || temperature < 0 || temperature > 2) {
+            return DEFAULT_TEMPERATURE;
+        }
+        return temperature;
     }
 
     private String defaultModel(String provider) {

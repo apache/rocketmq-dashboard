@@ -66,6 +66,8 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
                     .apiKey("")
                     .model("gpt-4")
                     .baseUrl("")
+                    .maxTokens(4096)
+                    .temperature(0.7)
                     .build();
         }
         try {
@@ -83,6 +85,8 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
                     .apiKey("")
                     .model("gpt-4")
                     .baseUrl("")
+                    .maxTokens(4096)
+                    .temperature(0.7)
                     .build();
         }
     }

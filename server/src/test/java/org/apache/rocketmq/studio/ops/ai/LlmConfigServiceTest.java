@@ -53,6 +53,8 @@ class LlmConfigServiceTest {
                 .apiKey("sk-test")
                 .model("gpt-4o")
                 .baseUrl("https://api.openai.com/v1")
+                .maxTokens(8192)
+                .temperature(0.2)
                 .build());
         llmClient = mock(OpenAiCompatibleLlmClient.class);
         llmConfigService = new LlmConfigService(settingsService, llmClient, new LlmProperties());
@@ -66,6 +68,8 @@ class LlmConfigServiceTest {
         assertThat(config.getApiKey()).isEqualTo("sk-test");
         assertThat(config.getApiBase()).isEqualTo("https://api.openai.com/v1");
         assertThat(config.getModel()).isEqualTo("gpt-4o");
+        assertThat(config.getMaxTokens()).isEqualTo(8192);
+        assertThat(config.getTemperature()).isEqualTo(0.2);
         assertThat(config.isEnabled()).isTrue();
         assertThat(config.isReady()).isTrue();
     }
@@ -91,6 +95,27 @@ class LlmConfigServiceTest {
         assertThat(captor.getValue().getApiKey()).isEqualTo("sk-test");
 
         assertThat(service.getConfig().getApiKey()).isEqualTo("env-token");
+    }
+
+    @Test
+    void getConfigShouldUseDefaultsWhenAdvancedSettingsAreMissing() {
+        when(settingsService.getGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
+                .theme("dark")
+                .compact(true)
+                .desktopNotify(true)
+                .notifySound(false)
+                .sessionTimeout(45)
+                .requireLogin(true)
+                .llmProvider("openai")
+                .apiKey("sk-test")
+                .model("gpt-4o")
+                .baseUrl("https://api.openai.com/v1")
+                .build());
+
+        LlmConfigVO config = llmConfigService.getConfig();
+
+        assertThat(config.getMaxTokens()).isEqualTo(4096);
+        assertThat(config.getTemperature()).isEqualTo(0.7);
     }
 
     @Test
@@ -197,7 +222,11 @@ class LlmConfigServiceTest {
         assertThat(saved.getApiKey()).isEqualTo("sk-deepseek");
         assertThat(saved.getModel()).isEqualTo("deepseek-chat");
         assertThat(saved.getBaseUrl()).isEqualTo("https://api.deepseek.com/v1");
+        assertThat(saved.getMaxTokens()).isEqualTo(8192);
+        assertThat(saved.getTemperature()).isEqualTo(0.2);
         assertThat(llmConfigService.getConfig().getProvider()).isEqualTo("deepseek");
+        assertThat(llmConfigService.getConfig().getMaxTokens()).isEqualTo(8192);
+        assertThat(llmConfigService.getConfig().getTemperature()).isEqualTo(0.2);
     }
 
     @Test

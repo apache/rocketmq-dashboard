@@ -16,6 +16,8 @@
  */
 package org.apache.rocketmq.studio.settings;
 
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -55,6 +57,12 @@ public class GeneralSettingsUpdateDTO {
     private String model;
     @NotNull
     private String baseUrl;
+    @Min(1)
+    @Max(200000)
+    private Integer maxTokens;
+    @DecimalMin("0.0")
+    @DecimalMax("2.0")
+    private Double temperature;
 
     public GeneralSettingsVO toSettings() {
         return GeneralSettingsVO.builder()
@@ -70,6 +78,8 @@ public class GeneralSettingsUpdateDTO {
                 .clearApiKey(clearApiKey)
                 .model(model)
                 .baseUrl(baseUrl)
+                .maxTokens(maxTokens)
+                .temperature(temperature)
                 .build();
     }
 }
