@@ -18,12 +18,10 @@ package org.apache.rocketmq.studio.cluster.client;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
 
 import java.util.List;
 
 @Slf4j
-@Component
 public class ClientProviderStub implements ClientProvider {
 
     @Override
