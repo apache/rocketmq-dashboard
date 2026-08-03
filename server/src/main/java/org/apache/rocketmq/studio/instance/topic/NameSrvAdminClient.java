@@ -18,16 +18,20 @@ package org.apache.rocketmq.studio.instance.topic;
 
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class NameSrvAdminClient implements AdminClient {
+
+    private final TopicStore topicStore;
 
     @Override
     public TopicVO getTopic(String name) {
-        throw new UnsupportedOperationException("Not implemented");
+        return topicStore.getTopic(name);
     }
 
     @Override
@@ -37,17 +41,17 @@ public class NameSrvAdminClient implements AdminClient {
 
     @Override
     public TopicVO createTopic(TopicVO topic) {
-        throw new UnsupportedOperationException("Not implemented");
+        return topicStore.createTopic(topic);
     }
 
     @Override
     public TopicVO updateTopic(TopicVO topic) {
-        throw new UnsupportedOperationException("Not implemented");
+        return topicStore.updateTopic(topic);
     }
 
     @Override
     public void deleteTopic(String name) {
-        throw new UnsupportedOperationException("Not implemented");
+        topicStore.deleteTopic(name);
     }
 
     @Override

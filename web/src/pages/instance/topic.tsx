@@ -48,17 +48,25 @@ import {
   EyeOutlined,
   ImportOutlined,
   ExportOutlined,
+  ReloadOutlined,
   PlusCircleOutlined,
   MinusCircleOutlined,
 } from '@ant-design/icons';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import { TOPIC_TYPE_MAP, CLUSTER_TYPE_MAP } from '../../constants/theme';
-import type { Topic, BrokerRoute, ConsumerGroupInfo } from '../../api/metadata';
+import type {
+  Topic,
+  BrokerRoute,
+  ConsumerGroupInfo,
+  TopicRouteExamination,
+} from '../../api/metadata';
 import {
   batchDeleteTopics,
   createTopic,
   deleteTopic,
+  examineTopicRouteInfo,
+  fetchAllTopicList,
   getTopicConsumers,
   getTopicRoutes,
   listTopics,
@@ -234,6 +242,8 @@ const TopicPage = () => {
   const [sendTopic, setSendTopic] = useState<Topic | null>(null);
   const [sending, setSending] = useState(false);
   const [sendForm] = Form.useForm();
+  const [examining, setExamining] = useState(false);
+  const [examination, setExamination] = useState<TopicRouteExamination | null>(null);
   const { modal } = App.useApp();
 
   useEffect(() => {
@@ -279,6 +289,7 @@ const TopicPage = () => {
   const openDetail = async (topic: Topic) => {
     setSelectedTopic(topic);
     setDetailModalOpen(true);
+    setExamination(null);
     try {
       const [routes, consumers] = await Promise.all([
         getTopicRoutes(topic.name),
@@ -294,6 +305,34 @@ const TopicPage = () => {
   // ─── Route / consumer helpers ─────────────────────────────────
   const getRoutes = (name: string): BrokerRoute[] => routesByTopic[name] ?? [];
   const getConsumers = (name: string): ConsumerGroupInfo[] => consumersByTopic[name] ?? [];
+
+  // ─── Route diagnosis ─────────────────────────────────────────
+  const runExamine = async (name: string) => {
+    setExamining(true);
+    try {
+      const result = await examineTopicRouteInfo(name);
+      setExamination(result);
+    } catch {
+      message.error('路由诊断失败，请稍后重试');
+    } finally {
+      setExamining(false);
+    }
+  };
+
+  // ─── Load every topic across clusters ───────────────────────
+  const handleLoadAll = async () => {
+    try {
+      const all = await fetchAllTopicList();
+      setTopics(all);
+      setSearchText('');
+      setTypeFilter('');
+      setNsFilter('');
+      setSelectedRowKeys([]);
+      message.success(`已加载全部 ${all.length} 个 Topic`);
+    } catch {
+      message.error('加载全部 Topic 失败，请稍后重试');
+    }
+  };
 
   const handleAction = (key: string, topic: Topic) => {
     if (key === 'detail') {
@@ -722,6 +761,9 @@ const TopicPage = () => {
           >
             导出
           </Button>
+          <Button icon={<ReloadOutlined />} onClick={() => void handleLoadAll()}>
+            {t('topic.fetchAll')}
+          </Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
             创建 Topic
           </Button>
@@ -805,6 +847,78 @@ const TopicPage = () => {
               pagination={false}
               size="small"
             />
+
+            <Divider style={{ margin: '20px 0 16px' }} />
+
+            {/* Section 4: 路由诊断 */}
+            <Flex justify="space-between" align="center" style={{ marginBottom: 12 }}>
+              <Text strong style={{ fontSize: 14 }}>
+                {t('topic.routeDiagnosis')}
+              </Text>
+              <Button
+                size="small"
+                loading={examining}
+                onClick={() => selectedTopic && void runExamine(selectedTopic.name)}
+              >
+                {t('topic.runDiagnosis')}
+              </Button>
+            </Flex>
+            {examination ? (
+              <>
+                <Flex gap={8} align="center" style={{ marginBottom: 12 }}>
+                  <Text type="secondary" style={{ fontSize: 13 }}>
+                    {t('topic.routeHealth')}:
+                  </Text>
+                  <Tag
+                    color={
+                      examination.health === 'HEALTHY'
+                        ? 'green'
+                        : examination.health === 'WARNING'
+                          ? 'orange'
+                          : 'red'
+                    }
+                  >
+                    {examination.health === 'HEALTHY'
+                      ? t('topic.healthy')
+                      : examination.health === 'WARNING'
+                        ? t('topic.warning')
+                        : t('topic.error')}
+                  </Tag>
+                </Flex>
+                <Descriptions bordered column={2} size="small" labelStyle={{ fontWeight: 500 }}>
+                  <Descriptions.Item label={t('topic.brokerCount')}>
+                    {examination.brokerCount}
+                  </Descriptions.Item>
+                  <Descriptions.Item label={t('topic.totalWriteQueues')}>
+                    {examination.totalWriteQueues}
+                  </Descriptions.Item>
+                  <Descriptions.Item label={t('topic.totalReadQueues')}>
+                    {examination.totalReadQueues}
+                  </Descriptions.Item>
+                  <Descriptions.Item label={t('topic.queueBalance')}>
+                    <Tag color={examination.readWriteBalanced ? 'green' : 'red'}>
+                      {examination.readWriteBalanced ? t('topic.balanced') : t('topic.unbalanced')}
+                    </Tag>
+                  </Descriptions.Item>
+                </Descriptions>
+                <div style={{ marginTop: 12 }}>
+                  <Text type="secondary" style={{ fontSize: 13 }}>
+                    {t('topic.findings')}
+                  </Text>
+                  <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
+                    {examination.findings.map((finding, index) => (
+                      <li key={index} style={{ fontSize: 13, marginBottom: 4 }}>
+                        {finding}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </>
+            ) : (
+              <Text type="secondary" style={{ fontSize: 13 }}>
+                点击「{t('topic.runDiagnosis')}」生成 Topic 路由诊断报告
+              </Text>
+            )}
           </>
         )}
       </Modal>

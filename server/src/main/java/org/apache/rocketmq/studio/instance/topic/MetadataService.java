@@ -70,6 +70,16 @@ public class MetadataService {
     }
 
 
+    public TopicRouteExaminationVO examineTopicRouteInfo(String name) {
+        return metadataProvider.examineTopicRouteInfo(name);
+    }
+
+
+    public List<TopicVO> fetchAllTopicList() {
+        return metadataProvider.fetchAllTopicList();
+    }
+
+
     public SendMessageVO sendMessage(SendMessageDTO request) {
         return adminClient.sendMessage(request);
     }

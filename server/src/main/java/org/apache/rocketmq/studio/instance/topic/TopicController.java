@@ -65,6 +65,16 @@ public class TopicController {
         return Result.ok(metadataService.getTopicRoutes(name));
     }
 
+    @GetMapping("/examine/{name}")
+    public Result<TopicRouteExaminationVO> examineTopicRouteInfo(@PathVariable String name) {
+        return Result.ok(metadataService.examineTopicRouteInfo(name));
+    }
+
+    @GetMapping("/all")
+    public Result<List<TopicVO>> fetchAllTopicList() {
+        return Result.ok(metadataService.fetchAllTopicList());
+    }
+
     @GetMapping("/{name}/consumers")
     public Result<List<TopicConsumerVO>> getTopicConsumers(@PathVariable String name) {
         return Result.ok(metadataService.getTopicConsumers(name));

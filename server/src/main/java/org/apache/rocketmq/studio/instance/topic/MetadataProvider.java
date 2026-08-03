@@ -29,4 +29,10 @@ public interface MetadataProvider {
     List<TopicConsumerVO> getTopicConsumers(String name);
     List<QueueProgressVO> getGroupProgress(String name);
     List<SubscriptionEntryVO> getGroupSubscriptions(String name);
+
+    /** Returns route health / balance diagnostics for a single topic. */
+    TopicRouteExaminationVO examineTopicRouteInfo(String name);
+
+    /** Returns every known topic regardless of cluster, type or search filter. */
+    List<TopicVO> fetchAllTopicList();
 }

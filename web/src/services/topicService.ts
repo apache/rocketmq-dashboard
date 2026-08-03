@@ -7,8 +7,9 @@ import type {
   ConsumerGroupInfo,
   SendTopicMessageRequest,
   SendTopicMessageResult,
+  TopicRouteExamination,
 } from '../api/metadata';
-import { topics as mockTopics, topicRoutes, topicConsumers } from '../mock/topics';
+import { topics as mockTopics, topicRoutes, topicConsumers, defaultRoute } from '../mock/topics';
 
 const cloneTopic = (topic: Topic): Topic => ({ ...topic });
 const cloneRoutes = (routes: BrokerRoute[]): BrokerRoute[] => routes.map((route) => ({ ...route }));
@@ -92,6 +93,61 @@ export async function getTopicConsumers(name: string): Promise<ConsumerGroupInfo
   if (USE_MOCK)
     return cloneConsumers((topicConsumers[name] as unknown as ConsumerGroupInfo[]) ?? []);
   return metadataApi.getTopicConsumers(name);
+}
+
+export async function examineTopicRouteInfo(name: string): Promise<TopicRouteExamination> {
+  if (USE_MOCK) {
+    const routes =
+      (topicRoutes[name] as unknown as BrokerRoute[]) ?? (defaultRoute as unknown as BrokerRoute[]);
+    const cloned = cloneRoutes(routes);
+    const brokerCount = cloned.length;
+    const totalWriteQueues = cloned.reduce((sum, route) => sum + route.writeQueues, 0);
+    const totalReadQueues = cloned.reduce((sum, route) => sum + route.readQueues, 0);
+    const readWriteBalanced = cloned.every((route) => route.readQueues === route.writeQueues);
+
+    const findings: string[] = [];
+    if (!readWriteBalanced) {
+      cloned
+        .filter((route) => route.readQueues !== route.writeQueues)
+        .forEach((route) =>
+          findings.push(
+            `Broker ${route.brokerName} 读写队列不一致（写 ${route.writeQueues} / 读 ${route.readQueues}）`,
+          ),
+        );
+    }
+    if (brokerCount < 2) {
+      findings.push('仅分布在单台 Broker，存在单点可用性风险，建议至少部署 2 台 Broker');
+    }
+    if (totalWriteQueues === 0 || totalReadQueues === 0) {
+      findings.push('队列总数为 0，消息将无法正常读写');
+    }
+
+    let health: TopicRouteExamination['health'] = 'HEALTHY';
+    if (totalWriteQueues === 0 || totalReadQueues === 0) {
+      health = 'ERROR';
+    } else if (findings.length > 0) {
+      health = 'WARNING';
+    } else {
+      findings.push('路由分布正常，各 Broker 读写队列一致');
+    }
+
+    return {
+      topic: name,
+      brokerCount,
+      totalWriteQueues,
+      totalReadQueues,
+      readWriteBalanced,
+      health,
+      findings,
+      routes: cloned,
+    };
+  }
+  return metadataApi.examineTopicRouteInfo(name);
+}
+
+export async function fetchAllTopicList(): Promise<Topic[]> {
+  if (USE_MOCK) return (mockTopics as unknown as Topic[]).map(cloneTopic);
+  return metadataApi.fetchAllTopicList();
 }
 
 export async function sendTopicMessage(

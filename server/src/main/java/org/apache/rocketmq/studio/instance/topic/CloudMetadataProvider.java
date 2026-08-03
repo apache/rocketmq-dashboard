@@ -20,6 +20,7 @@ import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -27,11 +28,14 @@ import java.util.List;
 
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class CloudMetadataProvider implements MetadataProvider {
+
+    private final TopicStore topicStore;
 
     @Override
     public List<TopicVO> listTopics(String clusterId, String type, String search) {
-        throw new UnsupportedOperationException("Not implemented");
+        return topicStore.listTopics(clusterId, type, search);
     }
 
     @Override
@@ -41,7 +45,7 @@ public class CloudMetadataProvider implements MetadataProvider {
 
     @Override
     public List<BrokerRouteVO> getTopicRoutes(String name) {
-        throw new UnsupportedOperationException("Not implemented");
+        return topicStore.getTopicRoutes(name);
     }
 
     @Override
@@ -57,5 +61,15 @@ public class CloudMetadataProvider implements MetadataProvider {
     @Override
     public List<SubscriptionEntryVO> getGroupSubscriptions(String name) {
         throw new UnsupportedOperationException("Not implemented");
+    }
+
+    @Override
+    public TopicRouteExaminationVO examineTopicRouteInfo(String name) {
+        return topicStore.examineTopicRouteInfo(name);
+    }
+
+    @Override
+    public List<TopicVO> fetchAllTopicList() {
+        return topicStore.fetchAllTopicList();
     }
 }

@@ -36,6 +36,17 @@ export interface BrokerRoute {
   perm: string;
 }
 
+export interface TopicRouteExamination {
+  topic: string;
+  brokerCount: number;
+  totalWriteQueues: number;
+  totalReadQueues: number;
+  readWriteBalanced: boolean;
+  health: 'HEALTHY' | 'WARNING' | 'ERROR';
+  findings: string[];
+  routes: BrokerRoute[];
+}
+
 export interface ConsumerGroupInfo {
   group: string;
   consumeType: string;
@@ -127,6 +138,18 @@ export async function getTopicRoutes(name: string) {
   const res = await client.get<{ data: BrokerRoute[] }>(
     `/topics/${encodeURIComponent(name)}/routes`,
   );
+  return res.data.data;
+}
+
+export async function examineTopicRouteInfo(name: string) {
+  const res = await client.get<{ data: TopicRouteExamination }>(
+    `/topics/examine/${encodeURIComponent(name)}`,
+  );
+  return res.data.data;
+}
+
+export async function fetchAllTopicList() {
+  const res = await client.get<{ data: Topic[] }>('/topics/all');
   return res.data.data;
 }
 
