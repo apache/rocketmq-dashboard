@@ -30,7 +30,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/groups")
@@ -75,8 +74,8 @@ public class ConsumerGroupController {
     }
 
     @PostMapping("/delete")
-    public Result<Void> deleteConsumerGroup(@RequestBody Map<String, String> request) {
-        metadataService.deleteConsumerGroup(request.get("name"));
+    public Result<Void> deleteConsumerGroup(@Valid @RequestBody DeleteConsumerGroupDTO request) {
+        metadataService.deleteConsumerGroup(request.getName());
         return Result.ok();
     }
 

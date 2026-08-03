@@ -106,6 +106,42 @@ class ConsumerGroupControllerTest {
     }
 
     @Test
+    void deleteConsumerGroupShouldReturnSuccess() throws Exception {
+        mockMvc.perform(post("/api/groups/delete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("name", "cg-orders"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.message").value("success"));
+
+        verify(metadataService).deleteConsumerGroup("cg-orders");
+    }
+
+    @Test
+    void deleteConsumerGroupShouldRejectMissingName() throws Exception {
+        mockMvc.perform(post("/api/groups/delete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("name is required"));
+
+        verifyNoInteractions(metadataService);
+    }
+
+    @Test
+    void deleteConsumerGroupShouldRejectBlankName() throws Exception {
+        mockMvc.perform(post("/api/groups/delete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("name", " "))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("name is required"));
+
+        verifyNoInteractions(metadataService);
+    }
+
+    @Test
     void resetOffsetShouldRejectMissingName() throws Exception {
         Map<String, Object> body = Map.of(
                 "topic", "orders",
