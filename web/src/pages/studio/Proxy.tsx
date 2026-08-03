@@ -34,6 +34,7 @@ import {
   Tooltip,
   Popconfirm,
   App,
+  Typography,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -50,6 +51,8 @@ import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import { queryProxyHomePage, addProxyAddr, removeProxyAddr, type ProxyNode } from '../../api/proxy';
 
+const { Text } = Typography;
+
 const ProxyPage: React.FC = () => {
   const { t } = useLang();
   const { message } = App.useApp();
@@ -63,9 +66,9 @@ const ProxyPage: React.FC = () => {
 
   const [clusterStats, setClusterStats] = useState({
     totalNodes: 0,
-    healthyNodes: 0,
-    totalConnections: 0,
-    totalTPS: 0,
+    healthyNodes: null as number | null,
+    totalConnections: null as number | null,
+    totalTPS: null as number | null,
   });
 
   const initialized = useRef<boolean | null>(null);
@@ -81,25 +84,22 @@ const ProxyPage: React.FC = () => {
       const nodes: ProxyNode[] = (proxyAddrList || []).map((addr) => ({
         key: addr,
         address: addr,
-        status: 'healthy' as const,
-        version: '5.3.0',
-        connections: Math.floor(Math.random() * 1000) + 100,
-        tps: Math.floor(Math.random() * 5000) + 1000,
-        memory: Math.floor(Math.random() * 60) + 20,
-        cpu: Math.floor(Math.random() * 50) + 10,
-        uptime: `${Math.floor(Math.random() * 30) + 1}d`,
+        status: 'unknown' as const,
+        version: null,
+        connections: null,
+        tps: null,
+        memory: null,
+        cpu: null,
+        uptime: null,
         isSelected: addr === currentProxyAddr,
       }));
       setProxyNodes(nodes);
 
-      const healthyCount = nodes.filter((n) => n.status === 'healthy').length;
-      const totalConn = nodes.reduce((sum, n) => sum + n.connections, 0);
-      const totalTPS = nodes.reduce((sum, n) => sum + n.tps, 0);
       setClusterStats({
         totalNodes: nodes.length,
-        healthyNodes: healthyCount,
-        totalConnections: totalConn,
-        totalTPS,
+        healthyNodes: null,
+        totalConnections: null,
+        totalTPS: null,
       });
 
       if (currentProxyAddr) {
@@ -183,14 +183,27 @@ const ProxyPage: React.FC = () => {
         icon: <Warning size={12} weight="fill" />,
         label: t('proxy.warning'),
       },
+      unknown: {
+        color: 'default',
+        icon: null,
+        label: t('common.na'),
+      },
     };
-    const cfg = map[status] || map.healthy;
+    const cfg = map[status] || map.unknown;
     return (
       <Tag color={cfg.color} icon={cfg.icon}>
         {cfg.label}
       </Tag>
     );
   };
+
+  const renderUnavailable = () => <Text type="secondary">{t('common.na')}</Text>;
+
+  const renderNumberMetric = (value: number | null) =>
+    value == null ? renderUnavailable() : value.toLocaleString();
+
+  const compareNullable = (left: number | null, right: number | null) =>
+    (left ?? Number.NEGATIVE_INFINITY) - (right ?? Number.NEGATIVE_INFINITY);
 
   // ─── Columns ─────────────────────────────────────────────────
 
@@ -216,53 +229,61 @@ const ProxyPage: React.FC = () => {
       title: t('proxy.version'),
       dataIndex: 'version',
       key: 'version',
+      render: (value: string | null) => value || renderUnavailable(),
     },
     {
       title: t('proxy.connections'),
       dataIndex: 'connections',
       key: 'connections',
-      render: (val: number) => val.toLocaleString(),
-      sorter: (a, b) => a.connections - b.connections,
+      render: renderNumberMetric,
+      sorter: (a, b) => compareNullable(a.connections, b.connections),
     },
     {
       title: 'TPS',
       dataIndex: 'tps',
       key: 'tps',
-      render: (val: number) => val.toLocaleString(),
-      sorter: (a, b) => a.tps - b.tps,
+      render: renderNumberMetric,
+      sorter: (a, b) => compareNullable(a.tps, b.tps),
     },
     {
       title: t('proxy.memory'),
       dataIndex: 'memory',
       key: 'memory',
-      render: (val: number) => (
-        <Progress
-          percent={val}
-          size="small"
-          status={val > 80 ? 'exception' : 'normal'}
-          style={{ width: 100 }}
-        />
-      ),
-      sorter: (a, b) => a.memory - b.memory,
+      render: (val: number | null) =>
+        val == null ? (
+          renderUnavailable()
+        ) : (
+          <Progress
+            percent={val}
+            size="small"
+            status={val > 80 ? 'exception' : 'normal'}
+            style={{ width: 100 }}
+          />
+        ),
+      sorter: (a, b) => compareNullable(a.memory, b.memory),
     },
     {
       title: 'CPU',
       dataIndex: 'cpu',
       key: 'cpu',
-      render: (val: number) => (
-        <Progress
-          percent={val}
-          size="small"
-          status={val > 80 ? 'exception' : 'normal'}
-          style={{ width: 100 }}
-        />
-      ),
-      sorter: (a, b) => a.cpu - b.cpu,
+      render: (val: number | null) =>
+        val == null ? (
+          renderUnavailable()
+        ) : (
+          <Progress
+            percent={val}
+            size="small"
+            status={val > 80 ? 'exception' : 'normal'}
+            style={{ width: 100 }}
+          />
+        ),
+      sorter: (a, b) => compareNullable(a.cpu, b.cpu),
     },
     {
       title: t('proxy.uptime'),
       dataIndex: 'uptime',
       key: 'uptime',
+      render: (value: string | null) => value || renderUnavailable(),
     },
     {
       title: t('proxy.action'),
@@ -331,12 +352,11 @@ const ProxyPage: React.FC = () => {
             <Card>
               <Statistic
                 title={t('proxy.healthyNodes')}
-                value={clusterStats.healthyNodes}
-                suffix={`/ ${clusterStats.totalNodes}`}
-                valueStyle={{
-                  color:
-                    clusterStats.healthyNodes === clusterStats.totalNodes ? '#3f8600' : '#cf1322',
-                }}
+                value={clusterStats.healthyNodes ?? t('common.na')}
+                suffix={
+                  clusterStats.healthyNodes == null ? undefined : `/ ${clusterStats.totalNodes}`
+                }
+                valueStyle={{ color: clusterStats.healthyNodes == null ? undefined : '#3f8600' }}
               />
             </Card>
           </Col>
@@ -344,7 +364,7 @@ const ProxyPage: React.FC = () => {
             <Card>
               <Statistic
                 title={t('proxy.totalConnections')}
-                value={clusterStats.totalConnections}
+                value={clusterStats.totalConnections ?? t('common.na')}
                 valueStyle={{ color: '#1890ff' }}
               />
             </Card>
@@ -353,7 +373,7 @@ const ProxyPage: React.FC = () => {
             <Card>
               <Statistic
                 title={t('proxy.totalTps')}
-                value={clusterStats.totalTPS}
+                value={clusterStats.totalTPS ?? t('common.na')}
                 valueStyle={{ color: '#1890ff' }}
               />
             </Card>
