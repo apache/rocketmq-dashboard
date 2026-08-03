@@ -23,7 +23,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class InMemoryInstanceRepositoryTest {
 
-    private final InMemoryInstanceRepository repository = new InMemoryInstanceRepository();
+    private final InMemoryInstanceRepository repository = new InMemoryInstanceRepository(true);
+
+    @Test
+    void findAllShouldBeEmptyWhenDemoDataIsDisabled() {
+        InMemoryInstanceRepository emptyRepository = new InMemoryInstanceRepository(false);
+
+        assertThat(emptyRepository.findAll()).isEmpty();
+    }
 
     @Test
     void searchShouldMatchInstanceEndpoints() {

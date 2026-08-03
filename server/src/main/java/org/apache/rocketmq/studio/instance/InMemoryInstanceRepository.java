@@ -18,6 +18,7 @@
 package org.apache.rocketmq.studio.instance;
 
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -34,8 +35,10 @@ public class InMemoryInstanceRepository implements InstanceRepository {
 
     private final Map<String, InstanceVO> store = new ConcurrentHashMap<>();
 
-    public InMemoryInstanceRepository() {
-        initData();
+    public InMemoryInstanceRepository(@Value("${studio.instance.seed-demo-data:false}") boolean seedDemoData) {
+        if (seedDemoData) {
+            initData();
+        }
     }
 
     private void initData() {
