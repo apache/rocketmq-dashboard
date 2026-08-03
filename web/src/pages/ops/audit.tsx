@@ -40,6 +40,7 @@ import { useLang } from '../../i18n/LangContext';
 import type { AuditFilter } from '../../api/audit';
 import type { AuditRecord } from '../../api/ops';
 import { cleanupAuditLogs, exportAuditLogs, listAuditRecords } from '../../services/opsService';
+import { downloadBlob } from '../../utils/download';
 
 const operationTypeColors: Record<string, string> = {
   创建Topic: 'blue',
@@ -136,12 +137,7 @@ const AuditPage: React.FC = () => {
         buildAuditFilter(searchText, selectedType, dateRange, resultFilter),
       );
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = `rocketmq-audit-logs-${dayjs().format('YYYY-MM-DD')}.csv`;
-      anchor.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, `rocketmq-audit-logs-${dayjs().format('YYYY-MM-DD')}.csv`);
     } catch {
       message.error('导出审计日志失败，请稍后重试');
     } finally {
