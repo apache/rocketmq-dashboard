@@ -1057,6 +1057,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'ssl.expiryDate': { zh: '过期日期', en: 'Expiry Date' },
   'ssl.active': { zh: '有效', en: 'Active' },
   'ssl.saveSuccess': { zh: 'SSL 配置保存成功', en: 'SSL configuration saved successfully' },
+  'ssl.saveUnavailable': {
+    zh: 'SSL 配置保存功能尚未接入真实后端接口',
+    en: 'SSL configuration persistence is not wired to a backend API yet',
+  },
   'ssl.invalidCertFormat': { zh: '仅允许证书文件！', en: 'Only certificate files are allowed!' },
   'ssl.certRemoved': { zh: '证书文件已移除', en: 'Certificate file removed' },
 
