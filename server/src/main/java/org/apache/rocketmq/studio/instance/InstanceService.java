@@ -49,6 +49,7 @@ public class InstanceService {
     }
 
     public InstanceVO createInstance(InstanceVO instance) {
+        requireInstance(instance);
         log.info("Creating instance: {}", instance.getName());
 
         if (instance.getName() == null || instance.getName().isBlank()) {
@@ -65,6 +66,7 @@ public class InstanceService {
     }
 
     public InstanceVO updateInstance(InstanceVO instance) {
+        requireInstance(instance);
         log.info("Updating instance: {}", instance.getId());
 
         if (instance.getId() == null || instance.getId().isBlank()) {
@@ -109,6 +111,12 @@ public class InstanceService {
         instanceRepository.findById(id)
                 .orElseThrow(() -> new BusinessException(404, "InstanceVO not found: " + id));
         instanceRepository.deleteById(id);
+    }
+
+    private void requireInstance(InstanceVO instance) {
+        if (instance == null) {
+            throw new BusinessException(400, "Instance request is required");
+        }
     }
 
     private InstanceVO copyOf(InstanceVO instance) {
