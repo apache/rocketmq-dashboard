@@ -14,15 +14,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.rocketmq.studio.auth;
 
-import lombok.Data;
-import lombok.ToString;
+import org.junit.jupiter.api.Test;
 
-@Data
-public class LoginDTO {
-    private String username;
-    @ToString.Exclude
-    private String password;
+import static org.assertj.core.api.Assertions.assertThat;
+
+class LoginDTOTest {
+
+    @Test
+    void toStringShouldNotExposePassword() {
+        LoginDTO request = new LoginDTO();
+        request.setUsername("admin");
+        request.setPassword("plain-secret");
+
+        String value = request.toString();
+
+        assertThat(value).contains("username=admin");
+        assertThat(value).doesNotContain("plain-secret");
+    }
 }
