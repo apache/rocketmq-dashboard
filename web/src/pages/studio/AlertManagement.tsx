@@ -155,6 +155,7 @@ const AlertManagementPage: React.FC = () => {
   const [filterGroup, setFilterGroup] = useState('all');
   const [filterSeverity, setFilterSeverity] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [selectedRuleKeys, setSelectedRuleKeys] = useState<React.Key[]>([]);
   const [disabledRules, setDisabledRules] = useState<Record<string, boolean>>(() => {
     try {
       const saved = localStorage.getItem('alertDisabledRules');
@@ -180,7 +181,14 @@ const AlertManagementPage: React.FC = () => {
         const data = await queryAlertRules();
         const yamlStr = data.rules || '';
         if (!cancelled) {
-          setAlertRules(parseYamlRules(yamlStr, disabledRulesRef.current));
+          const loadedRules = parseYamlRules(yamlStr, disabledRulesRef.current);
+          const enabledRuleKeys = new Set<React.Key>(
+            loadedRules.filter((rule) => rule.enabled).map((rule) => rule.key),
+          );
+          setAlertRules(loadedRules);
+          setSelectedRuleKeys((currentKeys) =>
+            currentKeys.filter((key) => enabledRuleKeys.has(key)),
+          );
         }
       } catch {
         if (!cancelled) {
@@ -205,7 +213,12 @@ const AlertManagementPage: React.FC = () => {
     try {
       const data = await queryAlertRules();
       const yamlStr = data.rules || '';
-      setAlertRules(parseYamlRules(yamlStr, disabledRulesRef.current));
+      const loadedRules = parseYamlRules(yamlStr, disabledRulesRef.current);
+      const enabledRuleKeys = new Set<React.Key>(
+        loadedRules.filter((rule) => rule.enabled).map((rule) => rule.key),
+      );
+      setAlertRules(loadedRules);
+      setSelectedRuleKeys((currentKeys) => currentKeys.filter((key) => enabledRuleKeys.has(key)));
     } catch {
       message.error(t('alertMgmt.fetchFailed'));
     } finally {
@@ -220,6 +233,7 @@ const AlertManagementPage: React.FC = () => {
     setAlertRules((prev) =>
       prev.map((rule) => (rule.key === ruleKey ? { ...rule, enabled: !rule.enabled } : rule)),
     );
+    setSelectedRuleKeys((currentKeys) => currentKeys.filter((key) => key !== ruleKey));
   };
 
   const handleAddRule = () => {
@@ -247,6 +261,7 @@ const AlertManagementPage: React.FC = () => {
 
   const handleDeleteRule = (ruleKey: string) => {
     setAlertRules((prev) => prev.filter((rule) => rule.key !== ruleKey));
+    setSelectedRuleKeys((currentKeys) => currentKeys.filter((key) => key !== ruleKey));
     const updated = { ...disabledRules };
     delete updated[ruleKey];
     setDisabledRules(updated);
@@ -258,6 +273,11 @@ const AlertManagementPage: React.FC = () => {
     try {
       const values = await form.validateFields();
       if (editingRule) {
+        if (values.alert !== editingRule.key || values.enabled === false) {
+          setSelectedRuleKeys((currentKeys) =>
+            currentKeys.filter((key) => key !== editingRule.key),
+          );
+        }
         setAlertRules((prev) =>
           prev.map((rule) =>
             rule.key === editingRule.key
@@ -301,8 +321,14 @@ const AlertManagementPage: React.FC = () => {
     }
   };
 
+  const selectedRules = useMemo(
+    () => alertRules.filter((rule) => rule.enabled && selectedRuleKeys.includes(rule.key)),
+    [alertRules, selectedRuleKeys],
+  );
+
   const handleExportYaml = () => {
-    const enabledRules = alertRules.filter((r) => r.enabled);
+    const enabledRules =
+      selectedRules.length > 0 ? selectedRules : alertRules.filter((rule) => rule.enabled);
     const groups: Record<string, AlertRule[]> = {};
     for (const rule of enabledRules) {
       if (!groups[rule.group]) groups[rule.group] = [];
@@ -533,6 +559,7 @@ const AlertManagementPage: React.FC = () => {
             </Button>
             <Button icon={<DownloadSimple size={16} />} onClick={handleExportYaml} size="small">
               {t('alertMgmt.exportYaml')}
+              {selectedRules.length > 0 ? ` (${selectedRules.length})` : ''}
             </Button>
           </Space>
         }
@@ -587,6 +614,12 @@ const AlertManagementPage: React.FC = () => {
           dataSource={filteredRules}
           loading={loading}
           rowKey="key"
+          rowSelection={{
+            selectedRowKeys: selectedRules.map((rule) => rule.key),
+            onChange: setSelectedRuleKeys,
+            preserveSelectedRowKeys: true,
+            getCheckboxProps: (record) => ({ disabled: !record.enabled }),
+          }}
           size="small"
           pagination={{
             pageSize: 10,
