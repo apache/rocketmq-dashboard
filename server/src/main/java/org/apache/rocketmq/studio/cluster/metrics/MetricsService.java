@@ -46,18 +46,20 @@ public class MetricsService {
     );
 
     private final MetricsSource metricsSource;
+    private final MetricProfileService metricProfileService;
 
     public MetricDataVO query(MetricQueryDTO query) {
-        validateQueryWindow(query);
-        log.debug("Querying metrics: start={}, end={}, step={}",
-                query.getStart(), query.getEnd(), query.getStep());
-        return metricsSource.query(query);
-    }
-
-    private void validateQueryWindow(MetricQueryDTO query) {
         if (query == null) {
             throw badRequest("Metric query is required");
         }
+        MetricQueryDTO resolvedQuery = resolveMetricQuery(query);
+        validateQueryWindow(resolvedQuery);
+        log.debug("Querying metrics: start={}, end={}, step={}",
+                resolvedQuery.getStart(), resolvedQuery.getEnd(), resolvedQuery.getStep());
+        return metricsSource.query(resolvedQuery);
+    }
+
+    private void validateQueryWindow(MetricQueryDTO query) {
         long rangeSeconds = query.getEnd() - query.getStart();
         if (rangeSeconds <= 0) {
             throw badRequest("Metric query end must be later than start");
@@ -76,6 +78,33 @@ public class MetricsService {
         if (samplePoints.compareTo(BigDecimal.valueOf(MAX_SAMPLE_POINTS)) > 0) {
             throw badRequest("Metric query returns too many samples; increase step or reduce range");
         }
+    }
+
+    private MetricQueryDTO resolveMetricQuery(MetricQueryDTO query) {
+        boolean hasMetric = StringUtils.hasText(query.getMetric());
+        boolean hasProfile = StringUtils.hasText(query.getProfileId());
+        boolean hasSemanticMetric = StringUtils.hasText(query.getSemanticMetric());
+        if (hasMetric) {
+            if (hasProfile || hasSemanticMetric) {
+                throw badRequest("Metric query cannot be combined with a semantic metric selection");
+            }
+            return query;
+        }
+        if (hasProfile != hasSemanticMetric) {
+            throw badRequest("Metric profile and semantic metric are required together");
+        }
+        if (!hasProfile) {
+            throw badRequest("Metric query is required");
+        }
+
+        String promql = metricProfileService.resolvePromql(
+                query.getProfileId().strip(), query.getSemanticMetric().strip());
+        return MetricQueryDTO.builder()
+                .metric(promql)
+                .start(query.getStart())
+                .end(query.getEnd())
+                .step(query.getStep())
+                .build();
     }
 
     private BigDecimal parseStepMillis(String step) {
