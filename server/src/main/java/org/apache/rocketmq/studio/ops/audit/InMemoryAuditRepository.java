@@ -20,6 +20,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -46,12 +47,11 @@ public class InMemoryAuditRepository implements AuditRepository {
                 .filter(r -> startDate == null || r.getTimestamp() != null && !r.getTimestamp().isBefore(startDate))
                 .filter(r -> endDate == null || r.getTimestamp() != null && !r.getTimestamp().isAfter(endDate))
                 .filter(r -> result == null || result.isEmpty() || result.equals(r.getResult()))
-                .sorted((a, b) -> {
-                    if (a.getTimestamp() == null || b.getTimestamp() == null) {
-                        return 0;
-                    }
-                    return b.getTimestamp().compareTo(a.getTimestamp());
-                })
+                .sorted(Comparator
+                        .comparing(AuditRecordVO::getTimestamp,
+                                Comparator.nullsLast(Comparator.reverseOrder()))
+                        .thenComparing(AuditRecordVO::getId,
+                                Comparator.nullsLast(Comparator.naturalOrder())))
                 .collect(Collectors.toList());
     }
 

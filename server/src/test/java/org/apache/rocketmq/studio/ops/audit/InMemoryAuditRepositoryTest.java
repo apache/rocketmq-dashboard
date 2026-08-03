@@ -69,6 +69,33 @@ class InMemoryAuditRepositoryTest {
                 .containsExactly("record-blank-search");
     }
 
+    @Test
+    void findAllShouldOrderTimestampedRecordsBeforeMissingTimestamps() {
+        AuditRecordVO noTimestamp = AuditRecordVO.builder()
+                .operationType("CREATE")
+                .result("SUCCESS")
+                .build();
+        noTimestamp.setId("record-no-timestamp");
+        AuditRecordVO newest = AuditRecordVO.builder()
+                .timestamp(LocalDateTime.of(2026, 8, 1, 10, 0))
+                .operationType("UPDATE")
+                .result("SUCCESS")
+                .build();
+        newest.setId("record-newest");
+        AuditRecordVO older = AuditRecordVO.builder()
+                .timestamp(LocalDateTime.of(2026, 8, 1, 9, 0))
+                .operationType("DELETE")
+                .result("SUCCESS")
+                .build();
+        older.setId("record-older");
+
+        putRecords(noTimestamp, older, newest);
+
+        assertThat(repository.findAll(null, null, null, null, null))
+                .extracting(AuditRecordVO::getId)
+                .containsExactly("record-newest", "record-older", "record-no-timestamp");
+    }
+
     @SafeVarargs
     @SuppressWarnings("unchecked")
     private final void putRecords(AuditRecordVO... records) {
