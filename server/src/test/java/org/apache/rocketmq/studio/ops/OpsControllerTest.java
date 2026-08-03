@@ -116,6 +116,28 @@ class OpsControllerTest {
     }
 
     @Test
+    void deleteNameSvrAddrShouldDelegateToService() throws Exception {
+        mockMvc.perform(post("/api/ops/deleteNameSvrAddr")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("namesrvAddr", "10.0.0.2:9876"))))
+                .andExpect(status().isOk());
+
+        verify(opsService).deleteNameServer(eq("10.0.0.2:9876"));
+    }
+
+    @Test
+    void deleteNameSvrAddrShouldRejectMissingAddress() throws Exception {
+        mockMvc.perform(post("/api/ops/deleteNameSvrAddr")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("namesrvAddr is required"));
+
+        verifyNoInteractions(opsService);
+    }
+
+    @Test
     void updateVipChannelShouldDelegateToService() throws Exception {
         mockMvc.perform(post("/api/ops/updateIsVIPChannel")
                         .contentType(MediaType.APPLICATION_JSON)

@@ -16,12 +16,13 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { App, Button, Input, Select, Space, Switch, Typography } from 'antd';
-import { FloppyDisk, Plus } from '@phosphor-icons/react';
+import { App, Button, Input, Popconfirm, Select, Space, Switch, Tooltip, Typography } from 'antd';
+import { FloppyDisk, Plus, Trash } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
 import useAuthStore from '../../stores/authStore';
 import {
   addNameSvrAddr,
+  deleteNameSvrAddr,
   queryOpsHomePage,
   updateIsVIPChannel,
   updateNameSvrAddr,
@@ -37,10 +38,13 @@ const OpsPage: React.FC = () => {
 
   const [namesrvAddrList, setNamesrvAddrList] = useState<string[]>([]);
   const [selectedNamesrv, setSelectedNamesrv] = useState('');
+  const [currentNamesrv, setCurrentNamesrv] = useState('');
   const [newNamesrvAddr, setNewNamesrvAddr] = useState('');
   const [useVIPChannel, setUseVIPChannel] = useState(false);
   const [useTLS, setUseTLS] = useState(false);
   const writeOperationEnabled = !token || admin === true;
+  const deleteNameServerDisabled =
+    !selectedNamesrv || selectedNamesrv === currentNamesrv || namesrvAddrList.length <= 1;
 
   useEffect(() => {
     let cancelled = false;
@@ -53,6 +57,7 @@ const OpsPage: React.FC = () => {
           setUseVIPChannel(data.useVIPChannel);
           setUseTLS(data.useTLS);
           setSelectedNamesrv(data.currentNamesrv);
+          setCurrentNamesrv(data.currentNamesrv);
         }
       } catch {
         if (!cancelled) {
@@ -75,6 +80,18 @@ const OpsPage: React.FC = () => {
     }
     try {
       await updateNameSvrAddr(selectedNamesrv);
+      setCurrentNamesrv(selectedNamesrv);
+      message.success(t('common.success'));
+    } catch {
+      message.error(t('common.failure'));
+    }
+  };
+
+  const handleDeleteNameSvrAddr = async () => {
+    try {
+      await deleteNameSvrAddr(selectedNamesrv);
+      setNamesrvAddrList((addresses) => addresses.filter((addr) => addr !== selectedNamesrv));
+      setSelectedNamesrv(currentNamesrv);
       message.success(t('common.success'));
     } catch {
       message.error(t('common.failure'));
@@ -143,6 +160,24 @@ const OpsPage: React.FC = () => {
             >
               {t('common.update')}
             </Button>
+          )}
+          {writeOperationEnabled && (
+            <Popconfirm
+              title={t('common.areYouSureToDelete')}
+              onConfirm={handleDeleteNameSvrAddr}
+              okText={t('common.confirm')}
+              cancelText={t('common.cancel')}
+              disabled={deleteNameServerDisabled}
+            >
+              <Tooltip title={t('common.delete')}>
+                <Button
+                  danger
+                  aria-label={t('common.delete')}
+                  icon={<Trash size={16} />}
+                  disabled={deleteNameServerDisabled}
+                />
+              </Tooltip>
+            </Popconfirm>
           )}
           {writeOperationEnabled && (
             <Space.Compact>

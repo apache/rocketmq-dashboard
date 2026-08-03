@@ -22,6 +22,7 @@ import {
   queryOpsHomePage,
   updateNameSvrAddr,
   addNameSvrAddr,
+  deleteNameSvrAddr,
   updateIsVIPChannel,
   updateUseTLS,
   listAlertRules,
@@ -82,6 +83,16 @@ describe('Ops API - NameServer operations', () => {
     });
 
     await addNameSvrAddr('10.0.0.2:9876');
+  });
+
+  it('deletes a NameServer address', async () => {
+    mock.onPost('/ops/deleteNameSvrAddr').reply((config) => {
+      const body = JSON.parse(config.data);
+      expect(body.namesrvAddr).toBe('10.0.0.2:9876');
+      return [200, { code: 200 }];
+    });
+
+    await deleteNameSvrAddr('10.0.0.2:9876');
   });
 
   it('updates VIP channel setting', async () => {

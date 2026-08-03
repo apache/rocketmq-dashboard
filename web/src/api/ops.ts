@@ -130,6 +130,10 @@ export async function addNameSvrAddr(namesrvAddr: string): Promise<void> {
   await client.post('/ops/addNameSvrAddr', { namesrvAddr });
 }
 
+export async function deleteNameSvrAddr(namesrvAddr: string): Promise<void> {
+  await client.post('/ops/deleteNameSvrAddr', { namesrvAddr });
+}
+
 export async function updateIsVIPChannel(useVIPChannel: boolean): Promise<void> {
   await client.post('/ops/updateIsVIPChannel', { useVIPChannel });
 }
