@@ -113,6 +113,50 @@ const formatDelay = (totalSeconds: number): string => {
   return parts.length > 0 ? parts.join('') : '0秒';
 };
 
+const GROUP_EXPORT_COLUMNS: Array<{ header: string; value: (group: ConsumerGroup) => unknown }> = [
+  { header: 'Name', value: (group) => group.name },
+  { header: 'Namespace', value: (group) => group.namespace },
+  { header: 'Cluster ID', value: (group) => group.clusterId },
+  { header: 'Subscription Mode', value: (group) => group.subscriptionMode },
+  { header: 'Consume Type', value: (group) => group.consumeType },
+  { header: 'Online Instances', value: (group) => group.onlineInstances },
+  { header: 'Total Lag', value: (group) => group.totalLag },
+  { header: 'Delay Seconds', value: (group) => group.delaySeconds },
+  { header: 'Subscription Data Type', value: (group) => group.subscriptionDataType },
+  { header: 'Delivery Order Type', value: (group) => group.deliveryOrderType },
+  { header: 'Retry Max Times', value: (group) => group.retryMaxTimes },
+  { header: 'Subscribed Topics', value: (group) => group.subscribedTopics.join(';') },
+  { header: 'Created At', value: (group) => group.createdAt },
+  { header: 'Updated At', value: (group) => group.updatedAt },
+];
+
+const escapeCsvCell = (value: unknown) => {
+  const text = value == null ? '' : String(value);
+  const formulaSafeText = /^[=+\-@]/.test(text) ? `'${text}` : text;
+  return `"${formulaSafeText.replace(/"/g, '""')}"`;
+};
+
+const buildConsumerGroupCsv = (groups: ConsumerGroup[]) =>
+  [
+    GROUP_EXPORT_COLUMNS.map((column) => escapeCsvCell(column.header)).join(','),
+    ...groups.map((group) =>
+      GROUP_EXPORT_COLUMNS.map((column) => escapeCsvCell(column.value(group))).join(','),
+    ),
+  ].join('\n');
+
+const downloadCsv = (filename: string, csv: string) => {
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.style.display = 'none';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+};
+
 const normalizedConsistency = (value?: string | null): string => value?.trim().toLowerCase() ?? '';
 
 const isConsistentValue = (value?: string | null): boolean =>
@@ -659,7 +703,13 @@ const ConsumerPage = () => {
           </Button>
           <Button
             icon={<ExportOutlined />}
-            onClick={() => message.success(`已导出 ${filtered.length} 个 Group`)}
+            onClick={() => {
+              downloadCsv(
+                `rocketmq-consumer-groups-${new Date().toISOString().slice(0, 10)}.csv`,
+                buildConsumerGroupCsv(filtered),
+              );
+              message.success(`已导出 ${filtered.length} 个 Group`);
+            }}
           >
             导出
           </Button>
