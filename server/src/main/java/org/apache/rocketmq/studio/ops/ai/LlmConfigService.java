@@ -277,6 +277,9 @@ public class LlmConfigService {
 
     private String normalizeProvider(String provider) {
         String normalized = defaultString(provider, DEFAULT_PROVIDER).toLowerCase(Locale.ROOT);
+        if ("qwen".equals(normalized)) {
+            return "tongyi";
+        }
         return PROVIDER_MODELS.containsKey(normalized) ? normalized : DEFAULT_PROVIDER;
     }
 

@@ -212,7 +212,7 @@ const GeneralSettingsTab = () => {
             { value: 'openai', label: 'OpenAI' },
             { value: 'azure', label: 'Azure OpenAI' },
             { value: 'ollama', label: 'Ollama' },
-            { value: 'qwen', label: '通义千问' },
+            { value: 'tongyi', label: '通义千问' },
           ]}
         />
       </Form.Item>
