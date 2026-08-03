@@ -66,8 +66,7 @@ interface FormValues {
 // ─── Component ──────────────────────────────────────────────────
 const SslSettingsPage = () => {
   const [form] = Form.useForm<FormValues>();
-  const [loading, setLoading] = useState(false);
-  const [sslConfig, setSslConfig] = useState<SslConfig>({
+  const [sslConfig] = useState<SslConfig>({
     enabled: false,
     protocol: 'TLSv1.3',
     keyStoreType: 'JKS',
@@ -85,13 +84,8 @@ const SslSettingsPage = () => {
   const { t } = useLang();
   const { message } = App.useApp();
 
-  const handleSave = (values: FormValues) => {
-    setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      message.success(t('ssl.saveSuccess'));
-      setSslConfig({ ...sslConfig, ...values });
-    }, 1000);
+  const handleSave = () => {
+    message.error(t('ssl.saveUnavailable'));
   };
 
   const uploadProps = {
@@ -276,7 +270,7 @@ const SslSettingsPage = () => {
 
           <Form.Item>
             <Space>
-              <Button type="primary" htmlType="submit" loading={loading}>
+              <Button type="primary" htmlType="submit">
                 {t('ssl.save')}
               </Button>
               <Button onClick={() => form.setFieldsValue(sslConfig)}>{t('common.reset')}</Button>

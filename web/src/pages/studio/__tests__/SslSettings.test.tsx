@@ -124,6 +124,26 @@ describe('SslSettings Page', () => {
     expect(screen.getByRole('button', { name: /重\s*置/ })).toBeInTheDocument();
   });
 
+  it('does not persist SSL changes when the backend API is unavailable', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<SslSettings />);
+
+    const switchEl = screen.getByRole('switch');
+    await user.click(switchEl);
+    await user.type(screen.getByLabelText('KeyStore 路径'), '/etc/rocketmq/keystore.jks');
+    await user.type(screen.getByLabelText('KeyStore 密码'), 'changeit');
+
+    await user.click(screen.getByRole('button', { name: /保\s*存/ }));
+
+    expect(await screen.findByText('SSL 配置保存功能尚未接入真实后端接口')).toBeInTheDocument();
+    expect(screen.queryByText('SSL 配置保存成功')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /重\s*置/ }));
+
+    expect(switchEl).not.toBeChecked();
+    expect(screen.queryByText('KeyStore 配置')).not.toBeInTheDocument();
+  });
+
   it('should show TrustStore fields when client authentication is required', async () => {
     const user = userEvent.setup();
     renderWithProviders(<SslSettings />);
