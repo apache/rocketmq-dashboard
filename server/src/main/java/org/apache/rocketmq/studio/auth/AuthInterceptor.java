@@ -50,11 +50,25 @@ public class AuthInterceptor implements HandlerInterceptor {
     }
 
     private boolean isPublicPath(String path) {
+        path = normalizePath(path);
         return path.equals("/api/auth/login")
                 || path.equals("/api/auth/status")
                 || path.startsWith("/api-docs")
                 || path.startsWith("/swagger-ui")
                 || path.startsWith("/actuator/health");
+    }
+
+    private String normalizePath(String path) {
+        if (path == null || path.isBlank()) {
+            return "";
+        }
+        if (path.equals("/")) {
+            return path;
+        }
+        while (path.endsWith("/")) {
+            path = path.substring(0, path.length() - 1);
+        }
+        return path;
     }
 
     private String requestPath(HttpServletRequest request) {

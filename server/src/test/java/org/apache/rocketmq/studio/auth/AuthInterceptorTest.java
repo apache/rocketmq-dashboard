@@ -90,11 +90,35 @@ class AuthInterceptorTest {
     }
 
     @Test
+    void shouldAllowLoginEndpointWithTrailingSlashWhenLoginIsEnabled() throws Exception {
+        AuthProperties properties = new AuthProperties();
+        properties.setLoginRequired(true);
+        AuthInterceptor interceptor = new AuthInterceptor(properties, new AuthService(properties));
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/auth/login/");
+
+        boolean allowed = interceptor.preHandle(request, new MockHttpServletResponse(), new Object());
+
+        assertThat(allowed).isTrue();
+    }
+
+    @Test
     void shouldAllowAuthStatusEndpointWhenLoginIsEnabled() throws Exception {
         AuthProperties properties = new AuthProperties();
         properties.setLoginRequired(true);
         AuthInterceptor interceptor = new AuthInterceptor(properties, new AuthService(properties));
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/auth/status");
+
+        boolean allowed = interceptor.preHandle(request, new MockHttpServletResponse(), new Object());
+
+        assertThat(allowed).isTrue();
+    }
+
+    @Test
+    void shouldAllowAuthStatusEndpointWithTrailingSlashWhenLoginIsEnabled() throws Exception {
+        AuthProperties properties = new AuthProperties();
+        properties.setLoginRequired(true);
+        AuthInterceptor interceptor = new AuthInterceptor(properties, new AuthService(properties));
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/auth/status/");
 
         boolean allowed = interceptor.preHandle(request, new MockHttpServletResponse(), new Object());
 
