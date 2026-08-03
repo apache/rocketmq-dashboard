@@ -22,6 +22,7 @@ describe('navigation search helpers', () => {
   const entries = [
     { key: '/cluster', label: 'RocketMQ 集群' },
     { key: '/settings', label: 'Settings' },
+    { key: '/ops/system-alerts', label: 'Alert Events' },
   ];
 
   it('filters labels case-insensitively and ignores query whitespace', () => {
@@ -32,6 +33,27 @@ describe('navigation search helpers', () => {
   it('filters by route keys case-insensitively', () => {
     expect(filterNavigationEntries(entries, 'CLUSTER')).toEqual([entries[0]]);
     expect(filterNavigationEntries(entries, '/settings')).toEqual([entries[1]]);
+  });
+
+  it('matches multiple terms across labels and normalized route segments', () => {
+    expect(filterNavigationEntries(entries, 'system alerts')).toEqual([entries[2]]);
+    expect(filterNavigationEntries(entries, 'OPS / SYSTEM')).toEqual([entries[2]]);
+    expect(filterNavigationEntries(entries, 'rocketmq cluster')).toEqual([entries[0]]);
+    expect(filterNavigationEntries(entries, 'system cluster')).toEqual([]);
+  });
+
+  it('ranks exact and prefix matches before broader matches', () => {
+    const rankedEntries = [
+      { key: '/settings/data-sources', label: 'Data Source Settings' },
+      { key: '/settings', label: 'Settings' },
+      { key: '/settings/general', label: 'Settings - General' },
+    ];
+
+    expect(filterNavigationEntries(rankedEntries, 'settings')).toEqual([
+      rankedEntries[1],
+      rankedEntries[2],
+      rankedEntries[0],
+    ]);
   });
 
   it('recognizes Control/Command-K but rejects alternative shortcuts', () => {
