@@ -62,128 +62,9 @@ interface ProxyRecord {
   connections: number;
 }
 
-// ─── Mock Data ──────────────────────────────────────────────────
-const brokerData: BrokerRecord[] = [
-  {
-    key: '1',
-    k8sCluster: 'prod-cn-east-1',
-    brokerName: 'broker-a',
-    status: 'running',
-    version: '5.3.0',
-    diskUsage: 62,
-    address: '10.0.1.10:10911',
-    tpsIn: '12,580',
-    tpsOut: '8,340',
-  },
-  {
-    key: '2',
-    k8sCluster: 'prod-cn-east-1',
-    brokerName: 'broker-b',
-    status: 'readonly',
-    version: '5.3.0',
-    diskUsage: 89,
-    address: '10.0.1.11:10911',
-    tpsIn: '0',
-    tpsOut: '3,120',
-  },
-  {
-    key: '3',
-    k8sCluster: 'prod-cn-east-1',
-    brokerName: 'broker-c',
-    status: 'running',
-    version: '5.2.0',
-    diskUsage: 45,
-    address: '10.0.1.12:10911',
-    tpsIn: '9,750',
-    tpsOut: '6,280',
-  },
-  {
-    key: '4',
-    k8sCluster: 'prod-cn-south-1',
-    brokerName: 'broker-d',
-    status: 'maintenance',
-    version: '5.3.0',
-    diskUsage: 33,
-    address: '10.0.2.10:10911',
-    tpsIn: '0',
-    tpsOut: '0',
-  },
-  {
-    key: '5',
-    k8sCluster: 'prod-cn-south-1',
-    brokerName: 'broker-e',
-    status: 'running',
-    version: '5.3.0',
-    diskUsage: 51,
-    address: '10.0.2.11:10911',
-    tpsIn: '7,890',
-    tpsOut: '5,430',
-  },
-  {
-    key: '6',
-    k8sCluster: 'staging-cn-east-1',
-    brokerName: 'broker-staging-a',
-    status: 'running',
-    version: '5.3.1',
-    diskUsage: 28,
-    address: '10.0.10.10:10911',
-    tpsIn: '1,230',
-    tpsOut: '980',
-  },
-];
-
-const nameServerData: NameServerRecord[] = [
-  {
-    key: '1',
-    k8sCluster: 'prod-cn-east-1',
-    name: 'nameserver-a',
-    status: 'running',
-    version: '5.3.0',
-    address: '10.0.1.20:9876',
-    connections: 156,
-  },
-  {
-    key: '2',
-    k8sCluster: 'prod-cn-east-1',
-    name: 'nameserver-b',
-    status: 'running',
-    version: '5.3.0',
-    address: '10.0.1.21:9876',
-    connections: 148,
-  },
-  {
-    key: '3',
-    k8sCluster: 'prod-cn-south-1',
-    name: 'nameserver-c',
-    status: 'running',
-    version: '5.3.0',
-    address: '10.0.2.20:9876',
-    connections: 92,
-  },
-];
-
-const proxyData: ProxyRecord[] = [
-  {
-    key: '1',
-    k8sCluster: 'prod-cn-east-1',
-    name: 'proxy-a',
-    status: 'running',
-    version: '5.3.0',
-    address: '10.0.1.30:8080',
-    grpcPort: '10.0.1.30:8081',
-    connections: 2340,
-  },
-  {
-    key: '2',
-    k8sCluster: 'prod-cn-south-1',
-    name: 'proxy-b',
-    status: 'running',
-    version: '5.3.0',
-    address: '10.0.2.30:8080',
-    grpcPort: '10.0.2.30:8081',
-    connections: 1560,
-  },
-];
+const brokerData: BrokerRecord[] = [];
+const nameServerData: NameServerRecord[] = [];
+const proxyData: ProxyRecord[] = [];
 
 // ─── Component ──────────────────────────────────────────────────
 const BrokerClusterPage = () => {
@@ -499,6 +380,7 @@ const BrokerClusterPage = () => {
                 <Table
                   columns={nsColumns}
                   dataSource={nameServerData}
+                  locale={{ emptyText: t('brokerCluster.providerUnavailable') }}
                   pagination={false}
                   size="middle"
                 />
@@ -516,6 +398,7 @@ const BrokerClusterPage = () => {
                 <Table
                   columns={brokerColumns}
                   dataSource={brokerData}
+                  locale={{ emptyText: t('brokerCluster.providerUnavailable') }}
                   pagination={{
                     pageSize: 10,
                     showTotal: (total) => `${t('common.total')} ${total} Broker`,
@@ -536,6 +419,7 @@ const BrokerClusterPage = () => {
                 <Table
                   columns={proxyColumns}
                   dataSource={proxyData}
+                  locale={{ emptyText: t('brokerCluster.providerUnavailable') }}
                   pagination={false}
                   size="middle"
                 />

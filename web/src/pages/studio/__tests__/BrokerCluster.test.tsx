@@ -69,19 +69,17 @@ describe('BrokerCluster Page', () => {
     expect(screen.getByText('重置')).toBeInTheDocument();
   });
 
-  it('should display broker tab with mock data', () => {
+  it('should show an explicit unavailable state instead of mock broker data', () => {
     renderWithProviders(<BrokerCluster />);
-    // Default tab is broker - check for mock broker data
-    expect(screen.getByText('broker-a')).toBeInTheDocument();
-    expect(screen.getByText('broker-b')).toBeInTheDocument();
+    expect(screen.getByText('当前版本尚未接入真实集群拓扑接口，已停止展示模拟 Broker / NameServer / Proxy 数据。')).toBeInTheDocument();
+    expect(screen.queryByText('broker-a')).not.toBeInTheDocument();
+    expect(screen.queryByText('broker-b')).not.toBeInTheDocument();
   });
 
-  it('should display broker status tags', () => {
+  it('should not render row status tags without real broker data', () => {
     renderWithProviders(<BrokerCluster />);
-    const runningTags = screen.getAllByText('运行中');
-    expect(runningTags.length).toBeGreaterThan(0);
-    const readonlyTags = screen.getAllByText('只读');
-    expect(readonlyTags.length).toBeGreaterThan(0);
+    expect(screen.queryByText('运行中')).not.toBeInTheDocument();
+    expect(screen.queryByText('只读')).not.toBeInTheDocument();
   });
 
   it('should switch to NameServer tab on click', async () => {
@@ -89,8 +87,10 @@ describe('BrokerCluster Page', () => {
     renderWithProviders(<BrokerCluster />);
     const nsTab = screen.getByText('NameServer 管理');
     await user.click(nsTab);
-    // After clicking, NameServer data should be visible
-    expect(screen.getByText('nameserver-a')).toBeInTheDocument();
+    expect(
+      screen.getAllByText('当前版本尚未接入真实集群拓扑接口，已停止展示模拟 Broker / NameServer / Proxy 数据。').length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText('nameserver-a')).not.toBeInTheDocument();
   });
 
   it('should switch to Proxy tab on click', async () => {
@@ -98,15 +98,15 @@ describe('BrokerCluster Page', () => {
     renderWithProviders(<BrokerCluster />);
     const proxyTab = screen.getByText('Proxy 管理');
     await user.click(proxyTab);
-    // After clicking, Proxy data should be visible
-    expect(screen.getByText('proxy-a')).toBeInTheDocument();
+    expect(
+      screen.getAllByText('当前版本尚未接入真实集群拓扑接口，已停止展示模拟 Broker / NameServer / Proxy 数据。').length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText('proxy-a')).not.toBeInTheDocument();
   });
 
-  it('should render config and restart action buttons', () => {
+  it('should not render row action buttons without real infrastructure data', () => {
     renderWithProviders(<BrokerCluster />);
-    const configButtons = screen.getAllByText('配置');
-    expect(configButtons.length).toBeGreaterThan(0);
-    const restartButtons = screen.getAllByText('重启');
-    expect(restartButtons.length).toBeGreaterThan(0);
+    expect(screen.queryByText('配置')).not.toBeInTheDocument();
+    expect(screen.queryByText('重启')).not.toBeInTheDocument();
   });
 });
