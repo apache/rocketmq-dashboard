@@ -32,8 +32,10 @@ import {
   Input,
   Space,
   Flex,
+  Dropdown,
   message,
 } from 'antd';
+import type { MenuProps } from 'antd';
 import {
   SearchOutlined,
   ReloadOutlined,
@@ -42,13 +44,15 @@ import {
   NodeIndexOutlined,
   CheckCircleOutlined,
   DownloadOutlined,
+  HistoryOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
-import type { MessageRecord, TraceRecord } from '../../api/message';
+import type { MessageQuery, MessageRecord, TraceRecord } from '../../api/message';
 import { getMessageTrace, queryMessages } from '../../services/messageService';
 
 const { Paragraph, Text } = Typography;
@@ -57,6 +61,14 @@ const { RangePicker } = DatePicker;
 /* ─── Constants ─── */
 
 type QueryMode = 'topic' | 'key' | 'msgid';
+
+type RecentQuery = {
+  mode: QueryMode;
+  params: MessageQuery;
+};
+
+const QUERY_HISTORY_STORAGE_KEY = 'rocketmq-studio-message-query-history';
+const MAX_QUERY_HISTORY = 5;
 
 const QUERY_OPTIONS = [
   { value: 'topic' as const, label: '按 Topic 查询' },
@@ -111,6 +123,58 @@ const formatBody = (body: string): string => {
   }
 };
 
+const isQueryMode = (value: unknown): value is QueryMode =>
+  value === 'topic' || value === 'key' || value === 'msgid';
+
+const isOptionalString = (value: unknown): value is string | undefined =>
+  value === undefined || typeof value === 'string';
+
+const isOptionalTimestamp = (value: unknown): value is number | undefined =>
+  value === undefined || (typeof value === 'number' && Number.isFinite(value));
+
+const isMessageQuery = (value: unknown): value is MessageQuery => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const params = value as MessageQuery;
+  return (
+    isOptionalString(params.topic) &&
+    isOptionalString(params.tag) &&
+    isOptionalString(params.key) &&
+    isOptionalString(params.msgId) &&
+    isOptionalTimestamp(params.startTime) &&
+    isOptionalTimestamp(params.endTime)
+  );
+};
+
+const loadRecentQueries = (): RecentQuery[] => {
+  try {
+    const stored = localStorage.getItem(QUERY_HISTORY_STORAGE_KEY);
+    if (!stored) return [];
+    const parsed: unknown = JSON.parse(stored);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (item): item is RecentQuery =>
+          typeof item === 'object' &&
+          item !== null &&
+          isQueryMode((item as RecentQuery).mode) &&
+          isMessageQuery((item as RecentQuery).params),
+      )
+      .slice(0, MAX_QUERY_HISTORY);
+  } catch {
+    return [];
+  }
+};
+
+const querySignature = (query: RecentQuery): string => JSON.stringify(query);
+
+const queryLabel = ({ mode, params }: RecentQuery): string => {
+  if (mode === 'msgid') return `Message ID: ${params.msgId || '全部'}`;
+  if (mode === 'key') {
+    return `Key: ${params.key || '全部'}${params.topic ? ` · Topic: ${params.topic}` : ''}`;
+  }
+  return `Topic: ${params.topic || '全部'}${params.tag ? ` · Tag: ${params.tag}` : ''}`;
+};
+
 /* ═══════════════════════════════════════════
    MessagePage
    ═══════════════════════════════════════════ */
@@ -129,6 +193,7 @@ const MessagePage = () => {
   const [selectedMsg, setSelectedMsg] = useState<MessageRecord | null>(null);
   const [traceData, setTraceData] = useState<TraceRecord | null>(null);
   const [traceLoading, setTraceLoading] = useState(false);
+  const [recentQueries, setRecentQueries] = useState<RecentQuery[]>(loadRecentQueries);
   const queryGenerationRef = useRef(0);
   const traceGenerationRef = useRef(0);
 
@@ -152,10 +217,46 @@ const MessagePage = () => {
     setQueryLoading(false);
   };
 
-  const handleQuery = async () => {
+  const saveRecentQuery = (mode: QueryMode, params: MessageQuery) => {
+    const nextQuery = { mode, params };
+    const signature = querySignature(nextQuery);
+    setRecentQueries((current) => {
+      const next = [
+        nextQuery,
+        ...current.filter((item) => querySignature(item) !== signature),
+      ].slice(0, MAX_QUERY_HISTORY);
+      try {
+        localStorage.setItem(QUERY_HISTORY_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // Query history remains available for the current session when storage is unavailable.
+      }
+      return next;
+    });
+  };
+
+  const executeQuery = async (mode: QueryMode, params: MessageQuery) => {
     const requestGeneration = queryGenerationRef.current + 1;
     queryGenerationRef.current = requestGeneration;
-    const params =
+    setQueryLoading(true);
+    try {
+      const result = await queryMessages(params);
+      if (queryGenerationRef.current !== requestGeneration) return;
+      setMessages(result);
+      saveRecentQuery(mode, params);
+      message.success(`查询完成，共 ${result.length} 条`);
+    } catch {
+      if (queryGenerationRef.current === requestGeneration) {
+        message.error('消息查询失败，请稍后重试');
+      }
+    } finally {
+      if (queryGenerationRef.current === requestGeneration) {
+        setQueryLoading(false);
+      }
+    }
+  };
+
+  const handleQuery = async () => {
+    const params: MessageQuery =
       queryMode === 'topic'
         ? {
             topic: selectedTopic,
@@ -167,21 +268,63 @@ const MessagePage = () => {
           ? { topic: selectedTopic, key: keyInput || undefined }
           : { msgId: msgIdInput || undefined };
 
-    setQueryLoading(true);
-    try {
-      const result = await queryMessages(params);
-      if (queryGenerationRef.current !== requestGeneration) return;
-      setMessages(result);
-      message.success(`查询完成，共 ${result.length} 条`);
-    } catch {
-      if (queryGenerationRef.current === requestGeneration) {
-        message.error('消息查询失败，请稍后重试');
-      }
-    } finally {
-      if (queryGenerationRef.current === requestGeneration) {
-        setQueryLoading(false);
-      }
+    await executeQuery(queryMode, params);
+  };
+
+  const replayRecentQuery = (recentQuery: RecentQuery) => {
+    const { mode, params } = recentQuery;
+    setQueryMode(mode);
+    setSelectedTopic(params.topic);
+    setTagInput(params.tag || '');
+    setKeyInput(params.key || '');
+    setMsgIdInput(params.msgId || '');
+    if (mode === 'topic' && params.startTime !== undefined && params.endTime !== undefined) {
+      setDateRange([dayjs(params.startTime), dayjs(params.endTime)]);
     }
+    void executeQuery(mode, params);
+  };
+
+  const clearRecentQueries = () => {
+    setRecentQueries([]);
+    try {
+      localStorage.removeItem(QUERY_HISTORY_STORAGE_KEY);
+    } catch {
+      // Ignore storage failures after clearing the in-memory history.
+    }
+  };
+
+  const recentQueryMenuItems: MenuProps['items'] = [
+    ...recentQueries.map((recentQuery, index) => {
+      const label = queryLabel(recentQuery);
+      return {
+        key: String(index),
+        label: (
+          <Text ellipsis={{ tooltip: label }} style={{ maxWidth: 360 }}>
+            {label}
+          </Text>
+        ),
+      };
+    }),
+    ...(recentQueries.length > 0
+      ? [
+          { type: 'divider' as const },
+          {
+            key: 'clear',
+            danger: true,
+            icon: <DeleteOutlined />,
+            label: '清空历史',
+          },
+        ]
+      : []),
+  ];
+
+  const handleRecentQueryMenuClick: MenuProps['onClick'] = ({ key }) => {
+    if (key === 'clear') {
+      clearRecentQueries();
+      return;
+    }
+    const recentQuery = recentQueries[Number(key)];
+    if (recentQuery) replayRecentQuery(recentQuery);
   };
 
   const handleResend = () => {
@@ -570,6 +713,15 @@ const MessagePage = () => {
             >
               查询
             </Button>
+            <Dropdown
+              menu={{ items: recentQueryMenuItems, onClick: handleRecentQueryMenuClick }}
+              trigger={['click']}
+              disabled={recentQueries.length === 0}
+            >
+              <Button icon={<HistoryOutlined />} disabled={recentQueries.length === 0}>
+                最近查询
+              </Button>
+            </Dropdown>
             <Button icon={<ReloadOutlined />} onClick={handleReset}>
               重置
             </Button>
