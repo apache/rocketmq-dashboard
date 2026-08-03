@@ -18,7 +18,7 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { App } from 'antd';
+import { App, message } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
 import type { Topic } from '../../../api/metadata';
 import TopicPage from '../topic';
@@ -143,5 +143,29 @@ describe('TopicPage', () => {
     expect(screen.queryByText('topic-03')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /删除 \(1\)$/ })).toBeInTheDocument();
     expect(screen.getByText('已删除 2 个 Topic，1 个删除失败')).toBeInTheDocument();
+  });
+
+  it('shows an error when sending a test message fails', async () => {
+    const user = userEvent.setup();
+    const errorSpy = vi.spyOn(message, 'error').mockImplementation(vi.fn());
+    topicServiceMocks.listTopics.mockResolvedValue(buildTopics(1));
+    topicServiceMocks.sendTopicMessage.mockRejectedValue(new Error('send failed'));
+
+    renderWithProviders();
+
+    expect(await screen.findByText('topic-01')).toBeInTheDocument();
+    const row = within(getTableBody()).getByText('topic-01').closest('tr');
+    expect(row).not.toBeNull();
+    await user.click(within(row as HTMLElement).getByRole('button', { name: /发送/ }));
+    const dialogTitle = await screen.findByText('发送消息到 topic-01');
+    const dialog = dialogTitle.closest('[role="dialog"]') as HTMLElement;
+    expect(dialog).not.toBeNull();
+    await user.type(within(dialog).getByLabelText('消息体 Body'), 'test message');
+    await user.click(within(dialog).getByRole('button', { name: /^发\s*送$/ }));
+
+    await waitFor(() => expect(topicServiceMocks.sendTopicMessage).toHaveBeenCalledTimes(1));
+    expect(errorSpy).toHaveBeenCalledWith('发送测试消息失败，请稍后重试');
+    expect(dialogTitle).toBeInTheDocument();
+    errorSpy.mockRestore();
   });
 });

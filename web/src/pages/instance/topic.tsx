@@ -211,6 +211,14 @@ const formatDateTime = (iso: string): string => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 };
 
+type SendMessageFormValues = {
+  topic: string;
+  tag?: string;
+  key?: string;
+  body: string;
+  properties?: Array<{ key?: string; value?: string }>;
+};
+
 // ═══════════════════════════════════════════════════════════════════
 const TopicPage = () => {
   const { t } = useLang();
@@ -612,16 +620,19 @@ const TopicPage = () => {
 
   // ─── Send message modal submit ────────────────────────────────
   const handleSend = async () => {
+    let values: SendMessageFormValues;
     try {
-      const values = await sendForm.validateFields();
-      setSending(true);
-      // Build properties from the list
+      values = await sendForm.validateFields();
+    } catch {
+      return;
+    }
+
+    setSending(true);
+    try {
       const props: Record<string, string> = {};
-      if (values.properties && Array.isArray(values.properties)) {
-        values.properties.forEach((p: { key?: string; value?: string }) => {
-          if (p.key) props[p.key] = p.value || '';
-        });
-      }
+      values.properties?.forEach((p: { key?: string; value?: string }) => {
+        if (p.key) props[p.key] = p.value || '';
+      });
       const result = await sendTopicMessage({
         topic: values.topic,
         tag: values.tag || undefined,
@@ -633,7 +644,7 @@ const TopicPage = () => {
       setSendModalOpen(false);
       sendForm.resetFields();
     } catch {
-      // validation error, do nothing
+      message.error('发送测试消息失败，请稍后重试');
     } finally {
       setSending(false);
     }
