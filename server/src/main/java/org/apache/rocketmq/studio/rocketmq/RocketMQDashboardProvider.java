@@ -1,0 +1,280 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.studio.rocketmq;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
+import org.apache.rocketmq.remoting.protocol.body.KVTable;
+import org.apache.rocketmq.remoting.protocol.body.SubscriptionGroupWrapper;
+import org.apache.rocketmq.remoting.protocol.body.TopicList;
+import org.apache.rocketmq.remoting.protocol.route.BrokerData;
+import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
+import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
+import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
+import org.apache.rocketmq.studio.ops.dashboard.ClusterOverviewVO;
+import org.apache.rocketmq.studio.ops.dashboard.DashboardDataVO;
+import org.apache.rocketmq.studio.ops.dashboard.DashboardProvider;
+import org.apache.rocketmq.studio.ops.dashboard.DashboardStatsVO;
+import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Primary;
+import org.springframework.lang.Nullable;
+import org.springframework.stereotype.Service;
+
+@Service
+@Primary
+public class RocketMQDashboardProvider implements DashboardProvider {
+
+    private static final Logger log = LoggerFactory.getLogger(RocketMQDashboardProvider.class);
+
+    private static final Set<String> SYSTEM_TOPIC_PREFIXES = Set.of(
+            "rmq_sys_", "SCHEDULE_TOPIC_", "RMQ_SYS_", "broker_", "%RETRY%", "%DLQ%",
+            "TBW102", "SELF_TEST_TOPIC", "BenchmarkTest", "OFFSET_MOVED_EVENT",
+            "DefaultCluster", "broker-a", "broker-b"
+    );
+
+    private final DefaultMQAdminExt adminExt;
+
+    public RocketMQDashboardProvider(@Nullable DefaultMQAdminExt adminExt) {
+        this.adminExt = adminExt;
+    }
+
+    @Override
+    public DashboardDataVO getDashboardData() {
+        if (adminExt == null) {
+            log.warn("DefaultMQAdminExt not available, returning empty dashboard");
+            return emptyDashboard();
+        }
+
+        int totalClusters = 0;
+        int totalBrokers = 0;
+        int totalTopics = 0;
+        int totalGroups = 0;
+        long tpsIn = 0;
+        long tpsOut = 0;
+        long messagesToday = 0;
+        List<ClusterOverviewVO> clusters = new ArrayList<>();
+
+        try {
+            ClusterInfo clusterInfo = adminExt.examineBrokerClusterInfo();
+            Map<String, Set<String>> clusterAddrTable = clusterInfo.getClusterAddrTable();
+            Map<String, BrokerData> brokerAddrTable = clusterInfo.getBrokerAddrTable();
+
+            totalClusters = clusterAddrTable.size();
+            totalBrokers = brokerAddrTable.size();
+
+            // Collect all unique broker addresses (master only, brokerId=0)
+            Set<String> masterAddrs = new HashSet<>();
+            for (BrokerData brokerData : brokerAddrTable.values()) {
+                String masterAddr = brokerData.getBrokerAddrs().get(0L);
+                if (masterAddr != null) {
+                    masterAddrs.add(masterAddr);
+                }
+            }
+
+            // Count topics
+            try {
+                TopicList topicList = adminExt.fetchAllTopicList();
+                Set<String> topics = topicList.getTopicList();
+                totalTopics = (int) topics.stream()
+                        .filter(t -> !isSystemTopic(t))
+                        .count();
+            } catch (Exception e) {
+                log.warn("Failed to fetch topic list: {}", e.getMessage());
+            }
+
+            // Count subscription groups and collect TPS from each master broker
+            Set<String> allGroups = new HashSet<>();
+            for (String brokerAddr : masterAddrs) {
+                try {
+                    SubscriptionGroupWrapper subscriptionGroupWrapper = adminExt.getAllSubscriptionGroup(brokerAddr, 5000);
+                    if (subscriptionGroupWrapper != null && subscriptionGroupWrapper.getSubscriptionGroupTable() != null) {
+                        for (Map.Entry<String, SubscriptionGroupConfig> entry :
+                                subscriptionGroupWrapper.getSubscriptionGroupTable().entrySet()) {
+                            String groupName = entry.getKey();
+                            if (!isSystemGroup(groupName)) {
+                                allGroups.add(groupName);
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("Failed to get subscription groups from broker {}: {}", brokerAddr, e.getMessage());
+                }
+
+                // Get runtime stats for TPS
+                try {
+                    KVTable runtimeInfo = adminExt.fetchBrokerRuntimeStats(brokerAddr);
+                    if (runtimeInfo != null && runtimeInfo.getTable() != null) {
+                        Map<String, String> table = runtimeInfo.getTable();
+                        tpsIn += parseTps(table.get("putTps"));
+                        tpsOut += parseTps(table.get("getTransferedTps"));
+
+                        String msgPutToday = table.get("msgPutTotalTodayMorning");
+                        if (msgPutToday != null) {
+                            try {
+                                messagesToday += Long.parseLong(msgPutToday.trim());
+                            } catch (NumberFormatException ignored) {
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("Failed to get runtime info from broker {}: {}", brokerAddr, e.getMessage());
+                }
+            }
+            totalGroups = allGroups.size();
+
+            // Build per-cluster overview
+            for (Map.Entry<String, Set<String>> clusterEntry : clusterAddrTable.entrySet()) {
+                String clusterName = clusterEntry.getKey();
+                Set<String> brokerNames = clusterEntry.getValue();
+                int clusterBrokers = 0;
+                int clusterTpsIn = 0;
+                int clusterTpsOut = 0;
+                String version = "unknown";
+
+                for (String brokerName : brokerNames) {
+                    BrokerData brokerData = brokerAddrTable.get(brokerName);
+                    if (brokerData != null) {
+                        clusterBrokers++;
+                        String masterAddr = brokerData.getBrokerAddrs().get(0L);
+                        if (masterAddr != null) {
+                            try {
+                                KVTable rt = adminExt.fetchBrokerRuntimeStats(masterAddr);
+                                if (rt != null && rt.getTable() != null) {
+                                    clusterTpsIn += (int) parseTps(rt.getTable().get("putTps"));
+                                    clusterTpsOut += (int) parseTps(rt.getTable().get("getTransferedTps"));
+                                    String v = rt.getTable().get("brokerVersionDesc");
+                                    if (v != null && !"unknown".equals(version)) {
+                                        version = v;
+                                    }
+                                }
+                            } catch (Exception ignored) {
+                            }
+                        }
+                    }
+                }
+
+                clusters.add(ClusterOverviewVO.builder()
+                        .id(clusterName)
+                        .name(clusterName)
+                        .type(ClusterType.V5_PROXY_CLUSTER)
+                        .status(ClusterStatus.healthy)
+                        .brokers(clusterBrokers)
+                        .proxies(0)
+                        .topics(0)
+                        .groups(0)
+                        .tpsIn(clusterTpsIn)
+                        .tpsOut(clusterTpsOut)
+                        .version(version)
+                        .throughput(List.of())
+                        .build());
+            }
+
+        } catch (Exception e) {
+            log.error("Failed to collect dashboard data from RocketMQ cluster", e);
+            return emptyDashboard();
+        }
+
+        long messagesPerSecond = tpsIn + tpsOut;
+
+        DashboardStatsVO stats = DashboardStatsVO.builder()
+                .totalClusters(totalClusters)
+                .healthyClusters(totalClusters)
+                .totalBrokers(totalBrokers)
+                .totalProxies(0)
+                .totalNameServers(0)
+                .totalTopics(totalTopics)
+                .totalConsumerGroups(totalGroups)
+                .totalMessagesToday(messagesToday)
+                .messagesPerSecond(messagesPerSecond)
+                .tpsIn(tpsIn)
+                .tpsOut(tpsOut)
+                .build();
+
+        return DashboardDataVO.builder()
+                .stats(stats)
+                .clusters(clusters)
+                .build();
+    }
+
+    private DashboardDataVO emptyDashboard() {
+        DashboardStatsVO stats = DashboardStatsVO.builder()
+                .totalClusters(0)
+                .healthyClusters(0)
+                .totalBrokers(0)
+                .totalProxies(0)
+                .totalNameServers(0)
+                .totalTopics(0)
+                .totalConsumerGroups(0)
+                .totalMessagesToday(0)
+                .messagesPerSecond(0)
+                .tpsIn(0)
+                .tpsOut(0)
+                .build();
+        return DashboardDataVO.builder()
+                .stats(stats)
+                .clusters(List.of())
+                .build();
+    }
+
+    /**
+     * Parse TPS value from RocketMQ runtime stats format: "10minAvg 1minAvg 10secAvg"
+     * Returns the 1-minute average (second value) as a long.
+     */
+    private long parseTps(String tpsStr) {
+        if (tpsStr == null || tpsStr.isBlank()) {
+            return 0;
+        }
+        try {
+            String[] parts = tpsStr.trim().split("\\s+");
+            if (parts.length >= 2) {
+                return (long) Double.parseDouble(parts[1]);
+            } else if (parts.length == 1) {
+                return (long) Double.parseDouble(parts[0]);
+            }
+        } catch (NumberFormatException e) {
+            log.debug("Failed to parse TPS value: {}", tpsStr);
+        }
+        return 0;
+    }
+
+    private boolean isSystemTopic(String topic) {
+        for (String prefix : SYSTEM_TOPIC_PREFIXES) {
+            if (topic.startsWith(prefix) || topic.equals(prefix)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isSystemGroup(String group) {
+        return group.startsWith("CID_RMQ_SYS_")
+                || group.startsWith("rmq_sys_")
+                || group.equals("TOOLS_CONSUMER")
+                || group.equals("FILTERSRV_CONSUMER")
+                || group.equals("CID_ONSAPI_OWNER")
+                || group.equals("CID_ONSAPI_PERMISSION")
+                || group.equals("CID_ONSAPI_PULL")
+                || group.startsWith("SELF_TEST_");
+    }
+}

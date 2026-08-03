@@ -14,23 +14,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.rocketmq.studio.rocketmq;
 
-package org.apache.rocketmq.studio.ops.dashboard;
+import lombok.Data;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 
-import org.apache.rocketmq.studio.common.exception.BusinessException;
-import lombok.extern.slf4j.Slf4j;
-
-/**
- * Fails explicitly when no real dashboard provider is configured (trunk #699).
- *
- * <p>Not registered as a Spring bean: {@code RocketMQDashboardProvider} serves live data.
- */
-@Slf4j
-public class DashboardProviderStub implements DashboardProvider {
-
-    @Override
-    public DashboardDataVO getDashboardData() {
-        log.warn("DashboardProviderStub.getDashboardData called without a real dashboard provider");
-        throw new BusinessException(501, "Dashboard provider is not configured");
-    }
+@Data
+@ConfigurationProperties(prefix = "studio.rocketmq")
+public class RocketMQProperties {
+    private String namesrvAddr;
 }

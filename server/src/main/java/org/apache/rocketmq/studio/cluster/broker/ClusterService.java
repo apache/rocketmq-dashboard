@@ -29,11 +29,13 @@ import org.apache.rocketmq.studio.cluster.proxy.RestartProxyDTO;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.studio.common.domain.enums.FlushDiskType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.rocketmq.RocketMQBrokerConfigService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Properties;
 
 @Slf4j
 @Service
@@ -42,16 +44,51 @@ public class ClusterService {
 
     private final ClusterRepository clusterRepository;
     private final ClusterProvider clusterProvider;
+    private final RocketMQBrokerConfigService brokerConfigService;
 
     public List<ClusterVO> listClusters() {
         log.info("Listing all clusters");
+        List<ClusterVO> discovered = clusterProvider.discoverClusters();
+        if (discovered != null && !discovered.isEmpty()) {
+            discovered.forEach(this::enrichWithLiveConfig);
+            return discovered;
+        }
         return clusterRepository.findAll();
     }
 
     public ClusterVO getCluster(String id) {
         log.info("Getting cluster detail: {}", id);
+        ClusterVO live = clusterProvider.refreshClusterDetail(id);
+        if (live != null) {
+            enrichWithLiveConfig(live);
+            return live;
+        }
         return clusterRepository.findById(id)
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + id));
+    }
+
+    /**
+     * Attach live broker configuration (read from the first reachable master broker via the
+     * admin API) to a discovered cluster. Falls back to the persisted config, if any, when the
+     * live read is unavailable.
+     */
+    private void enrichWithLiveConfig(ClusterVO cluster) {
+        if (cluster.getBrokers() != null) {
+            for (BrokerVO broker : cluster.getBrokers()) {
+                if (broker.getAddr() != null && !broker.getAddr().isEmpty()) {
+                    try {
+                        cluster.setConfig(brokerConfigService.getBrokerConfig(broker.getAddr()));
+                        return;
+                    } catch (Exception e) {
+                        log.warn("Failed to read live config from broker {}: {}",
+                                broker.getAddr(), e.getMessage());
+                    }
+                }
+            }
+        }
+        if (cluster.getConfig() == null && cluster.getId() != null) {
+            clusterRepository.findById(cluster.getId()).ifPresent(stored -> cluster.setConfig(stored.getConfig()));
+        }
     }
 
     public ClusterVO updateClusterConfig(UpdateConfigDTO command) {
@@ -86,6 +123,16 @@ public class ClusterService {
             config.setBrokerPermission(command.getBrokerPermission());
         }
 
+        // Push config to live brokers via admin API
+        if (cluster.getBrokers() != null && !cluster.getBrokers().isEmpty()) {
+            Properties brokerProps = buildBrokerProperties(command);
+            for (BrokerVO broker : cluster.getBrokers()) {
+                if (broker.getAddr() != null && !broker.getAddr().isEmpty()) {
+                    brokerConfigService.updateBrokerConfig(broker.getAddr(), command.getId(), brokerProps);
+                }
+            }
+        }
+
         clusterRepository.updateConfig(command.getId(), config);
         cluster.setConfig(config);
         log.info("Cluster config updated successfully for: {}", command.getId());
@@ -108,6 +155,35 @@ public class ClusterService {
                 .flushDiskType(config.getFlushDiskType())
                 .brokerPermission(config.getBrokerPermission())
                 .build();
+    }
+
+    private Properties buildBrokerProperties(UpdateConfigDTO command) {
+        Properties props = new Properties();
+        if (command.getFlushDiskType() != null) {
+            props.setProperty("flushDiskType", command.getFlushDiskType());
+        }
+        if (command.getAutoCreateTopicEnable() != null) {
+            props.setProperty("autoCreateTopicEnable", command.getAutoCreateTopicEnable().toString());
+        }
+        if (command.getAutoCreateSubscriptionGroup() != null) {
+            props.setProperty("autoCreateSubscriptionGroup", command.getAutoCreateSubscriptionGroup().toString());
+        }
+        if (command.getMaxMessageSize() != null) {
+            props.setProperty("maxMessageSize", command.getMaxMessageSize().toString());
+        }
+        if (command.getFileReservedTime() != null) {
+            props.setProperty("fileReservedTime", command.getFileReservedTime().toString());
+        }
+        if (command.getWriteQueueNums() != null) {
+            props.setProperty("defaultTopicQueueNums", command.getWriteQueueNums().toString());
+        }
+        if (command.getReadQueueNums() != null) {
+            props.setProperty("defaultTopicQueueNums", command.getReadQueueNums().toString());
+        }
+        if (command.getBrokerPermission() != null) {
+            props.setProperty("brokerPermission", command.getBrokerPermission().toString());
+        }
+        return props;
     }
 
     private FlushDiskType parseFlushDiskType(String value) {
