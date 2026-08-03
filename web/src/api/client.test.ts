@@ -119,4 +119,33 @@ describe('API client response contract', () => {
 
     await client.get('/clusters');
   });
+
+  it.each(['/auth/login', '/auth/status'])(
+    'does not clear the current session when public auth request %s returns 401',
+    async (path) => {
+      localStorage.setItem('token', 'current-token');
+      localStorage.setItem('rocketmq-studio-user', 'admin');
+      localStorage.setItem('rocketmq-studio-user-admin', 'true');
+      mock.onAny(path).reply(401, { code: 401, message: 'Unauthorized', data: null });
+
+      await expect(client.get(path)).rejects.toMatchObject({ response: { status: 401 } });
+
+      expect(localStorage.getItem('token')).toBe('current-token');
+      expect(localStorage.getItem('rocketmq-studio-user')).toBe('admin');
+      expect(localStorage.getItem('rocketmq-studio-user-admin')).toBe('true');
+    },
+  );
+
+  it('clears the current session when a protected API request returns 401', async () => {
+    localStorage.setItem('token', 'expired-token');
+    localStorage.setItem('rocketmq-studio-user', 'admin');
+    localStorage.setItem('rocketmq-studio-user-admin', 'true');
+    mock.onGet('/clusters').reply(401, { code: 401, message: 'Unauthorized', data: null });
+
+    await expect(client.get('/clusters')).rejects.toMatchObject({ response: { status: 401 } });
+
+    expect(localStorage.getItem('token')).toBeNull();
+    expect(localStorage.getItem('rocketmq-studio-user')).toBeNull();
+    expect(localStorage.getItem('rocketmq-studio-user-admin')).toBeNull();
+  });
 });

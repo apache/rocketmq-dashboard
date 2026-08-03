@@ -21,6 +21,7 @@ import { clearAuthSession, TOKEN_STORAGE_KEY } from '../stores/authStorage';
 import { API_BASE_URL } from '../config';
 
 const SUCCESS_BUSINESS_CODES = new Set([0, 200]);
+const PUBLIC_AUTH_PATHS = new Set(['/auth/login', '/auth/status']);
 
 interface BusinessResponse {
   code?: unknown;
@@ -42,6 +43,16 @@ function getBusinessError(data: unknown): string | null {
     return null;
   }
   return typeof data.message === 'string' && data.message.trim() ? data.message : '请求失败';
+}
+
+function isPublicAuthRequest(url?: string): boolean {
+  if (!url) return false;
+  const requestPath = new URL(url, window.location.origin).pathname;
+  const apiBasePath = new URL(API_BASE_URL, window.location.origin).pathname;
+  const relativePath = requestPath.startsWith(`${apiBasePath}/`)
+    ? requestPath.slice(apiBasePath.length)
+    : requestPath;
+  return PUBLIC_AUTH_PATHS.has(relativePath);
 }
 
 const client = axios.create({
@@ -72,7 +83,7 @@ client.interceptors.response.use(
     return response;
   },
   (error) => {
-    if (error.response?.status === 401) {
+    if (error.response?.status === 401 && !isPublicAuthRequest(error.config?.url)) {
       clearAuthSession();
       window.location.href = '/';
     }
