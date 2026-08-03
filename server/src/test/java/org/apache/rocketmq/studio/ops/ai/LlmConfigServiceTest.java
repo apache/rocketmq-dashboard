@@ -71,6 +71,28 @@ class LlmConfigServiceTest {
     }
 
     @Test
+    void getConfigShouldNormalizeLegacyQwenProviderToTongyi() {
+        when(settingsService.getGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
+                .theme("dark")
+                .compact(true)
+                .desktopNotify(true)
+                .notifySound(false)
+                .sessionTimeout(45)
+                .requireLogin(true)
+                .llmProvider("qwen")
+                .apiKey("dashscope-key")
+                .model("qwen-plus")
+                .baseUrl("")
+                .build());
+
+        LlmConfigVO config = llmConfigService.getConfig();
+
+        assertThat(config.getProvider()).isEqualTo("tongyi");
+        assertThat(config.getApiBase()).isEqualTo("https://dashscope.aliyuncs.com/compatible-mode/v1");
+        assertThat(config.getModel()).isEqualTo("qwen-plus");
+    }
+
+    @Test
     void configToStringShouldNotExposeApiKey() {
         LlmConfigVO config = LlmConfigVO.builder()
                 .provider("openai")
@@ -153,6 +175,27 @@ class LlmConfigServiceTest {
         assertThat(saved.getModel()).isEqualTo("deepseek-chat");
         assertThat(saved.getBaseUrl()).isEqualTo("https://api.deepseek.com/v1");
         assertThat(llmConfigService.getConfig().getProvider()).isEqualTo("deepseek");
+    }
+
+    @Test
+    void saveConfigShouldNormalizeLegacyQwenProviderToTongyi() {
+        LlmConfigVO config = LlmConfigVO.builder()
+                .provider("qwen")
+                .apiKey("dashscope-key")
+                .model("qwen-plus")
+                .maxTokens(8192)
+                .temperature(0.2)
+                .enabled(true)
+                .build();
+
+        llmConfigService.saveConfig(config);
+
+        ArgumentCaptor<GeneralSettingsVO> captor = ArgumentCaptor.forClass(GeneralSettingsVO.class);
+        verify(settingsService).saveGeneralSettings(captor.capture());
+        GeneralSettingsVO saved = captor.getValue();
+        assertThat(saved.getLlmProvider()).isEqualTo("tongyi");
+        assertThat(saved.getBaseUrl()).isEqualTo("https://dashscope.aliyuncs.com/compatible-mode/v1");
+        assertThat(llmConfigService.getConfig().getProvider()).isEqualTo("tongyi");
     }
 
     @Test

@@ -240,6 +240,9 @@ public class LlmConfigService {
 
     private String normalizeProvider(String provider) {
         String normalized = defaultString(provider, OPENAI).toLowerCase(Locale.ROOT);
+        if ("qwen".equals(normalized)) {
+            return "tongyi";
+        }
         return PROVIDER_MODELS.containsKey(normalized) ? normalized : OPENAI;
     }
 
