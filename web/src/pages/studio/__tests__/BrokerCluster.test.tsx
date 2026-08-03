@@ -62,7 +62,7 @@ const clusterFixture: ClusterInfo[] = [
     version: '5.3.0',
     brokers: [
       {
-        name: 'broker-a',
+        name: 'broker-api-a',
         addr: '10.0.1.10:10911',
         version: '5.3.0',
         status: 'running',
@@ -71,7 +71,7 @@ const clusterFixture: ClusterInfo[] = [
         tpsOut: 8340,
       },
       {
-        name: 'broker-b',
+        name: 'broker-api-b',
         addr: '10.0.1.11:10911',
         version: '5.3.0',
         status: 'readonly',
@@ -89,7 +89,7 @@ const clusterFixture: ClusterInfo[] = [
         remotingPort: 8080,
       },
     ],
-    nameServers: [{ addr: 'nameserver-a', status: 'healthy' }],
+    nameServers: [{ addr: 'nameserver-api-a', status: 'healthy' }],
     config: {
       flushDiskType: 'SYNC_FLUSH',
       autoCreateTopicEnable: false,
@@ -140,14 +140,15 @@ describe('BrokerCluster Page', () => {
   it('should display broker tab with data from the API', async () => {
     renderWithProviders(<BrokerCluster />);
     // Default tab is broker - data is loaded asynchronously from the service
-    const brokerA = await screen.findAllByText('broker-a');
+    const brokerA = await screen.findAllByText('broker-api-a');
     expect(brokerA.length).toBeGreaterThan(0);
-    expect(screen.getAllByText('broker-b').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('broker-api-b').length).toBeGreaterThan(0);
+    expect(screen.queryByText('broker-a')).not.toBeInTheDocument();
   });
 
   it('should display broker status tags', async () => {
     renderWithProviders(<BrokerCluster />);
-    await screen.findAllByText('broker-a');
+    await screen.findAllByText('broker-api-a');
     const runningTags = screen.getAllByText('运行中');
     expect(runningTags.length).toBeGreaterThan(0);
     const readonlyTags = screen.getAllByText('只读');
@@ -157,17 +158,18 @@ describe('BrokerCluster Page', () => {
   it('should switch to NameServer tab on click', async () => {
     const user = userEvent.setup();
     renderWithProviders(<BrokerCluster />);
-    await screen.findByText('broker-a');
+    await screen.findByText('broker-api-a');
     const nsTab = screen.getByText('NameServer 管理');
     await user.click(nsTab);
     // After clicking, NameServer data should be visible (name equals address, so it appears twice)
-    expect(screen.getAllByText('nameserver-a').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('nameserver-api-a').length).toBeGreaterThan(0);
+    expect(screen.queryByText('nameserver-a')).not.toBeInTheDocument();
   });
 
   it('should switch to Proxy tab on click', async () => {
     const user = userEvent.setup();
     renderWithProviders(<BrokerCluster />);
-    await screen.findByText('broker-a');
+    await screen.findByText('broker-api-a');
     const proxyTab = screen.getByText('Proxy 管理');
     await user.click(proxyTab);
     // After clicking, Proxy data should be visible (proxy name equals its address, so it appears twice)
@@ -176,19 +178,21 @@ describe('BrokerCluster Page', () => {
 
   it('should render config and restart action buttons', async () => {
     renderWithProviders(<BrokerCluster />);
-    await screen.findByText('broker-a');
+    await screen.findByText('broker-api-a');
     const configButtons = screen.getAllByText('配置');
     expect(configButtons.length).toBeGreaterThan(0);
     const restartButtons = screen.getAllByText('重启');
     expect(restartButtons.length).toBeGreaterThan(0);
   });
 
-  it('should fall back to mock data when the API fails', async () => {
+  it('should keep topology tables empty when the API fails', async () => {
     vi.mocked(listClusters).mockRejectedValueOnce(new Error('network error'));
     renderWithProviders(<BrokerCluster />);
-    // Initial state holds the mock fallback rows
     await waitFor(() => {
-      expect(screen.getByText('broker-a')).toBeInTheDocument();
+      expect(listClusters).toHaveBeenCalledTimes(1);
     });
+    expect(screen.queryByText('broker-a')).not.toBeInTheDocument();
+    expect(screen.queryByText('nameserver-a')).not.toBeInTheDocument();
+    expect(screen.queryByText('proxy-a')).not.toBeInTheDocument();
   });
 });
