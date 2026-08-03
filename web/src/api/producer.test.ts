@@ -85,6 +85,17 @@ describe('Producer API', () => {
     expect(result[0].clientId).toBe('producer-1');
   });
 
+  it('queries producer connections by topic without a group', async () => {
+    mock.onGet('/producer/connection').reply((config) => {
+      expect(config.params).toEqual({ topic: 'order-events' });
+      expect(config.params).not.toHaveProperty('producerGroup');
+      return [200, { connectionSet: [] }];
+    });
+
+    const result = await queryProducerConnection('order-events');
+    expect(result).toEqual([]);
+  });
+
   it('handles empty producer connections', async () => {
     mock.onGet('/producer/connection').reply(200, { connectionSet: [] });
 
