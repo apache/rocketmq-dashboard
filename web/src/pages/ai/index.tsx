@@ -388,6 +388,7 @@ const AiPage = () => {
   const [modelOptions, setModelOptions] = useState<{ value: string; label: string }[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState('');
+  const [chatMode, setChatMode] = useState('chat');
   const [toolModalOpen, setToolModalOpen] = useState(false);
   const [tools, setTools] = useState<McpTool[]>([]);
   const [toolsLoading, setToolsLoading] = useState(false);
@@ -403,9 +404,12 @@ const AiPage = () => {
   const abortControllerRef = useRef<AbortController | null>(null);
   const conversationIdRef = useRef<string | null>(null);
   const consumedDraftRef = useRef(false);
-  const pendingAutoSendRef = useRef<{ prompt: string; model?: string; enhance?: boolean } | null>(
-    null,
-  );
+  const pendingAutoSendRef = useRef<{
+    prompt: string;
+    model?: string;
+    mode?: string;
+    enhance?: boolean;
+  } | null>(null);
 
   const scrollToBottom = useCallback(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -462,9 +466,13 @@ const AiPage = () => {
             : [{ value: draftModel, label: draftModel }, ...options],
         );
       }
+      if (draft.mode) {
+        setChatMode(draft.mode);
+      }
       pendingAutoSendRef.current = {
         prompt: draft.prompt,
         model: draft.model,
+        mode: draft.mode,
         enhance: draft.enhance,
       };
       navigate('/ai', { replace: true, state: null });
@@ -490,7 +498,12 @@ const AiPage = () => {
   const llmReady = Boolean((llmConfig?.ready ?? llmConfig?.enabled) && selectedModel);
 
   const handleSend = useCallback(
-    async (textOverride?: string, modelOverride?: string, enhance?: boolean) => {
+    async (
+      textOverride?: string,
+      modelOverride?: string,
+      modeOverride?: string,
+      enhance?: boolean,
+    ) => {
       const text = (textOverride ?? inputValue).trim();
       const model = modelOverride ?? selectedModel;
       if (!text || loading) return;
@@ -527,7 +540,7 @@ const AiPage = () => {
         await chatStream(
           {
             message: text,
-            mode: 'chat',
+            mode: modeOverride ?? chatMode,
             model,
             engine: useEngineStore.getState().engine,
             enhance,
@@ -577,7 +590,7 @@ const AiPage = () => {
         setLoading(false);
       }
     },
-    [inputValue, llmReady, loading, selectedModel],
+    [chatMode, inputValue, llmReady, loading, selectedModel],
   );
 
   /* ─── Auto-send the draft from the home page as soon as runtime is ready ─── */
@@ -585,7 +598,7 @@ const AiPage = () => {
     const pending = pendingAutoSendRef.current;
     if (!pending || loading || !llmReady) return;
     pendingAutoSendRef.current = null;
-    void handleSend(pending.prompt, pending.model, pending.enhance);
+    void handleSend(pending.prompt, pending.model, pending.mode, pending.enhance);
   }, [llmReady, loading, handleSend]);
 
   const handleStop = useCallback(() => {

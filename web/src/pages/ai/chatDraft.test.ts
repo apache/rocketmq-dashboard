@@ -19,10 +19,13 @@ import { describe, expect, it } from 'vitest';
 import { getChatDraft } from './chatDraft';
 
 describe('AI chat draft navigation state', () => {
-  it('normalizes a prompt and preserves a selected model', () => {
-    expect(getChatDraft({ prompt: '  检查集群状态  ', model: '  qwen3.7-max  ' })).toEqual({
+  it('normalizes a prompt and preserves selected model and mode', () => {
+    expect(
+      getChatDraft({ prompt: '  检查集群状态  ', model: '  qwen3.7-max  ', mode: ' diagnose ' }),
+    ).toEqual({
       prompt: '检查集群状态',
       model: 'qwen3.7-max',
+      mode: 'diagnose',
     });
   });
 
@@ -34,6 +37,12 @@ describe('AI chat draft navigation state', () => {
 
   it('drops empty model values after normalization', () => {
     expect(getChatDraft({ prompt: '检查集群状态', model: '   ' })).toEqual({
+      prompt: '检查集群状态',
+    });
+  });
+
+  it('drops unsupported mode values after normalization', () => {
+    expect(getChatDraft({ prompt: '检查集群状态', mode: 'unknown' })).toEqual({
       prompt: '检查集群状态',
     });
   });
