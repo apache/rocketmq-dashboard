@@ -20,6 +20,8 @@ package org.apache.rocketmq.studio.cluster.proxy;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -51,6 +53,33 @@ class ProxyAddressServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("newProxyAddr is required")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+    }
+
+    @Test
+    void addProxyAddrShouldAcceptBracketedIpv6Address() {
+        proxyAddressService.addProxyAddr(" [::1]:8081 ");
+
+        ProxyHomeVO home = proxyAddressService.getHomePage();
+        assertThat(home.getProxyAddrList()).containsExactly("127.0.0.1:8081", "[::1]:8081");
+    }
+
+    @Test
+    void addProxyAddrShouldRejectInvalidAddressFormats() {
+        List<String> invalidProxyAddrs = List.of(
+                "10.0.0.1",
+                "10.0.0.1:abc",
+                "10.0.0.1:0",
+                "10.0.0.1:65536",
+                "http://10.0.0.1:8081",
+                "10.0.0.1:8081/path"
+        );
+
+        for (String invalidProxyAddr : invalidProxyAddrs) {
+            assertThatThrownBy(() -> proxyAddressService.addProxyAddr(invalidProxyAddr))
+                    .as("invalid proxy address %s", invalidProxyAddr)
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        }
     }
 
     @Test
