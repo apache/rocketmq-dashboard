@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.cluster.broker;
 
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigVO;
 import org.apache.rocketmq.studio.cluster.config.UpdateConfigDTO;
+import org.apache.rocketmq.studio.cluster.nameserver.CreateNameServerDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.DeleteNameServerDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.NameServerVO;
 import org.apache.rocketmq.studio.cluster.nameserver.RestartNameServerDTO;
@@ -50,6 +51,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -372,6 +374,32 @@ class ClusterServiceTest {
         assertThat(clusterService.restartNameServer(restart)).isTrue();
         assertThat(clusterService.upgradeNameServer(upgrade)).isTrue();
         assertThat(clusterService.deleteNameServer(delete)).isTrue();
+    }
+
+    @Test
+    void nameServerOperationsShouldRejectNullCommand() {
+        assertThatThrownBy(() -> clusterService.createNameServer((CreateNameServerDTO) null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("NameServer request is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        assertThatThrownBy(() -> clusterService.updateNameServer(null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("NameServer request is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        assertThatThrownBy(() -> clusterService.restartNameServer(null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("NameServer request is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        assertThatThrownBy(() -> clusterService.upgradeNameServer(null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("NameServer request is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        assertThatThrownBy(() -> clusterService.deleteNameServer(null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("NameServer request is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(clusterRepository);
     }
 
     @Test

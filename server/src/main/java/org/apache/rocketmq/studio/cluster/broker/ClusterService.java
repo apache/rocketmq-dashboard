@@ -207,6 +207,7 @@ public class ClusterService {
     }
 
     public NameServerVO createNameServer(CreateNameServerDTO command) {
+        requireNameServerCommand(command);
         log.info("Creating NameServer for cluster: {}", command.getClusterId());
         clusterRepository.findById(command.getClusterId())
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getClusterId()));
@@ -219,6 +220,7 @@ public class ClusterService {
     }
 
     public void updateNameServer(UpdateNameServerDTO command) {
+        requireNameServerCommand(command);
         log.info("Updating NameServer: {} in cluster: {}", command.getAddr(), command.getClusterId());
         ClusterVO cluster = clusterRepository.findById(command.getClusterId())
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getClusterId()));
@@ -227,6 +229,7 @@ public class ClusterService {
     }
 
     public boolean restartNameServer(RestartNameServerDTO command) {
+        requireNameServerCommand(command);
         log.info("Restarting NameServer: {} in cluster: {}", command.getAddr(), command.getClusterId());
         ClusterVO cluster = clusterRepository.findById(command.getClusterId())
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getClusterId()));
@@ -236,6 +239,7 @@ public class ClusterService {
     }
 
     public boolean upgradeNameServer(UpgradeNameServerDTO command) {
+        requireNameServerCommand(command);
         log.info("Upgrading NameServer: {} to version: {} in cluster: {}",
                 command.getAddr(), command.getTargetVersion(), command.getClusterId());
         ClusterVO cluster = clusterRepository.findById(command.getClusterId())
@@ -246,6 +250,7 @@ public class ClusterService {
     }
 
     public boolean deleteNameServer(DeleteNameServerDTO command) {
+        requireNameServerCommand(command);
         log.info("Deleting NameServer: {} from cluster: {}", command.getAddr(), command.getClusterId());
         ClusterVO cluster = clusterRepository.findById(command.getClusterId())
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getClusterId()));
@@ -261,6 +266,12 @@ public class ClusterService {
         requireProxy(cluster, command.getAddr());
         log.info("Proxy restart initiated: {}", command.getAddr());
         return true;
+    }
+
+    private void requireNameServerCommand(Object command) {
+        if (command == null) {
+            throw new BusinessException(400, "NameServer request is required");
+        }
     }
 
     private void requireNameServer(ClusterVO cluster, String addr) {
