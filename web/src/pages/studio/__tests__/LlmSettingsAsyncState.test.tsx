@@ -174,7 +174,7 @@ describe('LlmSettingsPage async request ownership', () => {
     await act(async () => {
       oldProviderTest.resolve({ status: 0 });
     });
-    await waitFor(() => expect(apiMocks.saveLlmConfig).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(apiMocks.testLlmConnection).toHaveBeenCalledTimes(1));
 
     await user.click(screen.getByRole('combobox'));
     expect(
@@ -188,6 +188,25 @@ describe('LlmSettingsPage async request ownership', () => {
       }),
     ).toBeInTheDocument();
     expect(apiMocks.getLlmModels).toHaveBeenCalledTimes(1);
+    expect(apiMocks.saveLlmConfig).not.toHaveBeenCalled();
+  });
+
+  it('tests the current LLM config without saving it or forcing it enabled', async () => {
+    apiMocks.getLlmConfig.mockResolvedValue({
+      ...OPENAI_CONFIG,
+      enabled: false,
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await waitFor(() => expect(apiMocks.getLlmConfig).toHaveBeenCalled());
+    await user.click(screen.getByRole('button', { name: '连接测试' }));
+
+    await waitFor(() => expect(apiMocks.testLlmConnection).toHaveBeenCalledTimes(1));
+    expect(apiMocks.testLlmConnection).toHaveBeenCalledWith(
+      expect.objectContaining({ enabled: false }),
+    );
+    expect(apiMocks.saveLlmConfig).not.toHaveBeenCalled();
   });
 
   it('ignores configuration from the discarded StrictMode lifecycle', async () => {

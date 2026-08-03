@@ -387,31 +387,17 @@ const LlmSettingsPage: React.FC = () => {
   };
 
   const handleTestConnection = () => {
-    const requestProviderGeneration = providerInteractionGeneration.current;
     setTestLoading(true);
     setTestResult(null);
     form
       .validateFields()
       .then((values) => {
-        const testConfig = buildConfig(values, true);
+        const testConfig = buildConfig(values, enabled);
         testLlmConnection(testConfig)
           .then((result) => {
             if (result && result.status === 0) {
               setTestResult({ success: true, msg: result.msg || t('llm.testSuccessMsg') });
               message.success(t('llm.testSuccess'));
-              // Auto-save after successful test
-              saveLlmConfig(testConfig)
-                .then(() => {
-                  if (testConfig.apiKey) {
-                    setSavedApiKey(MASKED_API_KEY);
-                    form.setFieldsValue({ apiKey: MASKED_API_KEY });
-                    setApiKeyMasked(true);
-                  }
-                  fetchModels(testConfig.provider, testConfig.model, requestProviderGeneration);
-                })
-                .catch(() => {
-                  // auto-save failure is non-critical
-                });
             } else {
               setTestResult(buildLlmFailureResult(result, t('llm.testFailedMsg')));
               message.error(t('llm.testFailed'));
