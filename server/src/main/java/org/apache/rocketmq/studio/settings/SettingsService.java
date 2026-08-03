@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.settings;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -56,15 +57,17 @@ public class SettingsService {
     private final SettingsRepository settingsRepository;
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
+    private final OperationAuditService operationAuditService;
 
     public SettingsService(SettingsRepository settingsRepository, RestClient.Builder restClientBuilder,
-                           ObjectMapper objectMapper) {
+                           ObjectMapper objectMapper, OperationAuditService operationAuditService) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(DATA_SOURCE_TEST_CONNECT_TIMEOUT);
         requestFactory.setReadTimeout(DATA_SOURCE_TEST_READ_TIMEOUT);
         this.settingsRepository = settingsRepository;
         this.restClient = restClientBuilder.requestFactory(requestFactory).build();
         this.objectMapper = objectMapper;
+        this.operationAuditService = operationAuditService;
     }
 
 
@@ -84,6 +87,8 @@ public class SettingsService {
         }
         settings.setClearApiKey(false);
         settingsRepository.saveGeneralSettings(settings);
+        operationAuditService.record("UPDATE_SETTINGS", "SETTINGS", "general",
+                null, "General settings updated", "SUCCESS", null);
     }
 
 

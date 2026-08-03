@@ -14,18 +14,37 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.ops.audit;
+package org.apache.rocketmq.studio.persistence.entity;
 
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
+import lombok.Data;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
-public interface AuditRepository {
-    List<AuditRecordVO> findAll(String search, String operationType,
-                              LocalDateTime startDate, LocalDateTime endDate,
-                              String result);
+@Data
+@TableName("rmq_operation_audit")
+public class RmqOperationAudit {
 
-    void save(AuditRecordVO record);
+    @TableId(type = IdType.AUTO)
+    private Long id;
 
-    int deleteBefore(LocalDateTime cutoff);
+    private String operation;
+
+    private String resourceType;
+
+    private String resourceName;
+
+    private String clusterId;
+
+    private String detail;
+
+    private String result;
+
+    private String errorMessage;
+
+    private String operator;
+
+    private LocalDateTime operatedAt;
 }

@@ -76,6 +76,18 @@ public class AuditService {
     }
 
 
+    public void record(String operationType, String target, String detail, String result) {
+        AuditRecordVO record = AuditRecordVO.builder()
+                .timestamp(LocalDateTime.now())
+                .operationType(operationType)
+                .target(target)
+                .detail(detail)
+                .result(result)
+                .build();
+        auditRepository.save(record);
+        log.info("Audit recorded: {} on {} -> {}", operationType, target, result);
+    }
+
     public int cleanupLogs(int beforeDays) {
         if (beforeDays <= 0) {
             throw new BusinessException(400, "beforeDays must be greater than 0");

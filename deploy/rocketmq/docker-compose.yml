@@ -13,6 +13,9 @@ services:
       JAVA_OPT_EXT: -Xms512m -Xmx512m -Xmn256m
     ports:
       - "9876:9876"
+    networks:
+      default:
+        ipv4_address: 10.89.2.10
 
   broker-0:
     image: apache-rocketmq:develop
@@ -31,6 +34,9 @@ services:
       - "10909:10909"
       - "10911:10911"
       - "10912:10912"
+    networks:
+      default:
+        ipv4_address: 10.89.2.11
     depends_on:
       - nameserver
 
@@ -52,6 +58,9 @@ services:
       - "20909:20909"
       - "20911:20911"
       - "20912:20912"
+    networks:
+      default:
+        ipv4_address: 10.89.2.12
     depends_on:
       - nameserver
 
@@ -80,14 +89,15 @@ services:
       sh -c "javac -encoding UTF-8 -cp 'lib/*' -d /tmp/classes /clients/TraceProducer.java
       && java -cp 'lib/*:/tmp/classes' TraceProducer"
     environment:
-      # 指向 proxy remoting 端口，流量经 proxy 转发（proxy 会以自身地址应答路由）
-      NAMESRV_ADDR: proxy:8080
+      # 直连 NameServer，broker 端可见 producer 容器真实连接（供 Studio 客户端连接视图展示）
+      NAMESRV_ADDR: nameserver:9876
       TOPIC: StudioTest
       SEND_INTERVAL_MS: "1000"
     volumes:
       - ./clients:/clients:ro
     depends_on:
-      - proxy
+      - broker-0
+      - broker-1
     restart: on-failure
 
   consumer:
@@ -97,13 +107,19 @@ services:
       sh -c "javac -encoding UTF-8 -cp 'lib/*' -d /tmp/classes /clients/TraceConsumer.java
       && java -cp 'lib/*:/tmp/classes' TraceConsumer"
     environment:
-      NAMESRV_ADDR: proxy:8080
+      # 直连 NameServer，broker 端可见 consumer 容器真实连接（供 Studio 客户端连接视图展示）
+      NAMESRV_ADDR: nameserver:9876
       TOPIC: StudioTest
     volumes:
       - ./clients:/clients:ro
     depends_on:
-      - proxy
+      - broker-0
+      - broker-1
     restart: on-failure
+
+networks:
+  default:
+    name: rocketmq_default
 
 volumes:
   broker-0-store:

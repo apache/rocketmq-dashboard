@@ -14,18 +14,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.ops.audit;
+package org.apache.rocketmq.studio.persistence.mapper;
 
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import org.apache.rocketmq.studio.persistence.entity.RmqGroup;
 
-import java.time.LocalDateTime;
-import java.util.List;
-
-public interface AuditRepository {
-    List<AuditRecordVO> findAll(String search, String operationType,
-                              LocalDateTime startDate, LocalDateTime endDate,
-                              String result);
-
-    void save(AuditRecordVO record);
-
-    int deleteBefore(LocalDateTime cutoff);
+public interface RmqGroupMapper extends BaseMapper<RmqGroup> {
 }

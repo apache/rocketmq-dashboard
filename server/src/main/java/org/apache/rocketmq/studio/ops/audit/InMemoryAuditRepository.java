@@ -67,6 +67,18 @@ public class InMemoryAuditRepository implements AuditRepository {
     }
 
     @Override
+    public void save(AuditRecordVO record) {
+        if (record.getId() == null) {
+            record.setId(java.util.UUID.randomUUID().toString());
+        }
+        if (record.getTimestamp() == null) {
+            record.setTimestamp(LocalDateTime.now());
+        }
+        records.put(record.getId(), record);
+        log.debug("Saved audit record: {} - {}", record.getOperationType(), record.getTarget());
+    }
+
+    @Override
     public int deleteBefore(LocalDateTime cutoff) {
         List<String> toRemove = records.values().stream()
                 .filter(r -> r.getTimestamp() != null && r.getTimestamp().isBefore(cutoff))

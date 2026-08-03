@@ -6,6 +6,20 @@ spring:
     name: rocketmq-studio
   profiles:
     active: dev
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/rocketmq_studio?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
+    username: ${SPRING_DATASOURCE_USERNAME:root}
+    password: ${SPRING_DATASOURCE_PASSWORD:studio123}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  global-config:
+    db-config:
+      table-prefix: rmq_
+      id-type: auto
 
 springdoc:
   api-docs:
@@ -28,3 +42,5 @@ studio:
       username: ${STUDIO_METRICS_PROMETHEUS_USERNAME:}
       password: ${STUDIO_METRICS_PROMETHEUS_PASSWORD:}
       bearer-token: ${STUDIO_METRICS_PROMETHEUS_BEARER_TOKEN:}
+  rocketmq:
+    namesrv-addr: ${STUDIO_ROCKETMQ_NAMESRV_ADDR:}

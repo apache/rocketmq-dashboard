@@ -14,18 +14,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.ops.audit;
+package org.apache.rocketmq.studio.persistence;
 
+import org.mybatis.spring.annotation.MapperScan;
+import org.springframework.context.annotation.Configuration;
 
-import java.time.LocalDateTime;
-import java.util.List;
-
-public interface AuditRepository {
-    List<AuditRecordVO> findAll(String search, String operationType,
-                              LocalDateTime startDate, LocalDateTime endDate,
-                              String result);
-
-    void save(AuditRecordVO record);
-
-    int deleteBefore(LocalDateTime cutoff);
+@Configuration
+@MapperScan("org.apache.rocketmq.studio.persistence.mapper")
+public class MyBatisConfig {
 }
