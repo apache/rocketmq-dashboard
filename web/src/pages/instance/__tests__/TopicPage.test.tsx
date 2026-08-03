@@ -89,6 +89,7 @@ const getTableBody = () => {
 describe('TopicPage', () => {
   beforeEach(() => {
     topicServiceMocks.listTopics.mockResolvedValue(buildTopics(25));
+    topicServiceMocks.batchDeleteTopics.mockResolvedValue({ deleted: [], failed: [] });
     topicServiceMocks.getTopicRoutes.mockResolvedValue([]);
     topicServiceMocks.getTopicConsumers.mockResolvedValue([]);
   });
@@ -119,5 +120,28 @@ describe('TopicPage', () => {
 
     expect(within(getTableBody()).getByText('topic-21')).toBeInTheDocument();
     expect(within(getTableBody()).queryByText('topic-01')).not.toBeInTheDocument();
+  });
+
+  it('keeps failed topics selected after a partially successful batch deletion', async () => {
+    const user = userEvent.setup();
+    topicServiceMocks.listTopics.mockResolvedValue(buildTopics(3));
+    topicServiceMocks.batchDeleteTopics.mockResolvedValue({
+      deleted: ['topic-01', 'topic-03'],
+      failed: ['topic-02'],
+    });
+    renderWithProviders();
+
+    expect(await screen.findByText('topic-01')).toBeInTheDocument();
+    await user.click(screen.getAllByRole('checkbox')[0]);
+    await user.click(screen.getByRole('button', { name: /删除 \(3\)$/ }));
+
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: /删\s*除/ }));
+
+    await waitFor(() => expect(screen.queryByText('topic-01')).not.toBeInTheDocument());
+    expect(screen.getByText('topic-02')).toBeInTheDocument();
+    expect(screen.queryByText('topic-03')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /删除 \(1\)$/ })).toBeInTheDocument();
+    expect(screen.getByText('已删除 2 个 Topic，1 个删除失败')).toBeInTheDocument();
   });
 });
