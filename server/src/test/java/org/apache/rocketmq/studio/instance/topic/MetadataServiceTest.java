@@ -17,6 +17,7 @@
 
 package org.apache.rocketmq.studio.instance.topic;
 
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,8 +28,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -88,6 +91,24 @@ class MetadataServiceTest {
 
         assertThat(result).isEmpty();
         verify(metadataProvider).listTopics(null, null, null);
+    }
+
+    @Test
+    void topicWriteOperationsShouldRejectNullRequest() {
+        assertThatThrownBy(() -> metadataService.createTopic(null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Topic request is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        assertThatThrownBy(() -> metadataService.updateTopic(null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Topic request is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        assertThatThrownBy(() -> metadataService.sendMessage(null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Topic send message request is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(adminClient);
     }
 
     @Test
