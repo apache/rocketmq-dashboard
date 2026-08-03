@@ -47,6 +47,7 @@ import {
 } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
 import { queryAlertRules } from '../../api/alertManagement';
+import { downloadBlob } from '../../utils/download';
 
 const { TextArea } = Input;
 
@@ -361,12 +362,7 @@ const AlertManagementPage: React.FC = () => {
     }
 
     const blob = new Blob([yaml], { type: 'text/yaml' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'rocketmq-alert-rules.yaml';
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, 'rocketmq-alert-rules.yaml');
     message.success(t('alertMgmt.exportSuccess'));
   };
 

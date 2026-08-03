@@ -56,6 +56,7 @@ import type { MessageQuery, MessageRecord, TraceRecord } from '../../api/message
 import { getMessageTrace, queryMessages } from '../../services/messageService';
 import { listTopics } from '../../services/topicService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
+import { downloadBlob } from '../../utils/download';
 
 const { Paragraph, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -382,12 +383,7 @@ const MessagePage = () => {
 
   const handleDownload = (record: MessageRecord) => {
     const blob = new Blob([formatBody(record.body)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${record.msgId}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, `${record.msgId}.json`);
     message.success('消息下载成功');
   };
 

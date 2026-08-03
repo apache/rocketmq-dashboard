@@ -38,6 +38,7 @@ import { useLang } from '../../i18n/LangContext';
 import type { DLQGroup } from '../../api/message';
 import { listDLQGroups, resendDLQ } from '../../services/messageService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
+import { downloadBlob } from '../../utils/download';
 
 const { Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -69,12 +70,7 @@ const exportDLQGroups = (groups: DLQGroup[], filename: string) => {
   ];
   const csv = rows.map((row) => row.map(escapeCSVValue).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(blob, filename);
 };
 
 /* ═══════════════════════════════════════════
