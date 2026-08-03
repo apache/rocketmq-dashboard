@@ -183,12 +183,14 @@ describe('BrokerCluster Page', () => {
     expect(restartButtons.length).toBeGreaterThan(0);
   });
 
-  it('should fall back to mock data when the API fails', async () => {
+  it('does not show mock infrastructure data when the API fails', async () => {
     vi.mocked(listClusters).mockRejectedValueOnce(new Error('network error'));
     renderWithProviders(<BrokerCluster />);
-    // Initial state holds the mock fallback rows
     await waitFor(() => {
-      expect(screen.getByText('broker-a')).toBeInTheDocument();
+      expect(listClusters).toHaveBeenCalledTimes(1);
     });
+    expect(screen.queryByText('broker-a')).not.toBeInTheDocument();
+    expect(screen.queryByText('broker-b')).not.toBeInTheDocument();
+    expect(screen.queryByText('proxy-a')).not.toBeInTheDocument();
   });
 });
