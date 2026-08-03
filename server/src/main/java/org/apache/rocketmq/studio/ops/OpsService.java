@@ -30,6 +30,9 @@ import java.util.Set;
 @Service
 public class OpsService {
 
+    private static final String OPS_SETTINGS_UNAVAILABLE =
+            "Ops settings are not connected to the cluster admin configuration";
+
     private final Set<String> namesrvAddrs = new LinkedHashSet<>(List.of("127.0.0.1:9876"));
     private String currentNamesrv = "127.0.0.1:9876";
     private boolean useVIPChannel = true;
@@ -45,41 +48,26 @@ public class OpsService {
     }
 
     public synchronized void updateNameServer(String namesrvAddr) {
-        String normalized = normalizeNameServer(namesrvAddr);
-        namesrvAddrs.add(normalized);
-        currentNamesrv = normalized;
-        log.info("Updated current NameServer address to {}", normalized);
+        normalizeNameServer(namesrvAddr);
+        throw settingsUnavailable();
     }
 
     public synchronized void addNameServer(String namesrvAddr) {
-        String normalized = normalizeNameServer(namesrvAddr);
-        namesrvAddrs.add(normalized);
-        log.info("Added NameServer address {}", normalized);
+        normalizeNameServer(namesrvAddr);
+        throw settingsUnavailable();
     }
 
     public synchronized void deleteNameServer(String namesrvAddr) {
-        String normalized = normalizeNameServer(namesrvAddr);
-        if (!namesrvAddrs.contains(normalized)) {
-            throw new BusinessException(404, "NameServer address not found: " + normalized);
-        }
-        if (namesrvAddrs.size() == 1) {
-            throw new BusinessException(409, "Cannot delete the last NameServer address");
-        }
-        if (normalized.equals(currentNamesrv)) {
-            throw new BusinessException(409, "Cannot delete the current NameServer address");
-        }
-        namesrvAddrs.remove(normalized);
-        log.info("Deleted NameServer address {}", normalized);
+        normalizeNameServer(namesrvAddr);
+        throw settingsUnavailable();
     }
 
     public synchronized void updateVipChannel(boolean enabled) {
-        useVIPChannel = enabled;
-        log.info("Updated VIP channel setting to {}", enabled);
+        throw settingsUnavailable();
     }
 
     public synchronized void updateUseTLS(boolean enabled) {
-        useTLS = enabled;
-        log.info("Updated TLS setting to {}", enabled);
+        throw settingsUnavailable();
     }
 
     private String normalizeNameServer(String namesrvAddr) {
@@ -87,5 +75,10 @@ public class OpsService {
             throw new BusinessException(400, "namesrvAddr is required");
         }
         return namesrvAddr.trim();
+    }
+
+    private BusinessException settingsUnavailable() {
+        log.warn(OPS_SETTINGS_UNAVAILABLE);
+        return new BusinessException(501, OPS_SETTINGS_UNAVAILABLE);
     }
 }
