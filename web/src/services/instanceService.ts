@@ -1,6 +1,11 @@
 import { USE_MOCK } from '../config';
 import * as instanceApi from '../api/instance';
-import type { Instance, CreateInstanceRequest, UpdateInstanceRequest } from '../api/instance';
+import type {
+  Instance,
+  CreateInstanceRequest,
+  InstanceQuery,
+  UpdateInstanceRequest,
+} from '../api/instance';
 import { mockInstances } from '../mock/instances';
 
 // Compile-time switch: mock or real API
@@ -10,9 +15,21 @@ function copyInstance(instance: Instance): Instance {
   return { ...instance };
 }
 
-export async function listInstances(): Promise<Instance[]> {
-  if (USE_MOCK) return mockInstances.map(copyInstance);
-  return instanceApi.listInstances();
+export async function listInstances(query: InstanceQuery = {}): Promise<Instance[]> {
+  if (USE_MOCK) {
+    const search = query.search?.trim().toLowerCase();
+    return mockInstances
+      .filter((instance) => !query.type || instance.type === query.type)
+      .filter(
+        (instance) =>
+          !search ||
+          [instance.name, instance.endpoint, instance.remark].some((value) =>
+            value.toLowerCase().includes(search),
+          ),
+      )
+      .map(copyInstance);
+  }
+  return instanceApi.listInstances(query);
 }
 
 export async function createInstance(data: CreateInstanceRequest): Promise<Instance> {
