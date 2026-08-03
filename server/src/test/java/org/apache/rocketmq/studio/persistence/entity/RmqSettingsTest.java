@@ -16,23 +16,26 @@
  */
 package org.apache.rocketmq.studio.persistence.entity;
 
-import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableName;
-import lombok.Data;
-import lombok.ToString;
+import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
 
-@Data
-@TableName("rmq_settings")
-public class RmqSettings {
+import static org.assertj.core.api.Assertions.assertThat;
 
-    @TableId(type = IdType.ASSIGN_UUID)
-    private String id;
+class RmqSettingsTest {
 
-    @ToString.Exclude
-    private String json;
+    @Test
+    void toStringShouldNotExposePersistedSettingsJson() {
+        RmqSettings settings = new RmqSettings();
+        settings.setId("settings");
+        settings.setJson("{\"apiKey\":\"sk-secret\",\"model\":\"gpt-4o\"}");
+        settings.setUpdatedAt(LocalDateTime.of(2026, 8, 3, 12, 0));
 
-    private LocalDateTime updatedAt;
+        String text = settings.toString();
+
+        assertThat(text).contains("id=settings");
+        assertThat(text).contains("updatedAt=2026-08-03T12:00");
+        assertThat(text).doesNotContain("json");
+        assertThat(text).doesNotContain("sk-secret");
+    }
 }
