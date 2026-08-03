@@ -61,10 +61,8 @@ public class AclService {
             throw new BusinessException(400, "ACL rule id is required");
         }
         log.info("Updating ACL rule id={}, principal={}", rule.getId(), rule.getPrincipal());
-        if (rule.getCreatedAt() == null) {
-            rule.setCreatedAt(LocalDateTime.now());
-        }
-        return aclRepository.saveRule(rule);
+        return aclRepository.replaceRule(rule)
+                .orElseThrow(() -> new BusinessException(404, "ACL rule not found: " + rule.getId()));
     }
 
     public void deleteRule(String id) {

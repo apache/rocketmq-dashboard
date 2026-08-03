@@ -18,6 +18,7 @@
 package org.apache.rocketmq.studio.instance.acl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -137,6 +138,25 @@ class AclControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.id").value("rule-1"))
                 .andExpect(jsonPath("$.data.decision").value("DENY"));
+    }
+
+    @Test
+    void updateRuleShouldReturnNotFoundForUnknownId() throws Exception {
+        AclRuleVO input = AclRuleVO.builder()
+                .id("missing-rule")
+                .principal("user1")
+                .resource("topic-1")
+                .decision("DENY")
+                .build();
+        when(aclService.updateRule(any(AclRuleVO.class)))
+                .thenThrow(new BusinessException(404, "ACL rule not found: missing-rule"));
+
+        mockMvc.perform(post("/api/acl/rules/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(input)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value(404))
+                .andExpect(jsonPath("$.message").value("ACL rule not found: missing-rule"));
     }
 
     @Test

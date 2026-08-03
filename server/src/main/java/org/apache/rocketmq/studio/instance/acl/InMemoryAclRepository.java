@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.instance.acl;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -46,6 +47,30 @@ public class InMemoryAclRepository implements AclRepository {
         rules.put(rule.getId(), rule);
         log.debug("Saved ACL rule id={}", rule.getId());
         return rule;
+    }
+
+    @Override
+    public Optional<AclRuleVO> replaceRule(AclRuleVO rule) {
+        String id = rule.getId();
+        AclRuleVO replacedRule = rules.computeIfPresent(id,
+                (key, existingRule) -> copyRule(rule, key, existingRule.getCreatedAt()));
+        log.debug("Replaced ACL rule id={}, replaced={}", id, replacedRule != null);
+        return Optional.ofNullable(replacedRule);
+    }
+
+    private AclRuleVO copyRule(AclRuleVO rule, String id, LocalDateTime createdAt) {
+        return AclRuleVO.builder()
+                .id(id)
+                .principal(rule.getPrincipal())
+                .resource(rule.getResource())
+                .resourceType(rule.getResourceType())
+                .resourcePattern(rule.getResourcePattern())
+                .actions(rule.getActions() == null ? null : new ArrayList<>(rule.getActions()))
+                .decision(rule.getDecision())
+                .scope(rule.getScope())
+                .aclVersion(rule.getAclVersion())
+                .createdAt(createdAt)
+                .build();
     }
 
     @Override
