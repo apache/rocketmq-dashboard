@@ -34,6 +34,8 @@ studio:
       - username: ${STUDIO_AUTH_ADMIN_USERNAME:}
         password: ${STUDIO_AUTH_ADMIN_PASSWORD:}
         admin: true
+  cluster:
+    seed-demo-data: ${STUDIO_CLUSTER_SEED_DEMO_DATA:false}
   metrics:
     prometheus:
       base-url: ${STUDIO_METRICS_PROMETHEUS_BASE_URL:}
