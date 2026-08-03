@@ -70,8 +70,12 @@ public class OpenAiCompatibleLlmClient {
     }
 
     public String complete(LlmConfigVO config, String prompt, String modelOverride) {
+        return complete(config, List.of(LlmChatMessage.user(normalizeMessage(prompt))), modelOverride);
+    }
+
+    public String complete(LlmConfigVO config, List<LlmChatMessage> messages, String modelOverride) {
         validate(config);
-        Map<String, Object> requestBody = requestBody(config, prompt, modelOverride, false);
+        Map<String, Object> requestBody = requestBody(config, messages, modelOverride, false);
         HttpRequest request = request(config, "application/json", requestBody);
         try {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
@@ -119,8 +123,13 @@ public class OpenAiCompatibleLlmClient {
     }
 
     public void stream(LlmConfigVO config, String prompt, String modelOverride, Consumer<String> tokenConsumer) {
+        stream(config, List.of(LlmChatMessage.user(normalizeMessage(prompt))), modelOverride, tokenConsumer);
+    }
+
+    public void stream(LlmConfigVO config, List<LlmChatMessage> messages, String modelOverride,
+                       Consumer<String> tokenConsumer) {
         validate(config);
-        Map<String, Object> requestBody = requestBody(config, prompt, modelOverride, true);
+        Map<String, Object> requestBody = requestBody(config, messages, modelOverride, true);
         HttpRequest request = request(config, "text/event-stream", requestBody);
         try {
             HttpResponse<java.io.InputStream> response = httpClient.send(
@@ -208,17 +217,38 @@ public class OpenAiCompatibleLlmClient {
         return builder.build();
     }
 
-    private Map<String, Object> requestBody(LlmConfigVO config, String prompt, String modelOverride,
+    private Map<String, Object> requestBody(LlmConfigVO config, List<LlmChatMessage> messages, String modelOverride,
                                             boolean stream) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", StringUtils.hasText(modelOverride) ? modelOverride.trim() : config.getModel().trim());
-        body.put("messages", List.of(Map.of(
-                "role", "user",
-                "content", StringUtils.hasText(prompt) ? prompt.trim() : "")));
+        body.put("messages", normalizeMessages(messages));
         body.put("temperature", config.getTemperature());
         body.put("max_tokens", config.getMaxTokens());
         body.put("stream", stream);
         return body;
+    }
+
+    private List<Map<String, String>> normalizeMessages(List<LlmChatMessage> messages) {
+        List<LlmChatMessage> normalizedMessages = messages == null || messages.isEmpty()
+                ? List.of(LlmChatMessage.user(""))
+                : messages;
+        return normalizedMessages.stream()
+                .map(message -> Map.of(
+                        "role", normalizeRole(message),
+                        "content", normalizeMessage(message == null ? null : message.content())))
+                .toList();
+    }
+
+    private String normalizeRole(LlmChatMessage message) {
+        if (message == null || !StringUtils.hasText(message.role())) {
+            return "user";
+        }
+        String role = message.role().trim();
+        return "assistant".equals(role) ? "assistant" : "user";
+    }
+
+    private String normalizeMessage(String message) {
+        return StringUtils.hasText(message) ? message.trim() : "";
     }
 
     private URI chatCompletionsUri(LlmConfigVO config) {

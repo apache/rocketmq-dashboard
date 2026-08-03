@@ -29,6 +29,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -43,6 +45,7 @@ public class OpenAiCompatibleLlmGateway implements LlmGateway {
     private final OpenAiCompatibleLlmClient llmClient;
     private final AgentProviderRegistry agentProviders;
     private final ObjectMapper objectMapper;
+    private final LlmConversationMemory conversationMemory;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     @Override
@@ -61,8 +64,11 @@ public class OpenAiCompatibleLlmGateway implements LlmGateway {
             return errorEmitter(unsupportedProviderException());
         }
 
+        String conversationId = request == null ? null : request.getConversationId();
+        String message = request == null ? null : request.getMessage();
+        List<LlmChatMessage> messages = conversationMemory.appendUserAndSnapshot(conversationId, message);
         SseEmitter emitter = new SseEmitter(60_000L);
-        executor.execute(() -> streamChat(request, config, emitter));
+        executor.execute(() -> streamChat(request, config, emitter, messages));
         return emitter;
     }
 
@@ -187,15 +193,24 @@ public class OpenAiCompatibleLlmGateway implements LlmGateway {
         executor.shutdownNow();
     }
 
-    private void streamChat(ChatDTO request, LlmConfigVO config, SseEmitter emitter) {
+    private void streamChat(ChatDTO request, LlmConfigVO config, SseEmitter emitter, List<LlmChatMessage> messages) {
+        String conversationId = request == null ? null : request.getConversationId();
+        StringBuilder assistantMessage = new StringBuilder();
         try {
+            List<LlmChatMessage> requestMessages = messages;
             String prompt = request == null ? null : request.getMessage();
             if (request != null && request.isEnhance() && StringUtils.hasText(prompt)) {
                 prompt = enhanceAndEmitHttp(config, prompt, emitter);
+                requestMessages = new ArrayList<>(messages);
+                requestMessages.set(requestMessages.size() - 1, LlmChatMessage.user(prompt));
             }
-            llmClient.stream(config, prompt,
+            llmClient.stream(config, requestMessages,
                     request == null ? null : request.getModel(),
-                    token -> sendMessage(emitter, token));
+                    token -> {
+                        assistantMessage.append(token);
+                        sendMessage(emitter, token);
+                    });
+            conversationMemory.appendAssistant(conversationId, assistantMessage.toString());
             emitter.send(SseEmitter.event().name("done").data("[DONE]"));
             emitter.complete();
         } catch (LlmGatewayException exception) {
@@ -204,7 +219,8 @@ public class OpenAiCompatibleLlmGateway implements LlmGateway {
         } catch (Exception exception) {
             log.error("Failed to stream LLM chat response", exception);
             sendError(emitter, new LlmGatewayException(502, "llm.gateway_error",
-                    "Failed to stream LLM chat response", "Check the LLM provider configuration and retry.", exception));
+                    "Failed to stream LLM chat response",
+                    "Check the LLM provider configuration and retry.", exception));
         }
     }
 
