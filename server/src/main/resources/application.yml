@@ -36,6 +36,8 @@ studio:
         admin: true
   cluster:
     seed-demo-data: ${STUDIO_CLUSTER_SEED_DEMO_DATA:false}
+  instance:
+    seed-demo-data: ${STUDIO_INSTANCE_SEED_DEMO_DATA:false}
   metrics:
     prometheus:
       base-url: ${STUDIO_METRICS_PROMETHEUS_BASE_URL:}
