@@ -46,9 +46,9 @@ public class TopicController {
     }
 
     @PostMapping("/create")
-    public Result<TopicVO> createTopic(@RequestBody(required = false) TopicVO topic) {
-        requireTopicRequest(topic);
-        return Result.ok(metadataService.createTopic(topic));
+    public Result<TopicVO> createTopic(@Valid @RequestBody(required = false) CreateTopicDTO topic) {
+        requireCreateTopicRequest(topic);
+        return Result.ok(metadataService.createTopic(topic.toTopicVO()));
     }
 
     @PostMapping("/update")
@@ -81,6 +81,12 @@ public class TopicController {
     }
 
     private void requireTopicRequest(TopicVO topic) {
+        if (topic == null) {
+            throw new BusinessException(400, "Topic request is required");
+        }
+    }
+
+    private void requireCreateTopicRequest(CreateTopicDTO topic) {
         if (topic == null) {
             throw new BusinessException(400, "Topic request is required");
         }
