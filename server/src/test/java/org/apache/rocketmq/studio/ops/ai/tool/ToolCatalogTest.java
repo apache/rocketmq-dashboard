@@ -43,7 +43,8 @@ class ToolCatalogTest {
                         "rmq.capabilities",
                         "rmq.dashboard.summary",
                         "rmq.topic.list",
-                        "rmq.group.list");
+                        "rmq.group.list",
+                        "rmq.alert.rule.list");
         assertThat(catalog.find("rmq.cluster.list")).isPresent();
         assertThat(catalog.find("rmq.unknown")).isEmpty();
     }
