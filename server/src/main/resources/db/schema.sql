@@ -173,6 +173,40 @@ CREATE TABLE IF NOT EXISTS rmq_acl_user (
   UNIQUE KEY uk_username (username)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- 13. 告警规则
+CREATE TABLE IF NOT EXISTS rmq_alert_rule (
+  id VARCHAR(64) PRIMARY KEY,
+  name VARCHAR(128) NOT NULL,
+  metric VARCHAR(128),
+  operator VARCHAR(16),
+  threshold DOUBLE,
+  threshold_unit VARCHAR(32),
+  duration VARCHAR(32),
+  channels VARCHAR(512) COMMENT '逗号分隔的通知渠道',
+  enabled TINYINT(1) DEFAULT 1,
+  last_triggered VARCHAR(64),
+  description VARCHAR(512),
+  broker_name VARCHAR(128),
+  cluster_name VARCHAR(128),
+  severity VARCHAR(32),
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 14. 系统告警事件
+CREATE TABLE IF NOT EXISTS rmq_system_alert (
+  id VARCHAR(64) PRIMARY KEY,
+  level VARCHAR(32),
+  title VARCHAR(255),
+  description TEXT,
+  time DATETIME,
+  acknowledged TINYINT(1) DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_level (level),
+  INDEX idx_acknowledged (acknowledged)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- ============================================================
 -- 样例数据（幂等）：instance / topic / group 列表以本库为准，创建时写库、读取时读库。
 -- 实例管理页默认 5 个实例：2 个 DIRECT（instance-direct-1/2）+ 3 个 PROXY（instance-proxy-1/2/3）。
