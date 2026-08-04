@@ -1,0 +1,10 @@
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/rocketmq_studio}
+    username: ${SPRING_DATASOURCE_USERNAME:rocketmq_studio}
+    password: ${SPRING_DATASOURCE_PASSWORD:rocketmq_studio}
+    driver-class-name: org.postgresql.Driver
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/schema-postgresql.sql
