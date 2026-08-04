@@ -205,19 +205,20 @@ public class LlmConfigService {
 
     private LlmConfigVO fromGeneralSettings(GeneralSettingsVO settings) {
         String provider = normalizeProvider(settings.getLlmProvider());
+        String engine = normalizeEngine(settings.getLlmEngine());
         // Token injected via RMQ_LLM_TOKEN takes precedence over the key saved in settings.
         String apiKey = defaultString(envToken(), defaultString(settings.getApiKey(), ""));
         String apiBase = normalizeApiBase(defaultString(settings.getBaseUrl(), defaultApiBase(provider)));
         String model = defaultString(settings.getModel(), defaultModel(provider));
         return LlmConfigVO.builder()
                 .provider(provider)
-                .engine(normalizeEngine(settings.getLlmEngine()))
+                .engine(engine)
                 .apiKey(apiKey)
                 .apiBase(apiBase)
                 .model(model)
                 .maxTokens(resolveMaxTokens(settings.getMaxTokens()))
                 .temperature(resolveTemperature(settings.getTemperature()))
-                .enabled(!requiresApiKey(provider) || !isBlank(apiKey))
+                .enabled(!requiresApiKey(provider, engine) || !isBlank(apiKey))
                 .apiVersion("2024-02-15-preview")
                 .awsRegion("us-east-1")
                 .build();
@@ -251,7 +252,7 @@ public class LlmConfigService {
 
     private LlmConfigVO normalizeWithStoredApiKey(LlmConfigVO config) {
         LlmConfigVO normalized = normalize(config);
-        if (!requiresApiKey(normalized.getProvider())) {
+        if (!requiresApiKey(normalized.getProvider(), normalized.getEngine())) {
             normalized.setApiKey("");
             return normalized;
         }
@@ -273,8 +274,8 @@ public class LlmConfigService {
                 exception.getMessage(), exception.getCode(), exception.getHint());
     }
 
-    private boolean requiresApiKey(String provider) {
-        return !"ollama".equals(provider);
+    private boolean requiresApiKey(String provider, String engine) {
+        return LlmConfigVO.ENGINE_HTTP.equalsIgnoreCase(engine) && !"ollama".equals(provider);
     }
 
     private String normalizeProvider(String provider) {
@@ -286,7 +287,7 @@ public class LlmConfigService {
     }
 
     private String normalizeEngine(String engine) {
-        String normalized = defaultString(engine, LlmConfigVO.ENGINE_CLAUDE_CODE).toLowerCase(Locale.ROOT);
+        String normalized = defaultString(engine, LlmConfigVO.ENGINE_HTTP).toLowerCase(Locale.ROOT);
         return switch (normalized) {
             case LlmConfigVO.ENGINE_HTTP, LlmConfigVO.ENGINE_CLAUDE_CODE, LlmConfigVO.ENGINE_QODER -> normalized;
             default -> LlmConfigVO.ENGINE_HTTP;
