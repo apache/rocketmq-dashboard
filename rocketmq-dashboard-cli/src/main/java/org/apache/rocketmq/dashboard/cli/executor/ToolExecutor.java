@@ -82,6 +82,11 @@ public class ToolExecutor {
      */
     public Object execute(ToolDefinition tool, Map<String, Object> arguments) throws Exception {
         Map<String, Object> args = arguments != null ? arguments : new LinkedHashMap<>();
+        // Static enumerations need no live cluster connection.
+        if ("rmq.topic.types".equals(tool.getName())) {
+            return listTopicTypes();
+        }
+        // Namespace operations are not exposed by the live cluster admin API; reject early.
         if ("namespace".equals(tool.getResource())) {
             throw new UnsupportedOperationException(
                     "Namespace operations are not supported by the connected cluster admin API.");
@@ -102,6 +107,10 @@ public class ToolExecutor {
                     return upsertTopic(admin, args);
                 case "rmq.topic.delete":
                     return deleteTopic(admin, requireString(args, "topic"));
+                case "rmq.route.list":
+                    return routeList(admin, requireString(args, "topic"));
+                case "rmq.route.describe":
+                    return routeDescribe(admin, requireString(args, "topic"));
                 case "rmq.group.list":
                     return listGroups(admin);
                 case "rmq.group.describe":
@@ -113,12 +122,18 @@ public class ToolExecutor {
                     return resetOffset(admin, args);
                 case "rmq.group.delete":
                     return deleteGroup(admin, requireString(args, "group"));
+                case "rmq.group.progress":
+                    return groupProgress(admin, requireString(args, "group"));
                 case "rmq.message.query-by-id":
                     return queryMessageById(admin, args);
                 case "rmq.message.query-by-time":
                     return queryMessageByTime(admin, args);
                 case "rmq.message.resend":
                     return resendMessage(admin, args);
+                case "rmq.dlq.list":
+                    return dlqList(admin, args);
+                case "rmq.dlq.resend":
+                    return dlqResend(admin, args);
                 case "rmq.client.list":
                     return listClients(admin, requireString(args, "group"));
                 case "rmq.client.describe":
@@ -279,6 +294,50 @@ public class ToolExecutor {
         return result;
     }
 
+    // ---- route ------------------------------------------------------------------
+
+    private List<Map<String, Object>> routeList(AdminClientHelper admin, String topic) throws Exception {
+        TopicRouteData route = admin.getMqAdminExt().examineTopicRouteInfo(topic);
+        List<Map<String, Object>> queues = new ArrayList<>();
+        if (route.getQueueDatas() != null) {
+            for (QueueData qd : route.getQueueDatas()) {
+                Map<String, Object> q = new LinkedHashMap<>();
+                q.put("brokerName", qd.getBrokerName());
+                q.put("readQueueNums", qd.getReadQueueNums());
+                q.put("writeQueueNums", qd.getWriteQueueNums());
+                q.put("perm", qd.getPerm());
+                queues.add(q);
+            }
+        }
+        return queues;
+    }
+
+    private Map<String, Object> routeDescribe(AdminClientHelper admin, String topic) throws Exception {
+        TopicRouteData route = admin.getMqAdminExt().examineTopicRouteInfo(topic);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("topic", topic);
+        List<Map<String, Object>> queues = new ArrayList<>();
+        if (route.getQueueDatas() != null) {
+            for (QueueData qd : route.getQueueDatas()) {
+                Map<String, Object> q = new LinkedHashMap<>();
+                q.put("brokerName", qd.getBrokerName());
+                q.put("readQueueNums", qd.getReadQueueNums());
+                q.put("writeQueueNums", qd.getWriteQueueNums());
+                q.put("perm", qd.getPerm());
+                queues.add(q);
+            }
+        }
+        result.put("queueDatas", queues);
+        List<Map<String, Object>> brokers = new ArrayList<>();
+        if (route.getBrokerDatas() != null) {
+            for (BrokerData bd : route.getBrokerDatas()) {
+                brokers.add(brokerDataToMap(bd));
+            }
+        }
+        result.put("brokerDatas", brokers);
+        return result;
+    }
+
     // ---- group ------------------------------------------------------------------
 
     private List<Map<String, Object>> listGroups(AdminClientHelper admin) throws Exception {
@@ -371,6 +430,32 @@ public class ToolExecutor {
         return result;
     }
 
+    private Map<String, Object> groupProgress(AdminClientHelper admin, String group) throws Exception {
+        ConsumeStats stats = admin.getMqAdminExt().examineConsumeStats(group);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("group", group);
+        result.put("consumeTps", stats.getConsumeTps());
+        long totalDiff = 0;
+        List<Map<String, Object>> queues = new ArrayList<>();
+        if (stats.getOffsetTable() != null) {
+            for (Map.Entry<MessageQueue, OffsetWrapper> entry : stats.getOffsetTable().entrySet()) {
+                long diff = entry.getValue().getBrokerOffset() - entry.getValue().getConsumerOffset();
+                totalDiff += diff;
+                Map<String, Object> q = new LinkedHashMap<>();
+                q.put("topic", entry.getKey().getTopic());
+                q.put("brokerName", entry.getKey().getBrokerName());
+                q.put("queueId", entry.getKey().getQueueId());
+                q.put("brokerOffset", entry.getValue().getBrokerOffset());
+                q.put("consumerOffset", entry.getValue().getConsumerOffset());
+                q.put("diff", diff);
+                queues.add(q);
+            }
+        }
+        result.put("totalDiff", totalDiff);
+        result.put("data", queues);
+        return result;
+    }
+
     // ---- message ------------------------------------------------------------------
 
     private Map<String, Object> queryMessageById(AdminClientHelper admin, Map<String, Object> args) throws Exception {
@@ -411,6 +496,55 @@ public class ToolExecutor {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("msgId", msgId);
         result.put("group", group);
+        result.put("clientId", clientId);
+        result.put("consumeResult", directResult.getConsumeResult() != null
+                ? directResult.getConsumeResult().name() : null);
+        result.put("spentTimeMills", directResult.getSpentTimeMills());
+        result.put("remark", directResult.getRemark());
+        return result;
+    }
+
+    // ---- dlq ----------------------------------------------------------------------
+
+    private static String dlqTopicOf(String group) {
+        return "%DLQ%" + group;
+    }
+
+    private List<Map<String, Object>> dlqList(AdminClientHelper admin, Map<String, Object> args) throws Exception {
+        String group = requireString(args, "group");
+        String dlqTopic = dlqTopicOf(group);
+        long end = getLong(args, "endTime") != null ? requireLong(args, "endTime") : System.currentTimeMillis();
+        long begin = getLong(args, "beginTime") != null ? requireLong(args, "beginTime") : end - 3_600_000L;
+        Integer maxNum = getInt(args, "maxNum");
+        QueryResult queryResult = admin.getMqAdminExt()
+                .queryMessage(dlqTopic, "*", maxNum != null ? maxNum : 32, begin, end);
+        List<Map<String, Object>> messages = new ArrayList<>();
+        if (queryResult != null && queryResult.getMessageList() != null) {
+            for (MessageExt msg : queryResult.getMessageList()) {
+                messages.add(messageToMap(msg));
+            }
+        }
+        return messages;
+    }
+
+    private Map<String, Object> dlqResend(AdminClientHelper admin, Map<String, Object> args) throws Exception {
+        String group = requireString(args, "group");
+        String msgId = requireString(args, "msgId");
+        String topic = requireString(args, "topic");
+        String dlqTopic = dlqTopicOf(group);
+
+        ConsumerConnection conn = admin.getMqAdminExt().examineConsumerConnectionInfo(group);
+        if (conn.getConnectionSet() == null || conn.getConnectionSet().isEmpty()) {
+            throw new IllegalStateException("No online consumers in group " + group + " to resend the dead-letter message to.");
+        }
+        String clientId = conn.getConnectionSet().iterator().next().getClientId();
+        ConsumeMessageDirectlyResult directResult = admin.getMqAdminExt()
+                .consumeMessageDirectly(group, clientId, dlqTopic, msgId);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("msgId", msgId);
+        result.put("group", group);
+        result.put("dlqTopic", dlqTopic);
+        result.put("topic", topic);
         result.put("clientId", clientId);
         result.put("consumeResult", directResult.getConsumeResult() != null
                 ? directResult.getConsumeResult().name() : null);
@@ -675,6 +809,25 @@ public class ToolExecutor {
                 ? clusterInfo.getBrokerAddrTable().size() : 0);
         result.put("brokers", brokerTableToList(clusterInfo));
         return result;
+    }
+
+    // ---- topic types (static enumeration) -------------------------------------------
+
+    private List<Map<String, Object>> listTopicTypes() {
+        List<Map<String, Object>> types = new ArrayList<>();
+        types.add(typeEntry("NORMAL", "Standard topic. No ordering or transaction guarantees."));
+        types.add(typeEntry("FIFO", "Ordered topic. Messages are consumed in publish order."));
+        types.add(typeEntry("DELAY", "Delayed topic. Messages are delivered after a fixed delay."));
+        types.add(typeEntry("TRANSACTION", "Transaction topic. Supports distributed transactions via half-messages."));
+        types.add(typeEntry("LITE", "Lite topic. Lightweight topic without the full feature set."));
+        return types;
+    }
+
+    private static Map<String, Object> typeEntry(String type, String description) {
+        Map<String, Object> entry = new LinkedHashMap<>();
+        entry.put("type", type);
+        entry.put("description", description);
+        return entry;
     }
 
     // ---- converters -----------------------------------------------------------------

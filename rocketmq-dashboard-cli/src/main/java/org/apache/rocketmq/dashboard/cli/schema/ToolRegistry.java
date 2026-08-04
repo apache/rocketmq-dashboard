@@ -109,13 +109,14 @@ public final class ToolRegistry {
 
     private void registerAll() {
         registerCluster();
-        registerNamespace();
         registerTopic();
         registerGroup();
         registerMessage();
         registerClient();
         registerAcl();
         registerBroker();
+        registerRoute();
+        registerDlq();
         registerMetrics();
         registerCapabilities();
     }
@@ -140,27 +141,44 @@ public final class ToolRegistry {
         ));
     }
 
-    // ---- namespace -----------------------------------------------------------
+    // ---- route ----------------------------------------------------------------
 
-    private void registerNamespace() {
-        register(def("namespace", "list", RiskLevel.L1,
-                "List all namespaces.",
+    private void registerRoute() {
+        register(def("route", "list", RiskLevel.L1,
+                "List the broker queue distribution (route) for a topic.",
                 "LIST",
-                p("cluster", "STRING", true, "Cluster name or address to connect to.")
+                p("cluster", "STRING", true, "Cluster name or address to connect to."),
+                p("topic", "STRING", true, "Topic name to inspect the route for.")
         ));
 
-        register(def("namespace", "create", RiskLevel.L2,
-                "Create a new namespace.",
+        register(def("route", "describe", RiskLevel.L1,
+                "Describe the full route of a topic: per-broker queue layout and broker addresses.",
                 "OBJECT",
                 p("cluster", "STRING", true, "Cluster name or address to connect to."),
-                p("name", "STRING", true, "Namespace name to create.")
+                p("topic", "STRING", true, "Topic name to inspect the route for.")
+        ));
+    }
+
+    // ---- dlq ------------------------------------------------------------------
+
+    private void registerDlq() {
+        register(def("dlq", "list", RiskLevel.L1,
+                "List dead-letter messages for a consumer group's DLQ topic (%DLQ%<group>).",
+                "LIST",
+                p("cluster", "STRING", true, "Cluster name or address to connect to."),
+                p("group", "STRING", true, "Consumer group whose dead-letter queue to inspect."),
+                p("beginTime", "LONG", false, "Start timestamp (ms since epoch). Defaults to one hour ago."),
+                p("endTime", "LONG", false, "End timestamp (ms since epoch). Defaults to now."),
+                p("maxNum", "INT", false, "Maximum number of messages to return.", "32")
         ));
 
-        register(def("namespace", "delete", RiskLevel.L3,
-                "Delete an existing namespace.",
-                "VOID",
+        register(def("dlq", "resend", RiskLevel.L2,
+                "Resend a dead-letter message back to its original consumer group.",
+                "OBJECT",
                 p("cluster", "STRING", true, "Cluster name or address to connect to."),
-                p("name", "STRING", true, "Namespace name to delete.")
+                p("group", "STRING", true, "Consumer group that owns the dead-letter message."),
+                p("msgId", "STRING", true, "Dead-letter message ID to resend."),
+                p("topic", "STRING", true, "Original topic the message belongs to.")
         ));
     }
 
@@ -212,6 +230,12 @@ public final class ToolRegistry {
                 p("cluster", "STRING", true, "Cluster name or address to connect to."),
                 p("topic", "STRING", true, "Topic name to delete."),
                 p("namespace", "STRING", false, "Optional namespace.")
+        ));
+
+        register(def("topic", "types", RiskLevel.L1,
+                "List the supported RocketMQ 5.0 topic message types (NORMAL, FIFO, DELAY, TRANSACTION, LITE). Static enumeration; the cluster argument is accepted but not required for the lookup.",
+                "LIST",
+                p("cluster", "STRING", true, "Cluster name or address to connect to (ignored for this static enumeration).")
         ));
     }
 
@@ -269,6 +293,13 @@ public final class ToolRegistry {
                 p("cluster", "STRING", true, "Cluster name or address to connect to."),
                 p("group", "STRING", true, "Consumer group name to delete."),
                 p("namespace", "STRING", false, "Optional namespace.")
+        ));
+
+        register(def("group", "progress", RiskLevel.L1,
+                "Read-only consumption progress for a group: per-queue broker/consumer offsets, lag and total lag.",
+                "OBJECT",
+                p("cluster", "STRING", true, "Cluster name or address to connect to."),
+                p("group", "STRING", true, "Consumer group name to inspect.")
         ));
     }
 

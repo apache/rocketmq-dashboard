@@ -20,6 +20,8 @@ import { Button, Checkbox, Form, Input, message, Popconfirm, Space, Table, Tag, 
 import { useLanguage } from '../../i18n/LanguageContext';
 import { isWriteOperationEnabled } from '../../constants/roles';
 import { useClusterCapabilities } from '../../store/context/ClusterCapabilitiesContext';
+import { useLlm } from '../../store/context/LlmContext';
+import { RobotOutlined } from '@ant-design/icons';
 import { remoteApi } from '../../api/remoteApi/remoteApi';
 import CapabilityAwareTopic, { TopicTypeFilter, TopicOperations } from '../../components/topic/CapabilityAwareTopic';
 import TopicCreationForm from '../../components/topic/TopicCreationForm';
@@ -40,6 +42,18 @@ import SendTopicMessageDialog from "../../components/topic/SendTopicMessageDialo
 const CapabilityTopicPage = () => {
   const { t } = useLanguage();
   const { capabilities, selectedCluster } = useClusterCapabilities();
+  const { setIsPanelOpen, sendMessageStream, isDegraded } = useLlm();
+
+  /**
+   * RIP-3 (AI-01.1 signal 5): open the LLM sidebar and auto-inject the current
+   * topic + cluster context so the assistant can inspect the topic via the MCP
+   * tools (route / progress / dlq / describe) without the user re-typing it.
+   */
+  const askLlmAboutTopic = (topic) => {
+    setIsPanelOpen(true);
+    const prompt = `请分析 RocketMQ 集群 "${selectedCluster}" 中的主题 "${topic}"：包括主题配置、路由分布（各 broker 的队列布局）、消费进度与堆积情况，以及是否存在死信消息。给出健康度评估与优化建议。`;
+    sendMessageStream(prompt, selectedCluster);
+  };
   
   // Filter states
   const [filterStr, setFilterStr] = useState('');
@@ -348,13 +362,25 @@ const CapabilityTopicPage = () => {
       render: (_, record) => {
         const sysFlag = record.topic.startsWith('%SYS%');
         return (
-          <TopicOperations
-            topic={record.topic}
-            isSystem={sysFlag}
-            writeOperationEnabled={writeOperationEnabled}
-            onAction={handleTopicAction}
-            t={t}
-          />
+          <Space size="small">
+            <TopicOperations
+              topic={record.topic}
+              isSystem={sysFlag}
+              writeOperationEnabled={writeOperationEnabled}
+              onAction={handleTopicAction}
+              t={t}
+            />
+            <Button
+              size="small"
+              type="link"
+              icon={<RobotOutlined />}
+              disabled={isDegraded}
+              title={isDegraded ? t.LLM_NOT_CONFIGURED || '未配置 LLM' : '向 AI 助手咨询该主题'}
+              onClick={() => askLlmAboutTopic(record.topic)}
+            >
+              {t.ASK_LLM || '问 LLM'}
+            </Button>
+          </Space>
         );
       },
     },

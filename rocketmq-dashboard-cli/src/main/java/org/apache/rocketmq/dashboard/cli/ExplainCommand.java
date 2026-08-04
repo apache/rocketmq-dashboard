@@ -39,7 +39,7 @@ public class ExplainCommand implements Callable<Integer> {
         List<ToolDefinition> tools = ToolRegistry.getInstance().getToolsByResource(resource);
         if (tools.isEmpty()) {
             System.out.println("Unknown resource: " + resource);
-            System.out.println("Available resources: topic, group, cluster, namespace, message, client, acl, broker, metrics");
+            System.out.println("Available resources: topic, group, cluster, route, dlq, message, client, acl, broker, metrics");
             return 1;
         }
 
