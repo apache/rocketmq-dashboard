@@ -184,6 +184,9 @@ public class RocketMQMessageProvider implements MessageProvider {
         try {
             consumer.start();
             Set<MessageQueue> queues = consumer.fetchSubscribeMessageQueues(topic);
+            if (queues == null || queues.isEmpty()) {
+                return result;
+            }
             outer:
             for (MessageQueue queue : queues) {
                 long minOffset = consumer.searchOffset(queue, begin);
