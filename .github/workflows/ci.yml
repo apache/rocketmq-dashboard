@@ -30,6 +30,26 @@ jobs:
       - name: Build backend
         run: mvn -B -ntp clean package -DskipTests
 
+  cli-build:
+    name: CLI & MCP Build (Java 21)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rocketmq-dashboard-cli
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21 (Dragonwell)
+        uses: actions/setup-java@v4
+        with:
+          distribution: dragonwell
+          java-version: "21"
+          cache: maven
+
+      - name: Build CLI & MCP modules
+        run: mvn -B -ntp clean package
+
   frontend-build:
     name: Frontend Build (Node 20)
     runs-on: ubuntu-latest
