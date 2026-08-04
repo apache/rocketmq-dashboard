@@ -32,6 +32,10 @@ cd deploy && docker compose up -d --build
 
 默认访问地址为 `http://127.0.0.1:6789`。
 
+默认 schema 只创建 Studio 所需的表，不会写入实例、Topic、消费组或 ACL 示例数据。需要演示数据时，
+请在开发环境中显式导入 `deploy/mysql/upgrade-demo-instance.sql` 和
+`deploy/mysql/upgrade-demo-acl.sql`，不要在生产环境导入这些脚本。
+
 ## 开启登录保护
 
 `studio.auth.login-required` 默认为 `false`，便于本地开发和演示环境直接访问。共享环境建议在

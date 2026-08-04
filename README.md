@@ -14,6 +14,10 @@ cd deploy && docker compose up -d --build
 
 Visit **http://127.0.0.1:6789** after startup.
 
+The default schema creates only Studio tables. It does not seed instances, topics, consumer groups, or ACL
+records. Development-only sample data can be imported explicitly from `deploy/mysql/`; it is not part of the
+default deployment.
+
 **Studio ports:** Frontend 6789 (Nginx), Backend 8888 (Spring Boot)
 
 **RocketMQ ports:** NameServer 9876, Broker 10911, Proxy Remoting 8080, Proxy gRPC 8081
