@@ -89,7 +89,7 @@ public class RocketMQClientProvider implements ClientProvider {
         Set<String> topics;
         try {
             TopicList topicList = adminExt.fetchAllTopicList();
-            topics = topicList == null ? Set.of() : topicList.getTopicList();
+            topics = topicList == null || topicList.getTopicList() == null ? Set.of() : topicList.getTopicList();
         } catch (Exception e) {
             log.warn("Failed to fetch topic list for producer connection scan", e);
             return result;
