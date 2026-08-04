@@ -16,11 +16,13 @@
  */
 package org.apache.rocketmq.studio.rocketmq;
 
+import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -122,8 +124,14 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     vo.setSubscribedTopics(new ArrayList<>(conn.getSubscriptionTable().keySet()));
                 }
             }
-        } catch (Exception ignored) {
-            // Group may be offline
+        } catch (MQClientException exception) {
+            if (exception.getResponseCode() == ResponseCode.CONSUMER_NOT_ONLINE) {
+                log.debug("Consumer group {} is offline", name);
+                return vo;
+            }
+            throw new BusinessException(502, "Failed to get consumer group: " + exception.getMessage());
+        } catch (Exception exception) {
+            throw new BusinessException(502, "Failed to get consumer group: " + exception.getMessage());
         }
         return vo;
     }
