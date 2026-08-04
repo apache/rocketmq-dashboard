@@ -80,6 +80,14 @@ class MybatisPlusInstanceRepositoryTest {
     }
 
     @Test
+    void constructorShouldNotSeedDemoInstances() {
+        when(instanceMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of());
+
+        assertThat(repository.findAll()).isEmpty();
+        verify(instanceMapper, never()).insert(any(RmqInstance.class));
+    }
+
+    @Test
     void findAllShouldReturnEmptyWithoutCountQueriesWhenNoInstances() {
         when(instanceMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of());
 
