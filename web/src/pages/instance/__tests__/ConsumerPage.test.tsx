@@ -147,7 +147,7 @@ describe('Consumer page', () => {
     renderWithProviders(<ConsumerPage />);
 
     expect(await screen.findByText('orders-cg')).toBeInTheDocument();
-    await user.type(screen.getByPlaceholderText('搜索 Group 名称、命名空间或 Topic'), 'orders');
+    await user.type(screen.getByPlaceholderText('搜索 Group 名称或 Topic'), 'orders');
     await waitFor(() => expect(screen.queryByText('users-cg')).not.toBeInTheDocument());
     await user.click(screen.getByRole('button', { name: /导出/ }));
 
