@@ -31,6 +31,11 @@ export async function listTopics(params?: TopicQuery): Promise<Topic[]> {
 
 export async function createTopic(data: Partial<Topic>): Promise<Topic> {
   if (isMockMode()) {
+    const duplicate = mockTopics.some(
+      (topic) => topic.name === data.name && topic.clusterId === data.clusterId,
+    );
+    if (duplicate) throw new Error(`Topic already exists: ${data.name}`);
+
     const topic = {
       ...data,
       createdAt: new Date().toISOString(),
