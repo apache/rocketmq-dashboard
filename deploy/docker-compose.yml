@@ -24,6 +24,29 @@ services:
       timeout: 5s
       retries: 10
 
+  mysql-migrate:
+    image: mysql:8.0
+    container_name: rocketmq-studio-mysql-migrate
+    restart: "no"
+    environment:
+      MYSQL_PWD: studio123
+    volumes:
+      - ./mysql/upgrade-demo-instance.sql:/migrations/001-instance.sql:ro
+      - ./mysql/upgrade-demo-acl.sql:/migrations/002-acl.sql:ro
+      - ./mysql/upgrade-demo-alert.sql:/migrations/003-alert.sql:ro
+    command:
+      - sh
+      - -ec
+      - |
+        sed '/^-- 3\. 默认 5 个实例/,$$d' /migrations/001-instance.sql | mysql -h mysql -uroot rocketmq_studio
+        sed '/^-- 3\. 规则种子/,$$d' /migrations/002-acl.sql | mysql -h mysql -uroot rocketmq_studio
+        mysql -h mysql -uroot rocketmq_studio < /migrations/003-alert.sql
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - studio-net
+
   rocketmq-server:
     build:
       context: ../server
@@ -57,8 +80,8 @@ services:
       - studio-net
       - rocketmq
     depends_on:
-      mysql:
-        condition: service_healthy
+      mysql-migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8888/actuator/health"]
       interval: 10s
