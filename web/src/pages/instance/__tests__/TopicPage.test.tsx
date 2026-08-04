@@ -55,6 +55,14 @@ beforeAll(() => {
       dispatchEvent: vi.fn(),
     })),
   });
+  Object.defineProperty(URL, 'createObjectURL', {
+    writable: true,
+    value: vi.fn(() => 'blob:topic-export'),
+  });
+  Object.defineProperty(URL, 'revokeObjectURL', {
+    writable: true,
+    value: vi.fn(),
+  });
 });
 
 const buildTopics = (count: number): Topic[] =>
@@ -108,6 +116,49 @@ describe('TopicPage', () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('downloads the currently filtered topics when exporting', async () => {
+    const user = userEvent.setup();
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(vi.fn());
+    let exportedBlob: Blob | undefined;
+    vi.mocked(URL.createObjectURL).mockImplementation((blob) => {
+      exportedBlob = blob as Blob;
+      return 'blob:topic-export';
+    });
+    topicServiceMocks.listTopics.mockResolvedValue([
+      {
+        ...buildTopics(1)[0],
+        name: 'orders-topic',
+        namespace: 'trade',
+        remark: 'orders, "critical"',
+      },
+      {
+        ...buildTopics(1)[0],
+        name: 'users-topic',
+        namespace: 'user',
+        remark: '=formula-risk',
+      },
+    ]);
+    renderWithProviders();
+
+    expect(await screen.findByText('orders-topic')).toBeInTheDocument();
+    await user.type(screen.getByPlaceholderText('搜索 Topic 名称'), 'orders');
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(screen.queryByText('users-topic')).not.toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: /导出/ }));
+
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:topic-export');
+    expect(document.querySelector('a[download^="rocketmq-topics-"]')).not.toBeInTheDocument();
+
+    expect(exportedBlob).toBeDefined();
+    const csv = await exportedBlob!.text();
+    expect(csv).toContain('"orders-topic"');
+    expect(csv).toContain('"orders, ""critical"""');
+    expect(csv).not.toContain('users-topic');
+    clickSpy.mockRestore();
   });
 
   it('keeps the current table page after opening and closing topic details', async () => {

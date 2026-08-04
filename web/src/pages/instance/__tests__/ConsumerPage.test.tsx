@@ -54,6 +54,14 @@ beforeAll(() => {
       dispatchEvent: vi.fn(),
     })),
   });
+  Object.defineProperty(URL, 'createObjectURL', {
+    writable: true,
+    value: vi.fn(() => 'blob:consumer-group-export'),
+  });
+  Object.defineProperty(URL, 'revokeObjectURL', {
+    writable: true,
+    value: vi.fn(),
+  });
 });
 
 const group: ConsumerGroup = {
@@ -112,6 +120,48 @@ describe('Consumer page', () => {
     expect(await screen.findByText('remote-cg')).toBeInTheDocument();
     expect(screen.getByText('Push')).toBeInTheDocument();
     expect(consumerService.listConsumerGroups).toHaveBeenCalledTimes(1);
+  });
+
+  it('downloads the currently filtered consumer groups when exporting', async () => {
+    const user = userEvent.setup();
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(vi.fn());
+    let exportedBlob: Blob | undefined;
+    vi.mocked(URL.createObjectURL).mockImplementation((blob) => {
+      exportedBlob = blob as Blob;
+      return 'blob:consumer-group-export';
+    });
+    vi.mocked(consumerService.listConsumerGroups).mockResolvedValue([
+      {
+        ...group,
+        name: 'orders-cg',
+        namespace: 'trade',
+        subscribedTopics: ['orders-topic', 'payments,topic'],
+      },
+      {
+        ...group,
+        name: 'users-cg',
+        namespace: '=formula-risk',
+        subscribedTopics: ['users-topic'],
+      },
+    ]);
+    renderWithProviders(<ConsumerPage />);
+
+    expect(await screen.findByText('orders-cg')).toBeInTheDocument();
+    await user.type(screen.getByPlaceholderText('搜索 Group 名称或 Topic'), 'orders');
+    await waitFor(() => expect(screen.queryByText('users-cg')).not.toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: /导出/ }));
+
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:consumer-group-export');
+    expect(document.querySelector('a[download^="rocketmq-consumer-groups-"]')).not.toBeInTheDocument();
+
+    expect(exportedBlob).toBeDefined();
+    const csv = await exportedBlob!.text();
+    expect(csv).toContain('"orders-cg"');
+    expect(csv).toContain('"orders-topic;payments,topic"');
+    expect(csv).not.toContain('users-cg');
+    clickSpy.mockRestore();
   });
 
   it('loads subscriptions and progress when opening a group', async () => {
