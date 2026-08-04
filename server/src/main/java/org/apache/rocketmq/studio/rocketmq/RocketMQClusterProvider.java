@@ -83,13 +83,7 @@ public class RocketMQClusterProvider implements ClusterProvider {
                 List<BrokerVO> brokers = buildBrokerList(brokerNames, brokerAddrTable);
                 List<NameServerVO> nameServers = buildNameServerList();
 
-                ClusterVO cluster = ClusterVO.builder()
-                        .name(clusterName)
-                        .status(ClusterStatus.healthy)
-                        .brokers(brokers)
-                        .nameServers(nameServers)
-                        .build();
-                cluster.setId(clusterName);
+                ClusterVO cluster = buildClusterVO(clusterName, brokers, nameServers);
                 clusters.add(cluster);
             }
             return clusters;
@@ -123,18 +117,31 @@ public class RocketMQClusterProvider implements ClusterProvider {
             List<BrokerVO> brokers = buildBrokerList(brokerNames, brokerAddrTable);
             List<NameServerVO> nameServers = buildNameServerList();
 
-            ClusterVO cluster = ClusterVO.builder()
-                    .name(clusterId)
-                    .status(ClusterStatus.healthy)
-                    .brokers(brokers)
-                    .nameServers(nameServers)
-                    .build();
-            cluster.setId(clusterId);
-            return cluster;
+            return buildClusterVO(clusterId, brokers, nameServers);
         } catch (Exception e) {
             log.warn("Failed to refresh cluster detail for {}: {}", clusterId, e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * Build a cluster view with safe defaults so downstream consumers (web UI, dashboard)
+     * never receive null collections for fields like proxies or tpsHistory.
+     */
+    private ClusterVO buildClusterVO(String clusterName, List<BrokerVO> brokers,
+                                     List<NameServerVO> nameServers) {
+        ClusterVO cluster = ClusterVO.builder()
+                .name(clusterName)
+                .status(ClusterStatus.healthy)
+                .brokers(brokers != null ? brokers : Collections.emptyList())
+                .proxies(Collections.emptyList())
+                .nameServers(nameServers != null ? nameServers : Collections.emptyList())
+                .tpsHistory(Collections.emptyList())
+                .topicCount(0)
+                .groupCount(0)
+                .build();
+        cluster.setId(clusterName);
+        return cluster;
     }
 
     private List<BrokerVO> buildBrokerList(Set<String> brokerNames,

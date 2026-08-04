@@ -182,7 +182,7 @@ const ClusterPage = () => {
             setSelectedProxy((current) => {
               if (!current) return null;
               const cluster = nextClusters.find((item) => item.id === current.clusterId);
-              const proxy = cluster?.proxies.find((item) => item.addr === current.addr);
+              const proxy = cluster?.proxies?.find((item) => item.addr === current.addr);
               if (!cluster || !proxy) return null;
               return {
                 ...proxy,
@@ -278,13 +278,13 @@ const ClusterPage = () => {
 
   // Broker config handler
   const handleConfigOpen = (cluster: ClusterInfo) => {
-    const cfg: ClusterConfig = cluster.config;
+    const cfg: ClusterConfig = cluster.config ?? ({} as ClusterConfig);
     setSelectedCluster(cluster);
     configForm.setFieldsValue({
       flushDiskType: cfg.flushDiskType ?? 'ASYNC_FLUSH',
       autoCreateTopicEnable: cfg.autoCreateTopicEnable ?? false,
       autoCreateSubscriptionGroup: cfg.autoCreateSubscriptionGroup ?? false,
-      maxMessageSizeMB: Math.round(cfg.maxMessageSize / 1048576),
+      maxMessageSizeMB: Math.round((cfg.maxMessageSize ?? 4194304) / 1048576),
       fileReservedTime: cfg.fileReservedTime ?? 72,
       writeQueueNums: cfg.writeQueueNums ?? 8,
       readQueueNums: cfg.readQueueNums ?? 8,
@@ -337,7 +337,7 @@ const ClusterPage = () => {
     const brokerSearchText = searchText(brokerSearch);
 
     const allBrokers: BrokerWithCluster[] = clusters.flatMap((c) =>
-      c.brokers
+      (c.brokers ?? [])
         .filter((b) => {
           const matchSearch =
             !brokerSearchText ||
@@ -522,7 +522,7 @@ const ClusterPage = () => {
                 if (!selectedCluster) return;
                 const { maxMessageSizeMB, ...configValues } = values;
                 const nextConfig: ClusterConfig = {
-                  ...selectedCluster.config,
+                  ...(selectedCluster.config ?? {}),
                   ...configValues,
                   maxMessageSize: maxMessageSizeMB * 1048576,
                 };
@@ -590,7 +590,7 @@ const ClusterPage = () => {
     const nsSearchText = searchText(nsSearch);
     const filteredClusters = clusters
       .map((c) => {
-        const nameServers = c.nameServers.filter((ns) => {
+        const nameServers = (c.nameServers ?? []).filter((ns) => {
           const matchSearch = !nsSearchText || searchText(ns.addr).includes(nsSearchText);
           return matchSearch;
         });
@@ -764,9 +764,9 @@ const ClusterPage = () => {
     const proxySearchText = searchText(proxySearch);
 
     const allProxies: ProxyRow[] = clusters
-      .filter((c) => c.proxies.length > 0)
+      .filter((c) => (c.proxies?.length ?? 0) > 0)
       .flatMap((c) =>
-        c.proxies
+        (c.proxies ?? [])
           .filter((p) => {
             const matchSearch = !proxySearchText || searchText(p.addr).includes(proxySearchText);
             return matchSearch;
@@ -919,9 +919,9 @@ const ClusterPage = () => {
 
   // ─── Render ─────────────────────────────────────────────────────────────────
 
-  const totalBrokers = clusters.reduce((s, c) => s + c.brokers.length, 0);
-  const totalNameServers = clusters.reduce((s, c) => s + c.nameServers.length, 0);
-  const totalProxies = clusters.reduce((s, c) => s + c.proxies.length, 0);
+  const totalBrokers = clusters.reduce((s, c) => s + (c.brokers?.length ?? 0), 0);
+  const totalNameServers = clusters.reduce((s, c) => s + (c.nameServers?.length ?? 0), 0);
+  const totalProxies = clusters.reduce((s, c) => s + (c.proxies?.length ?? 0), 0);
 
   return (
     <div style={{ padding: 24 }}>
