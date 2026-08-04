@@ -1,7 +1,7 @@
 // Licensed to the Apache Software Foundation (ASF) under one or more
 // contributor license agreements.
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Table, Button, Modal, Form, Input, Select, Switch, Space, Tag, message } from 'antd';
 import { useLang } from '../i18n/LangContext';
 import * as metricsService from '../services/metricsService';

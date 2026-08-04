@@ -18,6 +18,7 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
+import type { MetricsDataSource } from './metrics';
 import {
   getDashboard,
   listMetricProfiles,
@@ -131,7 +132,11 @@ describe('metrics data sources', () => {
   });
 
   it('creates a data source', async () => {
-    const config = { name: 'cortex-prod', providerType: 'CORTEX', url: 'http://cortex:9009' };
+    const config: MetricsDataSource = {
+      name: 'cortex-prod',
+      providerType: 'CORTEX',
+      url: 'http://cortex:9009',
+    };
     mock.onPost('/metrics/datasources/create').reply(200, { code: 200, data: config });
 
     const created = await createMetricDataSource(config);
@@ -141,7 +146,11 @@ describe('metrics data sources', () => {
   });
 
   it('updates a data source', async () => {
-    const config = { name: 'cortex-prod', providerType: 'CORTEX', url: 'http://cortex:9010' };
+    const config: MetricsDataSource = {
+      name: 'cortex-prod',
+      providerType: 'CORTEX',
+      url: 'http://cortex:9010',
+    };
     mock.onPost('/metrics/datasources/update').reply(200, { code: 200, data: config });
 
     const updated = await updateMetricDataSource(config);
