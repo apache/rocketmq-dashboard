@@ -23,7 +23,6 @@ import org.apache.rocketmq.studio.common.domain.enums.AlertLevel;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -45,8 +44,12 @@ class AlertServiceTest {
     @Mock
     private AlertRepository alertRepository;
 
-    @InjectMocks
     private AlertService alertService;
+
+    @org.junit.jupiter.api.BeforeEach
+    void setUp() {
+        alertService = new AlertService(alertRepository, new AlertRuleAssetService());
+    }
 
     @Test
     void listRulesShouldReturnAllRules() {
@@ -82,8 +85,8 @@ class AlertServiceTest {
 
         assertThat(result)
                 .contains("groups:")
-                .contains("# Rule 1: RocketMQBrokerDown")
-                .contains("up{job=~\".*rocketmq.*\"} == 0")
+                .contains("RocketMQBrokerDown")
+                .contains("up{job=~\".*rocketmq.*broker.*\"} == 0")
                 .contains("rocketmq_consumer_lag_messages > 100000")
                 .contains("rocketmq_producer_send_to_back_rt > 1000")
                 .contains("severity: critical");
