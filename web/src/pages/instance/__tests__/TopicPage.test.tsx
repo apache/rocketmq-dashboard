@@ -148,6 +148,7 @@ describe('TopicPage', () => {
   it('shows an error when sending a test message fails', async () => {
     const user = userEvent.setup();
     const errorSpy = vi.spyOn(message, 'error').mockImplementation(vi.fn());
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(vi.fn());
     topicServiceMocks.listTopics.mockResolvedValue(buildTopics(1));
     topicServiceMocks.sendTopicMessage.mockRejectedValue(new Error('send failed'));
 
@@ -165,7 +166,12 @@ describe('TopicPage', () => {
 
     await waitFor(() => expect(topicServiceMocks.sendTopicMessage).toHaveBeenCalledTimes(1));
     expect(errorSpy).toHaveBeenCalledWith('发送测试消息失败，请稍后重试');
+    expect(consoleErrorSpy).toHaveBeenCalledWith('Test message send failed', {
+      topic: 'topic-01',
+      error: 'send failed',
+    });
     expect(dialogTitle).toBeInTheDocument();
     errorSpy.mockRestore();
+    consoleErrorSpy.mockRestore();
   });
 });

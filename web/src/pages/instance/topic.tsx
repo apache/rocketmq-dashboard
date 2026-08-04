@@ -643,7 +643,11 @@ const TopicPage = () => {
       message.success(`消息发送成功！MsgId: ${result.msgId}`);
       setSendModalOpen(false);
       sendForm.resetFields();
-    } catch {
+    } catch (error) {
+      console.error('Test message send failed', {
+        topic: values.topic,
+        error: error instanceof Error ? error.message : String(error),
+      });
       message.error('发送测试消息失败，请稍后重试');
     } finally {
       setSending(false);
