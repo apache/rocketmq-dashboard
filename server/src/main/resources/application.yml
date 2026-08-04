@@ -11,6 +11,23 @@ spring:
     username: ${SPRING_DATASOURCE_USERNAME:root}
     password: ${SPRING_DATASOURCE_PASSWORD:studio123}
     driver-class-name: com.mysql.cj.jdbc.Driver
+  ai:
+    mcp:
+      server:
+        enabled: true
+        protocol: SSE
+        name: rocketmq-studio
+        version: 1.0.0
+        type: SYNC
+        instructions: RocketMQ Studio exposes RocketMQ operational tools through MCP.
+        base-url: ""
+        sse-endpoint: /api/ai/mcp/sse
+        sse-message-endpoint: /api/ai/mcp/messages
+        capabilities:
+          tool: true
+          resource: false
+          prompt: false
+          completion: false
 
 mybatis-plus:
   configuration:

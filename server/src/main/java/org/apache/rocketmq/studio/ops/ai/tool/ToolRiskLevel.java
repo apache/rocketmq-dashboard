@@ -14,23 +14,37 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.ops.ai;
+package org.apache.rocketmq.studio.ops.ai.tool;
 
+public enum ToolRiskLevel {
 
-import java.util.List;
-import java.util.Map;
+    L1("L1_READ_ONLY"),
+    L2("L2_MUTATION"),
+    L3("L3_HIGH_RISK");
 
-public interface McpServerRegistry {
+    private final String operationLevel;
 
-    List<AiToolVO> listTools();
+    ToolRiskLevel(String operationLevel) {
+        this.operationLevel = operationLevel;
+    }
 
-    List<AiToolVO> listTools(String clusterId);
+    public String code() {
+        return name();
+    }
 
-    Object execute(String name, Map<String, Object> input);
+    public String operationLevel() {
+        return operationLevel;
+    }
 
-    String catalogVersion();
+    public boolean readOnly() {
+        return this == L1;
+    }
 
-    String catalogDigest();
+    public boolean requiresConfirmation() {
+        return !readOnly();
+    }
 
-    String minimumClientVersion();
+    public boolean requiresReason() {
+        return this == L3;
+    }
 }

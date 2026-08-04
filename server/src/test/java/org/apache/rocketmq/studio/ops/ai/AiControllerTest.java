@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.ops.ai;
 
+import org.apache.rocketmq.studio.ops.ai.tool.ToolCatalogMetadata;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -47,18 +48,19 @@ class AiControllerTest {
         aiService = mock(AiService.class);
         mockMvc = MockMvcBuilders.standaloneSetup(new AiController(aiService)).build();
 
-        when(aiService.catalogVersion()).thenReturn("1.0.0");
-        when(aiService.catalogDigest()).thenReturn(DIGEST);
-        when(aiService.minimumClientVersion()).thenReturn("1.0.0");
+        when(aiService.catalogMetadata()).thenReturn(new ToolCatalogMetadata("1.0.0", DIGEST, "1.0.0"));
     }
 
     @Test
     void listToolsKeepsTheExistingBodyAndAddsCatalogHeaders() throws Exception {
         AiToolVO tool = AiToolVO.builder()
                 .name("rmq.cluster.list")
+                .version("1.0.0")
+                .cli(Map.of("resource", "cluster", "verb", "list"))
                 .description("List clusters")
                 .parameters(Map.of("type", "object"))
                 .riskLevel("L1")
+                .operationLevel("L1_READ_ONLY")
                 .permission("cluster:read")
                 .requiredCapabilities(Collections.emptyList())
                 .outputSchema(Map.of("type", "array"))
@@ -75,9 +77,14 @@ class AiControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.message").value("success"))
                 .andExpect(jsonPath("$.data[0].name").value("rmq.cluster.list"))
+                .andExpect(jsonPath("$.data[0].version").value("1.0.0"))
+                .andExpect(jsonPath("$.data[0].cli.resource").value("cluster"))
+                .andExpect(jsonPath("$.data[0].cli.verb").value("list"))
                 .andExpect(jsonPath("$.data[0].parameters.type").value("object"))
                 .andExpect(jsonPath("$.data[0].riskLevel").value("L1"))
+                .andExpect(jsonPath("$.data[0].operationLevel").value("L1_READ_ONLY"))
                 .andExpect(jsonPath("$.data[0].permission").value("cluster:read"))
+                .andExpect(jsonPath("$.data[0].requiredCapabilities").isArray())
                 .andExpect(jsonPath("$.data[0].viewHint").value("table"));
     }
 
@@ -124,5 +131,58 @@ class AiControllerTest {
                 .andExpect(jsonPath("$.data").isArray());
 
         verify(aiService).executeTool("rmq.cluster.list", Collections.emptyMap());
+    }
+
+    @Test
+    void callToolDelegatesStructuredInput() throws Exception {
+        AiToolCallDTO call = AiToolCallDTO.builder()
+                .name("rmq.topic.create")
+                .arguments(Map.of(
+                        "cluster", "cluster-001",
+                        "topic", "order-topic"))
+                .dryRun(true)
+                .source("HTTP")
+                .build();
+        when(aiService.callTool(call)).thenReturn(AiToolExecutionResultVO.builder()
+                .requestId("request-001")
+                .toolName("rmq.topic.create")
+                .source("HTTP")
+                .operationLevel("L2_MUTATION")
+                .dryRun(true)
+                .executed(false)
+                .policy(AiToolExecutionPolicy.DRY_RUN)
+                .policyReason("Mutation tools return dry-run plans until apply confirmation is available.")
+                .message("Dry run completed")
+                .result(Map.of("status", "PENDING_HANDLER"))
+                .build());
+
+        mockMvc.perform(post("/api/ai/tools/call")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "rmq.topic.create",
+                                  "arguments": {
+                                    "cluster": "cluster-001",
+                                    "topic": "order-topic"
+                                  },
+                                  "dryRun": true
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(header().string("X-RMQ-Catalog-Version", "1.0.0"))
+                .andExpect(header().string("X-RMQ-Catalog-Digest", DIGEST))
+                .andExpect(header().string("X-RMQ-Minimum-Client-Version", "1.0.0"))
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.requestId").value("request-001"))
+                .andExpect(jsonPath("$.data.toolName").value("rmq.topic.create"))
+                .andExpect(jsonPath("$.data.source").value("HTTP"))
+                .andExpect(jsonPath("$.data.operationLevel").value("L2_MUTATION"))
+                .andExpect(jsonPath("$.data.dryRun").value(true))
+                .andExpect(jsonPath("$.data.executed").value(false))
+                .andExpect(jsonPath("$.data.policy").value("DRY_RUN"))
+                .andExpect(jsonPath("$.data.policyReason").value(
+                        "Mutation tools return dry-run plans until apply confirmation is available."));
+
+        verify(aiService).callTool(call);
     }
 }

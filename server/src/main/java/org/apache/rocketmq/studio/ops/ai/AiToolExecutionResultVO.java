@@ -21,25 +21,24 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.List;
+import java.time.Instant;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class AiToolVO {
-    private String name;
-    private String version;
-    private Object cli;
-    private String description;
-    private Object parameters;
-    private String riskLevel;
+public class AiToolExecutionResultVO {
+    private String requestId;
+    private String toolName;
+    private String source;
     private String operationLevel;
-    private String permission;
-    private List<String> requiredCapabilities;
-    private Object outputSchema;
-    private String viewHint;
-    private boolean deprecated;
-    private String replacement;
-    private boolean implemented;
+    private Instant startedAt;
+    private Instant finishedAt;
+    private boolean dryRun;
+    private boolean executed;
+    private AiToolExecutionPolicy policy;
+    private String policyReason;
+    private String errorCode;
+    private String message;
+    private Object result;
 }

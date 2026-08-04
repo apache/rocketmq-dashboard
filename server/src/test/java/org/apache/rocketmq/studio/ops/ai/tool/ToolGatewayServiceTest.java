@@ -27,7 +27,6 @@ import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
-import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.topic.MetadataService;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
@@ -198,29 +197,33 @@ class ToolGatewayServiceTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void executesCapabilitiesWithAStableSortedCapabilityList() {
         when(clusterService.getCluster("cluster-v5")).thenReturn(cluster(ClusterType.V5_PROXY_CLUSTER));
 
         Object output = gateway.execute(
                 "rmq.capabilities", Map.of("cluster", "cluster-v5"));
 
-        assertThat(output).isEqualTo(Map.of(
-                "cluster", "cluster-v5",
-                "type", "V5_PROXY_CLUSTER",
-                "version", "5.2.0",
-                "capabilities", List.of(
+        Map<String, Object> result = (Map<String, Object>) output;
+        assertThat(result)
+                .containsEntry("cluster", "cluster-v5")
+                .containsEntry("type", "V5_PROXY_CLUSTER")
+                .containsEntry("version", "5.2.0");
+        assertThat((List<String>) result.get("capabilities"))
+                .containsExactly(
                         "ACL_V2",
                         "CLUSTER_PROXY",
                         "GRPC",
                         "LITE_TOPIC",
                         "POP",
                         "REMOTING",
-                        "ROCKETMQ_5")));
+                        "ROCKETMQ_5");
     }
 
     @Test
     @SuppressWarnings("unchecked")
     void executesDashboardSummaryWithADataMinimizingProjection() {
+        when(clusterService.getCluster("cluster-v5")).thenReturn(cluster(ClusterType.V5_PROXY_CLUSTER));
         when(dashboardService.getDashboard()).thenReturn(DashboardDataVO.builder()
                 .stats(DashboardStatsVO.builder()
                         .totalClusters(1)
@@ -280,7 +283,7 @@ class ToolGatewayServiceTest {
     @Test
     void rejectsDashboardSummaryWithoutRequiredClusterBeforeHandlerRuns() {
         assertThatThrownBy(() -> gateway.execute("rmq.dashboard.summary", Map.of()))
-                .isInstanceOf(BusinessException.class)
+                .isInstanceOf(ToolExecutionException.class)
                 .hasMessageContaining("input validation failed");
         verifyNoInteractions(dashboardService);
     }
@@ -320,7 +323,7 @@ class ToolGatewayServiceTest {
         when(clusterService.getCluster("unknown")).thenReturn(cluster("unknown", null));
 
         assertThatThrownBy(() -> capabilityResolver.resolve("unknown"))
-                .isInstanceOf(BusinessException.class)
+                .isInstanceOf(ToolExecutionException.class)
                 .hasMessageContaining("Cluster type is unavailable");
     }
 
@@ -352,9 +355,24 @@ class ToolGatewayServiceTest {
     }
 
     @Test
+    void executesTopicListWhenClusterNameIsProvided() {
+        ClusterVO cluster = cluster(ClusterType.V5_PROXY_CLUSTER);
+        cluster.setName("rmq-cluster-prod");
+        when(clusterService.getCluster("rmq-cluster-prod")).thenReturn(cluster);
+        when(clusterService.getCluster("cluster-v5")).thenReturn(cluster);
+        when(metadataService.listTopics("cluster-v5", null, null))
+                .thenReturn(List.of(topic()));
+
+        Object output = gateway.execute("rmq.topic.list", Map.of(
+                "cluster", "rmq-cluster-prod"));
+
+        assertThat(output.toString()).contains("order-topic");
+    }
+
+    @Test
     void rejectsTopicListWithoutAClusterBeforeHandlerRuns() {
         assertThatThrownBy(() -> gateway.execute("rmq.topic.list", Map.of("type", "NORMAL")))
-                .isInstanceOf(BusinessException.class)
+                .isInstanceOf(ToolExecutionException.class)
                 .hasMessageContaining("input validation failed");
         verifyNoInteractions(metadataService);
     }
@@ -386,13 +404,14 @@ class ToolGatewayServiceTest {
     @Test
     void rejectsConsumerGroupListWithoutAClusterBeforeHandlerRuns() {
         assertThatThrownBy(() -> gateway.execute("rmq.group.list", Map.of()))
-                .isInstanceOf(BusinessException.class)
+                .isInstanceOf(ToolExecutionException.class)
                 .hasMessageContaining("input validation failed");
         verifyNoInteractions(metadataService);
     }
 
     @Test
     void executesAlertRuleListThroughADataMinimizingProjection() {
+        when(clusterService.getCluster("cluster-v5")).thenReturn(cluster(ClusterType.V5_PROXY_CLUSTER));
         when(alertService.listRules()).thenReturn(List.of(
                 alertRule("rule-1", "High Lag", "rocketmq_consumer_lag_messages", true),
                 alertRule("rule-2", "Broker Down", "up", false)));
@@ -419,7 +438,7 @@ class ToolGatewayServiceTest {
     @Test
     void rejectsAlertRuleListWithoutAClusterBeforeHandlerRuns() {
         assertThatThrownBy(() -> gateway.execute("rmq.alert.rule.list", Map.of()))
-                .isInstanceOf(BusinessException.class)
+                .isInstanceOf(ToolExecutionException.class)
                 .hasMessageContaining("input validation failed");
         verifyNoInteractions(alertService);
     }
@@ -430,7 +449,7 @@ class ToolGatewayServiceTest {
 
         assertThatThrownBy(() -> gateway.execute(
                 "rmq.capabilities", Map.of("cluster", "unknown")))
-                .isInstanceOf(BusinessException.class)
+                .isInstanceOf(ToolExecutionException.class)
                 .hasMessageContaining("Cluster type is unavailable");
     }
 
@@ -446,7 +465,7 @@ class ToolGatewayServiceTest {
     @Test
     void rejectsCapabilitiesWithoutRequiredClusterBeforeHandlerRuns() {
         assertThatThrownBy(() -> gateway.execute("rmq.capabilities", Map.of()))
-                .isInstanceOf(BusinessException.class)
+                .isInstanceOf(ToolExecutionException.class)
                 .hasMessageContaining("input validation failed");
         verifyNoInteractions(clusterService);
     }
@@ -455,7 +474,7 @@ class ToolGatewayServiceTest {
     void rejectsUnexpectedInputPropertiesBeforeHandlerRuns() {
         assertThatThrownBy(() -> gateway.execute(
                 "rmq.cluster.list", Map.of("endpoint", "attacker.example")))
-                .isInstanceOf(BusinessException.class)
+                .isInstanceOf(ToolExecutionException.class)
                 .hasMessageContaining("input validation failed");
         verifyNoInteractions(clusterService);
     }
@@ -463,7 +482,7 @@ class ToolGatewayServiceTest {
     @Test
     void rejectsUnknownTools() {
         assertThatThrownBy(() -> gateway.execute("rmq.unknown", Map.of()))
-                .isInstanceOf(BusinessException.class)
+                .isInstanceOf(ToolExecutionException.class)
                 .hasMessageContaining("Tool not found");
     }
 
@@ -484,8 +503,8 @@ class ToolGatewayServiceTest {
                 nameServerConfigDiffHandler);
 
         assertThatThrownBy(() -> l2Gateway.execute("rmq.cluster.list", Map.of()))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("only L1 tools are enabled");
+                .isInstanceOf(ToolExecutionException.class)
+                .hasMessageContaining("dryRun=true or confirmed=true");
         verifyNoInteractions(clusterService);
     }
 
@@ -506,10 +525,22 @@ class ToolGatewayServiceTest {
     }
 
     @Test
-    void failsStartupWhenCatalogAndHandlersDoNotMatch() {
-        assertThatThrownBy(() -> gateway(catalog, clusterListHandler))
+    void failsStartupWhenHandlerIsAbsentFromCatalog() {
+        ToolHandler unknownHandler = new ToolHandler() {
+            @Override
+            public String name() {
+                return "rmq.not-in-catalog";
+            }
+
+            @Override
+            public Object execute(Map<String, Object> input) {
+                return Map.of();
+            }
+        };
+
+        assertThatThrownBy(() -> gateway(catalog, unknownHandler))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("missing handler");
+                .hasMessageContaining("absent from catalog");
     }
 
     @Test
@@ -603,6 +634,7 @@ class ToolGatewayServiceTest {
         return new ToolGatewayService(
                 toolCatalog,
                 capabilityResolver,
+                clusterService,
                 new ObjectMapper(),
                 List.of(handlers));
     }

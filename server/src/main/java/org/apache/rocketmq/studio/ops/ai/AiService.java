@@ -19,6 +19,10 @@ package org.apache.rocketmq.studio.ops.ai;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.ops.ai.tool.ToolCatalogMetadata;
+import org.apache.rocketmq.studio.ops.ai.tool.ToolDiscoveryService;
+import org.apache.rocketmq.studio.ops.ai.tool.ToolGatewayService;
+import org.apache.rocketmq.studio.ops.ai.tool.ToolInvocationService;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -31,7 +35,9 @@ import java.util.Map;
 public class AiService {
 
     private final LlmGateway llmGateway;
-    private final McpServerRegistry mcpServerRegistry;
+    private final ToolDiscoveryService toolDiscoveryService;
+    private final ToolInvocationService toolInvocationService;
+    private final ToolGatewayService toolGatewayService;
 
 
     public SseEmitter chat(ChatDTO request) {
@@ -71,28 +77,25 @@ public class AiService {
 
     public List<AiToolVO> listTools() {
         log.debug("Listing available AI tools");
-        return mcpServerRegistry.listTools();
+        return toolDiscoveryService.listTools();
     }
 
     public List<AiToolVO> listTools(String clusterId) {
         log.debug("Listing available AI tools for cluster: {}", clusterId);
-        return mcpServerRegistry.listTools(clusterId);
+        return toolDiscoveryService.listTools(clusterId);
     }
 
     public Object executeTool(String name, Map<String, Object> input) {
         log.info("Executing registered AI tool: {}", name);
-        return mcpServerRegistry.execute(name, input);
+        return toolGatewayService.execute(name, input);
     }
 
-    public String catalogVersion() {
-        return mcpServerRegistry.catalogVersion();
+    public AiToolExecutionResultVO callTool(AiToolCallDTO call) {
+        log.info("Calling registered AI tool: {}", call.getName());
+        return toolInvocationService.callTool(call);
     }
 
-    public String catalogDigest() {
-        return mcpServerRegistry.catalogDigest();
-    }
-
-    public String minimumClientVersion() {
-        return mcpServerRegistry.minimumClientVersion();
+    public ToolCatalogMetadata catalogMetadata() {
+        return toolDiscoveryService.metadata();
     }
 }

@@ -14,32 +14,32 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.ops.ai;
+package cmd
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import (
+	"fmt"
 
-import java.util.List;
+	"github.com/apache/rocketmq-dashboard/rmqctl/internal/output"
+	"github.com/spf13/cobra"
+)
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class AiToolVO {
-    private String name;
-    private String version;
-    private Object cli;
-    private String description;
-    private Object parameters;
-    private String riskLevel;
-    private String operationLevel;
-    private String permission;
-    private List<String> requiredCapabilities;
-    private Object outputSchema;
-    private String viewHint;
-    private boolean deprecated;
-    private String replacement;
-    private boolean implemented;
+func (a *App) newVersionCommand(opts *globalOptions) *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Print rmqctl version",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := requireOutputFormat(opts.output); err != nil {
+				return err
+			}
+			if opts.output == "json" {
+				return output.JSON(a.Out, map[string]string{
+					"name":    "rmqctl",
+					"version": CLIVersion,
+				})
+			}
+			fmt.Fprintf(a.Out, "rmqctl %s\n", CLIVersion)
+			return nil
+		},
+	}
 }

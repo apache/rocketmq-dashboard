@@ -21,25 +21,16 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.List;
+import java.util.Map;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class AiToolVO {
+public class AiToolCallDTO {
     private String name;
-    private String version;
-    private Object cli;
-    private String description;
-    private Object parameters;
-    private String riskLevel;
-    private String operationLevel;
-    private String permission;
-    private List<String> requiredCapabilities;
-    private Object outputSchema;
-    private String viewHint;
-    private boolean deprecated;
-    private String replacement;
-    private boolean implemented;
+    private Map<String, Object> arguments;
+    private boolean dryRun;
+    private boolean apply;
+    private String source;
 }

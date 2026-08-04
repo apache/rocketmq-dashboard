@@ -14,32 +14,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.ops.ai;
+package org.apache.rocketmq.studio.ops.ai.mcp;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.modelcontextprotocol.server.McpServerFeatures;
+import org.apache.rocketmq.studio.ops.ai.tool.ToolCatalog;
+import org.apache.rocketmq.studio.ops.ai.tool.ToolInvocationService;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 
 import java.util.List;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class AiToolVO {
-    private String name;
-    private String version;
-    private Object cli;
-    private String description;
-    private Object parameters;
-    private String riskLevel;
-    private String operationLevel;
-    private String permission;
-    private List<String> requiredCapabilities;
-    private Object outputSchema;
-    private String viewHint;
-    private boolean deprecated;
-    private String replacement;
-    private boolean implemented;
+@Configuration(proxyBeanMethods = false)
+public class McpToolConfiguration {
+
+    @Bean
+    public List<McpServerFeatures.SyncToolSpecification> rocketMqMcpToolSpecifications(
+            ToolCatalog toolCatalog,
+            ToolInvocationService toolInvocationService,
+            ObjectMapper objectMapper) {
+        return McpToolRegistrar.toToolSpecifications(toolCatalog, toolInvocationService, objectMapper);
+    }
 }

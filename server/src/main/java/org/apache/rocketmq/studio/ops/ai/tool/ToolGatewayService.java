@@ -24,7 +24,8 @@ import com.networknt.schema.SchemaLocation;
 import com.networknt.schema.SchemaRegistry;
 import com.networknt.schema.SpecificationVersion;
 import com.networknt.schema.dialect.Dialects;
-import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.cluster.broker.ClusterService;
+import org.apache.rocketmq.studio.cluster.broker.ClusterVO;
 import org.apache.rocketmq.studio.ops.ai.AiToolVO;
 import org.springframework.stereotype.Service;
 
@@ -39,10 +40,9 @@ import java.util.Set;
 @Service
 public class ToolGatewayService {
 
-    private static final String L1 = "L1";
-
     private final ToolCatalog catalog;
     private final CapabilityResolver capabilityResolver;
+    private final ClusterService clusterService;
     private final ObjectMapper objectMapper;
     private final Map<String, ToolHandler> handlers;
     private final Map<String, Schema> inputSchemas;
@@ -51,10 +51,12 @@ public class ToolGatewayService {
     public ToolGatewayService(
             ToolCatalog catalog,
             CapabilityResolver capabilityResolver,
+            ClusterService clusterService,
             ObjectMapper objectMapper,
             List<ToolHandler> handlers) {
         this.catalog = catalog;
         this.capabilityResolver = capabilityResolver;
+        this.clusterService = clusterService;
         this.objectMapper = objectMapper;
         this.handlers = registerHandlers(catalog, handlers);
 
@@ -78,36 +80,62 @@ public class ToolGatewayService {
                 .filter(definition -> clusterSelected || !requiresCluster(definition))
                 .filter(definition -> capabilities.containsAll(
                         definition.requiredCapabilities()))
-                .map(ToolGatewayService::toView)
+                .map(definition -> toView(
+                        definition,
+                        handlers.containsKey(definition.name()),
+                        catalog.getVersion()))
                 .toList();
     }
 
     public Object execute(String name, Map<String, Object> input) {
         ToolDefinition definition = catalog.find(name)
-                .orElseThrow(() -> new BusinessException(404, "Tool not found: " + name));
-        ToolHandler handler = handlers.get(name);
+                .orElseThrow(() -> new ToolExecutionException(
+                        404,
+                        ToolErrorCodes.TOOL_NOT_FOUND,
+                        "Tool not found: " + name));
         Map<String, Object> normalizedInput = input == null
-                ? Collections.emptyMap()
-                : input;
+                ? new LinkedHashMap<>()
+                : new LinkedHashMap<>(input);
 
         validateInput(definition, normalizedInput);
-        if (!L1.equals(definition.riskLevel())) {
-            throw new BusinessException(
-                    400, "Execution rejected; only L1 tools are enabled: " + name);
-        }
+        normalizeClusterInput(normalizedInput);
+        enforceRisk(definition, normalizedInput);
         enforceCapabilities(definition, normalizedInput);
 
+        ToolHandler handler = handlers.get(name);
+        if (handler == null) {
+            if (definition.riskLevel().requiresConfirmation()
+                    && Boolean.TRUE.equals(normalizedInput.get("dryRun"))) {
+                Object output = dryRunPlaceholder(definition, normalizedInput);
+                validateOutput(definition, output);
+                return output;
+            }
+            throw new ToolExecutionException(
+                    501,
+                    ToolErrorCodes.TOOL_HANDLER_NOT_IMPLEMENTED,
+                    "Tool handler is not implemented: " + name);
+        }
         Object output = handler.execute(normalizedInput);
         validateOutput(definition, output);
         return output;
+    }
+
+    private void normalizeClusterInput(Map<String, Object> input) {
+        Object cluster = input.get("cluster");
+        if (!(cluster instanceof String clusterRef) || clusterRef.isBlank()) {
+            return;
+        }
+        ClusterVO resolved = clusterService.getCluster(clusterRef);
+        input.put("cluster", resolved.getId());
     }
 
     private void validateInput(ToolDefinition definition, Map<String, Object> input) {
         List<Error> errors = sortedErrors(
                 inputSchemas.get(definition.name()).validate(objectMapper.valueToTree(input)));
         if (!errors.isEmpty()) {
-            throw new BusinessException(
+            throw new ToolExecutionException(
                     400,
+                    ToolErrorCodes.TOOL_INPUT_INVALID,
                     "Tool input validation failed for " + definition.name() + ": " + errors);
         }
     }
@@ -120,14 +148,58 @@ public class ToolGatewayService {
         }
         Object cluster = input.get("cluster");
         if (!(cluster instanceof String clusterId) || clusterId.isBlank()) {
-            throw new BusinessException(
-                    400, "Tool requires a cluster for capability checks: " + definition.name());
+            throw new ToolExecutionException(
+                    400,
+                    ToolErrorCodes.TOOL_CLUSTER_REQUIRED,
+                    "Tool requires a cluster for capability checks: " + definition.name());
         }
         Set<String> capabilities = Set.copyOf(capabilityResolver.resolve(clusterId));
         if (!capabilities.containsAll(definition.requiredCapabilities())) {
-            throw new BusinessException(
-                    400, "Cluster does not support tool: " + definition.name());
+            throw new ToolExecutionException(
+                    400,
+                    ToolErrorCodes.TOOL_CAPABILITY_UNSUPPORTED,
+                    "Cluster does not support tool: " + definition.name());
         }
+    }
+
+    private void enforceRisk(ToolDefinition definition, Map<String, Object> input) {
+        if (definition.riskLevel().readOnly()) {
+            return;
+        }
+        if (Boolean.TRUE.equals(input.get("dryRun"))) {
+            return;
+        }
+        if (!Boolean.TRUE.equals(input.get("confirmed"))) {
+            throw new ToolExecutionException(
+                    400,
+                    ToolErrorCodes.TOOL_CONFIRMATION_REQUIRED,
+                    "Tool requires dryRun=true or confirmed=true before execution: "
+                            + definition.name());
+        }
+        if (definition.riskLevel().requiresReason()) {
+            Object reason = input.get("reason");
+            if (!(reason instanceof String text) || text.isBlank()) {
+                throw new ToolExecutionException(
+                        400,
+                        ToolErrorCodes.TOOL_REASON_REQUIRED,
+                        "Tool requires a non-empty reason before L3 execution: "
+                                + definition.name());
+            }
+        }
+    }
+
+    private static Map<String, Object> dryRunPlaceholder(
+            ToolDefinition definition,
+            Map<String, Object> input) {
+        Map<String, Object> output = new LinkedHashMap<>();
+        output.put("tool", definition.name());
+        output.put("dryRun", true);
+        output.put("executed", false);
+        output.put("status", "PENDING_HANDLER");
+        output.put("riskLevel", definition.riskLevel().code());
+        output.put("message", "Tool contract is declared but the handler is not implemented yet.");
+        output.put("input", input);
+        return output;
     }
 
     private void validateOutput(ToolDefinition definition, Object output) {
@@ -155,14 +227,6 @@ public class ToolGatewayService {
             }
         }
 
-        List<String> missing = catalog.list().stream()
-                .map(ToolDefinition::name)
-                .filter(name -> !registered.containsKey(name))
-                .toList();
-        if (!missing.isEmpty()) {
-            throw new IllegalStateException(
-                    "Tool catalog contains missing handler: " + missing);
-        }
         return Collections.unmodifiableMap(registered);
     }
 
@@ -201,18 +265,25 @@ public class ToolGatewayService {
         return required instanceof List<?> fields && fields.contains("cluster");
     }
 
-    private static AiToolVO toView(ToolDefinition definition) {
+    private static AiToolVO toView(
+            ToolDefinition definition,
+            boolean implemented,
+            String catalogVersion) {
         return AiToolVO.builder()
                 .name(definition.name())
+                .version(catalogVersion)
+                .cli(definition.cli())
                 .description(definition.description())
                 .parameters(definition.inputSchema())
-                .riskLevel(definition.riskLevel())
+                .riskLevel(definition.riskLevel().code())
+                .operationLevel(definition.riskLevel().operationLevel())
                 .permission(definition.permission())
                 .requiredCapabilities(definition.requiredCapabilities())
                 .outputSchema(definition.outputSchema())
                 .viewHint(definition.viewHint())
                 .deprecated(definition.deprecated())
                 .replacement(definition.replacement())
+                .implemented(implemented)
                 .build();
     }
 

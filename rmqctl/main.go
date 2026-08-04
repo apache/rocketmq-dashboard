@@ -14,32 +14,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.ops.ai;
+package main
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import (
+	"os"
 
-import java.util.List;
+	"github.com/apache/rocketmq-dashboard/rmqctl/cmd"
+)
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class AiToolVO {
-    private String name;
-    private String version;
-    private Object cli;
-    private String description;
-    private Object parameters;
-    private String riskLevel;
-    private String operationLevel;
-    private String permission;
-    private List<String> requiredCapabilities;
-    private Object outputSchema;
-    private String viewHint;
-    private boolean deprecated;
-    private String replacement;
-    private boolean implemented;
+func main() {
+	os.Exit(cmd.NewApp(os.Stdout, os.Stderr).Execute(os.Args[1:]))
 }

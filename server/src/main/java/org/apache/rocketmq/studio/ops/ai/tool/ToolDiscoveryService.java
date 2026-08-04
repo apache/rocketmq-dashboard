@@ -14,32 +14,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.ops.ai;
+package org.apache.rocketmq.studio.ops.ai.tool;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import org.apache.rocketmq.studio.ops.ai.AiToolVO;
 
 import java.util.List;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class AiToolVO {
-    private String name;
-    private String version;
-    private Object cli;
-    private String description;
-    private Object parameters;
-    private String riskLevel;
-    private String operationLevel;
-    private String permission;
-    private List<String> requiredCapabilities;
-    private Object outputSchema;
-    private String viewHint;
-    private boolean deprecated;
-    private String replacement;
-    private boolean implemented;
+public interface ToolDiscoveryService {
+
+    List<AiToolVO> listTools();
+
+    List<AiToolVO> listTools(String clusterId);
+
+    ToolCatalogMetadata metadata();
 }

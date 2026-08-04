@@ -16,8 +16,9 @@
  */
 package org.apache.rocketmq.studio.ops.ai;
 
-import org.apache.rocketmq.studio.common.domain.Result;
 import lombok.RequiredArgsConstructor;
+import org.apache.rocketmq.studio.common.domain.Result;
+import org.apache.rocketmq.studio.ops.ai.tool.ToolCatalogMetadata;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -56,11 +57,16 @@ public class AiController {
         List<AiToolVO> tools = cluster == null
                 ? aiService.listTools()
                 : aiService.listTools(cluster);
-        return ResponseEntity.ok()
-                .header("X-RMQ-Catalog-Version", aiService.catalogVersion())
-                .header("X-RMQ-Catalog-Digest", aiService.catalogDigest())
-                .header("X-RMQ-Minimum-Client-Version", aiService.minimumClientVersion())
-                .body(Result.ok(tools));
+        return withCatalogHeaders(Result.ok(tools));
+    }
+
+    @PostMapping("/tools/call")
+    public ResponseEntity<Result<AiToolExecutionResultVO>> callTool(
+            @RequestBody AiToolCallDTO call) {
+        if (call.getSource() == null || call.getSource().isBlank()) {
+            call.setSource("HTTP");
+        }
+        return withCatalogHeaders(Result.ok(aiService.callTool(call)));
     }
 
     @PostMapping("/tools/{name}/execute")
@@ -71,5 +77,14 @@ public class AiController {
                 ? Collections.emptyMap()
                 : input;
         return Result.ok(aiService.executeTool(name, normalizedInput));
+    }
+
+    private <T> ResponseEntity<Result<T>> withCatalogHeaders(Result<T> body) {
+        ToolCatalogMetadata metadata = aiService.catalogMetadata();
+        return ResponseEntity.ok()
+                .header("X-RMQ-Catalog-Version", metadata.version())
+                .header("X-RMQ-Catalog-Digest", metadata.digest())
+                .header("X-RMQ-Minimum-Client-Version", metadata.minimumClientVersion())
+                .body(body);
     }
 }

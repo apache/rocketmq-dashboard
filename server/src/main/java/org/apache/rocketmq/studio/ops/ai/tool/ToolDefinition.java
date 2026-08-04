@@ -26,7 +26,7 @@ public record ToolDefinition(
         String name,
         Cli cli,
         String description,
-        String riskLevel,
+        ToolRiskLevel riskLevel,
         String permission,
         List<String> requiredCapabilities,
         Map<String, Object> inputSchema,

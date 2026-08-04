@@ -18,7 +18,6 @@ package org.apache.rocketmq.studio.ops.ai.tool;
 
 import org.apache.rocketmq.studio.cluster.broker.ClusterService;
 import org.apache.rocketmq.studio.cluster.broker.ClusterVO;
-import org.apache.rocketmq.studio.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -36,8 +35,10 @@ public class CapabilityResolver {
 
     List<String> resolve(ClusterVO cluster) {
         if (cluster.getType() == null) {
-            throw new BusinessException(
-                    400, "Cluster type is unavailable: " + cluster.getId());
+            throw new ToolExecutionException(
+                    400,
+                    ToolErrorCodes.CLUSTER_TYPE_UNAVAILABLE,
+                    "Cluster type is unavailable: " + cluster.getId());
         }
         return switch (cluster.getType()) {
             case V4_DIRECT -> List.of(

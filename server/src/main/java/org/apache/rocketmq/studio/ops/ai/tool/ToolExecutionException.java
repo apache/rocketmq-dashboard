@@ -14,32 +14,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.ops.ai;
+package org.apache.rocketmq.studio.ops.ai.tool;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
+import lombok.Getter;
 
-import java.util.List;
+@Getter
+public class ToolExecutionException extends BusinessException {
+    private final String errorCode;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class AiToolVO {
-    private String name;
-    private String version;
-    private Object cli;
-    private String description;
-    private Object parameters;
-    private String riskLevel;
-    private String operationLevel;
-    private String permission;
-    private List<String> requiredCapabilities;
-    private Object outputSchema;
-    private String viewHint;
-    private boolean deprecated;
-    private String replacement;
-    private boolean implemented;
+    public ToolExecutionException(int httpStatus, String errorCode, String message) {
+        super(httpStatus, message);
+        this.errorCode = errorCode;
+    }
 }

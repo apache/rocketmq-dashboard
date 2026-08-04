@@ -46,7 +46,8 @@ class ToolCatalogTest {
                         "rmq.group.list",
                         "rmq.alert.rule.list",
                         "rmq.nameserver.config.diff");
-        assertThat(catalog.find("rmq.cluster.list")).isPresent();
+        ToolDefinition clusterList = catalog.find("rmq.cluster.list").orElseThrow();
+        assertThat(clusterList.riskLevel()).isEqualTo(ToolRiskLevel.L1);
         assertThat(catalog.find("rmq.unknown")).isEmpty();
     }
 
