@@ -107,3 +107,31 @@ export async function listMetricProfiles() {
   const res = await client.get<{ data: MetricProfile[] }>('/metrics/profiles');
   return res.data.data;
 }
+
+// ─── Grafana dashboards ─────────────────────────────────────────
+export interface GrafanaDashboardInfo {
+  uid: string;
+  title: string;
+  description: string;
+  tags: string[];
+}
+
+export async function listGrafanaDashboards(): Promise<GrafanaDashboardInfo[]> {
+  const res = await client.get<{ data: GrafanaDashboardInfo[] }>('/metrics/grafana/dashboards');
+  return res.data.data;
+}
+
+export async function getGrafanaDashboard(uid: string): Promise<Record<string, unknown>> {
+  const res = await client.get<{ data: Record<string, unknown> }>(
+    `/metrics/grafana/dashboards/${encodeURIComponent(uid)}`,
+  );
+  return res.data.data;
+}
+
+export async function exportGrafanaDashboard(uid: string): Promise<Blob> {
+  const res = await client.get<Blob>(
+    `/metrics/grafana/dashboards/${encodeURIComponent(uid)}/export`,
+    { responseType: 'blob' },
+  );
+  return res.data;
+}
