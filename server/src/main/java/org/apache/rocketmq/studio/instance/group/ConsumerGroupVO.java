@@ -30,6 +30,7 @@ public class ConsumerGroupVO extends BaseEntity {
     private String name;
     private String namespace;
     private String clusterId;
+    private String instanceId;
     private SubscriptionMode subscriptionMode;
     private ConsumeType consumeType;
     private int onlineInstances;

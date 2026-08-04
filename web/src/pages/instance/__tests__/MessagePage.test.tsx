@@ -19,6 +19,7 @@ import { App } from 'antd';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangProvider } from '../../../i18n/LangContext';
 
@@ -30,6 +31,13 @@ const messageServiceMocks = vi.hoisted(() => ({
 const QUERY_HISTORY_STORAGE_KEY = 'rocketmq-studio-message-query-history';
 
 vi.mock('../../../services/messageService', () => messageServiceMocks);
+
+vi.mock('../../../services/instanceService', () => ({
+  listInstances: vi.fn().mockResolvedValue([]),
+}));
+vi.mock('../../../services/topicService', () => ({
+  listTopics: vi.fn().mockResolvedValue([]),
+}));
 
 import MessagePage from '../message';
 
@@ -52,7 +60,9 @@ beforeAll(() => {
 const renderWithProviders = (ui: React.ReactElement) =>
   render(
     <App>
-      <LangProvider>{ui}</LangProvider>
+      <LangProvider>
+        <MemoryRouter>{ui}</MemoryRouter>
+      </LangProvider>
     </App>,
   );
 
@@ -182,10 +192,9 @@ describe('Message page query history', () => {
     renderWithProviders(<MessagePage />);
 
     await user.click(screen.getByRole('button', { name: /最近查询/ }));
-    await user.click(await screen.findByText('Topic: order-create · Tag: vip'));
+    await user.click(await screen.findByText('Topic: order-create'));
     await waitFor(() => {
       expect(messageServiceMocks.queryMessages).toHaveBeenLastCalledWith(topicParams);
-      expect(screen.getByPlaceholderText('输入 Tag（可选）')).toHaveValue('vip');
     });
 
     await user.click(screen.getByRole('button', { name: /最近查询/ }));

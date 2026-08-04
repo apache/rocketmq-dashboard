@@ -168,6 +168,9 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 entity.setClusterId(clusterName);
                 entity.setCreatedAt(LocalDateTime.now());
             }
+            if (StringUtils.hasText(topic.getInstanceId())) {
+                entity.setInstanceId(topic.getInstanceId());
+            }
             entity.setTopicType(topic.getType() != null ? topic.getType().name() : "NORMAL");
             entity.setReadQueueNums(readQueues);
             entity.setWriteQueueNums(writeQueues);
@@ -379,6 +382,9 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 entity.setName(groupName);
                 entity.setClusterId(groupClusterName);
                 entity.setCreatedAt(LocalDateTime.now());
+            }
+            if (StringUtils.hasText(group.getInstanceId())) {
+                entity.setInstanceId(group.getInstanceId());
             }
             entity.setConsumeType(group.getConsumeType() != null ? group.getConsumeType().name() : "CLUSTERING");
             entity.setMessageModel(group.getSubscriptionMode() != null ? group.getSubscriptionMode().name() : "Push");

@@ -65,6 +65,7 @@ import {
   listTopics,
   sendTopicMessage,
 } from '../../services/topicService';
+import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 
 const { Text } = Typography;
 
@@ -73,16 +74,6 @@ const CLUSTER_NAME_MAP: Record<string, { name: string; type: string }> = {
   'rmq-cn-v5-prod-01': { name: 'rmq-cn-v5-prod-01', type: 'V5_PROXY_CLUSTER' },
   'rmq-cn-v4-prod-02': { name: 'rmq-cn-v4-prod-02', type: 'V4_DIRECT' },
 };
-
-// ─── Namespace options ────────────────────────────────────────────
-const NAMESPACE_OPTIONS = [
-  { label: '全部', value: '' },
-  { label: 'trade', value: 'trade' },
-  { label: 'user', value: 'user' },
-  { label: 'message', value: 'message' },
-  { label: 'supply', value: 'supply' },
-  { label: 'ai', value: 'ai' },
-];
 
 const TYPE_OPTIONS = [
   { label: '全部', value: '' },
@@ -205,6 +196,20 @@ const RANDOM_BODY_GENERATORS = [
 
 // ─── Format helpers ───────────────────────────────────────────────
 const formatNumber = (n: number) => n.toLocaleString('zh-CN');
+
+// 解析批量粘贴的用户属性串：key=value 按换行或逗号分隔，等号只取第一个
+const parsePropsText = (text: string): Record<string, string> => {
+  const props: Record<string, string> = {};
+  for (const line of text.split(/[\n,]+/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const eqIndex = trimmed.indexOf('=');
+    if (eqIndex <= 0) continue;
+    const key = trimmed.slice(0, eqIndex).trim();
+    if (key) props[key] = trimmed.slice(eqIndex + 1).trim();
+  }
+  return props;
+};
 const formatDateTime = (iso: string): string => {
   const d = new Date(iso);
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -214,6 +219,8 @@ const formatDateTime = (iso: string): string => {
 // ═══════════════════════════════════════════════════════════════════
 const TopicPage = () => {
   const { t } = useLang();
+  const { selectedInstanceId, selectedInstance, selectInstance, instanceOptions } =
+    useInstanceFilter();
 
   // ─── State ─────────────────────────────────────────────────────
   const [topics, setTopics] = useState<Topic[]>([]);
@@ -223,7 +230,6 @@ const TopicPage = () => {
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [searchText, setSearchText] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
-  const [nsFilter, setNsFilter] = useState('');
   const [tablePage, setTablePage] = useState(1);
   const [tablePageSize, setTablePageSize] = useState(20);
   const [viewMode, setViewMode] = useState<string>('列表');
@@ -237,6 +243,7 @@ const TopicPage = () => {
   const [sendTopic, setSendTopic] = useState<Topic | null>(null);
   const [sending, setSending] = useState(false);
   const [sendForm] = Form.useForm();
+  const [propsMode, setPropsMode] = useState<'form' | 'text'>('form');
   const { modal } = App.useApp();
 
   useEffect(() => {
@@ -262,13 +269,13 @@ const TopicPage = () => {
     () =>
       topics
         .filter((t) => {
+          if (selectedInstanceId && t.instanceId !== selectedInstanceId) return false;
           if (searchText && !t.name.toLowerCase().includes(searchText.toLowerCase())) return false;
           if (typeFilter && t.type !== typeFilter) return false;
-          if (nsFilter && t.namespace !== nsFilter) return false;
           return true;
         })
         .sort((a, b) => a.name.localeCompare(b.name)),
-    [topics, searchText, typeFilter, nsFilter],
+    [topics, selectedInstanceId, searchText, typeFilter],
   );
 
   const maxTablePage = Math.max(1, Math.ceil(filteredTopics.length / tablePageSize));
@@ -328,6 +335,7 @@ const TopicPage = () => {
       void openDetail(topic);
     } else if (key === 'send') {
       setSendTopic(topic);
+      setPropsMode('form');
       sendForm.setFieldsValue({ topic: topic.name, tag: '', key: '', body: '', properties: [] });
       setSendModalOpen(true);
     } else if (key === 'delete') {
@@ -501,9 +509,6 @@ const TopicPage = () => {
             {typeInfo?.labelKey ? t(typeInfo.labelKey) : topic.type}
           </Tag>
         </Descriptions.Item>
-        <Descriptions.Item label="命名空间">
-          <Tag>{topic.namespace}</Tag>
-        </Descriptions.Item>
         <Descriptions.Item label="集群" span={2}>
           <Space>
             <Text>{topic.clusterId}</Text>
@@ -552,9 +557,8 @@ const TopicPage = () => {
                 </Tag>
               </Flex>
 
-              {/* Namespace + cluster tags */}
+              {/* Cluster tags */}
               <Space size={4} style={{ marginBottom: 16 }}>
-                <Tag style={{ fontSize: 11 }}>{topic.namespace}</Tag>
                 {clusterType && (
                   <Tag color={clusterType.color} style={{ fontSize: 11 }}>
                     {t(clusterType.labelKey)}
@@ -600,7 +604,10 @@ const TopicPage = () => {
   const handleCreate = async () => {
     try {
       const values = await form.validateFields();
-      const created = await createTopic(values);
+      const created = await createTopic({
+        ...values,
+        ...(selectedInstanceId ? { instanceId: selectedInstanceId } : {}),
+      });
       setTopics((previous) => [created, ...previous]);
       message.success(`Topic「${created.name}」创建成功`);
       setModalOpen(false);
@@ -612,12 +619,20 @@ const TopicPage = () => {
 
   // ─── Send message modal submit ────────────────────────────────
   const handleSend = async () => {
+    let values;
     try {
-      const values = await sendForm.validateFields();
-      setSending(true);
-      // Build properties from the list
-      const props: Record<string, string> = {};
-      if (values.properties && Array.isArray(values.properties)) {
+      values = await sendForm.validateFields();
+    } catch {
+      // validation error, keep the modal open
+      return;
+    }
+    setSending(true);
+    try {
+      // Build properties: batch-paste text mode or key-value form rows
+      let props: Record<string, string> = {};
+      if (propsMode === 'text') {
+        props = parsePropsText(values.propsText || '');
+      } else if (values.properties && Array.isArray(values.properties)) {
         values.properties.forEach((p: { key?: string; value?: string }) => {
           if (p.key) props[p.key] = p.value || '';
         });
@@ -629,11 +644,10 @@ const TopicPage = () => {
         body: values.body,
         properties: props,
       });
+      // Keep the modal open for consecutive sends
       message.success(`消息发送成功！MsgId: ${result.msgId}`);
-      setSendModalOpen(false);
-      sendForm.resetFields();
     } catch {
-      // validation error, do nothing
+      message.error('消息发送失败，请稍后重试');
     } finally {
       setSending(false);
     }
@@ -647,6 +661,26 @@ const TopicPage = () => {
       {/* ── Header ────────────────────────────────────────────── */}
       <PageHeader title={t('topic.title')} subtitle={`共 ${filteredTopics.length} 个 Topic`} />
 
+      {/* ── Endpoint hint ─────────────────────────────────────── */}
+      {selectedInstance && (
+        <div style={{ marginBottom: 16, fontSize: 13, lineHeight: 1.8 }}>
+          <Space wrap size={8}>
+            <Text strong>
+              当前实例：{selectedInstance.name}（
+              {selectedInstance.type === 'DIRECT' ? 'Direct 模式' : 'Proxy 模式'}）
+            </Text>
+            <Text code copyable>
+              {selectedInstance.endpoint}
+            </Text>
+          </Space>
+          <div style={{ color: '#8c8c8c' }}>
+            {selectedInstance.type === 'DIRECT'
+              ? '接入点为 NameServer SLB 地址（K8s 场景下一般为 NameServer Service 地址），Direct 模式客户端通过该地址发现 Broker。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。'
+              : '接入点为 Proxy SLB 内网地址，gRPC/Remoting 客户端直接连接该地址收发消息。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。'}
+          </div>
+        </div>
+      )}
+
       {/* ── Filter bar ────────────────────────────────────────── */}
       <Flex
         gap={12}
@@ -656,6 +690,17 @@ const TopicPage = () => {
         justify="space-between"
       >
         <Space size={12} wrap>
+          <Select
+            placeholder="选择实例"
+            value={selectedInstanceId || undefined}
+            onChange={(value) => {
+              resetTablePage();
+              selectInstance(value);
+            }}
+            options={instanceOptions}
+            style={{ width: 220 }}
+            notFoundContent="暂无实例"
+          />
           <Input.Search
             placeholder="搜索 Topic 名称"
             allowClear
@@ -679,16 +724,6 @@ const TopicPage = () => {
               resetTablePage();
             }}
             options={TYPE_OPTIONS}
-            style={{ width: 140 }}
-          />
-          <Select
-            placeholder="命名空间"
-            value={nsFilter}
-            onChange={(value) => {
-              setNsFilter(value);
-              resetTablePage();
-            }}
-            options={NAMESPACE_OPTIONS}
             style={{ width: 140 }}
           />
           <Segmented
@@ -881,7 +916,6 @@ const TopicPage = () => {
             readQueues: 8,
             perm: 'RW',
             type: 'NORMAL',
-            namespace: 'default',
           }}
           style={{ marginTop: 16 }}
         >
@@ -899,18 +933,9 @@ const TopicPage = () => {
             <Input placeholder="请输入 Topic 名称" />
           </Form.Item>
 
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item label="命名空间" name="namespace" rules={[{ required: true }]}>
-                <Select disabled options={[{ label: 'default', value: 'default' }]} />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item label="类型" name="type" rules={[{ required: true }]}>
-                <Select options={TYPE_OPTIONS.filter((o) => o.value)} />
-              </Form.Item>
-            </Col>
-          </Row>
+          <Form.Item label="类型" name="type" rules={[{ required: true }]}>
+            <Select options={TYPE_OPTIONS.filter((o) => o.value)} />
+          </Form.Item>
 
           <Row gutter={16}>
             <Col span={12}>
@@ -1026,35 +1051,62 @@ const TopicPage = () => {
             自定义属性（可选）
           </Divider>
 
-          <Form.List name="properties">
-            {(fields, { add, remove }) => (
-              <>
-                {fields.map(({ key, name, ...rest }) => (
-                  <Row gutter={8} key={key} align="middle" style={{ marginBottom: 8 }}>
-                    <Col span={10}>
-                      <Form.Item {...rest} name={[name, 'key']} style={{ marginBottom: 0 }}>
-                        <Input placeholder="属性名" />
-                      </Form.Item>
-                    </Col>
-                    <Col span={10}>
-                      <Form.Item {...rest} name={[name, 'value']} style={{ marginBottom: 0 }}>
-                        <Input placeholder="属性值" />
-                      </Form.Item>
-                    </Col>
-                    <Col span={4}>
-                      <MinusCircleOutlined
-                        style={{ color: '#ff4d4f', fontSize: 18, cursor: 'pointer' }}
-                        onClick={() => remove(name)}
-                      />
-                    </Col>
-                  </Row>
-                ))}
-                <Button type="dashed" onClick={() => add()} block icon={<PlusCircleOutlined />}>
-                  添加属性
-                </Button>
-              </>
+          <Flex justify="space-between" align="center" style={{ marginBottom: 12 }}>
+            <Segmented
+              size="small"
+              value={propsMode}
+              onChange={(value) => setPropsMode(value as 'form' | 'text')}
+              options={[
+                { label: '逐条录入', value: 'form' },
+                { label: '批量粘贴', value: 'text' },
+              ]}
+            />
+            {propsMode === 'text' && (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                支持 key=value，多个属性用换行或逗号分隔
+              </Text>
             )}
-          </Form.List>
+          </Flex>
+
+          {propsMode === 'text' ? (
+            <Form.Item name="propsText" style={{ marginBottom: 0 }}>
+              <Input.TextArea
+                rows={5}
+                placeholder={'TAGS=tagA\nKEY1=value1, KEY2=value2'}
+                style={{ fontFamily: 'monospace', fontSize: 13 }}
+              />
+            </Form.Item>
+          ) : (
+            <Form.List name="properties">
+              {(fields, { add, remove }) => (
+                <>
+                  {fields.map(({ key, name, ...rest }) => (
+                    <Row gutter={8} key={key} align="middle" style={{ marginBottom: 8 }}>
+                      <Col span={10}>
+                        <Form.Item {...rest} name={[name, 'key']} style={{ marginBottom: 0 }}>
+                          <Input placeholder="属性名" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={10}>
+                        <Form.Item {...rest} name={[name, 'value']} style={{ marginBottom: 0 }}>
+                          <Input placeholder="属性值" />
+                        </Form.Item>
+                      </Col>
+                      <Col span={4}>
+                        <MinusCircleOutlined
+                          style={{ color: '#ff4d4f', fontSize: 18, cursor: 'pointer' }}
+                          onClick={() => remove(name)}
+                        />
+                      </Col>
+                    </Row>
+                  ))}
+                  <Button type="dashed" onClick={() => add()} block icon={<PlusCircleOutlined />}>
+                    添加属性
+                  </Button>
+                </>
+              )}
+            </Form.List>
+          )}
         </Form>
       </Modal>
     </div>

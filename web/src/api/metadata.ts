@@ -11,6 +11,7 @@ export interface Topic {
   namespace: string;
   type: string;
   clusterId: string;
+  instanceId?: string;
   writeQueues: number;
   readQueues: number;
   perm: string;
@@ -24,6 +25,7 @@ export interface Topic {
 
 export interface TopicQuery {
   clusterId?: string;
+  instanceId?: string;
   type?: string;
   search?: string;
 }
@@ -49,6 +51,7 @@ export interface ConsumerGroup {
   name: string;
   namespace: string;
   clusterId: string;
+  instanceId?: string;
   subscriptionMode: string;
   consumeType: string;
   onlineInstances: number;

@@ -77,6 +77,7 @@ import {
   listConsumerGroups,
   resetConsumerOffset,
 } from '../../services/consumerService';
+import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 
 const { Text } = Typography;
 
@@ -131,6 +132,7 @@ const isInconsistentSubscription = (subscription: SubscriptionEntry): boolean =>
    ═══════════════════════════════════════════ */
 const ConsumerPage = () => {
   const { t } = useLang();
+  const { selectedInstanceId, selectInstance, instanceOptions } = useInstanceFilter();
   const [groups, setGroups] = useState<ConsumerGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -213,11 +215,12 @@ const ConsumerPage = () => {
   /* ─── Filtered & sorted data ─── */
   const filtered = useMemo(() => {
     let data = groups.filter(
-      (g) =>
-        g.name.includes(search) ||
-        g.namespace.includes(search) ||
-        g.subscribedTopics.some((t) => t.includes(search)),
+      (g) => g.name.includes(search) || g.subscribedTopics.some((t) => t.includes(search)),
     );
+
+    if (selectedInstanceId) {
+      data = data.filter((g) => g.instanceId === selectedInstanceId);
+    }
 
     if (modeFilter !== 'ALL') {
       data = data.filter((g) => g.subscriptionMode === modeFilter);
@@ -230,7 +233,7 @@ const ConsumerPage = () => {
     }
 
     return data;
-  }, [groups, search, modeFilter, sortKey]);
+  }, [groups, search, modeFilter, sortKey, selectedInstanceId]);
 
   /* ─── Open detail modal ─── */
   const openModal = (group: ConsumerGroup) => {
@@ -589,8 +592,16 @@ const ConsumerPage = () => {
       {/* ─── Filter Bar ─── */}
       <Flex justify="space-between" align="center" style={{ marginBottom: 16 }}>
         <Space size={12} wrap>
+          <Select
+            placeholder="选择实例"
+            value={selectedInstanceId || undefined}
+            onChange={selectInstance}
+            options={instanceOptions}
+            style={{ width: 220 }}
+            notFoundContent="暂无实例"
+          />
           <Input.Search
-            placeholder="搜索 Group 名称、命名空间或 Topic"
+            placeholder="搜索 Group 名称或 Topic"
             allowClear
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -708,9 +719,6 @@ const ConsumerPage = () => {
             <Space>
               <Cube size={18} weight="fill" color="#1677ff" />
               <span style={{ fontWeight: 600 }}>{selectedGroup.name}</span>
-              <Tag color="default" style={{ fontSize: 11, borderRadius: 4 }}>
-                {selectedGroup.namespace}
-              </Tag>
             </Space>
           ) : (
             'Group 详情'
@@ -806,9 +814,6 @@ const ConsumerPage = () => {
                     >
                       <Descriptions.Item label="Group 名称">
                         <Text strong>{selectedGroup.name}</Text>
-                      </Descriptions.Item>
-                      <Descriptions.Item label="命名空间">
-                        <Tag color="default">{selectedGroup.namespace}</Tag>
                       </Descriptions.Item>
                       <Descriptions.Item label="所属集群">
                         {selectedGroup.clusterId}
@@ -1030,7 +1035,7 @@ const ConsumerPage = () => {
             .then((values) => {
               Modal.confirm({
                 title: '确认创建',
-                content: `将创建消费组 "${values.name}"，命名空间: ${values.namespace || 'default'}`,
+                content: `将创建消费组 "${values.name}"`,
                 okText: '确认创建',
                 cancelText: '取消',
                 onOk: async () => {
@@ -1038,13 +1043,13 @@ const ConsumerPage = () => {
                   try {
                     const created = await createConsumerGroup({
                       name: values.name,
-                      namespace: values.namespace || 'default',
                       subscriptionMode: values.subscriptionMode,
                       consumeType: values.consumeType,
                       retryMaxTimes: values.retryMaxTimes,
                       subscriptionDataType: values.dataType || 'NORMAL',
                       deliveryOrderType: values.deliveryOrderType,
                       subscribedTopics: [],
+                      ...(selectedInstanceId ? { instanceId: selectedInstanceId } : {}),
                     });
                     setGroups((prev) => [
                       created,
@@ -1076,7 +1081,6 @@ const ConsumerPage = () => {
           layout="vertical"
           style={{ marginTop: 16 }}
           initialValues={{
-            namespace: 'default',
             subscriptionMode: 'Push',
             consumeType: 'CLUSTERING',
             retryMaxTimes: 16,
@@ -1094,10 +1098,6 @@ const ConsumerPage = () => {
             ]}
           >
             <Input placeholder="例：cg-order-notify" />
-          </Form.Item>
-
-          <Form.Item label="命名空间" name="namespace">
-            <Input placeholder="例：trade" />
           </Form.Item>
 
           <Form.Item label="订阅模式" name="subscriptionMode">

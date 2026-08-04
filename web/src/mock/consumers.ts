@@ -29,6 +29,7 @@ export interface ConsumerInstance {
 export interface ConsumerGroup {
   name: string;
   namespace: string;
+  instanceId: string;
   clusterId: string;
   subscriptionMode: 'Push' | 'Pop';
   consumeType: 'CLUSTERING' | 'BROADCASTING';
@@ -65,6 +66,7 @@ export interface SubscriptionEntry {
 export const mockConsumerGroups: ConsumerGroup[] = [
   {
     name: 'cg-order-notify',
+    instanceId: 'instance-proxy-1',
     namespace: 'trade',
     clusterId: 'hz-prod',
     subscriptionMode: 'Push',
@@ -130,6 +132,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
   },
   {
     name: 'cg-payment-callback',
+    instanceId: 'instance-proxy-1',
     namespace: 'trade',
     clusterId: 'hz-prod',
     subscriptionMode: 'Push',
@@ -179,6 +182,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
   },
   {
     name: 'cg-user-activity',
+    instanceId: 'instance-proxy-3',
     namespace: 'user',
     clusterId: 'hz-prod',
     subscriptionMode: 'Push',
@@ -220,6 +224,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
   },
   {
     name: 'cg-inventory-sync',
+    instanceId: 'instance-proxy-1',
     namespace: 'supply',
     clusterId: 'sh-prod',
     subscriptionMode: 'Push',
@@ -254,6 +259,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
   },
   {
     name: 'cg-log-collector',
+    instanceId: 'instance-direct-2',
     namespace: 'infra',
     clusterId: 'hz-prod',
     subscriptionMode: 'Pop',
@@ -335,6 +341,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
   },
   {
     name: 'cg-notification-push',
+    instanceId: 'instance-proxy-2',
     namespace: 'message',
     clusterId: 'hz-prod',
     subscriptionMode: 'Push',
@@ -376,6 +383,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
   },
   {
     name: 'cg-ai-task-worker',
+    instanceId: 'instance-proxy-3',
     namespace: 'ai',
     clusterId: 'hz-prod',
     subscriptionMode: 'Pop',
@@ -425,6 +433,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
   },
   {
     name: 'cg-metrics-aggregator',
+    instanceId: 'instance-direct-1',
     namespace: 'infra',
     clusterId: 'sh-prod',
     subscriptionMode: 'Push',
@@ -458,6 +467,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
   },
   {
     name: 'cg-risk-control',
+    instanceId: 'instance-direct-2',
     namespace: 'risk',
     clusterId: 'hz-prod',
     subscriptionMode: 'Push',
@@ -515,6 +525,7 @@ export const mockConsumerGroups: ConsumerGroup[] = [
   },
   {
     name: 'cg-data-sync',
+    instanceId: 'instance-proxy-2',
     namespace: 'data',
     clusterId: 'sh-prod',
     subscriptionMode: 'Push',

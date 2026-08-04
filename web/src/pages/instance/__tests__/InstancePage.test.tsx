@@ -18,6 +18,7 @@
 import { App } from 'antd';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Instance } from '../../../api/instance';
 import { LangProvider } from '../../../i18n/LangContext';
@@ -63,7 +64,9 @@ const renderPage = () =>
   render(
     <App>
       <LangProvider>
-        <InstancePage />
+        <MemoryRouter>
+          <InstancePage />
+        </MemoryRouter>
       </LangProvider>
     </App>,
   );

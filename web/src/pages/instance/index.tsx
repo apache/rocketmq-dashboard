@@ -16,6 +16,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Table,
   Card,
@@ -28,6 +29,7 @@ import {
   Form,
   Flex,
   Typography,
+  Alert,
   message,
 } from 'antd';
 import { useLang } from '../../i18n/LangContext';
@@ -58,6 +60,7 @@ type InstanceTypeFilter = 'ALL' | Instance['type'];
    ═══════════════════════════════════════════ */
 const InstancePage = () => {
   const { t } = useLang();
+  const navigate = useNavigate();
   const [instances, setInstances] = useState<Instance[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -65,6 +68,7 @@ const InstancePage = () => {
   const [typeFilter, setTypeFilter] = useState<InstanceTypeFilter>('ALL');
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [addForm] = Form.useForm();
+  const addInstanceType = Form.useWatch<'PROXY' | 'DIRECT' | undefined>('type', addForm);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingInstance, setEditingInstance] = useState<Instance | null>(null);
   const [editForm] = Form.useForm();
@@ -235,7 +239,7 @@ const InstancePage = () => {
       key: 'actions',
       width: 160,
       render: (_: unknown, record: Instance) => (
-        <Flex gap={6}>
+        <Flex gap={6} onClick={(e) => e.stopPropagation()}>
           <Button
             size="small"
             icon={<EditOutlined />}
@@ -327,7 +331,7 @@ const InstancePage = () => {
           size="small"
           onRow={(record) => ({
             style: { cursor: 'pointer' },
-            onClick: () => message.info(`进入 ${record.name}`),
+            onClick: () => navigate(`/instance/${record.id}/topic`),
           })}
         />
       </Card>
@@ -371,9 +375,29 @@ const InstancePage = () => {
             label="接入地址"
             name="endpoint"
             rules={[{ required: true, message: '请输入接入地址' }]}
+            extra={
+              addInstanceType === 'DIRECT'
+                ? 'Direct 模式请填写 NameServer SLB 地址（K8s 场景下一般为 NameServer Service 地址，如 namesrv.mq.svc:9876）'
+                : addInstanceType === 'PROXY'
+                  ? 'Proxy 模式请填写 Proxy SLB 内网地址（如 proxy.mq.svc:8080）'
+                  : '请先选择接入方式'
+            }
           >
-            <Input placeholder="例：proxy.example.com:8080" />
+            <Input
+              placeholder={
+                addInstanceType === 'DIRECT'
+                  ? '例：namesrv.mq.svc.cluster.local:9876'
+                  : '例：proxy.mq.svc.cluster.local:8080'
+              }
+            />
           </Form.Item>
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="接入地址为客户端访问入口"
+            description="接入地址会展示在 Topic 等页面供客户端配置使用。若客户端环境无法解析该地址（如 K8s 内部 Service 域名），可自行配置 DNS 解析或在客户端 hosts 中映射。"
+          />
           <Form.Item label="备注" name="remark">
             <Input.TextArea rows={2} placeholder="可选，描述实例用途" />
           </Form.Item>

@@ -14,27 +14,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.instance.topic;
+package org.apache.rocketmq.studio.persistence.mapper;
 
-import org.apache.rocketmq.studio.common.domain.BaseEntity;
-import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
-import org.apache.rocketmq.studio.common.domain.enums.TopicType;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import org.apache.rocketmq.studio.persistence.entity.RmqInstance;
 
-@Data
-@EqualsAndHashCode(callSuper = true)
-public class TopicVO extends BaseEntity {
-    private String name;
-    private String namespace;
-    private String clusterId;
-    private String instanceId;
-    private TopicType type;
-    private int writeQueues;
-    private int readQueues;
-    private TopicPerm perm;
-    private long messageCount;
-    private double tps;
-    private int consumerGroupCount;
-    private String remark;
+public interface RmqInstanceMapper extends BaseMapper<RmqInstance> {
 }

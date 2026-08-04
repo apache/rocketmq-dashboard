@@ -26,6 +26,7 @@ import {
   Modal,
   DatePicker,
   Typography,
+  Select,
   message,
 } from 'antd';
 import { MagnifyingGlass, Eye, ArrowsCounterClockwise, Download } from '@phosphor-icons/react';
@@ -36,6 +37,7 @@ import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import type { DLQGroup } from '../../api/message';
 import { listDLQGroups, resendDLQ } from '../../services/messageService';
+import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 
 const { Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -80,6 +82,7 @@ const exportDLQGroups = (groups: DLQGroup[], filename: string) => {
    ═══════════════════════════════════════════ */
 const DLQPage = () => {
   const { t } = useLang();
+  const { selectedInstanceId, selectInstance, instanceOptions } = useInstanceFilter();
   const [groups, setGroups] = useState<DLQGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -280,15 +283,25 @@ const DLQPage = () => {
 
       {/* ── Filter Bar ── */}
       <Flex justify="space-between" align="center" style={{ marginBottom: 16 }}>
-        <Input.Search
-          placeholder="搜索 Group 名称或 DLQ Topic"
-          allowClear
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          onSearch={setSearch}
-          style={{ width: 320 }}
-          prefix={<MagnifyingGlass size={14} color="#9CA3AF" />}
-        />
+        <Space size={12} wrap>
+          <Select
+            placeholder="选择实例"
+            value={selectedInstanceId || undefined}
+            onChange={selectInstance}
+            options={instanceOptions}
+            style={{ width: 220 }}
+            notFoundContent="暂无实例"
+          />
+          <Input.Search
+            placeholder="搜索 Group 名称或 DLQ Topic"
+            allowClear
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onSearch={setSearch}
+            style={{ width: 320 }}
+            prefix={<MagnifyingGlass size={14} color="#9CA3AF" />}
+          />
+        </Space>
         <Button
           icon={<Download size={16} />}
           disabled={selectedGroups.length === 0}

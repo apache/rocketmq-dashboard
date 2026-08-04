@@ -32,6 +32,8 @@ public class RmqTopic {
 
     private String clusterId;
 
+    private String instanceId;
+
     private String name;
 
     private String topicType;

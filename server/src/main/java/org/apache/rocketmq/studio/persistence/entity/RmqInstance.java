@@ -14,27 +14,31 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.instance.topic;
+package org.apache.rocketmq.studio.persistence.entity;
 
-import org.apache.rocketmq.studio.common.domain.BaseEntity;
-import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
-import org.apache.rocketmq.studio.common.domain.enums.TopicType;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
-import lombok.EqualsAndHashCode;
+
+import java.time.LocalDateTime;
 
 @Data
-@EqualsAndHashCode(callSuper = true)
-public class TopicVO extends BaseEntity {
+@TableName("rmq_instance")
+public class RmqInstance {
+
+    @TableId(type = IdType.INPUT)
+    private String id;
+
     private String name;
-    private String namespace;
-    private String clusterId;
-    private String instanceId;
-    private TopicType type;
-    private int writeQueues;
-    private int readQueues;
-    private TopicPerm perm;
-    private long messageCount;
-    private double tps;
-    private int consumerGroupCount;
+
     private String remark;
+
+    private String type;
+
+    private String endpoint;
+
+    private LocalDateTime createdAt;
+
+    private LocalDateTime updatedAt;
 }

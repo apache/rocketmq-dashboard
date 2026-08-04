@@ -54,6 +54,8 @@ import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import type { MessageQuery, MessageRecord, TraceRecord } from '../../api/message';
 import { getMessageTrace, queryMessages } from '../../services/messageService';
+import { listTopics } from '../../services/topicService';
+import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 
 const { Paragraph, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -172,7 +174,7 @@ const queryLabel = ({ mode, params }: RecentQuery): string => {
   if (mode === 'key') {
     return `Key: ${params.key || '全部'}${params.topic ? ` · Topic: ${params.topic}` : ''}`;
   }
-  return `Topic: ${params.topic || '全部'}${params.tag ? ` · Tag: ${params.tag}` : ''}`;
+  return `Topic: ${params.topic || '全部'}`;
 };
 
 /* ═══════════════════════════════════════════
@@ -180,10 +182,31 @@ const queryLabel = ({ mode, params }: RecentQuery): string => {
    ═══════════════════════════════════════════ */
 const MessagePage = () => {
   const { t } = useLang();
+  const { selectedInstanceId, selectInstance, instanceOptions } = useInstanceFilter();
+  const [topicOptions, setTopicOptions] = useState<string[]>(TOPIC_OPTIONS);
+
+  useEffect(() => {
+    let cancelled = false;
+    void listTopics()
+      .then((nextTopics) => {
+        if (cancelled) return;
+        const scoped = selectedInstanceId
+          ? nextTopics.filter((topic) => topic.instanceId === selectedInstanceId)
+          : nextTopics;
+        if (scoped.length > 0) {
+          setTopicOptions(scoped.map((topic) => topic.name));
+        }
+      })
+      .catch(() => {
+        // 加载失败保持静态选项可用
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedInstanceId]);
   const [queryMode, setQueryMode] = useState<QueryMode>('topic');
   const [selectedTopic, setSelectedTopic] = useState<string | undefined>();
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>(getDefaultRange);
-  const [tagInput, setTagInput] = useState('');
   const [keyInput, setKeyInput] = useState('');
   const [msgIdInput, setMsgIdInput] = useState('');
   const [messages, setMessages] = useState<MessageRecord[]>([]);
@@ -209,7 +232,6 @@ const MessagePage = () => {
   const handleReset = () => {
     queryGenerationRef.current += 1;
     setSelectedTopic(undefined);
-    setTagInput('');
     setKeyInput('');
     setMsgIdInput('');
     setDateRange(getDefaultRange());
@@ -260,7 +282,6 @@ const MessagePage = () => {
       queryMode === 'topic'
         ? {
             topic: selectedTopic,
-            tag: tagInput || undefined,
             startTime: dateRange[0].valueOf(),
             endTime: dateRange[1].valueOf(),
           }
@@ -275,7 +296,6 @@ const MessagePage = () => {
     const { mode, params } = recentQuery;
     setQueryMode(mode);
     setSelectedTopic(params.topic);
-    setTagInput(params.tag || '');
     setKeyInput(params.key || '');
     setMsgIdInput(params.msgId || '');
     if (mode === 'topic' && params.startTime !== undefined && params.endTime !== undefined) {
@@ -626,16 +646,26 @@ const MessagePage = () => {
      ═══════════════════════════════════════════ */
   return (
     <div style={{ padding: 24 }}>
-      <PageHeader title={t('message.title')} subtitle="按 Topic、Tag、Key 或 Message ID 检索消息" />
+      <PageHeader title={t('message.title')} subtitle="按 Topic、Key 或 Message ID 检索消息" />
 
       {/* ── Query Form ── */}
       <Card style={{ marginBottom: 16 }}>
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
-          <Segmented
-            options={QUERY_OPTIONS}
-            value={queryMode}
-            onChange={(v) => setQueryMode(v as QueryMode)}
-          />
+          <Space size={12}>
+            <Select
+              placeholder="选择实例"
+              value={selectedInstanceId || undefined}
+              onChange={selectInstance}
+              options={instanceOptions}
+              style={{ width: 220 }}
+              notFoundContent="暂无实例"
+            />
+            <Segmented
+              options={QUERY_OPTIONS}
+              value={queryMode}
+              onChange={(v) => setQueryMode(v as QueryMode)}
+            />
+          </Space>
 
           <Space wrap size={12}>
             {queryMode === 'topic' && (
@@ -647,7 +677,7 @@ const MessagePage = () => {
                   onChange={setSelectedTopic}
                   allowClear
                   showSearch
-                  options={TOPIC_OPTIONS.map((t) => ({
+                  options={topicOptions.map((t) => ({
                     value: t,
                     label: t,
                   }))}
@@ -662,13 +692,6 @@ const MessagePage = () => {
                     }
                   }}
                 />
-                <Input
-                  placeholder="输入 Tag（可选）"
-                  style={{ width: 180 }}
-                  value={tagInput}
-                  onChange={(e) => setTagInput(e.target.value)}
-                  allowClear
-                />
               </>
             )}
 
@@ -681,7 +704,7 @@ const MessagePage = () => {
                   onChange={setSelectedTopic}
                   allowClear
                   showSearch
-                  options={TOPIC_OPTIONS.map((t) => ({
+                  options={topicOptions.map((t) => ({
                     value: t,
                     label: t,
                   }))}
