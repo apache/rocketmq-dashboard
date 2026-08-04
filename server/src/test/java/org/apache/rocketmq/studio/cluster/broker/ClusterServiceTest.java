@@ -110,19 +110,19 @@ class ClusterServiceTest {
                 .build();
         secondCluster.setId("cluster-2");
 
-        when(clusterRepository.findAll()).thenReturn(Arrays.asList(sampleCluster, secondCluster));
+        when(clusterProvider.discoverClusters()).thenReturn(Arrays.asList(sampleCluster, secondCluster));
 
         List<ClusterVO> result = clusterService.listClusters();
 
         assertThat(result).hasSize(2);
         assertThat(result.get(0).getName()).isEqualTo("test-cluster");
         assertThat(result.get(1).getName()).isEqualTo("second-cluster");
-        verify(clusterRepository).findAll();
+        verify(clusterRepository, never()).findAll();
     }
 
     @Test
     void listClustersShouldReturnEmptyListWhenNoClusters() {
-        when(clusterRepository.findAll()).thenReturn(Collections.emptyList());
+        when(clusterProvider.discoverClusters()).thenReturn(Collections.emptyList());
 
         List<ClusterVO> result = clusterService.listClusters();
 
@@ -131,7 +131,7 @@ class ClusterServiceTest {
 
     @Test
     void getClusterShouldReturnClusterWhenFound() {
-        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+        when(clusterProvider.refreshClusterDetail("cluster-1")).thenReturn(sampleCluster);
 
         ClusterVO result = clusterService.getCluster("cluster-1");
 
@@ -144,12 +144,12 @@ class ClusterServiceTest {
 
     @Test
     void getClusterShouldThrowWhenNotFound() {
-        when(clusterRepository.findById("nonexistent")).thenReturn(Optional.empty());
+        when(clusterProvider.refreshClusterDetail("nonexistent")).thenReturn(null);
 
         assertThatThrownBy(() -> clusterService.getCluster("nonexistent"))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("Cluster not found: nonexistent")
-                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
+                .hasMessageContaining("Cluster details are unavailable: nonexistent")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(503));
     }
 
     @Test

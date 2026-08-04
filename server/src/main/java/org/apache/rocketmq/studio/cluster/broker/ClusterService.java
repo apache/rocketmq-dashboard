@@ -53,7 +53,7 @@ public class ClusterService {
             discovered.forEach(this::enrichWithLiveConfig);
             return discovered;
         }
-        return clusterRepository.findAll();
+        return List.of();
     }
 
     public ClusterVO getCluster(String id) {
@@ -63,8 +63,7 @@ public class ClusterService {
             enrichWithLiveConfig(live);
             return live;
         }
-        return clusterRepository.findById(id)
-                .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + id));
+        throw new BusinessException(503, "Cluster details are unavailable: " + id);
     }
 
     /**
