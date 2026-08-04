@@ -163,6 +163,18 @@ const AuditPage: React.FC = () => {
       render: (type: string) => <Tag color={operationTypeColors[type] || 'default'}>{type}</Tag>,
     },
     {
+      title: t('audit.resourceType'),
+      dataIndex: 'resourceType',
+      width: 120,
+      ellipsis: true,
+    },
+    {
+      title: t('audit.cluster'),
+      dataIndex: 'clusterId',
+      width: 140,
+      ellipsis: true,
+    },
+    {
       title: t('audit.target'),
       dataIndex: 'target',
       width: 200,
@@ -174,11 +186,6 @@ const AuditPage: React.FC = () => {
       ellipsis: true,
     },
     {
-      title: t('audit.ip'),
-      dataIndex: 'ipAddress',
-      width: 140,
-    },
-    {
       title: t('audit.result'),
       dataIndex: 'result',
       width: 80,
@@ -188,6 +195,11 @@ const AuditPage: React.FC = () => {
         ) : (
           <Tag color="red">{t('common.failure')}</Tag>
         ),
+    },
+    {
+      title: t('audit.error'),
+      dataIndex: 'errorMessage',
+      ellipsis: true,
     },
   ];
 

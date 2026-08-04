@@ -54,16 +54,19 @@ function toCsvCell(value: string | null | undefined): string {
 }
 
 function formatAuditCsv(records: AuditRecord[]): string {
-  const header = 'timestamp,operator,operationType,target,detail,ipAddress,result\r\n';
+  const header =
+    'timestamp,operator,operationType,resourceType,target,clusterId,detail,result,errorMessage\r\n';
   const rows = records.map((record) =>
     [
       record.timestamp,
       record.operator,
       record.operationType,
+      record.resourceType,
       record.target,
+      record.clusterId,
       record.detail,
-      record.ipAddress,
       record.result,
+      record.errorMessage,
     ]
       .map(toCsvCell)
       .join(','),

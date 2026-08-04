@@ -125,10 +125,12 @@ describe('ops service mock data', () => {
       timestamp: '2026-07-26 10:00:00',
       operator: null,
       operationType: 'DIAGNOSE',
+      resourceType: 'CLIENT',
       target: null,
+      clusterId: null,
       detail: 'Describe gRPC client connection',
-      ipAddress: '127.0.0.1',
       result: 'success',
+      errorMessage: null,
     } as unknown as AuditRecord;
     insertedRecords.push(record);
     auditRecords.push(record);
@@ -144,20 +146,24 @@ describe('ops service mock data', () => {
       timestamp: '2026-08-01 10:00:00',
       operator: '=admin',
       operationType: 'DELETE',
+      resourceType: 'TOPIC',
       target: 'csv-export-target',
+      clusterId: 'prod-cn',
       detail: 'removed "topic", safely',
-      ipAddress: '\n=127.0.0.1',
       result: 'SUCCESS',
+      errorMessage: '=denied',
     } as AuditRecord;
     insertedRecords.push(record);
     auditRecords.push(record);
 
     const csv = await exportAuditLogs({ search: 'csv-export-target' });
 
-    expect(csv).toContain('timestamp,operator,operationType,target,detail,ipAddress,result');
     expect(csv).toContain(
-      '"2026-08-01 10:00:00","\'=admin","DELETE","csv-export-target",' +
-        '"removed ""topic"", safely","\'\n=127.0.0.1","SUCCESS"',
+      'timestamp,operator,operationType,resourceType,target,clusterId,detail,result,errorMessage',
+    );
+    expect(csv).toContain(
+      '"2026-08-01 10:00:00","\'=admin","DELETE","TOPIC","csv-export-target",' +
+        '"prod-cn","removed ""topic"", safely","SUCCESS","\'=denied"',
     );
   });
 });

@@ -18,12 +18,12 @@ package org.apache.rocketmq.studio.ops.audit;
 
 
 import java.time.LocalDateTime;
-import java.util.List;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 
 public interface AuditRepository {
-    List<AuditRecordVO> findAll(String search, String operationType,
-                              LocalDateTime startDate, LocalDateTime endDate,
-                              String result);
+    PageResult<AuditRecordVO> findPage(String search, String operationType,
+                                       LocalDateTime startDate, LocalDateTime endDate,
+                                       String result, int page, int pageSize);
 
     void save(AuditRecordVO record);
 
