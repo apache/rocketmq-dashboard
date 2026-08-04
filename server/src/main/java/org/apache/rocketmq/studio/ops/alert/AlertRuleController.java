@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 import org.apache.rocketmq.studio.common.domain.Result;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -40,13 +41,13 @@ public class AlertRuleController {
     }
 
     @PostMapping("/create")
-    public Result<AlertRuleVO> createRule(@RequestBody AlertRuleVO rule) {
-        return Result.ok(alertService.createRule(rule));
+    public Result<AlertRuleVO> createRule(@RequestBody(required = false) AlertRuleVO rule) {
+        return Result.ok(alertService.createRule(requireAlertRule(rule)));
     }
 
     @PostMapping("/update")
-    public Result<AlertRuleVO> updateRule(@RequestBody AlertRuleVO rule) {
-        return Result.ok(alertService.updateRule(rule));
+    public Result<AlertRuleVO> updateRule(@RequestBody(required = false) AlertRuleVO rule) {
+        return Result.ok(alertService.updateRule(requireAlertRule(rule)));
     }
 
     @PostMapping("/toggle")
@@ -58,5 +59,12 @@ public class AlertRuleController {
     public Result<Void> deleteRule(@Valid @RequestBody DeleteAlertRuleDTO request) {
         alertService.deleteRule(request.getId());
         return Result.ok();
+    }
+
+    private AlertRuleVO requireAlertRule(AlertRuleVO rule) {
+        if (rule == null) {
+            throw new BusinessException(400, "Alert rule request is required");
+        }
+        return rule;
     }
 }

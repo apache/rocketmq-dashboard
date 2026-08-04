@@ -99,6 +99,9 @@ public class SettingsService {
 
 
     public DataSourceVO createDataSource(DataSourceVO dataSource) {
+        if (dataSource == null) {
+            throw new BusinessException(400, "Data source request is required");
+        }
         log.info("Creating data source: {}", dataSource.getName());
         dataSource.setKey(UUID.randomUUID().toString());
         return settingsRepository.saveDataSource(dataSource);
@@ -106,6 +109,9 @@ public class SettingsService {
 
 
     public DataSourceVO updateDataSource(DataSourceVO dataSource) {
+        if (dataSource == null) {
+            throw new BusinessException(400, "Data source request is required");
+        }
         String key = normalizeDataSourceKey(dataSource.getKey());
         dataSource.setKey(key);
         log.info("Updating data source: {}", key);

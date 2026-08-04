@@ -25,10 +25,17 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Service
 public class ProxyAddressService {
+
+    private static final Pattern PROXY_ADDR_PATTERN =
+            Pattern.compile("^(\\[[0-9a-fA-F:.]+]|[A-Za-z0-9._-]+):(\\d{1,5})$");
+    private static final int MIN_PORT = 1;
+    private static final int MAX_PORT = 65535;
 
     private final Set<String> proxyAddrs = new LinkedHashSet<>(List.of("127.0.0.1:8081"));
     private String currentProxyAddr = "127.0.0.1:8081";
@@ -64,6 +71,15 @@ public class ProxyAddressService {
         if (proxyAddr == null || proxyAddr.trim().isEmpty()) {
             throw new BusinessException(400, fieldName + " is required");
         }
-        return proxyAddr.trim();
+        String normalized = proxyAddr.trim();
+        Matcher matcher = PROXY_ADDR_PATTERN.matcher(normalized);
+        if (!matcher.matches()) {
+            throw new BusinessException(400, fieldName + " must be in host:port or [ipv6]:port format");
+        }
+        int port = Integer.parseInt(matcher.group(2));
+        if (port < MIN_PORT || port > MAX_PORT) {
+            throw new BusinessException(400, fieldName + " port must be between 1 and 65535");
+        }
+        return normalized;
     }
 }

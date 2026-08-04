@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.instance.dlq;
 
 import org.apache.rocketmq.studio.common.domain.Result;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -41,9 +42,16 @@ public class DLQController {
     }
 
     @PostMapping("/resend")
-    public Result<Void> resendMessages(@Valid @RequestBody DLQResendRequestDTO request) {
+    public Result<Void> resendMessages(@Valid @RequestBody(required = false) DLQResendRequestDTO request) {
+        requireRequest(request);
         dlqService.resendMessages(
                 request.getGroupName(), request.getStartTime(), request.getEndTime(), request.getTargetTopic());
         return Result.ok();
+    }
+
+    private void requireRequest(DLQResendRequestDTO request) {
+        if (request == null) {
+            throw new BusinessException(400, "DLQ resend request is required");
+        }
     }
 }

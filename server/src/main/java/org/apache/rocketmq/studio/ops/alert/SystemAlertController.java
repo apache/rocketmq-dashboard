@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 import org.apache.rocketmq.studio.common.domain.Result;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -43,7 +44,9 @@ public class SystemAlertController {
     }
 
     @PostMapping("/acknowledge")
-    public Result<SystemAlertVO> acknowledgeAlert(@Valid @RequestBody AcknowledgeSystemAlertDTO request) {
+    public Result<SystemAlertVO> acknowledgeAlert(
+            @Valid @RequestBody(required = false) AcknowledgeSystemAlertDTO request) {
+        requireAcknowledgeRequest(request);
         return Result.ok(alertService.acknowledgeAlert(request.getId()));
     }
 
@@ -51,5 +54,11 @@ public class SystemAlertController {
     public Result<Map<String, Integer>> clearAcknowledged() {
         int cleared = alertService.clearAcknowledged();
         return Result.ok(Map.of("cleared", cleared));
+    }
+
+    private void requireAcknowledgeRequest(AcknowledgeSystemAlertDTO request) {
+        if (request == null) {
+            throw new BusinessException(400, "System alert acknowledge request is required");
+        }
     }
 }

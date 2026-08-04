@@ -251,6 +251,16 @@ class AlertServiceTest {
     }
 
     @Test
+    void createRuleShouldRejectNullRequest() {
+        assertThatThrownBy(() -> alertService.createRule(null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Alert rule request is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verify(alertRepository, never()).saveRule(any());
+    }
+
+    @Test
     void updateRuleShouldUpdateExistingRule() {
         AlertRuleVO update = AlertRuleVO.builder().id("rule-1").name("CPU Alert").threshold(90.0).build();
         when(alertRepository.replaceRule(update)).thenReturn(true);
@@ -260,6 +270,16 @@ class AlertServiceTest {
         assertThat(result.getId()).isEqualTo("rule-1");
         assertThat(result.getThreshold()).isEqualTo(90.0);
         verify(alertRepository).replaceRule(update);
+    }
+
+    @Test
+    void updateRuleShouldRejectNullRequest() {
+        assertThatThrownBy(() -> alertService.updateRule(null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Alert rule request is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verify(alertRepository, never()).replaceRule(any());
     }
 
     @Test
