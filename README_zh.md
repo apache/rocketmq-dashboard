@@ -9,10 +9,18 @@ RocketMQ Studio 是一个面向多集群、多架构、多云环境的 RocketMQ 
 ## 一键构建 & 运行
 
 ```bash
-cd deploy && docker compose up -d --build
+cd deploy/rocketmq && docker compose up -d
+cd .. && docker compose up -d --build
 ```
 
+第一条命令会启动内置 RocketMQ 拓扑，并创建 Studio 服务所需的
+`rocketmq_default` Docker 网络。启动 Studio 前，可在 `deploy/rocketmq` 目录执行
+`docker compose ps` 确认 RocketMQ 已就绪。
+
 启动后访问 **http://127.0.0.1:6789** 即可使用。
+
+默认 schema 只创建 Studio 表，不会写入实例、Topic、消费组或 ACL 示例记录。开发环境的示例数据可从
+`deploy/mysql/` 显式导入，不属于默认部署。
 
 **Studio 服务端口：** 前端 6789（Nginx）、后端 8888（Spring Boot）
 
