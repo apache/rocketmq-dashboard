@@ -31,9 +31,12 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Primary
@@ -41,12 +44,17 @@ import java.util.concurrent.Executors;
 @RequiredArgsConstructor
 public class OpenAiCompatibleLlmGateway implements LlmGateway {
 
+    private static final int MAX_STREAMING_TASKS = 16;
+    private static final int MAX_QUEUED_TASKS = 32;
+
     private final LlmConfigService configService;
     private final OpenAiCompatibleLlmClient llmClient;
     private final AgentProviderRegistry agentProviders;
     private final ObjectMapper objectMapper;
     private final LlmConversationMemory conversationMemory;
-    private final ExecutorService executor = Executors.newCachedThreadPool();
+    private final ExecutorService executor = new ThreadPoolExecutor(
+            MAX_STREAMING_TASKS, MAX_STREAMING_TASKS, 0L, TimeUnit.MILLISECONDS,
+            new ArrayBlockingQueue<>(MAX_QUEUED_TASKS), new ThreadPoolExecutor.AbortPolicy());
 
     @Override
     public SseEmitter chat(ChatDTO request) {
@@ -56,20 +64,18 @@ public class OpenAiCompatibleLlmGateway implements LlmGateway {
         }
         String engine = resolveEngine(request == null ? null : request.getEngine(), config);
         if (isCliEngine(engine)) {
-            SseEmitter emitter = new SseEmitter(300_000L);
-            executor.execute(() -> runCliChat(request, config, engine, emitter));
-            return emitter;
+            return submitChat(300_000L, emitter -> runCliChat(request, config, engine, emitter));
         }
         if (!llmClient.supports(config)) {
             return errorEmitter(unsupportedProviderException());
         }
 
-        String conversationId = request == null ? null : request.getConversationId();
-        String message = request == null ? null : request.getMessage();
-        List<LlmChatMessage> messages = conversationMemory.appendUserAndSnapshot(conversationId, message);
-        SseEmitter emitter = new SseEmitter(60_000L);
-        executor.execute(() -> streamChat(request, config, emitter, messages));
-        return emitter;
+        return submitChat(60_000L, emitter -> {
+            String conversationId = request == null ? null : request.getConversationId();
+            String message = request == null ? null : request.getMessage();
+            List<LlmChatMessage> messages = conversationMemory.appendUserAndSnapshot(conversationId, message);
+            streamChat(request, config, emitter, messages);
+        });
     }
 
     @Override
@@ -237,7 +243,17 @@ public class OpenAiCompatibleLlmGateway implements LlmGateway {
 
     private SseEmitter errorEmitter(LlmGatewayException exception) {
         SseEmitter emitter = new SseEmitter(60_000L);
-        executor.execute(() -> sendError(emitter, exception));
+        Thread.ofVirtual().start(() -> sendError(emitter, exception));
+        return emitter;
+    }
+
+    private SseEmitter submitChat(long timeoutMillis, java.util.function.Consumer<SseEmitter> task) {
+        SseEmitter emitter = new SseEmitter(timeoutMillis);
+        try {
+            executor.execute(() -> task.accept(emitter));
+        } catch (RejectedExecutionException exception) {
+            Thread.ofVirtual().start(() -> sendError(emitter, gatewayBusyException()));
+        }
         return emitter;
     }
 
@@ -271,6 +287,12 @@ public class OpenAiCompatibleLlmGateway implements LlmGateway {
         return new LlmGatewayException(400, "llm.config.incomplete",
                 "LLM provider is not configured or enabled",
                 "Configure and enable an LLM provider in Studio LLM Settings before using AI chat.");
+    }
+
+    private LlmGatewayException gatewayBusyException() {
+        return new LlmGatewayException(503, "llm.gateway.busy",
+                "LLM gateway is busy processing other requests",
+                "Retry shortly or reduce concurrent AI chat requests.");
     }
 
     private LlmGatewayException unsupportedProviderException() {

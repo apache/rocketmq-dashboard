@@ -27,6 +27,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.concurrent.CompletableFuture;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -96,22 +97,31 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
             Process process = builder.start();
             AtomicBoolean emitted = new AtomicBoolean(false);
             StringBuilder resultText = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    parseStreamLine(line, tokenConsumer, emitted, resultText);
+            CompletableFuture<Void> stdoutFuture = new CompletableFuture<>();
+            Thread.ofVirtual().start(() -> {
+                try (BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        parseStreamLine(line, tokenConsumer, emitted, resultText);
+                    }
+                    stdoutFuture.complete(null);
+                } catch (Exception exception) {
+                    stdoutFuture.completeExceptionally(exception);
                 }
-            }
+            });
+            CompletableFuture<String> stderrFuture = readAsync(process.getErrorStream());
             boolean finished = process.waitFor(STREAM_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             if (!finished) {
                 process.destroyForcibly();
+                process.waitFor();
                 throw new LlmGatewayException(504, "llm.provider.timeout",
                         binaryName() + " CLI stream timed out after " + STREAM_TIMEOUT_SECONDS + "s",
                         "Retry with a shorter prompt or check the gateway latency.");
             }
+            await(stdoutFuture);
+            String stderr = await(stderrFuture);
             if (process.exitValue() != 0 && !emitted.get()) {
-                String stderr = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
                 throw new LlmGatewayException(502, "llm.provider.cli_error",
                         binaryName() + " CLI failed: " + (StringUtils.hasText(stderr) ? stderr.trim() : "unknown error"),
                         "Check the provider credentials, base URL and model name.");

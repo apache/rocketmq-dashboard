@@ -20,9 +20,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -71,15 +74,19 @@ public abstract class CliAgentProvider implements AgentProvider {
         builder.redirectErrorStream(false);
         try {
             Process process = builder.start();
-            String stdout = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            String stderr = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
-            boolean finished = process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            CompletableFuture<String> stdoutFuture = readAsync(process.getInputStream());
+            CompletableFuture<String> stderrFuture = readAsync(process.getErrorStream());
+            long timeoutSeconds = timeoutSeconds();
+            boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
             if (!finished) {
                 process.destroyForcibly();
+                process.waitFor();
                 throw new LlmGatewayException(504, "llm.provider.timeout",
-                        binaryName() + " CLI timed out after " + TIMEOUT_SECONDS + "s",
+                        binaryName() + " CLI timed out after " + timeoutSeconds + "s",
                         "Retry with a shorter prompt or check the gateway latency.");
             }
+            String stdout = await(stdoutFuture);
+            String stderr = await(stderrFuture);
             if (process.exitValue() != 0) {
                 log.warn("{} CLI failed rc={}, stderr={}", binaryName(), process.exitValue(), abbreviate(stderr));
                 throw new LlmGatewayException(502, "llm.provider.cli_error",
@@ -102,6 +109,37 @@ public abstract class CliAgentProvider implements AgentProvider {
             Thread.currentThread().interrupt();
             throw new LlmGatewayException(502, "llm.provider.interrupted",
                     binaryName() + " CLI execution was interrupted", "Retry the request.", exception);
+        }
+    }
+
+    protected CompletableFuture<String> readAsync(InputStream stream) {
+        CompletableFuture<String> result = new CompletableFuture<>();
+        Thread.ofVirtual().start(() -> {
+            try (stream) {
+                result.complete(new String(stream.readAllBytes(), StandardCharsets.UTF_8));
+            } catch (Exception exception) {
+                result.completeExceptionally(exception);
+            }
+        });
+        return result;
+    }
+
+    protected long timeoutSeconds() {
+        return TIMEOUT_SECONDS;
+    }
+
+    protected <T> T await(CompletableFuture<T> future) throws IOException {
+        try {
+            return future.join();
+        } catch (CompletionException exception) {
+            Throwable cause = exception.getCause();
+            if (cause instanceof IOException ioException) {
+                throw ioException;
+            }
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw new IOException("Failed to read CLI process output", cause);
         }
     }
 
