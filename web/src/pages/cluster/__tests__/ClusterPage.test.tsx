@@ -163,6 +163,38 @@ describe('Cluster page', () => {
     expect(within(dialog).getByText('8080')).toBeInTheDocument();
   });
 
+  it('keeps cluster tabs usable when address fields are missing', async () => {
+    const user = userEvent.setup();
+    const submitSearch = async (placeholder: string, value: string) => {
+      const input = screen.getByPlaceholderText(placeholder);
+      await user.type(input, value);
+      const searchBox = input.closest('.ant-input-search');
+      expect(searchBox).not.toBeNull();
+      const searchButton = (searchBox as HTMLElement).querySelector('.ant-input-search-button');
+      expect(searchButton).not.toBeNull();
+      await user.click(searchButton as HTMLElement);
+    };
+    const cluster = buildCluster();
+    cluster.brokers = [{ ...cluster.brokers[0], addr: null as unknown as string }];
+    cluster.nameServers = [{ ...cluster.nameServers[0], addr: null as unknown as string }];
+    cluster.proxies = [{ ...cluster.proxies[0], addr: null as unknown as string }];
+    clusterServiceMocks.listClusters.mockResolvedValue([cluster]);
+
+    renderWithProviders(<ClusterPage />);
+    expect(await screen.findByText('rocketmq-prod-0')).toBeInTheDocument();
+
+    await submitSearch('搜索 Broker 名称或地址', 'not-found');
+    expect(screen.queryByText('rocketmq-prod-0')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: /NameServer 管理/ }));
+    await submitSearch('搜索地址', 'not-found');
+    expect(screen.getByPlaceholderText('搜索地址')).toHaveValue('not-found');
+
+    await user.click(screen.getByRole('tab', { name: /Proxy 管理/ }));
+    await submitSearch('搜索 Proxy 地址', 'not-found');
+    expect(screen.getByPlaceholderText('搜索 Proxy 地址')).toHaveValue('not-found');
+  });
+
   it('polls the API after two seconds and renders only returned metrics', async () => {
     vi.useFakeTimers();
     const randomSpy = vi.spyOn(Math, 'random');

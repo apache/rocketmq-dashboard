@@ -66,129 +66,6 @@ interface ProxyRecord {
   connections: number;
 }
 
-// ─── Mock Data (fallback when the API is unavailable) ───────────
-const mockBrokerData: BrokerRecord[] = [
-  {
-    key: '1',
-    k8sCluster: 'prod-cn-east-1',
-    brokerName: 'broker-a',
-    status: 'running',
-    version: '5.3.0',
-    diskUsage: 62,
-    address: '10.0.1.10:10911',
-    tpsIn: 12580,
-    tpsOut: 8340,
-  },
-  {
-    key: '2',
-    k8sCluster: 'prod-cn-east-1',
-    brokerName: 'broker-b',
-    status: 'readonly',
-    version: '5.3.0',
-    diskUsage: 89,
-    address: '10.0.1.11:10911',
-    tpsIn: 0,
-    tpsOut: 3120,
-  },
-  {
-    key: '3',
-    k8sCluster: 'prod-cn-east-1',
-    brokerName: 'broker-c',
-    status: 'running',
-    version: '5.2.0',
-    diskUsage: 45,
-    address: '10.0.1.12:10911',
-    tpsIn: 9750,
-    tpsOut: 6280,
-  },
-  {
-    key: '4',
-    k8sCluster: 'prod-cn-south-1',
-    brokerName: 'broker-d',
-    status: 'maintenance',
-    version: '5.3.0',
-    diskUsage: 33,
-    address: '10.0.2.10:10911',
-    tpsIn: 0,
-    tpsOut: 0,
-  },
-  {
-    key: '5',
-    k8sCluster: 'prod-cn-south-1',
-    brokerName: 'broker-e',
-    status: 'running',
-    version: '5.3.0',
-    diskUsage: 51,
-    address: '10.0.2.11:10911',
-    tpsIn: 7890,
-    tpsOut: 5430,
-  },
-  {
-    key: '6',
-    k8sCluster: 'staging-cn-east-1',
-    brokerName: 'broker-staging-a',
-    status: 'running',
-    version: '5.3.1',
-    diskUsage: 28,
-    address: '10.0.10.10:10911',
-    tpsIn: 1230,
-    tpsOut: 980,
-  },
-];
-
-const mockNameServerData: NameServerRecord[] = [
-  {
-    key: '1',
-    k8sCluster: 'prod-cn-east-1',
-    name: 'nameserver-a',
-    status: 'running',
-    version: '5.3.0',
-    address: '10.0.1.20:9876',
-    connections: 156,
-  },
-  {
-    key: '2',
-    k8sCluster: 'prod-cn-east-1',
-    name: 'nameserver-b',
-    status: 'running',
-    version: '5.3.0',
-    address: '10.0.1.21:9876',
-    connections: 148,
-  },
-  {
-    key: '3',
-    k8sCluster: 'prod-cn-south-1',
-    name: 'nameserver-c',
-    status: 'running',
-    version: '5.3.0',
-    address: '10.0.2.20:9876',
-    connections: 92,
-  },
-];
-
-const mockProxyData: ProxyRecord[] = [
-  {
-    key: '1',
-    k8sCluster: 'prod-cn-east-1',
-    name: 'proxy-a',
-    status: 'running',
-    version: '5.3.0',
-    address: '10.0.1.30:8080',
-    grpcPort: '10.0.1.30:8081',
-    connections: 2340,
-  },
-  {
-    key: '2',
-    k8sCluster: 'prod-cn-south-1',
-    name: 'proxy-b',
-    status: 'running',
-    version: '5.3.0',
-    address: '10.0.2.30:8080',
-    grpcPort: '10.0.2.30:8081',
-    connections: 1560,
-  },
-];
-
 // ─── Helpers ────────────────────────────────────────────────────
 const normalizeStatus = (status: string): NodeStatus => {
   const value = (status || '').toLowerCase();
@@ -260,9 +137,9 @@ const BrokerClusterPage = () => {
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [activeTab, setActiveTab] = useState('broker');
   const [loading, setLoading] = useState(false);
-  const [brokerData, setBrokerData] = useState<BrokerRecord[]>(mockBrokerData);
-  const [nameServerData, setNameServerData] = useState<NameServerRecord[]>(mockNameServerData);
-  const [proxyData, setProxyData] = useState<ProxyRecord[]>(mockProxyData);
+  const [brokerData, setBrokerData] = useState<BrokerRecord[]>([]);
+  const [nameServerData, setNameServerData] = useState<NameServerRecord[]>([]);
+  const [proxyData, setProxyData] = useState<ProxyRecord[]>([]);
   const { t } = useLang();
   const { message } = App.useApp();
 

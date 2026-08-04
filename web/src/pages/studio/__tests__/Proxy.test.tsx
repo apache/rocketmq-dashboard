@@ -104,4 +104,12 @@ describe('ProxyPage', () => {
     expect(screen.queryByText('proxy.maxConnections')).not.toBeInTheDocument();
     expect(screen.queryByText('rocketmq.namesrv.addr')).not.toBeInTheDocument();
   });
+
+  it('marks runtime metrics unavailable when proxy API only returns addresses', async () => {
+    renderPage();
+    await screen.findByText('127.0.0.1:8081');
+
+    expect(screen.queryByText('5.3.0')).not.toBeInTheDocument();
+    expect(screen.getAllByText('N/A').length).toBeGreaterThanOrEqual(5);
+  });
 });
