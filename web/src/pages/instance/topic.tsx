@@ -16,6 +16,7 @@
  */
 
 import { useEffect, useState, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Alert,
   Table,
@@ -214,6 +215,8 @@ const formatDateTime = (iso: string): string => {
 // ═══════════════════════════════════════════════════════════════════
 const TopicPage = () => {
   const { t } = useLang();
+  const [searchParams] = useSearchParams();
+  const instanceId = searchParams.get('instanceId')?.trim() || undefined;
 
   // ─── State ─────────────────────────────────────────────────────
   const [topics, setTopics] = useState<Topic[]>([]);
@@ -241,7 +244,7 @@ const TopicPage = () => {
 
   useEffect(() => {
     let cancelled = false;
-    void listTopics()
+    void listTopics(instanceId ? { clusterId: instanceId } : undefined)
       .then((nextTopics) => {
         if (!cancelled) setTopics(nextTopics);
       })
@@ -255,7 +258,7 @@ const TopicPage = () => {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [instanceId]);
 
   // ─── Filtered data ─────────────────────────────────────────────
   const filteredTopics = useMemo(

@@ -16,7 +16,6 @@
  */
 
 import { App } from 'antd';
-import { useEffect } from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -61,16 +60,10 @@ const instance = (id: string, name: string, type: Instance['type'] = 'PROXY'): I
   updatedAt: '2026-01-01T00:00:00Z',
 });
 
-let currentLocation = '';
-
 const LocationProbe = () => {
   const location = useLocation();
 
-  useEffect(() => {
-    currentLocation = `${location.pathname}${location.search}`;
-  }, [location.pathname, location.search]);
-
-  return null;
+  return <span data-testid="location-probe">{`${location.pathname}${location.search}`}</span>;
 };
 
 const renderPage = () =>
@@ -91,7 +84,6 @@ const renderPage = () =>
 describe('InstancePage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    currentLocation = '';
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       instance('proxy-1', 'production-proxy'),
       instance('direct-1', 'development-direct', 'DIRECT'),
@@ -214,7 +206,9 @@ describe('InstancePage', () => {
     await user.click(await screen.findByText('production-proxy'));
 
     expect(await screen.findByText('Topic route')).toBeInTheDocument();
-    expect(currentLocation).toBe('/instance/topic?instanceId=proxy-1');
+    expect(await screen.findByTestId('location-probe')).toHaveTextContent(
+      '/instance/topic?instanceId=proxy-1',
+    );
   });
 
   it('does not navigate when clicking row action buttons', async () => {
@@ -225,7 +219,7 @@ describe('InstancePage', () => {
     await user.click(screen.getAllByRole('button', { name: /编辑/ })[0]);
 
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
-    expect(currentLocation).toBe('/instance');
+    expect(screen.getByTestId('location-probe')).toHaveTextContent('/instance');
     expect(screen.queryByText('Topic route')).not.toBeInTheDocument();
   });
 });

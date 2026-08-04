@@ -19,6 +19,7 @@ import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vite
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
+import { MemoryRouter } from 'react-router-dom';
 import { LangProvider } from '../../../i18n/LangContext';
 import type { Topic } from '../../../api/metadata';
 import TopicPage from '../topic';
@@ -71,13 +72,15 @@ const buildTopics = (count: number): Topic[] =>
     };
   });
 
-const renderWithProviders = () =>
+const renderWithProviders = (initialEntry = '/instance/topic') =>
   render(
-    <App>
-      <LangProvider>
-        <TopicPage />
-      </LangProvider>
-    </App>,
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <App>
+        <LangProvider>
+          <TopicPage />
+        </LangProvider>
+      </App>
+    </MemoryRouter>,
   );
 
 const getTableBody = () => {
@@ -120,6 +123,14 @@ describe('TopicPage', () => {
 
     expect(within(getTableBody()).getByText('topic-21')).toBeInTheDocument();
     expect(within(getTableBody()).queryByText('topic-01')).not.toBeInTheDocument();
+  });
+
+  it('loads topics for the instance selected in the URL', async () => {
+    renderWithProviders('/instance/topic?instanceId=proxy-1');
+
+    await waitFor(() =>
+      expect(topicServiceMocks.listTopics).toHaveBeenCalledWith({ clusterId: 'proxy-1' }),
+    );
   });
 
   it('keeps failed topics selected after a partially successful batch deletion', async () => {
