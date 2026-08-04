@@ -31,6 +31,7 @@ public class AiCommandDTO {
     private String command;
     private String mode;
     private String model;
+    private String engine;
     private String conversationId;
     private String prompt;
     private Map<String, Object> context;

@@ -55,7 +55,7 @@ class LlmConfigServiceTest {
                 .baseUrl("https://api.openai.com/v1")
                 .build());
         llmClient = mock(OpenAiCompatibleLlmClient.class);
-        llmConfigService = new LlmConfigService(settingsService, llmClient);
+        llmConfigService = new LlmConfigService(settingsService, llmClient, new LlmProperties());
     }
 
     @Test
@@ -68,6 +68,29 @@ class LlmConfigServiceTest {
         assertThat(config.getModel()).isEqualTo("gpt-4o");
         assertThat(config.isEnabled()).isTrue();
         assertThat(config.isReady()).isTrue();
+    }
+
+    @Test
+    void envTokenShouldOverrideApiKeyAtRuntimeButNeverBePersisted() {
+        LlmProperties properties = new LlmProperties();
+        properties.setToken("env-token");
+        LlmConfigService service = new LlmConfigService(settingsService, llmClient, properties);
+
+        LlmConfigVO config = service.getConfig();
+        assertThat(config.getApiKey()).isEqualTo("env-token");
+        assertThat(config.isEnabled()).isTrue();
+
+        service.saveConfig(LlmConfigVO.builder()
+                .provider("openai")
+                .apiBase("https://api.openai.com/v1")
+                .model("gpt-4o")
+                .build());
+
+        ArgumentCaptor<GeneralSettingsVO> captor = ArgumentCaptor.forClass(GeneralSettingsVO.class);
+        verify(settingsService).saveGeneralSettings(captor.capture());
+        assertThat(captor.getValue().getApiKey()).isEqualTo("sk-test");
+
+        assertThat(service.getConfig().getApiKey()).isEqualTo("env-token");
     }
 
     @Test
@@ -248,6 +271,7 @@ class LlmConfigServiceTest {
 
         LlmOperationResultVO result = llmConfigService.testConfig(LlmConfigVO.builder()
                 .provider("openai")
+                .engine("http")
                 .apiKey("")
                 .model("gpt-4o")
                 .build());
@@ -375,7 +399,7 @@ class LlmConfigServiceTest {
         LlmModelsResultVO result = llmConfigService.listModels();
 
         assertThat(result.getStatus()).isZero();
-        assertThat(result.getData()).extracting("id").contains("qwen-max", "qwen-plus");
+        assertThat(result.getData()).extracting("id").contains("qwen3.8-max", "qwen3.7-plus");
     }
 
     @Test

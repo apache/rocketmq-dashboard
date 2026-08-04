@@ -19,6 +19,7 @@ import client from './client';
 
 export interface LlmConfig {
   provider: string;
+  engine?: string;
   apiKey?: string;
   apiKeyConfigured?: boolean;
   apiBase: string;

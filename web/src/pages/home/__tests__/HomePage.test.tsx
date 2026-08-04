@@ -25,7 +25,6 @@ import HomePage from '../index';
 const navigateMock = vi.hoisted(() => vi.fn());
 const llmApiMocks = vi.hoisted(() => ({
   getLlmConfig: vi.fn(),
-  getLlmModels: vi.fn(),
 }));
 
 vi.mock('react-router-dom', () => ({
@@ -53,18 +52,13 @@ beforeAll(() => {
 beforeEach(() => {
   vi.clearAllMocks();
   llmApiMocks.getLlmConfig.mockResolvedValue({
-    provider: 'openai',
-    apiBase: 'https://api.example.com/v1',
-    model: 'provider-model',
+    provider: 'tongyi',
+    apiBase: 'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
+    model: 'qwen3.8-max',
     maxTokens: 4096,
     temperature: 0.7,
     enabled: true,
     ready: true,
-  });
-  llmApiMocks.getLlmModels.mockResolvedValue({
-    status: 0,
-    data: [{ id: 'provider-model' }, { id: 'provider-model-secondary' }],
-    source: 'provider',
   });
 });
 
@@ -78,25 +72,28 @@ const renderHome = () =>
   );
 
 describe('HomePage LLM models', () => {
-  it('loads configured provider models instead of hard-coded options', async () => {
+  it('shows the fixed home model list with qwen3.8-max selected', async () => {
     renderHome();
 
-    expect(await screen.findByText('provider-model')).toBeInTheDocument();
-    expect(screen.queryByText('qwen3.7-max')).not.toBeInTheDocument();
+    expect(await screen.findByText('qwen3.8-max')).toBeInTheDocument();
   });
 
-  it('submits the configured provider model to the AI page', async () => {
+  it('submits the selected model and engine to the AI page', async () => {
     const user = userEvent.setup();
     renderHome();
-    await screen.findByText('provider-model');
+    await screen.findByText('qwen3.8-max');
 
-    await user.type(screen.getByPlaceholderText('向 RocketMQ Bot 提问，全程加密、安全、可信'), '查看集群状态{enter}');
+    await user.type(
+      screen.getByPlaceholderText('向 RocketMQ Bot 提问，全程加密、安全、可信'),
+      '查看集群状态{enter}',
+    );
 
     await waitFor(() => {
       expect(navigateMock).toHaveBeenCalledWith('/ai', {
         state: {
           prompt: '查看集群状态',
-          model: 'provider-model',
+          model: 'qwen3.8-max',
+          engine: 'claude-code',
         },
       });
     });

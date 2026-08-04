@@ -16,20 +16,17 @@
  */
 package org.apache.rocketmq.studio.ops.ai;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
-import lombok.NoArgsConstructor;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 
+/**
+ * LLM credentials supplied through the environment. The token is a secret and
+ * must never be persisted or logged; it is injected as RMQ_LLM_TOKEN into the
+ * container and bound here at startup.
+ */
 @Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class ChatDTO {
-    private String message;
-    private String mode;
-    private String model;
-    private String engine;
-    private boolean enhance;
-    private String conversationId;
+@ConfigurationProperties(prefix = "studio.llm")
+public class LlmProperties {
+    private String token;
+    private String anthropicBaseUrl;
 }

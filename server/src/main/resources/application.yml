@@ -44,3 +44,6 @@ studio:
       bearer-token: ${STUDIO_METRICS_PROMETHEUS_BEARER_TOKEN:}
   rocketmq:
     namesrv-addr: ${STUDIO_ROCKETMQ_NAMESRV_ADDR:}
+  llm:
+    token: ${RMQ_LLM_TOKEN:}
+    anthropic-base-url: ${RMQ_ANTHROPIC_BASE_URL:}

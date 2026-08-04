@@ -27,6 +27,8 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -39,6 +41,7 @@ public class OpenAiCompatibleLlmGateway implements LlmGateway {
 
     private final LlmConfigService configService;
     private final OpenAiCompatibleLlmClient llmClient;
+    private final AgentProviderRegistry agentProviders;
     private final ObjectMapper objectMapper;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
@@ -47,6 +50,12 @@ public class OpenAiCompatibleLlmGateway implements LlmGateway {
         LlmConfigVO config = configService.getConfig();
         if (!hasRunnableConfig(config)) {
             return errorEmitter(incompleteConfigException());
+        }
+        String engine = resolveEngine(request == null ? null : request.getEngine(), config);
+        if (isCliEngine(engine)) {
+            SseEmitter emitter = new SseEmitter(300_000L);
+            executor.execute(() -> runCliChat(request, config, engine, emitter));
+            return emitter;
         }
         if (!llmClient.supports(config)) {
             return errorEmitter(unsupportedProviderException());
@@ -63,8 +72,114 @@ public class OpenAiCompatibleLlmGateway implements LlmGateway {
         if (!hasRunnableConfig(config)) {
             throw incompleteConfigException();
         }
+        String engine = resolveEngine(command == null ? null : command.getEngine(), config);
+        if (isCliEngine(engine)) {
+            AgentProvider provider = agentProviders.forEngine(engine);
+            return provider.complete(config, commandPrompt(command), command == null ? null : command.getModel());
+        }
         assertSupported(config);
         return llmClient.complete(config, commandPrompt(command), command == null ? null : command.getModel());
+    }
+
+    /** Request-level engine (per-user preference) overrides the global config. */
+    private String resolveEngine(String requestEngine, LlmConfigVO config) {
+        String engine = StringUtils.hasText(requestEngine) ? requestEngine.trim().toLowerCase() : null;
+        if (engine == null) {
+            return config.normalizeEngine();
+        }
+        return switch (engine) {
+            case LlmConfigVO.ENGINE_HTTP, LlmConfigVO.ENGINE_CLAUDE_CODE, LlmConfigVO.ENGINE_QODER -> engine;
+            default -> config.normalizeEngine();
+        };
+    }
+
+    private boolean isCliEngine(String engine) {
+        return !LlmConfigVO.ENGINE_HTTP.equalsIgnoreCase(engine);
+    }
+
+    private void runCliChat(ChatDTO request, LlmConfigVO config, String engine, SseEmitter emitter) {
+        try {
+            AgentProvider provider = agentProviders.forEngine(engine);
+            String prompt = request == null ? null : request.getMessage();
+            if (request != null && request.isEnhance() && StringUtils.hasText(prompt)) {
+                prompt = enhanceAndEmit(config, provider, prompt, emitter);
+            }
+            String result = provider.complete(config, prompt, request == null ? null : request.getModel());
+            sendMessage(emitter, result);
+            emitter.send(SseEmitter.event().name("done").data("[DONE]"));
+            emitter.complete();
+        } catch (LlmGatewayException exception) {
+            log.warn("Agent CLI chat failed: {}", exception.getCode(), exception);
+            sendError(emitter, exception);
+        } catch (Exception exception) {
+            log.error("Failed to run agent CLI chat", exception);
+            sendError(emitter, new LlmGatewayException(502, "llm.gateway_error",
+                    "Failed to run agent CLI chat", "Check the agent provider configuration and retry.", exception));
+        }
+    }
+
+    private static final String ENHANCE_PROMPT_TEMPLATE = loadEnhancePromptTemplate();
+
+    private static String loadEnhancePromptTemplate() {
+        try (InputStream in = OpenAiCompatibleLlmGateway.class
+                .getResourceAsStream("/prompts/enhance-prompt.txt")) {
+            if (in == null) {
+                throw new IllegalStateException("prompts/enhance-prompt.txt is missing on classpath");
+            }
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Failed to load prompts/enhance-prompt.txt", exception);
+        }
+    }
+
+    /** Streams the prompt rewrite via the given provider, emitting per-chunk "enhance" SSE events. */
+    private String enhanceAndEmit(LlmConfigVO config, AgentProvider provider, String rawPrompt, SseEmitter emitter)
+            throws IOException {
+        String metaPrompt = ENHANCE_PROMPT_TEMPLATE.formatted(rawPrompt);
+        StringBuilder accumulated = new StringBuilder();
+        provider.stream(config, metaPrompt, null, chunk -> {
+            accumulated.append(chunk);
+            emitEnhanceChunk(emitter, chunk);
+        });
+        String enhanced = cleanEnhancedPrompt(accumulated.toString());
+        return StringUtils.hasText(enhanced) ? enhanced : rawPrompt;
+    }
+
+    private String enhanceAndEmitHttp(LlmConfigVO config, String rawPrompt, SseEmitter emitter)
+            throws IOException {
+        String metaPrompt = ENHANCE_PROMPT_TEMPLATE.formatted(rawPrompt);
+        StringBuilder accumulated = new StringBuilder();
+        llmClient.stream(config, metaPrompt, null, chunk -> {
+            accumulated.append(chunk);
+            emitEnhanceChunk(emitter, chunk);
+        });
+        String enhanced = cleanEnhancedPrompt(accumulated.toString());
+        return StringUtils.hasText(enhanced) ? enhanced : rawPrompt;
+    }
+
+    private void emitEnhanceChunk(SseEmitter emitter, String chunk) {
+        if (!StringUtils.hasText(chunk)) {
+            return;
+        }
+        try {
+            emitter.send(SseEmitter.event()
+                    .name("enhance")
+                    .data(objectMapper.writeValueAsString(Map.of("delta", chunk))));
+        } catch (IOException exception) {
+            throw new LlmGatewayException(500, "llm.stream.emit_failed",
+                    "Failed to send enhance event", "Retry the chat request.", exception);
+        }
+    }
+
+    private String cleanEnhancedPrompt(String enhanced) {
+        if (enhanced == null) {
+            return "";
+        }
+        String cleaned = enhanced.trim();
+        if (cleaned.startsWith("```")) {
+            cleaned = cleaned.replaceAll("(?s)^```[a-zA-Z]*\\s*", "").replaceAll("(?s)```\\s*$", "").trim();
+        }
+        return cleaned;
     }
 
     @PreDestroy
@@ -74,7 +189,11 @@ public class OpenAiCompatibleLlmGateway implements LlmGateway {
 
     private void streamChat(ChatDTO request, LlmConfigVO config, SseEmitter emitter) {
         try {
-            llmClient.stream(config, request == null ? null : request.getMessage(),
+            String prompt = request == null ? null : request.getMessage();
+            if (request != null && request.isEnhance() && StringUtils.hasText(prompt)) {
+                prompt = enhanceAndEmitHttp(config, prompt, emitter);
+            }
+            llmClient.stream(config, prompt,
                     request == null ? null : request.getModel(),
                     token -> sendMessage(emitter, token));
             emitter.send(SseEmitter.event().name("done").data("[DONE]"));

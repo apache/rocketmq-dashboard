@@ -35,6 +35,7 @@ export interface AiExecuteRequest {
   message: string;
   mode: string;
   model: string;
+  engine?: string;
   tools?: string[];
 }
 
@@ -42,6 +43,8 @@ export interface AiChatRequest {
   message: string;
   mode: string;
   model: string;
+  engine?: string;
+  enhance?: boolean;
   conversationId?: string;
 }
 
@@ -105,12 +108,31 @@ function parseStreamError(payload: string): AiStreamError {
   }
 }
 
-function emitEvent(event: string, onChunk: (text: string) => void): boolean {
+function emitEvent(
+  event: string,
+  onChunk: (text: string) => void,
+  onEnhance?: (prompt: string) => void,
+): boolean {
   const payload = getEventData(event);
   if (payload === null) return false;
   if (payload === '[DONE]') return true;
   if (getEventName(event) === 'error') {
     throw parseStreamError(payload);
+  }
+  if (getEventName(event) === 'enhance') {
+    try {
+      const parsed = JSON.parse(payload) as { delta?: unknown; prompt?: unknown };
+      const delta =
+        typeof parsed.delta === 'string'
+          ? parsed.delta
+          : typeof parsed.prompt === 'string'
+            ? parsed.prompt
+            : null;
+      if (delta !== null) onEnhance?.(delta);
+    } catch {
+      onEnhance?.(payload);
+    }
+    return false;
   }
 
   try {
@@ -134,6 +156,7 @@ export async function chatStream(
   data: AiChatRequest,
   onChunk: (text: string) => void,
   signal?: AbortSignal,
+  onEnhance?: (prompt: string) => void,
 ) {
   const response = await fetch('/api/ai/chat', {
     method: 'POST',
@@ -162,13 +185,13 @@ export async function chatStream(
     while (boundary) {
       const event = buffer.slice(0, boundary.index);
       buffer = buffer.slice(boundary.index + boundary.length);
-      if (emitEvent(event, onChunk)) return;
+      if (emitEvent(event, onChunk, onEnhance)) return;
       boundary = getEventBoundary(buffer);
     }
   }
 
   buffer += decoder.decode();
-  if (buffer && emitEvent(buffer, onChunk)) return;
+  if (buffer && emitEvent(buffer, onChunk, onEnhance)) return;
 }
 
 export async function executeAiCommand(data: AiExecuteRequest) {

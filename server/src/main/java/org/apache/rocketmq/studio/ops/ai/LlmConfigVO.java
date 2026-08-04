@@ -30,7 +30,12 @@ import org.springframework.util.StringUtils;
 @NoArgsConstructor
 @AllArgsConstructor
 public class LlmConfigVO {
+    public static final String ENGINE_HTTP = "http";
+    public static final String ENGINE_CLAUDE_CODE = "claude-code";
+    public static final String ENGINE_QODER = "qoder";
+
     private String provider;
+    private String engine;
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     @ToString.Exclude
     private String apiKey;
@@ -50,10 +55,18 @@ public class LlmConfigVO {
 
     @JsonProperty(value = "ready", access = JsonProperty.Access.READ_ONLY)
     public boolean isReady() {
+        if (!enabled || !StringUtils.hasText(model)) {
+            return false;
+        }
+        if (!ENGINE_HTTP.equalsIgnoreCase(normalizeEngine())) {
+            // CLI engines authenticate through the subprocess environment.
+            return true;
+        }
         boolean keyRequired = !"ollama".equalsIgnoreCase(provider);
-        return enabled
-                && StringUtils.hasText(apiBase)
-                && StringUtils.hasText(model)
-                && (!keyRequired || StringUtils.hasText(apiKey));
+        return StringUtils.hasText(apiBase) && (!keyRequired || StringUtils.hasText(apiKey));
+    }
+
+    public String normalizeEngine() {
+        return StringUtils.hasText(engine) ? engine.trim().toLowerCase() : ENGINE_HTTP;
     }
 }

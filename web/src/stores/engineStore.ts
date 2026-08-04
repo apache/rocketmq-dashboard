@@ -14,22 +14,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.ops.ai;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class ChatDTO {
-    private String message;
-    private String mode;
-    private String model;
-    private String engine;
-    private boolean enhance;
-    private String conversationId;
+export type AgentEngine = 'claude-code' | 'qoder' | 'http';
+
+interface EngineState {
+  engine: AgentEngine;
+  setEngine: (engine: AgentEngine) => void;
 }
+
+// Per-user agent engine preference, kept in the browser (not in global settings).
+export const useEngineStore = create<EngineState>()(
+  persist(
+    (set) => ({
+      engine: 'claude-code',
+      setEngine: (engine) => set({ engine }),
+    }),
+    {
+      name: 'rocketmq-studio-agent-engine',
+    },
+  ),
+);
