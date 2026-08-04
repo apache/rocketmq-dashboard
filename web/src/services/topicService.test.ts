@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { getTopicConsumers, getTopicRoutes, listTopics } from './topicService';
+import { createTopic, getTopicConsumers, getTopicRoutes, listTopics } from './topicService';
 
 vi.mock('./dataMode', () => ({ isMockMode: () => true }));
 vi.mock('../config', () => ({
@@ -67,5 +67,25 @@ describe('topic service mock data', () => {
     const blankSearchTopics = await listTopics({ search: '   ' });
 
     expect(blankSearchTopics).toHaveLength(allTopics.length);
+  });
+
+  it('rejects duplicate topic creates in the same cluster', async () => {
+    const existing = (await listTopics({ search: 'order-create' }))[0];
+    const before = await listTopics({ clusterId: existing.clusterId });
+
+    await expect(
+      createTopic({
+        name: existing.name,
+        clusterId: existing.clusterId,
+        namespace: existing.namespace,
+        type: existing.type,
+        writeQueues: existing.writeQueues,
+        readQueues: existing.readQueues,
+        perm: existing.perm,
+      }),
+    ).rejects.toThrow(`Topic already exists: ${existing.name}`);
+
+    const after = await listTopics({ clusterId: existing.clusterId });
+    expect(after).toEqual(before);
   });
 });
