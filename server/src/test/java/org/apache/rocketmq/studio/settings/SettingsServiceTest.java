@@ -229,7 +229,7 @@ class SettingsServiceTest {
 
     @Test
     void updateDataSourceShouldRejectUnknownKey() {
-        SettingsService service = new SettingsService(new InMemorySettingsRepository(), RestClient.builder(), new ObjectMapper(), operationAuditService);
+        SettingsService service = new SettingsService(settingsRepository, RestClient.builder(), new ObjectMapper(), operationAuditService);
         DataSourceVO input = DataSourceVO.builder().key("missing").name("Unexpected DS").type("rocketmq")
                 .url("unexpected-host:9876").build();
 
@@ -243,7 +243,7 @@ class SettingsServiceTest {
 
     @Test
     void updateDataSourceShouldRejectBlankKey() {
-        SettingsService service = new SettingsService(new InMemorySettingsRepository(), RestClient.builder(), new ObjectMapper(),
+        SettingsService service = new SettingsService(settingsRepository, RestClient.builder(), new ObjectMapper(),
                 operationAuditService);
         DataSourceVO input = DataSourceVO.builder().key(" ").name("Unexpected DS").type("rocketmq")
                 .url("unexpected-host:9876").build();
@@ -267,7 +267,7 @@ class SettingsServiceTest {
 
     @Test
     void deleteDataSourceShouldRejectUnknownKey() {
-        SettingsService service = new SettingsService(new InMemorySettingsRepository(), RestClient.builder(), new ObjectMapper(),
+        SettingsService service = new SettingsService(settingsRepository, RestClient.builder(), new ObjectMapper(),
                 operationAuditService);
 
         assertThatThrownBy(() -> service.deleteDataSource("missing"))

@@ -24,31 +24,21 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-@TableName("rmq_k8s_certificate")
-public class RmqK8sCertificate {
+@TableName("rmq_system_alert")
+public class RmqSystemAlert {
 
-    @TableId(type = IdType.ASSIGN_UUID)
+    @TableId(type = IdType.INPUT)
     private String id;
 
-    private String name;
+    private String level;
 
-    private String namespace;
+    private String title;
 
-    private String cluster;
+    private String description;
 
-    private String certType;
+    private LocalDateTime time;
 
-    private String issuer;
-
-    private LocalDateTime notBefore;
-
-    private LocalDateTime notAfter;
-
-    private String status;
-
-    private Integer daysRemaining;
-
-    private String san;
+    private Boolean acknowledged;
 
     private LocalDateTime createdAt;
 

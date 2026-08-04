@@ -14,43 +14,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.persistence.entity;
+package org.apache.rocketmq.studio.persistence.mapper;
 
-import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableName;
-import lombok.Data;
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import org.apache.rocketmq.studio.persistence.entity.RmqSystemAlert;
 
-import java.time.LocalDateTime;
-
-@Data
-@TableName("rmq_k8s_certificate")
-public class RmqK8sCertificate {
-
-    @TableId(type = IdType.ASSIGN_UUID)
-    private String id;
-
-    private String name;
-
-    private String namespace;
-
-    private String cluster;
-
-    private String certType;
-
-    private String issuer;
-
-    private LocalDateTime notBefore;
-
-    private LocalDateTime notAfter;
-
-    private String status;
-
-    private Integer daysRemaining;
-
-    private String san;
-
-    private LocalDateTime createdAt;
-
-    private LocalDateTime updatedAt;
+public interface RmqSystemAlertMapper extends BaseMapper<RmqSystemAlert> {
 }

@@ -24,31 +24,37 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-@TableName("rmq_k8s_certificate")
-public class RmqK8sCertificate {
+@TableName("rmq_alert_rule")
+public class RmqAlertRule {
 
-    @TableId(type = IdType.ASSIGN_UUID)
+    @TableId(type = IdType.INPUT)
     private String id;
 
     private String name;
 
-    private String namespace;
+    private String metric;
 
-    private String cluster;
+    private String operator;
 
-    private String certType;
+    private Double threshold;
 
-    private String issuer;
+    private String thresholdUnit;
 
-    private LocalDateTime notBefore;
+    private String duration;
 
-    private LocalDateTime notAfter;
+    private String channels;
 
-    private String status;
+    private Boolean enabled;
 
-    private Integer daysRemaining;
+    private String lastTriggered;
 
-    private String san;
+    private String description;
+
+    private String brokerName;
+
+    private String clusterName;
+
+    private String severity;
 
     private LocalDateTime createdAt;
 
