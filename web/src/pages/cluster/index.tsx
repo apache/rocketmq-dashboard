@@ -72,6 +72,11 @@ type RefreshSource = 'initial' | 'manual' | 'operation' | 'background';
 
 type ProxyDetail = ProxyInfo & { clusterId: string; clusterName: string; nsClusterName: string };
 
+const safeText = (value: string | null | undefined) => value ?? '';
+const searchText = (value: string | null | undefined) => safeText(value).toLowerCase();
+const compareText = (left: string | null | undefined, right: string | null | undefined) =>
+  safeText(left).localeCompare(safeText(right));
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 const ClusterPage = () => {
@@ -329,14 +334,15 @@ const ClusterPage = () => {
       nsClusterName: string;
       cluster: ClusterInfo;
     };
+    const brokerSearchText = searchText(brokerSearch);
 
     const allBrokers: BrokerWithCluster[] = clusters.flatMap((c) =>
       c.brokers
         .filter((b) => {
           const matchSearch =
-            !brokerSearch ||
-            b.name.toLowerCase().includes(brokerSearch.toLowerCase()) ||
-            b.addr.toLowerCase().includes(brokerSearch.toLowerCase());
+            !brokerSearchText ||
+            searchText(b.name).includes(brokerSearchText) ||
+            searchText(b.addr).includes(brokerSearchText);
           const matchNsCluster =
             !brokerNsClusterFilter || c.nsClusterName === brokerNsClusterFilter;
           return matchSearch && matchNsCluster;
@@ -419,8 +425,8 @@ const ClusterPage = () => {
         key: 'addr',
         width: 170,
         align: 'right',
-        sorter: (a, b) => a.addr.localeCompare(b.addr),
-        render: (addr: string) => <span style={{ fontSize: 13 }}>{addr}</span>,
+        sorter: (a, b) => compareText(a.addr, b.addr),
+        render: (addr: string | null) => <span style={{ fontSize: 13 }}>{safeText(addr)}</span>,
       },
       {
         title: 'TPS In',
@@ -577,10 +583,11 @@ const ClusterPage = () => {
   // ─── Tab 2: NameServer 管理 (nested by cluster) ────────────────────────────
 
   function renderNameServerTab() {
+    const nsSearchText = searchText(nsSearch);
     const filteredClusters = clusters
       .map((c) => {
         const nameServers = c.nameServers.filter((ns) => {
-          const matchSearch = !nsSearch || ns.addr.toLowerCase().includes(nsSearch.toLowerCase());
+          const matchSearch = !nsSearchText || searchText(ns.addr).includes(nsSearchText);
           return matchSearch;
         });
         return { ...c, filteredNameServers: nameServers };
@@ -592,10 +599,10 @@ const ClusterPage = () => {
         title: t('common.address'),
         dataIndex: 'addr',
         key: 'addr',
-        sorter: (a, b) => a.addr.localeCompare(b.addr),
-        render: (addr: string) => (
+        sorter: (a, b) => compareText(a.addr, b.addr),
+        render: (addr: string | null) => (
           <Text code style={{ fontSize: 12 }}>
-            {addr}
+            {safeText(addr)}
           </Text>
         ),
       },
@@ -750,6 +757,7 @@ const ClusterPage = () => {
 
   function renderProxyTab() {
     type ProxyRow = ProxyDetail;
+    const proxySearchText = searchText(proxySearch);
 
     const allProxies: ProxyRow[] = clusters
       .filter((c) => c.proxies.length > 0)
@@ -757,7 +765,7 @@ const ClusterPage = () => {
         c.proxies
           .filter((p) => {
             const matchSearch =
-              !proxySearch || p.addr.toLowerCase().includes(proxySearch.toLowerCase());
+              !proxySearchText || searchText(p.addr).includes(proxySearchText);
             return matchSearch;
           })
           .map((p) => ({
@@ -786,10 +794,10 @@ const ClusterPage = () => {
         dataIndex: 'addr',
         key: 'addr',
         width: 200,
-        sorter: (a, b) => a.addr.localeCompare(b.addr),
-        render: (addr: string) => (
+        sorter: (a, b) => compareText(a.addr, b.addr),
+        render: (addr: string | null) => (
           <Text code style={{ fontSize: 12 }}>
-            {addr}
+            {safeText(addr)}
           </Text>
         ),
       },
