@@ -32,6 +32,8 @@ public class RmqGroup {
 
     private String clusterId;
 
+    private String instanceId;
+
     private String name;
 
     private String consumeType;

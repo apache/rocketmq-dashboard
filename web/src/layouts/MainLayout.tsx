@@ -97,6 +97,13 @@ const MainLayout = () => {
     return () => window.removeEventListener('keydown', openSearchWithShortcut);
   }, []);
 
+  const instanceScopedMatch = location.pathname.match(
+    /^\/instance\/[^/]+\/(topic|consumer|message|acl|dlq)$/,
+  );
+  const selectedMenuKey = instanceScopedMatch
+    ? `/instance/${instanceScopedMatch[1]}`
+    : location.pathname;
+
   const menuItems = [
     { key: '/', icon: <House size={iconSize} weight="duotone" />, label: t('nav.home') },
     {
@@ -166,8 +173,12 @@ const MainLayout = () => {
     },
     ...pathSnippets.map((_, index) => {
       const path = '/' + pathSnippets.slice(0, index + 1).join('/');
+      const isSectionLeaf = instanceScopedMatch && index === pathSnippets.length - 1;
+      const leafTitle = isSectionLeaf
+        ? breadcrumbMap[`/instance/${instanceScopedMatch[1]}`]
+        : undefined;
       return {
-        title: breadcrumbMap[path] || path,
+        title: breadcrumbMap[path] || leafTitle || path,
         key: path,
       };
     }),
@@ -252,7 +263,7 @@ const MainLayout = () => {
           <Menu
             theme={darkMode ? 'dark' : 'light'}
             mode="inline"
-            selectedKeys={[location.pathname]}
+            selectedKeys={[selectedMenuKey]}
             defaultOpenKeys={['instance-group', 'cluster-ops-group']}
             items={menuItems}
             onClick={({ key }) => navigate(key)}

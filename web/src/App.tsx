@@ -145,10 +145,15 @@ function App() {
             <Route index element={<HomePage />} />
             <Route path="instance" element={<InstancePage />} />
             <Route path="instance/topic" element={<TopicPage />} />
+            <Route path="instance/:instanceId/topic" element={<TopicPage />} />
             <Route path="instance/consumer" element={<ConsumerPage />} />
+            <Route path="instance/:instanceId/consumer" element={<ConsumerPage />} />
             <Route path="instance/message" element={<MessagePage />} />
+            <Route path="instance/:instanceId/message" element={<MessagePage />} />
             <Route path="instance/acl" element={<AclPage />} />
+            <Route path="instance/:instanceId/acl" element={<AclPage />} />
             <Route path="instance/dlq" element={<DlqPage />} />
+            <Route path="instance/:instanceId/dlq" element={<DlqPage />} />
             <Route path="cluster" element={<ClusterPage />} />
             <Route path="cluster/certs" element={<K8sCertsPage />} />
             <Route path="cluster/clients" element={<ClientsPage />} />

@@ -18,6 +18,7 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
 import type { Topic } from '../../../api/metadata';
@@ -33,7 +34,12 @@ const topicServiceMocks = vi.hoisted(() => ({
   sendTopicMessage: vi.fn(),
 }));
 
+const instanceServiceMocks = vi.hoisted(() => ({
+  listInstances: vi.fn(),
+}));
+
 vi.mock('../../../services/topicService', () => topicServiceMocks);
+vi.mock('../../../services/instanceService', () => instanceServiceMocks);
 
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
@@ -71,11 +77,16 @@ const buildTopics = (count: number): Topic[] =>
     };
   });
 
-const renderWithProviders = () =>
+const renderWithProviders = (initialEntry = '/instance/topic') =>
   render(
     <App>
       <LangProvider>
-        <TopicPage />
+        <MemoryRouter initialEntries={[initialEntry]}>
+          <Routes>
+            <Route path="/instance/topic" element={<TopicPage />} />
+            <Route path="/instance/:instanceId/topic" element={<TopicPage />} />
+          </Routes>
+        </MemoryRouter>
       </LangProvider>
     </App>,
   );
@@ -92,6 +103,7 @@ describe('TopicPage', () => {
     topicServiceMocks.batchDeleteTopics.mockResolvedValue({ deleted: [], failed: [] });
     topicServiceMocks.getTopicRoutes.mockResolvedValue([]);
     topicServiceMocks.getTopicConsumers.mockResolvedValue([]);
+    instanceServiceMocks.listInstances.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -143,5 +155,43 @@ describe('TopicPage', () => {
     expect(screen.queryByText('topic-03')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /删除 \(1\)$/ })).toBeInTheDocument();
     expect(screen.getByText('已删除 2 个 Topic，1 个删除失败')).toBeInTheDocument();
+  });
+
+  it('filters topics by the instance from the route and shows its endpoint', async () => {
+    const base = buildTopics(1)[0];
+    topicServiceMocks.listTopics.mockResolvedValue([
+      { ...base, name: 'topic-a', instanceId: 'instance-proxy-1' },
+      { ...base, name: 'topic-b', instanceId: 'instance-proxy-2' },
+    ]);
+    instanceServiceMocks.listInstances.mockResolvedValue([
+      {
+        id: 'instance-proxy-1',
+        name: 'instance-proxy-1',
+        remark: '',
+        type: 'PROXY',
+        endpoint: '10.0.2.21:8080',
+        topicCount: 1,
+        consumerGroupCount: 0,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      },
+      {
+        id: 'instance-proxy-2',
+        name: 'instance-proxy-2',
+        remark: '',
+        type: 'PROXY',
+        endpoint: '10.0.2.22:8080',
+        topicCount: 1,
+        consumerGroupCount: 0,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      },
+    ]);
+
+    renderWithProviders('/instance/instance-proxy-1/topic');
+
+    expect(await screen.findByText('topic-a')).toBeInTheDocument();
+    expect(screen.queryByText('topic-b')).not.toBeInTheDocument();
+    expect(screen.getByText('10.0.2.21:8080')).toBeInTheDocument();
   });
 });

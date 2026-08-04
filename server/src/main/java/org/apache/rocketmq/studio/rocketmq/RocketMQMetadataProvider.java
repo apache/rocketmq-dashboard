@@ -22,12 +22,11 @@ import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
 import org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
-import org.apache.rocketmq.remoting.protocol.body.SubscriptionGroupWrapper;
+import org.apache.rocketmq.remoting.protocol.body.GroupList;
 import org.apache.rocketmq.remoting.protocol.heartbeat.SubscriptionData;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.route.QueueData;
 import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
-import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
@@ -118,6 +117,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         vo.setId(entity.getName());
         vo.setName(entity.getName());
         vo.setClusterId(entity.getClusterId());
+        vo.setInstanceId(entity.getInstanceId());
         vo.setType(parseTopicType(entity.getTopicType()));
         vo.setReadQueues(entity.getReadQueueNums() == null ? 0 : entity.getReadQueueNums());
         vo.setWriteQueues(entity.getWriteQueueNums() == null ? 0 : entity.getWriteQueueNums());
@@ -164,6 +164,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             vo.setId(entity.getName());
             vo.setName(entity.getName());
             vo.setClusterId(entity.getClusterId());
+            vo.setInstanceId(entity.getInstanceId());
             vo.setConsumeType(parseConsumeType(entity.getMessageModel()));
             vo.setRetryMaxTimes(entity.getMaxRetry() == null ? 0 : entity.getMaxRetry());
             vo.setCreatedAt(entity.getCreatedAt());
@@ -240,20 +241,30 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         }
 
         try {
-            Set<String> allGroups = collectAllConsumerGroups();
-            List<TopicConsumerVO> consumers = new ArrayList<>();
+            // Ask the broker who consumes this topic instead of scanning every subscription
+            // group, which floods the result with system groups.
+            GroupList groupList = adminExt.queryTopicConsumeByWho(name);
+            Set<String> subscribingGroups = new HashSet<>();
+            if (groupList != null && groupList.getGroupList() != null) {
+                for (String group : groupList.getGroupList()) {
+                    if (!isSystemConsumerGroup(group)) {
+                        subscribingGroups.add(group);
+                    }
+                }
+            }
 
-            for (String group : allGroups) {
+            List<TopicConsumerVO> consumers = new ArrayList<>();
+            for (String group : subscribingGroups) {
                 try {
                     ConsumeStats stats = adminExt.examineConsumeStats(group, name);
-                    if (stats == null || stats.getOffsetTable() == null || stats.getOffsetTable().isEmpty()) {
-                        continue;
-                    }
-
                     long diffTotal = 0;
-                    for (Map.Entry<MessageQueue, OffsetWrapper> entry : stats.getOffsetTable().entrySet()) {
-                        OffsetWrapper ow = entry.getValue();
-                        diffTotal += Math.max(0, ow.getBrokerOffset() - ow.getConsumerOffset());
+                    double consumeTps = 0;
+                    if (stats != null && stats.getOffsetTable() != null) {
+                        for (Map.Entry<MessageQueue, OffsetWrapper> entry : stats.getOffsetTable().entrySet()) {
+                            OffsetWrapper ow = entry.getValue();
+                            diffTotal += Math.max(0, ow.getBrokerOffset() - ow.getConsumerOffset());
+                        }
+                        consumeTps = stats.getConsumeTps();
                     }
 
                     ConsumeType consumeType = ConsumeType.CLUSTERING;
@@ -274,18 +285,38 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                             .group(group)
                             .consumeType(consumeType)
                             .messageModel(messageModel)
-                            .consumeTps(stats.getConsumeTps())
+                            .consumeTps(consumeTps)
                             .diffTotal(diffTotal)
                             .build());
                 } catch (Exception ignored) {
-                    // This group does not subscribe to this topic
+                    // stats unavailable for this group, still list it below without numbers
+                    consumers.add(TopicConsumerVO.builder()
+                            .group(group)
+                            .consumeType(ConsumeType.CLUSTERING)
+                            .messageModel("CLUSTERING")
+                            .consumeTps(0)
+                            .diffTotal(0)
+                            .build());
                 }
             }
+            consumers.sort((a, b) -> a.getGroup().compareToIgnoreCase(b.getGroup()));
             return consumers;
         } catch (Exception e) {
             log.warn("Failed to get consumers for topic {}: {}", name, e.getMessage());
             return Collections.emptyList();
         }
+    }
+
+    private boolean isSystemConsumerGroup(String group) {
+        if (group == null || group.isEmpty()) {
+            return true;
+        }
+        return group.startsWith("%RETRY%")
+                || group.startsWith("%DLQ%")
+                || group.startsWith("CID_RMQ_SYS_")
+                || group.startsWith("CID_ONS_")
+                || group.startsWith("TOOLS_CONSUMER")
+                || group.startsWith("FILTERSRV_CONSUMER");
     }
 
     @Override
@@ -384,45 +415,6 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             vo.setName(topicName);
             return vo;
         }
-    }
-
-    private Set<String> collectAllConsumerGroups() {
-        Set<String> allGroups = new HashSet<>();
-        try {
-            ClusterInfo clusterInfo = adminExt.examineBrokerClusterInfo();
-            if (clusterInfo == null || clusterInfo.getBrokerAddrTable() == null) {
-                return allGroups;
-            }
-
-            Set<String> processedAddrs = new HashSet<>();
-            for (BrokerData brokerData : clusterInfo.getBrokerAddrTable().values()) {
-                if (brokerData.getBrokerAddrs() == null) {
-                    continue;
-                }
-                // Use master address (brokerId = 0) preferentially
-                String masterAddr = brokerData.getBrokerAddrs().get(0L);
-                if (masterAddr == null && !brokerData.getBrokerAddrs().isEmpty()) {
-                    masterAddr = brokerData.getBrokerAddrs().values().iterator().next();
-                }
-                if (masterAddr == null || processedAddrs.contains(masterAddr)) {
-                    continue;
-                }
-                processedAddrs.add(masterAddr);
-
-                try {
-                    SubscriptionGroupWrapper wrapper = adminExt.getAllSubscriptionGroup(masterAddr, 5000);
-                    if (wrapper != null && wrapper.getSubscriptionGroupTable() != null) {
-                        java.util.concurrent.ConcurrentMap<String, SubscriptionGroupConfig> table = wrapper.getSubscriptionGroupTable();
-                        allGroups.addAll(table.keySet());
-                    }
-                } catch (Exception e) {
-                    log.debug("Failed to get subscription groups from broker {}: {}", masterAddr, e.getMessage());
-                }
-            }
-        } catch (Exception e) {
-            log.warn("Failed to collect consumer groups: {}", e.getMessage());
-        }
-        return allGroups;
     }
 
     private void enrichGroupWithConnectionInfo(ConsumerGroupVO vo, String groupName) {

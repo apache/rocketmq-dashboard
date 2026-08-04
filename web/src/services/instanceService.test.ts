@@ -42,13 +42,16 @@ describe('instanceService mock instances', () => {
 
   it('filters mock instances with the same type and search semantics as the API', async () => {
     const byType = await listInstances({ type: 'DIRECT' });
-    expect(byType.map((instance) => instance.id)).toEqual(['4']);
+    expect(byType.map((instance) => instance.id)).toEqual([
+      'instance-direct-1',
+      'instance-direct-2',
+    ]);
 
-    const byEndpoint = await listInstances({ search: '  PROXY-HZ  ' });
-    expect(byEndpoint.map((instance) => instance.id)).toEqual(['1']);
+    const byEndpoint = await listInstances({ search: '  10.0.2.21  ' });
+    expect(byEndpoint.map((instance) => instance.id)).toEqual(['instance-proxy-1']);
 
-    const combined = await listInstances({ type: 'DIRECT', search: 'namesrv-legacy' });
-    expect(combined.map((instance) => instance.id)).toEqual(['4']);
+    const combined = await listInstances({ type: 'DIRECT', search: 'instance-direct-2' });
+    expect(combined.map((instance) => instance.id)).toEqual(['instance-direct-2']);
   });
 
   it('does not expose created or updated store records by reference', async () => {

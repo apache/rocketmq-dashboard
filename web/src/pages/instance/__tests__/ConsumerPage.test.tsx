@@ -19,6 +19,7 @@ import { App } from 'antd';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConsumerGroup } from '../../../api/metadata';
 import { LangProvider } from '../../../i18n/LangContext';
@@ -34,6 +35,9 @@ vi.mock('../../../services/consumerService', () => ({
   getConsumerSubscriptions: vi.fn(),
   listConsumerGroups: vi.fn(),
   resetConsumerOffset: vi.fn(),
+}));
+vi.mock('../../../services/instanceService', () => ({
+  listInstances: vi.fn().mockResolvedValue([]),
 }));
 
 beforeAll(() => {
@@ -72,7 +76,9 @@ const group: ConsumerGroup = {
 const renderWithProviders = (ui: React.ReactElement) =>
   render(
     <App>
-      <LangProvider>{ui}</LangProvider>
+      <LangProvider>
+        <MemoryRouter>{ui}</MemoryRouter>
+      </LangProvider>
     </App>,
   );
 

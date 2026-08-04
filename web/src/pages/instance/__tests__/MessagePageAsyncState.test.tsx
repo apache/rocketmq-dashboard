@@ -16,6 +16,7 @@
  */
 
 import { App, ConfigProvider, message } from 'antd';
+import { MemoryRouter } from 'react-router-dom';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -29,6 +30,13 @@ const serviceMocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../services/messageService', () => serviceMocks);
+
+vi.mock('../../../services/instanceService', () => ({
+  listInstances: vi.fn().mockResolvedValue([]),
+}));
+vi.mock('../../../services/topicService', () => ({
+  listTopics: vi.fn().mockResolvedValue([]),
+}));
 
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
@@ -87,7 +95,9 @@ const renderPage = () =>
     <ConfigProvider theme={{ token: { motion: false } }}>
       <App>
         <LangProvider>
-          <MessagePage />
+          <MemoryRouter>
+            <MessagePage />
+          </MemoryRouter>
         </LangProvider>
       </App>
     </ConfigProvider>,

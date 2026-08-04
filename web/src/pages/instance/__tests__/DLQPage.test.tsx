@@ -19,6 +19,7 @@ import { App } from 'antd';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DLQGroup } from '../../../api/message';
 import { LangProvider } from '../../../i18n/LangContext';
@@ -28,6 +29,9 @@ import DLQPage from '../dlq';
 vi.mock('../../../services/messageService', () => ({
   listDLQGroups: vi.fn(),
   resendDLQ: vi.fn(),
+}));
+vi.mock('../../../services/instanceService', () => ({
+  listInstances: vi.fn().mockResolvedValue([]),
 }));
 
 const dlqGroup: DLQGroup = {
@@ -51,7 +55,9 @@ const secondDlqGroup: DLQGroup = {
 const renderWithProviders = (ui: React.ReactElement) =>
   render(
     <App>
-      <LangProvider>{ui}</LangProvider>
+      <LangProvider>
+        <MemoryRouter>{ui}</MemoryRouter>
+      </LangProvider>
     </App>,
   );
 
