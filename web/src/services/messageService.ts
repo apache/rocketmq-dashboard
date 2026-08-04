@@ -17,6 +17,13 @@ const cloneTrace = (trace: TraceRecord): TraceRecord => ({
 
 const cloneDLQGroup = (group: DLQGroup): DLQGroup => ({ ...group });
 
+const toStoreTimestamp = (storeTime: MessageRecord['storeTime']): number => {
+  if (typeof storeTime === 'number') return storeTime;
+
+  const parsed = Date.parse(storeTime);
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
+
 export async function queryMessages(params: MessageQuery): Promise<MessageRecord[]> {
   if (isMockMode()) {
     let result = [...mockMessages];
@@ -24,6 +31,12 @@ export async function queryMessages(params: MessageQuery): Promise<MessageRecord
     if (params.tag) result = result.filter((m) => m.tag === params.tag);
     if (params.key) result = result.filter((m) => m.key.includes(params.key!));
     if (params.msgId) result = result.filter((m) => m.msgId === params.msgId);
+    if (params.startTime !== undefined) {
+      result = result.filter((m) => toStoreTimestamp(m.storeTime) >= params.startTime!);
+    }
+    if (params.endTime !== undefined) {
+      result = result.filter((m) => toStoreTimestamp(m.storeTime) <= params.endTime!);
+    }
     return sortMessagesByStoreTimeDesc((result as unknown as MessageRecord[]).map(cloneMessage));
   }
   return messageApi.queryMessages(params);
