@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.persistence;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.persistence.entity.RmqDataSource;
 import org.apache.rocketmq.studio.persistence.entity.RmqSettings;
@@ -94,7 +95,7 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
     @Override
     public void saveGeneralSettings(GeneralSettingsVO settings) {
         try {
-            String json = objectMapper.writeValueAsString(settings);
+            String json = serializeGeneralSettings(settings);
             RmqSettings entity = settingsMapper.selectById(SETTINGS_ID);
             if (entity == null) {
                 entity = new RmqSettings();
@@ -111,6 +112,15 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
             log.error("Failed to serialize general settings", e);
             throw new RuntimeException("Failed to save settings", e);
         }
+    }
+
+    /**
+     * API serialization must not expose the LLM API key, while persistence needs to retain it.
+     */
+    private String serializeGeneralSettings(GeneralSettingsVO settings) throws JsonProcessingException {
+        ObjectNode json = objectMapper.valueToTree(settings);
+        json.put("apiKey", settings.getApiKey());
+        return objectMapper.writeValueAsString(json);
     }
 
     @Override
