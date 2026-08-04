@@ -65,7 +65,8 @@ export async function updateInstance(data: UpdateInstanceRequest): Promise<Insta
 export async function deleteInstance(id: string): Promise<void> {
   if (isMockMode()) {
     const idx = mockInstances.findIndex((i) => i.id === id);
-    if (idx >= 0) mockInstances.splice(idx, 1);
+    if (idx < 0) throw new Error(`Instance not found: ${id}`);
+    mockInstances.splice(idx, 1);
     return;
   }
   return instanceApi.deleteInstance(id);
