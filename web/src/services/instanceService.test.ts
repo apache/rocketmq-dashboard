@@ -22,7 +22,7 @@ vi.mock('../config', () => ({
   API_BASE_URL: '/api',
 }));
 
-import { createInstance, listInstances, updateInstance } from './instanceService';
+import { createInstance, deleteInstance, listInstances, updateInstance } from './instanceService';
 
 describe('instanceService mock instances', () => {
   it('returns defensive copies from list reads', async () => {
@@ -78,5 +78,15 @@ describe('instanceService mock instances', () => {
     const afterUpdate = await listInstances();
     const storedUpdated = afterUpdate.find((instance) => instance.id === created.id);
     expect(storedUpdated?.remark).toBe('updated');
+  });
+
+  it('rejects deleting missing mock instances', async () => {
+    const before = await listInstances();
+
+    await expect(deleteInstance('missing-instance')).rejects.toThrow(
+      'Instance not found: missing-instance',
+    );
+
+    await expect(listInstances()).resolves.toEqual(before);
   });
 });
