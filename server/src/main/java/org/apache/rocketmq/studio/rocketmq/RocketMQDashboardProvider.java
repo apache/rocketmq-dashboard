@@ -164,8 +164,11 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                                     clusterTpsIn += (int) parseTps(rt.getTable().get("putTps"));
                                     clusterTpsOut += (int) parseTps(rt.getTable().get("getTransferedTps"));
                                     String v = rt.getTable().get("brokerVersionDesc");
-                                    if (v != null && !"unknown".equals(version)) {
-                                        version = v;
+                                    if (v != null && "unknown".equals(version)) {
+                                        String brokerVersion = v.trim();
+                                        if (!brokerVersion.isEmpty()) {
+                                            version = brokerVersion;
+                                        }
                                     }
                                 }
                             } catch (Exception ignored) {

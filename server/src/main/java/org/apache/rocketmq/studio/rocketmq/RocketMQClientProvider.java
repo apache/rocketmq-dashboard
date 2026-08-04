@@ -111,6 +111,9 @@ public class RocketMQClientProvider implements ClientProvider {
                     continue;
                 }
                 for (Connection connection : producerConnection.getConnectionSet()) {
+                    if (connection == null) {
+                        continue;
+                    }
                     result.add(toConnectionVO(connection, ClientType.Producer, topic, topic, clusterId));
                 }
             } catch (Exception e) {
@@ -133,6 +136,9 @@ public class RocketMQClientProvider implements ClientProvider {
                     continue;
                 }
                 for (Connection connection : consumerConnection.getConnectionSet()) {
+                    if (connection == null) {
+                        continue;
+                    }
                     result.add(toConnectionVO(connection, ClientType.Consumer, group, null, clusterId));
                 }
             } catch (Exception e) {
@@ -155,6 +161,9 @@ public class RocketMQClientProvider implements ClientProvider {
             return groups;
         }
         for (BrokerData brokerData : clusterInfo.getBrokerAddrTable().values()) {
+            if (brokerData == null) {
+                continue;
+            }
             String brokerAddr = brokerData.selectBrokerAddr();
             if (brokerAddr == null) {
                 continue;
