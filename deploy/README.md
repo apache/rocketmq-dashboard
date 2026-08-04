@@ -35,6 +35,9 @@ cd deploy && docker compose up -d --build
 启动时会先运行一次幂等的 `mysql-migrate` job。它只执行存量 MySQL 升级所需的 DDL 和列变更，
 不会导入任何演示资源；后端会在该 job 成功后启动。可通过 `docker compose logs mysql-migrate`
 检查升级结果。
+默认 schema 只创建 Studio 所需的表，不会写入实例、Topic、消费组或 ACL 示例数据。需要演示数据时，
+请在开发环境中显式导入 `deploy/mysql/upgrade-demo-instance.sql` 和
+`deploy/mysql/upgrade-demo-acl.sql`，不要在生产环境导入这些脚本。
 
 ## 开启登录保护
 
