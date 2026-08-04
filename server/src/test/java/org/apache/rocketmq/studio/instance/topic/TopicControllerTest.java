@@ -185,6 +185,18 @@ class TopicControllerTest {
     }
 
     @Test
+    void updateTopicShouldRejectBlankName() throws Exception {
+        mockMvc.perform(post("/api/topics/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\" \"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("name is required"));
+
+        verifyNoInteractions(metadataService);
+    }
+
+    @Test
     void sendMessageShouldReturnResult() throws Exception {
         SendMessageDTO request = SendMessageDTO.builder()
                 .topic("test-topic")

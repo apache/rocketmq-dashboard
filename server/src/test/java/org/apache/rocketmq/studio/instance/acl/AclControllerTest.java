@@ -122,6 +122,18 @@ class AclControllerTest {
     }
 
     @Test
+    void createRuleShouldRejectMissingPrincipal() throws Exception {
+        mockMvc.perform(post("/api/acl/rules/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"resource\":\"topic-1\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("principal is required"));
+
+        verifyNoInteractions(aclService);
+    }
+
+    @Test
     void updateRuleShouldReturnUpdatedRule() throws Exception {
         AclRuleVO input = AclRuleVO.builder()
                 .id("rule-1")
@@ -159,6 +171,18 @@ class AclControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value(404))
                 .andExpect(jsonPath("$.message").value("ACL rule not found: missing-rule"));
+    }
+
+    @Test
+    void updateRuleShouldRejectMissingId() throws Exception {
+        mockMvc.perform(post("/api/acl/rules/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"principal\":\"user1\",\"resource\":\"topic-1\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("id is required"));
+
+        verifyNoInteractions(aclService);
     }
 
     @Test
@@ -284,6 +308,18 @@ class AclControllerTest {
                 .andExpect(jsonPath("$.data.accessKey").value("acce****3456"))
                 .andExpect(jsonPath("$.data.secretKey").value("secr****7654"))
                 .andExpect(jsonPath("$.data.admin").value(false));
+    }
+
+    @Test
+    void updateUserShouldRejectMissingId() throws Exception {
+        mockMvc.perform(post("/api/acl/users/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"admin\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("id is required"));
+
+        verifyNoInteractions(aclService);
     }
 
     @Test

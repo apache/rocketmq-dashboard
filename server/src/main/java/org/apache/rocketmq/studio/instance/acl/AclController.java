@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.instance.acl;
 
 import org.apache.rocketmq.studio.common.domain.Result;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -44,13 +45,13 @@ public class AclController {
     }
 
     @PostMapping("/rules/create")
-    public Result<AclRuleVO> createRule(@RequestBody AclRuleVO rule) {
-        return Result.ok(aclService.createRule(rule));
+    public Result<AclRuleVO> createRule(@Valid @RequestBody(required = false) CreateAclRuleDTO rule) {
+        return Result.ok(aclService.createRule(requireRequest(rule, "ACL rule request is required").toAclRuleVO()));
     }
 
     @PostMapping("/rules/update")
-    public Result<AclRuleVO> updateRule(@RequestBody AclRuleVO rule) {
-        return Result.ok(aclService.updateRule(rule));
+    public Result<AclRuleVO> updateRule(@Valid @RequestBody(required = false) UpdateAclRuleDTO rule) {
+        return Result.ok(aclService.updateRule(requireRequest(rule, "ACL rule request is required").toAclRuleVO()));
     }
 
     @PostMapping("/rules/delete")
@@ -75,13 +76,20 @@ public class AclController {
     }
 
     @PostMapping("/users/update")
-    public Result<AclUserVO> updateUser(@RequestBody AclUserVO user) {
-        return Result.ok(aclService.updateUser(user));
+    public Result<AclUserVO> updateUser(@Valid @RequestBody(required = false) UpdateAclUserDTO user) {
+        return Result.ok(aclService.updateUser(requireRequest(user, "ACL user request is required").toAclUserVO()));
     }
 
     @PostMapping("/users/delete")
     public Result<Void> deleteUser(@Valid @RequestBody AclDeleteRequestDTO request) {
         aclService.deleteUser(request.getId());
         return Result.ok();
+    }
+
+    private <T> T requireRequest(T request, String message) {
+        if (request == null) {
+            throw new BusinessException(400, message);
+        }
+        return request;
     }
 }

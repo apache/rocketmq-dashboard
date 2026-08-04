@@ -104,6 +104,54 @@ class AlertRuleControllerTest {
     }
 
     @Test
+    void createRuleShouldRejectInvalidRuleFields() throws Exception {
+        mockMvc.perform(post("/api/alert-rules/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"High Lag\",\"operator\":\"invalid\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("operator is invalid"));
+
+        verifyNoInteractions(alertService);
+    }
+
+    @Test
+    void createRuleShouldRejectInvalidDuration() throws Exception {
+        mockMvc.perform(post("/api/alert-rules/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"High Lag\",\"duration\":\"later\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("duration is invalid"));
+
+        verifyNoInteractions(alertService);
+    }
+
+    @Test
+    void createRuleShouldRejectInvalidSeverity() throws Exception {
+        mockMvc.perform(post("/api/alert-rules/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"High Lag\",\"severity\":\"urgent\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("severity is invalid"));
+
+        verifyNoInteractions(alertService);
+    }
+
+    @Test
+    void updateRuleShouldRejectMissingId() throws Exception {
+        mockMvc.perform(post("/api/alert-rules/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"High Lag\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("id is required"));
+
+        verifyNoInteractions(alertService);
+    }
+
+    @Test
     void updateRuleShouldRejectNullRequestBody() throws Exception {
         mockMvc.perform(post("/api/alert-rules/update")
                         .contentType(MediaType.APPLICATION_JSON)
