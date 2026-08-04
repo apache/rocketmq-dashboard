@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.instance.topic;
 
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 
 import lombok.extern.slf4j.Slf4j;
@@ -33,7 +34,7 @@ public class NameSrvAdminClient implements AdminClient {
 
     @Override
     public ConsumerGroupVO getConsumerGroup(String name) {
-        throw new UnsupportedOperationException("Not implemented");
+        throw consumerGroupAdminUnavailable();
     }
 
     @Override
@@ -58,16 +59,20 @@ public class NameSrvAdminClient implements AdminClient {
 
     @Override
     public ConsumerGroupVO createConsumerGroup(ConsumerGroupVO group) {
-        throw new UnsupportedOperationException("Not implemented");
+        throw consumerGroupAdminUnavailable();
     }
 
     @Override
     public void deleteConsumerGroup(String name) {
-        throw new UnsupportedOperationException("Not implemented");
+        throw consumerGroupAdminUnavailable();
     }
 
     @Override
     public void resetOffset(String name, long timestamp, String topic) {
-        throw new UnsupportedOperationException("Not implemented");
+        throw consumerGroupAdminUnavailable();
+    }
+
+    private BusinessException consumerGroupAdminUnavailable() {
+        return new BusinessException(501, "Consumer group admin client is not configured");
     }
 }

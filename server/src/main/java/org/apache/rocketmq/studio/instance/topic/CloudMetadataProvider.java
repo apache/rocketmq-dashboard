@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.instance.topic;
 
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
@@ -37,7 +38,7 @@ public class CloudMetadataProvider implements MetadataProvider {
 
     @Override
     public List<ConsumerGroupVO> listConsumerGroups(String clusterId, String search) {
-        throw new UnsupportedOperationException("Not implemented");
+        throw consumerGroupProviderUnavailable();
     }
 
     @Override
@@ -52,11 +53,15 @@ public class CloudMetadataProvider implements MetadataProvider {
 
     @Override
     public List<QueueProgressVO> getGroupProgress(String name) {
-        throw new UnsupportedOperationException("Not implemented");
+        throw consumerGroupProviderUnavailable();
     }
 
     @Override
     public List<SubscriptionEntryVO> getGroupSubscriptions(String name) {
-        throw new UnsupportedOperationException("Not implemented");
+        throw consumerGroupProviderUnavailable();
+    }
+
+    private BusinessException consumerGroupProviderUnavailable() {
+        return new BusinessException(501, "Consumer group metadata provider is not configured");
     }
 }
