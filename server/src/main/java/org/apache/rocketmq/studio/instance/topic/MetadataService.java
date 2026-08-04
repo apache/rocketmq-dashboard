@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.instance.topic;
 
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
@@ -46,11 +47,13 @@ public class MetadataService {
 
 
     public TopicVO createTopic(TopicVO topic) {
+        requireTopic(topic);
         return adminClient.createTopic(topic);
     }
 
 
     public TopicVO updateTopic(TopicVO topic) {
+        requireTopic(topic);
         return adminClient.updateTopic(topic);
     }
 
@@ -71,6 +74,7 @@ public class MetadataService {
 
 
     public SendMessageVO sendMessage(SendMessageDTO request) {
+        requireSendMessageRequest(request);
         return adminClient.sendMessage(request);
     }
 
@@ -120,5 +124,17 @@ public class MetadataService {
 
     private String normalizeFilter(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private void requireTopic(TopicVO topic) {
+        if (topic == null) {
+            throw new BusinessException(400, "Topic request is required");
+        }
+    }
+
+    private void requireSendMessageRequest(SendMessageDTO request) {
+        if (request == null) {
+            throw new BusinessException(400, "Topic send message request is required");
+        }
     }
 }
