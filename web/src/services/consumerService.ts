@@ -43,8 +43,8 @@ export async function listConsumerGroups(params?: ConsumerGroupQuery): Promise<C
     let result = [...consumerGroupsState];
     if (params?.clusterId) result = result.filter((group) => group.clusterId === params.clusterId);
     if (params?.search) {
-      const kw = params.search.toLowerCase();
-      result = result.filter((g) => g.name.toLowerCase().includes(kw));
+      const kw = params.search.trim().toLowerCase();
+      if (kw) result = result.filter((g) => g.name.toLowerCase().includes(kw));
     }
     return result.map(copyConsumerGroup);
   }

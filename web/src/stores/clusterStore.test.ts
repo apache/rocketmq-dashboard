@@ -52,6 +52,23 @@ const cluster: ClusterInfo = {
   tpsHistory: [100, 120],
 };
 
+const newerCluster: ClusterInfo = {
+  ...cluster,
+  id: 'cluster-staging',
+  name: 'rocketmq-staging',
+};
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+
+  return { promise, resolve, reject };
+}
+
 describe('clusterStore', () => {
   afterEach(() => {
     vi.mocked(listClusters).mockReset();
@@ -66,6 +83,33 @@ describe('clusterStore', () => {
     expect(listClusters).toHaveBeenCalledTimes(1);
     expect(useClusterStore.getState()).toMatchObject({
       clusters: [cluster],
+      loading: false,
+    });
+  });
+
+  it('keeps the newest cluster list when overlapping loads finish out of order', async () => {
+    const firstLoad = deferred<ClusterInfo[]>();
+    const secondLoad = deferred<ClusterInfo[]>();
+    vi.mocked(listClusters)
+      .mockReturnValueOnce(firstLoad.promise)
+      .mockReturnValueOnce(secondLoad.promise);
+
+    const firstFetch = useClusterStore.getState().fetchClusters();
+    const secondFetch = useClusterStore.getState().fetchClusters();
+
+    secondLoad.resolve([newerCluster]);
+    await secondFetch;
+
+    expect(useClusterStore.getState()).toMatchObject({
+      clusters: [newerCluster],
+      loading: false,
+    });
+
+    firstLoad.resolve([cluster]);
+    await firstFetch;
+
+    expect(useClusterStore.getState()).toMatchObject({
+      clusters: [newerCluster],
       loading: false,
     });
   });

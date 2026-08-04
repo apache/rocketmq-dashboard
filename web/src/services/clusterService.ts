@@ -82,7 +82,7 @@ export async function createK8sCert(data: Partial<K8sCertInfo>): Promise<K8sCert
       notAfter: notAfter.toISOString(),
       status: 'valid',
       daysRemaining: 365,
-      san: data.san ?? [],
+      san: [...(data.san ?? [])],
     };
     mockCertStore.push(cert);
     return { ...cert, san: [...cert.san] };
@@ -94,7 +94,7 @@ export async function updateK8sCert(data: Partial<K8sCertInfo>): Promise<K8sCert
   if (isMockMode()) {
     const existing = mockCertStore.find((cert) => cert.id === data.id);
     if (!existing) throw new Error(`Certificate not found: ${data.id}`);
-    Object.assign(existing, data, { san: data.san ?? existing.san });
+    Object.assign(existing, data, { san: data.san ? [...data.san] : existing.san });
     return { ...existing, san: [...existing.san] };
   }
   return clusterApi.updateK8sCert(data);
@@ -204,10 +204,13 @@ export async function updateNameServer(data: {
   newAddr?: string;
 }): Promise<void> {
   if (isMockMode()) {
-    const nameServer = getMockCluster(data.clusterId).nameServers.find(
-      (item) => item.addr === data.addr,
-    );
+    const nameServers = getMockCluster(data.clusterId).nameServers;
+    const nameServer = nameServers.find((item) => item.addr === data.addr);
     if (!nameServer) throw new Error(`NameServer not found: ${data.addr}`);
+    if (data.newAddr && data.newAddr !== data.addr) {
+      const duplicate = nameServers.some((item) => item !== nameServer && item.addr === data.newAddr);
+      if (duplicate) throw new Error(`NameServer already exists: ${data.newAddr}`);
+    }
     if (data.newAddr) nameServer.addr = data.newAddr;
     return;
   }

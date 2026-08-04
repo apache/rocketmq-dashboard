@@ -22,7 +22,16 @@ vi.mock('../config', () => ({
   API_BASE_URL: '/api',
 }));
 
-import { getCluster, listClusters, updateClusterConfig } from './clusterService';
+import {
+  createK8sCert,
+  deleteK8sCert,
+  getCluster,
+  listClusters,
+  listK8sCerts,
+  updateClusterConfig,
+  updateK8sCert,
+  updateNameServer,
+} from './clusterService';
 
 describe('clusterService mock clusters', () => {
   it('returns defensive copies from cluster detail reads', async () => {
@@ -83,6 +92,65 @@ describe('clusterService mock clusters', () => {
         id: before.id,
         ...originalConfig,
       });
+    }
+  });
+
+  it('rejects NameServer edits that would duplicate an address in the same cluster', async () => {
+    const clusterId = 'cluster-prod';
+    const original = await getCluster(clusterId);
+    const [first, second] = original.nameServers;
+
+    try {
+      await expect(
+        updateNameServer({
+          clusterId,
+          addr: first.addr,
+          newAddr: second.addr,
+        }),
+      ).rejects.toThrow(`NameServer already exists: ${second.addr}`);
+
+      const fresh = await getCluster(clusterId);
+      expect(fresh.nameServers.map((item) => item.addr)).toEqual(
+        original.nameServers.map((item) => item.addr),
+      );
+    } finally {
+      const current = await getCluster(clusterId);
+      for (let index = 0; index < original.nameServers.length; index += 1) {
+        const currentAddr = current.nameServers[index]?.addr;
+        const originalAddr = original.nameServers[index].addr;
+        if (currentAddr && currentAddr !== originalAddr) {
+          await updateNameServer({ clusterId, addr: currentAddr, newAddr: originalAddr });
+        }
+      }
+    }
+  });
+
+  it('copies certificate SAN arrays before writing them into the mock store', async () => {
+    const san = ['proxy.example.com'];
+    const created = await createK8sCert({
+      name: 'cert-copy-test',
+      namespace: 'rocketmq',
+      cluster: 'cluster-prod',
+      san,
+    });
+
+    try {
+      san.push('mutated-create.example.com');
+
+      let stored = (await listK8sCerts()).find((cert) => cert.id === created.id);
+      expect(stored?.san).toEqual(['proxy.example.com']);
+
+      const nextSan = ['proxy-next.example.com'];
+      await updateK8sCert({
+        id: created.id,
+        san: nextSan,
+      });
+      nextSan.push('mutated-update.example.com');
+
+      stored = (await listK8sCerts()).find((cert) => cert.id === created.id);
+      expect(stored?.san).toEqual(['proxy-next.example.com']);
+    } finally {
+      await deleteK8sCert(created.id);
     }
   });
 });

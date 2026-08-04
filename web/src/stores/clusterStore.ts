@@ -25,16 +25,23 @@ interface ClusterState {
   fetchClusters: () => Promise<void>;
 }
 
+let latestFetchRequestId = 0;
+
 const useClusterStore = create<ClusterState>((set) => ({
   clusters: [],
   loading: false,
   fetchClusters: async () => {
+    const requestId = ++latestFetchRequestId;
     set({ loading: true });
     try {
       const clusters = await listClusters();
-      set({ clusters });
+      if (requestId === latestFetchRequestId) {
+        set({ clusters });
+      }
     } finally {
-      set({ loading: false });
+      if (requestId === latestFetchRequestId) {
+        set({ loading: false });
+      }
     }
   },
 }));

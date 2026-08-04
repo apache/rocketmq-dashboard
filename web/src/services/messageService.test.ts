@@ -39,6 +39,18 @@ describe('message service mock data', () => {
     expect(second[0].properties).not.toBe(first[0].properties);
   });
 
+  it('filters mock topic queries by the selected store-time range', async () => {
+    const messages = await queryMessages({
+      topic: 'order-create',
+      startTime: Date.parse('2026-07-01T10:24:00.000Z'),
+      endTime: Date.parse('2026-07-01T10:26:00.000Z'),
+    });
+
+    expect(messages.map((message) => message.msgId)).toEqual([
+      'AC1E0A6400002A9F0000000001A3F7C2',
+    ]);
+  });
+
   it('returns copied message trace rows', async () => {
     const first = await getMessageTrace('AC1E0A6400002A9F0000000001A3F2B1');
     expect(first?.nodes[0].title).toBe('Producer 发送');
