@@ -1,0 +1,16 @@
+# ============================================================================
+# RocketMQ 5.x Monitoring - Alert Rule
+# Compatible with Prometheus / VictoriaMetrics / Thanos / Cortex / Mimir
+# ============================================================================
+groups:
+  - name: rocketmq-client.rules
+    rules:
+      - alert: RocketMQProducerSendFailure
+        expr: rate(rocketmq_producer_send_failure_count[5m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+          team: client
+        annotations:
+          summary: "Producer send failures"
+          description: "Producer message send failures have been observed."

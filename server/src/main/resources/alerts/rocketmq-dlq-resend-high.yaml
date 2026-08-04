@@ -1,0 +1,16 @@
+# ============================================================================
+# RocketMQ 5.x Monitoring - Alert Rule
+# Compatible with Prometheus / VictoriaMetrics / Thanos / Cortex / Mimir
+# ============================================================================
+groups:
+  - name: rocketmq-errors.rules
+    rules:
+      - alert: RocketMQDLQResendHigh
+        expr: rate(rocketmq_dlq_resend_count[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          team: consumer
+        annotations:
+          summary: "DLQ resends high"
+          description: "More than 10 dead-letter queue resends occurred in 5 minutes."

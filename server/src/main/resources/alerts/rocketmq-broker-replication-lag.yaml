@@ -1,0 +1,16 @@
+# ============================================================================
+# RocketMQ 5.x Monitoring - Alert Rule
+# Compatible with Prometheus / VictoriaMetrics / Thanos / Cortex / Mimir
+# ============================================================================
+groups:
+  - name: rocketmq-broker.rules
+    rules:
+      - alert: RocketMQBrokerReplicationLag
+        expr: rocketmq_broker_replication_fall_behind_bytes > 1073741824
+        for: 5m
+        labels:
+          severity: warning
+          team: broker
+        annotations:
+          summary: "Replication lag high"
+          description: "Master-slave replication fall-behind is above 1GiB."

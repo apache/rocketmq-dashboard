@@ -1,0 +1,16 @@
+# ============================================================================
+# RocketMQ 5.x Monitoring - Alert Rule
+# Compatible with Prometheus / VictoriaMetrics / Thanos / Cortex / Mimir
+# ============================================================================
+groups:
+  - name: rocketmq-broker.rules
+    rules:
+      - alert: RocketMQThreadPoolReject
+        expr: increase(rocketmq_threadpool_reject_count[5m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+          team: broker
+        annotations:
+          summary: "Thread pool rejections"
+          description: "The broker thread pool rejected tasks, indicating saturation."

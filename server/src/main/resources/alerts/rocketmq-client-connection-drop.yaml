@@ -1,0 +1,16 @@
+# ============================================================================
+# RocketMQ 5.x Monitoring - Alert Rule
+# Compatible with Prometheus / VictoriaMetrics / Thanos / Cortex / Mimir
+# ============================================================================
+groups:
+  - name: rocketmq-client.rules
+    rules:
+      - alert: RocketMQClientConnectionDrop
+        expr: changes(rocketmq_producer_count[5m]) < -5
+        for: 5m
+        labels:
+          severity: warning
+          team: client
+        annotations:
+          summary: "Client connections dropped"
+          description: "More than 5 producer connections dropped in 5 minutes."

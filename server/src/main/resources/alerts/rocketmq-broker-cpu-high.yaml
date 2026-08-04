@@ -1,0 +1,16 @@
+# ============================================================================
+# RocketMQ 5.x Monitoring - Alert Rule
+# Compatible with Prometheus / VictoriaMetrics / Thanos / Cortex / Mimir
+# ============================================================================
+groups:
+  - name: rocketmq-broker.rules
+    rules:
+      - alert: RocketMQBrokerCPUHigh
+        expr: 100 * (1 - avg by(instance)(rate(node_cpu_seconds_total{mode="idle"}[5m]))) > 85
+        for: 5m
+        labels:
+          severity: warning
+          team: broker
+        annotations:
+          summary: "Broker CPU usage high"
+          description: "Broker CPU usage has stayed above 85% for 5 minutes."

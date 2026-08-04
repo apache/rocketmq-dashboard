@@ -1,0 +1,16 @@
+# ============================================================================
+# RocketMQ 5.x Monitoring - Alert Rule
+# Compatible with Prometheus / VictoriaMetrics / Thanos / Cortex / Mimir
+# ============================================================================
+groups:
+  - name: rocketmq-client.rules
+    rules:
+      - alert: RocketMQProducerSendLatencyHigh
+        expr: rocketmq_producer_send_to_back_rt > 1000
+        for: 5m
+        labels:
+          severity: warning
+          team: client
+        annotations:
+          summary: "Producer send latency high"
+          description: "Producer send-to-broker latency is above 1000 ms."

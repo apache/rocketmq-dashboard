@@ -1,0 +1,16 @@
+# ============================================================================
+# RocketMQ 5.x Monitoring - Alert Rule
+# Compatible with Prometheus / VictoriaMetrics / Thanos / Cortex / Mimir
+# ============================================================================
+groups:
+  - name: rocketmq-client.rules
+    rules:
+      - alert: RocketMQClientTimeout
+        expr: rocketmq_send_to_client_latency > 3000
+        for: 5m
+        labels:
+          severity: warning
+          team: client
+        annotations:
+          summary: "Client push latency high"
+          description: "Push-to-client latency is above 3000 ms."

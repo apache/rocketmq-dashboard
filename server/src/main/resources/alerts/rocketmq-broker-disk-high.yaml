@@ -1,0 +1,16 @@
+# ============================================================================
+# RocketMQ 5.x Monitoring - Alert Rule
+# Compatible with Prometheus / VictoriaMetrics / Thanos / Cortex / Mimir
+# ============================================================================
+groups:
+  - name: rocketmq-broker.rules
+    rules:
+      - alert: RocketMQBrokerDiskHigh
+        expr: rocketmq_disk_use_ratio > 85
+        for: 5m
+        labels:
+          severity: critical
+          team: broker
+        annotations:
+          summary: "Broker disk usage high"
+          description: "Broker disk usage ratio is above 85%."

@@ -1,0 +1,16 @@
+# ============================================================================
+# RocketMQ 5.x Monitoring - Alert Rule
+# Compatible with Prometheus / VictoriaMetrics / Thanos / Cortex / Mimir
+# ============================================================================
+groups:
+  - name: rocketmq-broker.rules
+    rules:
+      - alert: RocketMQBrokerDown
+        expr: up{job=~".*rocketmq.*broker.*"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: broker
+        annotations:
+          summary: "RocketMQ broker is down"
+          description: "A RocketMQ broker scrape target has been unavailable for more than 1 minute."

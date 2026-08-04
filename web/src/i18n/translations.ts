@@ -34,6 +34,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'nav.clients': { zh: '客户端连接', en: 'Client Connections' },
   'nav.alertEvents': { zh: '告警事件', en: 'Alert Events' },
   'nav.alertRules': { zh: '告警规则', en: 'Alert Rules' },
+  'nav.alertRuleAssets': { zh: '告警规则模板', en: 'Alert Rule Templates' },
   'nav.audit': { zh: '审计日志', en: 'Audit Log' },
   'nav.grafanaDashboards': { zh: 'Grafana 看板', en: 'Grafana Dashboards' },
   'nav.ai': { zh: 'AI 交互', en: 'AI Chat' },
@@ -741,6 +742,15 @@ const translations: Record<string, Record<Lang, string>> = {
   'grafana.loadFailed': { zh: '加载看板失败', en: 'Failed to load dashboards' },
   'grafana.exported': { zh: '看板已导出', en: 'Dashboard exported' },
   'grafana.exportFailed': { zh: '导出看板失败', en: 'Failed to export dashboard' },
+  // ─── Alert rule templates ───
+  'alertAssets.title': { zh: '告警规则模板', en: 'Alert Rule Templates' },
+  'alertAssets.name': { zh: '名称', en: 'Name' },
+  'alertAssets.group': { zh: '规则组', en: 'Group' },
+  'alertAssets.ruleCount': { zh: '规则数', en: 'Rules' },
+  'alertAssets.severity': { zh: '级别', en: 'Severity' },
+  'alertAssets.loadFailed': { zh: '加载告警规则失败', en: 'Failed to load alert rules' },
+  'alertAssets.exported': { zh: '告警规则已导出', en: 'Alert rule exported' },
+  'alertAssets.exportFailed': { zh: '导出告警规则失败', en: 'Failed to export alert rule' },
 
   // ─── Topic (detailed) ───
   'topic.subtitle': {

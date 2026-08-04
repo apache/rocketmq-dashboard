@@ -1,0 +1,16 @@
+# ============================================================================
+# RocketMQ 5.x Monitoring - Alert Rule
+# Compatible with Prometheus / VictoriaMetrics / Thanos / Cortex / Mimir
+# ============================================================================
+groups:
+  - name: rocketmq-broker.rules
+    rules:
+      - alert: RocketMQJVMCpuHigh
+        expr: rate(jvm_gc_pause_seconds_count[5m]) * avg(rate(jvm_gc_pause_seconds_sum[5m])) > 0.3
+        for: 5m
+        labels:
+          severity: warning
+          team: broker
+        annotations:
+          summary: "JVM GC CPU high"
+          description: "The broker spends more than 30% of CPU time in GC pauses."
