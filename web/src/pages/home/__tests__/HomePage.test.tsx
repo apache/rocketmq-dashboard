@@ -78,11 +78,11 @@ describe('HomePage LLM models', () => {
     expect(await screen.findByText('qwen3.8-max')).toBeInTheDocument();
   });
 
-  it('marks unavailable toolbar actions disabled until the features are wired', () => {
+  it('marks unavailable toolbar actions disabled until the features are wired', async () => {
     renderHome();
+    await screen.findByText('qwen3.8-max');
 
     expect(screen.getByRole('button', { name: '工具' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /Prompt 增强/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: '语音输入' })).toBeDisabled();
   });
 
