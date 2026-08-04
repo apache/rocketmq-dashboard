@@ -204,10 +204,13 @@ export async function updateNameServer(data: {
   newAddr?: string;
 }): Promise<void> {
   if (isMockMode()) {
-    const nameServer = getMockCluster(data.clusterId).nameServers.find(
-      (item) => item.addr === data.addr,
-    );
+    const nameServers = getMockCluster(data.clusterId).nameServers;
+    const nameServer = nameServers.find((item) => item.addr === data.addr);
     if (!nameServer) throw new Error(`NameServer not found: ${data.addr}`);
+    if (data.newAddr && data.newAddr !== data.addr) {
+      const duplicate = nameServers.some((item) => item !== nameServer && item.addr === data.newAddr);
+      if (duplicate) throw new Error(`NameServer already exists: ${data.newAddr}`);
+    }
     if (data.newAddr) nameServer.addr = data.newAddr;
     return;
   }
