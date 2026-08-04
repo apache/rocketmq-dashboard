@@ -14,28 +14,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.settings;
+package org.apache.rocketmq.studio.auth;
 
-import jakarta.validation.constraints.NotBlank;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-import lombok.ToString;
+import org.junit.jupiter.api.Test;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class DataSourceTestDTO {
-    @NotBlank(message = "url is required")
-    private String url;
-    @NotBlank(message = "type is required")
-    private String type;
-    private String auth;
-    private String username;
-    @ToString.Exclude
-    private String password;
-    @ToString.Exclude
-    private String bearerToken;
+import static org.assertj.core.api.Assertions.assertThat;
+
+class LoginDTOTest {
+
+    @Test
+    void toStringShouldNotExposePassword() {
+        LoginDTO request = new LoginDTO();
+        request.setUsername("admin");
+        request.setPassword("plain-secret");
+
+        String value = request.toString();
+
+        assertThat(value).contains("username=admin");
+        assertThat(value).doesNotContain("plain-secret");
+    }
 }

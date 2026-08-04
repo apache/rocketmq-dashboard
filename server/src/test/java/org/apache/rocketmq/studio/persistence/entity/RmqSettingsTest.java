@@ -14,28 +14,28 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.settings;
+package org.apache.rocketmq.studio.persistence.entity;
 
-import jakarta.validation.constraints.NotBlank;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-import lombok.ToString;
+import org.junit.jupiter.api.Test;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class DataSourceTestDTO {
-    @NotBlank(message = "url is required")
-    private String url;
-    @NotBlank(message = "type is required")
-    private String type;
-    private String auth;
-    private String username;
-    @ToString.Exclude
-    private String password;
-    @ToString.Exclude
-    private String bearerToken;
+import java.time.LocalDateTime;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class RmqSettingsTest {
+
+    @Test
+    void toStringShouldNotExposePersistedSettingsJson() {
+        RmqSettings settings = new RmqSettings();
+        settings.setId("settings");
+        settings.setJson("{\"apiKey\":\"sk-secret\",\"model\":\"gpt-4o\"}");
+        settings.setUpdatedAt(LocalDateTime.of(2026, 8, 3, 12, 0));
+
+        String text = settings.toString();
+
+        assertThat(text).contains("id=settings");
+        assertThat(text).contains("updatedAt=2026-08-03T12:00");
+        assertThat(text).doesNotContain("json");
+        assertThat(text).doesNotContain("sk-secret");
+    }
 }

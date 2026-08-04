@@ -14,25 +14,32 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.persistence.entity;
+package org.apache.rocketmq.studio.instance.acl;
 
-import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableName;
-import lombok.Data;
-import lombok.ToString;
+import org.junit.jupiter.api.Test;
 
-import java.time.LocalDateTime;
+import java.util.List;
 
-@Data
-@TableName("rmq_settings")
-public class RmqSettings {
+import static org.assertj.core.api.Assertions.assertThat;
 
-    @TableId(type = IdType.ASSIGN_UUID)
-    private String id;
+class AclUserVOTest {
 
-    @ToString.Exclude
-    private String json;
+    @Test
+    void toStringShouldNotExposeCredentials() {
+        AclUserVO user = AclUserVO.builder()
+            .id("user-1")
+            .username("ops-admin")
+            .accessKey("plain-access-key")
+            .secretKey("plain-secret-key")
+            .admin(true)
+            .clusters(List.of("prod"))
+            .build();
 
-    private LocalDateTime updatedAt;
+        String value = user.toString();
+
+        assertThat(value).contains("username=ops-admin");
+        assertThat(value).contains("admin=true");
+        assertThat(value).doesNotContain("plain-access-key");
+        assertThat(value).doesNotContain("plain-secret-key");
+    }
 }

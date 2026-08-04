@@ -20,6 +20,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -31,7 +32,9 @@ import java.util.List;
 public class AclUserVO {
     private String id;
     private String username;
+    @ToString.Exclude
     private String accessKey;
+    @ToString.Exclude
     private String secretKey;
     private boolean admin;
     private List<String> clusters;
