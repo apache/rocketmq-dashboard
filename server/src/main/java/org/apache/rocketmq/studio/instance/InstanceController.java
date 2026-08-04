@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.instance;
 
 import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -45,12 +46,14 @@ public class InstanceController {
     }
 
     @PostMapping("/create")
-    public Result<InstanceVO> createInstance(@RequestBody InstanceVO instance) {
+    public Result<InstanceVO> createInstance(@RequestBody(required = false) InstanceVO instance) {
+        requireInstance(instance);
         return Result.ok(instanceService.createInstance(instance));
     }
 
     @PostMapping("/update")
-    public Result<InstanceVO> updateInstance(@RequestBody InstanceVO instance) {
+    public Result<InstanceVO> updateInstance(@RequestBody(required = false) InstanceVO instance) {
+        requireInstance(instance);
         return Result.ok(instanceService.updateInstance(instance));
     }
 
@@ -58,5 +61,11 @@ public class InstanceController {
     public Result<Void> deleteInstance(@Valid @RequestBody InstanceDeleteRequestDTO request) {
         instanceService.deleteInstance(request.getId());
         return Result.ok();
+    }
+
+    private void requireInstance(InstanceVO instance) {
+        if (instance == null) {
+            throw new BusinessException(400, "Instance request is required");
+        }
     }
 }

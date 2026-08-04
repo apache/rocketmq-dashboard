@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.cluster.broker;
 import org.apache.rocketmq.studio.cluster.config.UpdateConfigDTO;
 
 import org.apache.rocketmq.studio.common.domain.Result;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -55,7 +56,8 @@ public class ClusterController {
     }
 
     @PostMapping("/config/update")
-    public Result<ClusterVO> updateClusterConfig(@Valid @RequestBody UpdateConfigDTO command) {
+    public Result<ClusterVO> updateClusterConfig(@Valid @RequestBody(required = false) UpdateConfigDTO command) {
+        requireUpdateConfigCommand(command);
         return Result.ok(clusterService.updateClusterConfig(command));
     }
 
@@ -67,5 +69,11 @@ public class ClusterController {
                 "success", success,
                 "message", "Broker restart initiated for " + name
         ));
+    }
+
+    private void requireUpdateConfigCommand(UpdateConfigDTO command) {
+        if (command == null) {
+            throw new BusinessException(400, "Cluster config update request is required");
+        }
     }
 }
