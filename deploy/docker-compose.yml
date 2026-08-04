@@ -57,6 +57,12 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8888/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
 
   rocketmq-web:
     build:
@@ -68,7 +74,8 @@ services:
     ports:
       - "6789:80"
     depends_on:
-      - rocketmq-server
+      rocketmq-server:
+        condition: service_healthy
     networks:
       - studio-net
 
