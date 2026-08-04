@@ -82,7 +82,7 @@ export async function createK8sCert(data: Partial<K8sCertInfo>): Promise<K8sCert
       notAfter: notAfter.toISOString(),
       status: 'valid',
       daysRemaining: 365,
-      san: data.san ?? [],
+      san: [...(data.san ?? [])],
     };
     mockCertStore.push(cert);
     return { ...cert, san: [...cert.san] };
@@ -94,7 +94,7 @@ export async function updateK8sCert(data: Partial<K8sCertInfo>): Promise<K8sCert
   if (isMockMode()) {
     const existing = mockCertStore.find((cert) => cert.id === data.id);
     if (!existing) throw new Error(`Certificate not found: ${data.id}`);
-    Object.assign(existing, data, { san: data.san ?? existing.san });
+    Object.assign(existing, data, { san: data.san ? [...data.san] : existing.san });
     return { ...existing, san: [...existing.san] };
   }
   return clusterApi.updateK8sCert(data);
