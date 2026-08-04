@@ -184,6 +184,9 @@ public class RocketMQDLQProvider implements DLQProvider {
         try {
             consumer.start();
             Set<MessageQueue> queues = consumer.fetchSubscribeMessageQueues(dlqTopic);
+            if (queues == null || queues.isEmpty()) {
+                return result;
+            }
             outer:
             for (MessageQueue queue : queues) {
                 long minOffset = consumer.searchOffset(queue, begin);
