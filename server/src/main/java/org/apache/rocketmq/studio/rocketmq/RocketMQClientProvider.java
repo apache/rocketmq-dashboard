@@ -155,6 +155,9 @@ public class RocketMQClientProvider implements ClientProvider {
             return groups;
         }
         for (BrokerData brokerData : clusterInfo.getBrokerAddrTable().values()) {
+            if (brokerData == null) {
+                continue;
+            }
             String brokerAddr = brokerData.selectBrokerAddr();
             if (brokerAddr == null) {
                 continue;
