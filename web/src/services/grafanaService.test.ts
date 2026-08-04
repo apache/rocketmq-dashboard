@@ -9,7 +9,7 @@ import {
   listGrafanaDashboards,
 } from './grafanaService';
 
-const isMockModeMock = vi.hoisted(() => ({ isMockMode: () => true }));
+const isMockModeMock = vi.hoisted(() => ({ isMockMode: () => true as boolean }));
 vi.mock('./dataMode', () => isMockModeMock);
 
 describe('grafanaService', () => {
