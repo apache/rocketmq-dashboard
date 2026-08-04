@@ -111,6 +111,9 @@ public class RocketMQClientProvider implements ClientProvider {
                     continue;
                 }
                 for (Connection connection : producerConnection.getConnectionSet()) {
+                    if (connection == null) {
+                        continue;
+                    }
                     result.add(toConnectionVO(connection, ClientType.Producer, topic, topic, clusterId));
                 }
             } catch (Exception e) {
@@ -133,6 +136,9 @@ public class RocketMQClientProvider implements ClientProvider {
                     continue;
                 }
                 for (Connection connection : consumerConnection.getConnectionSet()) {
+                    if (connection == null) {
+                        continue;
+                    }
                     result.add(toConnectionVO(connection, ClientType.Consumer, group, null, clusterId));
                 }
             } catch (Exception e) {
