@@ -16,9 +16,11 @@
  */
 
 import { App } from 'antd';
+import { useEffect } from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import type { Instance } from '../../../api/instance';
 import { LangProvider } from '../../../i18n/LangContext';
 import * as instanceService from '../../../services/instanceService';
@@ -59,18 +61,37 @@ const instance = (id: string, name: string, type: Instance['type'] = 'PROXY'): I
   updatedAt: '2026-01-01T00:00:00Z',
 });
 
+let currentLocation = '';
+
+const LocationProbe = () => {
+  const location = useLocation();
+
+  useEffect(() => {
+    currentLocation = `${location.pathname}${location.search}`;
+  }, [location.pathname, location.search]);
+
+  return null;
+};
+
 const renderPage = () =>
   render(
-    <App>
-      <LangProvider>
-        <InstancePage />
-      </LangProvider>
-    </App>,
+    <MemoryRouter initialEntries={['/instance']}>
+      <App>
+        <LangProvider>
+          <LocationProbe />
+          <Routes>
+            <Route path="/instance" element={<InstancePage />} />
+            <Route path="/instance/topic" element={<div>Topic route</div>} />
+          </Routes>
+        </LangProvider>
+      </App>
+    </MemoryRouter>,
   );
 
 describe('InstancePage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    currentLocation = '';
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       instance('proxy-1', 'production-proxy'),
       instance('direct-1', 'development-direct', 'DIRECT'),
@@ -184,5 +205,27 @@ describe('InstancePage', () => {
       }),
     );
     expect(instanceService.listInstances).toHaveBeenLastCalledWith({ type: 'DIRECT' });
+  });
+
+  it('navigates to the topic view with the selected instance id when a row is clicked', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByText('production-proxy'));
+
+    expect(await screen.findByText('Topic route')).toBeInTheDocument();
+    expect(currentLocation).toBe('/instance/topic?instanceId=proxy-1');
+  });
+
+  it('does not navigate when clicking row action buttons', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(await screen.findByText('production-proxy')).toBeInTheDocument();
+    await user.click(screen.getAllByRole('button', { name: /编辑/ })[0]);
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(currentLocation).toBe('/instance');
+    expect(screen.queryByText('Topic route')).not.toBeInTheDocument();
   });
 });

@@ -16,6 +16,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Table,
   Card,
@@ -58,6 +59,7 @@ type InstanceTypeFilter = 'ALL' | Instance['type'];
    ═══════════════════════════════════════════ */
 const InstancePage = () => {
   const { t } = useLang();
+  const navigate = useNavigate();
   const [instances, setInstances] = useState<Instance[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -240,7 +242,8 @@ const InstancePage = () => {
             size="small"
             icon={<EditOutlined />}
             style={{ borderColor: '#1677ff', color: '#1677ff' }}
-            onClick={() => {
+            onClick={(event) => {
+              event.stopPropagation();
               setEditingInstance(record);
               editForm.setFieldsValue({ remark: record.remark });
               setEditModalOpen(true);
@@ -252,15 +255,16 @@ const InstancePage = () => {
             size="small"
             icon={<DeleteOutlined />}
             style={{ borderColor: '#ff4d4f', color: '#ff4d4f' }}
-            onClick={() =>
+            onClick={(event) => {
+              event.stopPropagation();
               Modal.confirm({
                 title: `确认删除 "${record.name}"？`,
                 content: '此操作不可恢复。',
                 okText: '删除',
                 okButtonProps: { danger: true },
                 onOk: () => handleDelete(record),
-              })
-            }
+              });
+            }}
           >
             删除
           </Button>
@@ -327,7 +331,7 @@ const InstancePage = () => {
           size="small"
           onRow={(record) => ({
             style: { cursor: 'pointer' },
-            onClick: () => message.info(`进入 ${record.name}`),
+            onClick: () => navigate(`/instance/topic?instanceId=${encodeURIComponent(record.id)}`),
           })}
         />
       </Card>
