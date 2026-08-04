@@ -153,6 +153,51 @@ class LlmConfigServiceTest {
     }
 
     @Test
+    void getConfigShouldKeepSavedCliEngineEnabledWithoutApiKeyAfterRestart() {
+        when(settingsService.getGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
+                .theme("dark")
+                .compact(true)
+                .desktopNotify(true)
+                .notifySound(false)
+                .sessionTimeout(45)
+                .requireLogin(true)
+                .llmProvider("openai")
+                .llmEngine(LlmConfigVO.ENGINE_CLAUDE_CODE)
+                .apiKey("")
+                .model("gpt-4o")
+                .baseUrl("https://api.openai.com/v1")
+                .build());
+
+        LlmConfigVO config = llmConfigService.getConfig();
+
+        assertThat(config.getEngine()).isEqualTo(LlmConfigVO.ENGINE_CLAUDE_CODE);
+        assertThat(config.isEnabled()).isTrue();
+        assertThat(config.isReady()).isTrue();
+    }
+
+    @Test
+    void getConfigShouldKeepSavedHttpEngineDisabledWithoutApiKeyAfterRestart() {
+        when(settingsService.getGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
+                .theme("dark")
+                .compact(true)
+                .desktopNotify(true)
+                .notifySound(false)
+                .sessionTimeout(45)
+                .requireLogin(true)
+                .llmProvider("openai")
+                .llmEngine(LlmConfigVO.ENGINE_HTTP)
+                .apiKey("")
+                .model("gpt-4o")
+                .baseUrl("https://api.openai.com/v1")
+                .build());
+
+        LlmConfigVO config = llmConfigService.getConfig();
+
+        assertThat(config.isEnabled()).isFalse();
+        assertThat(config.isReady()).isFalse();
+    }
+
+    @Test
     void saveConfigShouldPreserveGeneralSettingsAndStoreLlmFields() {
         LlmConfigVO config = LlmConfigVO.builder()
                 .provider("deepseek")
