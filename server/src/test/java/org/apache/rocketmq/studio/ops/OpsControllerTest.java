@@ -18,6 +18,7 @@
 package org.apache.rocketmq.studio.ops;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -30,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -77,6 +79,22 @@ class OpsControllerTest {
                         .content(objectMapper.writeValueAsString(Map.of("namesrvAddr", "10.0.0.1:9876"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
+
+        verify(opsService).updateNameServer(eq("10.0.0.1:9876"));
+    }
+
+    @Test
+    void updateNameSvrAddrShouldReturnUnavailableWhenServiceRejects() throws Exception {
+        doThrow(new BusinessException(501, "Ops settings are not connected to the cluster admin configuration"))
+                .when(opsService).updateNameServer("10.0.0.1:9876");
+
+        mockMvc.perform(post("/api/ops/updateNameSvrAddr")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("namesrvAddr", "10.0.0.1:9876"))))
+                .andExpect(status().isNotImplemented())
+                .andExpect(jsonPath("$.code").value(501))
+                .andExpect(jsonPath("$.message").value(
+                        "Ops settings are not connected to the cluster admin configuration"));
 
         verify(opsService).updateNameServer(eq("10.0.0.1:9876"));
     }

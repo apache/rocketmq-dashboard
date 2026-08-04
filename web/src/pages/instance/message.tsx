@@ -72,6 +72,7 @@ type RecentQuery = {
 
 const QUERY_HISTORY_STORAGE_KEY = 'rocketmq-studio-message-query-history';
 const MAX_QUERY_HISTORY = 5;
+const RESEND_UNAVAILABLE_MESSAGE = '当前版本尚未接入普通消息重新发送接口';
 
 const QUERY_OPTIONS = [
   { value: 'topic' as const, label: '按 Topic 查询' },
@@ -348,10 +349,9 @@ const MessagePage = () => {
     if (recentQuery) replayRecentQuery(recentQuery);
   };
 
-  const handleResend = () => {
-    message.success('消息重新发送成功（模拟）');
+  const handleVerifyConsume = () => {
+    message.warning('消费验证接口尚未接入，无法确认该消息的真实消费状态');
   };
-
   const openDetail = async (record: MessageRecord, tab = 'content') => {
     const requestGeneration = traceGenerationRef.current + 1;
     traceGenerationRef.current = requestGeneration;
@@ -475,7 +475,7 @@ const MessagePage = () => {
             size="small"
             icon={<CheckCircleOutlined />}
             style={{ borderColor: '#52c41a', color: '#52c41a' }}
-            onClick={() => message.success(`消息 ${record.msgId.slice(0, 16)}... 消费验证成功`)}
+            onClick={handleVerifyConsume}
           >
             验证
           </Button>
@@ -774,7 +774,12 @@ const MessagePage = () => {
         footer={
           <Flex justify="flex-end" gap={8}>
             <Button onClick={closeDetail}>关闭</Button>
-            <Button type="primary" icon={<SendOutlined />} onClick={handleResend}>
+            <Button
+              type="primary"
+              icon={<SendOutlined />}
+              disabled
+              title={RESEND_UNAVAILABLE_MESSAGE}
+            >
               重新发送
             </Button>
           </Flex>
