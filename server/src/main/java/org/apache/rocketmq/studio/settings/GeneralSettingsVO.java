@@ -36,6 +36,7 @@ public class GeneralSettingsVO {
     private int sessionTimeout;
     private boolean requireLogin;
     private String llmProvider;
+    private String llmEngine;
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     @ToString.Exclude
     private String apiKey;

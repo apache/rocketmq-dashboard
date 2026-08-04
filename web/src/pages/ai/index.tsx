@@ -45,6 +45,7 @@ import { useLang } from '../../i18n/LangContext';
 import { AiStreamError, chatStream, executeTool, listTools, type McpTool } from '../../api/ai';
 import { listClusters } from '../../api/cluster';
 import { getLlmConfig, getLlmModels, type LlmConfig } from '../../api/llm';
+import { useEngineStore } from '../../stores/engineStore';
 import { getChatDraft } from './chatDraft';
 
 const { Text } = Typography;
@@ -85,6 +86,8 @@ interface Message {
   stats?: StatItem[];
   descriptions?: DescriptionItem[];
   summary?: string;
+  thinking?: string;
+  pending?: boolean;
   actions?: { label: string; type?: 'primary' | 'default' }[];
 }
 
@@ -274,6 +277,77 @@ export const AiMessage = ({ msg }: { msg: Message }) => (
         </Descriptions>
       )}
 
+      {/* Chain of thought (enhanced prompt) */}
+      {msg.thinking && (
+        <details style={{ marginBottom: 12 }}>
+          <summary
+            style={{
+              cursor: 'pointer',
+              color: '#722ed1',
+              fontSize: 12,
+              fontWeight: 500,
+              userSelect: 'none',
+            }}
+          >
+            思维链：Prompt 增强改写
+          </summary>
+          <div
+            style={{
+              marginTop: 8,
+              padding: '8px 12px',
+              background: '#f9f0ff',
+              border: '1px solid #efdbff',
+              borderRadius: 8,
+              fontSize: 12,
+              lineHeight: 1.7,
+              color: '#595959',
+              whiteSpace: 'pre-wrap',
+            }}
+          >
+            {msg.thinking}
+          </div>
+        </details>
+      )}
+
+      {/* Waiting indicator (inside the bubble) */}
+      {msg.pending && !msg.summary && (
+        <Flex gap={4} align="center" style={{ padding: '2px 0' }}>
+          <span
+            style={{
+              display: 'inline-block',
+              width: 6,
+              height: 6,
+              borderRadius: '50%',
+              background: '#722ed1',
+              animation: 'dotPulse 1.4s infinite ease-in-out',
+            }}
+          />
+          <span
+            style={{
+              display: 'inline-block',
+              width: 6,
+              height: 6,
+              borderRadius: '50%',
+              background: '#722ed1',
+              animation: 'dotPulse 1.4s infinite ease-in-out 0.2s',
+            }}
+          />
+          <span
+            style={{
+              display: 'inline-block',
+              width: 6,
+              height: 6,
+              borderRadius: '50%',
+              background: '#722ed1',
+              animation: 'dotPulse 1.4s infinite ease-in-out 0.4s',
+            }}
+          />
+          <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>
+            正在思考…
+          </Text>
+        </Flex>
+      )}
+
       {/* Summary text */}
       {msg.summary && (
         <div className="ai-markdown">
@@ -329,6 +403,9 @@ const AiPage = () => {
   const abortControllerRef = useRef<AbortController | null>(null);
   const conversationIdRef = useRef<string | null>(null);
   const consumedDraftRef = useRef(false);
+  const pendingAutoSendRef = useRef<{ prompt: string; model?: string; enhance?: boolean } | null>(
+    null,
+  );
 
   const scrollToBottom = useCallback(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -385,8 +462,12 @@ const AiPage = () => {
             : [{ value: draftModel, label: draftModel }, ...options],
         );
       }
+      pendingAutoSendRef.current = {
+        prompt: draft.prompt,
+        model: draft.model,
+        enhance: draft.enhance,
+      };
       navigate('/ai', { replace: true, state: null });
-      textareaRef.current?.focus();
     });
   }, [location.state, navigate]);
 
@@ -408,72 +489,104 @@ const AiPage = () => {
 
   const llmReady = Boolean((llmConfig?.ready ?? llmConfig?.enabled) && selectedModel);
 
-  const handleSend = useCallback(async () => {
-    const text = inputValue.trim();
-    if (!text || loading) return;
-    if (!llmReady) {
-      message.warning('请先配置并启用 LLM Provider');
-      return;
-    }
+  const handleSend = useCallback(
+    async (textOverride?: string, modelOverride?: string, enhance?: boolean) => {
+      const text = (textOverride ?? inputValue).trim();
+      const model = modelOverride ?? selectedModel;
+      if (!text || loading) return;
+      if (!llmReady) {
+        message.warning('请先配置并启用 LLM Provider');
+        return;
+      }
 
-    if (!conversationIdRef.current) {
-      conversationIdRef.current = `conversation-${Date.now()}`;
-    }
+      if (!conversationIdRef.current) {
+        conversationIdRef.current = `conversation-${Date.now()}`;
+      }
 
-    const userMsg: Message = {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      text,
-    };
+      const userMsg: Message = {
+        id: `user-${Date.now()}`,
+        role: 'user',
+        text,
+      };
 
-    const responseId = `ai-${Date.now()}`;
-    setMessages((prev) => [...prev, userMsg, { id: responseId, role: 'ai', summary: '' }]);
-    setInputValue('');
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-    }
-    setLoading(true);
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
+      const responseId = `ai-${Date.now()}`;
+      setMessages((prev) => [
+        ...prev,
+        userMsg,
+        { id: responseId, role: 'ai', summary: '', pending: true },
+      ]);
+      setInputValue('');
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+      }
+      setLoading(true);
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
 
-    try {
-      await chatStream(
-        {
-          message: text,
-          mode: 'chat',
-          model: selectedModel,
-          conversationId: conversationIdRef.current,
-        },
-        (chunk) => {
+      try {
+        await chatStream(
+          {
+            message: text,
+            mode: 'chat',
+            model,
+            engine: useEngineStore.getState().engine,
+            enhance,
+            conversationId: conversationIdRef.current,
+          },
+          (chunk) => {
+            setMessages((prev) =>
+              prev.map((item) =>
+                item.id === responseId
+                  ? { ...item, summary: `${item.summary ?? ''}${chunk}` }
+                  : item,
+              ),
+            );
+          },
+          controller.signal,
+          (enhanceDelta) => {
+            setMessages((prev) =>
+              prev.map((item) =>
+                item.id === responseId
+                  ? { ...item, thinking: `${item.thinking ?? ''}${enhanceDelta}` }
+                  : item,
+              ),
+            );
+          },
+        );
+      } catch (error) {
+        if (controller.signal.aborted) {
           setMessages((prev) =>
             prev.map((item) =>
-              item.id === responseId ? { ...item, summary: `${item.summary ?? ''}${chunk}` } : item,
+              item.id === responseId && !item.summary ? { ...item, summary: '回答已停止。' } : item,
             ),
           );
-        },
-        controller.signal,
-      );
-    } catch (error) {
-      if (controller.signal.aborted) {
+        } else {
+          const errorMessage = error instanceof Error ? error.message : 'AI 请求失败';
+          const errorHint = error instanceof AiStreamError && error.hint ? error.hint : '';
+          const summary = errorHint ? `${errorMessage}\n\n> ${errorHint}` : errorMessage;
+          setMessages((prev) =>
+            prev.map((item) => (item.id === responseId ? { ...item, summary } : item)),
+          );
+          message.error(errorMessage);
+        }
+      } finally {
+        if (abortControllerRef.current === controller) abortControllerRef.current = null;
         setMessages((prev) =>
-          prev.map((item) =>
-            item.id === responseId && !item.summary ? { ...item, summary: '回答已停止。' } : item,
-          ),
+          prev.map((item) => (item.id === responseId ? { ...item, pending: false } : item)),
         );
-      } else {
-        const errorMessage = error instanceof Error ? error.message : 'AI 请求失败';
-        const errorHint = error instanceof AiStreamError && error.hint ? error.hint : '';
-        const summary = errorHint ? `${errorMessage}\n\n> ${errorHint}` : errorMessage;
-        setMessages((prev) =>
-          prev.map((item) => (item.id === responseId ? { ...item, summary } : item)),
-        );
-        message.error(errorMessage);
+        setLoading(false);
       }
-    } finally {
-      if (abortControllerRef.current === controller) abortControllerRef.current = null;
-      setLoading(false);
-    }
-  }, [inputValue, llmReady, loading, selectedModel]);
+    },
+    [inputValue, llmReady, loading, selectedModel],
+  );
+
+  /* ─── Auto-send the draft from the home page as soon as runtime is ready ─── */
+  useEffect(() => {
+    const pending = pendingAutoSendRef.current;
+    if (!pending || loading || !llmReady) return;
+    pendingAutoSendRef.current = null;
+    void handleSend(pending.prompt, pending.model, pending.enhance);
+  }, [llmReady, loading, handleSend]);
 
   const handleStop = useCallback(() => {
     abortControllerRef.current?.abort();
@@ -604,81 +717,6 @@ const AiPage = () => {
             <AiMessage key={msg.id} msg={msg} />
           ),
         )}
-        {loading && (
-          <Flex gap={12} align="flex-start" style={{ marginBottom: 16 }}>
-            <div
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: '50%',
-                background: 'linear-gradient(135deg, #1677ff 0%, #722ed1 100%)',
-                flexShrink: 0,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 2px 8px rgba(22, 119, 255, 0.3)',
-              }}
-            >
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="white"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z" />
-                <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z" />
-                <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0" />
-                <path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" />
-              </svg>
-            </div>
-            <Card
-              size="small"
-              style={{
-                boxShadow: '0 1px 4px rgba(0, 0, 0, 0.06)',
-                borderRadius: 12,
-                borderTopLeftRadius: 4,
-              }}
-              styles={{ body: { padding: '12px 16px' } }}
-            >
-              <Flex gap={4} align="center">
-                <span
-                  style={{
-                    display: 'inline-block',
-                    width: 6,
-                    height: 6,
-                    borderRadius: '50%',
-                    background: '#722ed1',
-                    animation: 'dotPulse 1.4s infinite ease-in-out',
-                  }}
-                />
-                <span
-                  style={{
-                    display: 'inline-block',
-                    width: 6,
-                    height: 6,
-                    borderRadius: '50%',
-                    background: '#722ed1',
-                    animation: 'dotPulse 1.4s infinite ease-in-out 0.2s',
-                  }}
-                />
-                <span
-                  style={{
-                    display: 'inline-block',
-                    width: 6,
-                    height: 6,
-                    borderRadius: '50%',
-                    background: '#722ed1',
-                    animation: 'dotPulse 1.4s infinite ease-in-out 0.4s',
-                  }}
-                />
-              </Flex>
-            </Card>
-          </Flex>
-        )}
         <div ref={chatEndRef} />
       </div>
 
@@ -790,7 +828,7 @@ const AiPage = () => {
                 <div className="shrink-0 flex items-center gap-1">
                   <button
                     className="flex items-center justify-center w-9 h-9 rounded-full bg-gradient-to-r from-purple-500 to-violet-600 text-white shadow-lg hover:shadow-xl transition-all hover:scale-105"
-                    onClick={handleSend}
+                    onClick={() => void handleSend()}
                     disabled={loading || !inputValue.trim() || !llmReady}
                     style={{
                       opacity: loading || !inputValue.trim() || !llmReady ? 0.5 : 1,

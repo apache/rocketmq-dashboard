@@ -47,6 +47,7 @@ public class GeneralSettingsUpdateDTO {
     private Boolean requireLogin;
     @NotBlank
     private String llmProvider;
+    private String llmEngine;
     @ToString.Exclude
     private String apiKey;
     private boolean clearApiKey;
@@ -64,6 +65,7 @@ public class GeneralSettingsUpdateDTO {
                 .sessionTimeout(sessionTimeout)
                 .requireLogin(requireLogin)
                 .llmProvider(llmProvider)
+                .llmEngine(llmEngine)
                 .apiKey(apiKey)
                 .clearApiKey(clearApiKey)
                 .model(model)

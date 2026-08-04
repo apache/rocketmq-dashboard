@@ -16,20 +16,22 @@
  */
 package org.apache.rocketmq.studio.ops.ai;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+/**
+ * Gateway abstraction for agent runtimes. Implementations spawn the vendor CLI
+ * (claude code / qoder) as a subprocess and pass credentials through the child
+ * process environment — never through argv or persisted storage.
+ */
+public interface AgentProvider {
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class ChatDTO {
-    private String message;
-    private String mode;
-    private String model;
-    private String engine;
-    private boolean enhance;
-    private String conversationId;
+    String engine();
+
+    boolean available();
+
+    String complete(LlmConfigVO config, String prompt, String modelOverride);
+
+    /** Streams completion tokens; default falls back to a single chunk via complete(). */
+    default void stream(LlmConfigVO config, String prompt, String modelOverride,
+                        java.util.function.Consumer<String> tokenConsumer) {
+        tokenConsumer.accept(complete(config, prompt, modelOverride));
+    }
 }

@@ -21,6 +21,7 @@ import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.apache.rocketmq.studio.settings.SettingsService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Service;
 
 import java.net.URI;
@@ -31,10 +32,12 @@ import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
+@EnableConfigurationProperties(LlmProperties.class)
 @Slf4j
 public class LlmConfigService {
 
     private static final String OPENAI = "openai";
+    private static final String DEFAULT_PROVIDER = "tongyi";
     private static final String CHAT_COMPLETIONS_PATH = "/chat/completions";
     private static final int DEFAULT_MAX_TOKENS = 4096;
     private static final double DEFAULT_TEMPERATURE = 0.7;
@@ -51,9 +54,13 @@ public class LlmConfigService {
                     new LlmModelItemVO("deepseek-chat", "DeepSeek Chat"),
                     new LlmModelItemVO("deepseek-reasoner", "DeepSeek Reasoner")),
             "tongyi", List.of(
-                    new LlmModelItemVO("qwen-max", "Qwen Max"),
-                    new LlmModelItemVO("qwen-plus", "Qwen Plus"),
-                    new LlmModelItemVO("qwen-turbo", "Qwen Turbo")),
+                    new LlmModelItemVO("qwen3.8-max", "qwen3.8-max"),
+                    new LlmModelItemVO("qwen3.7-max", "qwen3.7-max"),
+                    new LlmModelItemVO("qwen3.7-plus", "qwen3.7-plus"),
+                    new LlmModelItemVO("deepseek-v4-pro", "deepseek-v4-pro"),
+                    new LlmModelItemVO("deepseek-v4-flash", "deepseek-v4-flash"),
+                    new LlmModelItemVO("MiniMax-M2.5", "MiniMax-M2.5"),
+                    new LlmModelItemVO("glm-5.2", "glm-5.2")),
             "ollama", List.of(
                     new LlmModelItemVO("llama3", "Llama 3"),
                     new LlmModelItemVO("mistral", "Mistral"),
@@ -65,13 +72,19 @@ public class LlmConfigService {
 
     private final SettingsService settingsService;
     private final OpenAiCompatibleLlmClient llmClient;
+    private final LlmProperties llmProperties;
     private LlmConfigVO overrides;
 
     public synchronized LlmConfigVO getConfig() {
-        if (overrides != null) {
-            return copy(overrides);
+        LlmConfigVO config = overrides != null
+                ? copy(overrides)
+                : fromGeneralSettings(settingsService.getGeneralSettings());
+        String token = envToken();
+        if (!isBlank(token)) {
+            config.setApiKey(token.trim());
+            config.setEnabled(true);
         }
-        return fromGeneralSettings(settingsService.getGeneralSettings());
+        return config;
     }
 
     public synchronized void saveConfig(LlmConfigVO config) {
@@ -81,6 +94,10 @@ public class LlmConfigService {
             throw new LlmGatewayException(400, validation.getCode(), validation.getErrMsg(), validation.getHint());
         }
         GeneralSettingsVO current = settingsService.getGeneralSettings();
+        // The env-injected token is authoritative at runtime but must never be persisted.
+        String persistedApiKey = isBlank(envToken())
+                ? normalized.getApiKey()
+                : defaultString(current.getApiKey(), "");
         GeneralSettingsVO updated = GeneralSettingsVO.builder()
                 .theme(current.getTheme())
                 .compact(current.isCompact())
@@ -89,7 +106,8 @@ public class LlmConfigService {
                 .sessionTimeout(current.getSessionTimeout())
                 .requireLogin(current.isRequireLogin())
                 .llmProvider(normalized.getProvider())
-                .apiKey(normalized.getApiKey())
+                .llmEngine(normalized.getEngine())
+                .apiKey(persistedApiKey)
                 .model(normalized.getModel())
                 .baseUrl(normalized.getApiBase())
                 .build();
@@ -135,7 +153,8 @@ public class LlmConfigService {
                     "LLM temperature is out of range",
                     "Set temperature to a value between 0 and 2.");
         }
-        boolean keyRequired = !"ollama".equals(provider);
+        boolean keyRequired = !"ollama".equals(provider)
+                && LlmConfigVO.ENGINE_HTTP.equalsIgnoreCase(normalized.normalizeEngine());
         if (keyRequired && isBlank(normalized.getApiKey())) {
             return LlmOperationResultVO.failure(
                     "llm.config.missing_api_key",
@@ -160,6 +179,11 @@ public class LlmConfigService {
     public synchronized LlmModelsResultVO listModels() {
         LlmConfigVO config = getConfig();
         String provider = config.getProvider();
+        // The token-plan gateway model set is curated locally; do not query the gateway.
+        if (DEFAULT_PROVIDER.equals(provider)) {
+            return new LlmModelsResultVO(0, PROVIDER_MODELS.get(DEFAULT_PROVIDER),
+                    LlmModelsResultVO.SOURCE_BUILTIN, null, null, null);
+        }
         if (config.isEnabled() && llmClient.supports(config)) {
             try {
                 List<LlmModelItemVO> models = llmClient.listModels(config);
@@ -179,11 +203,13 @@ public class LlmConfigService {
 
     private LlmConfigVO fromGeneralSettings(GeneralSettingsVO settings) {
         String provider = normalizeProvider(settings.getLlmProvider());
-        String apiKey = defaultString(settings.getApiKey(), "");
+        // Token injected via RMQ_LLM_TOKEN takes precedence over the key saved in settings.
+        String apiKey = defaultString(envToken(), defaultString(settings.getApiKey(), ""));
         String apiBase = normalizeApiBase(defaultString(settings.getBaseUrl(), defaultApiBase(provider)));
         String model = defaultString(settings.getModel(), defaultModel(provider));
         return LlmConfigVO.builder()
                 .provider(provider)
+                .engine(normalizeEngine(settings.getLlmEngine()))
                 .apiKey(apiKey)
                 .apiBase(apiBase)
                 .model(model)
@@ -195,10 +221,15 @@ public class LlmConfigService {
                 .build();
     }
 
+    private String envToken() {
+        return llmProperties == null ? null : llmProperties.getToken();
+    }
+
     private LlmConfigVO normalize(LlmConfigVO config) {
         String provider = normalizeProvider(config == null ? null : config.getProvider());
         return LlmConfigVO.builder()
                 .provider(provider)
+                .engine(normalizeEngine(config == null ? null : config.getEngine()))
                 .apiKey(defaultString(config == null ? null : config.getApiKey(), ""))
                 .apiBase(normalizeApiBase(defaultString(config == null ? null : config.getApiBase(),
                         defaultApiBase(provider))))
@@ -223,7 +254,13 @@ public class LlmConfigService {
             return normalized;
         }
         if (isBlank(normalized.getApiKey())) {
-            normalized.setApiKey(defaultString(getConfig().getApiKey(), ""));
+            // Fall back to the key stored in settings only; the env-injected token
+            // must never be persisted into the settings table.
+            String storedKey = settingsService.getGeneralSettings().getApiKey();
+            if (!isBlank(envToken())) {
+                storedKey = defaultString(storedKey, envToken());
+            }
+            normalized.setApiKey(defaultString(storedKey, ""));
         }
         return normalized;
     }
@@ -239,8 +276,16 @@ public class LlmConfigService {
     }
 
     private String normalizeProvider(String provider) {
-        String normalized = defaultString(provider, OPENAI).toLowerCase(Locale.ROOT);
-        return PROVIDER_MODELS.containsKey(normalized) ? normalized : OPENAI;
+        String normalized = defaultString(provider, DEFAULT_PROVIDER).toLowerCase(Locale.ROOT);
+        return PROVIDER_MODELS.containsKey(normalized) ? normalized : DEFAULT_PROVIDER;
+    }
+
+    private String normalizeEngine(String engine) {
+        String normalized = defaultString(engine, LlmConfigVO.ENGINE_CLAUDE_CODE).toLowerCase(Locale.ROOT);
+        return switch (normalized) {
+            case LlmConfigVO.ENGINE_HTTP, LlmConfigVO.ENGINE_CLAUDE_CODE, LlmConfigVO.ENGINE_QODER -> normalized;
+            default -> LlmConfigVO.ENGINE_HTTP;
+        };
     }
 
     private String defaultModel(String provider) {

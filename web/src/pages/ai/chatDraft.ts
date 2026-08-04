@@ -18,6 +18,7 @@
 export interface ChatDraft {
   prompt: string;
   model?: string;
+  enhance?: boolean;
 }
 
 export function getChatDraft(state: unknown): ChatDraft | null {
@@ -29,5 +30,6 @@ export function getChatDraft(state: unknown): ChatDraft | null {
   return {
     prompt: candidate.prompt.trim(),
     ...(model ? { model } : {}),
+    ...(candidate.enhance === true ? { enhance: true } : {}),
   };
 }

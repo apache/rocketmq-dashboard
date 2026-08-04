@@ -20,6 +20,9 @@ export default defineConfig(({ mode }) => {
       environment: 'jsdom',
       setupFiles: './src/test/setup.ts',
       css: true,
+      // 32-core box: run test files with full parallelism.
+      maxWorkers: 32,
+      minWorkers: 4,
       // antd interactions driven through userEvent are slow in jsdom, and the default
       // 5s budget is exceeded once the whole suite runs in parallel.
       testTimeout: 20000,

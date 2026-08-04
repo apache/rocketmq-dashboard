@@ -15,868 +15,298 @@
  * limitations under the License.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  Form,
-  Input,
-  Select,
-  Slider,
-  Switch,
+  Alert,
   Button,
   Card,
+  Form,
+  Input,
+  InputNumber,
+  Select,
+  Slider,
   Space,
-  Typography,
-  Divider,
-  Alert,
-  Row,
-  Col,
+  Tag,
   App,
 } from 'antd';
-import {
-  FloppyDisk,
-  Lightning,
-  Cloud,
-  Globe,
-  Key,
-  ShieldCheck,
-  CheckCircle,
-  XCircle,
-} from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import {
   getLlmConfig,
+  getLlmModels,
   saveLlmConfig,
   testLlmConnection,
-  getLlmModels,
   type LlmConfig,
+  type LlmTestResult,
 } from '../../api/llm';
-import { buildLlmFailureResult, type TestResult } from './llmFailureResult';
 import { fallbackModelOptions } from './llmModelOptions';
 
-const { Text } = Typography;
-const MASKED_API_KEY = '••••••••';
-
-interface ProviderDef {
-  key: string;
-  label: string;
-  icon: string;
-  color: string;
-  descKey: string;
-  defaultBaseUrl: string;
-  defaultModel: string;
-  requireApiKey: boolean;
-  requireBaseUrl: boolean;
-  extraFields?: string[];
-}
-
-const PROVIDERS: ProviderDef[] = [
-  {
-    key: 'openai',
-    label: 'OpenAI',
-    icon: '🤖',
-    color: '#10a37f',
-    descKey: 'llm.providerOpenaiDesc',
-    defaultBaseUrl: 'https://api.openai.com/v1',
-    defaultModel: 'gpt-4o',
-    requireApiKey: true,
-    requireBaseUrl: false,
-  },
-  {
-    key: 'azure',
-    label: 'Azure OpenAI',
-    icon: '☁️',
-    color: '#0078d4',
-    descKey: 'llm.providerAzureDesc',
-    defaultBaseUrl: '',
-    defaultModel: 'gpt-4o',
-    requireApiKey: true,
-    requireBaseUrl: true,
-    extraFields: ['deploymentName', 'apiVersion'],
-  },
-  {
-    key: 'deepseek',
-    label: 'DeepSeek',
-    icon: '🔍',
-    color: '#4d6bfe',
-    descKey: 'llm.providerDeepseekDesc',
-    defaultBaseUrl: 'https://api.deepseek.com/v1',
-    defaultModel: 'deepseek-chat',
-    requireApiKey: true,
-    requireBaseUrl: false,
-  },
-  {
-    key: 'tongyi',
-    label: '通义千问',
-    icon: '🧠',
-    color: '#6236ff',
-    descKey: 'llm.providerTongyiDesc',
-    defaultBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    defaultModel: 'qwen-max',
-    requireApiKey: true,
-    requireBaseUrl: false,
-  },
-  {
-    key: 'ollama',
-    label: 'Ollama',
-    icon: '🦙',
-    color: '#6e40c9',
-    descKey: 'llm.providerOllamaDesc',
-    defaultBaseUrl: 'http://localhost:11434/v1',
-    defaultModel: 'llama3',
-    requireApiKey: false,
-    requireBaseUrl: true,
-  },
-  {
-    key: 'bedrock',
-    label: 'AWS Bedrock',
-    icon: '☁️',
-    color: '#ff9900',
-    descKey: 'llm.providerBedrockDesc',
-    defaultBaseUrl: '',
-    defaultModel: 'anthropic.claude-3-sonnet',
-    requireApiKey: true,
-    requireBaseUrl: false,
-    extraFields: ['awsRegion'],
-  },
+const PROVIDER_OPTIONS = [
+  { value: 'tongyi', label: '通义千问（DashScope）' },
+  { value: 'openai', label: 'OpenAI' },
+  { value: 'azure', label: 'Azure OpenAI' },
+  { value: 'deepseek', label: 'DeepSeek' },
+  { value: 'ollama', label: 'Ollama（本地）' },
+  { value: 'bedrock', label: 'AWS Bedrock' },
 ];
+
+const ENGINE_OPTIONS = [
+  { value: 'claude-code', label: 'Claude Code（默认）' },
+  { value: 'qoder', label: 'Qoder CLI' },
+  { value: 'http', label: 'HTTP（OpenAI 兼容）' },
+];
+
+const DEFAULT_BASE_URL: Record<string, string> = {
+  tongyi: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  openai: 'https://api.openai.com/v1',
+  deepseek: 'https://api.deepseek.com/v1',
+  ollama: 'http://localhost:11434/v1',
+};
+
+interface TestState {
+  success: boolean;
+  msg: string;
+  hint?: string;
+}
 
 const LlmSettingsPage: React.FC = () => {
   const { t } = useLang();
   const { message } = App.useApp();
-
   const [form] = Form.useForm();
-  const [loading, setLoading] = useState(false);
-  const [testLoading, setTestLoading] = useState(false);
-  const [testResult, setTestResult] = useState<TestResult | null>(null);
-  const [enabled, setEnabled] = useState(false);
-  const [selectedProvider, setSelectedProvider] = useState('openai');
-  const [apiKeyMasked, setApiKeyMasked] = useState(true);
-  const [savedApiKey, setSavedApiKey] = useState('');
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [apiKeyConfigured, setApiKeyConfigured] = useState(false);
   const [modelOptions, setModelOptions] = useState<{ value: string; label: string }[]>([]);
-  const [modelsLoading, setModelsLoading] = useState(false);
+  const [testResult, setTestResult] = useState<TestState | null>(null);
 
-  const mountedRef = useRef(false);
-  const lifecycleGeneration = useRef(0);
-  const providerInteractionGeneration = useRef(0);
-  const configRequestGeneration = useRef(0);
-  const selectedProviderRef = useRef('openai');
-  const modelRequestGeneration = useRef(0);
+  const buildModelOptions = (
+    nextProvider: string,
+    remoteModels: string[],
+    currentModel?: string,
+  ) => {
+    const source =
+      remoteModels.length > 0
+        ? remoteModels.map((id) => ({ value: id, label: id }))
+        : fallbackModelOptions(nextProvider);
+    if (currentModel && !source.some((option) => option.value === currentModel)) {
+      source.unshift({ value: currentModel, label: currentModel });
+    }
+    return source;
+  };
 
-  const fetchConfig = useCallback(
-    async (
-      configPromise: Promise<LlmConfig>,
-      requestLifecycle: number,
-      requestGeneration: number,
-      requestProviderGeneration: number,
-    ) => {
-      const ownsRequest = () =>
-        mountedRef.current &&
-        requestLifecycle === lifecycleGeneration.current &&
-        requestGeneration === configRequestGeneration.current &&
-        requestProviderGeneration === providerInteractionGeneration.current;
-      if (ownsRequest()) {
-        setLoading(true);
-      }
-      try {
-        const config = await configPromise;
-        if (!ownsRequest()) return;
-        if (config) {
-          const provider = config.provider || 'openai';
-          selectedProviderRef.current = provider;
-          setSelectedProvider(provider);
-          setEnabled(config.enabled || false);
-          if (config.apiKeyConfigured) {
-            setSavedApiKey(MASKED_API_KEY);
-            form.setFieldsValue({ apiKey: MASKED_API_KEY });
-            setApiKeyMasked(true);
-          }
-          form.setFieldsValue({
-            provider,
-            apiBase: config.apiBase || '',
-            model: config.model || '',
-            maxTokens: config.maxTokens || 4096,
-            temperature: config.temperature !== undefined ? config.temperature : 0.7,
-            deploymentName: config.deploymentName || '',
-            apiVersion: config.apiVersion || '2024-02-15-preview',
-            awsRegion: config.awsRegion || 'us-east-1',
-          });
-        }
-        return config;
-      } catch {
-        if (ownsRequest()) {
-          message.error(t('llm.loadFailed'));
-        }
-      } finally {
-        if (ownsRequest()) {
-          setLoading(false);
-        }
-      }
-    },
-    [form, message, t],
-  );
-
-  const fetchModels = useCallback(
-    async (
-      providerOverride?: string,
-      modelOverride?: string,
-      expectedProviderGeneration = providerInteractionGeneration.current,
-    ) => {
-      if (!mountedRef.current) return;
-      const requestedProvider = providerOverride || selectedProviderRef.current;
-      if (
-        requestedProvider !== selectedProviderRef.current ||
-        expectedProviderGeneration !== providerInteractionGeneration.current
-      ) {
-        return;
-      }
-      const requestLifecycle = lifecycleGeneration.current;
-      const requestGeneration = ++modelRequestGeneration.current;
-      const ownsRequest = () =>
-        mountedRef.current &&
-        requestLifecycle === lifecycleGeneration.current &&
-        requestGeneration === modelRequestGeneration.current &&
-        expectedProviderGeneration === providerInteractionGeneration.current &&
-        requestedProvider === selectedProviderRef.current;
-      let model = modelOverride;
-
-      setModelsLoading(true);
-      try {
-        const config = await getLlmConfig();
-        if (!ownsRequest()) return;
-
-        const configuredProvider = config?.provider || requestedProvider;
-        if (configuredProvider !== requestedProvider) return;
-
-        model = modelOverride || config?.model || '';
-        if (!config || !config.enabled) {
-          setModelOptions(fallbackModelOptions(requestedProvider, model));
-          return;
-        }
-
-        const result = await getLlmModels();
-        if (!ownsRequest()) return;
-
-        let models: string[] = [];
-        if (result && result.status === 0 && result.data) {
-          models = result.data.map((m) => m.id || m.name || '').filter(Boolean);
-        }
-        if (result?.source === 'fallback') {
-          message.warning(
-            result.hint ||
-              result.warning ||
-              '已回退到内置模型列表，请检查 Provider 凭证或模型接口。',
-          );
-        }
-        if (models.length === 0) {
-          models = fallbackModelOptions(requestedProvider, config.model).map(
-            (option) => option.value,
-          );
-        }
-        setModelOptions(models.map((item) => ({ value: item, label: item })));
-      } catch {
-        if (ownsRequest()) {
-          setModelOptions(fallbackModelOptions(requestedProvider, model));
-        }
-      } finally {
-        if (ownsRequest()) {
-          setModelsLoading(false);
-        }
-      }
-    },
-    [message],
-  );
+  const applyConfig = (config: LlmConfig, remoteModels: string[]) => {
+    const nextProvider = config.provider || 'tongyi';
+    setApiKeyConfigured(Boolean(config.apiKeyConfigured));
+    setModelOptions(buildModelOptions(nextProvider, remoteModels, config.model));
+    form.setFieldsValue({
+      engine: config.engine || 'claude-code',
+      provider: nextProvider,
+      model: config.model || undefined,
+      apiBase: config.apiBase || DEFAULT_BASE_URL[nextProvider] || '',
+      maxTokens: config.maxTokens || 4096,
+      temperature: config.temperature ?? 0.7,
+      apiKey: undefined,
+    });
+  };
 
   useEffect(() => {
-    const currentLifecycle = ++lifecycleGeneration.current;
-    const currentConfigRequest = ++configRequestGeneration.current;
-    const currentProviderGeneration = providerInteractionGeneration.current;
-    mountedRef.current = true;
-    const configPromise = getLlmConfig();
-    queueMicrotask(() => {
-      void fetchConfig(
-        configPromise,
-        currentLifecycle,
-        currentConfigRequest,
-        currentProviderGeneration,
-      ).then((config) => {
-        if (
-          !mountedRef.current ||
-          currentLifecycle !== lifecycleGeneration.current ||
-          currentConfigRequest !== configRequestGeneration.current ||
-          currentProviderGeneration !== providerInteractionGeneration.current
-        ) {
-          return;
-        }
-        void fetchModels(
-          config?.provider || selectedProviderRef.current,
-          config?.model,
-          currentProviderGeneration,
-        );
+    let cancelled = false;
+    Promise.all([getLlmConfig(), getLlmModels().catch(() => null)])
+      .then(([config, models]) => {
+        if (cancelled) return;
+        applyConfig(config, models?.data?.map((m) => m.id || '').filter(Boolean) ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) message.error(t('llm.loadFailed'));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
       });
-    });
-
     return () => {
-      mountedRef.current = false;
-      lifecycleGeneration.current += 1;
-      configRequestGeneration.current += 1;
-      modelRequestGeneration.current += 1;
+      cancelled = true;
     };
-  }, [fetchConfig, fetchModels]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const maskApiKey = (key: string) => {
-    if (key === MASKED_API_KEY) return MASKED_API_KEY;
-    if (!key || key.length < 8) return key ? '••••••••' : '';
-    return key.slice(0, 4) + '••••••••' + key.slice(-4);
-  };
-
-  const currentProvider = PROVIDERS.find((p) => p.key === selectedProvider) || PROVIDERS[0];
-
-  const buildConfig = (values: LlmConfig, forceEnabled: boolean): LlmConfig => {
-    const apiKey = apiKeyMasked && savedApiKey ? undefined : values.apiKey || '';
-    return {
-      ...values,
-      apiKey,
-      enabled: forceEnabled,
-    };
-  };
-
-  const handleProviderChange = useCallback(
-    (value: string) => {
-      const providerChanged = value !== selectedProviderRef.current;
-      selectedProviderRef.current = value;
-      if (providerChanged) {
-        providerInteractionGeneration.current += 1;
-        configRequestGeneration.current += 1;
-        modelRequestGeneration.current += 1;
-        setLoading(false);
-        setModelsLoading(false);
-      }
-      setSelectedProvider(value);
-      setTestResult(null);
-      const provider = PROVIDERS.find((p) => p.key === value);
-      if (provider) {
-        form.setFieldsValue({
-          apiBase: provider.defaultBaseUrl,
-          model: provider.defaultModel,
-        });
-        setModelOptions(fallbackModelOptions(value, provider.defaultModel));
-        if (providerChanged || !provider.requireApiKey) {
-          form.setFieldsValue({ apiKey: '' });
-          setSavedApiKey('');
-          setApiKeyMasked(true);
-        }
-      }
-    },
-    [form],
-  );
-
-  const handleApiKeyFocus = () => {
-    if (apiKeyMasked && savedApiKey) {
-      form.setFieldsValue({ apiKey: '' });
-      setApiKeyMasked(false);
-    }
-  };
-
-  const handleApiKeyBlur = () => {
-    const val = form.getFieldValue('apiKey');
-    if (!val && savedApiKey) {
-      form.setFieldsValue({ apiKey: maskApiKey(savedApiKey) });
-      setApiKeyMasked(true);
-    }
-  };
-
-  const handleTestConnection = () => {
-    const requestProviderGeneration = providerInteractionGeneration.current;
-    setTestLoading(true);
+  const handleProviderChange = (nextProvider: string) => {
+    setModelOptions(fallbackModelOptions(nextProvider));
+    const fallbackModel = fallbackModelOptions(nextProvider)[0]?.value;
+    form.setFieldsValue({
+      provider: nextProvider,
+      model: fallbackModel,
+      apiBase: DEFAULT_BASE_URL[nextProvider] || form.getFieldValue('apiBase'),
+    });
     setTestResult(null);
-    form
-      .validateFields()
-      .then((values) => {
-        const testConfig = buildConfig(values, true);
-        testLlmConnection(testConfig)
-          .then((result) => {
-            if (result && result.status === 0) {
-              setTestResult({ success: true, msg: result.msg || t('llm.testSuccessMsg') });
-              message.success(t('llm.testSuccess'));
-              // Auto-save after successful test
-              saveLlmConfig(testConfig)
-                .then(() => {
-                  if (testConfig.apiKey) {
-                    setSavedApiKey(MASKED_API_KEY);
-                    form.setFieldsValue({ apiKey: MASKED_API_KEY });
-                    setApiKeyMasked(true);
-                  }
-                  fetchModels(testConfig.provider, testConfig.model, requestProviderGeneration);
-                })
-                .catch(() => {
-                  // auto-save failure is non-critical
-                });
-            } else {
-              setTestResult(buildLlmFailureResult(result, t('llm.testFailedMsg')));
-              message.error(t('llm.testFailed'));
-            }
-          })
-          .catch((err) => {
-            setTestResult({
-              success: false,
-              msg: t('llm.testError') + (err.message || ''),
-            });
-            message.error(t('llm.testFailed'));
-          })
-          .finally(() => {
-            setTestLoading(false);
-          });
-      })
-      .catch(() => {
-        setTestLoading(false);
-      });
   };
 
-  const handleSave = () => {
-    const requestProviderGeneration = providerInteractionGeneration.current;
-    setLoading(true);
-    form
-      .validateFields()
-      .then((values) => {
-        const config = buildConfig(values, enabled);
-        saveLlmConfig(config)
-          .then((result) => {
-            if (result && result.status === 0) {
-              message.success(t('llm.saveSuccess'));
-              if (config.apiKey) {
-                setSavedApiKey(MASKED_API_KEY);
-                form.setFieldsValue({ apiKey: MASKED_API_KEY });
-                setApiKeyMasked(true);
-              }
-              fetchModels(config.provider, config.model, requestProviderGeneration);
-            } else {
-              message.error((result && result.errMsg) || t('llm.saveFailed'));
-            }
-          })
-          .catch((err) => {
-            if (err.errorFields) {
-              message.error(t('llm.formIncomplete'));
-            } else {
-              message.error(t('llm.saveFailed'));
-            }
-          })
-          .finally(() => {
-            setLoading(false);
-          });
-      })
-      .catch(() => {
-        message.error(t('llm.formIncomplete'));
-        setLoading(false);
-      });
+  const buildPayload = async (): Promise<LlmConfig | null> => {
+    let values;
+    try {
+      values = await form.validateFields();
+    } catch {
+      return null;
+    }
+    const apiKey = (values.apiKey as string | undefined)?.trim();
+    return {
+      provider: values.provider,
+      engine: values.engine || 'claude-code',
+      apiBase: values.apiBase,
+      model: values.model,
+      maxTokens: values.maxTokens,
+      temperature: values.temperature,
+      enabled: true,
+      // 留空表示保留服务端已配置的密钥（含环境变量注入的 token）
+      ...(apiKey ? { apiKey } : {}),
+    };
   };
 
-  // ─── Provider Grid ──────────────────────────────────────────
+  const applyTestResult = (result: LlmTestResult) => {
+    if (result.status === 0) {
+      setTestResult({ success: true, msg: result.msg || '连接成功' });
+    } else {
+      setTestResult({
+        success: false,
+        msg: result.errMsg || '连接测试失败',
+        hint: result.hint,
+      });
+    }
+  };
 
-  const renderProviderGrid = () => (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(3, 1fr)',
-        gap: 12,
-        marginBottom: 4,
-      }}
-    >
-      {PROVIDERS.map((p) => (
-        <div
-          key={p.key}
-          onClick={() => {
-            form.setFieldsValue({ provider: p.key });
-            handleProviderChange(p.key);
-          }}
-          style={{
-            position: 'relative',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            padding: '14px 16px',
-            border: `2px solid ${selectedProvider === p.key ? p.color : '#f0f0f0'}`,
-            borderRadius: 10,
-            cursor: 'pointer',
-            background: selectedProvider === p.key ? '#fafbff' : '#ffffff',
-            boxShadow: selectedProvider === p.key ? '0 2px 8px rgba(22, 119, 255, 0.1)' : 'none',
-            transition: 'all 0.2s ease',
-            userSelect: 'none',
-          }}
-        >
-          <div
-            style={{
-              flexShrink: 0,
-              width: 40,
-              height: 40,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: 8,
-              fontSize: 20,
-              fontWeight: 600,
-              background: p.color + '15',
-              color: p.color,
-            }}
-          >
-            {p.icon.length <= 2 ? p.icon : <Cloud size={20} />}
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.4 }}>{p.label}</div>
-            <div
-              style={{
-                fontSize: 11,
-                color: 'rgba(0,0,0,0.45)',
-                lineHeight: 1.4,
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-              }}
-            >
-              {t(p.descKey)}
-            </div>
-          </div>
-          {selectedProvider === p.key && (
-            <CheckCircle
-              size={16}
-              weight="fill"
-              style={{ position: 'absolute', top: 8, right: 8, color: p.color }}
-            />
-          )}
-        </div>
-      ))}
-    </div>
-  );
+  const handleTest = async () => {
+    const payload = await buildPayload();
+    if (!payload) return;
+    setTesting(true);
+    setTestResult(null);
+    try {
+      applyTestResult(await testLlmConnection(payload));
+    } catch {
+      setTestResult({ success: false, msg: '连接测试请求失败，请稍后重试' });
+    } finally {
+      setTesting(false);
+    }
+  };
 
-  // ─── Render ──────────────────────────────────────────────────
+  const handleSave = async () => {
+    const payload = await buildPayload();
+    if (!payload) return;
+    setSaving(true);
+    try {
+      const result = await saveLlmConfig(payload);
+      if (result.status === 0) {
+        message.success('保存成功');
+        if (payload.apiKey) {
+          setApiKeyConfigured(true);
+          form.setFieldValue('apiKey', undefined);
+        }
+      } else {
+        message.error(result.errMsg || '保存失败');
+      }
+    } catch {
+      message.error('保存请求失败，请稍后重试');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
-    <div style={{ maxWidth: 960, margin: '0 auto', padding: '0 24px 40px' }}>
-      <PageHeader
-        title={t('llm.title')}
+    <div style={{ padding: 24 }}>
+      <PageHeader title={t('llm.title')} subtitle="配置 AI 助手使用的模型服务" />
 
-        extra={
-          <Space>
-            <Text type="secondary" style={{ fontSize: 13, marginRight: 8 }}>
-              {t('llm.enable')}
-            </Text>
-            <Switch
-              checked={enabled}
-              onChange={setEnabled}
-              checkedChildren={t('llm.on')}
-              unCheckedChildren={t('llm.off')}
-            />
-          </Space>
-        }
-      />
-
-      <Card
-        loading={loading}
-        style={{ borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}
-        styles={{ body: { padding: '24px 28px' } }}
-      >
+      <Card loading={loading} style={{ maxWidth: 720 }}>
         <Form
           form={form}
           layout="vertical"
-          initialValues={{
-            provider: 'openai',
-            model: 'gpt-4o',
-            apiBase: 'https://api.openai.com/v1',
-            maxTokens: 4096,
-            temperature: 0.7,
-            apiVersion: '2024-02-15-preview',
-            awsRegion: 'us-east-1',
-          }}
+          initialValues={{ provider: 'tongyi', engine: 'claude-code' }}
         >
-          {/* Provider Selection */}
-          <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 16 }}>
-            {t('llm.selectProvider')}
-          </div>
-          {renderProviderGrid()}
-          <Form.Item name="provider" hidden>
-            <Input />
+          <Form.Item
+            label="执行引擎"
+            name="engine"
+            extra="Claude Code / Qoder 引擎在服务器上以 CLI 子进程方式运行，凭据经环境变量注入；HTTP 引擎直连 OpenAI 兼容接口"
+          >
+            <Select options={ENGINE_OPTIONS} />
           </Form.Item>
-
-          <Divider style={{ margin: '20px 0 16px' }} />
-
-          {/* Connection Config */}
-          <div
-            style={{
-              fontSize: 15,
-              fontWeight: 600,
-              marginBottom: 16,
-              display: 'flex',
-              alignItems: 'center',
-            }}
-          >
-            <Globe size={16} style={{ marginRight: 6 }} />
-            {t('llm.connectionConfig')}
-          </div>
-
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
-                name="apiKey"
-                label={
-                  <span>
-                    <Key size={14} style={{ marginRight: 4, verticalAlign: 'middle' }} />
-                    {t('llm.apiKey')}
-                    {currentProvider.requireApiKey && <Text type="danger"> *</Text>}
-                  </span>
-                }
-                rules={
-                  currentProvider.requireApiKey && !savedApiKey
-                    ? [{ required: true, message: t('llm.apiKeyRequired') }]
-                    : []
-                }
-                extra={t('llm.apiKeyEncrypted')}
-              >
-                <Input.Password
-                  placeholder={
-                    currentProvider.requireApiKey
-                      ? t('llm.apiKeyPlaceholder')
-                      : t('llm.apiKeyNoRequired')
-                  }
-                  onFocus={handleApiKeyFocus}
-                  onBlur={handleApiKeyBlur}
-                  visibilityToggle
-                />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
-                name="apiBase"
-                label={
-                  <span>
-                    <Globe size={14} style={{ marginRight: 4, verticalAlign: 'middle' }} />
-                    {t('llm.apiBase')}
-                    {currentProvider.requireBaseUrl && <Text type="danger"> *</Text>}
-                  </span>
-                }
-                rules={
-                  currentProvider.requireBaseUrl
-                    ? [{ required: true, message: t('llm.apiBaseRequired') }]
-                    : []
-                }
-                extra={
-                  currentProvider.requireBaseUrl
-                    ? t('llm.apiBaseRequiredHint')
-                    : t('llm.apiBaseCustom')
-                }
-              >
-                <Input
-                  placeholder={currentProvider.defaultBaseUrl || 'https://api.openai.com/v1'}
-                />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          {/* Azure extra fields */}
-          {selectedProvider === 'azure' && (
-            <Row gutter={16}>
-              <Col span={12}>
-                <Form.Item
-                  name="deploymentName"
-                  label={t('llm.deploymentName')}
-                  rules={[{ required: true, message: t('llm.deploymentNameRequired') }]}
-                >
-                  <Input placeholder="my-gpt4-deployment" />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item
-                  name="apiVersion"
-                  label={t('llm.apiVersion')}
-                  rules={[{ required: true, message: t('llm.apiVersionRequired') }]}
-                >
-                  <Select placeholder={t('llm.apiVersion')}>
-                    <Select.Option value="2024-02-15-preview">2024-02-15-preview</Select.Option>
-                    <Select.Option value="2024-08-01-preview">2024-08-01-preview</Select.Option>
-                    <Select.Option value="2025-01-01-preview">2025-01-01-preview</Select.Option>
-                  </Select>
-                </Form.Item>
-              </Col>
-            </Row>
-          )}
-
-          {/* AWS Bedrock extra fields */}
-          {selectedProvider === 'bedrock' && (
-            <Form.Item
-              name="awsRegion"
-              label={t('llm.awsRegion')}
-              rules={[{ required: true, message: t('llm.awsRegionRequired') }]}
-            >
-              <Select placeholder={t('llm.awsRegion')}>
-                <Select.Option value="us-east-1">us-east-1</Select.Option>
-                <Select.Option value="us-west-2">us-west-2</Select.Option>
-                <Select.Option value="eu-west-1">eu-west-1</Select.Option>
-                <Select.Option value="ap-northeast-1">ap-northeast-1</Select.Option>
-                <Select.Option value="ap-southeast-1">ap-southeast-1</Select.Option>
-              </Select>
-            </Form.Item>
-          )}
-
-          <Divider style={{ margin: '20px 0 16px' }} />
-
-          {/* Model Parameters */}
-          <div
-            style={{
-              fontSize: 15,
-              fontWeight: 600,
-              marginBottom: 16,
-              display: 'flex',
-              alignItems: 'center',
-            }}
-          >
-            <Lightning size={16} style={{ marginRight: 6 }} />
-            {t('llm.modelParams')}
-          </div>
 
           <Form.Item
-            name="model"
-            label={t('llm.model')}
-            rules={[{ required: true, message: t('llm.modelRequired') }]}
-            extra={t('llm.modelExtra')}
+            label="模型服务商"
+            name="provider"
+            rules={[{ required: true, message: '请选择模型服务商' }]}
           >
-            <Select
-              showSearch
-              loading={modelsLoading}
-              placeholder={modelsLoading ? t('llm.modelsLoading') : currentProvider.defaultModel}
-              filterOption={(input, option) =>
-                (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-              }
-              notFoundContent={modelsLoading ? t('common.loading') : t('llm.modelsNotFound')}
-              options={modelOptions}
-            />
+            <Select options={PROVIDER_OPTIONS} onChange={handleProviderChange} />
           </Form.Item>
 
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item noStyle shouldUpdate={(prev, cur) => prev.maxTokens !== cur.maxTokens}>
-                {({ getFieldValue }) => (
-                  <Form.Item
-                    name="maxTokens"
-                    label={
-                      <span>
-                        {t('llm.maxTokens')}
-                        <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
-                          {getFieldValue('maxTokens') ?? 4096}
-                        </Text>
-                      </span>
-                    }
-                  >
-                    <Slider
-                      min={256}
-                      max={128000}
-                      step={256}
-                      marks={{
-                        2048: { label: '2K', style: { fontSize: 11 } },
-                        8192: { label: '8K', style: { fontSize: 11 } },
-                        32768: { label: '32K', style: { fontSize: 11 } },
-                        128000: { label: '128K', style: { fontSize: 11 } },
-                      }}
-                    />
-                  </Form.Item>
-                )}
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item noStyle shouldUpdate={(prev, cur) => prev.temperature !== cur.temperature}>
-                {({ getFieldValue }) => (
-                  <Form.Item
-                    name="temperature"
-                    label={
-                      <span>
-                        {t('llm.temperature')}
-                        <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
-                          {getFieldValue('temperature') ?? 0.7}
-                        </Text>
-                      </span>
-                    }
-                    extra={t('llm.temperatureExtra')}
-                  >
-                    <Slider
-                      min={0}
-                      max={2}
-                      step={0.1}
-                      marks={{
-                        0: { label: '0', style: { fontSize: 11 } },
-                        0.7: { label: '0.7', style: { fontSize: 11 } },
-                        1: { label: '1', style: { fontSize: 11 } },
-                        2: { label: '2', style: { fontSize: 11 } },
-                      }}
-                    />
-                  </Form.Item>
-                )}
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Divider style={{ margin: '20px 0 16px' }} />
-
-          {/* Actions */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: 12,
-            }}
+          <Form.Item
+            label="模型"
+            name="model"
+            rules={[{ required: true, message: '请选择或输入模型' }]}
+            extra="默认使用 qwen3.8-max"
           >
-            <Space size="middle">
-              <Button
-                type="primary"
-                icon={<FloppyDisk size={14} />}
-                onClick={handleSave}
-                loading={loading}
-                size="large"
-              >
-                {t('llm.saveConfig')}
-              </Button>
-              <Button
-                icon={<Lightning size={14} />}
-                onClick={handleTestConnection}
-                loading={testLoading}
-                size="large"
-              >
-                {testLoading ? t('llm.testing') : t('llm.testConnection')}
-              </Button>
-            </Space>
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-              <ShieldCheck size={14} style={{ marginRight: 4 }} />
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                {t('llm.securityNote')}
-              </Text>
-            </div>
-          </div>
+            <Select showSearch options={modelOptions} placeholder="选择模型" />
+          </Form.Item>
 
-          {/* Test Result */}
+          <Form.Item
+            label="API Key"
+            name="apiKey"
+            extra={
+              apiKeyConfigured
+                ? '已配置（可能来自环境变量 RMQ_LLM_TOKEN）；留空将保留现有密钥'
+                : '请输入 API Key'
+            }
+          >
+            <Input.Password
+              placeholder={apiKeyConfigured ? '••••••••（已配置，留空保留）' : 'sk-...'}
+              autoComplete="new-password"
+            />
+          </Form.Item>
+          {apiKeyConfigured && (
+            <div style={{ marginTop: -16, marginBottom: 16 }}>
+              <Tag color="green">密钥已配置</Tag>
+            </div>
+          )}
+
+          <Form.Item
+            label="API Base URL"
+            name="apiBase"
+            rules={[
+              { required: true, message: '请输入 API Base URL' },
+              {
+                pattern: /^https?:\/\/.+/,
+                message: '需为 http/https 地址',
+              },
+            ]}
+          >
+            <Input placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1" />
+          </Form.Item>
+
+          <Form.Item label="Temperature" name="temperature">
+            <Slider min={0} max={2} step={0.1} marks={{ 0: '0', 0.7: '0.7', 2: '2' }} />
+          </Form.Item>
+
+          <Form.Item label="Max Tokens" name="maxTokens">
+            <InputNumber min={1} max={200000} style={{ width: 200 }} />
+          </Form.Item>
+
           {testResult && (
             <Alert
-              style={{ marginTop: 16, borderRadius: 8 }}
+              style={{ marginBottom: 16 }}
               type={testResult.success ? 'success' : 'error'}
               showIcon
-              icon={
-                testResult.success ? (
-                  <CheckCircle size={16} weight="fill" />
-                ) : (
-                  <XCircle size={16} weight="fill" />
-                )
-              }
               message={testResult.msg}
-              description={
-                !testResult.success && (testResult.hint || testResult.code) ? (
-                  <Space direction="vertical" size={4}>
-                    {testResult.hint && <Text>{testResult.hint}</Text>}
-                    {testResult.code && <Text code>{testResult.code}</Text>}
-                  </Space>
-                ) : undefined
-              }
-              closable
-              onClose={() => setTestResult(null)}
+              description={testResult.hint}
             />
           )}
+
+          <Form.Item style={{ marginBottom: 0 }}>
+            <Space>
+              <Button type="primary" loading={saving} onClick={() => void handleSave()}>
+                保存
+              </Button>
+              <Button loading={testing} onClick={() => void handleTest()}>
+                测试连接
+              </Button>
+            </Space>
+          </Form.Item>
         </Form>
       </Card>
     </div>

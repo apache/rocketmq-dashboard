@@ -19,7 +19,15 @@ export const FALLBACK_MODELS: Record<string, string[]> = {
   openai: ['gpt-4o', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'],
   azure: ['gpt-4o', 'gpt-4', 'gpt-3.5-turbo'],
   deepseek: ['deepseek-chat', 'deepseek-reasoner'],
-  tongyi: ['qwen-max', 'qwen-plus', 'qwen-turbo'],
+  tongyi: [
+    'qwen3.8-max',
+    'qwen3.7-max',
+    'qwen3.7-plus',
+    'deepseek-v4-pro',
+    'deepseek-v4-flash',
+    'MiniMax-M2.5',
+    'glm-5.2',
+  ],
   ollama: ['llama3', 'mistral', 'gemma2', 'qwen2.5'],
   bedrock: ['anthropic.claude-3-sonnet', 'anthropic.claude-3-haiku', 'meta.llama3-70b'],
 };

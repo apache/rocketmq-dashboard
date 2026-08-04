@@ -32,7 +32,8 @@ import {
   MegaphoneSimple,
   Database,
 } from '@phosphor-icons/react';
-import { getLlmConfig, getLlmModels } from '../../api/llm';
+import { getLlmConfig } from '../../api/llm';
+import { useEngineStore } from '../../stores/engineStore';
 import { useLang } from '../../i18n/LangContext';
 
 /* ─── Time-aware greeting key ─── */
@@ -47,10 +48,10 @@ function getGreetingKey(): string {
 
 /* ─── Mode definitions (keys only, labels resolved via t()) ─── */
 const modes = [
-  { key: 'query', labelKey: 'home.mode.query', icon: MagnifyingGlass },
+  { key: 'chat', labelKey: 'home.mode.chat', icon: ChatCircleDots },
   { key: 'diagnose', labelKey: 'home.mode.diagnose', icon: Stethoscope },
   { key: 'manage', labelKey: 'home.mode.manage', icon: Database },
-  { key: 'chat', labelKey: 'home.mode.chat', icon: ChatCircleDots },
+  { key: 'query', labelKey: 'home.mode.query', icon: MagnifyingGlass },
 ];
 
 interface ModelOption {
@@ -58,13 +59,34 @@ interface ModelOption {
   recommended: boolean;
 }
 
+const ENGINE_OPTIONS = [
+  { value: 'claude-code', label: 'Claude Code' },
+  { value: 'qoder', label: 'Qoder' },
+  { value: 'http', label: 'HTTP' },
+];
+
+// 首页只暴露这些模型（token-plan 网关实际可对话的模型集），qwen3.8-max 为推荐项。
+const HOME_MODELS = [
+  'qwen3.8-max',
+  'qwen3.7-max',
+  'qwen3.7-plus',
+  'deepseek-v4-pro',
+  'deepseek-v4-flash',
+  'MiniMax-M2.5',
+  'glm-5.2',
+];
+const RECOMMENDED_MODEL = 'qwen3.8-max';
+
 /* ═══════════════════════════════════════════════════════
    HomePage Component
    ═══════════════════════════════════════════════════════ */
 const HomePage = () => {
-  const [activeMode, setActiveMode] = useState('query');
+  const [activeMode, setActiveMode] = useState('chat');
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
   const [selectedModel, setSelectedModel] = useState('');
+  const engine = useEngineStore((s) => s.engine);
+  const setEnginePreference = useEngineStore((s) => s.setEngine);
+  const [promoteOn, setPromoteOn] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [indicatorStyle, setIndicatorStyle] = useState({ width: 83, left: 6 });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -76,26 +98,30 @@ const HomePage = () => {
     let cancelled = false;
 
     const loadModels = async () => {
-      const [config, modelsResult] = await Promise.all([
-        getLlmConfig().catch(() => null),
-        getLlmModels().catch(() => null),
-      ]);
+      const config = await getLlmConfig().catch(() => null);
       if (cancelled) return;
 
       const configuredModel = config?.model?.trim() ?? '';
-      const providerModels = modelsResult?.status === 0 && modelsResult.data
-        ? modelsResult.data.map((item) => item.id || item.name || '').filter(Boolean)
-        : [];
-      const values = Array.from(new Set([
-        ...(configuredModel ? [configuredModel] : []),
-        ...providerModels,
-      ]));
+      const values = Array.from(
+        new Set([
+          ...HOME_MODELS,
+          ...(configuredModel && !HOME_MODELS.includes(configuredModel) ? [configuredModel] : []),
+        ]),
+      );
 
-      setModelOptions(values.map((value, index) => ({
-        value,
-        recommended: configuredModel ? value === configuredModel : index === 0,
-      })));
-      setSelectedModel((current) => (current && values.includes(current) ? current : values[0] || ''));
+      setModelOptions(
+        values.map((value) => ({
+          value,
+          recommended:
+            value ===
+            (configuredModel && HOME_MODELS.includes(configuredModel)
+              ? configuredModel
+              : RECOMMENDED_MODEL),
+        })),
+      );
+      setSelectedModel((current) =>
+        current && values.includes(current) ? current : values[0] || '',
+      );
     };
 
     void loadModels();
@@ -154,9 +180,22 @@ const HomePage = () => {
     }
   };
 
+  const handleEngineChange = (value: string) => {
+    setEnginePreference(value as 'claude-code' | 'qoder' | 'http');
+  };
+
   const handlePromptSubmit = () => {
     const prompt = inputValue.trim();
-    navigate('/ai', { state: prompt ? { prompt, ...(selectedModel ? { model: selectedModel } : {}) } : null });
+    navigate('/ai', {
+      state: prompt
+        ? {
+            prompt,
+            ...(selectedModel ? { model: selectedModel } : {}),
+            engine,
+            ...(promoteOn ? { enhance: true } : {}),
+          }
+        : null,
+    });
   };
 
   return (
@@ -348,6 +387,17 @@ const HomePage = () => {
                       className="model-selector"
                       style={{ fontSize: '0.893rem' }}
                     />
+                    <Select
+                      size="small"
+                      value={engine}
+                      onChange={(val) => void handleEngineChange(val)}
+                      options={ENGINE_OPTIONS}
+                      variant="borderless"
+                      popupMatchSelectWidth={false}
+                      suffixIcon={<CaretDown size={10} color="#9CA3AF" />}
+                      title={lang === 'zh' ? '执行引擎' : 'Agent engine'}
+                      style={{ fontSize: '0.893rem', minWidth: 110 }}
+                    />
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
                     <button className="p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors">
@@ -387,8 +437,25 @@ const HomePage = () => {
                             <SlidersHorizontal size={17} />
                             <span>工具</span>
                           </button>
-                          <button className="tool-btn">
-                            <Sparkle size={17} />
+                          <button
+                            className="tool-btn"
+                            onClick={() => setPromoteOn((current) => !current)}
+                            title={
+                              lang === 'zh'
+                                ? '开启后，提交前用 LLM 把提问改写为结构化 prompt'
+                                : 'When enabled, rewrite your prompt with an LLM before sending'
+                            }
+                            style={
+                              promoteOn
+                                ? {
+                                    background: '#f9f0ff',
+                                    color: '#722ed1',
+                                    boxShadow: 'inset 0 0 0 1px #d3adf7',
+                                  }
+                                : undefined
+                            }
+                          >
+                            <Sparkle size={17} weight={promoteOn ? 'fill' : 'regular'} />
                             <span>Prompt 增强</span>
                           </button>
                           <button

@@ -1,0 +1,97 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import { App } from 'antd';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { LangProvider } from '../../../i18n/LangContext';
+import LlmSettingsPage from '../LlmSettings';
+
+const llmApiMocks = vi.hoisted(() => ({
+  getLlmConfig: vi.fn(),
+  saveLlmConfig: vi.fn(),
+  testLlmConnection: vi.fn(),
+  getLlmModels: vi.fn(),
+}));
+
+vi.mock('../../../api/llm', () => llmApiMocks);
+
+beforeAll(() => {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+});
+
+const renderPage = () =>
+  render(
+    <App>
+      <LangProvider>
+        <LlmSettingsPage />
+      </LangProvider>
+    </App>,
+  );
+
+describe('LlmSettingsPage', () => {
+  beforeEach(() => {
+    llmApiMocks.getLlmConfig.mockResolvedValue({
+      provider: 'tongyi',
+      apiBase: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      model: 'qwen3.8-max',
+      maxTokens: 4096,
+      temperature: 0.7,
+      enabled: true,
+      apiKeyConfigured: true,
+    });
+    llmApiMocks.getLlmModels.mockResolvedValue({
+      status: 0,
+      data: [{ id: 'qwen3.8-max' }, { id: 'qwen-max' }],
+    });
+    llmApiMocks.saveLlmConfig.mockResolvedValue({ status: 0 });
+    llmApiMocks.testLlmConnection.mockResolvedValue({ status: 0, msg: 'ok' });
+  });
+
+  it('loads the saved config and shows the configured-key badge', async () => {
+    renderPage();
+
+    expect(await screen.findByText('密钥已配置')).toBeInTheDocument();
+    expect(screen.getByText('qwen3.8-max')).toBeInTheDocument();
+  });
+
+  it('saves without sending an apiKey when the input stays empty', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('密钥已配置');
+    await user.click(screen.getByRole('button', { name: /保\s*存/ }));
+
+    await waitFor(() => expect(llmApiMocks.saveLlmConfig).toHaveBeenCalledTimes(1));
+    const payload = llmApiMocks.saveLlmConfig.mock.calls[0][0];
+    expect(payload).toMatchObject({ provider: 'tongyi', model: 'qwen3.8-max' });
+    expect(payload.apiKey).toBeUndefined();
+  });
+});
