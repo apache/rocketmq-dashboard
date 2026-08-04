@@ -92,6 +92,7 @@ public class ClusterService {
 
     public ClusterVO updateClusterConfig(UpdateConfigDTO command) {
         log.info("Updating cluster config for: {}", command.getId());
+        requireMatchingDefaultQueueNums(command);
         ClusterVO cluster = clusterRepository.findById(command.getId())
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getId()));
 
@@ -183,6 +184,14 @@ public class ClusterService {
             props.setProperty("brokerPermission", command.getBrokerPermission().toString());
         }
         return props;
+    }
+
+    private void requireMatchingDefaultQueueNums(UpdateConfigDTO command) {
+        if (command.getWriteQueueNums() != null && command.getReadQueueNums() != null
+                && !command.getWriteQueueNums().equals(command.getReadQueueNums())) {
+            throw new BusinessException(400,
+                    "RocketMQ broker default queue count requires matching writeQueueNums and readQueueNums");
+        }
     }
 
     private FlushDiskType parseFlushDiskType(String value) {

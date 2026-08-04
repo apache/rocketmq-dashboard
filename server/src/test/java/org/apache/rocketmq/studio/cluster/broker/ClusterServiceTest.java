@@ -123,6 +123,21 @@ class ClusterServiceTest {
     }
 
     @Test
+    void updateClusterConfigShouldRejectDifferentDefaultReadAndWriteQueueNums() {
+        UpdateConfigDTO command = UpdateConfigDTO.builder()
+                .id("cluster-1")
+                .writeQueueNums(8)
+                .readQueueNums(16)
+                .build();
+
+        assertThatThrownBy(() -> clusterService.updateClusterConfig(command))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("requires matching writeQueueNums and readQueueNums");
+
+        verifyNoInteractions(clusterRepository, clusterProvider);
+    }
+
+    @Test
     void listClustersShouldReturnEmptyListWhenNoClusters() {
         when(clusterRepository.findAll()).thenReturn(Collections.emptyList());
 
