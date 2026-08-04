@@ -218,7 +218,7 @@ public class RocketMQClusterProvider implements ClusterProvider {
      */
     private int parseFirstTpsValue(String tpsStr) {
         try {
-            String[] parts = tpsStr.split(" ");
+            String[] parts = tpsStr.trim().split("\\s+");
             if (parts.length > 0) {
                 return (int) Double.parseDouble(parts[0]);
             }
