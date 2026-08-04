@@ -82,6 +82,23 @@ describe('ops service mock data', () => {
     expect(afterUpdate?.channels).toEqual(['webhook']);
   });
 
+  it('rejects updates for unknown alert rule IDs', async () => {
+    const before = await listAlertRules();
+    const missingRule = {
+      ...before[0],
+      id: 'missing-alert-rule',
+      name: 'missing rule',
+    };
+
+    await expect(updateAlertRule(missingRule)).rejects.toThrow(
+      'Alert rule not found: missing-alert-rule',
+    );
+
+    const after = await listAlertRules();
+    expect(after.map((rule) => rule.id)).toEqual(before.map((rule) => rule.id));
+    expect(after.find((rule) => rule.id === 'missing-alert-rule')).toBeUndefined();
+  });
+
   it('returns copied system alert rows', async () => {
     const first = await listSystemAlerts();
     const originalTitle = first[0].title;
