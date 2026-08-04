@@ -53,6 +53,13 @@ export async function listAclUsers(params?: { keyword?: string }) {
   return res.data.data;
 }
 
+export async function getAclUserCredentials(id: string) {
+  const res = await client.get<{ data: AclUser }>(
+    `/acl/users/${encodeURIComponent(id)}/credentials`,
+  );
+  return res.data.data;
+}
+
 export async function createAclUser(data: Partial<AclUser>) {
   const res = await client.post<{ data: AclUser }>('/acl/users/create', data);
   return res.data.data;

@@ -20,6 +20,7 @@ import org.apache.rocketmq.studio.common.domain.Result;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -61,6 +62,11 @@ public class AclController {
     @GetMapping("/users")
     public Result<List<AclUserVO>> listUsers() {
         return Result.ok(aclService.listUsers());
+    }
+
+    @GetMapping("/users/{id}/credentials")
+    public Result<AclUserVO> getUserCredentials(@PathVariable String id) {
+        return Result.ok(aclService.getUserCredentials(id));
     }
 
     @PostMapping("/users/create")

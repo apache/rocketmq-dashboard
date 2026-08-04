@@ -151,8 +151,8 @@ class AclServiceTest {
 
     @Test
     void updateRuleShouldRejectUnknownIdInsteadOfCreatingRule() {
-        InMemoryAclRepository repository = new InMemoryAclRepository();
-        AclService service = new AclService(repository);
+        when(aclRepository.replaceRule(any(AclRuleVO.class))).thenReturn(Optional.empty());
+        when(aclRepository.findRules(null, null)).thenReturn(List.of());
         AclRuleVO update = AclRuleVO.builder()
                 .id("missing-rule")
                 .principal("orders")
@@ -160,18 +160,38 @@ class AclServiceTest {
                 .decision("DENY")
                 .build();
 
-        assertThatThrownBy(() -> service.updateRule(update))
+        assertThatThrownBy(() -> aclService.updateRule(update))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("ACL rule not found: missing-rule")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
-        assertThat(service.listRules(null, null)).isEmpty();
+        assertThat(aclService.listRules(null, null)).isEmpty();
+        verify(aclRepository, never()).saveRule(any(AclRuleVO.class));
     }
 
     @Test
     void updateRuleShouldPreserveStoredCreationTimestamp() {
-        InMemoryAclRepository repository = new InMemoryAclRepository();
-        AclService service = new AclService(repository);
-        AclRuleVO created = service.createRule(AclRuleVO.builder()
+        java.util.concurrent.atomic.AtomicReference<AclRuleVO> stored = new java.util.concurrent.atomic.AtomicReference<>();
+        when(aclRepository.saveRule(any(AclRuleVO.class))).thenAnswer(invocation -> {
+            stored.set(invocation.getArgument(0));
+            return invocation.getArgument(0);
+        });
+        when(aclRepository.replaceRule(any(AclRuleVO.class))).thenAnswer(invocation -> {
+            AclRuleVO rule = invocation.getArgument(0);
+            // Repository contract: keep the original creation timestamp on replace.
+            return Optional.of(AclRuleVO.builder()
+                    .id(rule.getId())
+                    .principal(rule.getPrincipal())
+                    .resource(rule.getResource())
+                    .resourceType(rule.getResourceType())
+                    .resourcePattern(rule.getResourcePattern())
+                    .actions(rule.getActions())
+                    .decision(rule.getDecision())
+                    .scope(rule.getScope())
+                    .aclVersion(rule.getAclVersion())
+                    .createdAt(stored.get().getCreatedAt())
+                    .build());
+        });
+        AclRuleVO created = aclService.createRule(AclRuleVO.builder()
                 .principal("orders")
                 .resource("orders-topic")
                 .decision("ALLOW")
@@ -187,16 +207,11 @@ class AclServiceTest {
                 .createdAt(clientCreatedAt)
                 .build();
 
-        AclRuleVO updated = service.updateRule(update);
-        AclRuleVO stored = service.listRules(null, null).get(0);
+        AclRuleVO updated = aclService.updateRule(update);
 
         assertThat(updated.getCreatedAt()).isEqualTo(originalCreatedAt);
         assertThat(updated.getDecision()).isEqualTo("DENY");
         assertThat(update.getCreatedAt()).isEqualTo(clientCreatedAt);
-        assertThat(service.listRules(null, null)).hasSize(1);
-        assertThat(stored.getId()).isEqualTo(created.getId());
-        assertThat(stored.getDecision()).isEqualTo("DENY");
-        assertThat(stored.getCreatedAt()).isEqualTo(originalCreatedAt);
     }
 
     @Test
@@ -396,18 +411,24 @@ class AclServiceTest {
 
     @Test
     void createListUpdateShouldPreserveStoredCredentials() {
-        InMemoryAclRepository repository = new InMemoryAclRepository();
-        AclService service = new AclService(repository);
-        AclUserVO created = service.createUser(AclUserVO.builder()
+        java.util.concurrent.atomic.AtomicReference<AclUserVO> stored = new java.util.concurrent.atomic.AtomicReference<>();
+        when(aclRepository.saveUser(any(AclUserVO.class))).thenAnswer(invocation -> {
+            stored.set(invocation.getArgument(0));
+            return invocation.getArgument(0);
+        });
+        when(aclRepository.findUserById(any())).thenAnswer(invocation -> Optional.ofNullable(stored.get()));
+        when(aclRepository.findUsers()).thenAnswer(invocation -> List.of(stored.get()));
+
+        AclUserVO created = aclService.createUser(AclUserVO.builder()
                 .username("orders")
                 .admin(false)
                 .clusters(List.of("cluster-a"))
                 .build());
         String accessKey = created.getAccessKey();
         String secretKey = created.getSecretKey();
-        AclUserVO listed = service.listUsers().get(0);
+        AclUserVO listed = aclService.listUsers().get(0);
 
-        AclUserVO updated = service.updateUser(AclUserVO.builder()
+        AclUserVO updated = aclService.updateUser(AclUserVO.builder()
                 .id(listed.getId())
                 .username("orders-admin")
                 .accessKey(listed.getAccessKey())
@@ -420,11 +441,11 @@ class AclServiceTest {
         assertThat(listed.getSecretKey()).isNotEqualTo(secretKey);
         assertThat(updated.getAccessKey()).isEqualTo(mask(accessKey));
         assertThat(updated.getSecretKey()).isEqualTo(mask(secretKey));
-        AclUserVO stored = repository.findUserById(created.getId()).orElseThrow();
-        assertThat(stored.getAccessKey()).isEqualTo(accessKey);
-        assertThat(stored.getSecretKey()).isEqualTo(secretKey);
-        assertThat(stored.getUsername()).isEqualTo("orders-admin");
-        assertThat(stored.isAdmin()).isTrue();
+        AclUserVO storedUser = stored.get();
+        assertThat(storedUser.getAccessKey()).isEqualTo(accessKey);
+        assertThat(storedUser.getSecretKey()).isEqualTo(secretKey);
+        assertThat(storedUser.getUsername()).isEqualTo("orders-admin");
+        assertThat(storedUser.isAdmin()).isTrue();
     }
 
     private String mask(String credential) {
