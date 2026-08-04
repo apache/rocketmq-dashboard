@@ -14,29 +14,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.instance.acl;
+package org.apache.rocketmq.studio.persistence.mapper;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import org.apache.rocketmq.studio.persistence.entity.RmqAclUser;
 
-import java.time.LocalDateTime;
-import java.util.List;
-
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class AclRuleVO {
-    private String id;
-    private String principal;
-    private String resource;
-    private String resourceType;
-    private String resourcePattern;
-    private List<String> actions;
-    private String decision;
-    private String scope;
-    private String aclVersion;
-    private LocalDateTime createdAt;
+public interface RmqAclUserMapper extends BaseMapper<RmqAclUser> {
 }

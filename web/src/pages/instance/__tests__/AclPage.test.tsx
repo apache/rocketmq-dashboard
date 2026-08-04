@@ -19,6 +19,7 @@ import { App } from 'antd';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangProvider } from '../../../i18n/LangContext';
 import * as aclService from '../../../services/aclService';
@@ -33,6 +34,9 @@ vi.mock('../../../services/aclService', () => ({
   listAclUsers: vi.fn(),
   updateAclRule: vi.fn(),
   updateAclUser: vi.fn(),
+}));
+vi.mock('../../../services/instanceService', () => ({
+  listInstances: vi.fn().mockResolvedValue([]),
 }));
 
 beforeAll(() => {
@@ -54,7 +58,9 @@ beforeAll(() => {
 const renderWithProviders = (ui: React.ReactElement) =>
   render(
     <App>
-      <LangProvider>{ui}</LangProvider>
+      <LangProvider>
+        <MemoryRouter>{ui}</MemoryRouter>
+      </LangProvider>
     </App>,
   );
 

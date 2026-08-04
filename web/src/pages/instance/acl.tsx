@@ -45,12 +45,14 @@ import {
   createAclUser,
   deleteAclRule,
   deleteAclUser,
+  getAclUserCredentials,
   listAclRules,
   listAclUsers,
   updateAclRule,
   updateAclUser,
 } from '../../services/aclService';
 import type { AclRule, AclUser } from '../../api/acl';
+import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 
 type AclRuleFormValues = Pick<
   AclRule,
@@ -89,6 +91,7 @@ const isFormValidationError = (error: unknown) =>
    ═══════════════════════════════════════════ */
 const AclPage = () => {
   const { t } = useLang();
+  const { selectedInstanceId, selectInstance, instanceOptions } = useInstanceFilter();
 
   /* ─── State ─── */
   const [rules, setRules] = useState<AclRule[]>([]);
@@ -116,6 +119,9 @@ const AclPage = () => {
 
   // Secret key reveal
   const [revealedKeys, setRevealedKeys] = useState<Set<string>>(new Set());
+  const [credentialsByUser, setCredentialsByUser] = useState<
+    Record<string, { accessKey: string; secretKey: string }>
+  >({});
 
   useEffect(() => {
     let mounted = true;
@@ -206,7 +212,7 @@ const AclPage = () => {
       } else {
         const created = await createAclRule({
           ...values,
-          aclVersion: 2,
+          aclVersion: '2.0',
         });
         setRules((prev) => [normalizeRule(created), ...prev]);
         message.success(t('acl.ruleAdded'));
@@ -231,7 +237,8 @@ const AclPage = () => {
   };
 
   /* ─── User helpers ─── */
-  const toggleRevealKey = (userId: string) => {
+  const toggleRevealKey = async (userId: string) => {
+    const revealing = !revealedKeys.has(userId);
     setRevealedKeys((prev) => {
       const next = new Set(prev);
       if (next.has(userId)) {
@@ -241,6 +248,24 @@ const AclPage = () => {
       }
       return next;
     });
+    if (!revealing || credentialsByUser[userId]) return;
+    try {
+      const credentials = await getAclUserCredentials(userId);
+      setCredentialsByUser((prev) => ({
+        ...prev,
+        [userId]: {
+          accessKey: credentials.accessKey,
+          secretKey: credentials.secretKey,
+        },
+      }));
+    } catch {
+      setRevealedKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(userId);
+        return next;
+      });
+      message.error(t('common.fetchDataFailed'));
+    }
   };
 
   const openAddUserModal = () => {
@@ -489,16 +514,40 @@ const AclPage = () => {
       sorter: (a, b) => a.accessKey.localeCompare(b.accessKey),
       render: (text: string, record: AclUser) => {
         const revealed = revealedKeys.has(record.id);
+        const fullAccessKey = credentialsByUser[record.id]?.accessKey ?? text;
         return (
           <Space size={8}>
-            <Typography.Text copyable={{ text }} style={{ fontFamily: 'monospace', fontSize: 13 }}>
-              {revealed ? text : text.replace(/(?<=\*{4}).+/, '••••')}
+            <Typography.Text
+              copyable={{ text: fullAccessKey }}
+              style={{ fontFamily: 'monospace', fontSize: 13 }}
+            >
+              {revealed ? fullAccessKey : text}
+            </Typography.Text>
+          </Space>
+        );
+      },
+    },
+    {
+      title: 'Secret Key',
+      dataIndex: 'secretKey',
+      key: 'secretKey',
+      width: 240,
+      render: (_: string, record: AclUser) => {
+        const revealed = revealedKeys.has(record.id);
+        const secret = credentialsByUser[record.id]?.secretKey;
+        return (
+          <Space size={8}>
+            <Typography.Text
+              copyable={revealed && secret ? { text: secret } : false}
+              style={{ fontFamily: 'monospace', fontSize: 13 }}
+            >
+              {revealed ? (secret ?? '加载中…') : '••••••••••••'}
             </Typography.Text>
             <Button
               type="text"
               size="small"
               icon={revealed ? <EyeSlash size={14} /> : <Eye size={14} />}
-              onClick={() => toggleRevealKey(record.id)}
+              onClick={() => void toggleRevealKey(record.id)}
             />
           </Space>
         );
@@ -623,6 +672,14 @@ const AclPage = () => {
                       flexWrap: 'wrap',
                     }}
                   >
+                    <Select
+                      placeholder="选择实例"
+                      value={selectedInstanceId || undefined}
+                      onChange={selectInstance}
+                      options={instanceOptions}
+                      style={{ width: 220 }}
+                      notFoundContent="暂无实例"
+                    />
                     <Input.Search
                       placeholder={t('acl.searchPrincipal')}
                       prefix={<MagnifyingGlass size={14} color="#9CA3AF" />}
@@ -804,10 +861,7 @@ const AclPage = () => {
           <Form.Item name="scope" label={t('acl.effectScope')}>
             <Select
               placeholder={t('acl.selectEffectScope')}
-              options={[
-                { value: 'cluster', label: t('acl.clusterScope') },
-                { value: 'namespace', label: t('acl.namespaceScope') },
-              ]}
+              options={[{ value: 'cluster', label: t('acl.clusterScope') }]}
             />
           </Form.Item>
         </Form>

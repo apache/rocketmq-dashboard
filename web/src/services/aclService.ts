@@ -44,6 +44,15 @@ export async function listAclUsers(params?: { keyword?: string }): Promise<AclUs
   return aclApi.listAclUsers(params);
 }
 
+export async function getAclUserCredentials(id: string): Promise<AclUser> {
+  if (isMockMode()) {
+    const user = aclUsersState.find((u) => u.id === id);
+    if (!user) throw new Error(`ACL user not found: ${id}`);
+    return copyAclUser(user);
+  }
+  return aclApi.getAclUserCredentials(id);
+}
+
 export async function createAclRule(data: Partial<AclRule>): Promise<AclRule> {
   if (isMockMode()) {
     const rule: AclRule = {
@@ -54,7 +63,7 @@ export async function createAclRule(data: Partial<AclRule>): Promise<AclRule> {
       resourcePattern: '',
       decision: '',
       scope: '',
-      aclVersion: 2,
+      aclVersion: '2.0',
       createdAt: new Date().toISOString(),
       ...data,
       actions: [...(data.actions ?? [])],

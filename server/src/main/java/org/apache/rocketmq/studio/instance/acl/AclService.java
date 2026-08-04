@@ -115,6 +115,19 @@ public class AclService {
         aclRepository.deleteUser(id);
     }
 
+    /**
+     * Returns the plain-text credentials of a user for the "view password" action.
+     * The secret is stored base64-encoded in the database and decoded here.
+     */
+    public AclUserVO getUserCredentials(String id) {
+        if (isBlank(id)) {
+            throw new BusinessException(400, "ACL user id is required");
+        }
+        log.info("Revealing credentials for ACL user id={}", id);
+        return aclRepository.findUserById(id)
+                .orElseThrow(() -> new BusinessException(404, "ACL user not found: " + id));
+    }
+
     private boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
     }

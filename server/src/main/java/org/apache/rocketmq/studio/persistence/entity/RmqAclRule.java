@@ -14,29 +14,39 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.instance.acl;
+package org.apache.rocketmq.studio.persistence.entity;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
 @Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class AclRuleVO {
+@TableName("rmq_acl_rule")
+public class RmqAclRule {
+
+    @TableId(type = IdType.INPUT)
     private String id;
+
     private String principal;
+
     private String resource;
+
     private String resourceType;
+
     private String resourcePattern;
-    private List<String> actions;
+
+    private String actions;
+
     private String decision;
+
     private String scope;
+
     private String aclVersion;
+
     private LocalDateTime createdAt;
+
+    private LocalDateTime updatedAt;
 }
