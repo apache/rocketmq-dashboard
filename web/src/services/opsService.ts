@@ -101,8 +101,9 @@ export async function createAlertRule(data: Partial<AlertRule>): Promise<AlertRu
 export async function updateAlertRule(data: AlertRule): Promise<AlertRule> {
   if (isMockMode()) {
     const index = alertRulesState.findIndex((rule) => rule.id === data.id);
+    if (index < 0) throw new Error(`Alert rule not found: ${data.id}`);
     const rule = copyAlertRule(data);
-    if (index >= 0) alertRulesState[index] = rule;
+    alertRulesState[index] = rule;
     return copyAlertRule(rule);
   }
   return opsApi.updateAlertRule(data);
