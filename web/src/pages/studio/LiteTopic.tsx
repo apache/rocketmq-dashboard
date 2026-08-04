@@ -204,7 +204,12 @@ const LiteTopicPage: React.FC = () => {
         }
       } catch {
         if (!bootstrapIsActive()) return;
-        // Assume supported when capability detection is unavailable.
+        ++displayCounter.current;
+        setCapabilitySupported(false);
+        setTopicList([]);
+        setQuota(null);
+        setLoading(false);
+        return;
       }
 
       if (displayCounter.current === initialDisplayRequestId) {

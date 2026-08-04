@@ -17,6 +17,7 @@
 
 package org.apache.rocketmq.studio.instance.topic;
 
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -29,35 +30,28 @@ class LiteTopicServiceTest {
     private final LiteTopicService liteTopicService = new LiteTopicService();
 
     @Test
-    void listLiteTopicsShouldFilterByPatternAndNamespace() {
+    void listLiteTopicsShouldNotReturnSampleData() {
         List<LiteTopicItemVO> result = liteTopicService.listLiteTopics("hat", " DEFAULT ");
 
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getTopicPattern()).isEqualTo("chat/{sessionId}");
-        assertThat(result.get(0).getNamespace()).isEqualTo("default");
+        assertThat(result).isEmpty();
     }
 
     @Test
-    void listLiteTopicsShouldMatchNamespaceExactly() {
-        assertThat(liteTopicService.listLiteTopics(null, "def")).isEmpty();
-        assertThat(liteTopicService.listLiteTopics(null, "  ")).hasSize(2);
+    void getQuotaShouldReturnUnsupportedWhenProviderIsUnavailable() {
+        assertThatThrownBy(() -> liteTopicService.getQuota("default"))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> {
+                    assertThat(ex.getCode()).isEqualTo(501);
+                    assertThat(ex.getMessage()).isEqualTo("LiteTopic provider integration is not available");
+                });
     }
 
     @Test
-    void getQuotaShouldReturnDefaultLimits() {
-        LiteTopicQuotaVO quota = liteTopicService.getQuota("default");
-
-        assertThat(quota.getCurrentTopicCount()).isEqualTo(128);
-        assertThat(quota.getMaxTopicCount()).isEqualTo(1_000_000);
-        assertThat(quota.getRemainingQuota()).isEqualTo(999_872);
-    }
-
-    @Test
-    void getSessionShouldReturnRequestedSessionId() {
-        LiteTopicSessionVO session = liteTopicService.getSession("sess-001");
-
-        assertThat(session.getSessionId()).isEqualTo("sess-001");
-        assertThat(session.getLiteTopics()).extracting("topicName").contains("chat/sess-001");
+    void getSessionShouldReturnUnsupportedWhenProviderIsUnavailable() {
+        assertThatThrownBy(() -> liteTopicService.getSession("sess-001"))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> {
+                    assertThat(ex.getCode()).isEqualTo(501);
+                    assertThat(ex.getMessage()).isEqualTo("LiteTopic provider integration is not available");
+                });
     }
 
     @Test
@@ -68,5 +62,19 @@ class LiteTopicServiceTest {
         assertThatThrownBy(() -> liteTopicService.extendTTL("chat/{sessionId}", 0L))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("newTTL must be positive");
+    }
+
+    @Test
+    void extendTTLShouldReturnUnsupportedWhenProviderIsUnavailable() {
+        assertThatThrownBy(() -> liteTopicService.extendTTL("chat/{sessionId}", 7_200_000L))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> {
+                    assertThat(ex.getCode()).isEqualTo(501);
+                    assertThat(ex.getMessage()).isEqualTo("LiteTopic provider integration is not available");
+                });
+    }
+
+    @Test
+    void getCapabilityShouldReportUnsupportedByDefault() {
+        assertThat(liteTopicService.getCapability().isSupported()).isFalse();
     }
 }
