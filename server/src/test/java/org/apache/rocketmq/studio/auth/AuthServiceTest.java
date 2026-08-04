@@ -189,6 +189,14 @@ class AuthServiceTest {
     }
 
     @Test
+    void loginShouldRejectNullRequest() {
+        assertThatThrownBy(() -> authService.login(null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Login request is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+    }
+
+    @Test
     void loginShouldThrowWhenUsernameIsNull() {
         LoginDTO request = new LoginDTO();
         request.setUsername(null);
