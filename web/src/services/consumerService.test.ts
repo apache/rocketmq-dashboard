@@ -55,6 +55,19 @@ describe('consumer service mock data', () => {
     expect(second.instances[0]).not.toBe(first.instances[0]);
   });
 
+  it('trims search text before filtering consumer group names', async () => {
+    const groups = await listConsumerGroups({ search: '  CG-ORDER-NOTIFY  ' });
+
+    expect(groups.map((group) => group.name)).toEqual(['cg-order-notify']);
+  });
+
+  it('ignores blank search text', async () => {
+    const allGroups = await listConsumerGroups();
+    const blankSearchGroups = await listConsumerGroups({ search: '   ' });
+
+    expect(blankSearchGroups).toHaveLength(allGroups.length);
+  });
+
   it('returns copied progress and subscription rows', async () => {
     const firstProgress = await getConsumerProgress('cg-order-notify');
     const firstSubscriptions = await getConsumerSubscriptions('cg-order-notify');
