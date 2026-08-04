@@ -267,7 +267,7 @@ public class RocketMQDLQProvider implements DLQProvider {
 
     private DefaultMQPullConsumer newPullConsumer() {
         DefaultMQPullConsumer consumer = new DefaultMQPullConsumer("studio-dlq-query-group");
-        consumer.setInstanceName("studio-dlq-query-" + System.currentTimeMillis());
+        consumer.setInstanceName(ShortLivedClientName.next("studio-dlq-query"));
         if (StringUtils.hasText(properties.getNamesrvAddr())) {
             consumer.setNamesrvAddr(properties.getNamesrvAddr());
         }
@@ -276,7 +276,7 @@ public class RocketMQDLQProvider implements DLQProvider {
 
     private DefaultMQProducer newProducer(String groupName) {
         DefaultMQProducer producer = new DefaultMQProducer("studio-dlq-resend-" + groupName);
-        producer.setInstanceName("studio-dlq-resend-" + System.currentTimeMillis());
+        producer.setInstanceName(ShortLivedClientName.next("studio-dlq-resend"));
         producer.setRetryTimesWhenSendFailed(2);
         if (StringUtils.hasText(properties.getNamesrvAddr())) {
             producer.setNamesrvAddr(properties.getNamesrvAddr());
