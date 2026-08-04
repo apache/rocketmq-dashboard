@@ -17,6 +17,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Button,
   Card,
   Descriptions,
@@ -29,7 +30,6 @@ import {
   Table,
   Tag,
   Typography,
-  message,
   theme,
 } from 'antd';
 import { Eye, MagnifyingGlass } from '@phosphor-icons/react';
@@ -42,6 +42,7 @@ import { listConnections } from '../../services/connectionsService';
 import { formatDateTime } from '../../utils/format';
 
 const { Text } = Typography;
+const DEFAULT_LOAD_ERROR = '客户端连接加载失败，请稍后重试';
 
 /* ─── Helpers ─── */
 
@@ -76,6 +77,27 @@ const countBy = (values: string[]) =>
     .map(([label, count]) => ({ label, count }))
     .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
 
+type ApiErrorLike = {
+  message?: unknown;
+  response?: {
+    data?: {
+      message?: unknown;
+    };
+  };
+};
+
+function getLoadErrorMessage(error: unknown): string {
+  const apiError = error as ApiErrorLike;
+  const responseMessage = apiError.response?.data?.message;
+  if (typeof responseMessage === 'string' && responseMessage.trim()) {
+    return responseMessage;
+  }
+  if (typeof apiError.message === 'string' && apiError.message.trim()) {
+    return apiError.message;
+  }
+  return DEFAULT_LOAD_ERROR;
+}
+
 /* ═══════════════════════════════════════════
    ClientsPage
    ═══════════════════════════════════════════ */
@@ -87,16 +109,22 @@ const ClientsPage = () => {
   const [search, setSearch] = useState('');
   const [clusterFilter, setClusterFilter] = useState<string>('ALL');
   const [selectedConnection, setSelectedConnection] = useState<ClientConnection | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
     void listConnections()
       .then((nextConnections) => {
-        if (!cancelled) setConnections(nextConnections);
+        if (!cancelled) {
+          setConnections(nextConnections);
+          setLoadError(null);
+        }
       })
-      .catch(() => {
-        if (!cancelled) message.error('客户端连接加载失败，请稍后重试');
+      .catch((error) => {
+        if (!cancelled) {
+          setLoadError(getLoadErrorMessage(error));
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -297,6 +325,10 @@ const ClientsPage = () => {
         title={t('clients.title')}
         subtitle={`${t('clients.title')} — ${filtered.length} connections`}
       />
+
+      {loadError && (
+        <Alert showIcon type="warning" message={loadError} style={{ marginBottom: 16 }} />
+      )}
 
       {/* ─── Filter Bar ─── */}
       <Flex justify="space-between" align="center" style={{ marginBottom: 16 }}>

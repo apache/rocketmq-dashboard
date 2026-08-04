@@ -17,6 +17,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   Card,
   Table,
   Tag,
@@ -60,6 +61,8 @@ import { downloadBlob } from '../../utils/download';
 
 const { Paragraph, Text } = Typography;
 const { RangePicker } = DatePicker;
+const DEFAULT_QUERY_ERROR = '消息查询失败，请稍后重试';
+const DEFAULT_TRACE_ERROR = '消息轨迹加载失败，请稍后重试';
 
 /* ─── Constants ─── */
 
@@ -68,6 +71,15 @@ type QueryMode = 'topic' | 'key' | 'msgid';
 type RecentQuery = {
   mode: QueryMode;
   params: MessageQuery;
+};
+
+type ApiErrorLike = {
+  message?: unknown;
+  response?: {
+    data?: {
+      message?: unknown;
+    };
+  };
 };
 
 const QUERY_HISTORY_STORAGE_KEY = 'rocketmq-studio-message-query-history';
@@ -179,6 +191,18 @@ const queryLabel = ({ mode, params }: RecentQuery): string => {
   return `Topic: ${params.topic || '全部'}`;
 };
 
+const getErrorMessage = (error: unknown, fallback: string): string => {
+  const apiError = error as ApiErrorLike;
+  const responseMessage = apiError.response?.data?.message;
+  if (typeof responseMessage === 'string' && responseMessage.trim()) {
+    return responseMessage;
+  }
+  if (typeof apiError.message === 'string' && apiError.message.trim()) {
+    return apiError.message;
+  }
+  return fallback;
+};
+
 /* ═══════════════════════════════════════════
    MessagePage
    ═══════════════════════════════════════════ */
@@ -218,6 +242,8 @@ const MessagePage = () => {
   const [selectedMsg, setSelectedMsg] = useState<MessageRecord | null>(null);
   const [traceData, setTraceData] = useState<TraceRecord | null>(null);
   const [traceLoading, setTraceLoading] = useState(false);
+  const [queryError, setQueryError] = useState<string | null>(null);
+  const [traceError, setTraceError] = useState<string | null>(null);
   const [recentQueries, setRecentQueries] = useState<RecentQuery[]>(loadRecentQueries);
   const queryGenerationRef = useRef(0);
   const traceGenerationRef = useRef(0);
@@ -238,6 +264,7 @@ const MessagePage = () => {
     setMsgIdInput('');
     setDateRange(getDefaultRange());
     setMessages([]);
+    setQueryError(null);
     setQueryLoading(false);
   };
 
@@ -262,15 +289,17 @@ const MessagePage = () => {
     const requestGeneration = queryGenerationRef.current + 1;
     queryGenerationRef.current = requestGeneration;
     setQueryLoading(true);
+    setQueryError(null);
     try {
       const result = await queryMessages(params);
       if (queryGenerationRef.current !== requestGeneration) return;
       setMessages(result);
+      setQueryError(null);
       saveRecentQuery(mode, params);
       message.success(`查询完成，共 ${result.length} 条`);
-    } catch {
+    } catch (error) {
       if (queryGenerationRef.current === requestGeneration) {
-        message.error('消息查询失败，请稍后重试');
+        setQueryError(getErrorMessage(error, DEFAULT_QUERY_ERROR));
       }
     } finally {
       if (queryGenerationRef.current === requestGeneration) {
@@ -360,13 +389,15 @@ const MessagePage = () => {
     setModalOpen(true);
     setTraceData(null);
     setTraceLoading(true);
+    setTraceError(null);
     try {
       const result = await getMessageTrace(record.msgId);
       if (traceGenerationRef.current !== requestGeneration) return;
       setTraceData(result);
-    } catch {
+      setTraceError(null);
+    } catch (error) {
       if (traceGenerationRef.current === requestGeneration) {
-        message.error('消息轨迹加载失败，请稍后重试');
+        setTraceError(getErrorMessage(error, DEFAULT_TRACE_ERROR));
       }
     } finally {
       if (traceGenerationRef.current === requestGeneration) {
@@ -379,6 +410,7 @@ const MessagePage = () => {
     traceGenerationRef.current += 1;
     setModalOpen(false);
     setTraceLoading(false);
+    setTraceError(null);
   };
 
   const handleDownload = (record: MessageRecord) => {
@@ -600,6 +632,8 @@ const MessagePage = () => {
       label: '消息轨迹',
       children: traceLoading ? (
         <Typography.Text type="secondary">正在加载轨迹数据…</Typography.Text>
+      ) : traceError ? (
+        <Alert showIcon type="warning" message={traceError} />
       ) : traceData?.nodes?.length ? (
         <Steps
           direction="vertical"
@@ -747,6 +781,10 @@ const MessagePage = () => {
           </Space>
         </Space>
       </Card>
+
+      {queryError && (
+        <Alert showIcon type="warning" message={queryError} style={{ marginBottom: 16 }} />
+      )}
 
       {/* ── Results Table ── */}
       <Card bodyStyle={{ padding: 0 }}>
