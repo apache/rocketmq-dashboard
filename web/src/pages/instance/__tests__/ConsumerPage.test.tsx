@@ -94,6 +94,22 @@ describe('Consumer page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(consumerService.listConsumerGroups).mockResolvedValue([group]);
+    vi.mocked(consumerService.createConsumerGroup).mockImplementation(
+      async (data: Partial<ConsumerGroup>) =>
+        ({
+          ...group,
+          ...data,
+          namespace: 'default',
+          clusterId: 'server-cluster',
+          onlineInstances: 0,
+          totalLag: 0,
+          delaySeconds: 0,
+          instances: [],
+          subscribedTopics: data.subscribedTopics ?? [],
+          createdAt: '2026-07-24T00:00:00Z',
+          updatedAt: '2026-07-24T00:00:00Z',
+        }) as ConsumerGroup,
+    );
     vi.mocked(consumerService.getConsumerProgress).mockResolvedValue([
       {
         broker: 'broker-a',
@@ -154,7 +170,9 @@ describe('Consumer page', () => {
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
     expect(clickSpy).toHaveBeenCalledTimes(1);
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:consumer-group-export');
-    expect(document.querySelector('a[download^="rocketmq-consumer-groups-"]')).not.toBeInTheDocument();
+    expect(
+      document.querySelector('a[download^="rocketmq-consumer-groups-"]'),
+    ).not.toBeInTheDocument();
 
     expect(exportedBlob).toBeDefined();
     const csv = await exportedBlob!.text();
@@ -263,5 +281,60 @@ describe('Consumer page', () => {
     await user.click(await screen.findByRole('button', { name: /详情/ }));
 
     expect(await screen.findByText('订阅一致性检查失败，当前保留上次检查结果')).toBeInTheDocument();
+  });
+
+  it('keeps per-row state when consumer group CSV import partially fails', async () => {
+    vi.mocked(consumerService.listConsumerGroups).mockResolvedValue([]);
+    vi.mocked(consumerService.createConsumerGroup).mockImplementation(
+      async (data: Partial<ConsumerGroup>) => {
+        if (data.name === 'cg-fail') throw new Error('broker rejected group');
+        return {
+          ...group,
+          ...data,
+          name: data.name ?? '',
+          namespace: 'default',
+          clusterId: 'server-cluster',
+          onlineInstances: 0,
+          totalLag: 0,
+          delaySeconds: 0,
+          instances: [],
+          subscribedTopics: data.subscribedTopics ?? [],
+          createdAt: '2026-07-24T00:00:00Z',
+          updatedAt: '2026-07-24T00:00:00Z',
+        } as ConsumerGroup;
+      },
+    );
+
+    const user = userEvent.setup();
+    renderWithProviders(<ConsumerPage />);
+
+    await screen.findByText(/共 0 个 Group/);
+    const csv = [
+      '"Name","Subscription Mode","Consume Type","Retry Max Times","Subscription Data Type","Delivery Order Type"',
+      '"cg-ok","Push","CLUSTERING","16","NORMAL",""',
+      '"cg-fail","Pop","BROADCASTING","4","FIFO","PARTITON_ORDER"',
+    ].join('\n');
+    await user.upload(
+      screen.getByTestId('consumer-group-import-file'),
+      new File([csv], 'groups.csv'),
+    );
+    expect(await screen.findByText('检测到 2 个 Group，将按顺序调用创建接口')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '开始导入' }));
+
+    await waitFor(() => expect(consumerService.createConsumerGroup).toHaveBeenCalledTimes(2));
+    expect(consumerService.createConsumerGroup).toHaveBeenNthCalledWith(1, {
+      name: 'cg-ok',
+      subscriptionMode: 'Push',
+      consumeType: 'CLUSTERING',
+      retryMaxTimes: 16,
+      subscriptionDataType: 'NORMAL',
+      subscribedTopics: [],
+    });
+    expect(await screen.findByText('已导入 1 个 Group，1 个失败')).toBeInTheDocument();
+    expect(screen.getByText('broker rejected group')).toBeInTheDocument();
+    expect(screen.getAllByText('cg-ok').length).toBeGreaterThan(0);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /重试失败项/ })).toBeInTheDocument(),
+    );
   });
 });

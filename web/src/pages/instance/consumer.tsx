@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Table,
@@ -78,6 +78,11 @@ import {
   resetConsumerOffset,
 } from '../../services/consumerService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
+import {
+  parseCsvTable,
+  validateConsumerGroupCsvImport,
+  type ResourceImportRow,
+} from '../../utils/resourceCsvImport';
 
 const { Text } = Typography;
 
@@ -204,6 +209,12 @@ const ConsumerPage = () => {
   );
   const [showOnlyInconsistent, setShowOnlyInconsistent] = useState(false);
   const [progressByGroup, setProgressByGroup] = useState<Record<string, QueueProgress[]>>({});
+  const importInputRef = useRef<HTMLInputElement>(null);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importFilename, setImportFilename] = useState('');
+  const [importRows, setImportRows] = useState<ResourceImportRow<Partial<ConsumerGroup>>[]>([]);
+  const [importErrors, setImportErrors] = useState<string[]>([]);
+  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -300,6 +311,94 @@ const ConsumerPage = () => {
     ? inconsistentSubscriptions
     : selectedSubscriptions;
   const selectedProgress = selectedGroup ? (progressByGroup[selectedGroup.name] ?? []) : [];
+
+  const handleImportFile = async (file: File) => {
+    setImportFilename(file.name);
+    setImporting(false);
+    setImportModalOpen(true);
+    try {
+      const records = parseCsvTable(await file.text());
+      const validation = validateConsumerGroupCsvImport(records, selectedInstanceId || undefined);
+      setImportRows(validation.rows);
+      setImportErrors(validation.errors);
+    } catch (error) {
+      setImportRows([]);
+      setImportErrors([error instanceof Error ? error.message : 'CSV 解析失败']);
+    } finally {
+      if (importInputRef.current) importInputRef.current.value = '';
+    }
+  };
+
+  const handleImportConsumerGroups = async () => {
+    const targetIndexes = importRows
+      .map((row, index) => ({ row, index }))
+      .filter(({ row }) => row.status === 'pending' || row.status === 'failed');
+    if (targetIndexes.length === 0 || importErrors.length > 0) return;
+
+    setImporting(true);
+    const nextRows = importRows.map((row) => ({ ...row }));
+    const createdGroups: ConsumerGroup[] = [];
+
+    for (const { row, index } of targetIndexes) {
+      try {
+        const created = await createConsumerGroup(row.payload);
+        createdGroups.push(created);
+        nextRows[index] = { ...nextRows[index], status: 'success', message: '已创建' };
+      } catch (error) {
+        nextRows[index] = {
+          ...nextRows[index],
+          status: 'failed',
+          message: error instanceof Error ? error.message : '创建失败',
+        };
+      }
+      setImportRows([...nextRows]);
+    }
+
+    if (createdGroups.length > 0) {
+      setGroups((previous) => {
+        const createdNames = new Set(createdGroups.map((group) => group.name));
+        return [...createdGroups, ...previous.filter((group) => !createdNames.has(group.name))];
+      });
+    }
+
+    const failedCount = nextRows.filter((row) => row.status === 'failed').length;
+    const invalidCount = nextRows.filter((row) => row.status === 'invalid').length;
+    if (failedCount === 0) {
+      if (invalidCount > 0) {
+        message.warning(`已导入 ${createdGroups.length} 个 Group，${invalidCount} 行无效已跳过`);
+      } else {
+        message.success(`已导入 ${createdGroups.length} 个 Group`);
+      }
+    } else if (createdGroups.length > 0) {
+      message.warning(`已导入 ${createdGroups.length} 个 Group，${failedCount} 个失败`);
+    } else {
+      message.error(`${failedCount} 个 Group 导入失败`);
+    }
+    setImporting(false);
+  };
+
+  const consumerGroupImportColumns: ColumnsType<ResourceImportRow<Partial<ConsumerGroup>>> = [
+    { title: '行号', dataIndex: 'lineNumber', key: 'lineNumber', width: 80 },
+    { title: 'Group 名称', dataIndex: 'name', key: 'name' },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      key: 'status',
+      width: 100,
+      render: (status: ResourceImportRow<Partial<ConsumerGroup>>['status']) => {
+        if (status === 'success') return <Tag color="success">成功</Tag>;
+        if (status === 'failed') return <Tag color="error">失败</Tag>;
+        if (status === 'invalid') return <Tag color="warning">无效</Tag>;
+        return <Tag>待导入</Tag>;
+      },
+    },
+    {
+      title: '说明',
+      dataIndex: 'message',
+      key: 'message',
+      render: (text?: string) => text || '-',
+    },
+  ];
 
   /* ═══════════════════════════════════════════
      Main Table Columns
@@ -698,7 +797,22 @@ const ConsumerPage = () => {
               删除 ({selectedRowKeys.length})
             </Button>
           )}
-          <Button icon={<ImportOutlined />} onClick={() => message.info('导入功能开发中')}>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            data-testid="consumer-group-import-file"
+            style={{ display: 'none' }}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void handleImportFile(file);
+            }}
+          />
+          <Button
+            icon={<ImportOutlined />}
+            disabled={importing}
+            onClick={() => importInputRef.current?.click()}
+          >
             导入
           </Button>
           <Button
@@ -1198,6 +1312,63 @@ const ConsumerPage = () => {
             </Form.Item>
           )}
         </Form>
+      </Modal>
+
+      {/* ═══════════════════════════════════════════
+         Import Group Modal
+         ═══════════════════════════════════════════ */}
+      <Modal
+        title={`导入 Group${importFilename ? `：${importFilename}` : ''}`}
+        open={importModalOpen}
+        onCancel={() => {
+          if (!importing) setImportModalOpen(false);
+        }}
+        onOk={() => void handleImportConsumerGroups()}
+        okText={importRows.some((row) => row.status === 'failed') ? '重试失败项' : '开始导入'}
+        cancelText="关闭"
+        confirmLoading={importing}
+        okButtonProps={{
+          disabled:
+            importErrors.length > 0 ||
+            importRows.length === 0 ||
+            importRows.every((row) => row.status === 'success' || row.status === 'invalid'),
+        }}
+        width={720}
+        destroyOnClose
+      >
+        <Space direction="vertical" style={{ width: '100%' }} size={12}>
+          {importErrors.length > 0 ? (
+            <Alert
+              type="error"
+              showIcon
+              message="CSV 无法导入"
+              description={importErrors.join('；')}
+            />
+          ) : importRows.some((row) => row.status === 'invalid') ? (
+            <Alert
+              type="warning"
+              showIcon
+              message={`检测到 ${
+                importRows.filter((row) => row.status === 'invalid').length
+              } 行无效，将跳过这些行`}
+              description="仅导入可创建字段；CSV 中的 Namespace、Cluster ID 和运行状态列会被忽略。"
+            />
+          ) : (
+            <Alert
+              type="info"
+              showIcon
+              message={`检测到 ${importRows.length} 个 Group，将按顺序调用创建接口`}
+              description="仅导入可创建字段；CSV 中的 Namespace、Cluster ID 和运行状态列会被忽略。"
+            />
+          )}
+          <Table<ResourceImportRow<Partial<ConsumerGroup>>>
+            columns={consumerGroupImportColumns}
+            dataSource={importRows}
+            rowKey="key"
+            size="small"
+            pagination={false}
+          />
+        </Space>
       </Modal>
 
       {/* ═══════════════════════════════════════════
