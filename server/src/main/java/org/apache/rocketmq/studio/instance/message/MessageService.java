@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.instance.message;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -27,10 +28,13 @@ import java.util.List;
 @Slf4j
 public class MessageService {
 
+    private static final long MAX_TOPIC_QUERY_WINDOW_MILLIS = 7L * 24 * 60 * 60 * 1000;
+
     private final MessageProvider messageProvider;
 
     public List<MessageRecordVO> queryMessages(
             String topic, String msgId, String tag, String key, Long startTime, Long endTime) {
+        validateTopicQueryWindow(topic, msgId, key, startTime, endTime);
         log.info("Querying messages: topic={}, msgId={}, tag={}, key={}", topic, msgId, tag, key);
         return messageProvider.queryMessages(topic, msgId, tag, key, startTime, endTime);
     }
@@ -38,5 +42,19 @@ public class MessageService {
     public TraceRecordVO getMessageTrace(String msgId) {
         log.info("Getting message trace: msgId={}", msgId);
         return messageProvider.getMessageTrace(msgId);
+    }
+
+    private void validateTopicQueryWindow(String topic, String msgId, String key, Long startTime, Long endTime) {
+        if (msgId != null && !msgId.isBlank() || key != null && !key.isBlank() || topic == null || topic.isBlank()) {
+            return;
+        }
+        long end = endTime == null ? System.currentTimeMillis() : endTime;
+        long start = startTime == null ? end - 60 * 60 * 1000L : startTime;
+        if (start > end) {
+            throw new BusinessException(400, "startTime must not be after endTime");
+        }
+        if (end - start > MAX_TOPIC_QUERY_WINDOW_MILLIS) {
+            throw new BusinessException(400, "topic query time range must not exceed 7 days");
+        }
     }
 }

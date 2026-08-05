@@ -33,9 +33,12 @@ public class MessageRecordVO {
     private String tag;
     private String key;
     private String body;
+    private String bodyEncoding;
+    private boolean bodyTruncated;
     private long storeTime;
     private String bornHost;
     private String storeHost;
     private Map<String, String> properties;
+    private boolean propertiesTruncated;
     private int size;
 }
