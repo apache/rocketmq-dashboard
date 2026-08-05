@@ -21,7 +21,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { logout } from '../api/auth';
 import { LangProvider } from '../i18n/LangContext';
 import useAuthStore from '../stores/authStore';
-import { ThemeProvider } from '../theme/ThemeContext';
+import { ThemeProvider } from '../theme/ThemeProvider';
 import MainLayout from './MainLayout';
 
 vi.mock('../api/auth', () => ({ logout: vi.fn() }));
@@ -46,16 +46,15 @@ vi.mock('antd', async () => {
         'div',
         null,
         children,
-        menu.items
-          .map((item) =>
-            item.key
-              ? React.createElement(
-                  'button',
-                  { key: item.key, onClick: () => menu.onClick({ key: item.key! }) },
-                  item.label,
-                )
-              : null,
-          ),
+        menu.items.map((item) =>
+          item.key
+            ? React.createElement(
+                'button',
+                { key: item.key, onClick: () => menu.onClick({ key: item.key! }) },
+                item.label,
+              )
+            : null,
+        ),
       ),
     Empty: () => null,
     Input: () => null,

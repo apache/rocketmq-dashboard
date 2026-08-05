@@ -41,7 +41,7 @@ import {
   Warning,
 } from '@phosphor-icons/react';
 import { useLang } from '../i18n/LangContext';
-import { useTheme } from '../theme/ThemeContext';
+import { useTheme } from '../theme/useTheme';
 import { logout as requestLogout } from '../api/auth';
 import useAuthStore from '../stores/authStore';
 import {
