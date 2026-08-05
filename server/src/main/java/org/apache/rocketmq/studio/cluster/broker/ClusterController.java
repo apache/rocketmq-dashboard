@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.cluster.broker;
 
+import org.apache.rocketmq.studio.cluster.config.ClusterConfigUpdateResultVO;
 import org.apache.rocketmq.studio.cluster.config.UpdateConfigDTO;
 
 import org.apache.rocketmq.studio.common.domain.Result;
@@ -56,7 +57,7 @@ public class ClusterController {
     }
 
     @PostMapping("/config/update")
-    public Result<ClusterVO> updateClusterConfig(@Valid @RequestBody(required = false) UpdateConfigDTO command) {
+    public Result<ClusterConfigUpdateResultVO> updateClusterConfig(@Valid @RequestBody(required = false) UpdateConfigDTO command) {
         requireUpdateConfigCommand(command);
         return Result.ok(clusterService.updateClusterConfig(command));
     }

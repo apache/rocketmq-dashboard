@@ -526,13 +526,28 @@ const ClusterPage = () => {
                   ...configValues,
                   maxMessageSize: maxMessageSizeMB * 1048576,
                 };
-                await updateClusterConfig({
+                const result = await updateClusterConfig({
                   id: selectedCluster.id,
                   ...nextConfig,
                 });
-                await requestRefresh('operation');
-                message.success(t('cluster.configUpdated'));
-                setConfigModalOpen(false);
+                if (result.status === 'SUCCESS') {
+                  await requestRefresh('operation');
+                  message.success(t('cluster.configUpdated'));
+                  setConfigModalOpen(false);
+                  return;
+                }
+
+                const failedAddresses = result.failedBrokers
+                  .map((failure) => failure.address)
+                  .join(', ');
+                if (result.status === 'PARTIAL') {
+                  await requestRefresh('operation');
+                  message.warning(
+                    t('cluster.configPartiallyUpdated', { brokers: failedAddresses }),
+                  );
+                  return;
+                }
+                message.error(t('cluster.configUpdateFailed', { brokers: failedAddresses }));
               });
             }}
             width={560}
