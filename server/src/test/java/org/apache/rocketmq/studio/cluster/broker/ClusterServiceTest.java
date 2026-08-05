@@ -112,19 +112,34 @@ class ClusterServiceTest {
                 .build();
         secondCluster.setId("cluster-2");
 
-        when(clusterRepository.findAll()).thenReturn(Arrays.asList(sampleCluster, secondCluster));
+        when(clusterProvider.discoverClusters()).thenReturn(Arrays.asList(sampleCluster, secondCluster));
 
         List<ClusterVO> result = clusterService.listClusters();
 
         assertThat(result).hasSize(2);
         assertThat(result.get(0).getName()).isEqualTo("test-cluster");
         assertThat(result.get(1).getName()).isEqualTo("second-cluster");
-        verify(clusterRepository).findAll();
+        verify(clusterRepository, never()).findAll();
+    }
+
+    @Test
+    void updateClusterConfigShouldRejectDifferentDefaultReadAndWriteQueueNums() {
+        UpdateConfigDTO command = UpdateConfigDTO.builder()
+                .id("cluster-1")
+                .writeQueueNums(8)
+                .readQueueNums(16)
+                .build();
+
+        assertThatThrownBy(() -> clusterService.updateClusterConfig(command))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("requires matching writeQueueNums and readQueueNums");
+
+        verifyNoInteractions(clusterRepository, clusterProvider);
     }
 
     @Test
     void listClustersShouldReturnEmptyListWhenNoClusters() {
-        when(clusterRepository.findAll()).thenReturn(Collections.emptyList());
+        when(clusterProvider.discoverClusters()).thenReturn(Collections.emptyList());
 
         List<ClusterVO> result = clusterService.listClusters();
 
@@ -133,7 +148,7 @@ class ClusterServiceTest {
 
     @Test
     void getClusterShouldReturnClusterWhenFound() {
-        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+        when(clusterProvider.refreshClusterDetail("cluster-1")).thenReturn(sampleCluster);
 
         ClusterVO result = clusterService.getCluster("cluster-1");
 
@@ -146,12 +161,12 @@ class ClusterServiceTest {
 
     @Test
     void getClusterShouldThrowWhenNotFound() {
-        when(clusterRepository.findById("nonexistent")).thenReturn(Optional.empty());
+        when(clusterProvider.refreshClusterDetail("nonexistent")).thenReturn(null);
 
         assertThatThrownBy(() -> clusterService.getCluster("nonexistent"))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("Cluster not found: nonexistent")
-                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
+                .hasMessageContaining("Cluster details are unavailable: nonexistent")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(503));
     }
 
     @Test
@@ -498,6 +513,20 @@ class ClusterServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Proxy not found: missing:8081")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
+    }
+
+    @Test
+    void updateClusterConfigShouldUseLiveClusterWhenItIsNotPersisted() {
+        when(clusterProvider.refreshClusterDetail("cluster-1")).thenReturn(sampleCluster);
+        UpdateConfigDTO command = UpdateConfigDTO.builder()
+                .id("cluster-1")
+                .maxMessageSize(8_388_608)
+                .build();
+
+        ClusterVO result = clusterService.updateClusterConfig(command);
+
+        assertThat(result.getConfig().getMaxMessageSize()).isEqualTo(8_388_608);
+        verify(clusterRepository).updateConfig("cluster-1", result.getConfig());
     }
 
     private void assertUnsupportedOperation(ThrowableAssert.ThrowingCallable callable, String message) {
