@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.rocketmq;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
 import org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
@@ -215,7 +216,10 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                     BrokerData bd = brokerDataMap.get(qd.getBrokerName());
                     String brokerAddr = "";
                     if (bd != null && bd.getBrokerAddrs() != null && !bd.getBrokerAddrs().isEmpty()) {
-                        brokerAddr = bd.getBrokerAddrs().values().iterator().next();
+                        brokerAddr = bd.getBrokerAddrs().get(MixAll.MASTER_ID);
+                        if (brokerAddr == null) {
+                            brokerAddr = bd.getBrokerAddrs().values().iterator().next();
+                        }
                     }
 
                     routes.add(BrokerRouteVO.builder()
@@ -271,11 +275,9 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                     String messageModel = "CLUSTERING";
                     try {
                         ConsumerConnection conn = adminExt.examineConsumerConnectionInfo(group);
-                        if (conn != null && conn.getConsumeType() != null) {
-                            messageModel = conn.getConsumeType().name();
-                            if (conn.getMessageModel() != null) {
-                                messageModel = conn.getMessageModel().name();
-                            }
+                        if (conn != null && conn.getMessageModel() != null) {
+                            messageModel = conn.getMessageModel().name();
+                            consumeType = parseConsumeType(messageModel);
                         }
                     } catch (Exception ignored) {
                         // group may be offline
@@ -376,7 +378,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                         .topic(sd.getTopic())
                         .expression(sd.getSubString())
                         .type(sd.getExpressionType())
-                        .filterMode("CLASS_FILTER".equals(sd.getExpressionType()) ? "SQL" : "TAG")
+                        .filterMode(filterMode(sd.getExpressionType()))
                         .build());
             }
             return subscriptions;
@@ -424,13 +426,6 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 if (conn.getConnectionSet() != null) {
                     vo.setOnlineInstances(conn.getConnectionSet().size());
                 }
-                if (conn.getMessageModel() != null) {
-                    vo.setSubscriptionMode(
-                            "BROADCASTING".equals(conn.getMessageModel().name())
-                                    ? org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode.Pop
-                                    : org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode.Push
-                    );
-                }
                 if (conn.getSubscriptionTable() != null) {
                     vo.setSubscribedTopics(new ArrayList<>(conn.getSubscriptionTable().keySet()));
                 }
@@ -452,6 +447,16 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         } catch (Exception ignored) {
             // No stats available
         }
+    }
+
+    private String filterMode(String expressionType) {
+        if ("SQL92".equals(expressionType)) {
+            return "SQL";
+        }
+        if ("CLASS_FILTER".equals(expressionType)) {
+            return "CLASS_FILTER";
+        }
+        return "TAG";
     }
 
     private Set<String> getBrokerNames() {

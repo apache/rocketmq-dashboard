@@ -114,7 +114,7 @@ describe('AlertManagementPage', () => {
     expect(await screen.findByText('BrokerDown')).toBeInTheDocument();
   });
 
-  it('exports only the selected enabled alert rules when rows are selected', async () => {
+  it('exports the server-side YAML verbatim when rows are selected', async () => {
     const user = userEvent.setup();
     renderWithProviders(<AlertManagementPage />);
 
@@ -126,11 +126,13 @@ describe('AlertManagementPage', () => {
     await user.click(within(brokerRow!).getByRole('checkbox'));
     await user.click(screen.getByRole('button', { name: '导出 YAML (1)' }));
 
+    await waitFor(() => {
+      expect(queryAlertRules).toHaveBeenCalledTimes(2);
+    });
     expect(createObjectURL).toHaveBeenCalledTimes(1);
     const blob = createObjectURL.mock.calls[0][0] as Blob;
     const yaml = await blob.text();
-    expect(yaml).toContain('alert: BrokerDown');
-    expect(yaml).not.toContain('alert: ConsumerLagHigh');
+    expect(yaml).toBe(rulesYaml);
     expect(clickSpy).toHaveBeenCalledTimes(1);
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:alert-rules');
   });
@@ -148,7 +150,7 @@ describe('AlertManagementPage', () => {
     expect(yaml).toContain('alert: ConsumerLagHigh');
   });
 
-  it('removes a selected rule when it is disabled', async () => {
+  it('keeps the rule unchanged and warns when the toggle is clicked', async () => {
     const user = userEvent.setup();
     renderWithProviders(<AlertManagementPage />);
 
@@ -161,10 +163,12 @@ describe('AlertManagementPage', () => {
 
     await user.click(within(brokerRow!).getByRole('switch'));
 
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: '导出 YAML' })).toBeInTheDocument();
-    });
-    expect(within(brokerRow!).getByRole('checkbox')).toBeDisabled();
+    expect(
+      await screen.findByText(
+        'Alert rule changes are unavailable until a persisted rule editor is available.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText('BrokerDown')).toBeInTheDocument();
   });
 
   it('preserves selected rules while filtering the table', async () => {
@@ -185,6 +189,6 @@ describe('AlertManagementPage', () => {
     const blob = createObjectURL.mock.calls[0][0] as Blob;
     const yaml = await blob.text();
     expect(yaml).toContain('alert: BrokerDown');
-    expect(yaml).not.toContain('alert: ConsumerLagHigh');
+    expect(yaml).toContain('alert: ConsumerLagHigh');
   });
 });

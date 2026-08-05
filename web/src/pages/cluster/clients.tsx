@@ -154,18 +154,25 @@ const ClientsPage = () => {
     [connections, clusterFilter],
   );
 
-  const connectionStats = useMemo(
-    () => ({
-      total: clusterConnections.length,
-      producers: clusterConnections.filter((connection) => connection.type === 'Producer').length,
-      consumers: clusterConnections.filter((connection) => connection.type === 'Consumer').length,
-      protocols: countBy(clusterConnections.map((connection) => connection.protocol)),
+  const connectionStats = useMemo(() => {
+    const instances = Array.from(
+      new Map(
+        clusterConnections.map((connection) => [
+          `${connection.type}:${connection.clientId}`,
+          connection,
+        ]),
+      ).values(),
+    );
+    return {
+      total: instances.length,
+      producers: instances.filter((connection) => connection.type === 'Producer').length,
+      consumers: instances.filter((connection) => connection.type === 'Consumer').length,
+      protocols: countBy(instances.map((connection) => connection.protocol)),
       languageVersions: countBy(
-        clusterConnections.map((connection) => `${connection.language} ${connection.version}`),
+        instances.map((connection) => `${connection.language} ${connection.version}`),
       ),
-    }),
-    [clusterConnections],
-  );
+    };
+  }, [clusterConnections]);
 
   /* ─── Filtered data (search + cluster only, table handles column filters) ─── */
   const filtered = useMemo(() => {
@@ -290,10 +297,10 @@ const ClientsPage = () => {
       dataIndex: 'connectedAt',
       key: 'connectedAt',
       width: 170,
-      sorter: (a, b) => a.connectedAt.localeCompare(b.connectedAt),
-      render: (d: string) => (
+      sorter: (a, b) => (a.connectedAt ?? '').localeCompare(b.connectedAt ?? ''),
+      render: (d?: string | null) => (
         <Text type="secondary" style={{ fontSize: 13 }}>
-          {formatDateTime(d)}
+          {d ? formatDateTime(d) : '-'}
         </Text>
       ),
     },
@@ -328,6 +335,14 @@ const ClientsPage = () => {
 
       {loadError && (
         <Alert showIcon type="warning" message={loadError} style={{ marginBottom: 16 }} />
+      )}
+      {connections.some((connection) => connection.partial) && (
+        <Alert
+          showIcon
+          type="warning"
+          message="Producer connections are sampled because the topic scan limit was reached."
+          style={{ marginBottom: 16 }}
+        />
       )}
 
       {/* ─── Filter Bar ─── */}
@@ -418,7 +433,9 @@ const ClientsPage = () => {
         <Table
           columns={columns}
           dataSource={filtered}
-          rowKey="clientId"
+          rowKey={(connection) =>
+            `${connection.type}:${connection.clientId}:${connection.groupOrTopic}`
+          }
           loading={loading}
           scroll={{ x: 1320 }}
           pagination={{
@@ -471,7 +488,7 @@ const ClientsPage = () => {
               {selectedConnection.version}
             </Descriptions.Item>
             <Descriptions.Item label={t('cluster.heartbeat')}>
-              {selectedConnection.connectedAt}
+              {selectedConnection.connectedAt ?? '-'}
             </Descriptions.Item>
           </Descriptions>
         )}

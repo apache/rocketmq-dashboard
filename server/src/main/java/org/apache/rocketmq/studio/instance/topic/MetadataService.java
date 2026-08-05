@@ -119,7 +119,7 @@ public class MetadataService {
 
 
     public List<NamespaceVO> listNamespaces() {
-        throw new UnsupportedOperationException("Not implemented");
+        throw new BusinessException(501, "Namespace discovery is not implemented by the current metadata provider");
     }
 
     private String normalizeFilter(String value) {

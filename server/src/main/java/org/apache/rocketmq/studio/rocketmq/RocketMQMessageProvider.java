@@ -275,6 +275,9 @@ public class RocketMQMessageProvider implements MessageProvider {
             if (fields.length == 0) {
                 continue;
             }
+            if (!targetMsgId.equals(field(fields, 5))) {
+                continue;
+            }
             try {
                 switch (fields[0].trim()) {
                     case "Pub":
