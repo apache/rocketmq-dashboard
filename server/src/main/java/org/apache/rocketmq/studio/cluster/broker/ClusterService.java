@@ -52,7 +52,7 @@ public class ClusterService {
             discovered.forEach(this::enrichWithLiveConfig);
             return discovered;
         }
-        return clusterRepository.findAll();
+        return List.of();
     }
 
     public ClusterVO getCluster(String id) {
@@ -62,8 +62,7 @@ public class ClusterService {
             enrichWithLiveConfig(live);
             return live;
         }
-        return clusterRepository.findById(id)
-                .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + id));
+        throw new BusinessException(503, "Cluster details are unavailable: " + id);
     }
 
     /**
@@ -92,8 +91,8 @@ public class ClusterService {
 
     public ClusterVO updateClusterConfig(UpdateConfigDTO command) {
         log.info("Updating cluster config for: {}", command.getId());
-        ClusterVO cluster = clusterRepository.findById(command.getId())
-                .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getId()));
+        requireMatchingDefaultQueueNums(command);
+        ClusterVO cluster = resolveCluster(command.getId());
 
         ClusterConfigVO config = copyConfig(cluster.getConfig());
 
@@ -136,6 +135,16 @@ public class ClusterService {
         cluster.setConfig(config);
         log.info("Cluster config updated successfully for: {}", command.getId());
         return cluster;
+    }
+
+    private ClusterVO resolveCluster(String clusterId) {
+        ClusterVO live = clusterProvider.refreshClusterDetail(clusterId);
+        if (live != null) {
+            enrichWithLiveConfig(live);
+            return live;
+        }
+        return clusterRepository.findById(clusterId)
+                .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + clusterId));
     }
 
     private ClusterConfigVO copyConfig(ClusterConfigVO config) {
@@ -183,6 +192,14 @@ public class ClusterService {
             props.setProperty("brokerPermission", command.getBrokerPermission().toString());
         }
         return props;
+    }
+
+    private void requireMatchingDefaultQueueNums(UpdateConfigDTO command) {
+        if (command.getWriteQueueNums() != null && command.getReadQueueNums() != null
+                && !command.getWriteQueueNums().equals(command.getReadQueueNums())) {
+            throw new BusinessException(400,
+                    "RocketMQ broker default queue count requires matching writeQueueNums and readQueueNums");
+        }
     }
 
     private FlushDiskType parseFlushDiskType(String value) {

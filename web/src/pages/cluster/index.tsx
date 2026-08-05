@@ -570,6 +570,10 @@ const ClusterPage = () => {
               <Form.Item label={t('cluster.readQueues')} name="readQueueNums">
                 <InputNumber min={1} max={256} style={{ width: '100%' }} />
               </Form.Item>
+              <Text type="secondary" style={{ display: 'block', marginTop: -16, marginBottom: 16 }}>
+                RocketMQ Broker uses one default Topic queue count; read and write values must
+                match.
+              </Text>
               <Form.Item label={t('cluster.brokerPermission')} name="brokerPermission">
                 <InputNumber min={0} max={7} style={{ width: '100%' }} />
               </Form.Item>
@@ -764,8 +768,7 @@ const ClusterPage = () => {
       .flatMap((c) =>
         c.proxies
           .filter((p) => {
-            const matchSearch =
-              !proxySearchText || searchText(p.addr).includes(proxySearchText);
+            const matchSearch = !proxySearchText || searchText(p.addr).includes(proxySearchText);
             return matchSearch;
           })
           .map((p) => ({
