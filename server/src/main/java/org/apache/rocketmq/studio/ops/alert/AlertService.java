@@ -104,7 +104,9 @@ public class AlertService {
 
     public void deleteRule(String id) {
         log.info("Deleting alert rule id={}", id);
-        alertRepository.deleteRule(id);
+        if (!alertRepository.deleteRule(id)) {
+            throw ruleNotFound(id);
+        }
     }
 
 

@@ -33,7 +33,6 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -351,11 +350,20 @@ class AlertServiceTest {
 
     @Test
     void deleteRuleShouldCallRepository() {
-        doNothing().when(alertRepository).deleteRule("rule-1");
+        when(alertRepository.deleteRule("rule-1")).thenReturn(true);
 
         alertService.deleteRule("rule-1");
 
         verify(alertRepository).deleteRule("rule-1");
+    }
+
+    @Test
+    void deleteRuleShouldRejectUnknownRule() {
+        when(alertRepository.deleteRule("missing")).thenReturn(false);
+
+        assertThatThrownBy(() -> alertService.deleteRule("missing"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
     }
 
     @Test

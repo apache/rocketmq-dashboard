@@ -82,8 +82,8 @@ public class MybatisPlusAclRepository implements AclRepository {
     }
 
     @Override
-    public void deleteRule(String id) {
-        ruleMapper.deleteById(id);
+    public boolean deleteRule(String id) {
+        return ruleMapper.deleteById(id) > 0;
     }
 
     @Override
@@ -111,8 +111,8 @@ public class MybatisPlusAclRepository implements AclRepository {
     }
 
     @Override
-    public void deleteUser(String id) {
-        userMapper.deleteById(id);
+    public boolean deleteUser(String id) {
+        return userMapper.deleteById(id) > 0;
     }
 
     // ── Mapping ────────────────────────────────────────────────────
