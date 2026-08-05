@@ -15,156 +15,37 @@
  * limitations under the License.
  */
 
-import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { describe, expect, it } from 'vitest';
+import { render, screen } from '@testing-library/react';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
 import SslSettings from '../SslSettings';
 
-// Mock matchMedia for antd responsive components
-beforeAll(() => {
-  Object.defineProperty(window, 'matchMedia', {
-    writable: true,
-    value: vi.fn().mockImplementation((query: string) => ({
-      matches: false,
-      media: query,
-      onchange: null,
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    })),
-  });
-});
-
-// Mock react-router-dom
-vi.mock('react-router-dom', () => ({
-  useNavigate: () => vi.fn(),
-  useParams: () => ({}),
-}));
-
-const renderWithProviders = (ui: React.ReactElement) => {
-  return render(
+const renderWithProviders = () =>
+  render(
     <App>
-      <LangProvider>{ui}</LangProvider>
+      <LangProvider>
+        <SslSettings />
+      </LangProvider>
     </App>,
   );
-};
 
 describe('SslSettings Page', () => {
-  it('should render the page title', () => {
-    renderWithProviders(<SslSettings />);
-    expect(screen.getByText('SSL/TLS 设置')).toBeInTheDocument();
+  it('explains that SSL settings cannot be saved before backend support exists', () => {
+    renderWithProviders();
+
+    expect(screen.getByTestId('ssl-settings-unavailable')).toHaveTextContent(
+      'SSL/TLS 配置暂不可用',
+    );
+    expect(screen.getByText(/暂不支持保存或上传/)).toBeInTheDocument();
   });
 
-  it('should render the info alert', () => {
-    renderWithProviders(<SslSettings />);
-    expect(screen.getByText('SSL/TLS 配置')).toBeInTheDocument();
-  });
+  it('does not expose local-only controls that imply TLS is configured', () => {
+    renderWithProviders();
 
-  it('should render the SSL enable switch label', () => {
-    renderWithProviders(<SslSettings />);
-    expect(screen.getByText('启用 SSL/TLS')).toBeInTheDocument();
-  });
-
-  it('should not show SSL config fields when SSL is disabled', () => {
-    renderWithProviders(<SslSettings />);
-    expect(screen.queryByText('KeyStore 配置')).not.toBeInTheDocument();
-  });
-
-  it('should show SSL config fields after toggling SSL switch', async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<SslSettings />);
-    const switchEl = screen.getByRole('switch');
-    await user.click(switchEl);
-    // After toggling, SSL config fields should appear (may appear multiple times in labels + options)
-    const protocolLabels = screen.getAllByText('SSL 协议');
-    expect(protocolLabels.length).toBeGreaterThan(0);
-    expect(screen.getByText('客户端认证')).toBeInTheDocument();
-    expect(screen.getByText('KeyStore 配置')).toBeInTheDocument();
-  });
-
-  it('should show KeyStore fields after enabling SSL', async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<SslSettings />);
-    const switchEl = screen.getByRole('switch');
-    await user.click(switchEl);
-    expect(screen.getByText('KeyStore 类型')).toBeInTheDocument();
-    expect(screen.getByText('KeyStore 路径')).toBeInTheDocument();
-    expect(screen.getByText('KeyStore 密码')).toBeInTheDocument();
-  });
-
-  it('should restore the saved SSL state when resetting the form', async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<SslSettings />);
-    const switchEl = screen.getByRole('switch');
-
-    await user.click(switchEl);
-    expect(switchEl).toBeChecked();
-    expect(screen.getByText('KeyStore 配置')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: /重\s*置/ }));
-
-    expect(switchEl).not.toBeChecked();
-    expect(screen.queryByText('KeyStore 配置')).not.toBeInTheDocument();
-  });
-
-  it('should keep form actions available after disabling SSL', async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<SslSettings />);
-    const switchEl = screen.getByRole('switch');
-
-    await user.click(switchEl);
-    await user.click(switchEl);
-
-    expect(switchEl).not.toBeChecked();
-    expect(screen.getByRole('button', { name: /保\s*存/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /重\s*置/ })).toBeInTheDocument();
-  });
-
-  it('does not persist SSL changes when the backend API is unavailable', async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<SslSettings />);
-
-    const switchEl = screen.getByRole('switch');
-    await user.click(switchEl);
-    await user.type(screen.getByLabelText('KeyStore 路径'), '/etc/rocketmq/keystore.jks');
-    await user.type(screen.getByLabelText('KeyStore 密码'), 'changeit');
-
-    await user.click(screen.getByRole('button', { name: /保\s*存/ }));
-
-    expect(await screen.findByText('SSL 配置保存功能尚未接入真实后端接口')).toBeInTheDocument();
-    expect(screen.queryByText('SSL 配置保存成功')).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: /重\s*置/ }));
-
-    expect(switchEl).not.toBeChecked();
-    expect(screen.queryByText('KeyStore 配置')).not.toBeInTheDocument();
-  });
-
-  it('should show TrustStore fields when client authentication is required', async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<SslSettings />);
-
-    await user.click(screen.getByRole('switch'));
-    expect(screen.queryByText('TrustStore 配置')).not.toBeInTheDocument();
-
-    await user.click(screen.getByLabelText('客户端认证'));
-    await user.click(await screen.findByText('必需'));
-
-    expect(await screen.findByText('TrustStore 配置')).toBeInTheDocument();
-    expect(screen.getByText('TrustStore 类型')).toBeInTheDocument();
-    expect(screen.getByText('TrustStore 路径')).toBeInTheDocument();
-    expect(screen.getByText('TrustStore 密码')).toBeInTheDocument();
-
-    await user.click(screen.getByLabelText('客户端认证'));
-    await user.click(await screen.findByText('无'));
-    await waitFor(() => expect(screen.queryByText('TrustStore 配置')).not.toBeInTheDocument());
-
-    await user.click(screen.getByLabelText('客户端认证'));
-    await user.click(await screen.findByText('可选'));
-    expect(await screen.findByText('TrustStore 配置')).toBeInTheDocument();
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /保\s*存/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /上\s*传/ })).not.toBeInTheDocument();
+    expect(screen.queryByText('证书信息')).not.toBeInTheDocument();
   });
 });
