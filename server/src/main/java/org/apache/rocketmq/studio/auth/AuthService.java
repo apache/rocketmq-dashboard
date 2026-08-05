@@ -108,6 +108,19 @@ public class AuthService {
         return Optional.of(session.user());
     }
 
+    public boolean isAdmin(String authorization) {
+        Optional<String> token = tokenFromAuthorization(authorization);
+        if (token.isEmpty()) {
+            return false;
+        }
+        AuthSession session = activeTokens.get(token.get());
+        if (session == null || session.expiresAtMillis() <= clock.millis()) {
+            activeTokens.remove(token.get());
+            return false;
+        }
+        return session.user().isAdmin();
+    }
+
     public void logout(String authorization) {
         tokenFromAuthorization(authorization).ifPresent(activeTokens::remove);
         log.info("User logged out");

@@ -146,10 +146,102 @@ class AuthInterceptorTest {
     }
 
     private AuthService authService(AuthProperties properties) {
+        return new AuthService(properties, settingsRepositoryWithTimeout(30));
+    }
+
+    private SettingsRepository settingsRepositoryWithTimeout(int sessionTimeout) {
         SettingsRepository settingsRepository = mock(SettingsRepository.class);
         when(settingsRepository.loadGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
-                .sessionTimeout(30)
+                .sessionTimeout(sessionTimeout)
                 .build());
-        return new AuthService(properties, settingsRepository);
+        return settingsRepository;
     }
+
+    @Test
+    void shouldAllowReadOnlyGetForNonAdminUser() throws Exception {
+        TestSession session = login(false);
+        MockHttpServletRequest request = authenticatedRequest(
+                "GET", "/api/clusters", session.token());
+
+        boolean allowed = session.interceptor().preHandle(
+                request, new MockHttpServletResponse(), new Object());
+
+        assertThat(allowed).isTrue();
+    }
+
+    @Test
+    void shouldRejectMutatingPostForNonAdminUser() throws Exception {
+        TestSession session = login(false);
+        MockHttpServletRequest request = authenticatedRequest(
+                "POST", "/api/ops/updateUseTLS", session.token());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        boolean allowed = session.interceptor().preHandle(request, response, new Object());
+
+        assertThat(allowed).isFalse();
+        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(response.getContentAsString()).contains("Admin permission required");
+    }
+
+    @Test
+    void shouldAllowMutatingPostForAdminUser() throws Exception {
+        TestSession session = login(true);
+        MockHttpServletRequest request = authenticatedRequest(
+                "POST", "/api/ops/updateUseTLS", session.token());
+
+        boolean allowed = session.interceptor().preHandle(
+                request, new MockHttpServletResponse(), new Object());
+
+        assertThat(allowed).isTrue();
+    }
+
+    @Test
+    void shouldAllowReadOnlyPostForNonAdminUser() throws Exception {
+        TestSession session = login(false);
+        MockHttpServletRequest request = authenticatedRequest(
+                "POST", "/api/metrics/query/", session.token());
+
+        boolean allowed = session.interceptor().preHandle(
+                request, new MockHttpServletResponse(), new Object());
+
+        assertThat(allowed).isTrue();
+    }
+
+    @Test
+    void shouldAllowLogoutForNonAdminUser() throws Exception {
+        TestSession session = login(false);
+        MockHttpServletRequest request = authenticatedRequest(
+                "POST", "/api/auth/logout", session.token());
+
+        boolean allowed = session.interceptor().preHandle(
+                request, new MockHttpServletResponse(), new Object());
+
+        assertThat(allowed).isTrue();
+    }
+
+    private TestSession login(boolean admin) {
+        AuthProperties properties = new AuthProperties();
+        properties.setLoginRequired(true);
+        AuthProperties.User user = new AuthProperties.User();
+        user.setUsername("test-user");
+        user.setPassword("secret");
+        user.setAdmin(admin);
+        properties.setUsers(List.of(user));
+        AuthService authService = new AuthService(properties, settingsRepositoryWithTimeout(30));
+        LoginDTO login = new LoginDTO();
+        login.setUsername("test-user");
+        login.setPassword("secret");
+        String token = authService.login(login).getToken();
+        return new TestSession(new AuthInterceptor(properties, authService), token);
+    }
+
+    private MockHttpServletRequest authenticatedRequest(String method, String path, String token) {
+        MockHttpServletRequest request = new MockHttpServletRequest(method, path);
+        request.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + token);
+        return request;
+    }
+
+    private record TestSession(AuthInterceptor interceptor, String token) {
+    }
+
 }
