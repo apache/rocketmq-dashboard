@@ -19,6 +19,8 @@ package org.apache.rocketmq.studio.ops.ai.tool;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.cluster.broker.ClusterService;
 import org.apache.rocketmq.studio.cluster.broker.ClusterVO;
+import org.apache.rocketmq.studio.cluster.nameserver.NameServerConfigDiffService;
+import org.apache.rocketmq.studio.cluster.nameserver.NameServerConfigDiffVO;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
@@ -49,6 +51,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -59,6 +62,7 @@ class ToolGatewayServiceTest {
     private DashboardService dashboardService;
     private MetadataService metadataService;
     private AlertService alertService;
+    private NameServerConfigDiffService nameServerConfigDiffService;
     private CapabilityResolver capabilityResolver;
     private ClusterListToolHandler clusterListHandler;
     private CapabilitiesToolHandler capabilitiesHandler;
@@ -66,6 +70,7 @@ class ToolGatewayServiceTest {
     private TopicListToolHandler topicListHandler;
     private ConsumerGroupListToolHandler consumerGroupListHandler;
     private AlertRuleListToolHandler alertRuleListHandler;
+    private NameServerConfigDiffToolHandler nameServerConfigDiffHandler;
     private ToolGatewayService gateway;
 
     @BeforeEach
@@ -75,6 +80,7 @@ class ToolGatewayServiceTest {
         dashboardService = mock(DashboardService.class);
         metadataService = mock(MetadataService.class);
         alertService = mock(AlertService.class);
+        nameServerConfigDiffService = mock(NameServerConfigDiffService.class);
         capabilityResolver = new CapabilityResolver(clusterService);
         clusterListHandler = new ClusterListToolHandler(clusterService);
         capabilitiesHandler = new CapabilitiesToolHandler(clusterService, capabilityResolver);
@@ -82,6 +88,8 @@ class ToolGatewayServiceTest {
         topicListHandler = new TopicListToolHandler(metadataService);
         consumerGroupListHandler = new ConsumerGroupListToolHandler(metadataService);
         alertRuleListHandler = new AlertRuleListToolHandler(alertService);
+        nameServerConfigDiffHandler = new NameServerConfigDiffToolHandler(
+                nameServerConfigDiffService);
         gateway = gateway(
                 catalog,
                 clusterListHandler,
@@ -89,7 +97,8 @@ class ToolGatewayServiceTest {
                 dashboardSummaryHandler,
                 topicListHandler,
                 consumerGroupListHandler,
-                alertRuleListHandler);
+                alertRuleListHandler,
+                nameServerConfigDiffHandler);
     }
 
     @Test
@@ -112,7 +121,63 @@ class ToolGatewayServiceTest {
                         "rmq.dashboard.summary",
                         "rmq.topic.list",
                         "rmq.group.list",
-                        "rmq.alert.rule.list");
+                        "rmq.alert.rule.list",
+                        "rmq.nameserver.config.diff");
+    }
+
+    @Test
+    void executesNameServerConfigDiffWithAValidatedOutputContract() {
+        when(clusterService.getCluster("cluster-v5"))
+                .thenReturn(cluster(ClusterType.V5_PROXY_CLUSTER));
+        when(nameServerConfigDiffService.compare("cluster-v5"))
+                .thenReturn(NameServerConfigDiffVO.builder()
+                        .cluster("cluster-v5")
+                        .complete(true)
+                        .driftDetected(true)
+                        .nodeCount(2)
+                        .reachableNodeCount(2)
+                        .comparedKeys(List.of("listenPort"))
+                        .nodes(List.of(
+                                NameServerConfigDiffVO.NodeStatusVO.builder()
+                                        .address("ns-a:9876")
+                                        .reachable(true)
+                                        .build(),
+                                NameServerConfigDiffVO.NodeStatusVO.builder()
+                                        .address("ns-b:9876")
+                                        .reachable(true)
+                                        .build()))
+                        .differences(List.of(
+                                NameServerConfigDiffVO.ConfigDifferenceVO.builder()
+                                        .key("listenPort")
+                                        .values(List.of(
+                                                NameServerConfigDiffVO.ConfigValueVO.builder()
+                                                        .address("ns-a:9876")
+                                                        .configured(true)
+                                                        .value("9876")
+                                                        .build(),
+                                                NameServerConfigDiffVO.ConfigValueVO.builder()
+                                                        .address("ns-b:9876")
+                                                        .configured(false)
+                                                        .build()))
+                                        .build()))
+                        .build());
+
+        Object output = gateway.execute(
+                "rmq.nameserver.config.diff",
+                Map.of("cluster", "cluster-v5"));
+
+        assertThat(output).isInstanceOf(NameServerConfigDiffVO.class);
+        assertThat(((NameServerConfigDiffVO) output).isDriftDetected()).isTrue();
+        verify(nameServerConfigDiffService).compare("cluster-v5");
+    }
+
+    @Test
+    void rejectsNameServerConfigDiffWithoutAClusterBeforeHandlerRuns() {
+        assertThatThrownBy(() -> gateway.execute(
+                "rmq.nameserver.config.diff", Map.of()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("input validation failed");
+        verifyNoInteractions(nameServerConfigDiffService);
     }
 
     @Test
@@ -415,7 +480,8 @@ class ToolGatewayServiceTest {
                 dashboardSummaryHandler,
                 topicListHandler,
                 consumerGroupListHandler,
-                alertRuleListHandler);
+                alertRuleListHandler,
+                nameServerConfigDiffHandler);
 
         assertThatThrownBy(() -> l2Gateway.execute("rmq.cluster.list", Map.of()))
                 .isInstanceOf(BusinessException.class)
@@ -433,7 +499,8 @@ class ToolGatewayServiceTest {
                 dashboardSummaryHandler,
                 topicListHandler,
                 consumerGroupListHandler,
-                alertRuleListHandler))
+                alertRuleListHandler,
+                nameServerConfigDiffHandler))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("duplicate handler");
     }
@@ -468,7 +535,8 @@ class ToolGatewayServiceTest {
                 dashboardSummaryHandler,
                 topicListHandler,
                 consumerGroupListHandler,
-                alertRuleListHandler))
+                alertRuleListHandler,
+                nameServerConfigDiffHandler))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("input schema")
                 .hasMessageContaining("rmq.cluster.list");
@@ -496,7 +564,8 @@ class ToolGatewayServiceTest {
                 dashboardSummaryHandler,
                 topicListHandler,
                 consumerGroupListHandler,
-                alertRuleListHandler))
+                alertRuleListHandler,
+                nameServerConfigDiffHandler))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("input schema")
                 .hasMessageContaining("rmq.cluster.list");
@@ -522,7 +591,8 @@ class ToolGatewayServiceTest {
                 dashboardSummaryHandler,
                 topicListHandler,
                 consumerGroupListHandler,
-                alertRuleListHandler);
+                alertRuleListHandler,
+                nameServerConfigDiffHandler);
 
         assertThatThrownBy(() -> invalidGateway.execute("rmq.cluster.list", Map.of()))
                 .isInstanceOf(IllegalStateException.class)

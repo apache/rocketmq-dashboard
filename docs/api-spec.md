@@ -111,7 +111,8 @@
 | 68 | POST | `/api/ai/chat` | AI 对话（SSE） |
 | 69 | POST | `/api/ai/execute` | 执行 AI 指令 |
 | 70 | GET | `/api/ai/tools` | 可用工具列表 |
-| 71 | POST | `/api/metrics/query` | 查询监控指标数据 |
+| 71 | POST | `/api/ai/tools/:name/execute` | 执行只读 AI 工具 |
+| 72 | POST | `/api/metrics/query` | 查询监控指标数据 |
 
 ## 通用响应格式
 
@@ -1689,6 +1690,72 @@ GET /api/ai/tools
 | `name` | `string` | 工具名称 |
 | `description` | `string` | 工具描述 |
 | `parameters` | `object` | 参数 Schema |
+
+### 15.4 执行只读工具
+
+```
+POST /api/ai/tools/:name/execute
+```
+
+**Path Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `name` | `string` | 是 | 工具名称；NameServer 配置漂移检查使用 `rmq.nameserver.config.diff` |
+
+**`rmq.nameserver.config.diff` Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `cluster` | `string` | 是 | Studio 集群 ID |
+
+该工具逐个读取集群内的 NameServer 配置，只比较预定义的非敏感运行参数白名单。完整配置、路径、密码和凭据不会返回。单节点失败不会丢弃其他节点的检查结果。
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `cluster` | `string` | 集群 ID |
+| `complete` | `boolean` | 是否成功读取全部 NameServer；为 `false` 时漂移结论不完整 |
+| `driftDetected` | `boolean` | 可达节点之间是否发现白名单配置差异 |
+| `nodeCount` | `number` | NameServer 节点总数 |
+| `reachableNodeCount` | `number` | 成功读取配置的节点数 |
+| `comparedKeys` | `string[]` | 本次允许比较的配置键白名单 |
+| `nodes` | `object[]` | 节点地址及可达状态 |
+| `nodes[].address` | `string` | NameServer 地址 |
+| `nodes[].reachable` | `boolean` | 是否成功读取该节点配置 |
+| `differences` | `object[]` | 可达节点之间存在差异的配置项 |
+| `differences[].key` | `string` | 配置键 |
+| `differences[].values` | `object[]` | 各可达节点的配置值 |
+| `differences[].values[].address` | `string` | NameServer 地址 |
+| `differences[].values[].configured` | `boolean` | 节点是否显式包含该配置键 |
+| `differences[].values[].value` | `string?` | 白名单配置值；未配置时为 `null` |
+
+**示例：**
+
+```json
+{
+  "cluster": "cluster-prod",
+  "complete": true,
+  "driftDetected": true,
+  "nodeCount": 2,
+  "reachableNodeCount": 2,
+  "comparedKeys": ["listenPort", "serverWorkerThreads"],
+  "nodes": [
+    {"address": "10.0.0.1:9876", "reachable": true},
+    {"address": "10.0.0.2:9876", "reachable": true}
+  ],
+  "differences": [
+    {
+      "key": "serverWorkerThreads",
+      "values": [
+        {"address": "10.0.0.1:9876", "configured": true, "value": "8"},
+        {"address": "10.0.0.2:9876", "configured": true, "value": "16"}
+      ]
+    }
+  ]
+}
+```
 
 ---
 
