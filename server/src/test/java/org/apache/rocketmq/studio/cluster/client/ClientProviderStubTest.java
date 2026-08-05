@@ -33,6 +33,14 @@ class ClientProviderStubTest {
                 .satisfies(ex -> assertThatBusinessExceptionCode(ex, 501));
     }
 
+    @Test
+    void findProducerConnectionsShouldFailWhenRealProviderIsMissing() {
+        assertThatThrownBy(() -> provider.findProducerConnections("order-topic", "order-producer"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Client connection provider is not configured")
+                .satisfies(ex -> assertThatBusinessExceptionCode(ex, 501));
+    }
+
     private void assertThatBusinessExceptionCode(Throwable ex, int code) {
         org.assertj.core.api.Assertions.assertThat(((BusinessException) ex).getCode()).isEqualTo(code);
     }

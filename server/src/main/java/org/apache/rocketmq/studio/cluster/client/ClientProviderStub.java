@@ -30,4 +30,11 @@ public class ClientProviderStub implements ClientProvider {
                 clusterId, type);
         throw new BusinessException(501, "Client connection provider is not configured");
     }
+
+    @Override
+    public List<ClientConnectionVO> findProducerConnections(String topic, String producerGroup) {
+        log.warn("ClientProviderStub.findProducerConnections called without a real client provider. "
+                + "topic={}, producerGroup={}", topic, producerGroup);
+        throw new BusinessException(501, "Client connection provider is not configured");
+    }
 }

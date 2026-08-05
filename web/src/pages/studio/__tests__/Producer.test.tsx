@@ -80,7 +80,7 @@ describe('ProducerPage', () => {
     expect(await screen.findByRole('option', { name: 'payment-events' })).toBeInTheDocument();
   });
 
-  it('queries all producer connections for a topic without requiring a group', async () => {
+  it('queries producer connections with the required topic and group', async () => {
     const user = userEvent.setup();
     vi.mocked(queryProducerConnection).mockResolvedValue([
       {
@@ -98,11 +98,28 @@ describe('ProducerPage', () => {
     await user.click(
       await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
     );
+    await user.type(screen.getByRole('textbox'), 'order-producer');
     await user.click(screen.getByRole('button', { name: /搜索/ }));
 
     await waitFor(() => {
-      expect(queryProducerConnection).toHaveBeenCalledWith('order-events', undefined);
+      expect(queryProducerConnection).toHaveBeenCalledWith('order-events', 'order-producer');
     });
     expect(await screen.findByText('producer-1')).toBeInTheDocument();
+  });
+
+  it('does not query without a producer group', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ProducerPage />);
+
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
+    const topicSelect = screen.getByRole('combobox');
+    fireEvent.mouseDown(topicSelect.parentElement!);
+    await user.click(
+      await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.click(screen.getByRole('button', { name: /搜索/ }));
+
+    expect(await screen.findByText('请输入生产者组')).toBeInTheDocument();
+    expect(queryProducerConnection).not.toHaveBeenCalled();
   });
 });

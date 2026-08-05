@@ -16,7 +16,7 @@
  */
 package org.apache.rocketmq.studio.cluster.client;
 
-import org.apache.rocketmq.studio.common.domain.enums.ClientType;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -28,26 +28,15 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ProducerConnectionService {
 
-    private final ClientService clientService;
+    private final ClientProvider clientProvider;
 
     public List<ProducerConnectionVO> listConnections(String topic, String producerGroup) {
         log.info("Listing producer connections, topic={}, producerGroup={}", topic, producerGroup);
-        String normalizedTopic = normalizeFilter(topic);
-        String normalizedProducerGroup = normalizeFilter(producerGroup);
-        return clientService.listConnections(null, ClientType.Producer.name()).stream()
-                .filter(connection -> matchesFilter(connection, normalizedTopic, normalizedProducerGroup))
+        String normalizedTopic = requireFilter(topic, "topic");
+        String normalizedProducerGroup = requireFilter(producerGroup, "producerGroup");
+        return clientProvider.findProducerConnections(normalizedTopic, normalizedProducerGroup).stream()
                 .map(this::toProducerConnection)
                 .toList();
-    }
-
-    private boolean matchesFilter(ClientConnectionVO connection, String topic, String producerGroup) {
-        if (hasText(topic) && !topic.equals(connection.getGroupOrTopic())) {
-            return false;
-        }
-        if (hasText(producerGroup) && !producerGroup.equals(connection.getProducerGroup())) {
-            return false;
-        }
-        return true;
     }
 
     private ProducerConnectionVO toProducerConnection(ClientConnectionVO connection) {
@@ -63,7 +52,10 @@ public class ProducerConnectionService {
         return value != null && !value.trim().isEmpty();
     }
 
-    private String normalizeFilter(String value) {
-        return hasText(value) ? value.trim() : null;
+    private String requireFilter(String value, String fieldName) {
+        if (!hasText(value)) {
+            throw new BusinessException(400, fieldName + " is required");
+        }
+        return value.trim();
     }
 }

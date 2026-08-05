@@ -57,7 +57,7 @@ const ProducerPage = () => {
     };
   }, [fetchTopicFailedMessage, message]);
 
-  const onFinish = async (values: { selectedTopic: string; producerGroup?: string }) => {
+  const onFinish = async (values: { selectedTopic: string; producerGroup: string }) => {
     setLoading(true);
     try {
       const connections = await queryProducerConnection(values.selectedTopic, values.producerGroup);
@@ -122,7 +122,11 @@ const ProducerPage = () => {
               options={topicList.map((topic) => ({ value: topic, label: topic }))}
             />
           </Form.Item>
-          <Form.Item label="PRODUCER GROUP" name="producerGroup">
+          <Form.Item
+            label="PRODUCER GROUP"
+            name="producerGroup"
+            rules={[{ required: true, whitespace: true, message: t('producer.inputGroup') }]}
+          >
             <Input placeholder={t('producer.inputGroup')} style={{ width: 300 }} />
           </Form.Item>
           <Form.Item>

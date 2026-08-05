@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.cluster.client;
 
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -33,6 +34,14 @@ public class ProducerController {
     public ProducerConnectionResultVO listConnections(
             @RequestParam(required = false) String topic,
             @RequestParam(required = false) String producerGroup) {
+        requireParameter(topic, "topic");
+        requireParameter(producerGroup, "producerGroup");
         return new ProducerConnectionResultVO(producerConnectionService.listConnections(topic, producerGroup));
+    }
+
+    private void requireParameter(String value, String name) {
+        if (value == null || value.isBlank()) {
+            throw new BusinessException(400, name + " is required");
+        }
     }
 }
