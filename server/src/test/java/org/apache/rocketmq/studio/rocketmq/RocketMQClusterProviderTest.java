@@ -51,6 +51,44 @@ class RocketMQClusterProviderTest {
         assertThat(clusters.get(0).getBrokers().get(0).getTpsOut()).isEqualTo(34);
     }
 
+    @Test
+    void discoverClustersShouldPopulateSafeDefaults() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RocketMQProperties properties = new RocketMQProperties();
+        properties.setNamesrvAddr("10.0.0.1:9876");
+        RocketMQClusterProvider provider = new RocketMQClusterProvider(adminExt, properties);
+
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+
+        List<ClusterVO> clusters = provider.discoverClusters();
+
+        assertThat(clusters).hasSize(1);
+        ClusterVO cluster = clusters.get(0);
+        assertThat(cluster.getName()).isEqualTo("DefaultCluster");
+        // Real cluster has no proxies configured - must never be null for the web UI
+        assertThat(cluster.getProxies()).isNotNull().isEmpty();
+        assertThat(cluster.getTpsHistory()).isNotNull().isEmpty();
+        assertThat(cluster.getNameServers()).hasSize(1);
+        assertThat(cluster.getNameServers().get(0).getAddr()).isEqualTo("10.0.0.1:9876");
+    }
+
+    @Test
+    void refreshClusterDetailShouldPopulateSafeDefaults() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RocketMQProperties properties = new RocketMQProperties();
+        properties.setNamesrvAddr("10.0.0.1:9876");
+        RocketMQClusterProvider provider = new RocketMQClusterProvider(adminExt, properties);
+
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+
+        ClusterVO cluster = provider.refreshClusterDetail("DefaultCluster");
+
+        assertThat(cluster).isNotNull();
+        assertThat(cluster.getId()).isEqualTo("DefaultCluster");
+        assertThat(cluster.getProxies()).isNotNull().isEmpty();
+        assertThat(cluster.getTpsHistory()).isNotNull().isEmpty();
+    }
+
     private ClusterInfo clusterInfo() {
         ClusterInfo clusterInfo = new ClusterInfo();
         HashMap<Long, String> addrs = new HashMap<>();
