@@ -16,13 +16,18 @@
  */
 package org.apache.rocketmq.studio.queryhistory;
 
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.persistence.entity.RmqMessageQuery;
 import org.apache.rocketmq.studio.persistence.entity.RmqTraceQuery;
 import org.apache.rocketmq.studio.persistence.mapper.RmqMessageQueryMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqTraceQueryMapper;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 
 @Slf4j
@@ -31,14 +36,27 @@ public class QueryHistoryService {
 
     private final RmqMessageQueryMapper messageQueryMapper;
     private final RmqTraceQueryMapper traceQueryMapper;
+    private final QueryHistoryProperties properties;
+    private final Clock clock;
 
+    @Autowired
     public QueryHistoryService(RmqMessageQueryMapper messageQueryMapper,
-                               RmqTraceQueryMapper traceQueryMapper) {
-        this.messageQueryMapper = messageQueryMapper;
-        this.traceQueryMapper = traceQueryMapper;
+                               RmqTraceQueryMapper traceQueryMapper,
+                               QueryHistoryProperties properties) {
+        this(messageQueryMapper, traceQueryMapper, properties, Clock.systemUTC());
     }
 
-    public void recordMessageQuery(String queryType, String topic, String msgId,
+    QueryHistoryService(RmqMessageQueryMapper messageQueryMapper,
+                        RmqTraceQueryMapper traceQueryMapper,
+                        QueryHistoryProperties properties,
+                        Clock clock) {
+        this.messageQueryMapper = messageQueryMapper;
+        this.traceQueryMapper = traceQueryMapper;
+        this.properties = properties;
+        this.clock = clock;
+    }
+
+    public void recordMessageQuery(String clusterId, String queryType, String topic, String msgId,
                                    String tag, String key, Long startTime,
                                    Long endTime, int resultCount) {
         RmqMessageQuery query = new RmqMessageQuery();
@@ -50,19 +68,55 @@ public class QueryHistoryService {
         query.setStartTime(startTime);
         query.setEndTime(endTime);
         query.setResultCount(resultCount);
-        query.setQueriedAt(LocalDateTime.now());
+        query.setClusterId(clusterId);
+        query.setQueriedBy(AuthenticatedUserContext.currentUsernameOrSystem());
+        query.setQueriedAt(LocalDateTime.now(clock));
         messageQueryMapper.insert(query);
-        log.debug("Message query recorded: type={} topic={}", queryType, topic);
+        log.debug("Message query recorded: clusterId={} type={} topic={}", clusterId, queryType, topic);
     }
 
-    public void recordTraceQuery(String msgId, String topic, int nodeCount, int consumerCount) {
+    public void recordTraceQuery(String clusterId, String msgId, String topic, int nodeCount, int consumerCount) {
         RmqTraceQuery query = new RmqTraceQuery();
         query.setMsgId(msgId);
         query.setTopic(topic);
         query.setNodeCount(nodeCount);
         query.setConsumerCount(consumerCount);
-        query.setQueriedAt(LocalDateTime.now());
+        query.setClusterId(clusterId);
+        query.setQueriedBy(AuthenticatedUserContext.currentUsernameOrSystem());
+        query.setQueriedAt(LocalDateTime.now(clock));
         traceQueryMapper.insert(query);
-        log.debug("Trace query recorded: msgId={} topic={}", msgId, topic);
+        log.debug("Trace query recorded: clusterId={} msgId={} topic={}", clusterId, msgId, topic);
+    }
+
+    @Scheduled(fixedDelayString = "${studio.query-history.cleanup-interval:PT24H}")
+    public void purgeExpiredQueries() {
+        int retentionDays = properties.getRetentionDays();
+        if (retentionDays <= 0) {
+            return;
+        }
+
+        LocalDateTime cutoff = LocalDateTime.now(clock).minusDays(retentionDays);
+        deleteExpiredMessageQueries(cutoff);
+        deleteExpiredTraceQueries(cutoff);
+    }
+
+    private void deleteExpiredMessageQueries(LocalDateTime cutoff) {
+        try {
+            int deleted = messageQueryMapper.delete(Wrappers.<RmqMessageQuery>query()
+                    .lt("queried_at", cutoff));
+            log.debug("Purged {} expired message query records", deleted);
+        } catch (RuntimeException e) {
+            log.warn("Failed to purge expired message query records: {}", e.getMessage());
+        }
+    }
+
+    private void deleteExpiredTraceQueries(LocalDateTime cutoff) {
+        try {
+            int deleted = traceQueryMapper.delete(Wrappers.<RmqTraceQuery>query()
+                    .lt("queried_at", cutoff));
+            log.debug("Purged {} expired trace query records", deleted);
+        } catch (RuntimeException e) {
+            log.warn("Failed to purge expired trace query records: {}", e.getMessage());
+        }
     }
 }

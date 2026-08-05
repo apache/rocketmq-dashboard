@@ -46,6 +46,9 @@ studio:
       bearer-token: ${STUDIO_METRICS_PROMETHEUS_BEARER_TOKEN:}
   rocketmq:
     namesrv-addr: ${STUDIO_ROCKETMQ_NAMESRV_ADDR:}
+  query-history:
+    retention-days: ${STUDIO_QUERY_HISTORY_RETENTION_DAYS:90}
+    cleanup-interval: ${STUDIO_QUERY_HISTORY_CLEANUP_INTERVAL:PT24H}
   llm:
     token: ${RMQ_LLM_TOKEN:}
     anthropic-base-url: ${RMQ_ANTHROPIC_BASE_URL:}

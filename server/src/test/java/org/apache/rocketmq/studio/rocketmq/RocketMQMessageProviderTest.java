@@ -87,7 +87,8 @@ class RocketMQMessageProviderTest {
             verify(consumer, never()).pull(any(MessageQueue.class), anyString(), anyLong(), anyInt());
             verify(consumer).shutdown();
         }
-        verify(queryHistoryService).recordMessageQuery("TOPIC", "TopicA", null, null, null, 100L, 200L, 0);
+        verify(queryHistoryService).recordMessageQuery(null, "TOPIC", "TopicA", null, null, null,
+                100L, 200L, 0);
     }
 
     @Test
