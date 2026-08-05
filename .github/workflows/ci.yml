@@ -59,6 +59,35 @@ jobs:
       - name: Smoke test CLI
         run: npx tsx src/index.ts --help
 
+  mcp-build:
+    name: MCP Server Build (TypeScript)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rocketmq-dashboard-mcp
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: rocketmq-dashboard-mcp/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Smoke test MCP server
+        run: npx tsx src/index.ts --help
+
   frontend-build:
     name: Frontend Build (Node 20)
     runs-on: ubuntu-latest

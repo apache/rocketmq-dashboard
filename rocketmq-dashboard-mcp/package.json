@@ -1,0 +1,33 @@
+{
+  "name": "rocketmq-dashboard-mcp",
+  "version": "1.0.0",
+  "description": "Lightweight Model Context Protocol (MCP) server for RocketMQ Studio (RIP-3), implemented in TypeScript. A thin adapter: it speaks the MCP protocol to AI clients and forwards tool calls to the RocketMQ Studio server over plain JSON (GET/POST /api/ai). The Studio server remains the single source of truth for tool discovery and execution.",
+  "license": "Apache-2.0",
+  "bin": {
+    "rmq-mcp": "src/index.ts"
+  },
+  "type": "module",
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  }
+}
