@@ -546,6 +546,14 @@ const translations: Record<string, Record<Lang, string>> = {
   'cluster.probeElapsed': { zh: '耗时 (ms)', en: 'Elapsed (ms)' },
   'cluster.configTitle': { zh: '配置 - {name}', en: 'Config - {name}' },
   'cluster.configUpdated': { zh: '配置已更新', en: 'Configuration updated' },
+  'cluster.configPartiallyUpdated': {
+    zh: '部分 Broker 配置已更新，请检查：{brokers}',
+    en: 'Some broker configurations were updated. Check: {brokers}',
+  },
+  'cluster.configUpdateFailed': {
+    zh: 'Broker 配置更新失败，请检查：{brokers}',
+    en: 'Broker configuration update failed. Check: {brokers}',
+  },
   'cluster.flushDiskType': { zh: '刷盘方式', en: 'Flush Disk Type' },
   'cluster.syncFlush': { zh: '同步刷盘', en: 'Sync Flush' },
   'cluster.asyncFlush': { zh: '异步刷盘', en: 'Async Flush' },

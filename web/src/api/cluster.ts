@@ -73,6 +73,20 @@ export interface ClusterConfig {
   deleteWhen: string;
 }
 
+export type ClusterConfigUpdateStatus = 'SUCCESS' | 'PARTIAL' | 'FAILED';
+
+export interface BrokerConfigUpdateFailure {
+  address: string;
+  message: string;
+}
+
+export interface ClusterConfigUpdateResult {
+  cluster: ClusterInfo;
+  status: ClusterConfigUpdateStatus;
+  successfulBrokers: string[];
+  failedBrokers: BrokerConfigUpdateFailure[];
+}
+
 export interface ClusterProbeResult {
   connected: boolean;
   namesrvAddr: string;
@@ -116,7 +130,11 @@ export async function getCluster(id: string) {
 }
 
 export async function updateClusterConfig(data: { id: string } & Partial<ClusterConfig>) {
-  await client.post('/clusters/config/update', data);
+  const res = await client.post<{ data: ClusterConfigUpdateResult }>(
+    '/clusters/config/update',
+    data,
+  );
+  return res.data.data;
 }
 
 export async function restartBroker(clusterId: string, brokerName: string) {

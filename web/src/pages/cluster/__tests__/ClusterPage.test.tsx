@@ -136,7 +136,15 @@ describe('Cluster page', () => {
     clusterServiceMocks.listClusters.mockReset().mockResolvedValue([buildCluster()]);
     clusterServiceMocks.restartProxy.mockReset().mockResolvedValue(undefined);
     clusterServiceMocks.testClusterConnection.mockReset();
-    clusterServiceMocks.updateClusterConfig.mockReset().mockResolvedValue(undefined);
+    clusterServiceMocks.updateClusterConfig.mockReset().mockImplementation(async () => {
+      const cluster = buildCluster();
+      return {
+        cluster,
+        status: 'SUCCESS',
+        successfulBrokers: cluster.brokers.map((broker) => broker.addr),
+        failedBrokers: [],
+      };
+    });
     clusterServiceMocks.updateNameServer.mockReset().mockResolvedValue(undefined);
   });
 

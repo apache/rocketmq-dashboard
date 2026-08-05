@@ -29,6 +29,7 @@ import {
   restartBroker,
   restartNameServer,
   restartProxy,
+  updateClusterConfig,
   updateK8sCert,
   updateNameServer,
   upgradeNameServer,
@@ -130,6 +131,20 @@ describe('K8s certificate API', () => {
       success: true,
       message: 'restarted',
     });
+  });
+
+  it('returns per-broker cluster config update results', async () => {
+    const result = {
+      cluster: { id: 'cluster-1' },
+      status: 'PARTIAL',
+      successfulBrokers: ['10.0.0.1:10911'],
+      failedBrokers: [{ address: '10.0.0.2:10911', message: 'broker unavailable' }],
+    };
+    mock.onPost('/clusters/config/update').reply(200, { code: 200, data: result });
+
+    await expect(updateClusterConfig({ id: 'cluster-1', writeQueueNums: 16 })).resolves.toEqual(
+      result,
+    );
   });
 
   it('sends NameServer operation payloads to their endpoints', async () => {

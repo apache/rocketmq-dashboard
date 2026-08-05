@@ -1,6 +1,12 @@
 import { isMockMode } from './dataMode';
 import * as clusterApi from '../api/cluster';
-import type { ClusterConfig, ClusterInfo, ClusterProbeResult, K8sCertInfo } from '../api/cluster';
+import type {
+  ClusterConfig,
+  ClusterConfigUpdateResult,
+  ClusterInfo,
+  ClusterProbeResult,
+  K8sCertInfo,
+} from '../api/cluster';
 import clusters, { mockK8sCerts } from '../mock/clusters';
 
 const mockCertStore: K8sCertInfo[] = mockK8sCerts.map((cert) => ({
@@ -131,8 +137,14 @@ export async function deleteK8sCert(id: string): Promise<void> {
 export async function updateClusterConfig(data: { id: string } & Partial<ClusterConfig>) {
   if (isMockMode()) {
     const { id, ...config } = data;
-    Object.assign(getMockCluster(id).config, config);
-    return;
+    const cluster = getMockCluster(id);
+    Object.assign(cluster.config, config);
+    return {
+      cluster: copyCluster(cluster),
+      status: 'SUCCESS',
+      successfulBrokers: cluster.brokers.map((broker) => broker.addr),
+      failedBrokers: [],
+    } satisfies ClusterConfigUpdateResult;
   }
   return clusterApi.updateClusterConfig(data);
 }
@@ -208,7 +220,9 @@ export async function updateNameServer(data: {
     const nameServer = nameServers.find((item) => item.addr === data.addr);
     if (!nameServer) throw new Error(`NameServer not found: ${data.addr}`);
     if (data.newAddr && data.newAddr !== data.addr) {
-      const duplicate = nameServers.some((item) => item !== nameServer && item.addr === data.newAddr);
+      const duplicate = nameServers.some(
+        (item) => item !== nameServer && item.addr === data.newAddr,
+      );
       if (duplicate) throw new Error(`NameServer already exists: ${data.newAddr}`);
     }
     if (data.newAddr) nameServer.addr = data.newAddr;
