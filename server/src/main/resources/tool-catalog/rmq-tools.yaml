@@ -366,3 +366,94 @@ tools:
             type: string
     viewHint: table
     deprecated: false
+  - name: rmq.nameserver.config.diff
+    cli:
+      resource: nameserver-config
+      verb: diff
+    description: Compare safe runtime configuration across NameServers in one cluster.
+    riskLevel: L1
+    permission: cluster:read
+    requiredCapabilities:
+      - REMOTING
+    inputSchema:
+      type: object
+      required:
+        - cluster
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - cluster
+        - complete
+        - driftDetected
+        - nodeCount
+        - reachableNodeCount
+        - comparedKeys
+        - nodes
+        - differences
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+        complete:
+          type: boolean
+        driftDetected:
+          type: boolean
+        nodeCount:
+          type: integer
+          minimum: 1
+        reachableNodeCount:
+          type: integer
+          minimum: 0
+        comparedKeys:
+          type: array
+          items:
+            type: string
+        nodes:
+          type: array
+          items:
+            type: object
+            required:
+              - address
+              - reachable
+            additionalProperties: false
+            properties:
+              address:
+                type: string
+              reachable:
+                type: boolean
+        differences:
+          type: array
+          items:
+            type: object
+            required:
+              - key
+              - values
+            additionalProperties: false
+            properties:
+              key:
+                type: string
+              values:
+                type: array
+                items:
+                  type: object
+                  required:
+                    - address
+                    - configured
+                    - value
+                  additionalProperties: false
+                  properties:
+                    address:
+                      type: string
+                    configured:
+                      type: boolean
+                    value:
+                      type:
+                        - string
+                        - 'null'
+    viewHint: object
+    deprecated: false

@@ -1,0 +1,22 @@
+# NameServer 配置漂移检测（NameServerConfigDiffService）比对的配置项白名单。
+# 只比对在全部节点上语义必须一致的键；新增/删除键直接改本文件即可，无需改代码。
+keys:
+  - listenPort
+  - serverWorkerThreads
+  - serverCallbackExecutorThreads
+  - serverSelectorThreads
+  - serverOnewaySemaphoreValue
+  - serverAsyncSemaphoreValue
+  - serverChannelMaxIdleTimeSeconds
+  - serverSocketSndBufSize
+  - serverSocketRcvBufSize
+  - serverPooledByteBufAllocatorEnable
+  - useEpollNativeSelector
+  - orderMessageEnable
+  - returnOrderTopicConfigToBroker
+  - enableControllerInNamesrv
+  - enableUncleanMasterElection
+  - notifyMinBrokerIdChanged
+  - supportActingMaster
+  - scanNotActiveBrokerInterval
+  - unRegisterBrokerQueueCapacity
