@@ -63,6 +63,13 @@ export interface DLQGroup {
   status: string;
 }
 
+export interface DLQResendResult {
+  matched: number;
+  resent: number;
+  failed: number;
+  outcome: 'SUCCESS' | 'PARTIAL';
+}
+
 // ─── Messages ───────────────────────────────────────────────────
 export async function queryMessages(params: MessageQuery) {
   const res = await client.get<{ data: MessageRecord[] }>('/messages', { params });
@@ -70,7 +77,9 @@ export async function queryMessages(params: MessageQuery) {
 }
 
 export async function getMessageTrace(msgId: string) {
-  const res = await client.get<{ data: TraceRecord }>(`/messages/${encodeURIComponent(msgId)}/trace`);
+  const res = await client.get<{ data: TraceRecord }>(
+    `/messages/${encodeURIComponent(msgId)}/trace`,
+  );
   return res.data.data;
 }
 
@@ -85,6 +94,7 @@ export async function resendDLQ(data: {
   startTime: number;
   endTime: number;
   targetTopic?: string;
-}) {
-  await client.post('/dlq/resend', data);
+}): Promise<DLQResendResult> {
+  const res = await client.post<{ data: DLQResendResult }>('/dlq/resend', data);
+  return res.data.data;
 }

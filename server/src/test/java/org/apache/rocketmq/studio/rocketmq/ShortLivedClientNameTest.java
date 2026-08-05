@@ -14,12 +14,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.instance.dlq;
+package org.apache.rocketmq.studio.rocketmq;
 
+import static org.assertj.core.api.Assertions.assertThat;
 
-import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+import org.junit.jupiter.api.Test;
 
-public interface DLQProvider {
-    List<DLQGroupVO> listDLQGroups(String clusterId);
-    DLQResendResultVO resendMessages(String groupName, Long startTime, Long endTime, String targetTopic);
+class ShortLivedClientNameTest {
+
+    @Test
+    void generatesUniqueNamesWithoutClockDelays() {
+        Set<String> names = IntStream.range(0, 100)
+                .mapToObj(ignored -> ShortLivedClientName.next("studio-query"))
+                .collect(Collectors.toSet());
+
+        assertThat(names).hasSize(100).allMatch(name -> name.startsWith("studio-query-"));
+    }
 }

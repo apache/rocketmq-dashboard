@@ -1,7 +1,13 @@
 import { isMockMode } from './dataMode';
 import * as messageApi from '../api/message';
 import { sortMessagesByStoreTimeDesc } from '../api/message';
-import type { MessageQuery, MessageRecord, TraceRecord, DLQGroup } from '../api/message';
+import type {
+  MessageQuery,
+  MessageRecord,
+  TraceRecord,
+  DLQGroup,
+  DLQResendResult,
+} from '../api/message';
 import { mockMessages, mockMessageTraces } from '../mock/messages';
 import { mockDLQGroups } from '../mock/dlq';
 
@@ -60,7 +66,7 @@ export async function resendDLQ(data: {
   startTime: number;
   endTime: number;
   targetTopic?: string;
-}): Promise<void> {
-  if (isMockMode()) return;
+}): Promise<DLQResendResult> {
+  if (isMockMode()) return { matched: 0, resent: 0, failed: 0, outcome: 'SUCCESS' };
   return messageApi.resendDLQ(data);
 }

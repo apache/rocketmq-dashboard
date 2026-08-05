@@ -36,7 +36,7 @@ public class DLQProviderStub implements DLQProvider {
     }
 
     @Override
-    public void resendMessages(String groupName, Long startTime, Long endTime, String targetTopic) {
+    public DLQResendResultVO resendMessages(String groupName, Long startTime, Long endTime, String targetTopic) {
         log.warn("DLQProviderStub.resendMessages called but no real DLQ provider is configured. group={}, targetTopic={}",
                 groupName, targetTopic);
         throw unsupported();
