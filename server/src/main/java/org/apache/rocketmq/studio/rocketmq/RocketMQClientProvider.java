@@ -16,7 +16,9 @@
  */
 package org.apache.rocketmq.studio.rocketmq;
 
+import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.remoting.protocol.LanguageCode;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.Connection;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
@@ -93,10 +95,27 @@ public class RocketMQClientProvider implements ClientProvider {
                     .map(connection -> toConnectionVO(
                             connection, ClientType.Producer, topic, producerGroup, null))
                     .toList();
+        } catch (MQClientException e) {
+            if (isTopicNotExist(e)) {
+                // A non-existent topic is a normal "nothing here" outcome — the client
+                // page should show an empty list, not a 502 that looks like a failure.
+                return List.of();
+            }
+            throw new BusinessException(502,
+                    "Failed to query producer connections: " + rootMessage(e));
         } catch (Exception e) {
             throw new BusinessException(502,
                     "Failed to query producer connections: " + rootMessage(e));
         }
+    }
+
+    private boolean isTopicNotExist(MQClientException e) {
+        if (e.getResponseCode() == ResponseCode.TOPIC_NOT_EXIST) {
+            return true;
+        }
+        String message = e.getErrorMessage() == null ? e.getMessage() : e.getErrorMessage();
+        return message != null && message.contains("route info of topic")
+                || message != null && message.contains("route info not found");
     }
 
     private List<ClientConnectionVO> findAllProducerConnections(
