@@ -27,15 +27,16 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-import java.util.List;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuditService {
 
+    private static final int MAX_PAGE_SIZE = 100;
+    private static final int MAX_EXPORT_RECORDS = 10_000;
     private static final String CSV_HEADER =
-            "timestamp,operator,operationType,target,detail,ipAddress,result\r\n";
+            "timestamp,operator,operationType,resourceType,target,clusterId,detail,result,errorMessage\r\n";
 
     private final AuditRepository auditRepository;
 
@@ -47,30 +48,29 @@ public class AuditService {
         log.info("Querying audit logs, page={}, pageSize={}, search={}, operationType={}, result={}",
                 page, pageSize, search, operationType, result);
 
-        List<AuditRecordVO> allRecords = findRecords(search, operationType, startDate, endDate, result);
-        long total = allRecords.size();
-
-        long offset = (long) (page - 1) * pageSize;
-        int fromIndex = (int) Math.min(offset, allRecords.size());
-        int toIndex = (int) Math.min((long) fromIndex + pageSize, allRecords.size());
-        List<AuditRecordVO> pageRecords = allRecords.subList(fromIndex, toIndex);
-
-        return PageResult.of(pageRecords, total, page, pageSize);
+        return findPage(search, operationType, startDate, endDate, result, page, pageSize);
     }
 
     public String exportLogs(String search, String operationType, String startDate,
                              String endDate, String result) {
-        List<AuditRecordVO> records = findRecords(search, operationType, startDate, endDate, result);
+        PageResult<AuditRecordVO> page = findPage(
+                search, operationType, startDate, endDate, result, 1, MAX_EXPORT_RECORDS);
+        if (page.getTotal() > MAX_EXPORT_RECORDS) {
+            throw new BusinessException(400,
+                    "Audit log export exceeds the maximum of " + MAX_EXPORT_RECORDS + " records; narrow the filters");
+        }
         StringBuilder csv = new StringBuilder("\uFEFF").append(CSV_HEADER);
-        for (AuditRecordVO record : records) {
+        for (AuditRecordVO record : page.getItems()) {
             appendCsvRow(csv,
                     record.getTimestamp(),
                     record.getOperator(),
                     record.getOperationType(),
+                    record.getResourceType(),
                     record.getTarget(),
+                    record.getClusterId(),
                     record.getDetail(),
-                    record.getIpAddress(),
-                    record.getResult());
+                    record.getResult(),
+                    record.getErrorMessage());
         }
         return csv.toString();
     }
@@ -101,19 +101,19 @@ public class AuditService {
         if (page <= 0) {
             throw new BusinessException(400, "page must be greater than 0");
         }
-        if (pageSize <= 0) {
-            throw new BusinessException(400, "pageSize must be greater than 0");
+        if (pageSize <= 0 || pageSize > MAX_PAGE_SIZE) {
+            throw new BusinessException(400, "pageSize must be between 1 and " + MAX_PAGE_SIZE);
         }
     }
 
-    private List<AuditRecordVO> findRecords(String search, String operationType, String startDate,
-                                            String endDate, String result) {
+    private PageResult<AuditRecordVO> findPage(String search, String operationType, String startDate,
+                                               String endDate, String result, int page, int pageSize) {
         LocalDateTime start = parseDate(startDate, true, "startDate");
         LocalDateTime end = parseDate(endDate, false, "endDate");
         if (start != null && end != null && start.isAfter(end)) {
             throw new BusinessException(400, "startDate must not be after endDate");
         }
-        return auditRepository.findAll(search, operationType, start, end, result);
+        return auditRepository.findPage(search, operationType, start, end, result, page, pageSize);
     }
 
     private void appendCsvRow(StringBuilder csv, Object... values) {

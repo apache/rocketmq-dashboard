@@ -34,8 +34,10 @@ public class AuditRecordVO extends BaseEntity {
     private LocalDateTime timestamp;
     private String operator;
     private String operationType;
+    private String resourceType;
     private String target;
+    private String clusterId;
     private String detail;
-    private String ipAddress;
     private String result;
+    private String errorMessage;
 }

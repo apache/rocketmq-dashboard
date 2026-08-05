@@ -17,6 +17,8 @@
 package org.apache.rocketmq.studio.ops.audit;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.persistence.entity.RmqOperationAudit;
 import org.apache.rocketmq.studio.persistence.mapper.RmqOperationAuditMapper;
 import org.springframework.stereotype.Repository;
@@ -26,10 +28,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
-/**
- * MySQL-backed audit repository (rmq_operation_audit). The VO's ipAddress has
- * no dedicated column and is not persisted.
- */
+/** MySQL-backed audit repository (rmq_operation_audit). */
 @Repository
 public class MybatisPlusAuditRepository implements AuditRepository {
 
@@ -40,9 +39,9 @@ public class MybatisPlusAuditRepository implements AuditRepository {
     }
 
     @Override
-    public List<AuditRecordVO> findAll(String search, String operationType,
-                                       LocalDateTime startDate, LocalDateTime endDate,
-                                       String result) {
+    public PageResult<AuditRecordVO> findPage(String search, String operationType,
+                                              LocalDateTime startDate, LocalDateTime endDate,
+                                              String result, int page, int pageSize) {
         QueryWrapper<RmqOperationAudit> query = new QueryWrapper<RmqOperationAudit>()
                 .and(StringUtils.hasText(search), w -> w
                         .like("operator", search)
@@ -53,9 +52,12 @@ public class MybatisPlusAuditRepository implements AuditRepository {
                 .le(endDate != null, "operated_at", endDate)
                 .eq(StringUtils.hasText(result), "result", result)
                 .orderByDesc("operated_at");
-        return auditMapper.selectList(query).stream()
+        Page<RmqOperationAudit> resultPage = auditMapper.selectPage(
+                new Page<>(page, pageSize), query);
+        List<AuditRecordVO> records = resultPage.getRecords().stream()
                 .map(MybatisPlusAuditRepository::toVO)
                 .collect(Collectors.toList());
+        return PageResult.of(records, resultPage.getTotal(), page, pageSize);
     }
 
     @Override
@@ -83,9 +85,12 @@ public class MybatisPlusAuditRepository implements AuditRepository {
         vo.setTimestamp(entity.getOperatedAt());
         vo.setOperator(entity.getOperator());
         vo.setOperationType(entity.getOperation());
+        vo.setResourceType(entity.getResourceType());
         vo.setTarget(entity.getResourceName());
+        vo.setClusterId(entity.getClusterId());
         vo.setDetail(entity.getDetail());
         vo.setResult(entity.getResult());
+        vo.setErrorMessage(entity.getErrorMessage());
         return vo;
     }
 }

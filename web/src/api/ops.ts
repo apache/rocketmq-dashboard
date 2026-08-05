@@ -31,10 +31,12 @@ export interface AuditRecord {
   timestamp: string;
   operator: string;
   operationType: string;
+  resourceType: string;
   target: string;
+  clusterId: string;
   detail: string;
-  ipAddress: string;
   result: string;
+  errorMessage: string;
 }
 
 export interface PageResult<T> {

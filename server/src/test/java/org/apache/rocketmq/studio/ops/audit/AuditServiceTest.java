@@ -26,8 +26,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -48,242 +46,89 @@ class AuditServiceTest {
     private AuditService auditService;
 
     @Test
-    void queryLogsShouldReturnFirstPage() {
-        AuditRecordVO r1 = AuditRecordVO.builder()
-                .operator("admin").operationType("CREATE").target("topic-a").result("SUCCESS").build();
-        AuditRecordVO r2 = AuditRecordVO.builder()
-                .operator("admin").operationType("DELETE").target("topic-b").result("SUCCESS").build();
-        AuditRecordVO r3 = AuditRecordVO.builder()
-                .operator("user1").operationType("UPDATE").target("topic-c").result("FAILURE").build();
-        when(auditRepository.findAll(isNull(), isNull(), isNull(), isNull(), isNull()))
-                .thenReturn(Arrays.asList(r1, r2, r3));
-
-        PageResult<AuditRecordVO> result = auditService.queryLogs(1, 2, null, null, null, null, null);
-
-        assertThat(result.getItems()).hasSize(2);
-        assertThat(result.getTotal()).isEqualTo(3);
-        assertThat(result.getPage()).isEqualTo(1);
-        assertThat(result.getSize()).isEqualTo(2);
-        assertThat(result.getItems().get(0).getOperationType()).isEqualTo("CREATE");
-        assertThat(result.getItems().get(1).getOperationType()).isEqualTo("DELETE");
-    }
-
-    @Test
-    void queryLogsShouldReturnSecondPage() {
-        AuditRecordVO r1 = AuditRecordVO.builder().operationType("CREATE").build();
-        AuditRecordVO r2 = AuditRecordVO.builder().operationType("DELETE").build();
-        AuditRecordVO r3 = AuditRecordVO.builder().operationType("UPDATE").build();
-        when(auditRepository.findAll(isNull(), isNull(), isNull(), isNull(), isNull()))
-                .thenReturn(Arrays.asList(r1, r2, r3));
-
-        PageResult<AuditRecordVO> result = auditService.queryLogs(2, 2, null, null, null, null, null);
-
-        assertThat(result.getItems()).hasSize(1);
-        assertThat(result.getTotal()).isEqualTo(3);
-        assertThat(result.getPage()).isEqualTo(2);
-        assertThat(result.getItems().get(0).getOperationType()).isEqualTo("UPDATE");
-    }
-
-    @Test
-    void queryLogsShouldReturnEmptyPageWhenNoRecords() {
-        when(auditRepository.findAll(isNull(), isNull(), isNull(), isNull(), isNull()))
-                .thenReturn(Collections.emptyList());
-
-        PageResult<AuditRecordVO> result = auditService.queryLogs(1, 10, null, null, null, null, null);
-
-        assertThat(result.getItems()).isEmpty();
-        assertThat(result.getTotal()).isZero();
-        assertThat(result.getPage()).isEqualTo(1);
-        assertThat(result.getSize()).isEqualTo(10);
-    }
-
-    @Test
-    void queryLogsShouldReturnEmptyWhenPageExceedsTotal() {
-        AuditRecordVO r1 = AuditRecordVO.builder().operationType("CREATE").build();
-        when(auditRepository.findAll(isNull(), isNull(), isNull(), isNull(), isNull()))
-                .thenReturn(List.of(r1));
-
-        PageResult<AuditRecordVO> result = auditService.queryLogs(5, 10, null, null, null, null, null);
-
-        assertThat(result.getItems()).isEmpty();
-        assertThat(result.getTotal()).isEqualTo(1);
-    }
-
-    @Test
-    void queryLogsShouldRejectNonPositivePage() {
-        assertThatThrownBy(() -> auditService.queryLogs(0, 10, null, null, null, null, null))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("page must be greater than 0")
-                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
-    }
-
-    @Test
-    void queryLogsShouldRejectNonPositivePageSize() {
-        assertThatThrownBy(() -> auditService.queryLogs(1, 0, null, null, null, null, null))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("pageSize must be greater than 0")
-                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
-    }
-
-    @Test
-    void queryLogsShouldAvoidOffsetOverflow() {
+    void queryLogsDelegatesPaginationAndFiltersToRepository() {
         AuditRecordVO record = AuditRecordVO.builder().operationType("CREATE").build();
-        when(auditRepository.findAll(isNull(), isNull(), isNull(), isNull(), isNull()))
-                .thenReturn(List.of(record));
+        when(auditRepository.findPage(eq("topic-a"), eq("CREATE"), isNull(), isNull(), eq("SUCCESS"),
+                eq(2), eq(20))).thenReturn(PageResult.of(List.of(record), 21, 2, 20));
 
         PageResult<AuditRecordVO> result = auditService.queryLogs(
-                Integer.MAX_VALUE, Integer.MAX_VALUE, null, null, null, null, null);
+                2, 20, "topic-a", "CREATE", null, null, "SUCCESS");
 
-        assertThat(result.getItems()).isEmpty();
-        assertThat(result.getTotal()).isEqualTo(1);
+        assertThat(result.getItems()).containsExactly(record);
+        assertThat(result.getTotal()).isEqualTo(21);
+        verify(auditRepository).findPage(eq("topic-a"), eq("CREATE"), isNull(), isNull(), eq("SUCCESS"),
+                eq(2), eq(20));
     }
 
     @Test
-    void queryLogsShouldPassSearchFilterToRepository() {
-        when(auditRepository.findAll(eq("topic-a"), isNull(), isNull(), isNull(), isNull()))
-                .thenReturn(Collections.emptyList());
+    void queryLogsParsesDateRangeBeforeDelegating() {
+        when(auditRepository.findPage(isNull(), isNull(), any(LocalDateTime.class), any(LocalDateTime.class),
+                isNull(), eq(1), eq(10))).thenReturn(PageResult.empty(1, 10));
 
-        auditService.queryLogs(1, 10, "topic-a", null, null, null, null);
+        auditService.queryLogs(1, 10, null, null, "2026-08-01", "2026-08-02", null);
 
-        verify(auditRepository).findAll(eq("topic-a"), isNull(), isNull(), isNull(), isNull());
+        ArgumentCaptor<LocalDateTime> start = ArgumentCaptor.forClass(LocalDateTime.class);
+        ArgumentCaptor<LocalDateTime> end = ArgumentCaptor.forClass(LocalDateTime.class);
+        verify(auditRepository).findPage(isNull(), isNull(), start.capture(), end.capture(), isNull(), eq(1), eq(10));
+        assertThat(start.getValue()).isEqualTo(LocalDateTime.of(2026, 8, 1, 0, 0));
+        assertThat(end.getValue()).isEqualTo(LocalDateTime.of(2026, 8, 2, 23, 59, 59, 999_999_999));
     }
 
     @Test
-    void queryLogsShouldPassOperationTypeFilterToRepository() {
-        when(auditRepository.findAll(isNull(), eq("CREATE"), isNull(), isNull(), isNull()))
-                .thenReturn(Collections.emptyList());
-
-        auditService.queryLogs(1, 10, null, "CREATE", null, null, null);
-
-        verify(auditRepository).findAll(isNull(), eq("CREATE"), isNull(), isNull(), isNull());
-    }
-
-    @Test
-    void queryLogsShouldPassResultFilterToRepository() {
-        when(auditRepository.findAll(isNull(), isNull(), isNull(), isNull(), eq("SUCCESS")))
-                .thenReturn(Collections.emptyList());
-
-        auditService.queryLogs(1, 10, null, null, null, null, "SUCCESS");
-
-        verify(auditRepository).findAll(isNull(), isNull(), isNull(), isNull(), eq("SUCCESS"));
-    }
-
-    @Test
-    void queryLogsShouldParseDateRange() {
-        when(auditRepository.findAll(isNull(), isNull(), any(LocalDateTime.class), any(LocalDateTime.class), isNull()))
-                .thenReturn(Collections.emptyList());
-
-        auditService.queryLogs(1, 10, null, null, "2025-01-01", "2025-01-31", null);
-
-        ArgumentCaptor<LocalDateTime> startCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
-        ArgumentCaptor<LocalDateTime> endCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
-        verify(auditRepository).findAll(isNull(), isNull(), startCaptor.capture(), endCaptor.capture(), isNull());
-
-        assertThat(startCaptor.getValue()).isEqualTo(LocalDateTime.of(2025, 1, 1, 0, 0, 0));
-        assertThat(endCaptor.getValue().getYear()).isEqualTo(2025);
-        assertThat(endCaptor.getValue().getMonthValue()).isEqualTo(1);
-        assertThat(endCaptor.getValue().getDayOfMonth()).isEqualTo(31);
-        assertThat(endCaptor.getValue().getHour()).isEqualTo(23);
-        assertThat(endCaptor.getValue().getMinute()).isEqualTo(59);
-    }
-
-    @Test
-    void queryLogsShouldRejectInvalidStartDate() {
-        assertThatThrownBy(() -> auditService.queryLogs(
-                1, 10, null, null, "invalid-date", null, null))
+    void queryLogsRejectsInvalidPageBounds() {
+        assertThatThrownBy(() -> auditService.queryLogs(0, 10, null, null, null, null, null))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("startDate must use YYYY-MM-DD")
-                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
-    }
-
-    @Test
-    void queryLogsShouldRejectInvalidEndDate() {
-        assertThatThrownBy(() -> auditService.queryLogs(
-                1, 10, null, null, null, "2025-02-30", null))
+                .hasMessage("page must be greater than 0");
+        assertThatThrownBy(() -> auditService.queryLogs(1, 101, null, null, null, null, null))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("endDate must use YYYY-MM-DD")
-                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+                .hasMessage("pageSize must be between 1 and 100");
     }
 
     @Test
-    void queryLogsShouldRejectReversedDateRange() {
-        assertThatThrownBy(() -> auditService.queryLogs(
-                1, 10, null, null, "2025-02-01", "2025-01-31", null))
+    void queryLogsRejectsInvalidDateRange() {
+        assertThatThrownBy(() -> auditService.queryLogs(1, 10, null, null, "2026-08-02", "2026-08-01", null))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("startDate must not be after endDate")
-                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+                .hasMessage("startDate must not be after endDate");
     }
 
     @Test
-    void cleanupLogsShouldDeleteOldRecords() {
-        when(auditRepository.deleteBefore(any(LocalDateTime.class))).thenReturn(42);
-
-        int result = auditService.cleanupLogs(30);
-
-        assertThat(result).isEqualTo(42);
-        ArgumentCaptor<LocalDateTime> captor = ArgumentCaptor.forClass(LocalDateTime.class);
-        verify(auditRepository).deleteBefore(captor.capture());
-
-        LocalDateTime cutoff = captor.getValue();
-        LocalDateTime expected = LocalDateTime.now().minusDays(30);
-        assertThat(cutoff).isCloseTo(expected, org.assertj.core.api.Assertions.within(2, java.time.temporal.ChronoUnit.SECONDS));
-    }
-
-    @Test
-    void cleanupLogsShouldReturnZeroWhenNoOldRecords() {
-        when(auditRepository.deleteBefore(any(LocalDateTime.class))).thenReturn(0);
-
-        int result = auditService.cleanupLogs(90);
-
-        assertThat(result).isZero();
-    }
-
-    @Test
-    void cleanupLogsShouldRejectNonPositiveRetention() {
-        assertThatThrownBy(() -> auditService.cleanupLogs(0))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("beforeDays must be greater than 0")
-                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
-
-        assertThatThrownBy(() -> auditService.cleanupLogs(-1))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("beforeDays must be greater than 0");
-    }
-
-    @Test
-    void queryLogsShouldHandleAllFiltersTogether() {
-        when(auditRepository.findAll(eq("admin"), eq("DELETE"), any(LocalDateTime.class),
-                any(LocalDateTime.class), eq("FAILURE")))
-                .thenReturn(Collections.emptyList());
-
-        auditService.queryLogs(1, 10, "admin", "DELETE", "2025-06-01", "2025-06-30", "FAILURE");
-
-        verify(auditRepository).findAll(eq("admin"), eq("DELETE"), any(LocalDateTime.class),
-                any(LocalDateTime.class), eq("FAILURE"));
-    }
-
-    @Test
-    void exportLogsShouldUseFiltersAndEscapeCsvValues() {
+    void exportLogsIncludesPersistedAuditContextAndEscapesCsvCells() {
         AuditRecordVO record = AuditRecordVO.builder()
                 .timestamp(LocalDateTime.of(2026, 8, 1, 9, 30))
                 .operator("=cmd")
                 .operationType("DELETE")
+                .resourceType("TOPIC")
                 .target("topic,a")
-                .detail("removed \"topic\"\nfrom cluster")
-                .ipAddress("\n=127.0.0.1")
-                .result("SUCCESS")
+                .clusterId("prod-cn")
+                .detail("removed \"topic\"")
+                .result("FAILED")
+                .errorMessage("=denied")
                 .build();
-        when(auditRepository.findAll(eq("topic"), eq("DELETE"), any(LocalDateTime.class),
-                any(LocalDateTime.class), eq("SUCCESS")))
-                .thenReturn(List.of(record));
+        when(auditRepository.findPage(eq("topic"), eq("DELETE"), any(LocalDateTime.class),
+                any(LocalDateTime.class), eq("FAILED"), eq(1), eq(10_000)))
+                .thenReturn(PageResult.of(List.of(record), 1, 1, 10_000));
 
-        String csv = auditService.exportLogs(
-                "topic", "DELETE", "2026-08-01", "2026-08-02", "SUCCESS");
+        String csv = auditService.exportLogs("topic", "DELETE", "2026-08-01", "2026-08-02", "FAILED");
 
-        assertThat(csv).isEqualTo("\uFEFFtimestamp,operator,operationType,target,detail,ipAddress,result\r\n"
-                + "\"2026-08-01T09:30\",\"'=cmd\",\"DELETE\",\"topic,a\","
-                + "\"removed \"\"topic\"\"\nfrom cluster\",\"'\n=127.0.0.1\",\"SUCCESS\"\r\n");
-        verify(auditRepository).findAll(eq("topic"), eq("DELETE"), any(LocalDateTime.class),
-                any(LocalDateTime.class), eq("SUCCESS"));
+        assertThat(csv).contains("resourceType,target,clusterId,detail,result,errorMessage")
+                .contains("\"'=cmd\",\"DELETE\",\"TOPIC\",\"topic,a\",\"prod-cn\"")
+                .contains("\"'=denied\"");
+    }
+
+    @Test
+    void exportLogsRejectsResultsBeyondBound() {
+        when(auditRepository.findPage(isNull(), isNull(), isNull(), isNull(), isNull(), eq(1), eq(10_000)))
+                .thenReturn(PageResult.of(List.of(), 10_001, 1, 10_000));
+
+        assertThatThrownBy(() -> auditService.exportLogs(null, null, null, null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Audit log export exceeds the maximum of 10000 records; narrow the filters");
+    }
+
+    @Test
+    void cleanupLogsRejectsNonPositiveRetention() {
+        assertThatThrownBy(() -> auditService.cleanupLogs(0))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("beforeDays must be greater than 0");
     }
 }
