@@ -43,10 +43,17 @@ import org.springframework.util.StringUtils;
 
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -66,6 +73,10 @@ public class RocketMQMessageProvider implements MessageProvider {
     private static final int TRACE_QUERY_MAX = 64;
     private static final int DEFAULT_TOPIC_LIMIT = 200;
     private static final int TOPIC_QUERY_HARD_CAP = 2000;
+    private static final int MAX_BODY_DISPLAY_BYTES = 64 * 1024;
+    private static final int MAX_BINARY_BODY_DISPLAY_BYTES = 48 * 1024;
+    private static final int MAX_PROPERTIES = 64;
+    private static final int MAX_PROPERTY_VALUE_CHARS = 1024;
     private static final long ONE_HOUR_MILLIS = 3600_000L;
     private static final long ONE_DAY_MILLIS = 24 * ONE_HOUR_MILLIS;
 
@@ -385,20 +396,73 @@ public class RocketMQMessageProvider implements MessageProvider {
         }
     }
 
-    private MessageRecordVO toRecordVO(MessageExt messageExt) {
+    MessageRecordVO toRecordVO(MessageExt messageExt) {
         byte[] body = messageExt.getBody();
+        DisplayBody displayBody = displayBody(body);
+        Map<String, String> properties = messageExt.getProperties();
+        Map<String, String> displayProperties = limitProperties(properties);
         return MessageRecordVO.builder()
                 .msgId(messageExt.getMsgId())
                 .topic(messageExt.getTopic())
                 .tag(messageExt.getTags())
                 .key(messageExt.getKeys())
-                .body(body == null ? null : new String(body, StandardCharsets.UTF_8))
+                .body(displayBody.value())
+                .bodyEncoding(displayBody.encoding())
+                .bodyTruncated(displayBody.truncated())
                 .storeTime(messageExt.getStoreTimestamp())
                 .bornHost(String.valueOf(messageExt.getBornHost()))
                 .storeHost(String.valueOf(messageExt.getStoreHost()))
-                .properties(messageExt.getProperties())
+                .properties(displayProperties)
+                .propertiesTruncated(properties != null && (displayProperties.size() < properties.size()
+                        || hasOversizedProperty(properties)))
                 .size(messageExt.getStoreSize())
                 .build();
+    }
+
+    private DisplayBody displayBody(byte[] body) {
+        if (body == null) {
+            return new DisplayBody(null, null, false);
+        }
+        int textLength = Math.min(body.length, MAX_BODY_DISPLAY_BYTES);
+        try {
+            String value = StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(body, 0, textLength))
+                    .toString();
+            return new DisplayBody(value, "UTF-8", body.length > textLength);
+        } catch (CharacterCodingException ignored) {
+            int binaryLength = Math.min(body.length, MAX_BINARY_BODY_DISPLAY_BYTES);
+            return new DisplayBody(Base64.getEncoder().encodeToString(
+                    java.util.Arrays.copyOf(body, binaryLength)), "BASE64", body.length > binaryLength);
+        }
+    }
+
+    private Map<String, String> limitProperties(Map<String, String> properties) {
+        if (properties == null || properties.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        Map<String, String> limited = new LinkedHashMap<>();
+        properties.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey(Comparator.nullsLast(String::compareTo)))
+                .limit(MAX_PROPERTIES)
+                .forEach(entry -> limited.put(entry.getKey(), abbreviate(entry.getValue(), MAX_PROPERTY_VALUE_CHARS)));
+        return limited;
+    }
+
+    private boolean hasOversizedProperty(Map<String, String> properties) {
+        return properties != null && properties.values().stream()
+                .anyMatch(value -> value != null && value.length() > MAX_PROPERTY_VALUE_CHARS);
+    }
+
+    private String abbreviate(String value, int maxLength) {
+        if (value == null || value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, maxLength) + "...";
+    }
+
+    private record DisplayBody(String value, String encoding, boolean truncated) {
     }
 
     private boolean matchesTag(MessageExt messageExt, String tag) {

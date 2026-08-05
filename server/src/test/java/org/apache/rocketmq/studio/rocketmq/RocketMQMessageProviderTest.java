@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.rocketmq;
 
 import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
+import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.queryhistory.QueryHistoryService;
@@ -29,6 +30,7 @@ import org.mockito.MockedConstruction;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.ObjectProvider;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -37,6 +39,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -58,7 +61,7 @@ class RocketMQMessageProviderTest {
 
     @BeforeEach
     void setUp() {
-        when(adminExtProvider.getIfAvailable()).thenReturn(adminExt);
+        lenient().when(adminExtProvider.getIfAvailable()).thenReturn(adminExt);
         provider = new RocketMQMessageProvider(adminExtProvider, queryHistoryService, new RocketMQProperties());
     }
 
@@ -81,5 +84,40 @@ class RocketMQMessageProviderTest {
             verify(consumer).shutdown();
         }
         verify(queryHistoryService).recordMessageQuery("TOPIC", "TopicA", null, null, null, 100L, 200L, 0);
+    }
+
+    @Test
+    void toRecordVOBoundsMessageBodyAndProperties() {
+        MessageExt message = new MessageExt();
+        message.setMsgId("msg-1");
+        message.setTopic("TopicA");
+        message.setBody("x".repeat(70 * 1024).getBytes(StandardCharsets.UTF_8));
+        message.putUserProperty("large", "v".repeat(2 * 1024));
+        for (int index = 0; index < 70; index++) {
+            message.putUserProperty("property-" + index, "value");
+        }
+
+        MessageRecordVO record = provider.toRecordVO(message);
+
+        assertThat(record.isBodyTruncated()).isTrue();
+        assertThat(record.getBody()).hasSize(64 * 1024);
+        assertThat(record.getBodyEncoding()).isEqualTo("UTF-8");
+        assertThat(record.isPropertiesTruncated()).isTrue();
+        assertThat(record.getProperties()).hasSize(64);
+        assertThat(record.getProperties().get("large")).endsWith("...");
+    }
+
+    @Test
+    void toRecordVOBase64EncodesBinaryPayloads() {
+        MessageExt message = new MessageExt();
+        message.setMsgId("msg-binary");
+        message.setTopic("TopicA");
+        message.setBody(new byte[] {(byte) 0xC3, (byte) 0x28});
+
+        MessageRecordVO record = provider.toRecordVO(message);
+
+        assertThat(record.getBodyEncoding()).isEqualTo("BASE64");
+        assertThat(record.getBody()).isEqualTo("wyg=");
+        assertThat(record.isBodyTruncated()).isFalse();
     }
 }
