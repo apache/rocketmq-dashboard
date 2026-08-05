@@ -41,13 +41,17 @@ public class AlertRuleController {
     }
 
     @PostMapping("/create")
-    public Result<AlertRuleVO> createRule(@RequestBody(required = false) AlertRuleVO rule) {
-        return Result.ok(alertService.createRule(requireAlertRule(rule)));
+    public Result<AlertRuleVO> createRule(@Valid @RequestBody(required = false) AlertRuleRequestDTO rule) {
+        return Result.ok(alertService.createRule(requireAlertRule(rule).toAlertRuleVO()));
     }
 
     @PostMapping("/update")
-    public Result<AlertRuleVO> updateRule(@RequestBody(required = false) AlertRuleVO rule) {
-        return Result.ok(alertService.updateRule(requireAlertRule(rule)));
+    public Result<AlertRuleVO> updateRule(@Valid @RequestBody(required = false) AlertRuleRequestDTO rule) {
+        AlertRuleRequestDTO request = requireAlertRule(rule);
+        if (request.getId() == null || request.getId().isBlank()) {
+            throw new BusinessException(400, "id is required");
+        }
+        return Result.ok(alertService.updateRule(request.toAlertRuleVO()));
     }
 
     @PostMapping("/toggle")
@@ -61,7 +65,7 @@ public class AlertRuleController {
         return Result.ok();
     }
 
-    private AlertRuleVO requireAlertRule(AlertRuleVO rule) {
+    private AlertRuleRequestDTO requireAlertRule(AlertRuleRequestDTO rule) {
         if (rule == null) {
             throw new BusinessException(400, "Alert rule request is required");
         }

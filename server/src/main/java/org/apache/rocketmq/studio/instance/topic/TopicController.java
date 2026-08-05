@@ -52,9 +52,9 @@ public class TopicController {
     }
 
     @PostMapping("/update")
-    public Result<TopicVO> updateTopic(@RequestBody(required = false) TopicVO topic) {
+    public Result<TopicVO> updateTopic(@Valid @RequestBody(required = false) UpdateTopicDTO topic) {
         requireTopicRequest(topic);
-        return Result.ok(metadataService.updateTopic(topic));
+        return Result.ok(metadataService.updateTopic(topic.toTopicVO()));
     }
 
     @PostMapping("/delete")
@@ -80,7 +80,7 @@ public class TopicController {
         return Result.ok(metadataService.sendMessage(request));
     }
 
-    private void requireTopicRequest(TopicVO topic) {
+    private void requireTopicRequest(UpdateTopicDTO topic) {
         if (topic == null) {
             throw new BusinessException(400, "Topic request is required");
         }
