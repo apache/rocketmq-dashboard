@@ -21,6 +21,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
@@ -30,9 +31,10 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
-import org.springframework.web.client.RestClientResponseException;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.util.Iterator;
@@ -46,6 +48,9 @@ import java.util.stream.StreamSupport;
 public class PrometheusMetricsSource implements MetricsSource {
 
     private static final String QUERY_RANGE_PATH = "/api/v1/query_range";
+    private static final int MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
+    private static final int MAX_SERIES = 1_000;
+    private static final int MAX_TOTAL_SAMPLES = 100_000;
 
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
@@ -80,13 +85,16 @@ public class PrometheusMetricsSource implements MetricsSource {
                     .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                     .headers(this::applyAuthentication)
                     .body(form)
-                    .retrieve()
-                    .body(JsonNode.class);
+                    .exchange((request, clientResponse) -> {
+                        JsonNode body = objectMapper.readTree(readResponseBody(clientResponse.getBody()));
+                        if (clientResponse.getStatusCode().isError()) {
+                            throw responseBodyException(body, responseStatus(clientResponse.getStatusCode()));
+                        }
+                        return body;
+                    });
             return parseResponse(response);
         } catch (PrometheusException exception) {
             throw exception;
-        } catch (RestClientResponseException exception) {
-            throw responseException(exception);
         } catch (ResourceAccessException exception) {
             if (hasCause(exception, SocketTimeoutException.class)) {
                 throw new PrometheusException(HttpStatus.GATEWAY_TIMEOUT.value(),
@@ -174,6 +182,7 @@ public class PrometheusMetricsSource implements MetricsSource {
             throw new PrometheusException(HttpStatus.BAD_GATEWAY.value(),
                     "Prometheus returned a malformed response");
         }
+        validateResponseLimits(result);
 
         List<MetricDataVO.MetricSeriesVO> series = StreamSupport.stream(result.spliterator(), false)
                 .map(this::parseSeries)
@@ -250,19 +259,44 @@ public class PrometheusMetricsSource implements MetricsSource {
                 .toList();
     }
 
-    private PrometheusException responseException(RestClientResponseException exception) {
-        JsonNode response = null;
-        try {
-            response = objectMapper.readTree(exception.getResponseBodyAsString());
-        } catch (IOException ignored) {
-            log.debug("Failed to parse Prometheus error response");
+    private byte[] readResponseBody(InputStream input) throws IOException {
+        try (InputStream response = input; ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[8 * 1024];
+            int read;
+            while ((read = response.read(buffer)) != -1) {
+                if (output.size() > MAX_RESPONSE_BYTES - read) {
+                    throw new PrometheusException(HttpStatus.PAYLOAD_TOO_LARGE.value(),
+                            "Prometheus response exceeds 5 MiB; narrow the query");
+                }
+                output.write(buffer, 0, read);
+            }
+            return output.toByteArray();
         }
-        int upstreamStatus = exception.getStatusCode().value();
-        int statusCode = switch (upstreamStatus) {
+    }
+
+    private void validateResponseLimits(JsonNode result) {
+        if (result.size() > MAX_SERIES) {
+            throw new PrometheusException(HttpStatus.PAYLOAD_TOO_LARGE.value(),
+                    "Prometheus query returned too many series; narrow the query");
+        }
+        long totalSamples = 0;
+        for (JsonNode series : result) {
+            totalSamples += series.path("values").size();
+            totalSamples += series.path("histograms").size();
+            if (totalSamples > MAX_TOTAL_SAMPLES) {
+                throw new PrometheusException(HttpStatus.PAYLOAD_TOO_LARGE.value(),
+                        "Prometheus query returned too many samples; increase step or narrow the query");
+            }
+        }
+    }
+
+    private int responseStatus(HttpStatusCode statusCode) {
+        int upstreamStatus = statusCode.value();
+        int mappedStatus = switch (upstreamStatus) {
             case 400, 422, 503 -> upstreamStatus;
             default -> HttpStatus.BAD_GATEWAY.value();
         };
-        return responseBodyException(response, statusCode);
+        return mappedStatus;
     }
 
     private PrometheusException responseBodyException(JsonNode response, int statusCode) {
