@@ -31,6 +31,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -59,16 +60,23 @@ public class RealClusterProvider implements ClusterProvider {
             log.info("No NameServer configured; skipping cluster discovery");
             return List.of();
         }
-        return List.of(describeCluster(namesrvAddr));
+        return describeClusters(namesrvAddr);
     }
 
     @Override
     public ClusterVO refreshClusterDetail(String clusterId) {
+        if (clusterId == null || clusterId.isBlank()) {
+            throw new BusinessException(400, "Cluster ID is required");
+        }
         String namesrvAddr = properties.getNamesrvAddr();
         if (namesrvAddr == null || namesrvAddr.isBlank()) {
             throw new BusinessException(400, "No NameServer configured for cluster " + clusterId);
         }
-        return describeCluster(namesrvAddr);
+        return adminFactory.execute(namesrvAddr, null, admin -> toClusterVOs(namesrvAddr,
+                        admin.examineBrokerClusterInfo()).stream()
+                .filter(cluster -> clusterId.equals(cluster.getId()))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + clusterId)));
     }
 
     /**
@@ -79,26 +87,44 @@ public class RealClusterProvider implements ClusterProvider {
      * @throws BusinessException if the NameServer is unreachable or returns an error
      */
     public ClusterVO describeCluster(String namesrvAddr) {
-        return adminFactory.execute(namesrvAddr, null,
-                admin -> toClusterVO(namesrvAddr, admin.examineBrokerClusterInfo()));
+        return describeClusters(namesrvAddr).stream()
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(404, "No cluster found from NameServer " + namesrvAddr));
     }
 
-    private ClusterVO toClusterVO(String namesrvAddr, ClusterInfo clusterInfo) {
+    /**
+     * Returns one topology snapshot for every cluster reported by the configured NameServer.
+     */
+    public List<ClusterVO> describeClusters(String namesrvAddr) {
+        return adminFactory.execute(namesrvAddr, null,
+                admin -> toClusterVOs(namesrvAddr, admin.examineBrokerClusterInfo()));
+    }
+
+    private List<ClusterVO> toClusterVOs(String namesrvAddr, ClusterInfo clusterInfo) {
         Map<String, BrokerData> brokerAddrTable =
                 clusterInfo.getBrokerAddrTable() == null ? Map.of() : clusterInfo.getBrokerAddrTable();
         Map<String, Set<String>> clusterAddrTable =
                 clusterInfo.getClusterAddrTable() == null ? Map.of() : clusterInfo.getClusterAddrTable();
 
-        List<BrokerVO> brokers = brokerAddrTable.values().stream()
+        if (clusterAddrTable.isEmpty()) {
+            return List.of(toClusterVO(namesrvAddr, "DefaultCluster", brokerAddrTable.values()));
+        }
+
+        return clusterAddrTable.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(entry -> toClusterVO(namesrvAddr, entry.getKey(), entry.getValue().stream()
+                        .map(brokerAddrTable::get)
+                        .filter(java.util.Objects::nonNull)
+                        .toList()))
+                .toList();
+    }
+
+    private ClusterVO toClusterVO(String namesrvAddr, String clusterName, Collection<BrokerData> brokerData) {
+        List<BrokerVO> brokers = brokerData.stream()
                 .map(this::toBrokerVO)
                 .sorted(Comparator.comparing(BrokerVO::getName,
                         Comparator.nullsLast(Comparator.naturalOrder())))
                 .toList();
-
-        String clusterName = clusterAddrTable.keySet().stream()
-                .sorted()
-                .findFirst()
-                .orElse("DefaultCluster");
 
         List<NameServerVO> nameServers = Arrays.stream(namesrvAddr.split("[;,]"))
                 .map(String::trim)
