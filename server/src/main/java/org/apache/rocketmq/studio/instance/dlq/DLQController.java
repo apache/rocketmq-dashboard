@@ -42,11 +42,10 @@ public class DLQController {
     }
 
     @PostMapping("/resend")
-    public Result<Void> resendMessages(@Valid @RequestBody(required = false) DLQResendRequestDTO request) {
+    public Result<DLQResendResultVO> resendMessages(@Valid @RequestBody(required = false) DLQResendRequestDTO request) {
         requireRequest(request);
-        dlqService.resendMessages(
-                request.getGroupName(), request.getStartTime(), request.getEndTime(), request.getTargetTopic());
-        return Result.ok();
+        return Result.ok(dlqService.resendMessages(
+                request.getGroupName(), request.getStartTime(), request.getEndTime(), request.getTargetTopic()));
     }
 
     private void requireRequest(DLQResendRequestDTO request) {

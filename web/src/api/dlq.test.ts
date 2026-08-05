@@ -55,11 +55,12 @@ describe('DLQ API', () => {
       endTime: 1784332800000,
       targetTopic: 'orders-retry',
     };
+    const result = { matched: 2, resent: 2, failed: 0, outcome: 'SUCCESS' };
     mock.onPost('/dlq/resend').reply((config) => {
       expect(JSON.parse(config.data)).toEqual(payload);
-      return [200, { code: 200, data: null }];
+      return [200, { code: 200, data: result }];
     });
 
-    await expect(resendDLQ(payload)).resolves.toBeUndefined();
+    await expect(resendDLQ(payload)).resolves.toEqual(result);
   });
 });

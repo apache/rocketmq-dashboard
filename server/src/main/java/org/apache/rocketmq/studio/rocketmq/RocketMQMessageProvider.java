@@ -410,7 +410,7 @@ public class RocketMQMessageProvider implements MessageProvider {
 
     private DefaultMQPullConsumer newPullConsumer(String groupPrefix) {
         DefaultMQPullConsumer consumer = new DefaultMQPullConsumer(groupPrefix + "-group");
-        consumer.setInstanceName(groupPrefix + "-" + System.currentTimeMillis());
+        consumer.setInstanceName(ShortLivedClientName.next(groupPrefix));
         if (StringUtils.hasText(properties.getNamesrvAddr())) {
             consumer.setNamesrvAddr(properties.getNamesrvAddr());
         }

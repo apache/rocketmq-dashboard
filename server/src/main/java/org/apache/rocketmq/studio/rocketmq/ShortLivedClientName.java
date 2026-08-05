@@ -14,12 +14,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.instance.dlq;
+package org.apache.rocketmq.studio.rocketmq;
 
+import java.util.UUID;
 
-import java.util.List;
+final class ShortLivedClientName {
 
-public interface DLQProvider {
-    List<DLQGroupVO> listDLQGroups(String clusterId);
-    DLQResendResultVO resendMessages(String groupName, Long startTime, Long endTime, String targetTopic);
+    private ShortLivedClientName() {
+    }
+
+    static String next(String prefix) {
+        return prefix + "-" + UUID.randomUUID();
+    }
 }

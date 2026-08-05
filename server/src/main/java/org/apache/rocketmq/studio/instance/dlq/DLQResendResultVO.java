@@ -16,10 +16,14 @@
  */
 package org.apache.rocketmq.studio.instance.dlq;
 
+import lombok.Builder;
+import lombok.Value;
 
-import java.util.List;
-
-public interface DLQProvider {
-    List<DLQGroupVO> listDLQGroups(String clusterId);
-    DLQResendResultVO resendMessages(String groupName, Long startTime, Long endTime, String targetTopic);
+@Value
+@Builder
+public class DLQResendResultVO {
+    int matched;
+    int resent;
+    int failed;
+    String outcome;
 }

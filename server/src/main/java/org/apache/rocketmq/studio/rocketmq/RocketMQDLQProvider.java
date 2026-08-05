@@ -31,6 +31,7 @@ import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
 import org.apache.rocketmq.studio.instance.dlq.DLQGroupVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQProvider;
+import org.apache.rocketmq.studio.instance.dlq.DLQResendResultVO;
 import org.apache.rocketmq.studio.ops.audit.AuditService;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.slf4j.Logger;
@@ -142,7 +143,7 @@ public class RocketMQDLQProvider implements DLQProvider {
     }
 
     @Override
-    public void resendMessages(String groupName, Long startTime, Long endTime, String targetTopic) {
+    public DLQResendResultVO resendMessages(String groupName, Long startTime, Long endTime, String targetTopic) {
         DefaultMQAdminExt adminExt = adminExtProvider.getIfAvailable();
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + groupName;
 
@@ -176,6 +177,12 @@ public class RocketMQDLQProvider implements DLQProvider {
                 deadLetters.size(), resent, failed);
         recordAudit(groupName, detail, failed == 0 ? "SUCCESS" : "PARTIAL");
         log.info("DLQ resend completed: {}", detail);
+        return DLQResendResultVO.builder()
+                .matched(deadLetters.size())
+                .resent(resent)
+                .failed(failed)
+                .outcome(failed == 0 ? "SUCCESS" : "PARTIAL")
+                .build();
     }
 
     private List<MessageExt> collectDeadLetters(String dlqTopic, long begin, long end) {
@@ -267,7 +274,7 @@ public class RocketMQDLQProvider implements DLQProvider {
 
     private DefaultMQPullConsumer newPullConsumer() {
         DefaultMQPullConsumer consumer = new DefaultMQPullConsumer("studio-dlq-query-group");
-        consumer.setInstanceName("studio-dlq-query-" + System.currentTimeMillis());
+        consumer.setInstanceName(ShortLivedClientName.next("studio-dlq-query"));
         if (StringUtils.hasText(properties.getNamesrvAddr())) {
             consumer.setNamesrvAddr(properties.getNamesrvAddr());
         }
@@ -276,7 +283,7 @@ public class RocketMQDLQProvider implements DLQProvider {
 
     private DefaultMQProducer newProducer(String groupName) {
         DefaultMQProducer producer = new DefaultMQProducer("studio-dlq-resend-" + groupName);
-        producer.setInstanceName("studio-dlq-resend-" + System.currentTimeMillis());
+        producer.setInstanceName(ShortLivedClientName.next("studio-dlq-resend"));
         producer.setRetryTimesWhenSendFailed(2);
         if (StringUtils.hasText(properties.getNamesrvAddr())) {
             producer.setNamesrvAddr(properties.getNamesrvAddr());

@@ -181,14 +181,20 @@ const DLQPage = () => {
     setRetrySubmitting(true);
     setRetryError(null);
     try {
-      await resendDLQ({
+      const result = await resendDLQ({
         groupName: retryGroup.groupName,
         startTime: retryRange[0].valueOf(),
         endTime: retryRange[1].valueOf(),
         targetTopic: retryTargetTopic,
       });
       setRefreshKey((key) => key + 1);
-      message.success(`已提交重投任务：${retryGroup.groupName} → ${retryTargetTopic}`);
+      if (result.failed > 0) {
+        message.warning(`重投部分完成：成功 ${result.resent}，失败 ${result.failed}`);
+      } else {
+        message.success(
+          `重投完成：${retryGroup.groupName} → ${retryTargetTopic}（${result.resent} 条）`,
+        );
+      }
       setRetryModalOpen(false);
       setRetryGroup(null);
       setRetryError(null);
