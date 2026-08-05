@@ -99,7 +99,9 @@ export class StudioClient {
       const message = parsed?.message || text || `Request failed with ${res.status}`;
       throw new StudioClientError(message, res.status, parsed?.code);
     }
-    return parseResult<T>(text) as T;
+    const parsed = parseResult<T>(text);
+    if (!parsed) throw new StudioClientError(`Empty response from ${path}`, res.status);
+    return parsed as T;
   }
 }
 

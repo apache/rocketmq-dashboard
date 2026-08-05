@@ -23,6 +23,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import org.apache.rocketmq.studio.ops.ai.tool.ToolCatalog;
+import org.apache.rocketmq.studio.ops.ai.tool.ToolGatewayService;
+
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -41,7 +44,10 @@ class AiServiceTest {
     private LlmGateway llmGateway;
 
     @Mock
-    private McpServerRegistry mcpServerRegistry;
+    private ToolGatewayService toolGatewayService;
+
+    @Mock
+    private ToolCatalog toolCatalog;
 
     @InjectMocks
     private AiService aiService;
@@ -143,7 +149,7 @@ class AiServiceTest {
         AiToolVO tool1 = AiToolVO.builder().name("list_topics").description("List all topics").build();
         AiToolVO tool2 = AiToolVO.builder().name("query_metrics").description("Query cluster metrics").build();
         AiToolVO tool3 = AiToolVO.builder().name("send_message").description("Send a test message").build();
-        when(mcpServerRegistry.listTools()).thenReturn(Arrays.asList(tool1, tool2, tool3));
+        when(toolGatewayService.discover(null)).thenReturn(Arrays.asList(tool1, tool2, tool3));
 
         List<AiToolVO> result = aiService.listTools();
 
@@ -156,7 +162,7 @@ class AiServiceTest {
 
     @Test
     void listToolsShouldReturnEmptyListWhenNoTools() {
-        when(mcpServerRegistry.listTools()).thenReturn(Collections.emptyList());
+        when(toolGatewayService.discover(null)).thenReturn(Collections.emptyList());
 
         List<AiToolVO> result = aiService.listTools();
 
@@ -173,7 +179,7 @@ class AiServiceTest {
                 .description("List all topics")
                 .parameters(params)
                 .build();
-        when(mcpServerRegistry.listTools()).thenReturn(List.of(tool));
+        when(toolGatewayService.discover(null)).thenReturn(List.of(tool));
 
         List<AiToolVO> result = aiService.listTools();
 
@@ -184,23 +190,23 @@ class AiServiceTest {
 
     @Test
     void listToolsForClusterDelegatesClusterSelection() {
-        when(mcpServerRegistry.listTools("cluster-001")).thenReturn(Collections.emptyList());
+        when(toolGatewayService.discover("cluster-001")).thenReturn(Collections.emptyList());
 
         List<AiToolVO> result = aiService.listTools("cluster-001");
 
         assertThat(result).isEmpty();
-        verify(mcpServerRegistry).listTools("cluster-001");
+        verify(toolGatewayService).discover("cluster-001");
     }
 
     @Test
     void executeToolDelegatesStructuredInput() {
         Map<String, Object> input = Map.of("cluster", "cluster-001");
         Map<String, Object> output = Map.of("cluster", "cluster-001");
-        when(mcpServerRegistry.execute("rmq.capabilities", input)).thenReturn(output);
+        when(toolGatewayService.execute("rmq.capabilities", input)).thenReturn(output);
 
         Object result = aiService.executeTool("rmq.capabilities", input);
 
         assertThat(result).isSameAs(output);
-        verify(mcpServerRegistry).execute("rmq.capabilities", input);
+        verify(toolGatewayService).execute("rmq.capabilities", input);
     }
 }

@@ -21,6 +21,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import org.apache.rocketmq.studio.ops.ai.tool.ToolCatalog;
+import org.apache.rocketmq.studio.ops.ai.tool.ToolGatewayService;
+
 import java.util.List;
 import java.util.Map;
 
@@ -30,7 +33,8 @@ import java.util.Map;
 public class AiService {
 
     private final LlmGateway llmGateway;
-    private final McpServerRegistry mcpServerRegistry;
+    private final ToolGatewayService toolGatewayService;
+    private final ToolCatalog toolCatalog;
 
 
     public SseEmitter chat(ChatDTO request) {
@@ -59,28 +63,28 @@ public class AiService {
 
     public List<AiToolVO> listTools() {
         log.debug("Listing available AI tools");
-        return mcpServerRegistry.listTools();
+        return toolGatewayService.discover(null);
     }
 
     public List<AiToolVO> listTools(String clusterId) {
         log.debug("Listing available AI tools for cluster: {}", clusterId);
-        return mcpServerRegistry.listTools(clusterId);
+        return toolGatewayService.discover(clusterId);
     }
 
     public Object executeTool(String name, Map<String, Object> input) {
         log.info("Executing registered AI tool: {}", name);
-        return mcpServerRegistry.execute(name, input);
+        return toolGatewayService.execute(name, input);
     }
 
     public String catalogVersion() {
-        return mcpServerRegistry.catalogVersion();
+        return toolCatalog.getVersion();
     }
 
     public String catalogDigest() {
-        return mcpServerRegistry.catalogDigest();
+        return toolCatalog.getDigest();
     }
 
     public String minimumClientVersion() {
-        return mcpServerRegistry.minimumClientVersion();
+        return toolCatalog.getMinimumClientVersion();
     }
 }

@@ -56,7 +56,8 @@ export class StudioClient {
     const text = await response.text();
     const parsed = parseResult<T>(text);
     if (!response.ok) {
-      throw new StudioClientError(parsed?.message ?? response.statusText ?? `HTTP ${response.status}`, response.status, parsed?.code);
+      const detail = parsed?.message ?? (text || undefined) ?? response.statusText ?? `HTTP ${response.status}`;
+      throw new StudioClientError(detail, response.status, parsed?.code);
     }
     if (!parsed) throw new StudioClientError(`Empty response from ${path}`, response.status);
     return parsed;

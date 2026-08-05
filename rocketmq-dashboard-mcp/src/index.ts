@@ -1,11 +1,13 @@
 #!/usr/bin/env tsx
+import { pathToFileURL } from "node:url";
 import { parseMcpArgs } from "./args";
 import { StudioClient } from "./client";
 import { startMcpServer } from "./mcp";
+import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 
 const VERSION = "1.0.0";
 
-function printHelp(): void {
+export function printHelp(): void {
   // NOTE: rmq-mcp speaks MCP over stdio. Help text goes to stdout only when the
   // server is not attached to an MCP client, so it never corrupts the protocol.
   console.log(`rmq-mcp v${VERSION} — RocketMQ Studio MCP server (RIP-3)
@@ -27,11 +29,19 @@ Options:
 Wire it to an MCP-aware AI client, e.g. Claude Desktop or Cursor, via stdio.`);
 }
 
-async function main(): Promise<void> {
-  const opts = parseMcpArgs(process.argv.slice(2));
+export type McpServerFactory = (
+  client: StudioClient,
+  options: { cluster?: string },
+) => Promise<Server>;
+
+export async function main(
+  argv: string[] = process.argv.slice(2),
+  serverFactory: McpServerFactory = (client, options) => startMcpServer(client, options),
+): Promise<Server> {
+  const opts = parseMcpArgs(argv);
   if (opts.help) {
     printHelp();
-    return;
+    return undefined as unknown as Server;
   }
 
   const client = new StudioClient({
@@ -41,12 +51,14 @@ async function main(): Promise<void> {
     token: opts.token,
   });
 
-  await startMcpServer(client, { cluster: opts.cluster });
-  // The stdio transport keeps the process alive and drives all I/O.
+  return serverFactory(client, { cluster: opts.cluster });
 }
 
-main().catch((err) => {
-  // Errors must go to stderr so they never interleave with MCP JSON on stdout.
-  console.error(err instanceof Error ? err.stack ?? err.message : String(err));
-  process.exit(1);
-});
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) {
+  main().catch((err) => {
+    // Errors must go to stderr so they never interleave with MCP JSON on stdout.
+    console.error(err instanceof Error ? err.stack ?? err.message : String(err));
+    process.exit(1);
+  });
+}

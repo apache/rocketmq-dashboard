@@ -1,11 +1,12 @@
 #!/usr/bin/env tsx
-import { StudioClient } from "./client";
+import { pathToFileURL } from "node:url";
+import { StudioClient, type StudioClientOptions } from "./client";
 import { parseArgs } from "./args";
 import { explainCommand, runToolCommand } from "./commands";
 
 const VERSION = "1.0.0";
 
-function printHelp(): void {
+export function printHelp(): void {
   console.log(`rmqctl - RocketMQ operations CLI (RIP-3, TypeScript)
 
 A lightweight client for the RocketMQ Studio server. It discovers tools from
@@ -38,8 +39,11 @@ Examples:
 `);
 }
 
-async function main(): Promise<void> {
-  const { subcommand, positionals, options } = parseArgs(process.argv.slice(2));
+export async function main(
+  argv: string[] = process.argv.slice(2),
+  clientFactory: (opts: StudioClientOptions) => StudioClient = (opts) => new StudioClient(opts),
+): Promise<void> {
+  const { subcommand, positionals, options } = parseArgs(argv);
 
   if (options.help) {
     printHelp();
@@ -54,7 +58,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const client = new StudioClient({
+  const client = clientFactory({
     baseUrl: options.server,
     user: options.user,
     password: options.password,
@@ -73,4 +77,7 @@ async function main(): Promise<void> {
   }
 }
 
-main();
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) {
+  main();
+}
