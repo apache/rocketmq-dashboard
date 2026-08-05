@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import {
   Alert,
   Table,
@@ -66,6 +66,11 @@ import {
   sendTopicMessage,
 } from '../../services/topicService';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
+import {
+  parseCsvTable,
+  validateTopicCsvImport,
+  type ResourceImportRow,
+} from '../../utils/resourceCsvImport';
 
 const { Text } = Typography;
 
@@ -288,6 +293,12 @@ const TopicPage = () => {
   const [sendForm] = Form.useForm();
   const [propsMode, setPropsMode] = useState<'form' | 'text'>('form');
   const { modal } = App.useApp();
+  const importInputRef = useRef<HTMLInputElement>(null);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importFilename, setImportFilename] = useState('');
+  const [importRows, setImportRows] = useState<ResourceImportRow<Partial<Topic>>[]>([]);
+  const [importErrors, setImportErrors] = useState<string[]>([]);
+  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -660,6 +671,94 @@ const TopicPage = () => {
     }
   };
 
+  const handleImportFile = async (file: File) => {
+    setImportFilename(file.name);
+    setImporting(false);
+    setImportModalOpen(true);
+    try {
+      const records = parseCsvTable(await file.text());
+      const validation = validateTopicCsvImport(records, selectedInstanceId || undefined);
+      setImportRows(validation.rows);
+      setImportErrors(validation.errors);
+    } catch (error) {
+      setImportRows([]);
+      setImportErrors([error instanceof Error ? error.message : 'CSV 解析失败']);
+    } finally {
+      if (importInputRef.current) importInputRef.current.value = '';
+    }
+  };
+
+  const handleImportTopics = async () => {
+    const targetIndexes = importRows
+      .map((row, index) => ({ row, index }))
+      .filter(({ row }) => row.status === 'pending' || row.status === 'failed');
+    if (targetIndexes.length === 0 || importErrors.length > 0) return;
+
+    setImporting(true);
+    const nextRows = importRows.map((row) => ({ ...row }));
+    const createdTopics: Topic[] = [];
+
+    for (const { row, index } of targetIndexes) {
+      try {
+        const created = await createTopic(row.payload);
+        createdTopics.push(created);
+        nextRows[index] = { ...nextRows[index], status: 'success', message: '已创建' };
+      } catch (error) {
+        nextRows[index] = {
+          ...nextRows[index],
+          status: 'failed',
+          message: error instanceof Error ? error.message : '创建失败',
+        };
+      }
+      setImportRows([...nextRows]);
+    }
+
+    if (createdTopics.length > 0) {
+      setTopics((previous) => {
+        const createdNames = new Set(createdTopics.map((topic) => topic.name));
+        return [...createdTopics, ...previous.filter((topic) => !createdNames.has(topic.name))];
+      });
+    }
+
+    const failedCount = nextRows.filter((row) => row.status === 'failed').length;
+    const invalidCount = nextRows.filter((row) => row.status === 'invalid').length;
+    if (failedCount === 0) {
+      if (invalidCount > 0) {
+        message.warning(`已导入 ${createdTopics.length} 个 Topic，${invalidCount} 行无效已跳过`);
+      } else {
+        message.success(`已导入 ${createdTopics.length} 个 Topic`);
+      }
+    } else if (createdTopics.length > 0) {
+      message.warning(`已导入 ${createdTopics.length} 个 Topic，${failedCount} 个失败`);
+    } else {
+      message.error(`${failedCount} 个 Topic 导入失败`);
+    }
+    setImporting(false);
+  };
+
+  const topicImportColumns: TableColumnsType<ResourceImportRow<Partial<Topic>>> = [
+    { title: '行号', dataIndex: 'lineNumber', key: 'lineNumber', width: 80 },
+    { title: 'Topic 名称', dataIndex: 'name', key: 'name' },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      key: 'status',
+      width: 100,
+      render: (status: ResourceImportRow<Partial<Topic>>['status']) => {
+        if (status === 'success') return <Tag color="success">成功</Tag>;
+        if (status === 'failed') return <Tag color="error">失败</Tag>;
+        if (status === 'invalid') return <Tag color="warning">无效</Tag>;
+        return <Tag>待导入</Tag>;
+      },
+    },
+    {
+      title: '说明',
+      dataIndex: 'message',
+      key: 'message',
+      render: (text?: string) => text || '-',
+    },
+  ];
+
   // ─── Send message modal submit ────────────────────────────────
   const handleSend = async () => {
     let values;
@@ -821,7 +920,22 @@ const TopicPage = () => {
               删除 ({selectedRowKeys.length})
             </Button>
           )}
-          <Button icon={<ImportOutlined />} onClick={() => message.info('导入功能开发中')}>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            data-testid="topic-import-file"
+            style={{ display: 'none' }}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void handleImportFile(file);
+            }}
+          />
+          <Button
+            icon={<ImportOutlined />}
+            disabled={importing}
+            onClick={() => importInputRef.current?.click()}
+          >
             导入
           </Button>
           <Button
@@ -1021,6 +1135,61 @@ const TopicPage = () => {
             <Input.TextArea rows={3} placeholder="可选，描述 Topic 用途" />
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* ── Import Topic Modal ────────────────────────────────── */}
+      <Modal
+        title={`导入 Topic${importFilename ? `：${importFilename}` : ''}`}
+        open={importModalOpen}
+        onCancel={() => {
+          if (!importing) setImportModalOpen(false);
+        }}
+        onOk={() => void handleImportTopics()}
+        okText={importRows.some((row) => row.status === 'failed') ? '重试失败项' : '开始导入'}
+        cancelText="关闭"
+        confirmLoading={importing}
+        okButtonProps={{
+          disabled:
+            importErrors.length > 0 ||
+            importRows.length === 0 ||
+            importRows.every((row) => row.status === 'success' || row.status === 'invalid'),
+        }}
+        width={720}
+        destroyOnClose
+      >
+        <Space direction="vertical" style={{ width: '100%' }} size={12}>
+          {importErrors.length > 0 ? (
+            <Alert
+              type="error"
+              showIcon
+              message="CSV 无法导入"
+              description={importErrors.join('；')}
+            />
+          ) : importRows.some((row) => row.status === 'invalid') ? (
+            <Alert
+              type="warning"
+              showIcon
+              message={`检测到 ${
+                importRows.filter((row) => row.status === 'invalid').length
+              } 行无效，将跳过这些行`}
+              description="仅导入可创建字段；CSV 中的 Namespace、Cluster ID 和运行状态列会被忽略。"
+            />
+          ) : (
+            <Alert
+              type="info"
+              showIcon
+              message={`检测到 ${importRows.length} 个 Topic，将按顺序调用创建接口`}
+              description="仅导入可创建字段；CSV 中的 Namespace、Cluster ID 和运行状态列会被忽略。"
+            />
+          )}
+          <Table<ResourceImportRow<Partial<Topic>>>
+            columns={topicImportColumns}
+            dataSource={importRows}
+            rowKey="key"
+            size="small"
+            pagination={false}
+          />
+        </Space>
       </Modal>
 
       {/* ── Send Message Modal ──────────────────────────────────── */}

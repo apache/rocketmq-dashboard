@@ -109,6 +109,17 @@ describe('TopicPage', () => {
   beforeEach(() => {
     topicServiceMocks.listTopics.mockResolvedValue(buildTopics(25));
     topicServiceMocks.batchDeleteTopics.mockResolvedValue({ deleted: [], failed: [] });
+    topicServiceMocks.createTopic.mockImplementation(async (data: Partial<Topic>) => ({
+      ...buildTopics(1)[0],
+      ...data,
+      namespace: 'default',
+      clusterId: 'server-cluster',
+      messageCount: 0,
+      tps: 0,
+      consumerGroupCount: 0,
+      createdAt: '2026-01-02T00:00:00Z',
+      updatedAt: '2026-01-02T00:00:00Z',
+    }));
     topicServiceMocks.getTopicRoutes.mockResolvedValue([]);
     topicServiceMocks.getTopicConsumers.mockResolvedValue([]);
     instanceServiceMocks.listInstances.mockResolvedValue([]);
@@ -244,5 +255,96 @@ describe('TopicPage', () => {
     expect(await screen.findByText('topic-a')).toBeInTheDocument();
     expect(screen.queryByText('topic-b')).not.toBeInTheDocument();
     expect(screen.getByText('10.0.2.21:8080')).toBeInTheDocument();
+  });
+
+  it('imports valid topic CSV rows through the create service with the selected instance', async () => {
+    const user = userEvent.setup();
+    topicServiceMocks.listTopics.mockResolvedValue([]);
+    instanceServiceMocks.listInstances.mockResolvedValue([
+      {
+        id: 'instance-proxy-1',
+        name: 'instance-proxy-1',
+        remark: '',
+        type: 'PROXY',
+        endpoint: '10.0.2.21:8080',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      },
+    ]);
+    renderWithProviders('/instance/instance-proxy-1/topic');
+
+    await screen.findByText(/共 0 个 Topic/);
+    const csv = [
+      '"Name","Namespace","Type","Cluster ID","Write Queues","Read Queues","Permission","Remark"',
+      '"imported-topic","ignored","NORMAL","ignored-cluster","4","6","RW","orders"',
+    ].join('\n');
+    await user.upload(screen.getByTestId('topic-import-file'), new File([csv], 'topics.csv'));
+    expect(await screen.findByText('检测到 1 个 Topic，将按顺序调用创建接口')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '开始导入' }));
+
+    await waitFor(() =>
+      expect(topicServiceMocks.createTopic).toHaveBeenCalledWith({
+        name: 'imported-topic',
+        type: 'NORMAL',
+        writeQueues: 4,
+        readQueues: 6,
+        perm: 'RW',
+        remark: 'orders',
+        instanceId: 'instance-proxy-1',
+      }),
+    );
+    expect(await screen.findByText('已导入 1 个 Topic')).toBeInTheDocument();
+    expect(screen.getAllByText('imported-topic').length).toBeGreaterThan(0);
+  });
+
+  it('does not call createTopic when imported topic CSV is invalid or duplicated', async () => {
+    const user = userEvent.setup();
+    renderWithProviders();
+
+    expect(await screen.findByText('topic-01')).toBeInTheDocument();
+    const csv = [
+      '"Name","Type","Write Queues","Read Queues","Permission"',
+      '"bad topic","NORMAL","8","8","RW"',
+      '"bad topic","NORMAL","8","8","RW"',
+    ].join('\n');
+    await user.upload(screen.getByTestId('topic-import-file'), new File([csv], 'bad.csv'));
+
+    expect(await screen.findByText('检测到 2 行无效，将跳过这些行')).toBeInTheDocument();
+    expect(screen.getAllByText(/Name 仅支持/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/重复/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '开始导入' })).toBeDisabled();
+    expect(topicServiceMocks.createTopic).not.toHaveBeenCalled();
+  });
+
+  it('imports valid topic rows while skipping duplicate rows', async () => {
+    const user = userEvent.setup();
+    topicServiceMocks.listTopics.mockResolvedValue([]);
+    renderWithProviders();
+
+    await screen.findByText(/共 0 个 Topic/);
+    const csv = [
+      '"Name","Type","Write Queues","Read Queues","Permission"',
+      '"topic-a","NORMAL","8","8","RW"',
+      '"topic-a","NORMAL","8","8","RW"',
+      '"topic-b","FIFO","4","4","RW"',
+    ].join('\n');
+    await user.upload(screen.getByTestId('topic-import-file'), new File([csv], 'dedup.csv'));
+
+    expect(await screen.findByText('检测到 1 行无效，将跳过这些行')).toBeInTheDocument();
+    expect(screen.getByText(/Name 与第 2 行重复/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '开始导入' }));
+
+    await waitFor(() => expect(topicServiceMocks.createTopic).toHaveBeenCalledTimes(2));
+    expect(topicServiceMocks.createTopic).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ name: 'topic-a' }),
+    );
+    expect(topicServiceMocks.createTopic).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ name: 'topic-b' }),
+    );
+    expect(await screen.findByText('已导入 2 个 Topic，1 行无效已跳过')).toBeInTheDocument();
   });
 });
