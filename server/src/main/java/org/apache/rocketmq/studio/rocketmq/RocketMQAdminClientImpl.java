@@ -140,6 +140,11 @@ public class RocketMQAdminClientImpl implements AdminClient {
         int readQueues = topic.getReadQueues() > 0 ? topic.getReadQueues() : 8;
 
         try {
+            RmqTopic existing = topicMapper.selectOne(
+                    new LambdaQueryWrapper<RmqTopic>().eq(RmqTopic::getName, topicName));
+            TopicPerm effectivePerm = topic.getPerm() != null
+                    ? topic.getPerm()
+                    : existing == null ? TopicPerm.RW : fromRocketMQPerm(existing.getPerm());
             Set<String> brokerAddrs = getAllMasterBrokerAddrs();
             if (brokerAddrs.isEmpty()) {
                 throw new BusinessException(500, "No broker available to create topic");
@@ -149,7 +154,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
             topicConfig.setTopicName(topicName);
             topicConfig.setWriteQueueNums(writeQueues);
             topicConfig.setReadQueueNums(readQueues);
-            topicConfig.setPerm(toRocketMQPerm(topic.getPerm()));
+            topicConfig.setPerm(toRocketMQPerm(effectivePerm));
 
             for (String addr : brokerAddrs) {
                 adminExt.createAndUpdateTopicConfig(addr, topicConfig);
@@ -214,6 +219,11 @@ public class RocketMQAdminClientImpl implements AdminClient {
         int readQueues = topic.getReadQueues() > 0 ? topic.getReadQueues() : 8;
 
         try {
+            RmqTopic existing = topicMapper.selectOne(
+                    new LambdaQueryWrapper<RmqTopic>().eq(RmqTopic::getName, topicName));
+            TopicPerm effectivePerm = topic.getPerm() != null
+                    ? topic.getPerm()
+                    : existing == null ? TopicPerm.RW : fromRocketMQPerm(existing.getPerm());
             Set<String> brokerAddrs = getAllMasterBrokerAddrs();
             if (brokerAddrs.isEmpty()) {
                 throw new BusinessException(500, "No broker available to update topic");
@@ -223,15 +233,13 @@ public class RocketMQAdminClientImpl implements AdminClient {
             topicConfig.setTopicName(topicName);
             topicConfig.setWriteQueueNums(writeQueues);
             topicConfig.setReadQueueNums(readQueues);
-            topicConfig.setPerm(toRocketMQPerm(topic.getPerm()));
+            topicConfig.setPerm(toRocketMQPerm(effectivePerm));
 
             for (String addr : brokerAddrs) {
                 adminExt.createAndUpdateTopicConfig(addr, topicConfig);
             }
 
             // Update DB record
-            RmqTopic existing = topicMapper.selectOne(
-                    new LambdaQueryWrapper<RmqTopic>().eq(RmqTopic::getName, topicName));
             if (existing != null) {
                 existing.setWriteQueueNums(writeQueues);
                 existing.setReadQueueNums(readQueues);
@@ -500,5 +508,15 @@ public class RocketMQAdminClientImpl implements AdminClient {
             return 2;
         }
         return 6;
+    }
+
+    private TopicPerm fromRocketMQPerm(Integer perm) {
+        if (perm != null && perm == 4) {
+            return TopicPerm.RO;
+        }
+        if (perm != null && perm == 2) {
+            return TopicPerm.WO;
+        }
+        return TopicPerm.RW;
     }
 }
