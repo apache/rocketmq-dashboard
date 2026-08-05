@@ -19,8 +19,11 @@ package org.apache.rocketmq.studio.rocketmq;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+import java.time.Duration;
+
 @Data
 @ConfigurationProperties(prefix = "studio.rocketmq")
 public class RocketMQProperties {
     private String namesrvAddr;
+    private Duration traceQueryWindow = Duration.ofHours(24);
 }

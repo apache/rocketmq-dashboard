@@ -24,6 +24,7 @@ import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageId;
 import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
 import org.apache.rocketmq.studio.instance.message.ConsumerStatusVO;
 import org.apache.rocketmq.studio.instance.message.MessageProvider;
@@ -228,12 +229,11 @@ public class RocketMQMessageProvider implements MessageProvider {
     public TraceRecordVO getMessageTrace(String msgId) {
         DefaultMQAdminExt adminExt = adminExtProvider.getIfAvailable();
         if (adminExt == null) {
-            log.warn("DefaultMQAdminExt is not configured, returning empty trace");
-            return emptyTrace();
+            throw new BusinessException(503, "RocketMQ admin not connected");
         }
 
         long now = System.currentTimeMillis();
-        long begin = now - ONE_HOUR_MILLIS;
+        long begin = now - traceQueryWindowMillis();
         long end = now + 60_000L;
 
         List<TraceNodeVO> nodes = new ArrayList<>();
@@ -248,6 +248,7 @@ public class RocketMQMessageProvider implements MessageProvider {
             }
         } catch (Exception e) {
             log.warn("Trace query for msgId={} failed: {}", msgId, e.getMessage());
+            throw new BusinessException(502, "Failed to query message trace: " + e.getMessage());
         }
 
         recordTraceQuery(msgId, null, nodes.size(), consumerStatus.size());
@@ -340,7 +341,7 @@ public class RocketMQMessageProvider implements MessageProvider {
         return TraceNodeVO.builder()
                 .title("endTransaction")
                 .timestamp(parseLong(field(f, 1)))
-                .status("finish")
+                .status(parseBoolean(field(f, 12)) ? "finish" : "failed")
                 .costTime(0L)
                 .description("group=" + field(f, 3) + ", transactionState=" + field(f, 14))
                 .build();
@@ -440,6 +441,14 @@ public class RocketMQMessageProvider implements MessageProvider {
                 .nodes(Collections.emptyList())
                 .consumerStatus(Collections.emptyList())
                 .build();
+    }
+
+    private long traceQueryWindowMillis() {
+        if (properties.getTraceQueryWindow() == null || properties.getTraceQueryWindow().isNegative()
+                || properties.getTraceQueryWindow().isZero()) {
+            return ONE_DAY_MILLIS;
+        }
+        return properties.getTraceQueryWindow().toMillis();
     }
 
     private static String field(String[] fields, int index) {
