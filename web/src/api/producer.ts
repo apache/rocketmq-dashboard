@@ -43,6 +43,12 @@ export async function fetchTopicList(): Promise<string[]> {
   return topics.sort();
 }
 
+/** Fetch active producer groups for query suggestions */
+export async function fetchProducerGroups(): Promise<string[]> {
+  const res = await client.get<{ data?: string[] }>('/producer/groups');
+  return res.data.data ?? [];
+}
+
 /** Query producer connections by topic and producer group */
 export async function queryProducerConnection(
   topic: string,

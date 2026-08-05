@@ -21,9 +21,14 @@ import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
 import ProducerPage from '../Producer';
-import { fetchTopicList, queryProducerConnection } from '../../../api/producer';
+import {
+  fetchProducerGroups,
+  fetchTopicList,
+  queryProducerConnection,
+} from '../../../api/producer';
 
 vi.mock('../../../api/producer', () => ({
+  fetchProducerGroups: vi.fn(),
   fetchTopicList: vi.fn(),
   queryProducerConnection: vi.fn(),
 }));
@@ -56,6 +61,7 @@ describe('ProducerPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(fetchTopicList).mockResolvedValue(['order-events', 'payment-events']);
+    vi.mocked(fetchProducerGroups).mockResolvedValue(['pg-order', 'pg-payment']);
     vi.mocked(queryProducerConnection).mockResolvedValue([]);
   });
 
@@ -75,9 +81,20 @@ describe('ProducerPage', () => {
       expect(fetchTopicList).toHaveBeenCalledTimes(1);
     });
 
-    await user.click(screen.getByRole('combobox'));
+    await user.click(screen.getAllByRole('combobox')[0]);
     await screen.findByRole('option', { name: 'order-events' });
     expect(await screen.findByRole('option', { name: 'payment-events' })).toBeInTheDocument();
+  });
+
+  it('suggests active producer groups while keeping free-form input', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ProducerPage />);
+
+    await waitFor(() => expect(fetchProducerGroups).toHaveBeenCalledTimes(1));
+    const groupInput = screen.getAllByRole('combobox')[1];
+    await user.type(groupInput, 'payment');
+
+    expect(await screen.findByRole('option', { name: 'pg-payment' })).toBeInTheDocument();
   });
 
   it('queries producer connections with the required topic and group', async () => {
@@ -93,12 +110,12 @@ describe('ProducerPage', () => {
     renderWithProviders(<ProducerPage />);
 
     await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
-    const topicSelect = screen.getByRole('combobox');
+    const [topicSelect, groupInput] = screen.getAllByRole('combobox');
     fireEvent.mouseDown(topicSelect.parentElement!);
     await user.click(
       await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
     );
-    await user.type(screen.getByRole('textbox'), 'order-producer');
+    await user.type(groupInput, 'order-producer');
     await user.click(screen.getByRole('button', { name: /搜索/ }));
 
     await waitFor(() => {
@@ -112,14 +129,35 @@ describe('ProducerPage', () => {
     renderWithProviders(<ProducerPage />);
 
     await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
-    const topicSelect = screen.getByRole('combobox');
+    const [topicSelect] = screen.getAllByRole('combobox');
     fireEvent.mouseDown(topicSelect.parentElement!);
     await user.click(
       await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
     );
     await user.click(screen.getByRole('button', { name: /搜索/ }));
 
-    expect(await screen.findByText('请输入生产者组')).toBeInTheDocument();
+    expect(
+      await screen.findByText('请输入生产者组', { selector: '.ant-form-item-explain-error' }),
+    ).toBeInTheDocument();
     expect(queryProducerConnection).not.toHaveBeenCalled();
+  });
+
+  it('keeps manual producer group queries available when suggestions fail', async () => {
+    vi.mocked(fetchProducerGroups).mockRejectedValue(new Error('broker unavailable'));
+    const user = userEvent.setup();
+    renderWithProviders(<ProducerPage />);
+
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
+    const [topicSelect, groupInput] = screen.getAllByRole('combobox');
+    fireEvent.mouseDown(topicSelect.parentElement!);
+    await user.click(
+      await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.type(groupInput, 'manual-producer');
+    await user.click(screen.getByRole('button', { name: /搜索/ }));
+
+    await waitFor(() => {
+      expect(queryProducerConnection).toHaveBeenCalledWith('order-events', 'manual-producer');
+    });
   });
 });

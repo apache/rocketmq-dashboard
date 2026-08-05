@@ -94,4 +94,19 @@ class ProducerConnectionServiceTest {
         assertThat(result).isEmpty();
         verify(clientProvider).findProducerConnections("order-topic", "pg-order");
     }
+
+    @Test
+    void listProducerGroupsShouldReturnSortedUniqueActiveGroups() {
+        when(clientProvider.findConnections(null, ClientType.Producer.name()))
+                .thenReturn(List.of(
+                        ClientConnectionVO.builder().producerGroup(" pg-payment ").build(),
+                        ClientConnectionVO.builder().producerGroup("pg-order").build(),
+                        ClientConnectionVO.builder().producerGroup("pg-payment").build(),
+                        ClientConnectionVO.builder().producerGroup(" ").build(),
+                        ClientConnectionVO.builder().build()));
+
+        assertThat(producerConnectionService.listProducerGroups())
+                .containsExactly("pg-order", "pg-payment");
+        verify(clientProvider).findConnections(null, ClientType.Producer.name());
+    }
 }

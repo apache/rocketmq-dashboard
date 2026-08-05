@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.cluster.client;
 
+import org.apache.rocketmq.studio.common.domain.enums.ClientType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,6 +37,16 @@ public class ProducerConnectionService {
         String normalizedProducerGroup = requireFilter(producerGroup, "producerGroup");
         return clientProvider.findProducerConnections(normalizedTopic, normalizedProducerGroup).stream()
                 .map(this::toProducerConnection)
+                .toList();
+    }
+
+    public List<String> listProducerGroups() {
+        return clientProvider.findConnections(null, ClientType.Producer.name()).stream()
+                .map(ClientConnectionVO::getProducerGroup)
+                .filter(this::hasText)
+                .map(String::trim)
+                .distinct()
+                .sorted()
                 .toList();
     }
 

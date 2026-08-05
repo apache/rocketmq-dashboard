@@ -16,10 +16,11 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Button, Form, Input, Select, Table, Card, App } from 'antd';
+import { App, AutoComplete, Button, Card, Form, Select, Table } from 'antd';
 import { MagnifyingGlass } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
 import {
+  fetchProducerGroups,
   fetchTopicList,
   queryProducerConnection,
   type ProducerConnection,
@@ -28,6 +29,7 @@ import {
 const ProducerPage = () => {
   const [form] = Form.useForm();
   const [topicList, setTopicList] = useState<string[]>([]);
+  const [producerGroups, setProducerGroups] = useState<string[]>([]);
   const [connectionList, setConnectionList] = useState<ProducerConnection[]>([]);
   const [loading, setLoading] = useState(false);
   const { t } = useLang();
@@ -50,7 +52,21 @@ const ProducerPage = () => {
       }
     };
 
+    const loadProducerGroups = async () => {
+      try {
+        const groups = await fetchProducerGroups();
+        if (!cancelled) {
+          setProducerGroups(groups);
+        }
+      } catch {
+        if (!cancelled) {
+          setProducerGroups([]);
+        }
+      }
+    };
+
     void loadTopics();
+    void loadProducerGroups();
 
     return () => {
       cancelled = true;
@@ -127,7 +143,15 @@ const ProducerPage = () => {
             name="producerGroup"
             rules={[{ required: true, whitespace: true, message: t('producer.inputGroup') }]}
           >
-            <Input placeholder={t('producer.inputGroup')} style={{ width: 300 }} />
+            <AutoComplete
+              allowClear
+              placeholder={t('producer.inputGroup')}
+              style={{ width: 300 }}
+              options={producerGroups.map((group) => ({ value: group }))}
+              filterOption={(inputValue, option) =>
+                option?.value.toLowerCase().includes(inputValue.toLowerCase()) ?? false
+              }
+            />
           </Form.Item>
           <Form.Item>
             <Button
