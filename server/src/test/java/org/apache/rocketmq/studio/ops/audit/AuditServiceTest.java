@@ -16,9 +16,11 @@
  */
 package org.apache.rocketmq.studio.ops.audit;
 
+import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
@@ -44,6 +46,22 @@ class AuditServiceTest {
 
     @InjectMocks
     private AuditService auditService;
+
+    @AfterEach
+    void clearAuthenticatedUser() {
+        AuthenticatedUserContext.clear();
+    }
+
+    @Test
+    void recordShouldCaptureAuthenticatedOperator() {
+        AuthenticatedUserContext.setUsername("operator-user");
+
+        auditService.record("CREATE", "topic-a", "created topic", "SUCCESS");
+
+        ArgumentCaptor<AuditRecordVO> captor = ArgumentCaptor.forClass(AuditRecordVO.class);
+        verify(auditRepository).save(captor.capture());
+        assertThat(captor.getValue().getOperator()).isEqualTo("operator-user");
+    }
 
     @Test
     void queryLogsDelegatesPaginationAndFiltersToRepository() {

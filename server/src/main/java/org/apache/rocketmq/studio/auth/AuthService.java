@@ -18,11 +18,15 @@
 package org.apache.rocketmq.studio.auth;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
+import org.apache.rocketmq.studio.settings.SettingsRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -32,20 +36,24 @@ import java.util.UUID;
 @Service
 public class AuthService {
 
-    private static final int TOKEN_TTL_SECONDS = 86400;
+    private static final int DEFAULT_SESSION_TIMEOUT_MINUTES = 30;
+    private static final int MIN_SESSION_TIMEOUT_MINUTES = 5;
+    private static final int MAX_SESSION_TIMEOUT_MINUTES = 1440;
     private static final String TOKEN_PREFIX = "Bearer ";
 
     private final AuthProperties authProperties;
+    private final SettingsRepository settingsRepository;
     private final Clock clock;
     private final Map<String, AuthSession> activeTokens = new ConcurrentHashMap<>();
 
     @Autowired
-    public AuthService(AuthProperties authProperties) {
-        this(authProperties, Clock.systemUTC());
+    public AuthService(AuthProperties authProperties, SettingsRepository settingsRepository) {
+        this(authProperties, settingsRepository, Clock.systemUTC());
     }
 
-    AuthService(AuthProperties authProperties, Clock clock) {
+    AuthService(AuthProperties authProperties, SettingsRepository settingsRepository, Clock clock) {
         this.authProperties = authProperties;
+        this.settingsRepository = settingsRepository;
         this.clock = clock;
     }
 
@@ -65,13 +73,14 @@ public class AuthService {
 
         LoginVO.UserInfo user = authenticate(request);
         long now = clock.millis();
-        activeTokens.entrySet().removeIf(entry -> entry.getValue().expiresAtMillis() <= now);
+        purgeExpiredSessions(now);
+        int tokenTtlSeconds = sessionTimeoutSeconds();
         String token = "studio-jwt-" + UUID.randomUUID();
-        activeTokens.put(token, new AuthSession(user, now + TOKEN_TTL_SECONDS * 1000L));
+        activeTokens.put(token, new AuthSession(user, now + tokenTtlSeconds * 1000L));
 
         LoginVO response = LoginVO.builder()
                 .token(token)
-                .expiresIn(TOKEN_TTL_SECONDS)
+                .expiresIn(tokenTtlSeconds)
                 .user(user)
                 .build();
 
@@ -80,24 +89,47 @@ public class AuthService {
     }
 
     public boolean isAuthenticated(String authorization) {
+        return getAuthenticatedUser(authorization).isPresent();
+    }
+
+    public Optional<LoginVO.UserInfo> getAuthenticatedUser(String authorization) {
         Optional<String> token = tokenFromAuthorization(authorization);
         if (token.isEmpty()) {
-            return false;
+            return Optional.empty();
         }
         AuthSession session = activeTokens.get(token.get());
         if (session == null) {
-            return false;
+            return Optional.empty();
         }
         if (session.expiresAtMillis() <= clock.millis()) {
             activeTokens.remove(token.get());
-            return false;
+            return Optional.empty();
         }
-        return true;
+        return Optional.of(session.user());
     }
 
     public void logout(String authorization) {
         tokenFromAuthorization(authorization).ifPresent(activeTokens::remove);
         log.info("User logged out");
+    }
+
+    @Scheduled(fixedDelayString = "${studio.auth.session-cleanup-interval:PT5M}")
+    public void purgeExpiredSessions() {
+        purgeExpiredSessions(clock.millis());
+    }
+
+    private void purgeExpiredSessions(long now) {
+        activeTokens.entrySet().removeIf(entry -> entry.getValue().expiresAtMillis() <= now);
+    }
+
+    private int sessionTimeoutSeconds() {
+        GeneralSettingsVO settings = settingsRepository.loadGeneralSettings();
+        int minutes = settings == null ? DEFAULT_SESSION_TIMEOUT_MINUTES : settings.getSessionTimeout();
+        if (minutes < MIN_SESSION_TIMEOUT_MINUTES || minutes > MAX_SESSION_TIMEOUT_MINUTES) {
+            log.warn("Ignoring invalid persisted session timeout: {} minutes", minutes);
+            minutes = DEFAULT_SESSION_TIMEOUT_MINUTES;
+        }
+        return Math.toIntExact(Duration.ofMinutes(minutes).toSeconds());
     }
 
     private LoginVO.UserInfo authenticate(LoginDTO request) {

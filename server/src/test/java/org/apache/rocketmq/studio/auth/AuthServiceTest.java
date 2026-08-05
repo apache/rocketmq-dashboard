@@ -18,6 +18,8 @@
 package org.apache.rocketmq.studio.auth;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
+import org.apache.rocketmq.studio.settings.SettingsRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -33,6 +35,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -40,11 +43,14 @@ class AuthServiceTest {
 
     private AuthService authService;
     private AuthProperties authProperties;
+    private SettingsRepository settingsRepository;
 
     @BeforeEach
     void setUp() {
         authProperties = new AuthProperties();
-        authService = new AuthService(authProperties, Clock.fixed(Instant.EPOCH, ZoneOffset.UTC));
+        settingsRepository = mock(SettingsRepository.class);
+        lenient().when(settingsRepository.loadGeneralSettings()).thenReturn(sessionSettings(30));
+        authService = new AuthService(authProperties, settingsRepository, Clock.fixed(Instant.EPOCH, ZoneOffset.UTC));
     }
 
     @Test
@@ -61,13 +67,16 @@ class AuthServiceTest {
 
         assertThat(response).isNotNull();
         assertThat(response.getToken()).startsWith("studio-jwt-");
-        assertThat(response.getExpiresIn()).isEqualTo(86400);
+        assertThat(response.getExpiresIn()).isEqualTo(1800);
         assertThat(response.getUser()).isNotNull();
         assertThat(response.getUser().getUsername()).isEqualTo("testuser");
         assertThat(response.getUser().isAdmin()).isFalse();
         assertThat(authService.isAuthenticated("Bearer " + response.getToken())).isTrue();
         assertThat(authService.isAuthenticated("bearer " + response.getToken())).isTrue();
         assertThat(authService.isAuthenticated("bEaReR " + response.getToken())).isTrue();
+        assertThat(authService.getAuthenticatedUser("Bearer " + response.getToken()))
+                .hasValueSatisfying(userInfo -> assertThat(userInfo.getUsername()).isEqualTo("testuser"));
+        assertThat(authService.getAuthenticatedUser("Bearer unknown-token")).isEmpty();
     }
 
     @Test
@@ -168,10 +177,10 @@ class AuthServiceTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void loginShouldRemoveExpiredSessions() {
+    void scheduledCleanupShouldRemoveExpiredSessions() {
         Clock clock = mock(Clock.class);
         when(clock.millis()).thenReturn(0L);
-        authService = new AuthService(authProperties, clock);
+        authService = new AuthService(authProperties, settingsRepository, clock);
         AuthProperties.User user = new AuthProperties.User();
         user.setUsername("testuser");
         user.setPassword("testpass");
@@ -182,10 +191,42 @@ class AuthServiceTest {
         LoginVO expiredSession = authService.login(request);
         when(clock.millis()).thenReturn(expiredSession.getExpiresIn() * 1000L);
 
-        LoginVO activeSession = authService.login(request);
+        authService.purgeExpiredSessions();
 
         Map<String, ?> activeTokens = (Map<String, ?>) ReflectionTestUtils.getField(authService, "activeTokens");
-        assertThat(activeTokens).containsOnlyKeys(activeSession.getToken());
+        assertThat(activeTokens).isEmpty();
+    }
+
+    @Test
+    void loginShouldUsePersistedSessionTimeout() {
+        AuthProperties.User user = new AuthProperties.User();
+        user.setUsername("testuser");
+        user.setPassword("testpass");
+        authProperties.setUsers(List.of(user));
+        when(settingsRepository.loadGeneralSettings()).thenReturn(sessionSettings(45));
+        LoginDTO request = new LoginDTO();
+        request.setUsername("testuser");
+        request.setPassword("testpass");
+
+        LoginVO response = authService.login(request);
+
+        assertThat(response.getExpiresIn()).isEqualTo(2700);
+    }
+
+    @Test
+    void loginShouldFallBackToDefaultForInvalidPersistedSessionTimeout() {
+        AuthProperties.User user = new AuthProperties.User();
+        user.setUsername("testuser");
+        user.setPassword("testpass");
+        authProperties.setUsers(List.of(user));
+        when(settingsRepository.loadGeneralSettings()).thenReturn(sessionSettings(0));
+        LoginDTO request = new LoginDTO();
+        request.setUsername("testuser");
+        request.setPassword("testpass");
+
+        LoginVO response = authService.login(request);
+
+        assertThat(response.getExpiresIn()).isEqualTo(1800);
     }
 
     @Test
@@ -243,5 +284,9 @@ class AuthServiceTest {
     @Test
     void logoutShouldCompleteWithoutError() {
         authService.logout(null);
+    }
+
+    private GeneralSettingsVO sessionSettings(int minutes) {
+        return GeneralSettingsVO.builder().sessionTimeout(minutes).build();
     }
 }
