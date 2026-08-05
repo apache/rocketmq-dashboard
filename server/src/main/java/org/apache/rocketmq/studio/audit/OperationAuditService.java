@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.audit;
 
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.persistence.entity.RmqOperationAudit;
 import org.apache.rocketmq.studio.persistence.mapper.RmqOperationAuditMapper;
 import org.springframework.stereotype.Service;
@@ -43,6 +44,7 @@ public class OperationAuditService {
         audit.setDetail(detail);
         audit.setResult(result);
         audit.setErrorMessage(errorMessage);
+        audit.setOperator(AuthenticatedUserContext.currentUsernameOrSystem());
         audit.setOperatedAt(LocalDateTime.now());
         auditMapper.insert(audit);
         log.debug("Audit recorded: {} {} {}", operation, resourceType, resourceName);

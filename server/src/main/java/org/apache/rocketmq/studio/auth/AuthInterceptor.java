@@ -35,11 +35,15 @@ public class AuthInterceptor implements HandlerInterceptor {
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response,
                              Object handler) throws Exception {
+        AuthenticatedUserContext.clear();
         if (!authProperties.isLoginRequired() || CorsUtils.isPreFlightRequest(request)
                 || isPublicPath(requestPath(request))) {
             return true;
         }
-        if (authService.isAuthenticated(request.getHeader(HttpHeaders.AUTHORIZATION))) {
+        String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
+        if (authService.isAuthenticated(authorization)) {
+            authService.getAuthenticatedUser(authorization)
+                    .ifPresent(user -> AuthenticatedUserContext.setUsername(user.getUsername()));
             return true;
         }
 
@@ -47,6 +51,12 @@ public class AuthInterceptor implements HandlerInterceptor {
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.getWriter().write("{\"code\":401,\"message\":\"Unauthorized\",\"data\":null}");
         return false;
+    }
+
+    @Override
+    public void afterCompletion(HttpServletRequest request, HttpServletResponse response,
+                                Object handler, Exception ex) throws Exception {
+        AuthenticatedUserContext.clear();
     }
 
     private boolean isPublicPath(String path) {

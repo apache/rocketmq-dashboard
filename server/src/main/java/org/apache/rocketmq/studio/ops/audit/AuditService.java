@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.ops.audit;
 
+import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
@@ -79,6 +80,7 @@ public class AuditService {
     public void record(String operationType, String target, String detail, String result) {
         AuditRecordVO record = AuditRecordVO.builder()
                 .timestamp(LocalDateTime.now())
+                .operator(AuthenticatedUserContext.currentUsernameOrSystem())
                 .operationType(operationType)
                 .target(target)
                 .detail(detail)

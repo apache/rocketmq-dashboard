@@ -15,16 +15,34 @@
  * limitations under the License.
  */
 
-package org.apache.rocketmq.studio;
+package org.apache.rocketmq.studio.auth;
 
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.scheduling.annotation.EnableScheduling;
+/**
+ * Holds the authenticated username for the current request thread.
+ */
+public final class AuthenticatedUserContext {
 
-@SpringBootApplication
-@EnableScheduling
-public class StudioApplication {
-    public static void main(String[] args) {
-        SpringApplication.run(StudioApplication.class, args);
+    public static final String SYSTEM_ACTOR = "system";
+
+    private static final ThreadLocal<String> CURRENT_USERNAME = new ThreadLocal<>();
+
+    private AuthenticatedUserContext() {
+    }
+
+    public static void setUsername(String username) {
+        if (username == null || username.isBlank()) {
+            clear();
+            return;
+        }
+        CURRENT_USERNAME.set(username);
+    }
+
+    public static String currentUsernameOrSystem() {
+        String username = CURRENT_USERNAME.get();
+        return username == null ? SYSTEM_ACTOR : username;
+    }
+
+    public static void clear() {
+        CURRENT_USERNAME.remove();
     }
 }
