@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useState, useRef } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Card,
   Table,
@@ -71,13 +71,7 @@ const ProxyPage: React.FC = () => {
     totalTPS: null as number | null,
   });
 
-  const initialized = useRef<boolean | null>(null);
-  if (initialized.current == null) {
-    initialized.current = true;
-    loadProxyNodes();
-  }
-
-  async function loadProxyNodes() {
+  const loadProxyNodes = useCallback(async () => {
     setLoading(true);
     try {
       const { proxyAddrList, currentProxyAddr } = await queryProxyHomePage();
@@ -114,7 +108,13 @@ const ProxyPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }
+  }, [message, t]);
+
+  useEffect(() => {
+    // The state updates are performed by the asynchronous Proxy API request, not by this effect itself.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadProxyNodes();
+  }, [loadProxyNodes]);
 
   const handleViewConfig = (node: ProxyNode) => {
     setSelectedNode(node);

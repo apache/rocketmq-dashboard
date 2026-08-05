@@ -66,6 +66,13 @@ describe('ProxyPage', () => {
     vi.mocked(queryProxyHomePage).mockResolvedValue(proxyHome);
   });
 
+  it('loads Proxy nodes once after the page mounts', async () => {
+    renderPage();
+
+    await screen.findByText('127.0.0.1:8081');
+    expect(queryProxyHomePage).toHaveBeenCalledTimes(1);
+  });
+
   it('shows success after the proxy list refreshes', async () => {
     const user = userEvent.setup();
     renderPage();
