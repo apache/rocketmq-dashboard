@@ -21,4 +21,6 @@ import java.util.List;
 
 public interface ClientProvider {
     List<ClientConnectionVO> findConnections(String clusterId, String type);
+
+    List<ClientConnectionVO> findProducerConnections(String topic, String producerGroup);
 }

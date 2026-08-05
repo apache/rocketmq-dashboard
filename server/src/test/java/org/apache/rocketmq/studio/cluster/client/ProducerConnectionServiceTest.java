@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.cluster.client;
 
 import org.apache.rocketmq.studio.common.domain.enums.ClientLanguage;
 import org.apache.rocketmq.studio.common.domain.enums.ClientType;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -27,6 +28,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -34,13 +37,13 @@ import static org.mockito.Mockito.when;
 class ProducerConnectionServiceTest {
 
     @Mock
-    private ClientService clientService;
+    private ClientProvider clientProvider;
 
     @InjectMocks
     private ProducerConnectionService producerConnectionService;
 
     @Test
-    void listConnectionsShouldProjectProducerClientsByTopic() {
+    void listConnectionsShouldQueryAndProjectExactProducerGroup() {
         ClientConnectionVO producer = ClientConnectionVO.builder()
                 .clientId("producer-1")
                 .type(ClientType.Producer)
@@ -50,17 +53,8 @@ class ProducerConnectionServiceTest {
                 .language(ClientLanguage.Java)
                 .version("5.1.0")
                 .build();
-        ClientConnectionVO otherProducer = ClientConnectionVO.builder()
-                .clientId("producer-2")
-                .type(ClientType.Producer)
-                .groupOrTopic("payment-topic")
-                .producerGroup("pg-payment")
-                .address("10.0.0.2:38888")
-                .language(ClientLanguage.Go)
-                .version("5.0.0")
-                .build();
-        when(clientService.listConnections(null, ClientType.Producer.name()))
-                .thenReturn(List.of(producer, otherProducer));
+        when(clientProvider.findProducerConnections("order-topic", "pg-order"))
+                .thenReturn(List.of(producer));
 
         List<ProducerConnectionVO> result = producerConnectionService.listConnections("order-topic", "pg-order");
 
@@ -69,62 +63,35 @@ class ProducerConnectionServiceTest {
         assertThat(result.get(0).getClientAddr()).isEqualTo("10.0.0.1:38888");
         assertThat(result.get(0).getLanguage()).isEqualTo("Java");
         assertThat(result.get(0).getVersionDesc()).isEqualTo("5.1.0");
-        verify(clientService).listConnections(null, ClientType.Producer.name());
+        verify(clientProvider).findProducerConnections("order-topic", "pg-order");
     }
 
     @Test
-    void listConnectionsShouldFallbackToProducerGroupWhenTopicIsMissing() {
-        ClientConnectionVO producer = ClientConnectionVO.builder()
-                .clientId("producer-1")
-                .type(ClientType.Producer)
-                .groupOrTopic("order-topic")
-                .producerGroup("pg-order")
-                .address("10.0.0.1:38888")
-                .language(ClientLanguage.Java)
-                .version("5.1.0")
-                .build();
-        when(clientService.listConnections(null, ClientType.Producer.name())).thenReturn(List.of(producer));
-
-        List<ProducerConnectionVO> result = producerConnectionService.listConnections(null, "pg-order");
-
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getClientId()).isEqualTo("producer-1");
+    void listConnectionsShouldRejectMissingTopic() {
+        assertThatThrownBy(() -> producerConnectionService.listConnections(" ", "pg-order"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("topic is required")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+        verifyNoInteractions(clientProvider);
     }
 
     @Test
-    void listConnectionsShouldTrimFilterValues() {
-        ClientConnectionVO producer = ClientConnectionVO.builder()
-                .clientId("producer-1")
-                .type(ClientType.Producer)
-                .groupOrTopic("order-topic")
-                .producerGroup("pg-order")
-                .address("10.0.0.1:38888")
-                .language(ClientLanguage.Java)
-                .version("5.1.0")
-                .build();
-        when(clientService.listConnections(null, ClientType.Producer.name())).thenReturn(List.of(producer));
-
-        List<ProducerConnectionVO> result = producerConnectionService.listConnections(" order-topic ", " pg-order ");
-
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getClientId()).isEqualTo("producer-1");
+    void listConnectionsShouldRejectMissingProducerGroup() {
+        assertThatThrownBy(() -> producerConnectionService.listConnections("order-topic", null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("producerGroup is required")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+        verifyNoInteractions(clientProvider);
     }
 
     @Test
-    void listConnectionsShouldRequireProducerGroupWhenBothFiltersAreProvided() {
-        ClientConnectionVO producer = ClientConnectionVO.builder()
-                .clientId("producer-1")
-                .type(ClientType.Producer)
-                .groupOrTopic("order-topic")
-                .producerGroup("pg-order")
-                .address("10.0.0.1:38888")
-                .language(ClientLanguage.Java)
-                .version("5.1.0")
-                .build();
-        when(clientService.listConnections(null, ClientType.Producer.name())).thenReturn(List.of(producer));
+    void listConnectionsShouldTrimRequiredValues() {
+        when(clientProvider.findProducerConnections("order-topic", "pg-order"))
+                .thenReturn(List.of());
 
-        List<ProducerConnectionVO> result = producerConnectionService.listConnections("order-topic", "wrong-group");
-
+        List<ProducerConnectionVO> result = producerConnectionService.listConnections(
+                " order-topic ", " pg-order ");
         assertThat(result).isEmpty();
+        verify(clientProvider).findProducerConnections("order-topic", "pg-order");
     }
 }

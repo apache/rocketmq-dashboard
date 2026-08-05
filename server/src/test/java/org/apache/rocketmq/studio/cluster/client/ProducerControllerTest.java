@@ -26,6 +26,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.List;
 
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -63,5 +64,38 @@ class ProducerControllerTest {
                 .andExpect(jsonPath("$.connectionSet[0].versionDesc").value("5.1.0"));
 
         verify(producerConnectionService).listConnections("order-topic", "pg-order");
+    }
+
+    @Test
+    void listConnectionsShouldRequireTopic() throws Exception {
+        mockMvc.perform(get("/api/producer/connection")
+                        .param("producerGroup", "pg-order"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("topic is required"));
+
+        verifyNoInteractions(producerConnectionService);
+    }
+
+    @Test
+    void listConnectionsShouldRequireProducerGroup() throws Exception {
+        mockMvc.perform(get("/api/producer/connection")
+                        .param("topic", "order-topic"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("producerGroup is required"));
+
+        verifyNoInteractions(producerConnectionService);
+    }
+
+    @Test
+    void listConnectionsShouldRejectBlankParameters() throws Exception {
+        mockMvc.perform(get("/api/producer/connection")
+                        .param("topic", " ")
+                        .param("producerGroup", "pg-order"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("topic is required"));
+
+        verifyNoInteractions(producerConnectionService);
     }
 }

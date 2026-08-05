@@ -20,9 +20,10 @@ import org.apache.rocketmq.remoting.protocol.LanguageCode;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.Connection;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
+import org.apache.rocketmq.remoting.protocol.body.ProducerInfo;
 import org.apache.rocketmq.remoting.protocol.body.ProducerConnection;
+import org.apache.rocketmq.remoting.protocol.body.ProducerTableInfo;
 import org.apache.rocketmq.remoting.protocol.body.SubscriptionGroupWrapper;
-import org.apache.rocketmq.remoting.protocol.body.TopicList;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.client.ClientConnectionVO;
 import org.apache.rocketmq.studio.cluster.client.ClientProvider;
@@ -37,26 +38,23 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
  * Live {@link ClientProvider} backed by the RocketMQ admin API. It discovers producer
- * connections by scanning non-system topics and consumer connections by scanning
+ * connections from each broker's producer table and consumer connections by scanning
  * subscription groups across all brokers in the cluster.
  */
 @Slf4j
 @Service
 @Primary
 public class RocketMQClientProvider implements ClientProvider {
-
-    /**
-     * Upper bound on the number of non-system topics scanned for producer connections,
-     * to avoid issuing an admin call per topic on clusters with a large topic count.
-     */
-    private static final int MAX_PRODUCER_TOPIC_SCAN = 50;
 
     private static final long SUBSCRIPTION_GROUP_TIMEOUT_MILLIS = 5000L;
 
@@ -68,16 +66,12 @@ public class RocketMQClientProvider implements ClientProvider {
 
     @Override
     public List<ClientConnectionVO> findConnections(String clusterId, String type) {
-        DefaultMQAdminExt adminExt = adminExtProvider.getIfAvailable();
-        if (adminExt == null) {
-            log.warn("DefaultMQAdminExt is not configured, returning empty client connection list");
-            return List.of();
-        }
+        DefaultMQAdminExt adminExt = requireAdminExt();
 
         ClientType clientType = parseType(type);
         List<ClientConnectionVO> connections = new ArrayList<>();
         if (clientType == null || clientType == ClientType.Producer) {
-            connections.addAll(findProducerConnections(adminExt, clusterId));
+            connections.addAll(findAllProducerConnections(adminExt, clusterId));
         }
         if (clientType == null || clientType == ClientType.Consumer) {
             connections.addAll(findConsumerConnections(adminExt, clusterId));
@@ -85,45 +79,106 @@ public class RocketMQClientProvider implements ClientProvider {
         return connections;
     }
 
-    private List<ClientConnectionVO> findProducerConnections(DefaultMQAdminExt adminExt, String clusterId) {
-        List<ClientConnectionVO> result = new ArrayList<>();
-        Set<String> topics;
+    @Override
+    public List<ClientConnectionVO> findProducerConnections(String topic, String producerGroup) {
+        DefaultMQAdminExt adminExt = requireAdminExt();
         try {
-            TopicList topicList = adminExt.fetchAllTopicList();
-            topics = topicList == null ? Set.of() : topicList.getTopicList();
-        } catch (Exception e) {
-            log.warn("Failed to fetch topic list for producer connection scan", e);
-            return result;
-        }
-
-        int scanned = 0;
-        boolean capped = false;
-        for (String topic : topics.stream().filter(topic -> !isSystemTopic(topic)).sorted().toList()) {
-            if (scanned >= MAX_PRODUCER_TOPIC_SCAN) {
-                log.warn("Producer connection scan capped at {} non-system topics", MAX_PRODUCER_TOPIC_SCAN);
-                capped = true;
-                break;
+            ProducerConnection producerConnection =
+                    adminExt.examineProducerConnectionInfo(producerGroup, topic);
+            if (producerConnection == null || producerConnection.getConnectionSet() == null) {
+                return List.of();
             }
-            scanned++;
+            return producerConnection.getConnectionSet().stream()
+                    .filter(Objects::nonNull)
+                    .map(connection -> toConnectionVO(
+                            connection, ClientType.Producer, topic, producerGroup, null))
+                    .toList();
+        } catch (Exception e) {
+            throw new BusinessException(502,
+                    "Failed to query producer connections: " + rootMessage(e));
+        }
+    }
+
+    private List<ClientConnectionVO> findAllProducerConnections(
+            DefaultMQAdminExt adminExt, String clusterId) {
+        Set<String> brokerAddresses = collectProducerBrokerAddresses(adminExt);
+        Map<String, ClientConnectionVO> connections = new LinkedHashMap<>();
+        int successfulBrokers = 0;
+        for (String brokerAddress : brokerAddresses) {
             try {
-                ProducerConnection producerConnection = adminExt.examineProducerConnectionInfo(null, topic);
-                if (producerConnection == null || producerConnection.getConnectionSet() == null) {
+                ProducerTableInfo producerTable = adminExt.getAllProducerInfo(brokerAddress);
+                successfulBrokers++;
+                addProducerConnections(connections, producerTable, clusterId);
+            } catch (Exception e) {
+                log.warn("Failed to fetch producer connections from broker={}, skipping", brokerAddress, e);
+            }
+        }
+        if (!brokerAddresses.isEmpty() && successfulBrokers == 0) {
+            throw new BusinessException(502, "Failed to query producer connections from all brokers");
+        }
+        return new ArrayList<>(connections.values());
+    }
+
+    private Set<String> collectProducerBrokerAddresses(DefaultMQAdminExt adminExt) {
+        ClusterInfo clusterInfo;
+        try {
+            clusterInfo = adminExt.examineBrokerClusterInfo();
+        } catch (Exception e) {
+            throw new BusinessException(502,
+                    "Failed to discover brokers for producer connections: " + rootMessage(e));
+        }
+        Set<String> addresses = new LinkedHashSet<>();
+        if (clusterInfo == null || clusterInfo.getBrokerAddrTable() == null) {
+            return addresses;
+        }
+        for (BrokerData brokerData : clusterInfo.getBrokerAddrTable().values()) {
+            if (brokerData == null) {
+                continue;
+            }
+            String brokerAddress = brokerData.selectBrokerAddr();
+            if (brokerAddress != null && !brokerAddress.isBlank()) {
+                addresses.add(brokerAddress);
+            }
+        }
+        return addresses;
+    }
+
+    private void addProducerConnections(
+            Map<String, ClientConnectionVO> connections,
+            ProducerTableInfo producerTable,
+            String clusterId) {
+        if (producerTable == null || producerTable.getData() == null) {
+            return;
+        }
+        producerTable.getData().forEach((producerGroup, producerInfos) -> {
+            if (producerGroup == null || producerGroup.isBlank() || producerInfos == null) {
+                return;
+            }
+            for (ProducerInfo producerInfo : producerInfos) {
+                if (producerInfo == null) {
                     continue;
                 }
-                for (Connection connection : producerConnection.getConnectionSet()) {
-                    if (connection == null) {
-                        continue;
-                    }
-                    result.add(toConnectionVO(connection, ClientType.Producer, topic, topic, clusterId));
-                }
-            } catch (Exception e) {
-                log.warn("Failed to examine producer connection for topic={}, skipping", topic, e);
+                String key = producerGroup + '\0'
+                        + Objects.toString(producerInfo.getClientId(), "") + '\0'
+                        + Objects.toString(producerInfo.getRemoteIP(), "");
+                connections.putIfAbsent(key, toConnectionVO(producerInfo, producerGroup, clusterId));
             }
-        }
-        if (capped) {
-            result.forEach(connection -> connection.setPartial(true));
-        }
-        return result;
+        });
+    }
+
+    private ClientConnectionVO toConnectionVO(
+            ProducerInfo producerInfo, String producerGroup, String clusterId) {
+        return ClientConnectionVO.builder()
+                .clientId(producerInfo.getClientId())
+                .type(ClientType.Producer)
+                .groupOrTopic(producerGroup)
+                .producerGroup(producerGroup)
+                .protocol(Protocol.Remoting)
+                .address(producerInfo.getRemoteIP())
+                .language(mapLanguage(producerInfo.getLanguage()))
+                .version(String.valueOf(producerInfo.getVersion()))
+                .clusterName(clusterId)
+                .build();
     }
 
     private List<ClientConnectionVO> findConsumerConnections(DefaultMQAdminExt adminExt, String clusterId) {
@@ -241,24 +296,6 @@ public class RocketMQClientProvider implements ClientProvider {
         }
     }
 
-    private boolean isSystemTopic(String topic) {
-        if (topic == null) {
-            return true;
-        }
-        return topic.startsWith("RMQ_SYS_")
-                || topic.startsWith("SCHEDULE_TOPIC_")
-                || topic.startsWith("%RETRY%")
-                || topic.startsWith("%DLQ%")
-                || topic.startsWith("TBW102")
-                || topic.startsWith("SELF_TEST_")
-                || topic.startsWith("DefaultCluster")
-                || topic.startsWith("broker_")
-                || topic.startsWith("OFFSET_MOVED_")
-                || topic.startsWith("CID_RMQ_SYS_")
-                || topic.startsWith("TRANS_CHECK_")
-                || topic.startsWith("BenchmarkTest");
-    }
-
     private boolean isSystemGroup(String group) {
         if (group == null) {
             return true;
@@ -271,5 +308,24 @@ public class RocketMQClientProvider implements ClientProvider {
                 || group.startsWith("%RETRY%")
                 || group.startsWith("SELF_TEST_")
                 || group.startsWith("CID_HOUSEKEEPING");
+    }
+
+    private DefaultMQAdminExt requireAdminExt() {
+        DefaultMQAdminExt adminExt = adminExtProvider.getIfAvailable();
+        if (adminExt == null) {
+            throw new BusinessException(501, "Client connection provider is not configured");
+        }
+        return adminExt;
+    }
+
+    private String rootMessage(Throwable error) {
+        Throwable current = error;
+        while (current.getCause() != null) {
+            current = current.getCause();
+        }
+        String message = current.getMessage();
+        return message == null || message.isBlank()
+                ? current.getClass().getSimpleName()
+                : message;
     }
 }
