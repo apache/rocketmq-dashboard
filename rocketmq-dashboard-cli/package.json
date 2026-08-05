@@ -1,0 +1,33 @@
+{
+  "name": "rmqctl",
+  "version": "1.0.0",
+  "description": "Lightweight RocketMQ operations CLI (RIP-3) implemented in TypeScript. Talks to the RocketMQ Studio server over plain JSON; the server owns all protocol translation and tool execution.",
+  "license": "Apache-2.0",
+  "bin": {
+    "rmqctl": "src/index.ts"
+  },
+  "type": "module",
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  }
+}
