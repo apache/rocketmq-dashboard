@@ -9,7 +9,8 @@ export interface ClientConnection {
   address: string;
   language: string;
   version: string;
-  connectedAt: string;
+  connectedAt?: string | null;
+  partial?: boolean;
   clusterName: string;
 }
 

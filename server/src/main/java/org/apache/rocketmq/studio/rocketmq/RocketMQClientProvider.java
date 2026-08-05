@@ -26,6 +26,7 @@ import org.apache.rocketmq.remoting.protocol.body.TopicList;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.client.ClientConnectionVO;
 import org.apache.rocketmq.studio.cluster.client.ClientProvider;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.ClientLanguage;
 import org.apache.rocketmq.studio.common.domain.enums.ClientType;
 import org.apache.rocketmq.studio.common.domain.enums.Protocol;
@@ -96,12 +97,11 @@ public class RocketMQClientProvider implements ClientProvider {
         }
 
         int scanned = 0;
-        for (String topic : topics) {
-            if (isSystemTopic(topic)) {
-                continue;
-            }
+        boolean capped = false;
+        for (String topic : topics.stream().filter(topic -> !isSystemTopic(topic)).sorted().toList()) {
             if (scanned >= MAX_PRODUCER_TOPIC_SCAN) {
-                log.info("Producer connection scan capped at {} non-system topics", MAX_PRODUCER_TOPIC_SCAN);
+                log.warn("Producer connection scan capped at {} non-system topics", MAX_PRODUCER_TOPIC_SCAN);
+                capped = true;
                 break;
             }
             scanned++;
@@ -119,6 +119,9 @@ public class RocketMQClientProvider implements ClientProvider {
             } catch (Exception e) {
                 log.warn("Failed to examine producer connection for topic={}, skipping", topic, e);
             }
+        }
+        if (capped) {
+            result.forEach(connection -> connection.setPartial(true));
         }
         return result;
     }
@@ -210,8 +213,7 @@ public class RocketMQClientProvider implements ClientProvider {
             if (normalized.startsWith("cons")) {
                 return ClientType.Consumer;
             }
-            log.warn("Unknown client type filter: {}", type);
-            return null;
+            throw new BusinessException(400, "Unknown client type filter: " + type);
         }
     }
 

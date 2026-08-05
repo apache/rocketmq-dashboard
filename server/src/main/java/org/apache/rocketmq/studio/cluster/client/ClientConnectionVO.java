@@ -40,5 +40,6 @@ public class ClientConnectionVO {
     private ClientLanguage language;
     private String version;
     private LocalDateTime connectedAt;
+    private boolean partial;
     private String clusterName;
 }
