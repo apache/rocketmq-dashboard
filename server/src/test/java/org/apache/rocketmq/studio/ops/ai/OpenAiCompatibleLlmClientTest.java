@@ -234,6 +234,45 @@ class OpenAiCompatibleLlmClientTest {
     }
 
     @Test
+    void completeShouldRejectOversizedProviderResponse() {
+        server.createContext("/v1/chat/completions", exchange -> respond(exchange, 200,
+                "x".repeat(2 * 1024 * 1024), "application/json"));
+
+        assertResponseTooLarge(() -> client.complete(config("openai", "sk-test"), "hello", null));
+    }
+
+    @Test
+    void streamShouldRejectOversizedErrorBody() {
+        server.createContext("/v1/chat/completions", exchange -> respond(exchange, 500,
+                "x".repeat(2 * 1024 * 1024), "application/json"));
+
+        assertResponseTooLarge(() -> client.stream(config("openai", "sk-test"), "hello", null, ignored -> {
+        }));
+    }
+
+    @Test
+    void streamShouldRejectOversizedEventPayload() {
+        String oversizedEvent = "data: " + "x".repeat(128 * 1024) + "\n\n";
+        server.createContext("/v1/chat/completions", exchange -> respond(exchange, 200,
+                oversizedEvent, "text/event-stream"));
+
+        assertResponseTooLarge(() -> client.stream(config("openai", "sk-test"), "hello", null, ignored -> {
+        }));
+    }
+
+    @Test
+    void streamShouldRejectOversizedCumulativePayload() {
+        String event = "data: {\"choices\":[{\"delta\":{\"content\":\""
+                + "x".repeat(16 * 1024) + "\"}}]}\n\n";
+        String payload = event.repeat(65);
+        server.createContext("/v1/chat/completions", exchange -> respond(exchange, 200,
+                payload, "text/event-stream"));
+
+        assertResponseTooLarge(() -> client.stream(config("openai", "sk-test"), "hello", null, ignored -> {
+        }));
+    }
+
+    @Test
     void unsupportedProviderShouldFailBeforeCallingUpstream() {
         assertThatThrownBy(() -> client.complete(config("bedrock", "key"), "hello", null))
                 .isInstanceOf(LlmGatewayException.class)
@@ -302,6 +341,18 @@ class OpenAiCompatibleLlmClientTest {
                     assertThat(gatewayException.getStatusCode()).isEqualTo(504);
                     assertThat(gatewayException.getCode()).isEqualTo("llm.provider.timeout");
                     assertThat(gatewayException.getHint()).contains("network connectivity");
+                });
+    }
+
+    private void assertResponseTooLarge(org.assertj.core.api.ThrowableAssert.ThrowingCallable action) {
+        assertThatThrownBy(action)
+                .isInstanceOf(LlmGatewayException.class)
+                .hasMessage("LLM provider response exceeds the configured safety limit")
+                .satisfies(exception -> {
+                    LlmGatewayException gatewayException = (LlmGatewayException) exception;
+                    assertThat(gatewayException.getStatusCode()).isEqualTo(502);
+                    assertThat(gatewayException.getCode()).isEqualTo("llm.provider.response_too_large");
+                    assertThat(gatewayException.getHint()).contains("smaller output");
                 });
     }
 

@@ -23,9 +23,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
-import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.Reader;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.http.HttpClient;
@@ -47,6 +49,10 @@ public class OpenAiCompatibleLlmClient {
     private static final String CHAT_COMPLETIONS_PATH = "/chat/completions";
     private static final String MODELS_PATH = "/models";
     private static final Set<String> SUPPORTED_PROVIDERS = Set.of("openai", "deepseek", "tongyi", "ollama");
+    // Bound materialized provider payloads while leaving normal LLM responses unaffected.
+    private static final int MAX_RESPONSE_BYTES = 1024 * 1024;
+    private static final int MAX_SSE_EVENT_CHARS = 64 * 1024;
+    private static final int MAX_SSE_STREAM_CHARS = 1024 * 1024;
 
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
@@ -78,11 +84,14 @@ public class OpenAiCompatibleLlmClient {
         Map<String, Object> requestBody = requestBody(config, messages, modelOverride, false);
         HttpRequest request = request(config, "application/json", requestBody);
         try {
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() >= 400) {
-                throw upstreamException(response.statusCode(), response.body());
+            HttpResponse<InputStream> response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            try (InputStream body = response.body()) {
+                String responseBody = readLimitedBody(body);
+                if (response.statusCode() >= 400) {
+                    throw upstreamException(response.statusCode(), responseBody);
+                }
+                return parseCompletion(responseBody);
             }
-            return parseCompletion(response.body());
         } catch (HttpTimeoutException exception) {
             throw new LlmGatewayException(504, "llm.provider.timeout",
                     "LLM provider request timed out",
@@ -102,11 +111,14 @@ public class OpenAiCompatibleLlmClient {
         validateModelListing(config);
         HttpRequest request = getRequest(config, modelsUri(config));
         try {
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() >= 400) {
-                throw upstreamException(response.statusCode(), response.body());
+            HttpResponse<InputStream> response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            try (InputStream body = response.body()) {
+                String responseBody = readLimitedBody(body);
+                if (response.statusCode() >= 400) {
+                    throw upstreamException(response.statusCode(), responseBody);
+                }
+                return parseModels(responseBody);
             }
-            return parseModels(response.body());
         } catch (HttpTimeoutException exception) {
             throw new LlmGatewayException(504, "llm.provider.timeout",
                     "LLM provider model request timed out",
@@ -132,13 +144,14 @@ public class OpenAiCompatibleLlmClient {
         Map<String, Object> requestBody = requestBody(config, messages, modelOverride, true);
         HttpRequest request = request(config, "text/event-stream", requestBody);
         try {
-            HttpResponse<java.io.InputStream> response = httpClient.send(
+            HttpResponse<InputStream> response = httpClient.send(
                     request, HttpResponse.BodyHandlers.ofInputStream());
-            if (response.statusCode() >= 400) {
-                throw upstreamException(response.statusCode(),
-                        new String(response.body().readAllBytes(), StandardCharsets.UTF_8));
+            try (InputStream body = response.body()) {
+                if (response.statusCode() >= 400) {
+                    throw upstreamException(response.statusCode(), readLimitedBody(body));
+                }
+                parseStream(body, tokenConsumer);
             }
-            parseStream(response, tokenConsumer);
         } catch (HttpTimeoutException exception) {
             throw new LlmGatewayException(504, "llm.provider.timeout",
                     "LLM provider stream timed out",
@@ -154,27 +167,74 @@ public class OpenAiCompatibleLlmClient {
         }
     }
 
-    private void parseStream(HttpResponse<java.io.InputStream> response, Consumer<String> tokenConsumer)
-            throws IOException {
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
+    private void parseStream(InputStream body, Consumer<String> tokenConsumer) throws IOException {
+        try (Reader reader = new InputStreamReader(body, StandardCharsets.UTF_8)) {
             List<String> dataLines = new ArrayList<>();
             String line;
-            while ((line = reader.readLine()) != null) {
+            int eventChars = 0;
+            int streamChars = 0;
+            while ((line = readSseLine(reader)) != null) {
                 if (line.isEmpty()) {
                     if (emitStreamEvent(dataLines, tokenConsumer)) {
                         return;
                     }
                     dataLines.clear();
+                    eventChars = 0;
                     continue;
                 }
                 if (line.startsWith("data:")) {
                     String value = line.substring(5);
-                    dataLines.add(value.startsWith(" ") ? value.substring(1) : value);
+                    value = value.startsWith(" ") ? value.substring(1) : value;
+                    eventChars = checkedAdd(eventChars, value.length(), MAX_SSE_EVENT_CHARS);
+                    streamChars = checkedAdd(streamChars, value.length(), MAX_SSE_STREAM_CHARS);
+                    dataLines.add(value);
                 }
             }
             emitStreamEvent(dataLines, tokenConsumer);
         }
+    }
+
+    private String readLimitedBody(InputStream body) throws IOException {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        byte[] buffer = new byte[8192];
+        int total = 0;
+        int read;
+        while ((read = body.read(buffer)) != -1) {
+            total = checkedAdd(total, read, MAX_RESPONSE_BYTES);
+            output.write(buffer, 0, read);
+        }
+        return output.toString(StandardCharsets.UTF_8);
+    }
+
+    private String readSseLine(Reader reader) throws IOException {
+        StringBuilder line = new StringBuilder();
+        int character;
+        while ((character = reader.read()) != -1) {
+            if (character == '\n') {
+                if (!line.isEmpty() && line.charAt(line.length() - 1) == '\r') {
+                    line.setLength(line.length() - 1);
+                }
+                return line.toString();
+            }
+            if (line.length() >= MAX_SSE_EVENT_CHARS) {
+                throw responseTooLarge();
+            }
+            line.append((char) character);
+        }
+        return line.isEmpty() ? null : line.toString();
+    }
+
+    private int checkedAdd(int current, int increment, int limit) {
+        if (increment > limit - current) {
+            throw responseTooLarge();
+        }
+        return current + increment;
+    }
+
+    private LlmGatewayException responseTooLarge() {
+        return new LlmGatewayException(502, "llm.provider.response_too_large",
+                "LLM provider response exceeds the configured safety limit",
+                "Reduce the provider response size or configure a model with a smaller output.");
     }
 
     private boolean emitStreamEvent(List<String> dataLines, Consumer<String> tokenConsumer) {
