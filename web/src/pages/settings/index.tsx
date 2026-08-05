@@ -191,13 +191,20 @@ const GeneralSettingsTab = () => {
         </Title>
       </Divider>
 
-      <Form.Item label="会话超时" name="sessionTimeout">
+      <Form.Item
+        label="会话超时"
+        name="sessionTimeout"
+        extra="应用于新创建的会话，已登录用户保持原到期时间"
+      >
         <InputNumber min={5} max={1440} addonAfter="分钟" />
       </Form.Item>
 
-      <Form.Item label="需要登录" name="requireLogin" valuePropName="checked">
-        <Switch />
+      <Form.Item name="requireLogin" hidden>
+        <Input />
       </Form.Item>
+      <Text type="secondary">
+        登录保护由服务端 STUDIO_AUTH_LOGIN_REQUIRED 配置决定，修改后重启服务生效。
+      </Text>
 
       {/* ── AI 配置 ── */}
       <Divider orientation="left">
