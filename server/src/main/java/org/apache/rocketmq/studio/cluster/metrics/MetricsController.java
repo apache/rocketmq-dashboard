@@ -54,6 +54,7 @@ public class MetricsController {
                 useReturnTypeSchema = true),
         @ApiResponse(responseCode = "400", description = "Invalid request or PromQL expression"),
         @ApiResponse(responseCode = "422", description = "Prometheus could not execute the expression"),
+        @ApiResponse(responseCode = "413", description = "Prometheus response exceeds Studio query limits"),
         @ApiResponse(responseCode = "502", description = "Prometheus connection or response failure"),
         @ApiResponse(responseCode = "503", description = "Prometheus is unavailable or not configured"),
         @ApiResponse(responseCode = "504", description = "Prometheus query timed out")

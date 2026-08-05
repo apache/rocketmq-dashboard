@@ -31,6 +31,7 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -229,6 +230,40 @@ class PrometheusMetricsSourceTest {
     }
 
     @Test
+    void queryShouldRejectResponseWithTooManySeries() {
+        server.createContext("/api/v1/query_range", exchange -> respond(exchange, 200, responseWithSeries(1_001)));
+
+        assertThatThrownBy(() -> source(Duration.ofSeconds(2)).query(query()))
+                .isInstanceOf(PrometheusException.class)
+                .satisfies(exception -> assertThat(((PrometheusException) exception).getStatusCode())
+                        .isEqualTo(HttpStatus.PAYLOAD_TOO_LARGE.value()))
+                .hasMessage("Prometheus query returned too many series; narrow the query");
+    }
+
+    @Test
+    void queryShouldRejectResponseWithTooManySamples() {
+        server.createContext("/api/v1/query_range", exchange -> respond(exchange, 200, responseWithSamples(100_001)));
+
+        assertThatThrownBy(() -> source(Duration.ofSeconds(2)).query(query()))
+                .isInstanceOf(PrometheusException.class)
+                .satisfies(exception -> assertThat(((PrometheusException) exception).getStatusCode())
+                        .isEqualTo(HttpStatus.PAYLOAD_TOO_LARGE.value()))
+                .hasMessage("Prometheus query returned too many samples; increase step or narrow the query");
+    }
+
+    @Test
+    void queryShouldRejectResponseLargerThanFiveMebibytes() {
+        server.createContext("/api/v1/query_range", exchange -> respond(exchange, 200,
+                "{\"status\":\"success\",\"padding\":\"" + "x".repeat(5 * 1024 * 1024) + "\"}"));
+
+        assertThatThrownBy(() -> source(Duration.ofSeconds(2)).query(query()))
+                .isInstanceOf(PrometheusException.class)
+                .satisfies(exception -> assertThat(((PrometheusException) exception).getStatusCode())
+                        .isEqualTo(HttpStatus.PAYLOAD_TOO_LARGE.value()))
+                .hasMessage("Prometheus response exceeds 5 MiB; narrow the query");
+    }
+
+    @Test
     void queryShouldRejectEndEarlierThanStart() {
         MetricQueryDTO invalidQuery = MetricQueryDTO.builder()
                 .metric("up")
@@ -381,5 +416,23 @@ class PrometheusMetricsSourceTest {
 
     private String successResponse() {
         return "{\"status\":\"success\",\"data\":{\"resultType\":\"matrix\",\"result\":[]}}";
+    }
+
+    private String responseWithSeries(int count) {
+        return "{\"status\":\"success\",\"data\":{\"resultType\":\"matrix\",\"result\":["
+                + String.join(",", Collections.nCopies(count, "{\"metric\":{},\"values\":[]}"))
+                + "]}}";
+    }
+
+    private String responseWithSamples(int count) {
+        StringBuilder values = new StringBuilder();
+        for (int index = 0; index < count; index++) {
+            if (index > 0) {
+                values.append(',');
+            }
+            values.append("[1784107658,\"1\"]");
+        }
+        return "{\"status\":\"success\",\"data\":{\"resultType\":\"matrix\",\"result\":[{\"metric\":{},\"values\":["
+                + values + "]}]}}";
     }
 }
