@@ -154,18 +154,20 @@ const ClientsPage = () => {
     [connections, clusterFilter],
   );
 
-  const connectionStats = useMemo(
-    () => ({
-      total: clusterConnections.length,
-      producers: clusterConnections.filter((connection) => connection.type === 'Producer').length,
-      consumers: clusterConnections.filter((connection) => connection.type === 'Consumer').length,
-      protocols: countBy(clusterConnections.map((connection) => connection.protocol)),
+  const connectionStats = useMemo(() => {
+    const instances = Array.from(
+      new Map(clusterConnections.map((connection) => [`${connection.type}:${connection.clientId}`, connection])).values(),
+    );
+    return {
+      total: instances.length,
+      producers: instances.filter((connection) => connection.type === 'Producer').length,
+      consumers: instances.filter((connection) => connection.type === 'Consumer').length,
+      protocols: countBy(instances.map((connection) => connection.protocol)),
       languageVersions: countBy(
-        clusterConnections.map((connection) => `${connection.language} ${connection.version}`),
+        instances.map((connection) => `${connection.language} ${connection.version}`),
       ),
-    }),
-    [clusterConnections],
-  );
+    };
+  }, [clusterConnections]);
 
   /* ─── Filtered data (search + cluster only, table handles column filters) ─── */
   const filtered = useMemo(() => {
