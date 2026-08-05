@@ -16,6 +16,8 @@
  */
 package org.apache.rocketmq.studio.ops.ai;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -28,11 +30,19 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 public class AiCommandDTO {
+    @NotBlank(message = "command is required")
+    @Size(max = 256, message = "command must not exceed 256 characters")
     private String command;
+    @Size(max = 64, message = "mode must not exceed 64 characters")
     private String mode;
+    @Size(max = 256, message = "model must not exceed 256 characters")
     private String model;
+    @Size(max = 64, message = "engine must not exceed 64 characters")
     private String engine;
+    @Size(max = 128, message = "conversationId must not exceed 128 characters")
     private String conversationId;
+    @Size(max = 16_384, message = "prompt must not exceed 16384 characters")
     private String prompt;
+    @Size(max = 32, message = "context must not contain more than 32 entries")
     private Map<String, Object> context;
 }

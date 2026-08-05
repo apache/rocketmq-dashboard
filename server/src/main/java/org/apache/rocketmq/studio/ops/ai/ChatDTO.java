@@ -16,6 +16,8 @@
  */
 package org.apache.rocketmq.studio.ops.ai;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -26,10 +28,16 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ChatDTO {
+    @NotBlank(message = "message is required")
+    @Size(max = 16_384, message = "message must not exceed 16384 characters")
     private String message;
+    @Size(max = 64, message = "mode must not exceed 64 characters")
     private String mode;
+    @Size(max = 256, message = "model must not exceed 256 characters")
     private String model;
+    @Size(max = 64, message = "engine must not exceed 64 characters")
     private String engine;
     private boolean enhance;
+    @Size(max = 128, message = "conversationId must not exceed 128 characters")
     private String conversationId;
 }

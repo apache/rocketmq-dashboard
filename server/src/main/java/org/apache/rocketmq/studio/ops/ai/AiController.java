@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.ops.ai;
 
+import jakarta.validation.Valid;
 import org.apache.rocketmq.studio.common.domain.Result;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -41,12 +42,12 @@ public class AiController {
     private final AiService aiService;
 
     @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter chat(@RequestBody ChatDTO request) {
+    public SseEmitter chat(@Valid @RequestBody ChatDTO request) {
         return aiService.chat(request);
     }
 
     @PostMapping("/execute")
-    public Result<AiExecuteResultVO> execute(@RequestBody AiCommandDTO command) {
+    public Result<AiExecuteResultVO> execute(@Valid @RequestBody AiCommandDTO command) {
         return Result.ok(aiService.execute(command));
     }
 

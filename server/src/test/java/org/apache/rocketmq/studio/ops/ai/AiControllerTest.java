@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.ops.ai;
 
+import org.apache.rocketmq.studio.common.exception.GlobalExceptionHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -27,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.mockito.Mockito.mock;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -45,7 +47,9 @@ class AiControllerTest {
     @BeforeEach
     void setUp() {
         aiService = mock(AiService.class);
-        mockMvc = MockMvcBuilders.standaloneSetup(new AiController(aiService)).build();
+        mockMvc = MockMvcBuilders.standaloneSetup(new AiController(aiService))
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .build();
 
         when(aiService.catalogVersion()).thenReturn("1.0.0");
         when(aiService.catalogDigest()).thenReturn(DIGEST);
@@ -124,5 +128,27 @@ class AiControllerTest {
                 .andExpect(jsonPath("$.data").isArray());
 
         verify(aiService).executeTool("rmq.cluster.list", Collections.emptyMap());
+    }
+
+    @Test
+    void chatRejectsBlankMessagesBeforeCallingService() throws Exception {
+        mockMvc.perform(post("/api/ai/chat")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400));
+    }
+
+    @Test
+    void executePreservesGatewayFailureStatus() throws Exception {
+        when(aiService.execute(any(AiCommandDTO.class)))
+                .thenThrow(new LlmGatewayException(502, "llm.provider.error", "Provider rejected request", "Check config"));
+
+        mockMvc.perform(post("/api/ai/execute")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"command\":\"rmq.topic.list\"}"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.code").value(502))
+                .andExpect(jsonPath("$.message").value("Provider rejected request"));
     }
 }

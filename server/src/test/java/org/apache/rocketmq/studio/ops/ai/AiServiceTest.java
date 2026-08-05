@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.ops.ai;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -30,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -95,7 +97,7 @@ class AiServiceTest {
     }
 
     @Test
-    void executeShouldReturnFailureWhenGatewayThrows() {
+    void executePropagatesGatewayFailures() {
         AiCommandDTO command = AiCommandDTO.builder()
                 .command("delete_topic")
                 .mode("agent")
@@ -103,21 +105,9 @@ class AiServiceTest {
                 .build();
         when(llmGateway.execute(command)).thenThrow(new RuntimeException("Permission denied"));
 
-        AiExecuteResultVO result = aiService.execute(command);
-
-        assertThat(result.isSuccess()).isFalse();
-        assertThat(result.getResult()).contains("Error: Permission denied");
-    }
-
-    @Test
-    void executeShouldHandleNullMessageInException() {
-        AiCommandDTO command = AiCommandDTO.builder().command("bad_cmd").build();
-        when(llmGateway.execute(command)).thenThrow(new RuntimeException());
-
-        AiExecuteResultVO result = aiService.execute(command);
-
-        assertThat(result.isSuccess()).isFalse();
-        assertThat(result.getResult()).startsWith("Error:");
+        assertThatThrownBy(() -> aiService.execute(command))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("Permission denied");
     }
 
     @Test
@@ -136,6 +126,18 @@ class AiServiceTest {
 
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getResult()).contains("CPU: 45%");
+    }
+
+    @Test
+    void executeRejectsOversizedContextValuesBeforeCallingGateway() {
+        AiCommandDTO command = AiCommandDTO.builder()
+                .command("query_metrics")
+                .context(Map.of("query", "x".repeat(4097)))
+                .build();
+
+        assertThatThrownBy(() -> aiService.execute(command))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("context values must not exceed 4096 characters");
     }
 
     @Test

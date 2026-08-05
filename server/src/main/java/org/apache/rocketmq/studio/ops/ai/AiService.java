@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.ops.ai;
 
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -34,26 +35,25 @@ public class AiService {
 
 
     public SseEmitter chat(ChatDTO request) {
+        if (request == null) {
+            throw new BusinessException(400, "AI chat request is required");
+        }
         log.info("Chat request received: mode={}, conversationId={}", request.getMode(), request.getConversationId());
         return llmGateway.chat(request);
     }
 
 
     public AiExecuteResultVO execute(AiCommandDTO command) {
-        log.info("Executing AI command: {}", command.getCommand());
-        try {
-            String result = llmGateway.execute(command);
-            return AiExecuteResultVO.builder()
-                    .success(true)
-                    .result(result)
-                    .build();
-        } catch (Exception e) {
-            log.error("Failed to execute AI command", e);
-            return AiExecuteResultVO.builder()
-                    .success(false)
-                    .result("Error: " + e.getMessage())
-                    .build();
+        if (command == null) {
+            throw new BusinessException(400, "AI command request is required");
         }
+        validateContext(command.getContext());
+        log.info("Executing AI command: {}", command.getCommand());
+        String result = llmGateway.execute(command);
+        return AiExecuteResultVO.builder()
+                .success(true)
+                .result(result)
+                .build();
     }
 
 
@@ -82,5 +82,22 @@ public class AiService {
 
     public String minimumClientVersion() {
         return mcpServerRegistry.minimumClientVersion();
+    }
+
+    private void validateContext(Map<String, Object> context) {
+        if (context == null) {
+            return;
+        }
+        if (context.size() > 32) {
+            throw new BusinessException(400, "context must not contain more than 32 entries");
+        }
+        for (Map.Entry<String, Object> entry : context.entrySet()) {
+            if (entry.getKey() == null || entry.getKey().length() > 128) {
+                throw new BusinessException(400, "context keys must not exceed 128 characters");
+            }
+            if (String.valueOf(entry.getValue()).length() > 4096) {
+                throw new BusinessException(400, "context values must not exceed 4096 characters");
+            }
+        }
     }
 }
