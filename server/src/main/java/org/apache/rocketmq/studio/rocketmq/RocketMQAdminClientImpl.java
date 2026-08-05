@@ -24,6 +24,7 @@ import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.topic.AdminClient;
 import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
@@ -148,7 +149,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
             topicConfig.setTopicName(topicName);
             topicConfig.setWriteQueueNums(writeQueues);
             topicConfig.setReadQueueNums(readQueues);
-            topicConfig.setPerm(6); // RW
+            topicConfig.setPerm(toRocketMQPerm(topic.getPerm()));
 
             for (String addr : brokerAddrs) {
                 adminExt.createAndUpdateTopicConfig(addr, topicConfig);
@@ -174,7 +175,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
             entity.setTopicType(topic.getType() != null ? topic.getType().name() : "NORMAL");
             entity.setReadQueueNums(readQueues);
             entity.setWriteQueueNums(writeQueues);
-            entity.setPerm(6);
+            entity.setPerm(topicConfig.getPerm());
             if (StringUtils.hasText(topic.getRemark())) {
                 entity.setRemark(topic.getRemark());
             }
@@ -222,7 +223,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
             topicConfig.setTopicName(topicName);
             topicConfig.setWriteQueueNums(writeQueues);
             topicConfig.setReadQueueNums(readQueues);
-            topicConfig.setPerm(6); // RW
+            topicConfig.setPerm(toRocketMQPerm(topic.getPerm()));
 
             for (String addr : brokerAddrs) {
                 adminExt.createAndUpdateTopicConfig(addr, topicConfig);
@@ -234,6 +235,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
             if (existing != null) {
                 existing.setWriteQueueNums(writeQueues);
                 existing.setReadQueueNums(readQueues);
+                existing.setPerm(topicConfig.getPerm());
                 existing.setUpdatedAt(LocalDateTime.now());
                 topicMapper.updateById(existing);
             }
@@ -488,5 +490,15 @@ public class RocketMQAdminClientImpl implements AdminClient {
         } catch (Exception ignored) {
         }
         return "DefaultCluster";
+    }
+
+    private int toRocketMQPerm(TopicPerm perm) {
+        if (perm == TopicPerm.RO) {
+            return 4;
+        }
+        if (perm == TopicPerm.WO) {
+            return 2;
+        }
+        return 6;
     }
 }
