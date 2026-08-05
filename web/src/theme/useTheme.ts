@@ -15,18 +15,7 @@
  * limitations under the License.
  */
 
-import { createContext } from 'react';
+import { useContext } from 'react';
+import ThemeContext from './ThemeContext';
 
-export interface ThemeContextType {
-  darkMode: boolean;
-  setDarkMode: (dark: boolean) => void;
-  toggleTheme: () => void;
-}
-
-const ThemeContext = createContext<ThemeContextType>({
-  darkMode: false,
-  setDarkMode: () => {},
-  toggleTheme: () => {},
-});
-
-export default ThemeContext;
+export const useTheme = () => useContext(ThemeContext);

@@ -18,7 +18,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ThemeProvider, useTheme } from '../ThemeContext';
+import { ThemeProvider } from '../ThemeProvider';
+import { useTheme } from '../useTheme';
 
 /** Helper component that displays theme state and provides toggle button. */
 const ThemeConsumer = () => {

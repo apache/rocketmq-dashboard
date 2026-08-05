@@ -17,61 +17,16 @@
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom';
-import { App as AntdApp, ConfigProvider, theme } from 'antd';
-import zhCN from 'antd/locale/zh_CN';
-import enUS from 'antd/locale/en_US';
-import { LangProvider, useLang } from './i18n/LangContext';
-import { ThemeProvider, useTheme } from './theme/ThemeContext';
-import App from './App';
+import { LangProvider } from './i18n/LangContext';
+import { ThemeProvider } from './theme/ThemeProvider';
+import StudioApp from './StudioApp';
 import './index.css';
-
-const ThemedApp = () => {
-  const { lang } = useLang();
-  const { darkMode } = useTheme();
-
-  return (
-    <ConfigProvider
-      locale={lang === 'zh' ? zhCN : enUS}
-      theme={{
-        algorithm: darkMode ? theme.darkAlgorithm : theme.defaultAlgorithm,
-        token: {
-          colorPrimary: '#1677ff',
-          borderRadius: 8,
-          fontFamily:
-            '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif',
-          ...(darkMode
-            ? {
-                colorBgBase: '#2a2a2e',
-                colorBgContainer: '#323236',
-                colorBgElevated: '#3a3a3e',
-                colorBorder: '#3a3a3e',
-                colorBorderSecondary: '#333337',
-              }
-            : {}),
-        },
-        components: {
-          Card: { borderRadiusLG: 12 },
-          Table: { borderRadius: 8 },
-          Button: { borderRadius: 8 },
-          Tag: { borderRadiusSM: 6 },
-        },
-      }}
-    >
-      <AntdApp>
-        <BrowserRouter>
-          <App />
-        </BrowserRouter>
-      </AntdApp>
-    </ConfigProvider>
-  );
-};
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <LangProvider>
       <ThemeProvider>
-        <ThemedApp />
+        <StudioApp />
       </ThemeProvider>
     </LangProvider>
   </React.StrictMode>,
