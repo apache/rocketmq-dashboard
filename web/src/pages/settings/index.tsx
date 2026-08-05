@@ -69,7 +69,20 @@ const typeTagColor: Record<string, string> = {
   VictoriaMetrics: 'blue',
   Thanos: 'purple',
   Mimir: 'cyan',
+  Cortex: 'green',
+  ARMS: 'red',
 };
+
+// Backend types mirror the Prometheus-compatible backends the server accepts
+// (see SettingsService.PROMETHEUS_COMPATIBLE_TYPES and MetricsBackendType).
+const DATA_SOURCE_TYPE_OPTIONS = [
+  { value: 'Prometheus', label: 'Prometheus' },
+  { value: 'VictoriaMetrics', label: 'VictoriaMetrics' },
+  { value: 'Thanos', label: 'Thanos' },
+  { value: 'Mimir', label: 'Grafana Mimir' },
+  { value: 'Cortex', label: 'Cortex' },
+  { value: 'ARMS', label: 'ARMS' },
+];
 
 type DataSourceFormValues = Partial<DataSource>;
 
@@ -457,16 +470,7 @@ export const DataSourceTab = () => {
             name="type"
             rules={[{ required: true, message: '请选择数据源类型' }]}
           >
-            <Select
-              placeholder="请选择"
-              virtual={false}
-              options={[
-                { value: 'Prometheus', label: 'Prometheus' },
-                { value: 'VictoriaMetrics', label: 'VictoriaMetrics' },
-                { value: 'Thanos', label: 'Thanos' },
-                { value: 'Mimir', label: 'Grafana Mimir' },
-              ]}
-            />
+            <Select placeholder="请选择" virtual={false} options={DATA_SOURCE_TYPE_OPTIONS} />
           </Form.Item>
 
           <Form.Item

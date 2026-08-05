@@ -18,6 +18,10 @@ package org.apache.rocketmq.studio.cluster.metrics;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.studio.model.MetricsDataSourceConfig;
+import org.apache.rocketmq.studio.model.request.MetricsDataSourceQueryRequest;
+import org.apache.rocketmq.studio.settings.DataSourceVO;
+import org.apache.rocketmq.studio.settings.SettingsService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -47,6 +51,8 @@ public class MetricsService {
 
     private final MetricsSource metricsSource;
     private final MetricProfileService metricProfileService;
+    private final MetricsSourceFactory metricsSourceFactory;
+    private final SettingsService settingsService;
 
     public MetricDataVO query(MetricQueryDTO query) {
         if (query == null) {
@@ -57,6 +63,53 @@ public class MetricsService {
         log.debug("Querying metrics: start={}, end={}, step={}",
                 resolvedQuery.getStart(), resolvedQuery.getEnd(), resolvedQuery.getStep());
         return metricsSource.query(resolvedQuery);
+    }
+
+    /**
+     * Runs a PromQL range query against a configured data source, selected by its
+     * persisted key. The backend type and URL come from the existing
+     * {@link DataSourceVO} configuration (managed by {@link SettingsService});
+     * credentials are supplied per request and are never persisted, mirroring the
+     * existing data-source test flow.
+     */
+    public MetricDataVO queryByDataSource(String dataSourceKey, MetricsDataSourceQueryRequest request) {
+        if (request == null || request.getQuery() == null) {
+            throw badRequest("Metric query is required");
+        }
+        if (!StringUtils.hasText(dataSourceKey)) {
+            throw badRequest("Data source key is required");
+        }
+        MetricQueryDTO resolvedQuery = resolveMetricQuery(request.getQuery());
+        validateQueryWindow(resolvedQuery);
+        DataSourceVO dataSource = settingsService.getDataSource(dataSourceKey);
+        MetricsSource source = metricsSourceFactory.create(toConfig(dataSource, request));
+        log.debug("Querying data source {} (type={}): start={}, end={}, step={}",
+                dataSourceKey, dataSource.getType(),
+                resolvedQuery.getStart(), resolvedQuery.getEnd(), resolvedQuery.getStep());
+        return source.query(resolvedQuery);
+    }
+
+    private MetricsDataSourceConfig toConfig(DataSourceVO dataSource, MetricsDataSourceQueryRequest request) {
+        MetricsDataSourceConfig config = new MetricsDataSourceConfig();
+        config.setName(dataSource.getName());
+        config.setProviderType(dataSource.getType());
+        config.setUrl(dataSource.getUrl());
+        config.setAuthType(normalizeAuth(dataSource.getAuth()));
+        config.setUsername(request.getUsername());
+        config.setPassword(request.getPassword());
+        config.setBearerToken(request.getBearerToken());
+        return config;
+    }
+
+    private String normalizeAuth(String auth) {
+        if (!StringUtils.hasText(auth)) {
+            return "none";
+        }
+        return switch (auth.trim().toLowerCase()) {
+            case "basic auth", "basic" -> "basic";
+            case "bearer token", "bearer" -> "bearer";
+            default -> "none";
+        };
     }
 
     private void validateQueryWindow(MetricQueryDTO query) {

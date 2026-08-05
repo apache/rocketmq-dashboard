@@ -24,6 +24,7 @@ import {
   getGrafanaDashboard,
   exportGrafanaDashboard,
   listMetricProfiles,
+  queryByDataSource,
   queryMetrics,
 } from './metrics';
 
@@ -85,6 +86,37 @@ describe('metrics API', () => {
     });
 
     await expect(queryMetrics(query)).resolves.toEqual(result);
+  });
+
+  it('posts a data-source query by key and returns its result', async () => {
+    const dsQuery = {
+      key: 'ds-prom-1',
+      query: { metric: 'up', start: 1, end: 2, step: '1m' },
+    };
+    const result = {
+      resultType: 'matrix',
+      series: [
+        {
+          labels: { instance: 'prometheus:9090' },
+          values: [{ timestamp: 1, value: '1' }],
+          histograms: [],
+        },
+      ],
+      warnings: [],
+    };
+
+    mock.onPost('/metrics/query/datasource').reply((config) => {
+      expect(config.params).toEqual({ key: 'ds-prom-1' });
+      expect(JSON.parse(config.data)).toEqual({
+        query: dsQuery.query,
+        username: undefined,
+        password: undefined,
+        bearerToken: undefined,
+      });
+      return [200, { code: 200, data: result }];
+    });
+
+    await expect(queryByDataSource(dsQuery)).resolves.toEqual(result);
   });
 
   it('loads version-aware metric profiles', async () => {

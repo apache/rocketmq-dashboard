@@ -21,12 +21,18 @@ import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { listMetricProfiles, queryMetrics } from '../../api/metrics';
+import { listDataSources } from '../../api/settings';
+import { listMetricProfiles, queryByDataSource, queryMetrics } from '../../api/metrics';
 import { LangProvider } from '../../i18n/LangContext';
 import MetricsExplorer from '../MetricsExplorer';
 
+vi.mock('../../api/settings', () => ({
+  listDataSources: vi.fn(),
+}));
+
 vi.mock('../../api/metrics', () => ({
   listMetricProfiles: vi.fn(),
+  queryByDataSource: vi.fn(),
   queryMetrics: vi.fn(),
 }));
 
@@ -96,7 +102,9 @@ beforeAll(() => {
 
 beforeEach(() => {
   vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000);
+  vi.mocked(listDataSources).mockResolvedValue([]);
   vi.mocked(listMetricProfiles).mockResolvedValue(profiles);
+  vi.mocked(queryByDataSource).mockResolvedValue(metricData);
   vi.mocked(queryMetrics).mockResolvedValue(metricData);
 });
 
@@ -161,7 +169,7 @@ describe('MetricsExplorer', () => {
     renderWithProviders(<MetricsExplorer />);
 
     await screen.findByRole('img', { name: 'Message In TPS time series' });
-    await user.click(screen.getAllByRole('combobox')[0]);
+    await user.click(screen.getByRole('combobox', { name: '指标模板' }));
     await user.click(
       await screen.findByText('RocketMQ 4.x Exporter', {
         selector: '.ant-select-item-option-content',
@@ -222,5 +230,43 @@ describe('MetricsExplorer', () => {
     renderWithProviders(<MetricsExplorer />);
 
     expect(await screen.findByText('暂无标量数据')).toBeInTheDocument();
+  });
+
+  it('queries the selected data source through the datasource endpoint', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listDataSources).mockResolvedValue([
+      {
+        key: 'ds-prom-1',
+        name: 'Prometheus 生产',
+        type: 'Prometheus',
+        url: '',
+        auth: 'None',
+        status: 'healthy',
+      },
+    ]);
+    vi.mocked(queryByDataSource).mockResolvedValue(metricData);
+
+    renderWithProviders(<MetricsExplorer />);
+
+    await screen.findByRole('combobox', { name: '数据源' });
+    await user.click(screen.getByRole('combobox', { name: '数据源' }));
+    await user.click(
+      await screen.findByText('Prometheus 生产', { selector: '.ant-select-item-option-content' }),
+    );
+
+    const queryMetricsCallsBefore = vi.mocked(queryMetrics).mock.calls.length;
+
+    await waitFor(() =>
+      expect(queryByDataSource).toHaveBeenCalledWith({
+        key: 'ds-prom-1',
+        query: {
+          metric: 'sum(rate(rocketmq_messages_in_total[1m])) by (cluster, node_id)',
+          start: 1_799_996_400,
+          end: 1_800_000_000,
+          step: '30s',
+        },
+      }),
+    );
+    expect(vi.mocked(queryMetrics).mock.calls.length).toBe(queryMetricsCallsBefore);
   });
 });

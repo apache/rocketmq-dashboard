@@ -249,6 +249,36 @@ describe('DataSourceTab', () => {
       });
     });
   });
+
+  it('offers Cortex and ARMS alongside the other backend types', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <App>
+        <DataSourceTab />
+      </App>,
+    );
+
+    await screen.findByText('Prometheus prod');
+    await user.click(screen.getByRole('button', { name: /添加数据源/ }));
+    await user.click(screen.getByLabelText('类型'));
+
+    const popup = await waitFor(() => {
+      const element = document.getElementById('type_list');
+      if (!element) throw new Error('Missing popup type_list');
+      return element;
+    });
+
+    for (const type of [
+      'Prometheus',
+      'VictoriaMetrics',
+      'Thanos',
+      'Grafana Mimir',
+      'Cortex',
+      'ARMS',
+    ]) {
+      expect(within(popup).getByRole('option', { name: type })).toBeInTheDocument();
+    }
+  });
 });
 
 // antd's Select dropdown keeps `pointer-events: none` while its open animation runs,
