@@ -46,7 +46,7 @@ import java.util.UUID;
 public class SettingsService {
 
     private static final Set<String> PROMETHEUS_COMPATIBLE_TYPES = Set.of(
-            "prometheus", "victoriametrics", "thanos", "mimir");
+            "prometheus", "victoriametrics", "thanos", "mimir", "cortex", "arms");
     private static final String PROMETHEUS_TEST_QUERY = "up";
     private static final String AUTH_NONE = "none";
     private static final String AUTH_BASIC = "basic auth";
@@ -128,6 +128,14 @@ public class SettingsService {
         if (!settingsRepository.deleteDataSource(normalizedKey)) {
             throw new BusinessException(404, "Data source not found: " + normalizedKey);
         }
+    }
+
+
+    public DataSourceVO getDataSource(String key) {
+        String normalizedKey = normalizeDataSourceKey(key);
+        log.debug("Loading data source: {}", normalizedKey);
+        return settingsRepository.findDataSourceByKey(normalizedKey)
+                .orElseThrow(() -> new BusinessException(404, "Data source not found: " + normalizedKey));
     }
 
 

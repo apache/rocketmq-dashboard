@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.cluster.metrics;
 
 import org.apache.rocketmq.studio.common.domain.Result;
+import org.apache.rocketmq.studio.model.request.MetricsDataSourceQueryRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -26,6 +27,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -62,5 +64,24 @@ public class MetricsController {
     @PostMapping("/query")
     public Result<MetricDataVO> query(@Valid @RequestBody MetricQueryDTO query) {
         return Result.ok(metricsService.query(query));
+    }
+
+    @Operation(summary = "Query a configured Prometheus-compatible data source",
+            description = "Executes a PromQL range query against a data source configured via the "
+                    + "settings data-source flow. The backend type/URL come from the persisted "
+                    + "configuration; credentials are supplied per request and never persisted.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Range query completed successfully",
+                useReturnTypeSchema = true),
+        @ApiResponse(responseCode = "400", description = "Invalid request or unknown data source"),
+        @ApiResponse(responseCode = "422", description = "Backend could not execute the expression"),
+        @ApiResponse(responseCode = "502", description = "Backend connection or response failure"),
+        @ApiResponse(responseCode = "503", description = "Backend is unavailable or not configured"),
+        @ApiResponse(responseCode = "504", description = "Backend query timed out")
+    })
+    @PostMapping("/query/datasource")
+    public Result<MetricDataVO> queryByDataSource(@RequestParam String key,
+                                                  @Valid @RequestBody MetricsDataSourceQueryRequest request) {
+        return Result.ok(metricsService.queryByDataSource(key, request));
     }
 }

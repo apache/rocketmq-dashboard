@@ -30,7 +30,9 @@ import {
 } from 'antd';
 import { ArrowsClockwise } from '@phosphor-icons/react';
 
-import { listMetricProfiles, queryMetrics } from '../api/metrics';
+import { listDataSources } from '../api/settings';
+import { listMetricProfiles, queryByDataSource, queryMetrics } from '../api/metrics';
+import type { DataSource } from '../api/settings';
 import type { MetricData, MetricMapping, MetricProfile, MetricSeries } from '../api/metrics';
 import { useLang } from '../i18n/LangContext';
 
@@ -223,6 +225,7 @@ const MetricsExplorer = () => {
           queryError: 'Prometheus 查询失败',
           noProfiles: '暂无指标模板',
           noSamples: '暂无标量数据',
+          defaultDataSource: '默认数据源',
         }
       : {
           title: 'Prometheus Metrics',
@@ -234,6 +237,7 @@ const MetricsExplorer = () => {
           queryError: 'Prometheus query failed',
           noProfiles: 'No metric profiles',
           noSamples: 'No scalar samples',
+          defaultDataSource: 'Default source',
         };
   const [profiles, setProfiles] = useState<MetricProfile[]>([]);
   const [profileId, setProfileId] = useState('');
@@ -244,6 +248,9 @@ const MetricsExplorer = () => {
   const [queryLoading, setQueryLoading] = useState(false);
   const [profileError, setProfileError] = useState(false);
   const [queryError, setQueryError] = useState(false);
+  const [dataSources, setDataSources] = useState<DataSource[]>([]);
+  const [dataSourceKey, setDataSourceKey] = useState('');
+  const [dataSourcesLoading, setDataSourcesLoading] = useState(true);
   const requestId = useRef(0);
 
   const selectedProfile = useMemo(
@@ -261,15 +268,18 @@ const MetricsExplorer = () => {
       if (!metric) return;
       const currentRequest = ++requestId.current;
       const end = Math.floor(Date.now() / 1000);
+      const query = {
+        metric: metric.promql,
+        start: end - range.seconds,
+        end,
+        step: range.step,
+      };
       setQueryLoading(true);
       setQueryError(false);
       try {
-        const result = await queryMetrics({
-          metric: metric.promql,
-          start: end - range.seconds,
-          end,
-          step: range.step,
-        });
+        const result = dataSourceKey
+          ? await queryByDataSource({ key: dataSourceKey, query })
+          : await queryMetrics(query);
         if (currentRequest === requestId.current) setData(result);
       } catch {
         if (currentRequest === requestId.current) {
@@ -280,7 +290,7 @@ const MetricsExplorer = () => {
         if (currentRequest === requestId.current) setQueryLoading(false);
       }
     },
-    [],
+    [dataSourceKey],
   );
 
   useEffect(() => {
@@ -332,6 +342,29 @@ const MetricsExplorer = () => {
     void loadMetrics(selectedMetric, nextRange);
   };
 
+  const handleDataSourceChange = (nextKey: string) => {
+    setDataSourceKey(nextKey);
+    setData(null);
+    void loadMetrics(selectedMetric, selectedRange);
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    void listDataSources()
+      .then((next) => {
+        if (!cancelled) setDataSources(next);
+      })
+      .catch(() => {
+        /* data-source list is optional; the default source still works */
+      })
+      .finally(() => {
+        if (!cancelled) setDataSourcesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <section aria-labelledby="metrics-explorer-title" style={{ marginTop: 24 }}>
       <Flex
@@ -349,6 +382,17 @@ const MetricsExplorer = () => {
         </Flex>
 
         <Flex gap={8} wrap="wrap" align="center" style={{ maxWidth: '100%' }}>
+          <Select
+            aria-label="数据源"
+            value={dataSourceKey || undefined}
+            loading={dataSourcesLoading}
+            onChange={handleDataSourceChange}
+            options={[
+              { label: copy.defaultDataSource, value: '' },
+              ...dataSources.map((ds) => ({ label: ds.name, value: ds.key })),
+            ]}
+            style={{ width: 200, maxWidth: '100%' }}
+          />
           <Select
             aria-label={copy.profile}
             value={profileId || undefined}

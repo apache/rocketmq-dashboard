@@ -16,6 +16,10 @@
  */
 package org.apache.rocketmq.studio.cluster.metrics;
 
+import org.apache.rocketmq.studio.model.MetricsDataSourceConfig;
+import org.apache.rocketmq.studio.model.request.MetricsDataSourceQueryRequest;
+import org.apache.rocketmq.studio.settings.DataSourceVO;
+import org.apache.rocketmq.studio.settings.SettingsService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -42,6 +46,12 @@ class MetricsServiceTest {
 
     @Mock
     private MetricProfileService metricProfileService;
+
+    @Mock
+    private MetricsSourceFactory metricsSourceFactory;
+
+    @Mock
+    private SettingsService settingsService;
 
     @InjectMocks
     private MetricsService metricsService;
@@ -306,5 +316,48 @@ class MetricsServiceTest {
                     assertThat(exception.getStatusCode()).isEqualTo(400);
                     assertThat(exception.getMessage()).isEqualTo(message);
                 });
+    }
+
+    @Test
+    void queryByDataSourceShouldBuildSourceFromConfiguredDataSource() {
+        MetricQueryDTO query = MetricQueryDTO.builder()
+                .metric("cpu")
+                .start(1700000000L)
+                .end(1700003600L)
+                .step("1m")
+                .build();
+        MetricsDataSourceQueryRequest request = new MetricsDataSourceQueryRequest();
+        request.setQuery(query);
+
+        DataSourceVO dataSource = DataSourceVO.builder()
+                .key("ds-1")
+                .name("thanos-prod")
+                .type("thanos")
+                .url("http://thanos:9090")
+                .auth("none")
+                .build();
+        when(settingsService.getDataSource("ds-1")).thenReturn(dataSource);
+        when(metricsSourceFactory.create(any(MetricsDataSourceConfig.class))).thenReturn(metricsSource);
+        MetricDataVO data = metricData("cpu", List.of(sample(1700000000L, "1")));
+        when(metricsSource.query(any(MetricQueryDTO.class))).thenReturn(data);
+
+        MetricDataVO result = metricsService.queryByDataSource("ds-1", request);
+
+        assertThat(result.getSeries()).hasSize(1);
+        verify(settingsService).getDataSource("ds-1");
+        verify(metricsSourceFactory).create(any(MetricsDataSourceConfig.class));
+        verify(metricsSource).query(any(MetricQueryDTO.class));
+    }
+
+    @Test
+    void queryByDataSourceShouldRejectMissingKey() {
+        MetricsDataSourceQueryRequest request = new MetricsDataSourceQueryRequest();
+        request.setQuery(MetricQueryDTO.builder()
+                .metric("cpu").start(1700000000L).end(1700003600L).step("1m").build());
+
+        assertThatExceptionOfType(PrometheusException.class)
+                .isThrownBy(() -> metricsService.queryByDataSource("  ", request))
+                .satisfies(exception -> assertThat(exception.getStatusCode()).isEqualTo(400));
+        verifyNoInteractions(settingsService, metricsSourceFactory, metricsSource);
     }
 }
