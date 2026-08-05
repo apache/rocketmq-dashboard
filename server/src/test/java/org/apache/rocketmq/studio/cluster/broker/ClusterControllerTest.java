@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.cluster.broker;
 
+import org.apache.rocketmq.studio.cluster.config.ClusterConfigUpdateResultVO;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigVO;
 import org.apache.rocketmq.studio.cluster.config.UpdateConfigDTO;
 
@@ -167,7 +168,13 @@ class ClusterControllerTest {
                 .writeQueueNums(16)
                 .readQueueNums(16)
                 .build());
-        when(clusterService.updateClusterConfig(any(UpdateConfigDTO.class))).thenReturn(updated);
+        when(clusterService.updateClusterConfig(any(UpdateConfigDTO.class))).thenReturn(
+                ClusterConfigUpdateResultVO.builder()
+                        .cluster(updated)
+                        .status(ClusterConfigUpdateResultVO.Status.SUCCESS)
+                        .successfulBrokers(Collections.emptyList())
+                        .failedBrokers(Collections.emptyList())
+                        .build());
 
         UpdateConfigDTO command = UpdateConfigDTO.builder()
                 .id("cluster-1")
@@ -181,10 +188,11 @@ class ClusterControllerTest {
                         .content(objectMapper.writeValueAsString(command)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.id").value("cluster-1"))
-                .andExpect(jsonPath("$.data.config.flushDiskType").value("SYNC_FLUSH"))
-                .andExpect(jsonPath("$.data.config.writeQueueNums").value(16))
-                .andExpect(jsonPath("$.data.config.readQueueNums").value(16));
+                .andExpect(jsonPath("$.data.status").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.cluster.id").value("cluster-1"))
+                .andExpect(jsonPath("$.data.cluster.config.flushDiskType").value("SYNC_FLUSH"))
+                .andExpect(jsonPath("$.data.cluster.config.writeQueueNums").value(16))
+                .andExpect(jsonPath("$.data.cluster.config.readQueueNums").value(16));
     }
 
     @Test
@@ -255,7 +263,7 @@ class ClusterControllerTest {
     @MethodSource("boundaryConfigValues")
     void updateConfigShouldAcceptBoundaryValues(String field, int value) throws Exception {
         when(clusterService.updateClusterConfig(any(UpdateConfigDTO.class)))
-                .thenReturn(buildCluster("cluster-1", "production-cluster", ClusterStatus.healthy));
+                .thenReturn(successfulUpdateResult());
         ObjectNode command = objectMapper.createObjectNode()
                 .put("id", "cluster-1")
                 .put(field, value);
@@ -272,7 +280,7 @@ class ClusterControllerTest {
     @Test
     void updateConfigShouldAcceptIdOnlyPartialRequest() throws Exception {
         when(clusterService.updateClusterConfig(any(UpdateConfigDTO.class)))
-                .thenReturn(buildCluster("cluster-1", "production-cluster", ClusterStatus.healthy));
+                .thenReturn(successfulUpdateResult());
         ObjectNode command = objectMapper.createObjectNode().put("id", "cluster-1");
 
         mockMvc.perform(post("/api/clusters/config/update")
@@ -293,6 +301,15 @@ class ClusterControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.success").value(true))
                 .andExpect(jsonPath("$.data.message").value("Broker restart initiated for broker-0"));
+    }
+
+    private ClusterConfigUpdateResultVO successfulUpdateResult() {
+        return ClusterConfigUpdateResultVO.builder()
+                .cluster(buildCluster("cluster-1", "production-cluster", ClusterStatus.healthy))
+                .status(ClusterConfigUpdateResultVO.Status.SUCCESS)
+                .successfulBrokers(Collections.emptyList())
+                .failedBrokers(Collections.emptyList())
+                .build();
     }
 
     private ClusterVO buildCluster(String id, String name, ClusterStatus status) {

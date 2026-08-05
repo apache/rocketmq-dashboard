@@ -16,6 +16,8 @@
  */
 package org.apache.rocketmq.studio.cluster.broker;
 
+import org.apache.rocketmq.studio.cluster.config.BrokerConfigUpdateFailureVO;
+import org.apache.rocketmq.studio.cluster.config.ClusterConfigUpdateResultVO;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigVO;
 import org.apache.rocketmq.studio.cluster.config.UpdateConfigDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.CreateNameServerDTO;
@@ -28,11 +30,13 @@ import org.apache.rocketmq.studio.cluster.proxy.RestartProxyDTO;
 
 import org.apache.rocketmq.studio.common.domain.enums.FlushDiskType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.ops.audit.AuditService;
 import org.apache.rocketmq.studio.rocketmq.RocketMQBrokerConfigService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 
@@ -44,6 +48,7 @@ public class ClusterService {
     private final ClusterRepository clusterRepository;
     private final ClusterProvider clusterProvider;
     private final RocketMQBrokerConfigService brokerConfigService;
+    private final AuditService auditService;
 
     public List<ClusterVO> listClusters() {
         log.info("Listing all clusters");
@@ -90,13 +95,51 @@ public class ClusterService {
         }
     }
 
-    public ClusterVO updateClusterConfig(UpdateConfigDTO command) {
+    public ClusterConfigUpdateResultVO updateClusterConfig(UpdateConfigDTO command) {
         log.info("Updating cluster config for: {}", command.getId());
         ClusterVO cluster = clusterRepository.findById(command.getId())
                 .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + command.getId()));
 
         ClusterConfigVO config = copyConfig(cluster.getConfig());
+        applyConfig(command, config);
 
+        List<String> successfulBrokers = new ArrayList<>();
+        List<BrokerConfigUpdateFailureVO> failedBrokers = new ArrayList<>();
+        if (cluster.getBrokers() != null && !cluster.getBrokers().isEmpty()) {
+            Properties brokerProps = buildBrokerProperties(command);
+            for (BrokerVO broker : cluster.getBrokers()) {
+                String address = broker.getAddr();
+                if (address == null || address.isEmpty()) {
+                    continue;
+                }
+                try {
+                    brokerConfigService.updateBrokerConfig(address, command.getId(), brokerProps);
+                    successfulBrokers.add(address);
+                } catch (Exception e) {
+                    failedBrokers.add(BrokerConfigUpdateFailureVO.builder()
+                            .address(address)
+                            .message(e.getMessage())
+                            .build());
+                }
+            }
+        }
+
+        ClusterConfigUpdateResultVO.Status status = updateStatus(successfulBrokers, failedBrokers);
+        if (failedBrokers.isEmpty()) {
+            clusterRepository.updateConfig(command.getId(), config);
+            cluster.setConfig(config);
+        }
+        recordConfigUpdateAudit(command.getId(), status, successfulBrokers, failedBrokers);
+        log.info("Cluster config update finished for {} with status {}", command.getId(), status);
+        return ClusterConfigUpdateResultVO.builder()
+                .cluster(cluster)
+                .status(status)
+                .successfulBrokers(List.copyOf(successfulBrokers))
+                .failedBrokers(List.copyOf(failedBrokers))
+                .build();
+    }
+
+    private void applyConfig(UpdateConfigDTO command, ClusterConfigVO config) {
         if (command.getFlushDiskType() != null) {
             config.setFlushDiskType(parseFlushDiskType(command.getFlushDiskType()));
         }
@@ -121,21 +164,30 @@ public class ClusterService {
         if (command.getBrokerPermission() != null) {
             config.setBrokerPermission(command.getBrokerPermission());
         }
+    }
 
-        // Push config to live brokers via admin API
-        if (cluster.getBrokers() != null && !cluster.getBrokers().isEmpty()) {
-            Properties brokerProps = buildBrokerProperties(command);
-            for (BrokerVO broker : cluster.getBrokers()) {
-                if (broker.getAddr() != null && !broker.getAddr().isEmpty()) {
-                    brokerConfigService.updateBrokerConfig(broker.getAddr(), command.getId(), brokerProps);
-                }
-            }
+    private ClusterConfigUpdateResultVO.Status updateStatus(
+            List<String> successfulBrokers,
+            List<BrokerConfigUpdateFailureVO> failedBrokers) {
+        if (failedBrokers.isEmpty()) {
+            return ClusterConfigUpdateResultVO.Status.SUCCESS;
         }
+        if (successfulBrokers.isEmpty()) {
+            return ClusterConfigUpdateResultVO.Status.FAILED;
+        }
+        return ClusterConfigUpdateResultVO.Status.PARTIAL;
+    }
 
-        clusterRepository.updateConfig(command.getId(), config);
-        cluster.setConfig(config);
-        log.info("Cluster config updated successfully for: {}", command.getId());
-        return cluster;
+    private void recordConfigUpdateAudit(
+            String clusterId,
+            ClusterConfigUpdateResultVO.Status status,
+            List<String> successfulBrokers,
+            List<BrokerConfigUpdateFailureVO> failedBrokers) {
+        String detail = "successfulBrokers=" + successfulBrokers
+                + ", failedBrokers=" + failedBrokers.stream()
+                .map(failure -> failure.getAddress() + ": " + failure.getMessage())
+                .toList();
+        auditService.record("UPDATE_CLUSTER_CONFIG", "CLUSTER:" + clusterId, detail, status.name());
     }
 
     private ClusterConfigVO copyConfig(ClusterConfigVO config) {

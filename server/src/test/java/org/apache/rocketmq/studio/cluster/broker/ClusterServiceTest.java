@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.cluster.broker;
 
+import org.apache.rocketmq.studio.cluster.config.ClusterConfigUpdateResultVO;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigVO;
 import org.apache.rocketmq.studio.cluster.config.UpdateConfigDTO;
 import org.apache.rocketmq.studio.cluster.nameserver.CreateNameServerDTO;
@@ -31,6 +32,8 @@ import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
 import org.apache.rocketmq.studio.common.domain.enums.FlushDiskType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.ops.audit.AuditService;
+import org.apache.rocketmq.studio.rocketmq.RocketMQBrokerConfigService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -48,6 +51,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -62,6 +66,12 @@ class ClusterServiceTest {
 
     @Mock
     private ClusterProvider clusterProvider;
+
+    @Mock
+    private RocketMQBrokerConfigService brokerConfigService;
+
+    @Mock
+    private AuditService auditService;
 
     @InjectMocks
     private ClusterService clusterService;
@@ -163,9 +173,9 @@ class ClusterServiceTest {
                 .flushDiskType("SYNC_FLUSH")
                 .build();
 
-        ClusterVO result = clusterService.updateClusterConfig(command);
+        ClusterConfigUpdateResultVO result = clusterService.updateClusterConfig(command);
 
-        assertThat(result.getConfig().getFlushDiskType()).isEqualTo(FlushDiskType.SYNC_FLUSH);
+        assertThat(result.getCluster().getConfig().getFlushDiskType()).isEqualTo(FlushDiskType.SYNC_FLUSH);
         verify(clusterRepository).updateConfig(eq("cluster-1"), any(ClusterConfigVO.class));
     }
 
@@ -185,9 +195,9 @@ class ClusterServiceTest {
                 .brokerPermission(4)
                 .build();
 
-        ClusterVO result = clusterService.updateClusterConfig(command);
+        ClusterConfigUpdateResultVO result = clusterService.updateClusterConfig(command);
 
-        ClusterConfigVO config = result.getConfig();
+        ClusterConfigVO config = result.getCluster().getConfig();
         assertThat(config.getFlushDiskType()).isEqualTo(FlushDiskType.SYNC_FLUSH);
         assertThat(config.isAutoCreateTopicEnable()).isFalse();
         assertThat(config.isAutoCreateSubscriptionGroup()).isFalse();
@@ -208,9 +218,9 @@ class ClusterServiceTest {
                 .flushDiskType("SYNC_FLUSH")
                 .build();
 
-        ClusterVO result = clusterService.updateClusterConfig(command);
+        ClusterConfigUpdateResultVO result = clusterService.updateClusterConfig(command);
 
-        ClusterConfigVO config = result.getConfig();
+        ClusterConfigVO config = result.getCluster().getConfig();
         assertThat(config).isNotSameAs(storedConfig);
         assertThat(config.getFlushDiskType()).isEqualTo(FlushDiskType.SYNC_FLUSH);
         assertThat(config.getWriteQueueNums()).isEqualTo(8);
@@ -223,6 +233,39 @@ class ClusterServiceTest {
         assertThat(config.getFileReservedTime()).isEqualTo(72);
         assertThat(config.getBrokerPermission()).isEqualTo(6);
         assertThat(storedConfig.getFlushDiskType()).isEqualTo(FlushDiskType.ASYNC_FLUSH);
+    }
+
+    @Test
+    void updateConfigShouldReportPartialFailureAfterOneBrokerSucceeds() {
+        sampleCluster.setBrokers(List.of(
+                BrokerVO.builder().name("broker-0").addr("10.0.0.1:10911").build(),
+                BrokerVO.builder().name("broker-1").addr("10.0.0.2:10911").build()));
+        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+        doNothing().when(brokerConfigService).updateBrokerConfig(
+                eq("10.0.0.1:10911"), eq("cluster-1"), any());
+        doThrow(new BusinessException(500, "broker unavailable"))
+                .when(brokerConfigService).updateBrokerConfig(
+                        eq("10.0.0.2:10911"), eq("cluster-1"), any());
+
+        ClusterConfigUpdateResultVO result = clusterService.updateClusterConfig(
+                UpdateConfigDTO.builder().id("cluster-1").writeQueueNums(16).build());
+
+        assertThat(result.getStatus()).isEqualTo(ClusterConfigUpdateResultVO.Status.PARTIAL);
+        assertThat(result.getSuccessfulBrokers()).containsExactly("10.0.0.1:10911");
+        assertThat(result.getFailedBrokers()).singleElement().satisfies(failure -> {
+            assertThat(failure.getAddress()).isEqualTo("10.0.0.2:10911");
+            assertThat(failure.getMessage()).contains("broker unavailable");
+        });
+        verify(brokerConfigService).updateBrokerConfig(
+                eq("10.0.0.1:10911"), eq("cluster-1"), any());
+        verify(brokerConfigService).updateBrokerConfig(
+                eq("10.0.0.2:10911"), eq("cluster-1"), any());
+        verify(clusterRepository, never()).updateConfig(eq("cluster-1"), any());
+        verify(auditService).record(
+                eq("UPDATE_CLUSTER_CONFIG"),
+                eq("CLUSTER:cluster-1"),
+                org.mockito.ArgumentMatchers.contains("10.0.0.2:10911"),
+                eq("PARTIAL"));
     }
 
     @Test
@@ -271,10 +314,10 @@ class ClusterServiceTest {
                 .flushDiskType("ASYNC_FLUSH")
                 .build();
 
-        ClusterVO result = clusterService.updateClusterConfig(command);
+        ClusterConfigUpdateResultVO result = clusterService.updateClusterConfig(command);
 
-        assertThat(result.getConfig()).isNotNull();
-        assertThat(result.getConfig().getFlushDiskType()).isEqualTo(FlushDiskType.ASYNC_FLUSH);
+        assertThat(result.getCluster().getConfig()).isNotNull();
+        assertThat(result.getCluster().getConfig().getFlushDiskType()).isEqualTo(FlushDiskType.ASYNC_FLUSH);
     }
 
     @Test
