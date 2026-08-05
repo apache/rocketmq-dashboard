@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   App,
   Badge,
@@ -157,19 +157,7 @@ const AlertManagementPage: React.FC = () => {
   const [filterSeverity, setFilterSeverity] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [selectedRuleKeys, setSelectedRuleKeys] = useState<React.Key[]>([]);
-  const [disabledRules, setDisabledRules] = useState<Record<string, boolean>>(() => {
-    try {
-      const saved = localStorage.getItem('alertDisabledRules');
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  });
-  const disabledRulesRef = useRef(disabledRules);
-
-  useEffect(() => {
-    disabledRulesRef.current = disabledRules;
-  }, [disabledRules]);
+  const disabledRules: Record<string, boolean> = {};
 
   useEffect(() => {
     let cancelled = false;
@@ -182,7 +170,7 @@ const AlertManagementPage: React.FC = () => {
         const data = await queryAlertRules();
         const yamlStr = data.rules || '';
         if (!cancelled) {
-          const loadedRules = parseYamlRules(yamlStr, disabledRulesRef.current);
+          const loadedRules = parseYamlRules(yamlStr, disabledRules);
           const enabledRuleKeys = new Set<React.Key>(
             loadedRules.filter((rule) => rule.enabled).map((rule) => rule.key),
           );
@@ -214,7 +202,7 @@ const AlertManagementPage: React.FC = () => {
     try {
       const data = await queryAlertRules();
       const yamlStr = data.rules || '';
-      const loadedRules = parseYamlRules(yamlStr, disabledRulesRef.current);
+      const loadedRules = parseYamlRules(yamlStr, disabledRules);
       const enabledRuleKeys = new Set<React.Key>(
         loadedRules.filter((rule) => rule.enabled).map((rule) => rule.key),
       );
@@ -228,13 +216,10 @@ const AlertManagementPage: React.FC = () => {
   };
 
   const handleToggleRule = (ruleKey: string) => {
-    const updated = { ...disabledRules, [ruleKey]: !disabledRules[ruleKey] };
-    setDisabledRules(updated);
-    localStorage.setItem('alertDisabledRules', JSON.stringify(updated));
-    setAlertRules((prev) =>
-      prev.map((rule) => (rule.key === ruleKey ? { ...rule, enabled: !rule.enabled } : rule)),
+    void ruleKey;
+    message.warning(
+      'Alert rule changes are unavailable until a persisted rule editor is available.',
     );
-    setSelectedRuleKeys((currentKeys) => currentKeys.filter((key) => key !== ruleKey));
   };
 
   const handleAddRule = () => {
@@ -261,60 +246,18 @@ const AlertManagementPage: React.FC = () => {
   };
 
   const handleDeleteRule = (ruleKey: string) => {
-    setAlertRules((prev) => prev.filter((rule) => rule.key !== ruleKey));
-    setSelectedRuleKeys((currentKeys) => currentKeys.filter((key) => key !== ruleKey));
-    const updated = { ...disabledRules };
-    delete updated[ruleKey];
-    setDisabledRules(updated);
-    localStorage.setItem('alertDisabledRules', JSON.stringify(updated));
-    message.success(t('alertMgmt.deleteSuccess'));
+    void ruleKey;
+    message.warning(
+      'Alert rule changes are unavailable until a persisted rule editor is available.',
+    );
   };
 
   const handleModalOk = async () => {
     try {
-      const values = await form.validateFields();
-      if (editingRule) {
-        if (values.alert !== editingRule.key || values.enabled === false) {
-          setSelectedRuleKeys((currentKeys) =>
-            currentKeys.filter((key) => key !== editingRule.key),
-          );
-        }
-        setAlertRules((prev) =>
-          prev.map((rule) =>
-            rule.key === editingRule.key
-              ? {
-                  ...rule,
-                  alert: values.alert,
-                  group: values.group,
-                  expr: values.expr,
-                  for: values.for,
-                  severity: values.severity,
-                  team: values.team,
-                  summary: values.summary || '',
-                  description: values.description || '',
-                  enabled: values.enabled !== false,
-                }
-              : rule,
-          ),
-        );
-        message.success(t('alertMgmt.updateSuccess'));
-      } else {
-        const newRule: AlertRule = {
-          key: values.alert,
-          index: alertRules.length + 1,
-          alert: values.alert,
-          group: values.group,
-          expr: values.expr,
-          for: values.for,
-          severity: values.severity,
-          team: values.team,
-          summary: values.summary || '',
-          description: values.description || '',
-          enabled: values.enabled !== false,
-        };
-        setAlertRules((prev) => [...prev, newRule]);
-        message.success(t('alertMgmt.createSuccess'));
-      }
+      await form.validateFields();
+      message.warning(
+        'Alert rule changes are unavailable until a persisted rule editor is available.',
+      );
       setModalVisible(false);
       form.resetFields();
     } catch {
@@ -327,43 +270,14 @@ const AlertManagementPage: React.FC = () => {
     [alertRules, selectedRuleKeys],
   );
 
-  const handleExportYaml = () => {
-    const enabledRules =
-      selectedRules.length > 0 ? selectedRules : alertRules.filter((rule) => rule.enabled);
-    const groups: Record<string, AlertRule[]> = {};
-    for (const rule of enabledRules) {
-      if (!groups[rule.group]) groups[rule.group] = [];
-      groups[rule.group].push(rule);
+  const handleExportYaml = async () => {
+    try {
+      const data = await queryAlertRules();
+      downloadBlob(new Blob([data.rules], { type: 'text/yaml' }), 'rocketmq-alert-rules.yaml');
+      message.success(t('alertMgmt.exportSuccess'));
+    } catch {
+      message.error(t('alertMgmt.fetchFailed'));
     }
-
-    let yaml = '# ==============================================================\n';
-    yaml += '# RocketMQ 5.x Monitoring — Alert Rules (Exported from Dashboard)\n';
-    yaml += '# Compatible with Prometheus / VictoriaMetrics / Thanos alerting\n';
-    yaml += '# ==============================================================\n\n';
-    yaml += 'groups:\n';
-
-    for (const [groupName, groupRules] of Object.entries(groups)) {
-      yaml += `  - name: ${groupName}\n`;
-      yaml += '    rules:\n';
-      for (const rule of groupRules) {
-        yaml += `      - alert: ${rule.alert}\n`;
-        yaml += `        expr: ${rule.expr}\n`;
-        yaml += `        for: ${rule.for}\n`;
-        yaml += '        labels:\n';
-        yaml += `          severity: ${rule.severity}\n`;
-        yaml += `          team: ${rule.team}\n`;
-        yaml += '        annotations:\n';
-        yaml += `          summary: "${rule.summary}"\n`;
-        if (rule.description) {
-          yaml += `          description: "${rule.description}"\n`;
-        }
-        yaml += '\n';
-      }
-    }
-
-    const blob = new Blob([yaml], { type: 'text/yaml' });
-    downloadBlob(blob, 'rocketmq-alert-rules.yaml');
-    message.success(t('alertMgmt.exportSuccess'));
   };
 
   // ─── Derived data ─────────────────────────────────────────────

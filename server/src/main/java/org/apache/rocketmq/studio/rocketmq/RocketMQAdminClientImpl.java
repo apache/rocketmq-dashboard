@@ -16,14 +16,17 @@
  */
 package org.apache.rocketmq.studio.rocketmq;
 
+import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.topic.AdminClient;
 import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
@@ -122,8 +125,14 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     vo.setSubscribedTopics(new ArrayList<>(conn.getSubscriptionTable().keySet()));
                 }
             }
-        } catch (Exception ignored) {
-            // Group may be offline
+        } catch (MQClientException exception) {
+            if (exception.getResponseCode() == ResponseCode.CONSUMER_NOT_ONLINE) {
+                log.debug("Consumer group {} is offline", name);
+                return vo;
+            }
+            throw new BusinessException(502, "Failed to get consumer group: " + exception.getMessage());
+        } catch (Exception exception) {
+            throw new BusinessException(502, "Failed to get consumer group: " + exception.getMessage());
         }
         return vo;
     }
@@ -139,6 +148,11 @@ public class RocketMQAdminClientImpl implements AdminClient {
         int readQueues = topic.getReadQueues() > 0 ? topic.getReadQueues() : 8;
 
         try {
+            RmqTopic existing = topicMapper.selectOne(
+                    new LambdaQueryWrapper<RmqTopic>().eq(RmqTopic::getName, topicName));
+            TopicPerm effectivePerm = topic.getPerm() != null
+                    ? topic.getPerm()
+                    : existing == null ? TopicPerm.RW : fromRocketMQPerm(existing.getPerm());
             Set<String> brokerAddrs = getAllMasterBrokerAddrs();
             if (brokerAddrs.isEmpty()) {
                 throw new BusinessException(500, "No broker available to create topic");
@@ -148,7 +162,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
             topicConfig.setTopicName(topicName);
             topicConfig.setWriteQueueNums(writeQueues);
             topicConfig.setReadQueueNums(readQueues);
-            topicConfig.setPerm(6); // RW
+            topicConfig.setPerm(toRocketMQPerm(effectivePerm));
 
             for (String addr : brokerAddrs) {
                 adminExt.createAndUpdateTopicConfig(addr, topicConfig);
@@ -174,7 +188,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
             entity.setTopicType(topic.getType() != null ? topic.getType().name() : "NORMAL");
             entity.setReadQueueNums(readQueues);
             entity.setWriteQueueNums(writeQueues);
-            entity.setPerm(6);
+            entity.setPerm(topicConfig.getPerm());
             if (StringUtils.hasText(topic.getRemark())) {
                 entity.setRemark(topic.getRemark());
             }
@@ -213,6 +227,11 @@ public class RocketMQAdminClientImpl implements AdminClient {
         int readQueues = topic.getReadQueues() > 0 ? topic.getReadQueues() : 8;
 
         try {
+            RmqTopic existing = topicMapper.selectOne(
+                    new LambdaQueryWrapper<RmqTopic>().eq(RmqTopic::getName, topicName));
+            TopicPerm effectivePerm = topic.getPerm() != null
+                    ? topic.getPerm()
+                    : existing == null ? TopicPerm.RW : fromRocketMQPerm(existing.getPerm());
             Set<String> brokerAddrs = getAllMasterBrokerAddrs();
             if (brokerAddrs.isEmpty()) {
                 throw new BusinessException(500, "No broker available to update topic");
@@ -222,18 +241,17 @@ public class RocketMQAdminClientImpl implements AdminClient {
             topicConfig.setTopicName(topicName);
             topicConfig.setWriteQueueNums(writeQueues);
             topicConfig.setReadQueueNums(readQueues);
-            topicConfig.setPerm(6); // RW
+            topicConfig.setPerm(toRocketMQPerm(effectivePerm));
 
             for (String addr : brokerAddrs) {
                 adminExt.createAndUpdateTopicConfig(addr, topicConfig);
             }
 
             // Update DB record
-            RmqTopic existing = topicMapper.selectOne(
-                    new LambdaQueryWrapper<RmqTopic>().eq(RmqTopic::getName, topicName));
             if (existing != null) {
                 existing.setWriteQueueNums(writeQueues);
                 existing.setReadQueueNums(readQueues);
+                existing.setPerm(topicConfig.getPerm());
                 existing.setUpdatedAt(LocalDateTime.now());
                 topicMapper.updateById(existing);
             }
@@ -488,5 +506,25 @@ public class RocketMQAdminClientImpl implements AdminClient {
         } catch (Exception ignored) {
         }
         return "DefaultCluster";
+    }
+
+    private int toRocketMQPerm(TopicPerm perm) {
+        if (perm == TopicPerm.RO) {
+            return 4;
+        }
+        if (perm == TopicPerm.WO) {
+            return 2;
+        }
+        return 6;
+    }
+
+    private TopicPerm fromRocketMQPerm(Integer perm) {
+        if (perm != null && perm == 4) {
+            return TopicPerm.RO;
+        }
+        if (perm != null && perm == 2) {
+            return TopicPerm.WO;
+        }
+        return TopicPerm.RW;
     }
 }
