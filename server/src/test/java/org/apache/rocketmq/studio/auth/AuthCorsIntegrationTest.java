@@ -31,11 +31,14 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(value = InstanceController.class, properties = "studio.auth.login-required=true")
@@ -81,4 +84,21 @@ class AuthCorsIntegrationTest {
 
         verify(authService).isAuthenticated(null);
     }
+    @Test
+    void shouldRejectNonAdminMutationBeforeControllerExecution() throws Exception {
+        String authorization = "Bearer reader-token";
+        when(authService.isAuthenticated(authorization)).thenReturn(true);
+        when(authService.isAdmin(authorization)).thenReturn(false);
+
+        mockMvc.perform(post("/api/instances/create")
+                        .header(HttpHeaders.AUTHORIZATION, authorization)
+                        .contentType("application/json")
+                        .content("{}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(403))
+                .andExpect(jsonPath("$.message").value("Admin permission required"));
+
+        verifyNoInteractions(instanceService);
+    }
+
 }

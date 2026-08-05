@@ -170,6 +170,11 @@ POST /api/auth/login
 | `user.username` | `string` | 用户名 |
 | `user.admin` | `boolean` | 是否管理员 |
 
+启用 `studio.auth.login-required` 后，非管理员会话为只读角色。GET、HEAD
+和只读查询接口可访问；创建、更新、删除、重启、发送消息等写操作要求
+`user.admin=true`，否则返回 HTTP 403。登录、登出、CORS 预检及明确的只读
+POST 查询不受管理员限制。
+
 ### 1.2 登出
 
 ```

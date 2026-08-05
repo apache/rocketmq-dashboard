@@ -21,13 +21,24 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.cors.CorsUtils;
 import org.springframework.web.servlet.HandlerInterceptor;
 
+import java.util.Set;
+
 @RequiredArgsConstructor
 public class AuthInterceptor implements HandlerInterceptor {
+
+    private static final Set<String> READER_POST_PATHS = Set.of(
+            "/api/auth/logout",
+            "/api/ai/chat",
+            "/api/clusters/test-connection",
+            "/api/llm/config/test",
+            "/api/metrics/query",
+            "/api/settings/datasources/test");
 
     private final AuthProperties authProperties;
     private final AuthService authService;
@@ -41,16 +52,34 @@ public class AuthInterceptor implements HandlerInterceptor {
             return true;
         }
         String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
-        if (authService.isAuthenticated(authorization)) {
-            authService.getAuthenticatedUser(authorization)
-                    .ifPresent(user -> AuthenticatedUserContext.setUsername(user.getUsername()));
-            return true;
+        if (!authService.isAuthenticated(authorization)) {
+            writeError(response, HttpStatus.UNAUTHORIZED, "Unauthorized");
+            return false;
         }
+        authService.getAuthenticatedUser(authorization)
+                .ifPresent(user -> AuthenticatedUserContext.setUsername(user.getUsername()));
+        if (requiresAdmin(request, requestPath(request)) && !authService.isAdmin(authorization)) {
+            writeError(response, HttpStatus.FORBIDDEN, "Admin permission required");
+            return false;
+        }
+        return true;
+    }
 
-        response.setStatus(HttpStatus.UNAUTHORIZED.value());
+    private boolean requiresAdmin(HttpServletRequest request, String path) {
+        String method = request.getMethod();
+        if (HttpMethod.GET.matches(method) || HttpMethod.HEAD.matches(method)
+                || HttpMethod.OPTIONS.matches(method)) {
+            return false;
+        }
+        return !HttpMethod.POST.matches(method) || !READER_POST_PATHS.contains(normalizePath(path));
+    }
+
+    private void writeError(HttpServletResponse response, HttpStatus status, String message)
+            throws Exception {
+        response.setStatus(status.value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        response.getWriter().write("{\"code\":401,\"message\":\"Unauthorized\",\"data\":null}");
-        return false;
+        response.getWriter().write("{\"code\":" + status.value()
+                + ",\"message\":\"" + message + "\",\"data\":null}");
     }
 
     @Override

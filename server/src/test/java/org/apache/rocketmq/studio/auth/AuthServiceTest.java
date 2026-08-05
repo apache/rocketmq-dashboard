@@ -77,6 +77,7 @@ class AuthServiceTest {
         assertThat(authService.getAuthenticatedUser("Bearer " + response.getToken()))
                 .hasValueSatisfying(userInfo -> assertThat(userInfo.getUsername()).isEqualTo("testuser"));
         assertThat(authService.getAuthenticatedUser("Bearer unknown-token")).isEmpty();
+        assertThat(authService.isAdmin("Bearer " + response.getToken())).isFalse();
     }
 
     @Test
@@ -94,6 +95,7 @@ class AuthServiceTest {
 
         assertThat(response.getUser().getUsername()).isEqualTo("admin");
         assertThat(response.getUser().isAdmin()).isTrue();
+        assertThat(authService.isAdmin("Bearer " + response.getToken())).isTrue();
     }
 
     @Test
