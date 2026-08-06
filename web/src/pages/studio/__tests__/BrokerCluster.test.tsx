@@ -15,8 +15,8 @@
  * limitations under the License.
  */
 
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
@@ -124,6 +124,10 @@ describe('BrokerCluster Page', () => {
     vi.mocked(restartBroker).mockResolvedValue({ success: true, message: 'restarted' });
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('should render the page title', () => {
     renderWithProviders(<BrokerCluster />);
     expect(screen.getByText('Broker 集群')).toBeInTheDocument();
@@ -209,5 +213,28 @@ describe('BrokerCluster Page', () => {
     expect(screen.queryByText('broker-b')).not.toBeInTheDocument();
     expect(screen.queryByText('nameserver-a')).not.toBeInTheDocument();
     expect(screen.queryByText('proxy-a')).not.toBeInTheDocument();
+  });
+
+  it('polls only while live refresh is enabled', async () => {
+    vi.useFakeTimers();
+    renderWithProviders(<BrokerCluster />);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(listClusters).toHaveBeenCalledTimes(1);
+
+    const liveRefreshSwitch = screen.getByRole('switch');
+    fireEvent.click(liveRefreshSwitch);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(listClusters).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(liveRefreshSwitch);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000);
+    });
+    expect(listClusters).toHaveBeenCalledTimes(2);
   });
 });
