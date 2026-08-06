@@ -26,6 +26,7 @@ import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
@@ -69,6 +70,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
     private final RmqTopicMapper topicMapper;
     private final RmqGroupMapper groupMapper;
     private final AuditService auditService;
+    private final RuntimeAdminClientResolver runtimeAdminClientResolver;
 
     @Override
     public TopicVO getTopic(String name) {
@@ -443,18 +445,25 @@ public class RocketMQAdminClientImpl implements AdminClient {
     }
 
     @Override
-    public void resetOffset(String name, long timestamp, String topic) {
-        adminFactory.execute(namesrvAddr(), null, admin -> {
-            try {
-                admin.resetOffsetByTimestamp(getClusterName(admin), topic, name, timestamp, false);
-                auditService.record("RESET_OFFSET", name,
-                        "topic=" + topic + ", timestamp=" + timestamp, "SUCCESS");
-                return null;
-            } catch (Exception e) {
-                auditService.record("RESET_OFFSET", name, e.getMessage(), "FAILED");
-                throw new BusinessException(500, "Failed to reset offset: " + e.getMessage());
+    public void resetOffset(String instanceId, String name, long timestamp, String topic) {
+        try {
+            if (StringUtils.hasText(instanceId)) {
+                runtimeAdminClientResolver.execute(instanceId, admin -> {
+                    admin.resetOffsetByTimestamp(getClusterName(admin), topic, name, timestamp, false);
+                    return null;
+                });
+            } else {
+                adminFactory.execute(namesrvAddr(), null, admin -> {
+                    admin.resetOffsetByTimestamp(getClusterName(admin), topic, name, timestamp, false);
+                    return null;
+                });
             }
-        });
+            auditService.record("RESET_OFFSET", name,
+                    "instanceId=" + instanceId + ", topic=" + topic + ", timestamp=" + timestamp, "SUCCESS");
+        } catch (Exception e) {
+            auditService.record("RESET_OFFSET", name, e.getMessage(), "FAILED");
+            throw new BusinessException(500, "Failed to reset offset: " + e.getMessage());
+        }
     }
 
     // ── Helper methods ──────────────────────────────────────────────────

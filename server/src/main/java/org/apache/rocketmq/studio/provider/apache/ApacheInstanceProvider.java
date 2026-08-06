@@ -117,7 +117,7 @@ public class ApacheInstanceProvider implements InstanceProvider {
 
     @Override
     public void resetOffset(String instanceId, String groupName, long timestamp, String topic) {
-        adminClient.resetOffset(groupName, timestamp, topic);
+        adminClient.resetOffset(instanceId, groupName, timestamp, topic);
     }
 
     @Override

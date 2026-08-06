@@ -63,6 +63,7 @@ class ConsumerGroupControllerTest {
     @Test
     void createConsumerGroupShouldPassValidatedRequest() throws Exception {
         Map<String, Object> body = Map.of(
+                "instanceId", "instance-a",
                 "name", "cg-orders",
                 "clusterId", "cluster-a",
                 "retryMaxTimes", 8,
@@ -110,6 +111,7 @@ class ConsumerGroupControllerTest {
     @Test
     void createConsumerGroupShouldRejectNegativeRetryMaxTimes() throws Exception {
         Map<String, Object> body = Map.of(
+                "instanceId", "instance-a",
                 "name", "cg-orders",
                 "retryMaxTimes", -1
         );
@@ -174,6 +176,7 @@ class ConsumerGroupControllerTest {
     @Test
     void resetOffsetShouldPassValidatedRequest() throws Exception {
         Map<String, Object> body = Map.of(
+                "instanceId", "instance-a",
                 "name", "cg-orders",
                 "topic", "orders",
                 "timestamp", 1784246400000L
@@ -186,7 +189,7 @@ class ConsumerGroupControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.message").value("success"));
 
-        verify(metadataService).resetOffset(isNull(), eq("cg-orders"), eq(1784246400000L), eq("orders"));
+        verify(metadataService).resetOffset(eq("instance-a"), eq("cg-orders"), eq(1784246400000L), eq("orders"));
     }
 
     @Test
@@ -228,6 +231,7 @@ class ConsumerGroupControllerTest {
     @Test
     void resetOffsetShouldRejectMissingName() throws Exception {
         Map<String, Object> body = Map.of(
+                "instanceId", "instance-a",
                 "topic", "orders",
                 "timestamp", 1784246400000L
         );
@@ -245,6 +249,7 @@ class ConsumerGroupControllerTest {
     @Test
     void resetOffsetShouldRejectMissingTimestamp() throws Exception {
         Map<String, Object> body = Map.of(
+                "instanceId", "instance-a",
                 "name", "cg-orders",
                 "topic", "orders"
         );
@@ -262,6 +267,7 @@ class ConsumerGroupControllerTest {
     @Test
     void resetOffsetShouldRejectNonPositiveTimestamp() throws Exception {
         Map<String, Object> body = Map.of(
+                "instanceId", "instance-a",
                 "name", "cg-orders",
                 "topic", "orders",
                 "timestamp", 0L
@@ -280,6 +286,7 @@ class ConsumerGroupControllerTest {
     @Test
     void resetOffsetShouldRejectInvalidTimestampType() throws Exception {
         Map<String, Object> body = Map.of(
+                "instanceId", "instance-a",
                 "name", "cg-orders",
                 "topic", "orders",
                 "timestamp", "invalid"

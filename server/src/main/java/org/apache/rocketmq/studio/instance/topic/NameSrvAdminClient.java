@@ -69,7 +69,7 @@ public class NameSrvAdminClient implements AdminClient {
     }
 
     @Override
-    public void resetOffset(String name, long timestamp, String topic) {
+    public void resetOffset(String instanceId, String name, long timestamp, String topic) {
         throw consumerGroupAdminUnavailable();
     }
 
