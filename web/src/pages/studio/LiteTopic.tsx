@@ -130,6 +130,7 @@ const LiteTopicPage: React.FC = () => {
   const mountedRef = useRef(false);
   const bootstrapRequestId = useRef(0);
   const displayRequestId = useRef(0);
+  const sessionRequestId = useRef(0);
 
   useEffect(() => {
     messageRef.current = message;
@@ -250,16 +251,22 @@ const LiteTopicPage: React.FC = () => {
   };
 
   const handleViewSessions = async (sessionId: string) => {
+    const requestId = ++sessionRequestId.current;
     setSessionDrawerOpen(true);
     setSessionLoading(true);
+    setSessionData(null);
     try {
       const data = await queryLiteTopicSession(sessionId);
+      if (requestId !== sessionRequestId.current) return;
       setSessionData(data);
     } catch {
+      if (requestId !== sessionRequestId.current) return;
       message.error(t('liteTopic.fetchSessionFailed'));
       setSessionData(null);
     } finally {
-      setSessionLoading(false);
+      if (requestId === sessionRequestId.current) {
+        setSessionLoading(false);
+      }
     }
   };
 
