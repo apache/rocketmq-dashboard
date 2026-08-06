@@ -142,6 +142,7 @@ export async function getTopicConsumers(name: string) {
 
 export interface SendTopicMessageRequest {
   topic: string;
+  instanceId?: string;
   tag?: string;
   key?: string;
   body: string;

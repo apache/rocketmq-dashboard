@@ -25,6 +25,7 @@ import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
@@ -72,12 +73,15 @@ class RocketMQAdminClientImplTest {
     private RmqGroupMapper groupMapper;
     @Mock
     private AuditService auditService;
+    @Mock
+    private RuntimeAdminClientResolver runtimeAdminClientResolver;
 
     private RocketMQAdminClientImpl adminClient;
 
     @BeforeEach
     void setUp() {
-        adminClient = new RocketMQAdminClientImpl(adminExt, properties, topicMapper, groupMapper, auditService);
+        adminClient = new RocketMQAdminClientImpl(
+                adminExt, properties, topicMapper, groupMapper, auditService, runtimeAdminClientResolver);
     }
 
     @Test
@@ -161,6 +165,30 @@ class RocketMQAdminClientImplTest {
             SendMessageVO result = adminClient.sendMessage(request);
             // The message was already delivered; an audit failure must not turn this into an error.
             assertThat(result.getMsgId()).isEqualTo("msg-1");
+        }
+    }
+
+    @Test
+    void sendMessageUsesSelectedInstanceEndpoint() throws Exception {
+        when(runtimeAdminClientResolver.resolveEndpoint("instance-a")).thenReturn("10.0.0.2:9876");
+        try (MockedConstruction<DefaultMQProducer> mockedProducers =
+                     mockConstruction(DefaultMQProducer.class, (producer, context) -> {
+                         doNothing().when(producer).start();
+                         SendResult sendResult = new SendResult();
+                         sendResult.setMsgId("msg-1");
+                         sendResult.setOffsetMsgId("offset-1");
+                         when(producer.send(any(Message.class))).thenReturn(sendResult);
+                         doNothing().when(producer).shutdown();
+                     })) {
+            SendMessageDTO request = new SendMessageDTO();
+            request.setTopic("TopicA");
+            request.setBody("hello");
+            request.setInstanceId("instance-a");
+
+            adminClient.sendMessage(request);
+
+            DefaultMQProducer producer = mockedProducers.constructed().getFirst();
+            verify(producer).setNamesrvAddr("10.0.0.2:9876");
         }
     }
 }

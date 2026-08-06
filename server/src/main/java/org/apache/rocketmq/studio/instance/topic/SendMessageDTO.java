@@ -34,5 +34,6 @@ public class SendMessageDTO {
     private String tag;
     private String key;
     private String body;
+    private String instanceId;
     private Map<String, String> properties;
 }

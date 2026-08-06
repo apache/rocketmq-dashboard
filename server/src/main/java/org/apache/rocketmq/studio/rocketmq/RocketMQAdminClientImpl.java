@@ -27,6 +27,7 @@ import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.topic.AdminClient;
 import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
@@ -69,6 +70,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
     private final RmqTopicMapper topicMapper;
     private final RmqGroupMapper groupMapper;
     private final AuditService auditService;
+    private final RuntimeAdminClientResolver runtimeAdminClientResolver;
 
     @Autowired
     public RocketMQAdminClientImpl(
@@ -76,12 +78,14 @@ public class RocketMQAdminClientImpl implements AdminClient {
             RocketMQProperties properties,
             RmqTopicMapper topicMapper,
             RmqGroupMapper groupMapper,
-            AuditService auditService) {
+            AuditService auditService,
+            RuntimeAdminClientResolver runtimeAdminClientResolver) {
         this.adminExt = adminExt;
         this.properties = properties;
         this.topicMapper = topicMapper;
         this.groupMapper = groupMapper;
         this.auditService = auditService;
+        this.runtimeAdminClientResolver = runtimeAdminClientResolver;
     }
 
     @Override
@@ -328,7 +332,9 @@ public class RocketMQAdminClientImpl implements AdminClient {
             throw new BusinessException(503, "RocketMQ admin not connected");
         }
 
-        String namesrvAddr = properties.getNamesrvAddr();
+        String namesrvAddr = StringUtils.hasText(request.getInstanceId())
+                ? runtimeAdminClientResolver.resolveEndpoint(request.getInstanceId())
+                : properties.getNamesrvAddr();
         if (namesrvAddr == null || namesrvAddr.isEmpty()) {
             throw new BusinessException(500, "Nameserver address not configured");
         }
