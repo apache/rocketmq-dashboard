@@ -64,9 +64,7 @@ public class RocketMQClientProvider implements ClientProvider {
 
     private static final long SUBSCRIPTION_GROUP_TIMEOUT_MILLIS = 5000L;
 
-    private final MqAdminExtFactory adminFactory;
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
-    private final RocketMQProperties properties;
 
     @Override
     public List<ClientConnectionVO> findConnections(String instanceId, String clusterId, String type) {
@@ -86,36 +84,35 @@ public class RocketMQClientProvider implements ClientProvider {
     }
 
     @Override
-    public List<ClientConnectionVO> findProducerConnections(String topic, String producerGroup) {
-        String namesrvAddr = properties.getNamesrvAddr();
-        if (!StringUtils.hasText(namesrvAddr)) {
-            throw new BusinessException(501, "Client connection provider is not configured");
-        }
-        return adminFactory.execute(namesrvAddr, null, admin -> {
-            try {
-                ProducerConnection producerConnection =
-                        admin.examineProducerConnectionInfo(producerGroup, topic);
-                if (producerConnection == null || producerConnection.getConnectionSet() == null) {
-                    return List.<ClientConnectionVO>of();
-                }
-                return producerConnection.getConnectionSet().stream()
-                        .filter(Objects::nonNull)
-                        .map(connection -> toConnectionVO(
-                                connection, ClientType.Producer, topic, producerGroup, null))
-                        .toList();
-            } catch (MQClientException e) {
-                if (isTopicNotExist(e)) {
-                    // A non-existent topic is a normal "nothing here" outcome — the client
-                    // page should show an empty list, not a 502 that looks like a failure.
-                    return List.<ClientConnectionVO>of();
-                }
-                throw new BusinessException(502,
-                        "Failed to query producer connections: " + rootMessage(e));
-            } catch (Exception e) {
-                throw new BusinessException(502,
-                        "Failed to query producer connections: " + rootMessage(e));
+    public List<ClientConnectionVO> findProducerConnections(String instanceId, String topic, String producerGroup) {
+        return runtimeAdminClientResolver.execute(instanceId,
+                adminExt -> findProducerConnections(adminExt, topic, producerGroup));
+    }
+
+    private List<ClientConnectionVO> findProducerConnections(MQAdminExt adminExt, String topic, String producerGroup) {
+        try {
+            ProducerConnection producerConnection =
+                    adminExt.examineProducerConnectionInfo(producerGroup, topic);
+            if (producerConnection == null || producerConnection.getConnectionSet() == null) {
+                return List.of();
             }
-        });
+            return producerConnection.getConnectionSet().stream()
+                    .filter(Objects::nonNull)
+                    .map(connection -> toConnectionVO(
+                            connection, ClientType.Producer, topic, producerGroup, null))
+                    .toList();
+        } catch (MQClientException e) {
+            if (isTopicNotExist(e)) {
+                // A non-existent topic is a normal "nothing here" outcome — the client
+                // page should show an empty list, not a 502 that looks like a failure.
+                return List.of();
+            }
+            throw new BusinessException(502,
+                    "Failed to query producer connections: " + rootMessage(e));
+        } catch (Exception e) {
+            throw new BusinessException(502,
+                    "Failed to query producer connections: " + rootMessage(e));
+        }
     }
 
     private boolean isTopicNotExist(MQClientException e) {

@@ -65,7 +65,7 @@ describe('Producer API', () => {
       data: ['pg-order', 'pg-payment'],
     });
 
-    await expect(fetchProducerGroups()).resolves.toEqual(['pg-order', 'pg-payment']);
+    await expect(fetchProducerGroups('instance-1')).resolves.toEqual(['pg-order', 'pg-payment']);
   });
 
   it('queries producer connections by topic and group', async () => {
@@ -86,10 +86,11 @@ describe('Producer API', () => {
     mock.onGet('/producer/connection').reply((config) => {
       expect(config.params.topic).toBe('order-events');
       expect(config.params.producerGroup).toBe('order-producer');
+      expect(config.params.instanceId).toBe('instance-1');
       return [200, { connectionSet: connections }];
     });
 
-    const result = await queryProducerConnection('order-events', 'order-producer');
+    const result = await queryProducerConnection('instance-1', 'order-events', 'order-producer');
     expect(result).toHaveLength(2);
     expect(result[0].clientId).toBe('producer-1');
   });
@@ -97,7 +98,7 @@ describe('Producer API', () => {
   it('handles empty producer connections', async () => {
     mock.onGet('/producer/connection').reply(200, { connectionSet: [] });
 
-    const result = await queryProducerConnection('topic', 'group');
+    const result = await queryProducerConnection('instance-1', 'topic', 'group');
     expect(result).toEqual([]);
   });
 });

@@ -53,22 +53,23 @@ class ProducerConnectionServiceTest {
                 .language(ClientLanguage.Java)
                 .version("5.1.0")
                 .build();
-        when(clientProvider.findProducerConnections("order-topic", "pg-order"))
+        when(clientProvider.findProducerConnections("instance-1", "order-topic", "pg-order"))
                 .thenReturn(List.of(producer));
 
-        List<ProducerConnectionVO> result = producerConnectionService.listConnections("order-topic", "pg-order");
+        List<ProducerConnectionVO> result = producerConnectionService.listConnections(
+                "instance-1", "order-topic", "pg-order");
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getClientId()).isEqualTo("producer-1");
         assertThat(result.get(0).getClientAddr()).isEqualTo("10.0.0.1:38888");
         assertThat(result.get(0).getLanguage()).isEqualTo("Java");
         assertThat(result.get(0).getVersionDesc()).isEqualTo("5.1.0");
-        verify(clientProvider).findProducerConnections("order-topic", "pg-order");
+        verify(clientProvider).findProducerConnections("instance-1", "order-topic", "pg-order");
     }
 
     @Test
     void listConnectionsShouldRejectMissingTopic() {
-        assertThatThrownBy(() -> producerConnectionService.listConnections(" ", "pg-order"))
+        assertThatThrownBy(() -> producerConnectionService.listConnections("instance-1", " ", "pg-order"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("topic is required")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
@@ -77,7 +78,7 @@ class ProducerConnectionServiceTest {
 
     @Test
     void listConnectionsShouldRejectMissingProducerGroup() {
-        assertThatThrownBy(() -> producerConnectionService.listConnections("order-topic", null))
+        assertThatThrownBy(() -> producerConnectionService.listConnections("instance-1", "order-topic", null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("producerGroup is required")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
@@ -86,18 +87,18 @@ class ProducerConnectionServiceTest {
 
     @Test
     void listConnectionsShouldTrimRequiredValues() {
-        when(clientProvider.findProducerConnections("order-topic", "pg-order"))
+        when(clientProvider.findProducerConnections("instance-1", "order-topic", "pg-order"))
                 .thenReturn(List.of());
 
         List<ProducerConnectionVO> result = producerConnectionService.listConnections(
-                " order-topic ", " pg-order ");
+                " instance-1 ", " order-topic ", " pg-order ");
         assertThat(result).isEmpty();
-        verify(clientProvider).findProducerConnections("order-topic", "pg-order");
+        verify(clientProvider).findProducerConnections("instance-1", "order-topic", "pg-order");
     }
 
     @Test
     void listProducerGroupsShouldReturnSortedUniqueActiveGroups() {
-        when(clientProvider.findConnections(null, null, ClientType.Producer.name()))
+        when(clientProvider.findConnections("instance-1", null, ClientType.Producer.name()))
                 .thenReturn(List.of(
                         ClientConnectionVO.builder().producerGroup(" pg-payment ").build(),
                         ClientConnectionVO.builder().producerGroup("pg-order").build(),
@@ -105,8 +106,17 @@ class ProducerConnectionServiceTest {
                         ClientConnectionVO.builder().producerGroup(" ").build(),
                         ClientConnectionVO.builder().build()));
 
-        assertThat(producerConnectionService.listProducerGroups())
+        assertThat(producerConnectionService.listProducerGroups("instance-1"))
                 .containsExactly("pg-order", "pg-payment");
-        verify(clientProvider).findConnections(null, null, ClientType.Producer.name());
+        verify(clientProvider).findConnections("instance-1", null, ClientType.Producer.name());
+    }
+
+    @Test
+    void listConnectionsShouldRejectMissingInstanceId() {
+        assertThatThrownBy(() -> producerConnectionService.listConnections(null, "order-topic", "pg-order"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("instanceId is required")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+        verifyNoInteractions(clientProvider);
     }
 }

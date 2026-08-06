@@ -34,17 +34,20 @@ public class ProducerController {
     private final ProducerConnectionService producerConnectionService;
 
     @GetMapping("/groups")
-    public Result<List<String>> listProducerGroups() {
-        return Result.ok(producerConnectionService.listProducerGroups());
+    public Result<List<String>> listProducerGroups(@RequestParam String instanceId) {
+        return Result.ok(producerConnectionService.listProducerGroups(instanceId));
     }
 
     @GetMapping("/connection")
     public ProducerConnectionResultVO listConnections(
+            @RequestParam(required = false) String instanceId,
             @RequestParam(required = false) String topic,
             @RequestParam(required = false) String producerGroup) {
+        requireParameter(instanceId, "instanceId");
         requireParameter(topic, "topic");
         requireParameter(producerGroup, "producerGroup");
-        return new ProducerConnectionResultVO(producerConnectionService.listConnections(topic, producerGroup));
+        return new ProducerConnectionResultVO(
+                producerConnectionService.listConnections(instanceId, topic, producerGroup));
     }
 
     private void requireParameter(String value, String name) {
