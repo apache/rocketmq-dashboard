@@ -68,8 +68,14 @@ public class MqAdminExtFactory {
         if (closed) {
             throw new BusinessException(503, "Admin factory is shutting down");
         }
-        DefaultMQAdminExt admin = cache.computeIfAbsent(namesrvAddr.trim(),
-                addr -> createAndStart(addr, rpcHook));
+        DefaultMQAdminExt admin = cache.computeIfAbsent(namesrvAddr.trim(), addr -> {
+            // Re-check under the cache lock so a request that passed the initial closed check cannot
+            // create a fresh connection while the factory is shutting down.
+            if (closed) {
+                throw new BusinessException(503, "Admin factory is shutting down");
+            }
+            return createAndStart(addr, rpcHook);
+        });
         try {
             return action.apply(admin);
         } catch (BusinessException ex) {
