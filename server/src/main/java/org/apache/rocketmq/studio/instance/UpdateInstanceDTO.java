@@ -14,26 +14,34 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.rocketmq.studio.instance;
 
-package org.apache.rocketmq.studio.instance.topic;
+import jakarta.validation.constraints.NotBlank;
+import lombok.Data;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 
-import org.apache.rocketmq.studio.common.domain.Result;
-import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+@Data
+public class UpdateInstanceDTO {
 
-import java.util.List;
+    @NotBlank(message = "instance id is required")
+    private String id;
 
-@RestController
-@RequestMapping("/api/namespaces")
-@RequiredArgsConstructor
-public class NamespaceController {
+    private String name;
 
-    private final MetadataService metadataService;
+    private InstanceType type;
 
-    @GetMapping
-    public Result<List<NamespaceVO>> listNamespaces() {
-        return Result.ok(metadataService.listNamespaces());
+    private String endpoint;
+
+    private String remark;
+
+    public InstanceVO toInstanceVO() {
+        InstanceVO vo = InstanceVO.builder()
+                .name(name)
+                .type(type)
+                .endpoint(endpoint)
+                .remark(remark)
+                .build();
+        vo.setId(id);
+        return vo;
     }
 }

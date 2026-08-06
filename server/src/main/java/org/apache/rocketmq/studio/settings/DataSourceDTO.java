@@ -14,19 +14,34 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.instance.acl;
+package org.apache.rocketmq.studio.settings;
 
 import jakarta.validation.constraints.NotBlank;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 
 @Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class AclDeleteRequestDTO {
-    @NotBlank(message = "id is required")
-    private String id;
+public class DataSourceDTO {
+
+    private String key;
+
+    @NotBlank(message = "name is required")
+    private String name;
+
+    @NotBlank(message = "type is required")
+    private String type;
+
+    @NotBlank(message = "url is required")
+    private String url;
+
+    private String auth;
+
+    public DataSourceVO toDataSourceVO() {
+        return DataSourceVO.builder()
+                .key(key)
+                .name(name)
+                .type(type)
+                .url(url)
+                .auth(auth)
+                .build();
+    }
 }

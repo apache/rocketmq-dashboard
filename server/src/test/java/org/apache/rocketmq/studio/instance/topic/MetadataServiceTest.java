@@ -201,11 +201,4 @@ class MetadataServiceTest {
         verify(metadataProvider).listConsumerGroups("cluster-1", "order");
     }
 
-    @Test
-    void listNamespacesShouldReportUnsupportedProviderCapability() {
-        assertThatThrownBy(() -> metadataService.listNamespaces())
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("Namespace discovery is not implemented by the current metadata provider")
-                .satisfies(exception -> assertThat(((BusinessException) exception).getCode()).isEqualTo(501));
-    }
 }

@@ -16,33 +16,27 @@
  */
 package org.apache.rocketmq.studio.cloud.credential;
 
+import org.springframework.http.HttpStatus;
+import org.springframework.util.StringUtils;
+
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
+@Slf4j
+@RequiredArgsConstructor
 @Service
 public class CloudCredentialService {
 
-    private static final Logger log = LoggerFactory.getLogger(CloudCredentialService.class);
-
-    private static final int VISIBLE_CREDENTIAL_CHARS = 4;
-    private static final int MIN_PARTIALLY_MASKED_CREDENTIAL_CHARS = 17;
-    private static final String CREDENTIAL_MASK = "****";
-
     private final CloudCredentialRepository credentialRepository;
     private final InstanceRepository instanceRepository;
-
-    public CloudCredentialService(CloudCredentialRepository credentialRepository,
-                                  InstanceRepository instanceRepository) {
-        this.credentialRepository = credentialRepository;
-        this.instanceRepository = instanceRepository;
-    }
 
     public List<CloudCredentialVO> listMasked() {
         log.info("Listing cloud credentials (masked)");
@@ -53,22 +47,22 @@ public class CloudCredentialService {
 
     public CloudCredentialVO create(CloudCredentialVO credential) {
         if (credential == null) {
-            throw new BusinessException(400, "Cloud credential request is required");
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "Cloud credential request is required");
         }
-        if (isBlank(credential.getName())) {
-            throw new BusinessException(400, "Cloud credential name is required");
+        if (!StringUtils.hasText(credential.getName())) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "Cloud credential name is required");
         }
         if (credential.getVendor() == null || credential.getVendor() == org.apache.rocketmq.studio.common.domain.enums.InstanceVendor.APACHE) {
-            throw new BusinessException(400, "Cloud credential vendor must be ALIYUN or TENCENT");
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "Cloud credential vendor must be ALIYUN or TENCENT");
         }
-        if (isBlank(credential.getAccessKey()) || isBlank(credential.getSecretKey())) {
-            throw new BusinessException(400, "Cloud credential accessKey and secretKey are required");
+        if (!StringUtils.hasText(credential.getAccessKey()) || !StringUtils.hasText(credential.getSecretKey())) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "Cloud credential accessKey and secretKey are required");
         }
         credentialRepository.findByVendorAndAccessKey(credential.getVendor(), credential.getAccessKey())
                 .ifPresent(existing -> {
-                    throw new BusinessException(400,
+                    throw new BusinessException(HttpStatus.BAD_REQUEST.value(),
                             "Cloud credential already exists for vendor " + credential.getVendor()
-                                    + " and accessKey " + maskCredential(credential.getAccessKey()));
+                                    + " and accessKey " + CredentialUtils.mask(credential.getAccessKey()));
                 });
         log.info("Creating cloud credential name={}, vendor={}", credential.getName(), credential.getVendor());
         credential.setId(UUID.randomUUID().toString());
@@ -78,14 +72,14 @@ public class CloudCredentialService {
     }
 
     public CloudCredentialVO update(UpdateCloudCredentialDTO request) {
-        if (request == null || isBlank(request.getId())) {
-            throw new BusinessException(400, "Cloud credential id is required");
+        if (request == null || !StringUtils.hasText(request.getId())) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "Cloud credential id is required");
         }
         log.info("Updating cloud credential id={}", request.getId());
         CloudCredentialVO existing = credentialRepository.findById(request.getId())
-                .orElseThrow(() -> new BusinessException(404, "Cloud credential not found: " + request.getId()));
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND.value(), "Cloud credential not found: " + request.getId()));
         if (request.getName() != null && request.getName().isBlank()) {
-            throw new BusinessException(400, "Cloud credential name cannot be blank");
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "Cloud credential name cannot be blank");
         }
         if (request.getName() != null) {
             existing.setName(request.getName());
@@ -101,24 +95,24 @@ public class CloudCredentialService {
     }
 
     public void delete(String id) {
-        if (isBlank(id)) {
-            throw new BusinessException(400, "Cloud credential id is required");
+        if (!StringUtils.hasText(id)) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "Cloud credential id is required");
         }
         log.info("Deleting cloud credential id={}", id);
         credentialRepository.findById(id)
-                .orElseThrow(() -> new BusinessException(404, "Cloud credential not found: " + id));
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND.value(), "Cloud credential not found: " + id));
         if (instanceRepository.existsByCredentialId(id)) {
-            throw new BusinessException(400, "Cloud credential is referenced by existing instances");
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "Cloud credential is referenced by existing instances");
         }
         credentialRepository.deleteById(id);
     }
 
     public CloudCredentialVO reveal(String id) {
-        if (isBlank(id)) {
-            throw new BusinessException(400, "Cloud credential id is required");
+        if (!StringUtils.hasText(id)) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "Cloud credential id is required");
         }
         return credentialRepository.findById(id)
-                .orElseThrow(() -> new BusinessException(404, "Cloud credential not found: " + id));
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND.value(), "Cloud credential not found: " + id));
     }
 
     private CloudCredentialVO maskAccessKey(CloudCredentialVO credential) {
@@ -126,24 +120,11 @@ public class CloudCredentialService {
         masked.setId(credential.getId());
         masked.setName(credential.getName());
         masked.setVendor(credential.getVendor());
-        masked.setAccessKey(maskCredential(credential.getAccessKey()));
+        masked.setAccessKey(CredentialUtils.mask(credential.getAccessKey()));
         masked.setSecretKey(null);
         masked.setRemark(credential.getRemark());
         masked.setCreatedAt(credential.getCreatedAt());
         masked.setUpdatedAt(credential.getUpdatedAt());
         return masked;
-    }
-
-    static String maskCredential(String value) {
-        if (value == null || value.length() < MIN_PARTIALLY_MASKED_CREDENTIAL_CHARS) {
-            return CREDENTIAL_MASK;
-        }
-        return value.substring(0, VISIBLE_CREDENTIAL_CHARS)
-                + CREDENTIAL_MASK
-                + value.substring(value.length() - VISIBLE_CREDENTIAL_CHARS);
-    }
-
-    private static boolean isBlank(String value) {
-        return value == null || value.isBlank();
     }
 }

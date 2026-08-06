@@ -14,19 +14,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.instance;
+package org.apache.rocketmq.studio.common.domain;
 
 import jakarta.validation.constraints.NotBlank;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 
+/**
+ * Common delete-by-id request body shared by all delete endpoints.
+ */
 @Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class InstanceDeleteRequestDTO {
+public class DeleteRequestDTO {
+
     @NotBlank(message = "id is required")
     private String id;
 }

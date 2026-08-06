@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.instance.topic;
 
+import org.springframework.http.HttpStatus;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
@@ -116,7 +117,7 @@ public class MetadataService {
         requireSendMessageRequest(request);
         providerFor(request.getInstanceId()).ifPresent(provider -> {
             if (provider.vendor() != InstanceVendor.APACHE) {
-                throw new BusinessException(501, "Sending messages is not supported for cloud instances");
+                throw new BusinessException(HttpStatus.NOT_IMPLEMENTED.value(), "Sending messages is not supported for cloud instances");
             }
         });
         return adminClient.sendMessage(request);
@@ -144,7 +145,7 @@ public class MetadataService {
     public ConsumerGroupVO getConsumerGroup(String instanceId, String name) {
         providerFor(instanceId).ifPresent(provider -> {
             if (provider.vendor() != InstanceVendor.APACHE) {
-                throw new BusinessException(501, "Consumer group detail is not supported for cloud instances");
+                throw new BusinessException(HttpStatus.NOT_IMPLEMENTED.value(), "Consumer group detail is not supported for cloud instances");
             }
         });
         return adminClient.getConsumerGroup(name);
@@ -207,12 +208,6 @@ public class MetadataService {
         }
     }
 
-    // ── NamespaceVO ───────────────────────────────────────────────────
-
-
-    public List<NamespaceVO> listNamespaces() {
-        throw new BusinessException(501, "Namespace discovery is not implemented by the current metadata provider");
-    }
 
     private Optional<InstanceProvider> providerFor(String instanceId) {
         return providerRegistry.byInstanceId(instanceId);
@@ -224,13 +219,13 @@ public class MetadataService {
 
     private void requireTopic(TopicVO topic) {
         if (topic == null) {
-            throw new BusinessException(400, "Topic request is required");
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "Topic request is required");
         }
     }
 
     private void requireSendMessageRequest(SendMessageDTO request) {
         if (request == null) {
-            throw new BusinessException(400, "Topic send message request is required");
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "Topic send message request is required");
         }
     }
 }

@@ -17,7 +17,6 @@
 package org.apache.rocketmq.studio.settings;
 
 import org.apache.rocketmq.studio.common.domain.Result;
-import org.apache.rocketmq.studio.common.exception.BusinessException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -53,13 +52,13 @@ public class SettingsController {
     }
 
     @PostMapping("/datasources/create")
-    public Result<DataSourceVO> createDataSource(@Valid @RequestBody(required = false) DataSourceVO dataSource) {
-        return Result.ok(settingsService.createDataSource(requireDataSource(dataSource)));
+    public Result<DataSourceVO> createDataSource(@Valid @RequestBody DataSourceDTO request) {
+        return Result.ok(settingsService.createDataSource(request.toDataSourceVO()));
     }
 
     @PostMapping("/datasources/update")
-    public Result<DataSourceVO> updateDataSource(@Valid @RequestBody(required = false) DataSourceVO dataSource) {
-        return Result.ok(settingsService.updateDataSource(requireDataSource(dataSource)));
+    public Result<DataSourceVO> updateDataSource(@Valid @RequestBody DataSourceDTO request) {
+        return Result.ok(settingsService.updateDataSource(request.toDataSourceVO()));
     }
 
     @PostMapping("/datasources/delete")
@@ -73,10 +72,4 @@ public class SettingsController {
         return Result.ok(settingsService.testDataSource(request));
     }
 
-    private DataSourceVO requireDataSource(DataSourceVO dataSource) {
-        if (dataSource == null) {
-            throw new BusinessException(400, "Data source request is required");
-        }
-        return dataSource;
-    }
 }

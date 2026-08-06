@@ -14,22 +14,42 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.cloud.credential;
+package org.apache.rocketmq.studio.instance;
 
-import org.apache.rocketmq.studio.common.domain.BaseEntity;
-import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import lombok.Data;
-import lombok.EqualsAndHashCode;
-import lombok.ToString;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 
 @Data
-@EqualsAndHashCode(callSuper = true)
-public class CloudCredentialVO extends BaseEntity {
+public class CreateInstanceDTO {
 
     private String name;
-    private InstanceVendor vendor;
-    private String accessKey;
-    @ToString.Exclude
-    private String secretKey;
+
+    private InstanceType type;
+
+    private String endpoint;
+
     private String remark;
+
+    private InstanceVendor vendor;
+
+    private String cloudInstanceId;
+
+    private String credentialId;
+
+    private String regionId;
+
+    public InstanceVO toInstanceVO() {
+        InstanceVO vo = InstanceVO.builder()
+                .name(name)
+                .type(type)
+                .endpoint(endpoint)
+                .remark(remark)
+                .vendor(vendor)
+                .cloudInstanceId(cloudInstanceId)
+                .credentialId(credentialId)
+                .regionId(regionId)
+                .build();
+        return vo;
+    }
 }

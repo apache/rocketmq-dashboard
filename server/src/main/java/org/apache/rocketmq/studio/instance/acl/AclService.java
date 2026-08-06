@@ -16,7 +16,11 @@
  */
 package org.apache.rocketmq.studio.instance.acl;
 
+import org.springframework.http.HttpStatus;
+import org.springframework.util.StringUtils;
+
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -30,10 +34,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AclService {
 
-    private static final int VISIBLE_CREDENTIAL_CHARS = 4;
-    private static final int MIN_PARTIALLY_MASKED_CREDENTIAL_CHARS = 17;
-    private static final String CREDENTIAL_MASK = "****";
-
     private final AclRepository aclRepository;
 
 
@@ -45,11 +45,11 @@ public class AclService {
 
     public AclRuleVO createRule(AclRuleVO rule) {
         log.info("Creating ACL rule for principal={}", rule.getPrincipal());
-        if (isBlank(rule.getPrincipal())) {
-            throw new BusinessException(400, "ACL principal is required");
+        if (!StringUtils.hasText(rule.getPrincipal())) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "ACL principal is required");
         }
-        if (isBlank(rule.getResource())) {
-            throw new BusinessException(400, "ACL resource is required");
+        if (!StringUtils.hasText(rule.getResource())) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "ACL resource is required");
         }
         rule.setId(UUID.randomUUID().toString());
         rule.setCreatedAt(LocalDateTime.now());
@@ -57,18 +57,18 @@ public class AclService {
     }
 
     public AclRuleVO updateRule(AclRuleVO rule) {
-        if (isBlank(rule.getId())) {
-            throw new BusinessException(400, "ACL rule id is required");
+        if (!StringUtils.hasText(rule.getId())) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "ACL rule id is required");
         }
         log.info("Updating ACL rule id={}, principal={}", rule.getId(), rule.getPrincipal());
         return aclRepository.replaceRule(rule)
-                .orElseThrow(() -> new BusinessException(404, "ACL rule not found: " + rule.getId()));
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND.value(), "ACL rule not found: " + rule.getId()));
     }
 
     public void deleteRule(String id) {
         log.info("Deleting ACL rule id={}", id);
         if (!aclRepository.deleteRule(id)) {
-            throw new BusinessException(404, "ACL rule not found: " + id);
+            throw new BusinessException(HttpStatus.NOT_FOUND.value(), "ACL rule not found: " + id);
         }
     }
 
@@ -83,8 +83,8 @@ public class AclService {
 
     public AclUserVO createUser(AclUserVO user) {
         log.info("Creating ACL user username={}", user.getUsername());
-        if (isBlank(user.getUsername())) {
-            throw new BusinessException(400, "ACL username is required");
+        if (!StringUtils.hasText(user.getUsername())) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "ACL username is required");
         }
         user.setId(UUID.randomUUID().toString());
         user.setAccessKey(UUID.randomUUID().toString().replace("-", ""));
@@ -94,12 +94,12 @@ public class AclService {
     }
 
     public AclUserVO updateUser(UpdateAclUserDTO user) {
-        if (isBlank(user.getId())) {
-            throw new BusinessException(400, "ACL user id is required");
+        if (!StringUtils.hasText(user.getId())) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "ACL user id is required");
         }
         log.info("Updating ACL user id={}, username={}", user.getId(), user.getUsername());
         AclUserVO existing = aclRepository.findUserById(user.getId())
-                .orElseThrow(() -> new BusinessException(404, "ACL user not found: " + user.getId()));
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND.value(), "ACL user not found: " + user.getId()));
         AclUserVO merged = AclUserVO.builder()
                 .id(existing.getId())
                 .username(user.getUsername() == null ? existing.getUsername() : user.getUsername())
@@ -115,7 +115,7 @@ public class AclService {
     public void deleteUser(String id) {
         log.info("Deleting ACL user id={}", id);
         if (!aclRepository.deleteUser(id)) {
-            throw new BusinessException(404, "ACL user not found: " + id);
+            throw new BusinessException(HttpStatus.NOT_FOUND.value(), "ACL user not found: " + id);
         }
     }
 
@@ -124,39 +124,24 @@ public class AclService {
      * The secret is stored base64-encoded in the database and decoded here.
      */
     public AclUserVO getUserCredentials(String id) {
-        if (isBlank(id)) {
-            throw new BusinessException(400, "ACL user id is required");
+        if (!StringUtils.hasText(id)) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "ACL user id is required");
         }
         log.info("Revealing credentials for ACL user id={}", id);
         return aclRepository.findUserById(id)
-                .orElseThrow(() -> new BusinessException(404, "ACL user not found: " + id));
-    }
-
-    private boolean isBlank(String value) {
-        return value == null || value.trim().isEmpty();
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND.value(), "ACL user not found: " + id));
     }
 
     private AclUserVO maskCredentials(AclUserVO user) {
         return AclUserVO.builder()
                 .id(user.getId())
                 .username(user.getUsername())
-                .accessKey(maskCredential(user.getAccessKey()))
-                .secretKey(maskCredential(user.getSecretKey()))
+                .accessKey(CredentialUtils.mask(user.getAccessKey()))
+                .secretKey(CredentialUtils.mask(user.getSecretKey()))
                 .admin(user.isAdmin())
                 .clusters(user.getClusters() == null ? null : List.copyOf(user.getClusters()))
                 .createdAt(user.getCreatedAt())
                 .build();
     }
 
-    private String maskCredential(String credential) {
-        if (credential == null || credential.isEmpty()) {
-            return credential;
-        }
-        if (credential.length() < MIN_PARTIALLY_MASKED_CREDENTIAL_CHARS) {
-            return CREDENTIAL_MASK;
-        }
-        return credential.substring(0, VISIBLE_CREDENTIAL_CHARS)
-                + CREDENTIAL_MASK
-                + credential.substring(credential.length() - VISIBLE_CREDENTIAL_CHARS);
-    }
 }

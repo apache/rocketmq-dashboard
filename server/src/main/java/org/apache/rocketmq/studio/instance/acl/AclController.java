@@ -16,6 +16,8 @@
  */
 package org.apache.rocketmq.studio.instance.acl;
 
+import org.springframework.http.HttpStatus;
+import org.apache.rocketmq.studio.common.domain.DeleteRequestDTO;
 import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import jakarta.validation.Valid;
@@ -55,7 +57,7 @@ public class AclController {
     }
 
     @PostMapping("/rules/delete")
-    public Result<Void> deleteRule(@Valid @RequestBody AclDeleteRequestDTO request) {
+    public Result<Void> deleteRule(@Valid @RequestBody DeleteRequestDTO request) {
         aclService.deleteRule(request.getId());
         return Result.ok();
     }
@@ -81,14 +83,14 @@ public class AclController {
     }
 
     @PostMapping("/users/delete")
-    public Result<Void> deleteUser(@Valid @RequestBody AclDeleteRequestDTO request) {
+    public Result<Void> deleteUser(@Valid @RequestBody DeleteRequestDTO request) {
         aclService.deleteUser(request.getId());
         return Result.ok();
     }
 
     private <T> T requireRequest(T request, String message) {
         if (request == null) {
-            throw new BusinessException(400, message);
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), message);
         }
         return request;
     }

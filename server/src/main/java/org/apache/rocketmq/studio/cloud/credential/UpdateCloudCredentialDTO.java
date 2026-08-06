@@ -17,7 +17,9 @@
 package org.apache.rocketmq.studio.cloud.credential;
 
 import jakarta.validation.constraints.NotBlank;
+import lombok.Data;
 
+@Data
 public class UpdateCloudCredentialDTO {
 
     @NotBlank(message = "credential id is required")
@@ -28,36 +30,4 @@ public class UpdateCloudCredentialDTO {
     private String secretKey;
 
     private String remark;
-
-    public String getId() {
-        return id;
-    }
-
-    public void setId(String id) {
-        this.id = id;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public String getSecretKey() {
-        return secretKey;
-    }
-
-    public void setSecretKey(String secretKey) {
-        this.secretKey = secretKey;
-    }
-
-    public String getRemark() {
-        return remark;
-    }
-
-    public void setRemark(String remark) {
-        this.remark = remark;
-    }
 }

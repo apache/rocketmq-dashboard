@@ -17,6 +17,9 @@
 
 package org.apache.rocketmq.studio.instance;
 
+import org.springframework.http.HttpStatus;
+import org.springframework.util.StringUtils;
+
 import org.apache.rocketmq.studio.cloud.credential.CloudCredentialRepository;
 import org.apache.rocketmq.studio.cloud.credential.CloudCredentialVO;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
@@ -86,7 +89,7 @@ public class InstanceService {
         switch (vendor) {
             case APACHE -> createApacheInstance(instance);
             case ALIYUN -> createAliyunInstance(instance);
-            case TENCENT -> throw new BusinessException(501, "Tencent Cloud instance is not supported yet");
+            case TENCENT -> throw new BusinessException(HttpStatus.NOT_IMPLEMENTED.value(), "Tencent Cloud instance is not supported yet");
         }
 
         instance.setId(UUID.randomUUID().toString());
@@ -98,10 +101,10 @@ public class InstanceService {
     private void createApacheInstance(InstanceVO instance) {
         instance.setVendor(InstanceVendor.APACHE);
         if (instance.getName() == null || instance.getName().isBlank()) {
-            throw new BusinessException(400, "InstanceVO name is required");
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "InstanceVO name is required");
         }
         if (instance.getEndpoint() == null || instance.getEndpoint().isBlank()) {
-            throw new BusinessException(400, "InstanceVO endpoint is required");
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "InstanceVO endpoint is required");
         }
     }
 
@@ -113,16 +116,16 @@ public class InstanceService {
     private void createAliyunInstance(InstanceVO instance) {
         instance.setVendor(InstanceVendor.ALIYUN);
         if (instance.getEndpoint() != null && !instance.getEndpoint().isBlank()) {
-            throw new BusinessException(400, "Commercial instances must be selected from the cloud catalog, endpoint cannot be set manually");
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "Commercial instances must be selected from the cloud catalog, endpoint cannot be set manually");
         }
-        if (isBlank(instance.getCredentialId()) || isBlank(instance.getCloudInstanceId())
-                || isBlank(instance.getRegionId())) {
-            throw new BusinessException(400, "credentialId, cloudInstanceId and regionId are required for Aliyun instances");
+        if (!StringUtils.hasText(instance.getCredentialId()) || !StringUtils.hasText(instance.getCloudInstanceId())
+                || !StringUtils.hasText(instance.getRegionId())) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "credentialId, cloudInstanceId and regionId are required for Aliyun instances");
         }
         CloudCredentialVO credential = cloudCredentialRepository.findById(instance.getCredentialId())
-                .orElseThrow(() -> new BusinessException(404, "Cloud credential not found: " + instance.getCredentialId()));
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND.value(), "Cloud credential not found: " + instance.getCredentialId()));
         if (credential.getVendor() != InstanceVendor.ALIYUN) {
-            throw new BusinessException(400, "Cloud credential vendor does not match ALIYUN");
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "Cloud credential vendor does not match ALIYUN");
         }
         CloudInstanceDetailVO detail = providerRegistry.catalogFor(InstanceVendor.ALIYUN)
                 .getCloudInstance(instance.getCredentialId(), instance.getRegionId(), instance.getCloudInstanceId());
@@ -136,14 +139,14 @@ public class InstanceService {
 
     private String resolveEndpoint(CloudInstanceDetailVO detail) {
         if (detail.getEndpoints() == null || detail.getEndpoints().isEmpty()) {
-            throw new BusinessException(502, "Cloud instance has no endpoint: " + detail.getInstanceId());
+            throw new BusinessException(HttpStatus.BAD_GATEWAY.value(), "Cloud instance has no endpoint: " + detail.getInstanceId());
         }
         return detail.getEndpoints().stream()
                 .filter(endpoint -> endpoint.getEndpointUrl() != null && !endpoint.getEndpointUrl().isBlank())
                 .sorted((a, b) -> Integer.compare(endpointPriority(a.getEndpointType()), endpointPriority(b.getEndpointType())))
                 .map(CloudInstanceDetailVO.CloudEndpoint::getEndpointUrl)
                 .findFirst()
-                .orElseThrow(() -> new BusinessException(502, "Cloud instance has no usable endpoint: " + detail.getInstanceId()));
+                .orElseThrow(() -> new BusinessException(HttpStatus.BAD_GATEWAY.value(), "Cloud instance has no usable endpoint: " + detail.getInstanceId()));
     }
 
     private int endpointPriority(String endpointType) {
@@ -157,26 +160,23 @@ public class InstanceService {
         };
     }
 
-    private static boolean isBlank(String value) {
-        return value == null || value.isBlank();
-    }
 
     public InstanceVO updateInstance(InstanceVO instance) {
         requireInstance(instance);
         log.info("Updating instance: {}", instance.getId());
 
         if (instance.getId() == null || instance.getId().isBlank()) {
-            throw new BusinessException(400, "InstanceVO ID is required");
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "InstanceVO ID is required");
         }
 
         InstanceVO existing = instanceRepository.findById(instance.getId())
-                .orElseThrow(() -> new BusinessException(404, "InstanceVO not found: " + instance.getId()));
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND.value(), "InstanceVO not found: " + instance.getId()));
 
         if (instance.getName() != null && instance.getName().isBlank()) {
-            throw new BusinessException(400, "InstanceVO name is required");
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "InstanceVO name is required");
         }
         if (instance.getEndpoint() != null && instance.getEndpoint().isBlank()) {
-            throw new BusinessException(400, "InstanceVO endpoint is required");
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "InstanceVO endpoint is required");
         }
 
         InstanceVO updated = copyOf(existing);
@@ -204,17 +204,17 @@ public class InstanceService {
         log.info("Deleting instance: {}", id);
 
         if (id == null || id.isBlank()) {
-            throw new BusinessException(400, "InstanceVO ID is required");
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "InstanceVO ID is required");
         }
 
         instanceRepository.findById(id)
-                .orElseThrow(() -> new BusinessException(404, "InstanceVO not found: " + id));
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND.value(), "InstanceVO not found: " + id));
         instanceRepository.deleteById(id);
     }
 
     private void requireInstance(InstanceVO instance) {
         if (instance == null) {
-            throw new BusinessException(400, "Instance request is required");
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "Instance request is required");
         }
     }
 

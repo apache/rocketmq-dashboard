@@ -16,7 +16,9 @@
  */
 package org.apache.rocketmq.studio.cloud.credential;
 
+import org.springframework.http.HttpStatus;
 import jakarta.validation.Valid;
+import org.apache.rocketmq.studio.common.domain.DeleteRequestDTO;
 import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,18 +27,16 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import lombok.RequiredArgsConstructor;
 
 import java.util.List;
 
+@RequiredArgsConstructor
 @RestController
 @RequestMapping("/api/cloud-credentials")
 public class CloudCredentialController {
 
     private final CloudCredentialService credentialService;
-
-    public CloudCredentialController(CloudCredentialService credentialService) {
-        this.credentialService = credentialService;
-    }
 
     @GetMapping
     public Result<List<CloudCredentialVO>> listCredentials() {
@@ -47,7 +47,7 @@ public class CloudCredentialController {
     public Result<CloudCredentialVO> createCredential(
             @Valid @RequestBody(required = false) CreateCloudCredentialDTO request) {
         if (request == null) {
-            throw new BusinessException(400, "Cloud credential request is required");
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "Cloud credential request is required");
         }
         return Result.ok(credentialService.create(request.toCloudCredentialVO()));
     }
@@ -56,13 +56,13 @@ public class CloudCredentialController {
     public Result<CloudCredentialVO> updateCredential(
             @Valid @RequestBody(required = false) UpdateCloudCredentialDTO request) {
         if (request == null) {
-            throw new BusinessException(400, "Cloud credential request is required");
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "Cloud credential request is required");
         }
         return Result.ok(credentialService.update(request));
     }
 
     @PostMapping("/delete")
-    public Result<Void> deleteCredential(@Valid @RequestBody CloudCredentialDeleteRequestDTO request) {
+    public Result<Void> deleteCredential(@Valid @RequestBody DeleteRequestDTO request) {
         credentialService.delete(request.getId());
         return Result.ok();
     }

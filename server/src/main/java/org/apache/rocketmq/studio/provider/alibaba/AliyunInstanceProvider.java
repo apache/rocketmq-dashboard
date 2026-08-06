@@ -43,6 +43,9 @@ import com.aliyun.sdk.service.rocketmq20220801.models.ListTopicsResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListTopicsResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.ResetConsumeOffsetRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.UpdateTopicRequest;
+import org.springframework.http.HttpStatus;
+import org.springframework.util.StringUtils;
+
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
@@ -56,6 +59,7 @@ import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.springframework.stereotype.Component;
+import lombok.RequiredArgsConstructor;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -64,6 +68,7 @@ import java.util.List;
  * Aliyun RocketMQ 5.x implementation of the instance-scoped operations SPI, backed by the
  * OpenAPI async SDK through {@link AliyunClientFactory}.
  */
+@RequiredArgsConstructor
 @Component
 public class AliyunInstanceProvider implements InstanceProvider {
 
@@ -79,11 +84,6 @@ public class AliyunInstanceProvider implements InstanceProvider {
     private final AliyunClientFactory clientFactory;
     private final InstanceRepository instanceRepository;
 
-    public AliyunInstanceProvider(AliyunClientFactory clientFactory, InstanceRepository instanceRepository) {
-        this.clientFactory = clientFactory;
-        this.instanceRepository = instanceRepository;
-    }
-
     @Override
     public InstanceVendor vendor() {
         return InstanceVendor.ALIYUN;
@@ -98,7 +98,7 @@ public class AliyunInstanceProvider implements InstanceProvider {
                     .instanceId(ctx.cloudInstanceId())
                     .pageNumber(page)
                     .pageSize(AliyunConverters.PAGE_SIZE);
-            if (!isBlank(search)) {
+            if (!!StringUtils.hasText(search)) {
                 builder.filter(search);
             }
             ListTopicsRequest request = builder.build();
@@ -128,11 +128,11 @@ public class AliyunInstanceProvider implements InstanceProvider {
     @Override
     public TopicVO createTopic(String instanceId, TopicVO topic) {
         Context ctx = resolve(instanceId);
-        if (topic == null || isBlank(topic.getName())) {
-            throw new BusinessException(400, "Topic name is required");
+        if (topic == null || !StringUtils.hasText(topic.getName())) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "Topic name is required");
         }
         if (topic.getType() == null) {
-            throw new BusinessException(400, "Topic type is required");
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "Topic type is required");
         }
         CreateTopicRequest request = CreateTopicRequest.builder()
                 .instanceId(ctx.cloudInstanceId())
@@ -150,8 +150,8 @@ public class AliyunInstanceProvider implements InstanceProvider {
     @Override
     public TopicVO updateTopic(String instanceId, TopicVO topic) {
         Context ctx = resolve(instanceId);
-        if (topic == null || isBlank(topic.getName())) {
-            throw new BusinessException(400, "Topic name is required");
+        if (topic == null || !StringUtils.hasText(topic.getName())) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "Topic name is required");
         }
         UpdateTopicRequest request = UpdateTopicRequest.builder()
                 .instanceId(ctx.cloudInstanceId())
@@ -203,7 +203,7 @@ public class AliyunInstanceProvider implements InstanceProvider {
                     .instanceId(ctx.cloudInstanceId())
                     .pageNumber(page)
                     .pageSize(AliyunConverters.PAGE_SIZE);
-            if (!isBlank(search)) {
+            if (!!StringUtils.hasText(search)) {
                 builder.filter(search);
             }
             ListConsumerGroupsRequest request = builder.build();
@@ -230,8 +230,8 @@ public class AliyunInstanceProvider implements InstanceProvider {
     @Override
     public ConsumerGroupVO createConsumerGroup(String instanceId, ConsumerGroupVO group) {
         Context ctx = resolve(instanceId);
-        if (group == null || isBlank(group.getName())) {
-            throw new BusinessException(400, "Consumer group name is required");
+        if (group == null || !StringUtils.hasText(group.getName())) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "Consumer group name is required");
         }
         String deliveryOrderType = normalizeDeliveryOrderType(group.getDeliveryOrderType());
         int maxRetryTimes = group.getRetryMaxTimes() > 0 ? group.getRetryMaxTimes() : DEFAULT_MAX_RETRY_TIMES;
@@ -329,7 +329,7 @@ public class AliyunInstanceProvider implements InstanceProvider {
         ResetConsumeOffsetRequest.Builder builder = ResetConsumeOffsetRequest.builder()
                 .instanceId(ctx.cloudInstanceId())
                 .consumerGroupId(groupName);
-        if (!isBlank(topic)) {
+        if (!!StringUtils.hasText(topic)) {
             builder.topicName(topic);
         }
         if (timestamp > 0L) {
@@ -352,13 +352,13 @@ public class AliyunInstanceProvider implements InstanceProvider {
                     .instanceId(ctx.cloudInstanceId())
                     .pageNumber(page)
                     .pageSize(AliyunConverters.MESSAGE_PAGE_SIZE);
-            if (!isBlank(topic)) {
+            if (!!StringUtils.hasText(topic)) {
                 builder.topicName(topic);
             }
-            if (!isBlank(msgId)) {
+            if (!!StringUtils.hasText(msgId)) {
                 builder.messageId(msgId);
             }
-            if (!isBlank(key)) {
+            if (!!StringUtils.hasText(key)) {
                 builder.messageKey(key);
             }
             if (startTime != null) {
@@ -378,7 +378,7 @@ public class AliyunInstanceProvider implements InstanceProvider {
             }
             for (ListMessagesResponseBody.List item : list) {
                 MessageRecordVO vo = AliyunConverters.toMessageRecord(item);
-                if (isBlank(tag) || tag.equals(vo.getTag())) {
+                if (!StringUtils.hasText(tag) || tag.equals(vo.getTag())) {
                     records.add(vo);
                 }
             }
@@ -401,33 +401,29 @@ public class AliyunInstanceProvider implements InstanceProvider {
         GetTraceResponseBody body = response == null ? null : response.getBody();
         GetTraceResponseBody.Data data = body == null ? null : body.getData();
         if (data == null) {
-            throw new BusinessException(404, "Message trace not found: " + msgId);
+            throw new BusinessException(HttpStatus.NOT_FOUND.value(), "Message trace not found: " + msgId);
         }
         return AliyunConverters.toTraceRecord(data);
     }
 
     private Context resolve(String instanceId) {
-        if (isBlank(instanceId)) {
-            throw new BusinessException(400, "instanceId is required");
+        if (!StringUtils.hasText(instanceId)) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "instanceId is required");
         }
         InstanceVO instance = instanceRepository.findById(instanceId)
-                .orElseThrow(() -> new BusinessException(404, "Instance not found: " + instanceId));
-        if (isBlank(instance.getCloudInstanceId()) || isBlank(instance.getRegionId())
-                || isBlank(instance.getCredentialId())) {
-            throw new BusinessException(400, "Instance " + instanceId + " is missing Aliyun cloud binding");
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND.value(), "Instance not found: " + instanceId));
+        if (!StringUtils.hasText(instance.getCloudInstanceId()) || !StringUtils.hasText(instance.getRegionId())
+                || !StringUtils.hasText(instance.getCredentialId())) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "Instance " + instanceId + " is missing Aliyun cloud binding");
         }
         return new Context(instance.getCloudInstanceId(), instance.getRegionId(), instance.getCredentialId());
     }
 
     private static boolean matchesType(String type, TopicVO vo) {
-        if (isBlank(type)) {
+        if (!StringUtils.hasText(type)) {
             return true;
         }
         return vo.getType() != null && vo.getType().name().equalsIgnoreCase(type.trim());
-    }
-
-    private static boolean isBlank(String value) {
-        return value == null || value.isBlank();
     }
 
     private record Context(String cloudInstanceId, String regionId, String credentialId) {

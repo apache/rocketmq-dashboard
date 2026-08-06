@@ -140,7 +140,7 @@ class InstanceControllerTest {
                         .content("null"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400))
-                .andExpect(jsonPath("$.message").value("Instance request is required"));
+                .andExpect(jsonPath("$.message").value("Invalid request body"));
 
         verifyNoInteractions(instanceService);
     }
@@ -179,7 +179,7 @@ class InstanceControllerTest {
                         .content("null"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400))
-                .andExpect(jsonPath("$.message").value("Instance request is required"));
+                .andExpect(jsonPath("$.message").value("Invalid request body"));
 
         verifyNoInteractions(instanceService);
     }

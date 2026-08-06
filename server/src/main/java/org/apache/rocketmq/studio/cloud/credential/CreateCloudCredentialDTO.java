@@ -18,7 +18,9 @@ package org.apache.rocketmq.studio.cloud.credential;
 
 import jakarta.validation.constraints.NotBlank;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import lombok.Data;
 
+@Data
 public class CreateCloudCredentialDTO {
 
     @NotBlank(message = "credential name is required")
@@ -34,46 +36,6 @@ public class CreateCloudCredentialDTO {
     private String secretKey;
 
     private String remark;
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public String getVendor() {
-        return vendor;
-    }
-
-    public void setVendor(String vendor) {
-        this.vendor = vendor;
-    }
-
-    public String getAccessKey() {
-        return accessKey;
-    }
-
-    public void setAccessKey(String accessKey) {
-        this.accessKey = accessKey;
-    }
-
-    public String getSecretKey() {
-        return secretKey;
-    }
-
-    public void setSecretKey(String secretKey) {
-        this.secretKey = secretKey;
-    }
-
-    public String getRemark() {
-        return remark;
-    }
-
-    public void setRemark(String remark) {
-        this.remark = remark;
-    }
 
     public CloudCredentialVO toCloudCredentialVO() {
         CloudCredentialVO vo = new CloudCredentialVO();

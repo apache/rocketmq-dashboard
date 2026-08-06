@@ -18,13 +18,13 @@ package org.apache.rocketmq.studio.cloud.credential;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.persistence.entity.RmqCloudCredential;
 import org.apache.rocketmq.studio.persistence.mapper.RmqCloudCredentialMapper;
 import org.springframework.stereotype.Repository;
+import lombok.RequiredArgsConstructor;
 
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
-import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -33,14 +33,11 @@ import java.util.stream.Collectors;
  * MySQL-backed cloud credential repository. Secret keys are stored base64-encoded in
  * {@code rmq_cloud_credential.secret_key} and decoded when read; plain text is never persisted.
  */
+@RequiredArgsConstructor
 @Repository
 public class MybatisPlusCloudCredentialRepository implements CloudCredentialRepository {
 
     private final RmqCloudCredentialMapper credentialMapper;
-
-    public MybatisPlusCloudCredentialRepository(RmqCloudCredentialMapper credentialMapper) {
-        this.credentialMapper = credentialMapper;
-    }
 
     @Override
     public List<CloudCredentialVO> findAll() {
@@ -90,7 +87,7 @@ public class MybatisPlusCloudCredentialRepository implements CloudCredentialRepo
         vo.setName(entity.getName());
         vo.setVendor(parseVendor(entity.getVendor()));
         vo.setAccessKey(entity.getAccessKey());
-        vo.setSecretKey(decodeBase64(entity.getSecretKey()));
+        vo.setSecretKey(CredentialUtils.decodeBase64(entity.getSecretKey()));
         vo.setRemark(entity.getRemark());
         vo.setCreatedAt(entity.getCreatedAt());
         vo.setUpdatedAt(entity.getUpdatedAt());
@@ -103,7 +100,7 @@ public class MybatisPlusCloudCredentialRepository implements CloudCredentialRepo
         entity.setName(vo.getName());
         entity.setVendor(vo.getVendor() == null ? null : vo.getVendor().name());
         entity.setAccessKey(vo.getAccessKey());
-        entity.setSecretKey(encodeBase64(vo.getSecretKey()));
+        entity.setSecretKey(CredentialUtils.encodeBase64(vo.getSecretKey()));
         entity.setRemark(vo.getRemark());
         entity.setCreatedAt(vo.getCreatedAt());
         entity.setUpdatedAt(vo.getUpdatedAt() == null ? LocalDateTime.now() : vo.getUpdatedAt());
@@ -115,25 +112,6 @@ public class MybatisPlusCloudCredentialRepository implements CloudCredentialRepo
             return InstanceVendor.valueOf(vendor);
         } catch (IllegalArgumentException | NullPointerException ex) {
             return null;
-        }
-    }
-
-    static String encodeBase64(String plainText) {
-        if (plainText == null) {
-            return null;
-        }
-        return Base64.getEncoder().encodeToString(plainText.getBytes(StandardCharsets.UTF_8));
-    }
-
-    static String decodeBase64(String stored) {
-        if (stored == null) {
-            return null;
-        }
-        try {
-            return new String(Base64.getDecoder().decode(stored), StandardCharsets.UTF_8);
-        } catch (IllegalArgumentException ex) {
-            // tolerate legacy values that were stored without encoding
-            return stored;
         }
     }
 }

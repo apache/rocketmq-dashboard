@@ -64,7 +64,7 @@ describe('LLM API', () => {
   });
 
   it('fetches LLM config', async () => {
-    mock.onGet('/llm/config').reply(200, storedConfig);
+    mock.onGet('/llm/config').reply(200, { code: 200, message: 'success', data: storedConfig });
 
     const result = await getLlmConfig();
     expect(result).toEqual(storedConfig);
@@ -81,7 +81,7 @@ describe('LLM API', () => {
       const body = JSON.parse(config.data);
       expect(body.provider).toBe('openai');
       expect(body.model).toBe('gpt-4o');
-      return [200, { status: 0, msg: 'saved' }];
+      return [200, { code: 200, message: 'success', data: { status: 0, msg: 'saved' } }];
     });
 
     const result = await saveLlmConfig(configWithApiKey);
@@ -93,7 +93,10 @@ describe('LLM API', () => {
     mock.onPost('/llm/config/test').reply((config) => {
       const body = JSON.parse(config.data);
       expect(body.apiKey).toBe('sk-test-key-1234');
-      return [200, { status: 0, msg: 'Connection successful' }];
+      return [
+        200,
+        { code: 200, message: 'success', data: { status: 0, msg: 'Connection successful' } },
+      ];
     });
 
     const result = await testLlmConnection(configWithApiKey);
@@ -103,10 +106,14 @@ describe('LLM API', () => {
 
   it('tests LLM connection with failure', async () => {
     mock.onPost('/llm/config/test').reply(200, {
-      status: 1,
-      errMsg: 'Invalid API Key',
-      code: 'llm.config.missing_api_key',
-      hint: 'Configure an API key for provider openai.',
+      code: 200,
+      message: 'success',
+      data: {
+        status: 1,
+        errMsg: 'Invalid API Key',
+        code: 'llm.config.missing_api_key',
+        hint: 'Configure an API key for provider openai.',
+      },
     });
 
     const result = await testLlmConnection(sampleConfig);
@@ -121,7 +128,13 @@ describe('LLM API', () => {
       { id: 'gpt-4o', name: 'GPT-4o' },
       { id: 'gpt-4-turbo', name: 'GPT-4 Turbo' },
     ];
-    mock.onGet('/llm/models').reply(200, { status: 0, data: models, source: 'provider' });
+    mock
+      .onGet('/llm/models')
+      .reply(200, {
+        code: 200,
+        message: 'success',
+        data: { status: 0, data: models, source: 'provider' },
+      });
 
     const result = await getLlmModels();
     expect(result.status).toBe(0);
@@ -132,12 +145,16 @@ describe('LLM API', () => {
 
   it('keeps model fallback warning details', async () => {
     mock.onGet('/llm/models').reply(200, {
-      status: 0,
-      data: [{ id: 'gpt-4o', name: 'GPT-4o' }],
-      source: 'fallback',
-      warning: 'LLM provider request failed with status 401',
-      warningCode: 'llm.provider.upstream_error',
-      hint: 'Check the provider credentials.',
+      code: 200,
+      message: 'success',
+      data: {
+        status: 0,
+        data: [{ id: 'gpt-4o', name: 'GPT-4o' }],
+        source: 'fallback',
+        warning: 'LLM provider request failed with status 401',
+        warningCode: 'llm.provider.upstream_error',
+        hint: 'Check the provider credentials.',
+      },
     });
 
     const result = await getLlmModels();
@@ -147,7 +164,9 @@ describe('LLM API', () => {
   });
 
   it('handles empty models list', async () => {
-    mock.onGet('/llm/models').reply(200, { status: 0, data: [] });
+    mock
+      .onGet('/llm/models')
+      .reply(200, { code: 200, message: 'success', data: { status: 0, data: [] } });
 
     const result = await getLlmModels();
     expect(result.status).toBe(0);
@@ -166,7 +185,7 @@ describe('LLM API', () => {
       expect(body.provider).toBe('azure');
       expect(body.deploymentName).toBe('my-gpt4');
       expect(body.apiVersion).toBe('2024-02-15-preview');
-      return [200, { status: 0 }];
+      return [200, { code: 200, message: 'success', data: { status: 0 } }];
     });
 
     await saveLlmConfig(azureConfig);

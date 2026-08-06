@@ -63,12 +63,13 @@ class LlmControllerTest {
 
         mockMvc.perform(get("/api/llm/config"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.provider").value("openai"))
-                .andExpect(jsonPath("$.apiKey").doesNotExist())
-                .andExpect(jsonPath("$.apiKeyConfigured").value(true))
-                .andExpect(jsonPath("$.apiBase").value("https://api.openai.com/v1"))
-                .andExpect(jsonPath("$.model").value("gpt-4o"))
-                .andExpect(jsonPath("$.enabled").value(true));
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.provider").value("openai"))
+                .andExpect(jsonPath("$.data.apiKey").doesNotExist())
+                .andExpect(jsonPath("$.data.apiKeyConfigured").value(true))
+                .andExpect(jsonPath("$.data.apiBase").value("https://api.openai.com/v1"))
+                .andExpect(jsonPath("$.data.model").value("gpt-4o"))
+                .andExpect(jsonPath("$.data.enabled").value(true));
     }
 
     @Test
@@ -84,8 +85,8 @@ class LlmControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(config)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value(0))
-                .andExpect(jsonPath("$.msg").value("saved"));
+                .andExpect(jsonPath("$.data.status").value(0))
+                .andExpect(jsonPath("$.data.msg").value("saved"));
 
         verify(llmConfigService).saveConfig(any(LlmConfigVO.class));
     }
@@ -102,8 +103,8 @@ class LlmControllerTest {
                                 .model("llama3")
                                 .build())))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value(0))
-                .andExpect(jsonPath("$.msg").value("Configuration accepted"));
+                .andExpect(jsonPath("$.data.status").value(0))
+                .andExpect(jsonPath("$.data.msg").value("Configuration accepted"));
     }
 
     @Test
@@ -114,8 +115,8 @@ class LlmControllerTest {
 
         mockMvc.perform(get("/api/llm/models"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value(0))
-                .andExpect(jsonPath("$.data[0].id").value("gpt-4o"))
-                .andExpect(jsonPath("$.data[1].name").value("GPT-4"));
+                .andExpect(jsonPath("$.data.status").value(0))
+                .andExpect(jsonPath("$.data.data[0].id").value("gpt-4o"))
+                .andExpect(jsonPath("$.data.data[1].name").value("GPT-4"));
     }
 }

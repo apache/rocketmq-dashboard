@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.cloud.credential;
 
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.junit.jupiter.api.Test;
@@ -151,13 +152,13 @@ class CloudCredentialServiceTest {
 
     @Test
     void repositoryShouldBase64EncodeSecretTest() {
-        String encoded = MybatisPlusCloudCredentialRepository.encodeBase64("plain-secret");
+        String encoded = CredentialUtils.encodeBase64("plain-secret");
         assertThat(encoded).isNotEqualTo("plain-secret");
-        assertThat(MybatisPlusCloudCredentialRepository.decodeBase64(encoded)).isEqualTo("plain-secret");
+        assertThat(CredentialUtils.decodeBase64(encoded)).isEqualTo("plain-secret");
     }
 
     @Test
     void repositoryShouldTolerateLegacyPlainSecretTest() {
-        assertThat(MybatisPlusCloudCredentialRepository.decodeBase64("not base64 !!!")).isEqualTo("not base64 !!!");
+        assertThat(CredentialUtils.decodeBase64("not base64 !!!")).isEqualTo("not base64 !!!");
     }
 }
