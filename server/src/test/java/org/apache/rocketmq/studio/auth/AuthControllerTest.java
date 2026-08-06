@@ -18,6 +18,7 @@
 package org.apache.rocketmq.studio.auth;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.settings.SettingsRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -51,6 +52,9 @@ class AuthControllerTest {
 
     @MockBean
     private AuthProperties authProperties;
+
+    @MockBean
+    private SettingsRepository settingsRepository;
 
     @Autowired
     private ObjectMapper objectMapper;
