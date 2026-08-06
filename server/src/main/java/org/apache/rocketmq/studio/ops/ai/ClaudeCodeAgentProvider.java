@@ -30,7 +30,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
@@ -92,41 +91,19 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
 
         ProcessBuilder builder = new ProcessBuilder(command);
         builder.environment().putAll(childEnv(config));
-        // Merge stderr into stdout and drain the merged stream on a background thread so a chatty
-        // or hung child can never deadlock the caller on a full pipe buffer. The timeout is
-        // enforced by waitFor while the reader thread keeps consuming.
-        builder.redirectErrorStream(true);
+        builder.redirectErrorStream(false);
         try {
             Process process = builder.start();
             AtomicBoolean emitted = new AtomicBoolean(false);
             StringBuilder resultText = new StringBuilder();
-            StringBuilder rawOutput = new StringBuilder();
-            CompletableFuture<Void> drainFuture = CompletableFuture.runAsync(() -> {
-                try (BufferedReader reader = new BufferedReader(
-                        new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        rawOutput.append(line).append('\n');
-                        parseStreamLine(line, tokenConsumer, emitted, resultText);
-                    }
-                } catch (IOException exception) {
-                    log.debug("CLI output stream closed while draining", exception);
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    parseStreamLine(line, tokenConsumer, emitted, resultText);
                 }
-            });
-            boolean finished;
-            try {
-                finished = process.waitFor(STREAM_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-            } catch (InterruptedException exception) {
-                process.destroyForcibly();
-                Thread.currentThread().interrupt();
-                throw new LlmGatewayException(502, "llm.provider.interrupted",
-                        binaryName() + " CLI execution was interrupted", "Retry the request.", exception);
             }
-            try {
-                drainFuture.get(5, TimeUnit.SECONDS);
-            } catch (Exception ignored) {
-                // The process has exited; any remaining output has been drained by the reader.
-            }
+            boolean finished = process.waitFor(STREAM_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             if (!finished) {
                 process.destroyForcibly();
                 throw new LlmGatewayException(504, "llm.provider.timeout",
@@ -134,8 +111,9 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
                         "Retry with a shorter prompt or check the gateway latency.");
             }
             if (process.exitValue() != 0 && !emitted.get()) {
+                String stderr = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
                 throw new LlmGatewayException(502, "llm.provider.cli_error",
-                        binaryName() + " CLI failed: " + truncate(rawOutput.toString()),
+                        binaryName() + " CLI failed: " + (StringUtils.hasText(stderr) ? stderr.trim() : "unknown error"),
                         "Check the provider credentials, base URL and model name.");
             }
             if (!emitted.get() && resultText.length() > 0) {
@@ -145,6 +123,10 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
             throw new LlmGatewayException(502, "llm.provider.io_error",
                     "Failed to execute " + binaryName() + " CLI",
                     "Check that the CLI binary is installed and executable.", exception);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new LlmGatewayException(502, "llm.provider.interrupted",
+                    binaryName() + " CLI execution was interrupted", "Retry the request.", exception);
         }
     }
 
@@ -220,13 +202,5 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
                     + ANTHROPIC_APP_SUFFIX;
         }
         return normalized;
-    }
-
-    private static String truncate(String value) {
-        if (value == null) {
-            return "";
-        }
-        String trimmed = value.trim();
-        return trimmed.length() <= 500 ? trimmed : trimmed.substring(0, 500) + "...";
     }
 }

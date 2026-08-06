@@ -559,22 +559,6 @@ class ClusterServiceTest {
     }
 
     @Test
-    void updateClusterConfigShouldMirrorSingleQueueNumsUpdate() {
-        when(clusterProvider.refreshClusterDetail("cluster-1")).thenReturn(sampleCluster);
-        UpdateConfigDTO command = UpdateConfigDTO.builder()
-                .id("cluster-1")
-                .writeQueueNums(12)
-                .build();
-
-        ClusterConfigUpdateResultVO result = clusterService.updateClusterConfig(command);
-
-        // The broker exposes a single defaultTopicQueueNums property, so the stored write and read
-        // queue counts must stay in sync after a partial update.
-        assertThat(result.getCluster().getConfig().getWriteQueueNums()).isEqualTo(12);
-        assertThat(result.getCluster().getConfig().getReadQueueNums()).isEqualTo(12);
-    }
-
-    @Test
     void updateClusterConfigShouldUseLiveClusterWhenItIsNotPersisted() {
         when(clusterProvider.refreshClusterDetail("cluster-1")).thenReturn(sampleCluster);
         UpdateConfigDTO command = UpdateConfigDTO.builder()

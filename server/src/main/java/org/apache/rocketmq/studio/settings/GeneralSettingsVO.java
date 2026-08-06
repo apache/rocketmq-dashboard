@@ -44,8 +44,6 @@ public class GeneralSettingsVO {
     private boolean clearApiKey;
     private String model;
     private String baseUrl;
-    private Integer maxTokens;
-    private Double temperature;
 
     @JsonProperty(value = "apiKeyConfigured", access = JsonProperty.Access.READ_ONLY)
     public boolean isApiKeyConfigured() {

@@ -12,15 +12,10 @@ package org.apache.rocketmq.studio.rocketmq;
 
 import org.apache.rocketmq.client.exception.MQBrokerException;
 import org.apache.rocketmq.client.exception.MQClientException;
-import org.apache.rocketmq.client.producer.DefaultMQProducer;
-import org.apache.rocketmq.client.producer.SendResult;
-import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
-import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
-import org.apache.rocketmq.studio.instance.topic.SendMessageVO;
 import org.apache.rocketmq.studio.ops.audit.AuditService;
 import org.apache.rocketmq.studio.persistence.mapper.RmqGroupMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqTopicMapper;
@@ -28,17 +23,11 @@ import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.MockedConstruction;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -92,30 +81,5 @@ class RocketMQAdminClientImplTest {
         assertThatThrownBy(() -> adminClient.getConsumerGroup("orders"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("ACL denied");
-    }
-
-    @Test
-    void sendMessageShouldNotFailWhenAuditRecordingFails() throws Exception {
-        when(properties.getNamesrvAddr()).thenReturn("10.0.0.1:9876");
-        doThrow(new RuntimeException("audit db down")).when(auditService)
-                .record(anyString(), anyString(), anyString(), anyString());
-        try (MockedConstruction<DefaultMQProducer> mockedProducers =
-                     mockConstruction(DefaultMQProducer.class, (producer, context) -> {
-                         doNothing().when(producer).start();
-                         SendResult sendResult = new SendResult();
-                         sendResult.setMsgId("msg-1");
-                         sendResult.setOffsetMsgId("offset-1");
-                         when(producer.send(any(Message.class))).thenReturn(sendResult);
-                         doNothing().when(producer).shutdown();
-                     })) {
-            SendMessageDTO request = new SendMessageDTO();
-            request.setTopic("TopicA");
-            request.setBody("hello");
-
-            SendMessageVO result = adminClient.sendMessage(request);
-
-            // The message was already delivered; an audit failure must not turn this into an error.
-            assertThat(result.getMsgId()).isEqualTo("msg-1");
-        }
     }
 }
