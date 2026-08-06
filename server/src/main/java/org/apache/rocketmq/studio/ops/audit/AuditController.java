@@ -42,21 +42,31 @@ public class AuditController {
             @RequestParam(defaultValue = "20") int pageSize,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String operationType,
+            @RequestParam(required = false) String resourceType,
+            @RequestParam(required = false) String clusterId,
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate,
             @RequestParam(required = false) String result) {
-        return Result.ok(auditService.queryLogs(page, pageSize, search,
-                operationType, startDate, endDate, result));
+        return Result.ok(auditService.queryLogs(page, pageSize, search, operationType,
+                resourceType, clusterId, startDate, endDate, result));
+    }
+
+    @GetMapping("/filter-options")
+    public Result<AuditFilterOptionsVO> getFilterOptions() {
+        return Result.ok(auditService.getFilterOptions());
     }
 
     @GetMapping("/export")
     public Result<String> exportLogs(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String operationType,
+            @RequestParam(required = false) String resourceType,
+            @RequestParam(required = false) String clusterId,
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate,
             @RequestParam(required = false) String result) {
-        return Result.ok(auditService.exportLogs(search, operationType, startDate, endDate, result));
+        return Result.ok(auditService.exportLogs(search, operationType, resourceType,
+                clusterId, startDate, endDate, result));
     }
 
     @PostMapping("/cleanup")
