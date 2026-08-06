@@ -77,7 +77,7 @@ public class AclController {
 
     @PostMapping("/users/update")
     public Result<AclUserVO> updateUser(@Valid @RequestBody(required = false) UpdateAclUserDTO user) {
-        return Result.ok(aclService.updateUser(requireRequest(user, "ACL user request is required")));
+        return Result.ok(aclService.updateUser(requireRequest(user, "ACL user request is required").toAclUserVO()));
     }
 
     @PostMapping("/users/delete")

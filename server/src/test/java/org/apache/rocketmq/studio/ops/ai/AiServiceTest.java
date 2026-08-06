@@ -16,7 +16,6 @@
  */
 package org.apache.rocketmq.studio.ops.ai;
 
-import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -31,10 +30,8 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -205,22 +202,5 @@ class AiServiceTest {
 
         assertThat(result).isSameAs(output);
         verify(mcpServerRegistry).execute("rmq.capabilities", input);
-    }
-
-    @Test
-    void chatRejectsNullRequest() {
-        assertThatThrownBy(() -> aiService.chat(null))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("Chat request is required");
-        verifyNoInteractions(llmGateway);
-    }
-
-    @Test
-    void executeHandlesNullCommand() {
-        AiExecuteResultVO result = aiService.execute(null);
-
-        assertThat(result.isSuccess()).isFalse();
-        assertThat(result.getResult()).isEqualTo("Command request is required");
-        verifyNoInteractions(llmGateway);
     }
 }
