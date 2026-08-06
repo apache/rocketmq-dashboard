@@ -48,7 +48,7 @@ public class NameSrvAdminClient implements AdminClient {
     }
 
     @Override
-    public void deleteTopic(String name) {
+    public void deleteTopic(String instanceId, String name) {
         throw new UnsupportedOperationException("Not implemented");
     }
 

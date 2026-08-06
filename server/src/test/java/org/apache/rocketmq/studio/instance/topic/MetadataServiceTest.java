@@ -139,7 +139,7 @@ class MetadataServiceTest {
     void deleteTopicShouldDelegateToAdminClient() {
         metadataService.deleteTopic("topic-to-delete");
 
-        verify(adminClient).deleteTopic("topic-to-delete");
+        verify(adminClient).deleteTopic(null, "topic-to-delete");
     }
 
     @Test

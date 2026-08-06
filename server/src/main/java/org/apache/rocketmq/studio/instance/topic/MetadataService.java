@@ -82,7 +82,7 @@ public class MetadataService {
         if (provider.isPresent()) {
             provider.get().deleteTopic(instanceId, name);
         } else {
-            adminClient.deleteTopic(name);
+            adminClient.deleteTopic(instanceId, name);
         }
     }
 

@@ -24,6 +24,8 @@ import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
+import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
@@ -57,6 +59,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mockConstruction;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -72,12 +75,15 @@ class RocketMQAdminClientImplTest {
     private RmqGroupMapper groupMapper;
     @Mock
     private AuditService auditService;
+    @Mock
+    private RuntimeAdminClientResolver runtimeAdminClientResolver;
 
     private RocketMQAdminClientImpl adminClient;
 
     @BeforeEach
     void setUp() {
-        adminClient = new RocketMQAdminClientImpl(adminExt, properties, topicMapper, groupMapper, auditService);
+        adminClient = new RocketMQAdminClientImpl(adminExt, properties, topicMapper, groupMapper, auditService,
+                runtimeAdminClientResolver);
     }
 
     @Test
@@ -139,6 +145,33 @@ class RocketMQAdminClientImplTest {
         for (LambdaQueryWrapper<RmqTopic> wrapper : captor.getAllValues()) {
             assertThat(wrapper.getSqlSegment()).contains("cluster_id");
         }
+    }
+
+    @Test
+    void deleteTopicUsesSelectedInstanceAdmin() throws Exception {
+        DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        when(selectedAdmin.getNamesrvAddr()).thenReturn("10.0.0.2:9876");
+        ClusterInfo clusterInfo = new ClusterInfo();
+        clusterInfo.setClusterAddrTable(new HashMap<>(Map.of("cluster-1", new HashSet<>(List.of("broker-1")))));
+        BrokerData brokerData = new BrokerData();
+        brokerData.setBrokerName("broker-1");
+        brokerData.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.1:10911")));
+        clusterInfo.setBrokerAddrTable(new HashMap<>(Map.of("broker-1", brokerData)));
+        when(selectedAdmin.examineBrokerClusterInfo()).thenReturn(clusterInfo);
+        doNothing().when(selectedAdmin).deleteTopicInBroker(any(), anyString());
+        doNothing().when(selectedAdmin).deleteTopicInNameServer(any(), anyString(), anyString());
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
+                .thenAnswer(invocation -> {
+                    MqAdminExtFactory.AdminAction<?> action = invocation.getArgument(1);
+                    return action.apply(selectedAdmin);
+                });
+
+        adminClient.deleteTopic("instance-a", "orders");
+
+        verify(runtimeAdminClientResolver).execute(org.mockito.ArgumentMatchers.eq("instance-a"), any());
+        verify(selectedAdmin).deleteTopicInBroker(Set.of("10.0.0.1:10911"), "orders");
+        verify(selectedAdmin).deleteTopicInNameServer(Set.of("10.0.0.2:9876"), "cluster-1", "orders");
+        verify(adminExt, never()).deleteTopicInBroker(any(), anyString());
     }
 
     @Test

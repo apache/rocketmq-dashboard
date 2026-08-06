@@ -25,6 +25,7 @@ import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
@@ -69,6 +70,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
     private final RmqTopicMapper topicMapper;
     private final RmqGroupMapper groupMapper;
     private final AuditService auditService;
+    private final RuntimeAdminClientResolver runtimeAdminClientResolver;
 
     @Autowired
     public RocketMQAdminClientImpl(
@@ -76,12 +78,14 @@ public class RocketMQAdminClientImpl implements AdminClient {
             RocketMQProperties properties,
             RmqTopicMapper topicMapper,
             RmqGroupMapper groupMapper,
-            AuditService auditService) {
+            AuditService auditService,
+            RuntimeAdminClientResolver runtimeAdminClientResolver) {
         this.adminExt = adminExt;
         this.properties = properties;
         this.topicMapper = topicMapper;
         this.groupMapper = groupMapper;
         this.auditService = auditService;
+        this.runtimeAdminClientResolver = runtimeAdminClientResolver;
     }
 
     @Override
@@ -283,21 +287,31 @@ public class RocketMQAdminClientImpl implements AdminClient {
     }
 
     @Override
-    public void deleteTopic(String name) {
-        if (adminExt == null) {
+    public void deleteTopic(String instanceId, String name) {
+        if (StringUtils.hasText(instanceId)) {
+            runtimeAdminClientResolver.execute(instanceId, admin -> {
+                deleteTopic((DefaultMQAdminExt) admin, name, ((DefaultMQAdminExt) admin).getNamesrvAddr());
+                return null;
+            });
+            return;
+        }
+        deleteTopic(adminExt, name, properties.getNamesrvAddr());
+    }
+
+    private void deleteTopic(DefaultMQAdminExt activeAdmin, String name, String namesrvAddr) {
+        if (activeAdmin == null) {
             throw new BusinessException(503, "RocketMQ admin not connected");
         }
 
         try {
-            Set<String> brokerAddrs = getAllMasterBrokerAddrs();
+            Set<String> brokerAddrs = getAllMasterBrokerAddrs(activeAdmin);
 
             // Delete from brokers
             if (!brokerAddrs.isEmpty()) {
-                adminExt.deleteTopicInBroker(brokerAddrs, name);
+                activeAdmin.deleteTopicInBroker(brokerAddrs, name);
             }
 
             // Delete from nameserver
-            String namesrvAddr = properties.getNamesrvAddr();
             if (namesrvAddr != null && !namesrvAddr.isEmpty()) {
                 Set<String> nsAddrs = new HashSet<>();
                 for (String addr : namesrvAddr.split("[;,]")) {
@@ -306,7 +320,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
                         nsAddrs.add(trimmed);
                     }
                 }
-                adminExt.deleteTopicInNameServer(nsAddrs, getClusterName(), name);
+                activeAdmin.deleteTopicInNameServer(nsAddrs, getClusterName(activeAdmin), name);
             }
 
             // Delete from DB
@@ -494,8 +508,12 @@ public class RocketMQAdminClientImpl implements AdminClient {
     // ── Helper methods ──────────────────────────────────────────────────
 
     private Set<String> getAllMasterBrokerAddrs() throws Exception {
+        return getAllMasterBrokerAddrs(adminExt);
+    }
+
+    private Set<String> getAllMasterBrokerAddrs(DefaultMQAdminExt activeAdmin) throws Exception {
         Set<String> addrs = new HashSet<>();
-        ClusterInfo clusterInfo = adminExt.examineBrokerClusterInfo();
+        ClusterInfo clusterInfo = activeAdmin.examineBrokerClusterInfo();
         if (clusterInfo == null || clusterInfo.getBrokerAddrTable() == null) {
             return addrs;
         }
@@ -517,8 +535,12 @@ public class RocketMQAdminClientImpl implements AdminClient {
     }
 
     private String getClusterName() {
+        return getClusterName(adminExt);
+    }
+
+    private String getClusterName(DefaultMQAdminExt activeAdmin) {
         try {
-            ClusterInfo clusterInfo = adminExt.examineBrokerClusterInfo();
+            ClusterInfo clusterInfo = activeAdmin.examineBrokerClusterInfo();
             if (clusterInfo != null && clusterInfo.getClusterAddrTable() != null
                     && !clusterInfo.getClusterAddrTable().isEmpty()) {
                 return clusterInfo.getClusterAddrTable().keySet().iterator().next();
