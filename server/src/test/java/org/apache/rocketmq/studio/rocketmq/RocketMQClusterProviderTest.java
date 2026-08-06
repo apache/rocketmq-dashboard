@@ -107,7 +107,7 @@ class RocketMQClusterProviderTest {
         KVTable table = new KVTable();
         HashMap<String, String> stats = new HashMap<>();
         stats.put("putTps", "  12.7   10.0  9.0");
-        stats.put("getTransferedTps", "\t34.2  30.0  29.0");
+        stats.put("getTransferredTps", "\t34.2  30.0  29.0");
         table.setTable(stats);
         return table;
     }

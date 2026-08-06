@@ -127,7 +127,7 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                     if (runtimeInfo != null && runtimeInfo.getTable() != null) {
                         Map<String, String> table = runtimeInfo.getTable();
                         tpsIn += parseTps(table.get("putTps"));
-                        tpsOut += parseTps(table.get("getTransferedTps"));
+                        tpsOut += parseTps(table.get("getTransferredTps"));
 
                         String msgPutToday = table.get("msgPutTotalTodayMorning");
                         if (msgPutToday != null) {
@@ -162,7 +162,7 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                                 KVTable rt = adminExt.fetchBrokerRuntimeStats(masterAddr);
                                 if (rt != null && rt.getTable() != null) {
                                     clusterTpsIn += (int) parseTps(rt.getTable().get("putTps"));
-                                    clusterTpsOut += (int) parseTps(rt.getTable().get("getTransferedTps"));
+                                    clusterTpsOut += (int) parseTps(rt.getTable().get("getTransferredTps"));
                                     String v = rt.getTable().get("brokerVersionDesc");
                                     if (v != null && "unknown".equals(version)) {
                                         String brokerVersion = v.trim();
