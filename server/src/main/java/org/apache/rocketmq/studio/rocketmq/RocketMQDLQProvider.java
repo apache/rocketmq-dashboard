@@ -196,27 +196,33 @@ public class RocketMQDLQProvider implements DLQProvider {
             }
             outer:
             for (MessageQueue queue : queues) {
-                long minOffset = consumer.searchOffset(queue, begin);
-                long maxOffset = consumer.searchOffset(queue, end);
-                for (long offset = minOffset; offset <= maxOffset; ) {
-                    if (result.size() >= RESEND_HARD_CAP) {
-                        break outer;
-                    }
-                    PullResult pullResult = consumer.pull(queue, "*", offset, 32);
-                    offset = pullResult.getNextBeginOffset();
-                    if (pullResult.getPullStatus() != PullStatus.FOUND
-                            || pullResult.getMsgFoundList() == null) {
-                        break;
-                    }
-                    for (MessageExt messageExt : pullResult.getMsgFoundList()) {
-                        if (messageExt.getStoreTimestamp() >= begin
-                                && messageExt.getStoreTimestamp() <= end) {
-                            result.add(messageExt);
-                            if (result.size() >= RESEND_HARD_CAP) {
-                                break outer;
+                // A single queue failing (e.g. an illegal offset under concurrent consumption)
+                // must not abort the whole DLQ scan silently; skip it and keep collecting the rest.
+                try {
+                    long minOffset = consumer.searchOffset(queue, begin);
+                    long maxOffset = consumer.searchOffset(queue, end);
+                    for (long offset = minOffset; offset <= maxOffset; ) {
+                        if (result.size() >= RESEND_HARD_CAP) {
+                            break outer;
+                        }
+                        PullResult pullResult = consumer.pull(queue, "*", offset, 32);
+                        offset = pullResult.getNextBeginOffset();
+                        if (pullResult.getPullStatus() != PullStatus.FOUND
+                                || pullResult.getMsgFoundList() == null) {
+                            break;
+                        }
+                        for (MessageExt messageExt : pullResult.getMsgFoundList()) {
+                            if (messageExt.getStoreTimestamp() >= begin
+                                    && messageExt.getStoreTimestamp() <= end) {
+                                result.add(messageExt);
+                                if (result.size() >= RESEND_HARD_CAP) {
+                                    break outer;
+                                }
                             }
                         }
                     }
+                } catch (Exception e) {
+                    log.warn("Failed to scan DLQ queue {} in {}: {}", queue, dlqTopic, e.getMessage());
                 }
             }
         } catch (Exception e) {
