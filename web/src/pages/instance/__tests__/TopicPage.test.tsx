@@ -86,6 +86,18 @@ const buildTopics = (count: number): Topic[] =>
     };
   });
 
+const selectedInstance = {
+  id: 'instance-proxy-1',
+  name: 'instance-proxy-1',
+  remark: '',
+  type: 'PROXY' as const,
+  endpoint: '10.0.2.21:8080',
+  topicCount: 0,
+  consumerGroupCount: 0,
+  createdAt: '2026-01-01T00:00:00Z',
+  updatedAt: '2026-01-01T00:00:00Z',
+};
+
 const renderWithProviders = (initialEntry = '/instance/topic') =>
   render(
     <App>
@@ -275,19 +287,7 @@ describe('TopicPage', () => {
   it('imports valid topic CSV rows through the create service with the selected instance', async () => {
     const user = userEvent.setup();
     topicServiceMocks.listTopics.mockResolvedValue([]);
-    instanceServiceMocks.listInstances.mockResolvedValue([
-      {
-        id: 'instance-proxy-1',
-        name: 'instance-proxy-1',
-        remark: '',
-        type: 'PROXY',
-        endpoint: '10.0.2.21:8080',
-        topicCount: 0,
-        consumerGroupCount: 0,
-        createdAt: '2026-01-01T00:00:00Z',
-        updatedAt: '2026-01-01T00:00:00Z',
-      },
-    ]);
+    instanceServiceMocks.listInstances.mockResolvedValue([selectedInstance]);
     renderWithProviders('/instance/instance-proxy-1/topic');
 
     await screen.findByText(/共 0 个 Topic/);
@@ -316,9 +316,14 @@ describe('TopicPage', () => {
 
   it('does not call createTopic when imported topic CSV is invalid or duplicated', async () => {
     const user = userEvent.setup();
-    renderWithProviders();
+    instanceServiceMocks.listInstances.mockResolvedValue([selectedInstance]);
+    topicServiceMocks.listTopics.mockResolvedValue([
+      { ...buildTopics(1)[0], instanceId: 'instance-proxy-1' },
+    ]);
+    renderWithProviders('/instance/instance-proxy-1/topic');
 
     expect(await screen.findByText('topic-01')).toBeInTheDocument();
+    expect(await screen.findByText('10.0.2.21:8080')).toBeInTheDocument();
     const csv = [
       '"Name","Type","Write Queues","Read Queues","Permission"',
       '"bad topic","NORMAL","8","8","RW"',
@@ -336,9 +341,11 @@ describe('TopicPage', () => {
   it('imports valid topic rows while skipping duplicate rows', async () => {
     const user = userEvent.setup();
     topicServiceMocks.listTopics.mockResolvedValue([]);
-    renderWithProviders();
+    instanceServiceMocks.listInstances.mockResolvedValue([selectedInstance]);
+    renderWithProviders('/instance/instance-proxy-1/topic');
 
     await screen.findByText(/共 0 个 Topic/);
+    await screen.findByText('10.0.2.21:8080');
     const csv = [
       '"Name","Type","Write Queues","Read Queues","Permission"',
       '"topic-a","NORMAL","8","8","RW"',
@@ -354,12 +361,21 @@ describe('TopicPage', () => {
     await waitFor(() => expect(topicServiceMocks.createTopic).toHaveBeenCalledTimes(2));
     expect(topicServiceMocks.createTopic).toHaveBeenNthCalledWith(
       1,
-      expect.objectContaining({ name: 'topic-a' }),
+      expect.objectContaining({ name: 'topic-a', instanceId: 'instance-proxy-1' }),
     );
     expect(topicServiceMocks.createTopic).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ name: 'topic-b' }),
+      expect.objectContaining({ name: 'topic-b', instanceId: 'instance-proxy-1' }),
     );
     expect(await screen.findByText('已导入 2 个 Topic，1 行无效已跳过')).toBeInTheDocument();
+  });
+
+  it('disables Topic writes until an instance is available', async () => {
+    instanceServiceMocks.listInstances.mockResolvedValue([]);
+    renderWithProviders();
+
+    expect(await screen.findByText('共 0 个 Topic')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /导入/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /创建 Topic/ })).toBeDisabled();
   });
 });

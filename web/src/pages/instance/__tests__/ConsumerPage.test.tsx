@@ -36,21 +36,9 @@ vi.mock('../../../services/consumerService', () => ({
   listConsumerGroups: vi.fn(),
   resetConsumerOffset: vi.fn(),
 }));
-vi.mock('../../../services/instanceService', () => ({
-  listInstances: vi.fn().mockResolvedValue([
-    {
-      id: 'instance-1',
-      name: 'instance-1',
-      remark: '',
-      type: 'PROXY',
-      endpoint: '10.0.0.1:8080',
-      topicCount: 0,
-      consumerGroupCount: 0,
-      createdAt: '2026-01-01T00:00:00Z',
-      updatedAt: '2026-01-01T00:00:00Z',
-    },
-  ]),
-}));
+const instanceServiceMocks = vi.hoisted(() => ({ listInstances: vi.fn() }));
+
+vi.mock('../../../services/instanceService', () => instanceServiceMocks);
 
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
@@ -94,11 +82,11 @@ const group: ConsumerGroup = {
   instances: [],
 };
 
-const renderWithProviders = (ui: React.ReactElement) =>
+const renderWithProviders = (ui: React.ReactElement, initialEntry = '/instance/consumer') =>
   render(
     <App>
       <LangProvider>
-        <MemoryRouter>{ui}</MemoryRouter>
+        <MemoryRouter initialEntries={[initialEntry]}>{ui}</MemoryRouter>
       </LangProvider>
     </App>,
   );
@@ -139,6 +127,19 @@ describe('Consumer page', () => {
         type: 'NORMAL',
         filterMode: '全量',
         consistency: '一致',
+      },
+    ]);
+    instanceServiceMocks.listInstances.mockResolvedValue([
+      {
+        id: 'instance-1',
+        name: 'instance-1',
+        remark: '',
+        type: 'PROXY',
+        endpoint: '10.0.0.1:8080',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
       },
     ]);
   });
@@ -322,7 +323,20 @@ describe('Consumer page', () => {
     );
 
     const user = userEvent.setup();
-    renderWithProviders(<ConsumerPage />);
+    instanceServiceMocks.listInstances.mockResolvedValue([
+      {
+        id: 'instance-proxy-1',
+        name: 'instance-proxy-1',
+        remark: '',
+        type: 'PROXY',
+        endpoint: '10.0.2.21:8080',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      },
+    ]);
+    renderWithProviders(<ConsumerPage />, '/instance/instance-proxy-1/consumer');
 
     await screen.findByText(/共 0 个 Group/);
     const csv = [
@@ -345,7 +359,7 @@ describe('Consumer page', () => {
       retryMaxTimes: 16,
       subscriptionDataType: 'NORMAL',
       subscribedTopics: [],
-      instanceId: 'instance-1',
+      instanceId: 'instance-proxy-1',
     });
     expect(await screen.findByText('已导入 1 个 Group，1 个失败')).toBeInTheDocument();
     expect(screen.getByText('broker rejected group')).toBeInTheDocument();
@@ -353,5 +367,14 @@ describe('Consumer page', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /重试失败项/ })).toBeInTheDocument(),
     );
+  });
+
+  it('disables Consumer Group writes until an instance is available', async () => {
+    instanceServiceMocks.listInstances.mockResolvedValue([]);
+    renderWithProviders(<ConsumerPage />);
+
+    expect(await screen.findByText('选择实例')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /导入/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '创建 Group' })).toBeDisabled();
   });
 });
