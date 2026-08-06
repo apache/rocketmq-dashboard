@@ -54,9 +54,7 @@ public class LiteTopicQuota {
     }
 
     public boolean isQuotaExceeded() {
-        // Guard against unset fields, mirroring getUsageRate; an unconfigured max is not exceeded.
-        return maxTopicCount != null && currentTopicCount != null
-                && currentTopicCount >= maxTopicCount;
+        return currentTopicCount >= maxTopicCount;
     }
 
     public Integer getRemainingQuota() {
