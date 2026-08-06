@@ -80,16 +80,27 @@ public class RocketMQDashboardProvider implements DashboardProvider {
             Map<String, Set<String>> clusterAddrTable = clusterInfo.getClusterAddrTable();
             Map<String, BrokerData> brokerAddrTable = clusterInfo.getBrokerAddrTable();
 
-            totalClusters = clusterAddrTable.size();
-            totalBrokers = brokerAddrTable.size();
-
             // Collect all unique broker addresses (master only, brokerId=0)
             Set<String> masterAddrs = new HashSet<>();
-            for (BrokerData brokerData : brokerAddrTable.values()) {
-                String masterAddr = brokerData.getBrokerAddrs().get(0L);
-                if (masterAddr != null) {
-                    masterAddrs.add(masterAddr);
+            if (clusterAddrTable != null) {
+                totalClusters = clusterAddrTable.size();
+            }
+            if (brokerAddrTable != null) {
+                totalBrokers = brokerAddrTable.size();
+                for (BrokerData brokerData : brokerAddrTable.values()) {
+                    if (brokerData == null || brokerData.getBrokerAddrs() == null) {
+                        continue;
+                    }
+                    String masterAddr = brokerData.getBrokerAddrs().get(0L);
+                    if (masterAddr != null) {
+                        masterAddrs.add(masterAddr);
+                    }
                 }
+                if (masterAddrs.isEmpty()) {
+                    log.warn("No master broker addresses discovered for dashboard overview");
+                }
+            } else {
+                log.warn("Broker address table is null for dashboard overview");
             }
 
             // Count topics
@@ -153,7 +164,7 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                 String version = "unknown";
 
                 for (String brokerName : brokerNames) {
-                    BrokerData brokerData = brokerAddrTable.get(brokerName);
+                    BrokerData brokerData = brokerAddrTable == null ? null : brokerAddrTable.get(brokerName);
                     if (brokerData != null) {
                         clusterBrokers++;
                         String masterAddr = brokerData.getBrokerAddrs().get(0L);
