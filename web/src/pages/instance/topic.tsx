@@ -269,6 +269,8 @@ const TopicPage = () => {
   const { t } = useLang();
   const { selectedInstanceId, selectedInstance, selectInstance, instanceOptions } =
     useInstanceFilter();
+  const isCloudInstance =
+    selectedInstance?.vendor === 'ALIYUN' || selectedInstance?.vendor === 'TENCENT';
 
   // ─── State ─────────────────────────────────────────────────────
   const [topics, setTopics] = useState<Topic[]>([]);
@@ -300,23 +302,32 @@ const TopicPage = () => {
   const [importErrors, setImportErrors] = useState<string[]>([]);
   const [importing, setImporting] = useState(false);
 
+  const topicRequestIdRef = useRef(0);
+
   useEffect(() => {
-    let cancelled = false;
-    void listTopics()
-      .then((nextTopics) => {
-        if (!cancelled) setTopics(nextTopics);
-      })
-      .catch(() => {
-        if (!cancelled) message.error('Topic 列表加载失败，请稍后重试');
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    if (!selectedInstanceId) {
+      return;
+    }
+    const requestId = ++topicRequestIdRef.current;
+    const timer = window.setTimeout(() => {
+      setLoading(true);
+      void listTopics({ instanceId: selectedInstanceId })
+        .then((nextTopics) => {
+          if (requestId === topicRequestIdRef.current) setTopics(nextTopics);
+        })
+        .catch(() => {
+          if (requestId === topicRequestIdRef.current)
+            message.error('Topic 列表加载失败，请稍后重试');
+        })
+        .finally(() => {
+          if (requestId === topicRequestIdRef.current) setLoading(false);
+        });
+    }, 0);
 
     return () => {
-      cancelled = true;
+      window.clearTimeout(timer);
     };
-  }, []);
+  }, [selectedInstanceId]);
 
   // ─── Filtered data ─────────────────────────────────────────────
   const filteredTopics = useMemo(
@@ -345,11 +356,11 @@ const TopicPage = () => {
     setDetailModalOpen(true);
     setDetailLoading(true);
     try {
-      const [routes, consumers] = await Promise.all([
-        getTopicRoutes(topic.name),
-        getTopicConsumers(topic.name),
-      ]);
-      setRoutesByTopic((previous) => ({ ...previous, [topic.name]: routes }));
+      const consumers = await getTopicConsumers(topic.name, selectedInstanceId || undefined);
+      if (!isCloudInstance) {
+        const routes = await getTopicRoutes(topic.name, selectedInstanceId || undefined);
+        setRoutesByTopic((previous) => ({ ...previous, [topic.name]: routes }));
+      }
       setConsumersByTopic((previous) => ({ ...previous, [topic.name]: consumers }));
     } catch {
       message.error('Topic 详情加载失败，请稍后重试');
@@ -401,7 +412,7 @@ const TopicPage = () => {
         cancelText: '取消',
         onOk: async () => {
           try {
-            await deleteTopic(topic.name);
+            await deleteTopic(topic.name, selectedInstanceId || undefined);
             setTopics((previous) => previous.filter((item) => item.name !== topic.name));
             message.success(`Topic「${topic.name}」已删除`);
           } catch {
@@ -431,7 +442,7 @@ const TopicPage = () => {
       dataIndex: 'remark',
       key: 'remark',
       width: 200,
-      sorter: (a, b) => a.remark.localeCompare(b.remark),
+      sorter: (a, b) => (a.remark ?? '').localeCompare(b.remark ?? ''),
       render: (remark: string) => (
         <Text
           type="secondary"
@@ -447,7 +458,7 @@ const TopicPage = () => {
       dataIndex: 'type',
       key: 'type',
       width: 100,
-      sorter: (a, b) => a.type.localeCompare(b.type),
+      sorter: (a, b) => (a.type ?? '').localeCompare(b.type ?? ''),
       render: (type: string) => {
         const cfg = TOPIC_TYPE_MAP[type];
         return cfg ? <Tag color={cfg.color}>{t(cfg.labelKey)}</Tag> : <Tag>{type}</Tag>;
@@ -464,7 +475,7 @@ const TopicPage = () => {
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 170,
-      sorter: (a, b) => a.createdAt.localeCompare(b.createdAt),
+      sorter: (a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''),
       render: (d: string) => <Text type="secondary">{formatDateTime(d)}</Text>,
     },
     {
@@ -472,7 +483,7 @@ const TopicPage = () => {
       dataIndex: 'updatedAt',
       key: 'updatedAt',
       width: 170,
-      sorter: (a, b) => a.updatedAt.localeCompare(b.updatedAt),
+      sorter: (a, b) => (a.updatedAt ?? '').localeCompare(b.updatedAt ?? ''),
       render: (d: string) => <Text type="secondary">{formatDateTime(d)}</Text>,
     },
     {
@@ -489,14 +500,16 @@ const TopicPage = () => {
           >
             详情
           </Button>
-          <Button
-            size="small"
-            icon={<SendOutlined />}
-            style={{ borderColor: '#52c41a', color: '#52c41a' }}
-            onClick={() => handleAction('send', record)}
-          >
-            发送
-          </Button>
+          {!isCloudInstance && (
+            <Button
+              size="small"
+              icon={<SendOutlined />}
+              style={{ borderColor: '#52c41a', color: '#52c41a' }}
+              onClick={() => handleAction('send', record)}
+            >
+              发送
+            </Button>
+          )}
           <Button
             size="small"
             icon={<DeleteOutlined />}
@@ -785,6 +798,7 @@ const TopicPage = () => {
         key: values.key || undefined,
         body: values.body,
         properties: props,
+        instanceId: selectedInstanceId || undefined,
       });
       // Keep the modal open for consecutive sends
       message.success(`消息发送成功！MsgId: ${result.msgId}`);
@@ -1006,39 +1020,43 @@ const TopicPage = () => {
             </Text>
             {renderDetailTab(selectedTopic)}
 
-            <Divider style={{ margin: '20px 0 16px' }} />
+            {!isCloudInstance && (
+              <>
+                <Divider style={{ margin: '20px 0 16px' }} />
 
-            {/* Section 2: 路由信息 */}
-            <Text strong style={{ fontSize: 14, display: 'block', marginBottom: 12 }}>
-              路由信息
-            </Text>
-            {!detailLoading && getRoutes(selectedTopic.name).length === 0 && (
-              <Alert
-                type="warning"
-                showIcon
-                style={{ marginBottom: 12 }}
-                message="Broker 上没有该 Topic 的路由"
-                description="元数据库中存在这条记录，但 Broker 未返回路由信息，可能尚未在 Broker 上创建或已被删除。可按库中记录的队列数重建。"
-                action={
-                  <Button
-                    size="small"
-                    type="primary"
-                    loading={rebuilding}
-                    onClick={() => void rebuildTopic(selectedTopic)}
-                  >
-                    在 Broker 上重建
-                  </Button>
-                }
-              />
+                {/* Section 2: 路由信息 */}
+                <Text strong style={{ fontSize: 14, display: 'block', marginBottom: 12 }}>
+                  路由信息
+                </Text>
+                {!detailLoading && getRoutes(selectedTopic.name).length === 0 && (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    style={{ marginBottom: 12 }}
+                    message="Broker 上没有该 Topic 的路由"
+                    description="元数据库中存在这条记录，但 Broker 未返回路由信息，可能尚未在 Broker 上创建或已被删除。可按库中记录的队列数重建。"
+                    action={
+                      <Button
+                        size="small"
+                        type="primary"
+                        loading={rebuilding}
+                        onClick={() => void rebuildTopic(selectedTopic)}
+                      >
+                        在 Broker 上重建
+                      </Button>
+                    }
+                  />
+                )}
+                <Table<BrokerRoute>
+                  columns={routeColumns}
+                  dataSource={getRoutes(selectedTopic.name)}
+                  rowKey="brokerName"
+                  pagination={false}
+                  size="small"
+                  loading={detailLoading}
+                />
+              </>
             )}
-            <Table<BrokerRoute>
-              columns={routeColumns}
-              dataSource={getRoutes(selectedTopic.name)}
-              rowKey="brokerName"
-              pagination={false}
-              size="small"
-              loading={detailLoading}
-            />
 
             <Divider style={{ margin: '20px 0 16px' }} />
 
@@ -1097,39 +1115,47 @@ const TopicPage = () => {
           </Form.Item>
 
           <Form.Item label="类型" name="type" rules={[{ required: true }]}>
-            <Select options={TYPE_OPTIONS.filter((o) => o.value)} />
+            <Select
+              options={TYPE_OPTIONS.filter(
+                (o) => o.value && (!isCloudInstance || o.value !== 'LITE'),
+              )}
+            />
           </Form.Item>
 
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
-                label="写队列数"
-                name="writeQueues"
-                rules={[{ required: true }]}
-                extra="每个 Broker 节点 8 个队列"
-              >
-                <InputNumber min={1} max={256} style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
-                label="读队列数"
-                name="readQueues"
-                rules={[{ required: true }]}
-                extra="每个 Broker 节点 8 个队列"
-              >
-                <InputNumber min={1} max={256} style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-          </Row>
+          {!isCloudInstance && (
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item
+                  label="写队列数"
+                  name="writeQueues"
+                  rules={[{ required: true }]}
+                  extra="每个 Broker 节点 8 个队列"
+                >
+                  <InputNumber min={1} max={256} style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item
+                  label="读队列数"
+                  name="readQueues"
+                  rules={[{ required: true }]}
+                  extra="每个 Broker 节点 8 个队列"
+                >
+                  <InputNumber min={1} max={256} style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+            </Row>
+          )}
 
-          <Form.Item label="权限" name="perm" rules={[{ required: true }]}>
-            <Radio.Group>
-              <Radio.Button value="RW">读写</Radio.Button>
-              <Radio.Button value="RO">只读</Radio.Button>
-              <Radio.Button value="WO">只写</Radio.Button>
-            </Radio.Group>
-          </Form.Item>
+          {!isCloudInstance && (
+            <Form.Item label="权限" name="perm" rules={[{ required: true }]}>
+              <Radio.Group>
+                <Radio.Button value="RW">读写</Radio.Button>
+                <Radio.Button value="RO">只读</Radio.Button>
+                <Radio.Button value="WO">只写</Radio.Button>
+              </Radio.Group>
+            </Form.Item>
+          )}
 
           <Form.Item label="备注" name="remark">
             <Input.TextArea rows={3} placeholder="可选，描述 Topic 用途" />

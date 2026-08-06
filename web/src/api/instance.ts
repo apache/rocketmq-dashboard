@@ -18,12 +18,18 @@
 import client from './client';
 
 // ─── Types ──────────────────────────────────────────────────────
+export type InstanceVendor = 'APACHE' | 'ALIYUN' | 'TENCENT';
+
 export interface Instance {
   id: string;
   name: string;
   remark: string;
   type: 'PROXY' | 'DIRECT';
   endpoint: string;
+  vendor?: InstanceVendor;
+  cloudInstanceId?: string;
+  credentialId?: string;
+  regionId?: string;
   topicCount: number;
   consumerGroupCount: number;
   createdAt: string;
@@ -31,10 +37,14 @@ export interface Instance {
 }
 
 export interface CreateInstanceRequest {
-  name: string;
-  type: 'PROXY' | 'DIRECT';
-  endpoint: string;
+  name?: string;
+  type?: 'PROXY' | 'DIRECT';
+  endpoint?: string;
   remark?: string;
+  vendor?: InstanceVendor;
+  cloudInstanceId?: string;
+  credentialId?: string;
+  regionId?: string;
 }
 
 export interface UpdateInstanceRequest {

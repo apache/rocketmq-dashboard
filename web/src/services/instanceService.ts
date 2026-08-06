@@ -36,6 +36,10 @@ export async function createInstance(data: CreateInstanceRequest): Promise<Insta
     const instance: Instance = {
       id: String(Date.now()),
       ...data,
+      name: data.name || '',
+      type: data.type || 'PROXY',
+      endpoint: data.endpoint || '',
+      vendor: data.vendor || 'APACHE',
       remark: data.remark || '',
       topicCount: 0,
       consumerGroupCount: 0,

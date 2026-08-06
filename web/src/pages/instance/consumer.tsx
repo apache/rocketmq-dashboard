@@ -130,7 +130,7 @@ const GROUP_EXPORT_COLUMNS: Array<{ header: string; value: (group: ConsumerGroup
   { header: 'Subscription Data Type', value: (group) => group.subscriptionDataType },
   { header: 'Delivery Order Type', value: (group) => group.deliveryOrderType },
   { header: 'Retry Max Times', value: (group) => group.retryMaxTimes },
-  { header: 'Subscribed Topics', value: (group) => group.subscribedTopics.join(';') },
+  { header: 'Subscribed Topics', value: (group) => (group.subscribedTopics ?? []).join(';') },
   { header: 'Created At', value: (group) => group.createdAt },
   { header: 'Updated At', value: (group) => group.updatedAt },
 ];
@@ -181,7 +181,10 @@ const isInconsistentSubscription = (subscription: SubscriptionEntry): boolean =>
    ═══════════════════════════════════════════ */
 const ConsumerPage = () => {
   const { t } = useLang();
-  const { selectedInstanceId, selectInstance, instanceOptions } = useInstanceFilter();
+  const { selectedInstanceId, selectedInstance, selectInstance, instanceOptions } =
+    useInstanceFilter();
+  const isCloudInstance =
+    selectedInstance?.vendor === 'ALIYUN' || selectedInstance?.vendor === 'TENCENT';
   const [groups, setGroups] = useState<ConsumerGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -216,25 +219,30 @@ const ConsumerPage = () => {
   const [importErrors, setImportErrors] = useState<string[]>([]);
   const [importing, setImporting] = useState(false);
 
+  const groupRequestIdRef = useRef(0);
+
   useEffect(() => {
-    let cancelled = false;
-
-    const fetchGroups = async () => {
-      try {
-        const nextGroups = await listConsumerGroups();
-        if (!cancelled) setGroups(nextGroups);
-      } catch {
-        if (!cancelled) message.error(t('consumer.fetchListFailed'));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    void fetchGroups();
+    if (!selectedInstanceId) {
+      return;
+    }
+    const requestId = ++groupRequestIdRef.current;
+    const timer = window.setTimeout(() => {
+      setLoading(true);
+      void listConsumerGroups({ instanceId: selectedInstanceId })
+        .then((nextGroups) => {
+          if (requestId === groupRequestIdRef.current) setGroups(nextGroups);
+        })
+        .catch(() => {
+          if (requestId === groupRequestIdRef.current) message.error(t('consumer.fetchListFailed'));
+        })
+        .finally(() => {
+          if (requestId === groupRequestIdRef.current) setLoading(false);
+        });
+    }, 0);
     return () => {
-      cancelled = true;
+      window.clearTimeout(timer);
     };
-  }, [t]);
+  }, [t, selectedInstanceId]);
 
   const loadSubscriptions = useCallback(
     async (groupName: string, force = false) => {
@@ -242,7 +250,10 @@ const ConsumerPage = () => {
       setSubscriptionLoadingByGroup((prev) => ({ ...prev, [groupName]: true }));
       setSubscriptionErrorByGroup((prev) => ({ ...prev, [groupName]: false }));
       try {
-        const subscriptions = await getConsumerSubscriptions(groupName);
+        const subscriptions = await getConsumerSubscriptions(
+          groupName,
+          selectedInstanceId || undefined,
+        );
         setSubscriptionsByGroup((prev) => ({ ...prev, [groupName]: subscriptions }));
       } catch {
         setSubscriptionErrorByGroup((prev) => ({ ...prev, [groupName]: true }));
@@ -251,26 +262,26 @@ const ConsumerPage = () => {
         setSubscriptionLoadingByGroup((prev) => ({ ...prev, [groupName]: false }));
       }
     },
-    [subscriptionsByGroup, t],
+    [subscriptionsByGroup, t, selectedInstanceId],
   );
 
   const loadProgress = useCallback(
     async (groupName: string) => {
       if (progressByGroup[groupName]) return;
       try {
-        const progress = await getConsumerProgress(groupName);
+        const progress = await getConsumerProgress(groupName, selectedInstanceId || undefined);
         setProgressByGroup((prev) => ({ ...prev, [groupName]: progress }));
       } catch {
         message.error(t('consumer.fetchProgressFailed', { name: groupName }));
       }
     },
-    [progressByGroup, t],
+    [progressByGroup, t, selectedInstanceId],
   );
 
   /* ─── Filtered & sorted data ─── */
   const filtered = useMemo(() => {
     let data = groups.filter(
-      (g) => g.name.includes(search) || g.subscribedTopics.some((t) => t.includes(search)),
+      (g) => g.name.includes(search) || (g.subscribedTopics ?? []).some((t) => t.includes(search)),
     );
 
     if (selectedInstanceId) {
@@ -421,7 +432,7 @@ const ConsumerPage = () => {
       dataIndex: 'subscriptionDataType',
       key: 'subscriptionDataType',
       width: 110,
-      sorter: (a, b) => a.subscriptionDataType.localeCompare(b.subscriptionDataType),
+      sorter: (a, b) => (a.subscriptionDataType ?? '').localeCompare(b.subscriptionDataType ?? ''),
       render: (type: string) => {
         const config = TOPIC_TYPE_MAP[type] || { labelKey: type, color: 'default' };
         return <Tag color={config.color}>{t(config.labelKey)}</Tag>;
@@ -432,7 +443,7 @@ const ConsumerPage = () => {
       dataIndex: 'subscriptionMode',
       key: 'subscriptionMode',
       width: 90,
-      sorter: (a, b) => a.subscriptionMode.localeCompare(b.subscriptionMode),
+      sorter: (a, b) => (a.subscriptionMode ?? '').localeCompare(b.subscriptionMode ?? ''),
       render: (mode: string) => <Tag color={mode === 'Push' ? 'blue' : 'green'}>{mode}</Tag>,
     },
     {
@@ -441,30 +452,30 @@ const ConsumerPage = () => {
       key: 'onlineInstances',
       width: 130,
       align: 'center',
-      sorter: (a, b) => a.onlineInstances - b.onlineInstances,
+      sorter: (a, b) => (a.onlineInstances ?? 0) - (b.onlineInstances ?? 0),
     },
     {
       title: '总堆积量',
       dataIndex: 'totalLag',
       key: 'totalLag',
       width: 120,
-      sorter: (a, b) => a.totalLag - b.totalLag,
-      render: (lag: number) => lag.toLocaleString(),
+      sorter: (a, b) => (a.totalLag ?? 0) - (b.totalLag ?? 0),
+      render: (lag: number) => (lag ?? 0).toLocaleString(),
     },
     {
       title: '消费延迟',
       dataIndex: 'delaySeconds',
       key: 'delaySeconds',
       width: 160,
-      sorter: (a, b) => a.delaySeconds - b.delaySeconds,
-      render: (seconds: number) => formatDelay(seconds),
+      sorter: (a, b) => (a.delaySeconds ?? 0) - (b.delaySeconds ?? 0),
+      render: (seconds: number) => formatDelay(seconds ?? 0),
     },
     {
       title: '创建时间',
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 170,
-      sorter: (a, b) => a.createdAt.localeCompare(b.createdAt),
+      sorter: (a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''),
       render: (d: string) => (
         <Text type="secondary" style={{ fontSize: 13 }}>
           {formatDateTime(d)}
@@ -476,7 +487,7 @@ const ConsumerPage = () => {
       dataIndex: 'updatedAt',
       key: 'updatedAt',
       width: 170,
-      sorter: (a, b) => a.updatedAt.localeCompare(b.updatedAt),
+      sorter: (a, b) => (a.updatedAt ?? '').localeCompare(b.updatedAt ?? ''),
       render: (d: string) => (
         <Text type="secondary" style={{ fontSize: 13 }}>
           {formatDateTime(d)}
@@ -526,7 +537,7 @@ const ConsumerPage = () => {
                 okButtonProps: { danger: true },
                 cancelText: '取消',
                 onOk: async () => {
-                  await deleteConsumerGroup(record.name);
+                  await deleteConsumerGroup(record.name, selectedInstanceId || undefined);
                   setGroups((prev) => prev.filter((group) => group.name !== record.name));
                   setSelectedRowKeys((prev) => prev.filter((key) => key !== record.name));
                   message.success(`消费组 ${record.name} 已删除`);
@@ -1264,19 +1275,23 @@ const ConsumerPage = () => {
             <Input placeholder="例：cg-order-notify" />
           </Form.Item>
 
-          <Form.Item label="订阅模式" name="subscriptionMode">
-            <Radio.Group>
-              <Radio.Button value="Push">Push</Radio.Button>
-              <Radio.Button value="Pop">Pop</Radio.Button>
-            </Radio.Group>
-          </Form.Item>
+          {!isCloudInstance && (
+            <Form.Item label="订阅模式" name="subscriptionMode">
+              <Radio.Group>
+                <Radio.Button value="Push">Push</Radio.Button>
+                <Radio.Button value="Pop">Pop</Radio.Button>
+              </Radio.Group>
+            </Form.Item>
+          )}
 
-          <Form.Item label="消费类型" name="consumeType">
-            <Radio.Group>
-              <Radio.Button value="CLUSTERING">集群消费</Radio.Button>
-              <Radio.Button value="BROADCASTING">广播消费</Radio.Button>
-            </Radio.Group>
-          </Form.Item>
+          {!isCloudInstance && (
+            <Form.Item label="消费类型" name="consumeType">
+              <Radio.Group>
+                <Radio.Button value="CLUSTERING">集群消费</Radio.Button>
+                <Radio.Button value="BROADCASTING">广播消费</Radio.Button>
+              </Radio.Group>
+            </Form.Item>
+          )}
 
           <Form.Item label="最大重试次数" name="retryMaxTimes">
             <InputNumber min={0} max={128} style={{ width: '100%' }} />
@@ -1393,6 +1408,7 @@ const ConsumerPage = () => {
               await resetConsumerOffset({
                 name: resetGroup.name,
                 timestamp: resetTime.valueOf(),
+                instanceId: selectedInstanceId || undefined,
               });
               message.success(
                 `${resetGroup.name} 消费位点已重置到 ${resetTime.format('YYYY-MM-DD HH:mm:ss')}`,

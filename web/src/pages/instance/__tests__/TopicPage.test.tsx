@@ -73,6 +73,7 @@ const buildTopics = (count: number): Topic[] =>
       namespace: 'default',
       type: 'NORMAL',
       clusterId: 'rmq-cn-v5-prod-01',
+      instanceId: 'instance-proxy-1',
       writeQueues: 8,
       readQueues: 8,
       perm: 'RW',
@@ -122,7 +123,19 @@ describe('TopicPage', () => {
     }));
     topicServiceMocks.getTopicRoutes.mockResolvedValue([]);
     topicServiceMocks.getTopicConsumers.mockResolvedValue([]);
-    instanceServiceMocks.listInstances.mockResolvedValue([]);
+    instanceServiceMocks.listInstances.mockResolvedValue([
+      {
+        id: 'instance-proxy-1',
+        name: 'instance-proxy-1',
+        remark: '',
+        type: 'PROXY',
+        endpoint: '10.0.2.21:8080',
+        topicCount: 1,
+        consumerGroupCount: 0,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      },
+    ]);
   });
 
   afterEach(() => {
@@ -186,7 +199,9 @@ describe('TopicPage', () => {
     expect(within(getTableBody()).queryByText('topic-01')).not.toBeInTheDocument();
 
     await user.click(screen.getAllByRole('button', { name: /详情/ })[0]);
-    await waitFor(() => expect(topicServiceMocks.getTopicRoutes).toHaveBeenCalledWith('topic-21'));
+    await waitFor(() =>
+      expect(topicServiceMocks.getTopicRoutes).toHaveBeenCalledWith('topic-21', 'instance-proxy-1'),
+    );
 
     const closeButton = document.querySelector('.ant-modal-close');
     expect(closeButton).not.toBeNull();
