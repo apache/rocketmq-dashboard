@@ -24,7 +24,7 @@ class MessageServiceTest {
         MessageProvider provider = mock(MessageProvider.class);
         MessageService service = new MessageService(provider);
 
-        assertThatThrownBy(() -> service.queryMessages("TopicA", null, null, null, 200L, 100L))
+        assertThatThrownBy(() -> service.queryMessages("instance-a", "TopicA", null, null, null, 200L, 100L))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("startTime must not be after endTime");
 
@@ -36,7 +36,7 @@ class MessageServiceTest {
         MessageProvider provider = mock(MessageProvider.class);
         MessageService service = new MessageService(provider);
 
-        assertThatThrownBy(() -> service.queryMessages("TopicA", null, null, null, 0L,
+        assertThatThrownBy(() -> service.queryMessages("instance-a", "TopicA", null, null, null, 0L,
                 8L * 24 * 60 * 60 * 1000))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("topic query time range must not exceed 7 days");

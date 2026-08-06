@@ -25,6 +25,7 @@ import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageId;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.instance.message.ConsumerStatusVO;
 import org.apache.rocketmq.studio.instance.message.MessageProvider;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
@@ -81,25 +82,27 @@ public class RocketMQMessageProvider implements MessageProvider {
     private static final long ONE_DAY_MILLIS = 24 * ONE_HOUR_MILLIS;
 
     private final ObjectProvider<DefaultMQAdminExt> adminExtProvider;
+    private final RuntimeAdminClientResolver runtimeAdminClientResolver;
     private final QueryHistoryService queryHistoryService;
-    private final RocketMQProperties properties;
 
     public RocketMQMessageProvider(ObjectProvider<DefaultMQAdminExt> adminExtProvider,
-                                   QueryHistoryService queryHistoryService,
-                                   RocketMQProperties properties) {
+                                   RuntimeAdminClientResolver runtimeAdminClientResolver,
+                                   QueryHistoryService queryHistoryService) {
         this.adminExtProvider = adminExtProvider;
+        this.runtimeAdminClientResolver = runtimeAdminClientResolver;
         this.queryHistoryService = queryHistoryService;
-        this.properties = properties;
     }
 
     @Override
-    public List<MessageRecordVO> queryMessages(String topic, String msgId, String tag, String key,
+    public List<MessageRecordVO> queryMessages(String instanceId, String topic, String msgId, String tag, String key,
                                                Long startTime, Long endTime) {
-        DefaultMQAdminExt adminExt = adminExtProvider.getIfAvailable();
-        if (adminExt == null) {
-            log.warn("DefaultMQAdminExt is not configured, returning empty message list");
-            return Collections.emptyList();
-        }
+        String endpoint = runtimeAdminClientResolver.resolveEndpoint(instanceId);
+        return runtimeAdminClientResolver.execute(instanceId,
+                adminExt -> queryMessages((DefaultMQAdminExt) adminExt, endpoint, topic, msgId, tag, key, startTime, endTime));
+    }
+
+    private List<MessageRecordVO> queryMessages(DefaultMQAdminExt adminExt, String endpoint, String topic, String msgId, String tag, String key,
+                                                 Long startTime, Long endTime) {
 
         long end = endTime != null ? endTime : System.currentTimeMillis();
         long begin = startTime != null ? startTime : end - ONE_HOUR_MILLIS;
@@ -114,7 +117,7 @@ public class RocketMQMessageProvider implements MessageProvider {
             result = queryByKey(adminExt, topic, key, tag, begin, end);
         } else if (StringUtils.hasText(topic)) {
             queryType = "TOPIC";
-            result = queryByTopic(topic, tag, begin, end, DEFAULT_TOPIC_LIMIT);
+            result = queryByTopic(endpoint, topic, tag, begin, end, DEFAULT_TOPIC_LIMIT);
         } else {
             log.warn("queryMessages requires at least one of msgId/topic, returning empty list");
             return Collections.emptyList();
@@ -189,8 +192,8 @@ public class RocketMQMessageProvider implements MessageProvider {
      * Scan a topic within a time range using a short-lived pull consumer, mirroring the approach
      * used by the RocketMQ dashboard for time-range topic queries.
      */
-    private List<MessageRecordVO> queryByTopic(String topic, String tag, long begin, long end, int limit) {
-        DefaultMQPullConsumer consumer = newPullConsumer("studio-msg-query");
+    private List<MessageRecordVO> queryByTopic(String endpoint, String topic, String tag, long begin, long end, int limit) {
+        DefaultMQPullConsumer consumer = newPullConsumer("studio-msg-query", endpoint);
         List<MessageRecordVO> result = new ArrayList<>();
         try {
             consumer.start();
@@ -477,12 +480,10 @@ public class RocketMQMessageProvider implements MessageProvider {
         return tag.equals(messageExt.getTags());
     }
 
-    private DefaultMQPullConsumer newPullConsumer(String groupPrefix) {
+    private DefaultMQPullConsumer newPullConsumer(String groupPrefix, String endpoint) {
         DefaultMQPullConsumer consumer = new DefaultMQPullConsumer(groupPrefix + "-group");
         consumer.setInstanceName(ShortLivedClientName.next(groupPrefix));
-        if (StringUtils.hasText(properties.getNamesrvAddr())) {
-            consumer.setNamesrvAddr(properties.getNamesrvAddr());
-        }
+        consumer.setNamesrvAddr(endpoint);
         return consumer;
     }
 

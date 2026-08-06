@@ -20,6 +20,8 @@ import org.apache.rocketmq.client.QueryResult;
 import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
@@ -42,6 +44,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mockConstruction;
@@ -59,6 +62,9 @@ class RocketMQMessageProviderTest {
     private DefaultMQAdminExt adminExt;
 
     @Mock
+    private RuntimeAdminClientResolver runtimeAdminClientResolver;
+
+    @Mock
     private QueryHistoryService queryHistoryService;
 
     private RocketMQMessageProvider provider;
@@ -66,7 +72,13 @@ class RocketMQMessageProviderTest {
     @BeforeEach
     void setUp() {
         lenient().when(adminExtProvider.getIfAvailable()).thenReturn(adminExt);
-        provider = new RocketMQMessageProvider(adminExtProvider, queryHistoryService, new RocketMQProperties());
+        lenient().when(runtimeAdminClientResolver.resolveEndpoint("instance-a")).thenReturn("namesrv-a:9876");
+        lenient().when(runtimeAdminClientResolver.execute(anyString(), any())).thenAnswer(invocation -> {
+            MqAdminExtFactory.AdminAction<Object> action = invocation.getArgument(1);
+            return action == null ? null : action.apply(adminExt);
+        });
+        provider = new RocketMQMessageProvider(adminExtProvider, runtimeAdminClientResolver, queryHistoryService,
+                new RocketMQProperties());
     }
 
     @Test
@@ -77,16 +89,19 @@ class RocketMQMessageProviderTest {
                          when(consumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(null);
                          doNothing().when(consumer).shutdown();
                      })) {
-            List<MessageRecordVO> messages = provider.queryMessages("TopicA", null, null, null, 100L, 200L);
+            List<MessageRecordVO> messages = provider.queryMessages("instance-a", "TopicA", null, null, null, 100L, 200L);
 
             assertThat(messages).isEmpty();
             assertThat(mockedConsumers.constructed()).hasSize(1);
             DefaultMQPullConsumer consumer = mockedConsumers.constructed().get(0);
+            verify(consumer).setNamesrvAddr("namesrv-a:9876");
             verify(consumer).start();
             verify(consumer).fetchSubscribeMessageQueues("TopicA");
             verify(consumer, never()).pull(any(MessageQueue.class), anyString(), anyLong(), anyInt());
             verify(consumer).shutdown();
         }
+        verify(runtimeAdminClientResolver).resolveEndpoint("instance-a");
+        verify(runtimeAdminClientResolver).execute(eq("instance-a"), any());
         verify(queryHistoryService).recordMessageQuery(null, "TOPIC", "TopicA", null, null, null,
                 100L, 200L, 0);
     }

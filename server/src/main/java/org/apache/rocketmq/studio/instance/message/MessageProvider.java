@@ -20,7 +20,7 @@ package org.apache.rocketmq.studio.instance.message;
 import java.util.List;
 
 public interface MessageProvider {
-    List<MessageRecordVO> queryMessages(String topic, String msgId, String tag, String key, Long startTime,
+    List<MessageRecordVO> queryMessages(String instanceId, String topic, String msgId, String tag, String key, Long startTime,
                                         Long endTime);
 
     TraceRecordVO getMessageTrace(String msgId);
