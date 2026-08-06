@@ -189,7 +189,11 @@ public class ClusterService {
                 + ", failedBrokers=" + failedBrokers.stream()
                 .map(failure -> failure.getAddress() + ": " + failure.getMessage())
                 .toList();
-        auditService.record("UPDATE_CLUSTER_CONFIG", "CLUSTER:" + clusterId, detail, status.name());
+        try {
+            auditService.record("UPDATE_CLUSTER_CONFIG", "CLUSTER:" + clusterId, detail, status.name());
+        } catch (Exception e) {
+            log.warn("Failed to record cluster config update audit for {}: {}", clusterId, e.getMessage());
+        }
     }
 
     private ClusterVO resolveCluster(String clusterId) {
