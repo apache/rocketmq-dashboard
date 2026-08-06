@@ -97,7 +97,7 @@ class ProducerConnectionServiceTest {
 
     @Test
     void listProducerGroupsShouldReturnSortedUniqueActiveGroups() {
-        when(clientProvider.findConnections(null, ClientType.Producer.name()))
+        when(clientProvider.findConnections(null, null, ClientType.Producer.name()))
                 .thenReturn(List.of(
                         ClientConnectionVO.builder().producerGroup(" pg-payment ").build(),
                         ClientConnectionVO.builder().producerGroup("pg-order").build(),
@@ -107,6 +107,6 @@ class ProducerConnectionServiceTest {
 
         assertThat(producerConnectionService.listProducerGroups())
                 .containsExactly("pg-order", "pg-payment");
-        verify(clientProvider).findConnections(null, ClientType.Producer.name());
+        verify(clientProvider).findConnections(null, null, ClientType.Producer.name());
     }
 }

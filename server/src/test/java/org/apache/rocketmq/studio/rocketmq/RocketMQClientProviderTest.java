@@ -29,6 +29,7 @@ import org.apache.rocketmq.remoting.protocol.body.SubscriptionGroupWrapper;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.studio.cluster.client.ClientConnectionVO;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,7 +48,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -60,12 +63,18 @@ class RocketMQClientProviderTest {
     @Mock
     private DefaultMQAdminExt adminExt;
 
+    @Mock
+    private RuntimeAdminClientResolver runtimeAdminClientResolver;
+
     private RocketMQClientProvider provider;
 
     @BeforeEach
     void setUp() {
-        when(adminExtProvider.getIfAvailable()).thenReturn(adminExt);
-        provider = new RocketMQClientProvider(adminExtProvider);
+        lenient().when(adminExtProvider.getIfAvailable()).thenReturn(adminExt);
+        provider = new RocketMQClientProvider(adminExtProvider, runtimeAdminClientResolver);
+        lenient().when(runtimeAdminClientResolver.execute(anyString(), any())).thenAnswer(invocation ->
+                invocation.<org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory.AdminAction<Object>>
+                        getArgument(1).apply(adminExt));
     }
 
     @Test
@@ -74,7 +83,7 @@ class RocketMQClientProviderTest {
         clusterInfo.setBrokerAddrTable(null);
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo);
 
-        List<ClientConnectionVO> connections = provider.findConnections("cluster-a", "Producer");
+        List<ClientConnectionVO> connections = provider.findConnections("instance-a", "cluster-a", "Producer");
 
         assertThat(connections).isEmpty();
         verify(adminExt).examineBrokerClusterInfo();
@@ -95,7 +104,7 @@ class RocketMQClientProviderTest {
                         "pg-order", List.of(shared),
                         "pg-payment", List.of(another))));
 
-        List<ClientConnectionVO> connections = provider.findConnections("cluster-a", "Producer");
+        List<ClientConnectionVO> connections = provider.findConnections("instance-a", "cluster-a", "Producer");
 
         assertThat(connections).hasSize(2);
         assertThat(connections)
@@ -117,7 +126,7 @@ class RocketMQClientProviderTest {
                 .thenReturn(new ProducerTableInfo(Map.of(
                         "pg-order", List.of(producerInfo("producer-client", "10.0.0.1:1000")))));
 
-        List<ClientConnectionVO> connections = provider.findConnections("cluster-a", "Producer");
+        List<ClientConnectionVO> connections = provider.findConnections("instance-a", "cluster-a", "Producer");
 
         assertThat(connections).singleElement().satisfies(connection -> {
             assertThat(connection.getClientId()).isEqualTo("producer-client");
@@ -132,7 +141,7 @@ class RocketMQClientProviderTest {
         when(adminExt.getAllProducerInfo(anyString()))
                 .thenThrow(new IllegalStateException("broker unavailable"));
 
-        assertThatThrownBy(() -> provider.findConnections("cluster-a", "Producer"))
+        assertThatThrownBy(() -> provider.findConnections("instance-a", "cluster-a", "Producer"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Failed to query producer connections from all brokers")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
@@ -203,7 +212,7 @@ class RocketMQClientProviderTest {
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo);
         when(adminExt.getAllSubscriptionGroup("127.0.0.1:10911", 5000L)).thenReturn(wrapper);
 
-        List<ClientConnectionVO> connections = provider.findConnections("cluster-a", "Consumer");
+        List<ClientConnectionVO> connections = provider.findConnections("instance-a", "cluster-a", "Consumer");
 
         assertThat(connections).isEmpty();
         verify(adminExt).examineBrokerClusterInfo();
@@ -228,7 +237,7 @@ class RocketMQClientProviderTest {
         when(adminExt.getAllSubscriptionGroup("127.0.0.1:10911", 5000L)).thenReturn(wrapper);
         when(adminExt.examineConsumerConnectionInfo("group-a")).thenReturn(consumerConnection);
 
-        List<ClientConnectionVO> connections = provider.findConnections("cluster-a", "Consumer");
+        List<ClientConnectionVO> connections = provider.findConnections("instance-a", "cluster-a", "Consumer");
 
         assertThat(connections).hasSize(1);
         assertThat(connections.get(0).getClientId()).isEqualTo("consumer-client");

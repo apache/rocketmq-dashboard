@@ -69,9 +69,9 @@ class ClientControllerTest {
                 .connectedAt(LocalDateTime.of(2026, 1, 1, 12, 5))
                 .clusterName("production-cluster")
                 .build();
-        when(clientService.listConnections(null, null)).thenReturn(List.of(grpcClient, remotingClient));
+        when(clientService.listConnections("instance-1", null, null)).thenReturn(List.of(grpcClient, remotingClient));
 
-        mockMvc.perform(get("/api/clients"))
+        mockMvc.perform(get("/api/clients").param("instanceId", "instance-1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data").isArray())
@@ -84,14 +84,15 @@ class ClientControllerTest {
                 .andExpect(jsonPath("$.data[1].type").value("Producer"))
                 .andExpect(jsonPath("$.data[1].protocol").value("Remoting"));
 
-        verify(clientService).listConnections(null, null);
+        verify(clientService).listConnections("instance-1", null, null);
     }
 
     @Test
     void listConnectionsShouldPassClusterAndTypeFilters() throws Exception {
-        when(clientService.listConnections("production-cluster", "Consumer")).thenReturn(List.of());
+        when(clientService.listConnections("instance-1", "production-cluster", "Consumer")).thenReturn(List.of());
 
         mockMvc.perform(get("/api/clients")
+                        .param("instanceId", "instance-1")
                         .param("clusterId", "production-cluster")
                         .param("type", "Consumer"))
                 .andExpect(status().isOk())
@@ -99,6 +100,6 @@ class ClientControllerTest {
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data").isEmpty());
 
-        verify(clientService).listConnections("production-cluster", "Consumer");
+        verify(clientService).listConnections("instance-1", "production-cluster", "Consumer");
     }
 }

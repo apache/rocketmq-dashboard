@@ -43,21 +43,21 @@ class ClientServiceTest {
                 .clientId("client-1")
                 .clusterName("production-cluster")
                 .build();
-        when(clientProvider.findConnections("production-cluster", "Producer")).thenReturn(List.of(connection));
+        when(clientProvider.findConnections("instance-1", "production-cluster", "Producer")).thenReturn(List.of(connection));
 
-        List<ClientConnectionVO> result = clientService.listConnections(" production-cluster ", " Producer ");
+        List<ClientConnectionVO> result = clientService.listConnections(" instance-1 ", " production-cluster ", " Producer ");
 
         assertThat(result).containsExactly(connection);
-        verify(clientProvider).findConnections("production-cluster", "Producer");
+        verify(clientProvider).findConnections("instance-1", "production-cluster", "Producer");
     }
 
     @Test
     void listConnectionsShouldTreatBlankFiltersAsUnspecified() {
-        when(clientProvider.findConnections(null, null)).thenReturn(List.of());
+        when(clientProvider.findConnections(null, null, null)).thenReturn(List.of());
 
-        List<ClientConnectionVO> result = clientService.listConnections(" ", "\t");
+        List<ClientConnectionVO> result = clientService.listConnections(" ", " ", "\t");
 
         assertThat(result).isEmpty();
-        verify(clientProvider).findConnections(null, null);
+        verify(clientProvider).findConnections(null, null, null);
     }
 }

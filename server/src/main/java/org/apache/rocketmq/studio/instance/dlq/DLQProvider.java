@@ -20,6 +20,7 @@ package org.apache.rocketmq.studio.instance.dlq;
 import java.util.List;
 
 public interface DLQProvider {
-    List<DLQGroupVO> listDLQGroups(String clusterId);
-    DLQResendResultVO resendMessages(String groupName, Long startTime, Long endTime, String targetTopic);
+    List<DLQGroupVO> listDLQGroups(String instanceId);
+    DLQResendResultVO resendMessages(String instanceId, String groupName, Long startTime, Long endTime,
+                                     String targetTopic);
 }

@@ -39,6 +39,8 @@ import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import type { ClientConnection } from '../../api/connections';
 import { listConnections } from '../../services/connectionsService';
+import { listInstances } from '../../services/instanceService';
+import type { Instance } from '../../api/instance';
 import { formatDateTime } from '../../utils/format';
 
 const { Text } = Typography;
@@ -105,6 +107,8 @@ const ClientsPage = () => {
   const { t } = useLang();
   const { token } = theme.useToken();
   const [connections, setConnections] = useState<ClientConnection[]>([]);
+  const [instances, setInstances] = useState<Instance[]>([]);
+  const [selectedInstanceId, setSelectedInstanceId] = useState('');
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [clusterFilter, setClusterFilter] = useState<string>('ALL');
@@ -113,8 +117,25 @@ const ClientsPage = () => {
 
   useEffect(() => {
     let cancelled = false;
+    void listInstances().then((nextInstances) => {
+      if (cancelled) return;
+      setInstances(nextInstances);
+      setSelectedInstanceId((current) => current || nextInstances[0]?.id || '');
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-    void listConnections()
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedInstanceId) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void listConnections({ instanceId: selectedInstanceId })
       .then((nextConnections) => {
         if (!cancelled) {
           setConnections(nextConnections);
@@ -133,7 +154,7 @@ const ClientsPage = () => {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [selectedInstanceId]);
 
   /* ─── Cluster options using nsClusterName ─── */
   const clusterOptions = useMemo(() => {
@@ -348,6 +369,14 @@ const ClientsPage = () => {
       {/* ─── Filter Bar ─── */}
       <Flex justify="space-between" align="center" style={{ marginBottom: 16 }}>
         <Space size={12} wrap>
+          <Select
+            aria-label="Instance"
+            value={selectedInstanceId || undefined}
+            onChange={setSelectedInstanceId}
+            placeholder="Select instance"
+            style={{ width: 180 }}
+            options={instances.map((instance) => ({ value: instance.id, label: instance.name }))}
+          />
           <Select
             aria-label={t('clients.cluster')}
             value={clusterFilter}

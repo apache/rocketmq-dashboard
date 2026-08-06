@@ -46,9 +46,7 @@ describe('message service mock data', () => {
       endTime: Date.parse('2026-07-01T10:26:00.000Z'),
     });
 
-    expect(messages.map((message) => message.msgId)).toEqual([
-      'AC1E0A6400002A9F0000000001A3F7C2',
-    ]);
+    expect(messages.map((message) => message.msgId)).toEqual(['AC1E0A6400002A9F0000000001A3F7C2']);
   });
 
   it('returns copied message trace rows', async () => {
@@ -67,12 +65,12 @@ describe('message service mock data', () => {
   });
 
   it('returns copied DLQ group rows', async () => {
-    const first = await listDLQGroups();
+    const first = await listDLQGroups('instance-1');
     expect(first[0].groupName).toBe('cg-order-processor');
 
     first[0].groupName = 'mutated-group';
 
-    const second = await listDLQGroups();
+    const second = await listDLQGroups('instance-1');
     expect(second[0].groupName).toBe('cg-order-processor');
     expect(second[0]).not.toBe(first[0]);
   });

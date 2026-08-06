@@ -41,7 +41,7 @@ public class ProducerConnectionService {
     }
 
     public List<String> listProducerGroups() {
-        return clientProvider.findConnections(null, ClientType.Producer.name()).stream()
+        return clientProvider.findConnections(null, null, ClientType.Producer.name()).stream()
                 .map(ClientConnectionVO::getProducerGroup)
                 .filter(this::hasText)
                 .map(String::trim)

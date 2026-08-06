@@ -34,8 +34,9 @@ public class ClientController {
 
     @GetMapping
     public Result<List<ClientConnectionVO>> listConnections(
+            @RequestParam String instanceId,
             @RequestParam(required = false) String clusterId,
             @RequestParam(required = false) String type) {
-        return Result.ok(clientService.listConnections(clusterId, type));
+        return Result.ok(clientService.listConnections(instanceId, clusterId, type));
     }
 }

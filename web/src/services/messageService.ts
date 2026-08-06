@@ -56,12 +56,13 @@ export async function getMessageTrace(msgId: string): Promise<TraceRecord | null
   return messageApi.getMessageTrace(msgId);
 }
 
-export async function listDLQGroups(): Promise<DLQGroup[]> {
+export async function listDLQGroups(instanceId: string): Promise<DLQGroup[]> {
   if (isMockMode()) return (mockDLQGroups as unknown as DLQGroup[]).map(cloneDLQGroup);
-  return messageApi.listDLQGroups();
+  return messageApi.listDLQGroups(instanceId);
 }
 
 export async function resendDLQ(data: {
+  instanceId: string;
   groupName: string;
   startTime: number;
   endTime: number;

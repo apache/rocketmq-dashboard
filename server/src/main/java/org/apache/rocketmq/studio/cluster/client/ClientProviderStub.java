@@ -25,9 +25,9 @@ import java.util.List;
 public class ClientProviderStub implements ClientProvider {
 
     @Override
-    public List<ClientConnectionVO> findConnections(String clusterId, String type) {
-        log.warn("ClientProviderStub.findConnections called without a real client provider. clusterId={}, type={}",
-                clusterId, type);
+    public List<ClientConnectionVO> findConnections(String instanceId, String clusterId, String type) {
+        log.warn("ClientProviderStub.findConnections called without a real client provider. instanceId={}, clusterId={}, type={}",
+                instanceId, clusterId, type);
         throw new BusinessException(501, "Client connection provider is not configured");
     }
 

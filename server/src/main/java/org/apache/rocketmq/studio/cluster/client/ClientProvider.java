@@ -20,7 +20,7 @@ package org.apache.rocketmq.studio.cluster.client;
 import java.util.List;
 
 public interface ClientProvider {
-    List<ClientConnectionVO> findConnections(String clusterId, String type);
+    List<ClientConnectionVO> findConnections(String instanceId, String clusterId, String type);
 
     List<ClientConnectionVO> findProducerConnections(String topic, String producerGroup);
 }

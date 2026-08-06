@@ -29,11 +29,13 @@ import org.apache.rocketmq.remoting.protocol.body.SubscriptionGroupWrapper;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.client.ClientConnectionVO;
 import org.apache.rocketmq.studio.cluster.client.ClientProvider;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.ClientLanguage;
 import org.apache.rocketmq.studio.common.domain.enums.ClientType;
 import org.apache.rocketmq.studio.common.domain.enums.Protocol;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
+import org.apache.rocketmq.tools.admin.MQAdminExt;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Primary;
@@ -61,15 +63,20 @@ public class RocketMQClientProvider implements ClientProvider {
     private static final long SUBSCRIPTION_GROUP_TIMEOUT_MILLIS = 5000L;
 
     private final ObjectProvider<DefaultMQAdminExt> adminExtProvider;
+    private final RuntimeAdminClientResolver runtimeAdminClientResolver;
 
-    public RocketMQClientProvider(ObjectProvider<DefaultMQAdminExt> adminExtProvider) {
+    public RocketMQClientProvider(ObjectProvider<DefaultMQAdminExt> adminExtProvider,
+                                  RuntimeAdminClientResolver runtimeAdminClientResolver) {
         this.adminExtProvider = adminExtProvider;
+        this.runtimeAdminClientResolver = runtimeAdminClientResolver;
     }
 
     @Override
-    public List<ClientConnectionVO> findConnections(String clusterId, String type) {
-        DefaultMQAdminExt adminExt = requireAdminExt();
+    public List<ClientConnectionVO> findConnections(String instanceId, String clusterId, String type) {
+        return runtimeAdminClientResolver.execute(instanceId, adminExt -> findConnections(adminExt, clusterId, type));
+    }
 
+    private List<ClientConnectionVO> findConnections(MQAdminExt adminExt, String clusterId, String type) {
         ClientType clientType = parseType(type);
         List<ClientConnectionVO> connections = new ArrayList<>();
         if (clientType == null || clientType == ClientType.Producer) {
@@ -119,7 +126,7 @@ public class RocketMQClientProvider implements ClientProvider {
     }
 
     private List<ClientConnectionVO> findAllProducerConnections(
-            DefaultMQAdminExt adminExt, String clusterId) {
+            MQAdminExt adminExt, String clusterId) {
         Set<String> brokerAddresses = collectProducerBrokerAddresses(adminExt);
         Map<String, ClientConnectionVO> connections = new LinkedHashMap<>();
         int successfulBrokers = 0;
@@ -138,7 +145,7 @@ public class RocketMQClientProvider implements ClientProvider {
         return new ArrayList<>(connections.values());
     }
 
-    private Set<String> collectProducerBrokerAddresses(DefaultMQAdminExt adminExt) {
+    private Set<String> collectProducerBrokerAddresses(MQAdminExt adminExt) {
         ClusterInfo clusterInfo;
         try {
             clusterInfo = adminExt.examineBrokerClusterInfo();
@@ -200,7 +207,7 @@ public class RocketMQClientProvider implements ClientProvider {
                 .build();
     }
 
-    private List<ClientConnectionVO> findConsumerConnections(DefaultMQAdminExt adminExt, String clusterId) {
+    private List<ClientConnectionVO> findConsumerConnections(MQAdminExt adminExt, String clusterId) {
         List<ClientConnectionVO> result = new ArrayList<>();
         Set<String> groups = collectSubscriptionGroups(adminExt);
         for (String group : groups) {
@@ -225,7 +232,7 @@ public class RocketMQClientProvider implements ClientProvider {
         return result;
     }
 
-    private Set<String> collectSubscriptionGroups(DefaultMQAdminExt adminExt) {
+    private Set<String> collectSubscriptionGroups(MQAdminExt adminExt) {
         Set<String> groups = new LinkedHashSet<>();
         ClusterInfo clusterInfo;
         try {

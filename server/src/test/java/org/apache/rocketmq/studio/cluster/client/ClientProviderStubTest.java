@@ -27,7 +27,7 @@ class ClientProviderStubTest {
 
     @Test
     void findConnectionsShouldFailWhenRealProviderIsMissing() {
-        assertThatThrownBy(() -> provider.findConnections("production-cluster", "Producer"))
+        assertThatThrownBy(() -> provider.findConnections("instance-1", "production-cluster", "Producer"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Client connection provider is not configured")
                 .satisfies(ex -> assertThatBusinessExceptionCode(ex, 501));

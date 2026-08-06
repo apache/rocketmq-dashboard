@@ -29,9 +29,9 @@ public class ClientService {
 
     private final ClientProvider clientProvider;
 
-    public List<ClientConnectionVO> listConnections(String clusterId, String type) {
-        log.info("Listing client connections, clusterId={}, type={}", clusterId, type);
-        return clientProvider.findConnections(normalizeFilter(clusterId), normalizeFilter(type));
+    public List<ClientConnectionVO> listConnections(String instanceId, String clusterId, String type) {
+        log.info("Listing client connections, instanceId={}, clusterId={}, type={}", instanceId, clusterId, type);
+        return clientProvider.findConnections(normalizeFilter(instanceId), normalizeFilter(clusterId), normalizeFilter(type));
     }
 
     private String normalizeFilter(String value) {

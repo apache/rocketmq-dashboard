@@ -28,6 +28,21 @@ import ClientsPage from '../clients';
 vi.mock('../../../services/connectionsService', () => ({
   listConnections: vi.fn(),
 }));
+vi.mock('../../../services/instanceService', () => ({
+  listInstances: vi.fn().mockResolvedValue([
+    {
+      id: 'instance-1',
+      name: 'Instance 1',
+      endpoint: 'namesrv-1:9876',
+      type: 'DIRECT',
+      remark: '',
+      topicCount: 0,
+      consumerGroupCount: 0,
+      createdAt: '',
+      updatedAt: '',
+    },
+  ]),
+}));
 
 const connection: ClientConnection = {
   clientId: 'order-svc-0@10.0.1.12:49152',
@@ -99,13 +114,20 @@ const renderWithProviders = (ui: React.ReactElement) =>
   );
 
 describe('Clients page', () => {
+  it('loads connections for the selected instance', async () => {
+    renderWithProviders(<ClientsPage />);
+
+    await screen.findByText('order-svc-0@10.0.1.12:49152');
+    expect(connectionsService.listConnections).toHaveBeenCalledWith({ instanceId: 'instance-1' });
+  });
+
   it('summarizes connection types, protocols, and language versions', async () => {
     vi.mocked(connectionsService.listConnections).mockResolvedValue(connections);
     renderWithProviders(<ClientsPage />);
 
-    expect(
-      within(await screen.findByTestId('connection-total')).getByText('3'),
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(within(screen.getByTestId('connection-total')).getByText('3')).toBeInTheDocument();
+    });
     expect(within(screen.getByTestId('producer-total')).getByText('1')).toBeInTheDocument();
     expect(within(screen.getByTestId('consumer-total')).getByText('2')).toBeInTheDocument();
 

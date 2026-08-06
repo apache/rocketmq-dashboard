@@ -32,15 +32,16 @@ public class DLQService {
 
     private final DLQProvider dlqProvider;
 
-    public List<DLQGroupVO> listDLQGroups(String clusterId) {
-        log.info("Listing DLQ groups for cluster: {}", clusterId);
-        return dlqProvider.listDLQGroups(clusterId);
+    public List<DLQGroupVO> listDLQGroups(String instanceId) {
+        log.info("Listing DLQ groups for instance: {}", instanceId);
+        return dlqProvider.listDLQGroups(instanceId);
     }
 
-    public DLQResendResultVO resendMessages(String groupName, Long startTime, Long endTime, String targetTopic) {
+    public DLQResendResultVO resendMessages(String instanceId, String groupName, Long startTime, Long endTime,
+                                             String targetTopic) {
         validateResendRequest(groupName, startTime, endTime);
         log.info("Resending DLQ messages: group={}, targetTopic={}", groupName, targetTopic);
-        return dlqProvider.resendMessages(groupName, startTime, endTime, targetTopic);
+        return dlqProvider.resendMessages(instanceId, groupName, startTime, endTime, targetTopic);
     }
 
     private void validateResendRequest(String groupName, Long startTime, Long endTime) {

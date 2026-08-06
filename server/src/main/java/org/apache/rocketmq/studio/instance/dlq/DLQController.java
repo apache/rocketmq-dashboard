@@ -37,15 +37,15 @@ public class DLQController {
     private final DLQService dlqService;
 
     @GetMapping
-    public Result<List<DLQGroupVO>> listDLQGroups(@RequestParam(required = false) String clusterId) {
-        return Result.ok(dlqService.listDLQGroups(clusterId));
+    public Result<List<DLQGroupVO>> listDLQGroups(@RequestParam String instanceId) {
+        return Result.ok(dlqService.listDLQGroups(instanceId));
     }
 
     @PostMapping("/resend")
     public Result<DLQResendResultVO> resendMessages(@Valid @RequestBody(required = false) DLQResendRequestDTO request) {
         requireRequest(request);
-        return Result.ok(dlqService.resendMessages(
-                request.getGroupName(), request.getStartTime(), request.getEndTime(), request.getTargetTopic()));
+        return Result.ok(dlqService.resendMessages(request.getInstanceId(), request.getGroupName(),
+                request.getStartTime(), request.getEndTime(), request.getTargetTopic()));
     }
 
     private void requireRequest(DLQResendRequestDTO request) {
