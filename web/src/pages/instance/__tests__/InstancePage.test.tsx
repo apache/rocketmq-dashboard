@@ -188,4 +188,21 @@ describe('InstancePage', () => {
     );
     expect(instanceService.listInstances).toHaveBeenLastCalledWith({ type: 'DIRECT' });
   });
+
+  it('shows vendor tabs in the add instance modal and switches description', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(await screen.findByText('production-proxy')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /添加实例/ }));
+    const dialog = await screen.findByRole('dialog');
+
+    expect(within(dialog).getByRole('tab', { name: /开源版/ })).toBeInTheDocument();
+    expect(within(dialog).getByRole('tab', { name: /Aliyun 版/ })).toBeInTheDocument();
+    expect(within(dialog).getByRole('tab', { name: /Tencent 版/ })).toBeInTheDocument();
+    expect(within(dialog).getByText(/自建 Apache RocketMQ 开源集群/)).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('tab', { name: /Aliyun 版/ }));
+    expect(within(dialog).getByText(/云凭据与云上实例完成接入/)).toBeInTheDocument();
+  });
 });

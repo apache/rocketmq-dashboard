@@ -51,11 +51,14 @@ export async function listConsumerGroups(params?: ConsumerGroupQuery): Promise<C
   return metadataApi.listConsumerGroups(params);
 }
 
-export async function getConsumerProgress(name: string): Promise<QueueProgress[]> {
+export async function getConsumerProgress(
+  name: string,
+  instanceId?: string,
+): Promise<QueueProgress[]> {
   if (isMockMode()) {
     return ((mockQueueProgress[name] as unknown as QueueProgress[]) ?? []).map(copyQueueProgress);
   }
-  return metadataApi.getConsumerProgress(name);
+  return metadataApi.getConsumerProgress(name, instanceId);
 }
 
 export async function getConsumerGroup(name: string): Promise<ConsumerGroupDetail> {
@@ -67,13 +70,16 @@ export async function getConsumerGroup(name: string): Promise<ConsumerGroupDetai
   return metadataApi.getConsumerGroup(name);
 }
 
-export async function getConsumerSubscriptions(name: string): Promise<SubscriptionEntry[]> {
+export async function getConsumerSubscriptions(
+  name: string,
+  instanceId?: string,
+): Promise<SubscriptionEntry[]> {
   if (isMockMode()) {
     return ((mockSubscriptions[name] as unknown as SubscriptionEntry[]) ?? []).map(
       copySubscription,
     );
   }
-  return metadataApi.getConsumerSubscriptions(name);
+  return metadataApi.getConsumerSubscriptions(name, instanceId);
 }
 
 export async function createConsumerGroup(data: Partial<ConsumerGroup>): Promise<ConsumerGroup> {
@@ -101,13 +107,13 @@ export async function createConsumerGroup(data: Partial<ConsumerGroup>): Promise
   return metadataApi.createConsumerGroup(data);
 }
 
-export async function deleteConsumerGroup(name: string): Promise<void> {
+export async function deleteConsumerGroup(name: string, instanceId?: string): Promise<void> {
   if (isMockMode()) {
     const idx = consumerGroupsState.findIndex((group) => group.name === name);
     if (idx >= 0) consumerGroupsState.splice(idx, 1);
     return;
   }
-  return metadataApi.deleteConsumerGroup(name);
+  return metadataApi.deleteConsumerGroup(name, instanceId);
 }
 
 export async function resetConsumerOffset(data: ResetConsumerOffsetRequest): Promise<void> {

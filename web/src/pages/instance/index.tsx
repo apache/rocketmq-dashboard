@@ -28,6 +28,7 @@ import {
   Modal,
   Form,
   Flex,
+  Tabs,
   Typography,
   Alert,
   message,
@@ -37,6 +38,13 @@ import { Plus, MagnifyingGlass } from '@phosphor-icons/react';
 import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { Instance, InstanceQuery } from '../../api/instance';
+import { listCloudCredentials, type CloudCredential } from '../../api/cloudCredential';
+import {
+  listAliyunInstances,
+  listAliyunRegions,
+  type CloudInstanceOption,
+  type CloudRegion,
+} from '../../api/aliyunCatalog';
 import { formatDateTime } from '../../utils/format';
 import {
   createInstance,
@@ -44,8 +52,11 @@ import {
   listInstances,
   updateInstance,
 } from '../../services/instanceService';
+import { DEFAULT_VENDOR, VENDOR_OPTIONS, type InstanceVendor } from './vendorOptions';
 
 const { Text } = Typography;
+
+const DEFAULT_ALIYUN_REGION_ID = 'cn-hangzhou';
 
 /* ─── Helpers ─── */
 const typeLabel: Record<string, { text: string; color: string }> = {
@@ -67,8 +78,17 @@ const InstancePage = () => {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<InstanceTypeFilter>('ALL');
   const [addModalOpen, setAddModalOpen] = useState(false);
+  const [vendor, setVendor] = useState<InstanceVendor>(DEFAULT_VENDOR);
   const [addForm] = Form.useForm();
   const addInstanceType = Form.useWatch<'PROXY' | 'DIRECT' | undefined>('type', addForm);
+  const addCredentialId = Form.useWatch<string | undefined>('credentialId', addForm);
+  const addRegionId = Form.useWatch<string | undefined>('regionId', addForm);
+  const [credentials, setCredentials] = useState<CloudCredential[]>([]);
+  const [credentialsLoading, setCredentialsLoading] = useState(false);
+  const [regions, setRegions] = useState<CloudRegion[]>([]);
+  const [regionsLoading, setRegionsLoading] = useState(false);
+  const [cloudInstances, setCloudInstances] = useState<CloudInstanceOption[]>([]);
+  const [cloudInstancesLoading, setCloudInstancesLoading] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingInstance, setEditingInstance] = useState<Instance | null>(null);
   const [editForm] = Form.useForm();
@@ -113,15 +133,88 @@ const InstancePage = () => {
     };
   }, [loadInstances]);
 
+  useEffect(() => {
+    if (vendor !== 'ALIYUN' || !addModalOpen) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setCredentialsLoading(true);
+      listCloudCredentials()
+        .then((items) => setCredentials(items.filter((item) => item.vendor === 'ALIYUN')))
+        .catch(() => message.error('云凭据列表加载失败'))
+        .finally(() => setCredentialsLoading(false));
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [vendor, addModalOpen]);
+
+  useEffect(() => {
+    if (vendor !== 'ALIYUN' || !addCredentialId) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setRegionsLoading(true);
+      listAliyunRegions(addCredentialId)
+        .then((items) => {
+          setRegions(items);
+          if (!addForm.getFieldValue('regionId')) {
+            const preferred = items.find((region) => region.regionId === DEFAULT_ALIYUN_REGION_ID);
+            if (preferred) {
+              addForm.setFieldsValue({ regionId: preferred.regionId });
+            }
+          }
+        })
+        .catch(() => message.error('云地域列表加载失败'))
+        .finally(() => setRegionsLoading(false));
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [vendor, addCredentialId, addForm]);
+
+  useEffect(() => {
+    if (vendor !== 'ALIYUN' || !addCredentialId || !addRegionId) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setCloudInstancesLoading(true);
+      listAliyunInstances(addCredentialId, addRegionId)
+        .then(setCloudInstances)
+        .catch(() => message.error('云实例列表加载失败'))
+        .finally(() => setCloudInstancesLoading(false));
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [vendor, addCredentialId, addRegionId]);
+
+  const handleCredentialChange = () => {
+    setRegions([]);
+    setCloudInstances([]);
+    addForm.setFieldsValue({ regionId: undefined, cloudInstanceId: undefined });
+  };
+
+  const handleRegionChange = () => {
+    setCloudInstances([]);
+    addForm.setFieldsValue({ cloudInstanceId: undefined });
+  };
+
   const handleCreate = async () => {
     try {
       const values = await addForm.validateFields();
       setSubmitting(true);
-      const created = await createInstance(values);
+      const payload =
+        vendor === 'ALIYUN'
+          ? {
+              name: values.name,
+              vendor: 'ALIYUN' as const,
+              credentialId: values.credentialId,
+              cloudInstanceId: values.cloudInstanceId,
+              regionId: values.regionId,
+              remark: values.remark,
+            }
+          : values;
+      const created = await createInstance(payload);
       await loadInstances();
       message.success(`实例「${created.name}」添加成功`);
       setAddModalOpen(false);
       addForm.resetFields();
+      setVendor(DEFAULT_VENDOR);
     } catch {
       message.error('添加实例失败，请稍后重试');
     } finally {
@@ -182,6 +275,24 @@ const InstancePage = () => {
           {remark}
         </Text>
       ),
+    },
+    {
+      title: '厂商',
+      dataIndex: 'vendor',
+      key: 'vendor',
+      width: 140,
+      render: (value?: string) => {
+        const option = VENDOR_OPTIONS.find((item) => item.key === (value || 'APACHE'));
+        if (!option) {
+          return <Text type="secondary">{value || '-'}</Text>;
+        }
+        return (
+          <Space size={6}>
+            <img src={option.logo} alt={option.label} style={{ height: 16 }} />
+            <Text style={{ fontSize: 13 }}>{option.label}</Text>
+          </Space>
+        );
+      },
     },
     {
       title: '类型',
@@ -343,65 +454,165 @@ const InstancePage = () => {
         onCancel={() => {
           setAddModalOpen(false);
           addForm.resetFields();
+          setVendor(DEFAULT_VENDOR);
+          setRegions([]);
+          setCloudInstances([]);
         }}
         onOk={() => void handleCreate()}
         confirmLoading={submitting}
+        okButtonProps={{ disabled: vendor === 'TENCENT' }}
         okText="连接"
         cancelText="取消"
         width={520}
       >
-        <Form form={addForm} layout="vertical" style={{ marginTop: 16 }}>
-          <Form.Item
-            label="实例名称"
-            name="name"
-            rules={[{ required: true, message: '请输入实例名称' }]}
-          >
-            <Input placeholder="例：rocketmq-production" />
-          </Form.Item>
-          <Form.Item
-            label="接入方式"
-            name="type"
-            rules={[{ required: true, message: '请选择接入方式' }]}
-          >
-            <Select
-              placeholder="选择接入方式"
-              options={[
-                { value: 'PROXY', label: 'Proxy 模式' },
-                { value: 'DIRECT', label: 'Direct 模式' },
-              ]}
-            />
-          </Form.Item>
-          <Form.Item
-            label="接入地址"
-            name="endpoint"
-            rules={[{ required: true, message: '请输入接入地址' }]}
-            extra={
-              addInstanceType === 'DIRECT'
-                ? 'Direct 模式请填写 NameServer SLB 地址（K8s 场景下一般为 NameServer Service 地址，如 namesrv.mq.svc:9876）'
-                : addInstanceType === 'PROXY'
-                  ? 'Proxy 模式请填写 Proxy SLB 内网地址（如 proxy.mq.svc:8080）'
-                  : '请先选择接入方式'
-            }
-          >
-            <Input
-              placeholder={
-                addInstanceType === 'DIRECT'
-                  ? '例：namesrv.mq.svc.cluster.local:9876'
-                  : '例：proxy.mq.svc.cluster.local:8080'
-              }
-            />
-          </Form.Item>
+        <Tabs
+          type="card"
+          activeKey={vendor}
+          onChange={(key) => setVendor(key as InstanceVendor)}
+          style={{ marginTop: 8, marginBottom: 4 }}
+          items={VENDOR_OPTIONS.map((option) => ({
+            key: option.key,
+            label: (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <img src={option.logo} alt={option.label} style={{ height: 18, maxWidth: 80 }} />
+                {option.label}
+              </span>
+            ),
+          }))}
+        />
+        <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 12 }}>
+          {VENDOR_OPTIONS.find((option) => option.key === vendor)?.description}
+        </Text>
+        {vendor === 'ALIYUN' ? (
+          <Form form={addForm} layout="vertical">
+            <Form.Item
+              label="云凭据"
+              name="credentialId"
+              rules={[{ required: true, message: '请选择云凭据' }]}
+              extra="凭据为阿里云账号的 AK/SK，在云凭据管理中录入"
+            >
+              <Select
+                placeholder="选择已录入的 AK/SK 凭据"
+                loading={credentialsLoading}
+                onChange={handleCredentialChange}
+                options={credentials.map((item) => ({
+                  value: item.id,
+                  label: `${item.name}（${item.accessKey}）`,
+                }))}
+              />
+            </Form.Item>
+            <Form.Item
+              label="地域"
+              name="regionId"
+              rules={[{ required: true, message: '请选择地域' }]}
+            >
+              <Select
+                placeholder={addCredentialId ? '选择地域' : '请先选择云凭据'}
+                disabled={!addCredentialId}
+                loading={regionsLoading}
+                onChange={handleRegionChange}
+                options={regions.map((region) => ({
+                  value: region.regionId,
+                  label: `${region.regionName}（${region.regionId}）`,
+                }))}
+              />
+            </Form.Item>
+            <Form.Item
+              label="云上实例"
+              name="cloudInstanceId"
+              rules={[{ required: true, message: '请选择云上实例' }]}
+              extra="商业版实例来自云端目录，无法手工创建"
+            >
+              <Select
+                showSearch
+                optionFilterProp="label"
+                placeholder={addRegionId ? '选择云上实例' : '请先选择地域'}
+                disabled={!addRegionId}
+                loading={cloudInstancesLoading}
+                options={cloudInstances.map((item) => ({
+                  value: item.instanceId,
+                  label: `${item.instanceName || item.instanceId}（${item.instanceId}）`,
+                }))}
+                onChange={(value) => {
+                  const selected = cloudInstances.find((item) => item.instanceId === value);
+                  if (selected?.instanceName) {
+                    addForm.setFieldsValue({ name: selected.instanceName });
+                  }
+                }}
+              />
+            </Form.Item>
+            <Form.Item
+              label="实例名称"
+              name="name"
+              rules={[{ required: true, message: '请输入实例名称' }]}
+            >
+              <Input placeholder="默认取云上实例名称" />
+            </Form.Item>
+            <Form.Item label="备注" name="remark">
+              <Input.TextArea rows={2} placeholder="可选，描述实例用途" />
+            </Form.Item>
+          </Form>
+        ) : vendor === 'TENCENT' ? (
           <Alert
             type="info"
             showIcon
-            style={{ marginBottom: 16 }}
-            message="接入地址为客户端访问入口"
-            description="接入地址会展示在 Topic 等页面供客户端配置使用。若客户端环境无法解析该地址（如 K8s 内部 Service 域名），可自行配置 DNS 解析或在客户端 hosts 中映射。"
+            message="Tencent 版接入开发中"
+            description="腾讯云 TDMQ RocketMQ 版接入正在开发中，敬请期待。"
           />
-          <Form.Item label="备注" name="remark">
-            <Input.TextArea rows={2} placeholder="可选，描述实例用途" />
-          </Form.Item>
-        </Form>
+        ) : (
+          <Form form={addForm} layout="vertical">
+            <Form.Item
+              label="实例名称"
+              name="name"
+              rules={[{ required: true, message: '请输入实例名称' }]}
+            >
+              <Input placeholder="例：rocketmq-production" />
+            </Form.Item>
+            <Form.Item
+              label="接入方式"
+              name="type"
+              rules={[{ required: true, message: '请选择接入方式' }]}
+            >
+              <Select
+                placeholder="选择接入方式"
+                options={[
+                  { value: 'PROXY', label: 'Proxy 模式' },
+                  { value: 'DIRECT', label: 'Direct 模式' },
+                ]}
+              />
+            </Form.Item>
+            <Form.Item
+              label="接入地址"
+              name="endpoint"
+              rules={[{ required: true, message: '请输入接入地址' }]}
+              extra={
+                addInstanceType === 'DIRECT'
+                  ? 'Direct 模式请填写 NameServer SLB 地址（K8s 场景下一般为 NameServer Service 地址，如 namesrv.mq.svc:9876）'
+                  : addInstanceType === 'PROXY'
+                    ? 'Proxy 模式请填写 Proxy SLB 内网地址（如 proxy.mq.svc:8080）'
+                    : '请先选择接入方式'
+              }
+            >
+              <Input
+                placeholder={
+                  addInstanceType === 'DIRECT'
+                    ? '例：namesrv.mq.svc.cluster.local:9876'
+                    : '例：proxy.mq.svc.cluster.local:8080'
+                }
+              />
+            </Form.Item>
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message="接入地址为客户端访问入口"
+              description="接入地址会展示在 Topic 等页面供客户端配置使用。若客户端环境无法解析该地址（如 K8s 内部 Service 域名），可自行配置 DNS 解析或在客户端 hosts 中映射。"
+            />
+            <Form.Item label="备注" name="remark">
+              <Input.TextArea rows={2} placeholder="可选，描述实例用途" />
+            </Form.Item>
+          </Form>
+        )}
       </Modal>
 
       {/* Edit Instance Modal */}
