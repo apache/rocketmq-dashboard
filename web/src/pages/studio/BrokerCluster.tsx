@@ -31,9 +31,7 @@ import {
   Modal,
 } from 'antd';
 import {
-  Plus,
   ArrowClockwise,
-  GearSix,
   ArrowsClockwise,
   Cloud,
   ChartBar,
@@ -294,31 +292,24 @@ const BrokerClusterPage = () => {
       title: t('common.actions'),
       key: 'action',
       render: (_: unknown, record: BrokerRecord) => (
-        <Space size="small">
-          <Tooltip title={t('brokerCluster.config')}>
-            <Button type="link" size="small" icon={<GearSix size={14} />}>
-              {t('brokerCluster.config')}
-            </Button>
-          </Tooltip>
-          <Tooltip title={t('brokerCluster.restart')}>
-            <Button
-              type="link"
-              size="small"
-              icon={<ArrowsClockwise size={14} />}
-              onClick={() => {
-                Modal.confirm({
-                  title: t('cluster.confirmRestart'),
-                  content: t('cluster.restartBrokerConfirm', { name: record.brokerName }),
-                  okText: t('common.confirm'),
-                  cancelText: t('common.cancel'),
-                  onOk: () => handleRestartBroker(record),
-                });
-              }}
-            >
-              {t('brokerCluster.restart')}
-            </Button>
-          </Tooltip>
-        </Space>
+        <Tooltip title={t('brokerCluster.restart')}>
+          <Button
+            type="link"
+            size="small"
+            icon={<ArrowsClockwise size={14} />}
+            onClick={() => {
+              Modal.confirm({
+                title: t('cluster.confirmRestart'),
+                content: t('cluster.restartBrokerConfirm', { name: record.brokerName }),
+                okText: t('common.confirm'),
+                cancelText: t('common.cancel'),
+                onOk: () => handleRestartBroker(record),
+              });
+            }}
+          >
+            {t('brokerCluster.restart')}
+          </Button>
+        </Tooltip>
       ),
     },
   ];
@@ -365,20 +356,6 @@ const BrokerClusterPage = () => {
       dataIndex: 'connections',
       key: 'connections',
       render: (text: number) => <span style={{ fontWeight: 500 }}>{text.toLocaleString()}</span>,
-    },
-    {
-      title: t('common.actions'),
-      key: 'action',
-      render: () => (
-        <Space size="small">
-          <Button type="link" size="small" icon={<GearSix size={14} />}>
-            {t('brokerCluster.config')}
-          </Button>
-          <Button type="link" size="small" icon={<ArrowsClockwise size={14} />}>
-            {t('brokerCluster.restart')}
-          </Button>
-        </Space>
-      ),
     },
   ];
 
@@ -442,20 +419,6 @@ const BrokerClusterPage = () => {
       key: 'connections',
       render: (text: number) => <span style={{ fontWeight: 500 }}>{text.toLocaleString()}</span>,
     },
-    {
-      title: t('common.actions'),
-      key: 'action',
-      render: () => (
-        <Space size="small">
-          <Button type="link" size="small" icon={<GearSix size={14} />}>
-            {t('brokerCluster.config')}
-          </Button>
-          <Button type="link" size="small" icon={<ArrowsClockwise size={14} />}>
-            {t('brokerCluster.restart')}
-          </Button>
-        </Space>
-      ),
-    },
   ];
 
   return (
@@ -490,9 +453,6 @@ const BrokerClusterPage = () => {
           />
           <Button icon={<ArrowClockwise size={14} />} size="small" onClick={() => void loadData()}>
             {t('common.reset')}
-          </Button>
-          <Button type="primary" icon={<Plus size={14} />}>
-            {t('brokerCluster.createCluster')}
           </Button>
         </Space>
       </div>
