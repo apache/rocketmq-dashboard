@@ -23,7 +23,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -69,61 +68,41 @@ public abstract class CliAgentProvider implements AgentProvider {
         ProcessBuilder builder = new ProcessBuilder(command);
         Map<String, String> env = builder.environment();
         env.putAll(childEnv(config));
-        // Merge stderr into stdout and drain the stream on a background thread. Reading stdout
-        // then stderr sequentially on the caller thread deadlocks once the child fills a pipe
-        // buffer (64 KiB), and a timeout that runs only after both reads can never fire while the
-        // child stays alive. With the merged stream drained in the background, waitFor can enforce
-        // the timeout and a hung child is destroyed instead of leaking the caller thread.
-        builder.redirectErrorStream(true);
-        Process process;
+        builder.redirectErrorStream(false);
         try {
-            process = builder.start();
+            Process process = builder.start();
+            String stdout = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            String stderr = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+            boolean finished = process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            if (!finished) {
+                process.destroyForcibly();
+                throw new LlmGatewayException(504, "llm.provider.timeout",
+                        binaryName() + " CLI timed out after " + TIMEOUT_SECONDS + "s",
+                        "Retry with a shorter prompt or check the gateway latency.");
+            }
+            if (process.exitValue() != 0) {
+                log.warn("{} CLI failed rc={}, stderr={}", binaryName(), process.exitValue(), abbreviate(stderr));
+                throw new LlmGatewayException(502, "llm.provider.cli_error",
+                        binaryName() + " CLI failed: " + abbreviate(
+                                StringUtils.hasText(stderr) ? stderr : stdout),
+                        "Check the provider credentials, base URL and model name.");
+            }
+            String result = stdout.trim();
+            if (!StringUtils.hasText(result)) {
+                throw new LlmGatewayException(502, "llm.provider.empty_completion",
+                        binaryName() + " CLI returned an empty completion",
+                        "Check the selected model and provider response.");
+            }
+            return result;
         } catch (IOException exception) {
             throw new LlmGatewayException(502, "llm.provider.io_error",
                     "Failed to execute " + binaryName() + " CLI",
                     "Check that the CLI binary is installed and executable.", exception);
-        }
-        CompletableFuture<String> outputFuture = CompletableFuture.supplyAsync(() -> {
-            try (java.io.InputStream in = process.getInputStream()) {
-                return new String(in.readAllBytes(), StandardCharsets.UTF_8);
-            } catch (IOException ignored) {
-                return "";
-            }
-        });
-        boolean finished;
-        try {
-            finished = process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS);
         } catch (InterruptedException exception) {
-            process.destroyForcibly();
             Thread.currentThread().interrupt();
             throw new LlmGatewayException(502, "llm.provider.interrupted",
                     binaryName() + " CLI execution was interrupted", "Retry the request.", exception);
         }
-        String output;
-        try {
-            output = outputFuture.get(10, TimeUnit.SECONDS);
-        } catch (Exception exception) {
-            output = "";
-        }
-        if (!finished) {
-            process.destroyForcibly();
-            throw new LlmGatewayException(504, "llm.provider.timeout",
-                    binaryName() + " CLI timed out after " + TIMEOUT_SECONDS + "s",
-                    "Retry with a shorter prompt or check the gateway latency.");
-        }
-        if (process.exitValue() != 0) {
-            log.warn("{} CLI failed rc={}, output={}", binaryName(), process.exitValue(), abbreviate(output));
-            throw new LlmGatewayException(502, "llm.provider.cli_error",
-                    binaryName() + " CLI failed: " + abbreviate(output),
-                    "Check the provider credentials, base URL and model name.");
-        }
-        String result = output.trim();
-        if (!StringUtils.hasText(result)) {
-            throw new LlmGatewayException(502, "llm.provider.empty_completion",
-                    binaryName() + " CLI returned an empty completion",
-                    "Check the selected model and provider response.");
-        }
-        return result;
     }
 
     private String abbreviate(String value) {
