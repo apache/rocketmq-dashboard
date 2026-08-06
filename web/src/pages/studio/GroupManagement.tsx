@@ -44,6 +44,7 @@ import {
 type GroupStatus = 'running' | 'warning' | 'stopped';
 
 const BACKLOG_WARNING_THRESHOLD = 10000;
+const GROUP_REFRESH_INTERVAL_MS = 2000;
 
 const deriveStatus = (group: ConsumerGroup): GroupStatus => {
   if (group.onlineInstances <= 0) return 'stopped';
@@ -65,40 +66,46 @@ const GroupManagementPage = () => {
   const [subscriptions, setSubscriptions] = useState<SubscriptionEntry[]>([]);
   const [progress, setProgress] = useState<QueueProgress[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
+  const listRequestId = useRef(0);
   const detailRequestId = useRef(0);
   const { t } = useLang();
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const fetchGroups = async () => {
-      try {
-        const data = await listConsumerGroups();
-        if (!cancelled) setGroups(data);
-      } catch {
-        if (!cancelled) message.error(t('consumer.fetchListFailed'));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    void fetchGroups();
-    return () => {
-      cancelled = true;
-    };
-  }, [t]);
-
-  const handleRefresh = useCallback(async () => {
+  const loadGroups = useCallback(async () => {
+    const requestId = ++listRequestId.current;
     setLoading(true);
     try {
       const data = await listConsumerGroups();
+      if (requestId !== listRequestId.current) return;
       setGroups(data);
     } catch {
+      if (requestId !== listRequestId.current) return;
       message.error(t('consumer.fetchListFailed'));
     } finally {
-      setLoading(false);
+      if (requestId === listRequestId.current) {
+        setLoading(false);
+      }
     }
   }, [t]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void loadGroups();
+    });
+    return () => window.clearTimeout(timeoutId);
+  }, [loadGroups]);
+
+  useEffect(() => {
+    if (!autoRefresh) return;
+
+    const intervalId = window.setInterval(() => {
+      void loadGroups();
+    }, GROUP_REFRESH_INTERVAL_MS);
+    return () => window.clearInterval(intervalId);
+  }, [autoRefresh, loadGroups]);
+
+  const handleRefresh = useCallback(() => {
+    void loadGroups();
+  }, [loadGroups]);
 
   const handleViewDetail = useCallback(
     async (group: ConsumerGroup) => {
@@ -295,11 +302,7 @@ const GroupManagementPage = () => {
             unCheckedChildren={t('groupMgmt.manual')}
             size="small"
           />
-          <Button
-            icon={<ArrowClockwise size={14} />}
-            size="small"
-            onClick={() => void handleRefresh()}
-          >
+          <Button icon={<ArrowClockwise size={14} />} size="small" onClick={handleRefresh}>
             {t('common.reset')}
           </Button>
         </Space>
