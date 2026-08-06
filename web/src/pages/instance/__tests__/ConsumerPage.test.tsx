@@ -22,6 +22,7 @@ import type React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConsumerGroup } from '../../../api/metadata';
+import * as instanceService from '../../../services/instanceService';
 import { LangProvider } from '../../../i18n/LangContext';
 import * as consumerService from '../../../services/consumerService';
 import ConsumerPage from '../consumer';
@@ -212,6 +213,36 @@ describe('Consumer page', () => {
     );
     expect(consumerService.getConsumerGroup).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.getAllByText('remote-topic').length).toBeGreaterThan(0));
+  });
+
+  it('passes the selected instance to group diagnostics', async () => {
+    vi.mocked(instanceService.listInstances).mockResolvedValue([
+      {
+        id: 'instance-a',
+        name: 'Instance A',
+        remark: '',
+        type: 'DIRECT',
+        endpoint: '127.0.0.1:9876',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        createdAt: '2026-07-23T00:00:00Z',
+        updatedAt: '2026-07-23T00:00:00Z',
+      },
+    ]);
+    const user = userEvent.setup();
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+
+    await waitFor(() =>
+      expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith(
+        'remote-cg',
+        'instance-a',
+      ),
+    );
+    await waitFor(() =>
+      expect(consumerService.getConsumerProgress).toHaveBeenCalledWith('remote-cg', 'instance-a'),
+    );
   });
 
   it('highlights inconsistent subscriptions and refreshes the check result', async () => {

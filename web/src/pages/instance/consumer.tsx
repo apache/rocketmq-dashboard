@@ -1405,11 +1405,11 @@ const ConsumerPage = () => {
           if (resetGroup) {
             setResetSubmitting(true);
             try {
-              await resetConsumerOffset({
-                name: resetGroup.name,
-                timestamp: resetTime.valueOf(),
-                instanceId: selectedInstanceId || undefined,
-              });
+                await resetConsumerOffset({
+                  name: resetGroup.name,
+                  instanceId: selectedInstanceId || undefined,
+                  timestamp: resetTime.valueOf(),
+                });
               message.success(
                 `${resetGroup.name} 消费位点已重置到 ${resetTime.format('YYYY-MM-DD HH:mm:ss')}`,
               );

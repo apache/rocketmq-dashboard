@@ -65,19 +65,28 @@ describe('consumer groups API contract', () => {
     await expect(listConsumerGroups(params)).resolves.toEqual([group]);
   });
 
-  it('encodes consumer group names used in path segments', async () => {
+  it('encodes consumer group names and passes instance context for runtime queries', async () => {
     const groupName = '%RETRY%cg-order';
+    const instanceId = 'instance-a';
     mock.onGet('/groups/%25RETRY%25cg-order').reply(200, { code: 200, data: group });
     mock.onGet('/groups/%25RETRY%25cg-order/progress').reply(200, { code: 200, data: [] });
     mock.onGet('/groups/%25RETRY%25cg-order/subscriptions').reply(200, { code: 200, data: [] });
 
     await expect(getConsumerGroup(groupName)).resolves.toEqual(group);
-    await expect(getConsumerProgress(groupName)).resolves.toEqual([]);
-    await expect(getConsumerSubscriptions(groupName)).resolves.toEqual([]);
+    await expect(getConsumerProgress(groupName, instanceId)).resolves.toEqual([]);
+    await expect(getConsumerSubscriptions(groupName, instanceId)).resolves.toEqual([]);
+
+    expect(mock.history.get[1].params).toEqual({ instanceId });
+    expect(mock.history.get[2].params).toEqual({ instanceId });
   });
 
   it('unwraps detail records and sends numeric reset timestamps', async () => {
-    const reset = { name: group.name, topic: 'orders', timestamp: 1784246400000 };
+    const reset = {
+      name: group.name,
+      instanceId: 'instance-a',
+      topic: 'orders',
+      timestamp: 1784246400000,
+    };
     mock.onGet('/groups/orders').reply(200, { code: 200, data: group });
     mock.onPost('/groups/reset-offset').reply((config) => {
       expect(JSON.parse(config.data)).toEqual(reset);
