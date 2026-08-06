@@ -40,4 +40,18 @@ class ClusterRepositoryImplTest {
 
         assertThat(repository.findAll()).isEmpty();
     }
+
+    @Test
+    void findByIdShouldReturnIndependentCopy() {
+        ClusterRepositoryImpl repository = new ClusterRepositoryImpl(true);
+
+        ClusterVO first = repository.findById("cluster-001").orElseThrow();
+        first.setName("mutated");
+
+        ClusterVO second = repository.findById("cluster-001").orElseThrow();
+
+        // Mutating the returned copy must not affect the cached cluster.
+        assertThat(second.getName()).isEqualTo("rmq-cluster-prod");
+        assertThat(first.getBrokers()).isNotSameAs(second.getBrokers());
+    }
 }
