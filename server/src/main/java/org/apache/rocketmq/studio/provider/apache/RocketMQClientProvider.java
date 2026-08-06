@@ -212,12 +212,14 @@ public class RocketMQClientProvider implements ClientProvider {
     private List<ClientConnectionVO> findConsumerConnections(MQAdminExt adminExt, String clusterId) {
         List<ClientConnectionVO> result = new ArrayList<>();
         Set<String> groups = collectSubscriptionGroups(adminExt);
+        int successfulGroupQueries = 0;
         for (String group : groups) {
             if (isSystemGroup(group)) {
                 continue;
             }
             try {
                 ConsumerConnection consumerConnection = adminExt.examineConsumerConnectionInfo(group);
+                successfulGroupQueries++;
                 if (consumerConnection == null || consumerConnection.getConnectionSet() == null) {
                     continue;
                 }
@@ -231,6 +233,9 @@ public class RocketMQClientProvider implements ClientProvider {
                 log.warn("Failed to examine consumer connection for group={}, skipping", group, e);
             }
         }
+        if (!groups.isEmpty() && successfulGroupQueries == 0) {
+            throw new BusinessException(502, "Failed to query consumer connections from all groups");
+        }
         return result;
     }
 
@@ -240,12 +245,14 @@ public class RocketMQClientProvider implements ClientProvider {
         try {
             clusterInfo = adminExt.examineBrokerClusterInfo();
         } catch (Exception e) {
-            log.warn("Failed to fetch cluster info for consumer connection scan", e);
-            return groups;
+            throw new BusinessException(502,
+                    "Failed to discover brokers for consumer connections: " + rootMessage(e));
         }
         if (clusterInfo == null || clusterInfo.getBrokerAddrTable() == null) {
             return groups;
         }
+        int attemptedBrokerQueries = 0;
+        int successfulBrokerQueries = 0;
         for (BrokerData brokerData : clusterInfo.getBrokerAddrTable().values()) {
             if (brokerData == null) {
                 continue;
@@ -255,14 +262,19 @@ public class RocketMQClientProvider implements ClientProvider {
                 continue;
             }
             try {
+                attemptedBrokerQueries++;
                 SubscriptionGroupWrapper wrapper =
                         adminExt.getAllSubscriptionGroup(brokerAddr, SUBSCRIPTION_GROUP_TIMEOUT_MILLIS);
+                successfulBrokerQueries++;
                 if (wrapper != null && wrapper.getSubscriptionGroupTable() != null) {
                     groups.addAll(wrapper.getSubscriptionGroupTable().keySet());
                 }
             } catch (Exception e) {
                 log.warn("Failed to fetch subscription groups from broker={}, skipping", brokerAddr, e);
             }
+        }
+        if (attemptedBrokerQueries > 0 && successfulBrokerQueries == 0) {
+            throw new BusinessException(502, "Failed to query subscription groups from all brokers");
         }
         return groups;
     }
