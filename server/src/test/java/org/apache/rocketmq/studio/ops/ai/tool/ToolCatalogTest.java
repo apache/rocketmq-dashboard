@@ -45,7 +45,8 @@ class ToolCatalogTest {
                         "rmq.topic.list",
                         "rmq.group.list",
                         "rmq.alert.rule.list",
-                        "rmq.nameserver.config.diff");
+                        "rmq.nameserver.config.diff",
+                        "rmq.message.query");
         assertThat(catalog.find("rmq.cluster.list")).isPresent();
         assertThat(catalog.find("rmq.unknown")).isEmpty();
     }
