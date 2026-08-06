@@ -20,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 
@@ -45,7 +46,16 @@ public class MessageService {
     }
 
     private void validateTopicQueryWindow(String topic, String msgId, String key, Long startTime, Long endTime) {
-        if (msgId != null && !msgId.isBlank() || key != null && !key.isBlank() || topic == null || topic.isBlank()) {
+        boolean hasTopic = StringUtils.hasText(topic);
+        boolean hasMessageId = StringUtils.hasText(msgId);
+        boolean hasKey = StringUtils.hasText(key);
+        if (hasKey && !hasTopic) {
+            throw new BusinessException(400, "topic is required when key is specified");
+        }
+        if (!hasTopic && !hasMessageId) {
+            throw new BusinessException(400, "topic or msgId is required");
+        }
+        if (hasMessageId || hasKey) {
             return;
         }
         long end = endTime == null ? System.currentTimeMillis() : endTime;
