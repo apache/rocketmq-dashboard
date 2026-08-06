@@ -154,7 +154,7 @@ public class RocketMQDLQProvider implements DLQProvider {
         int resent = 0;
         int failed = 0;
         if (!deadLetters.isEmpty()) {
-            DefaultMQProducer producer = newProducer(groupName);
+            DefaultMQProducer producer = newProducer();
             try {
                 producer.start();
                 for (MessageExt deadLetter : deadLetters) {
@@ -281,14 +281,18 @@ public class RocketMQDLQProvider implements DLQProvider {
         return consumer;
     }
 
-    private DefaultMQProducer newProducer(String groupName) {
-        DefaultMQProducer producer = new DefaultMQProducer("studio-dlq-resend-" + groupName);
+    private DefaultMQProducer newProducer() {
+        DefaultMQProducer producer = new DefaultMQProducer(nextResendProducerGroup());
         producer.setInstanceName(ShortLivedClientName.next("studio-dlq-resend"));
         producer.setRetryTimesWhenSendFailed(2);
         if (StringUtils.hasText(properties.getNamesrvAddr())) {
             producer.setNamesrvAddr(properties.getNamesrvAddr());
         }
         return producer;
+    }
+
+    static String nextResendProducerGroup() {
+        return ShortLivedClientName.next("studio-dlq-resend");
     }
 
     private void recordAudit(String groupName, String detail, String result) {

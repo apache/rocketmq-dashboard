@@ -38,6 +38,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -59,7 +60,7 @@ class RocketMQDLQProviderTest {
 
     @BeforeEach
     void setUp() {
-        when(adminExtProvider.getIfAvailable()).thenReturn(adminExt);
+        lenient().when(adminExtProvider.getIfAvailable()).thenReturn(adminExt);
         provider = new RocketMQDLQProvider(adminExtProvider, auditService, new RocketMQProperties());
     }
 
@@ -89,5 +90,14 @@ class RocketMQDLQProviderTest {
                 eq("group-a"),
                 contains("matched=0, resent=0, failed=0"),
                 eq("SUCCESS"));
+    }
+
+    @Test
+    void createsUniqueProducerGroupsForConcurrentDlqResends() {
+        String first = RocketMQDLQProvider.nextResendProducerGroup();
+        String second = RocketMQDLQProvider.nextResendProducerGroup();
+
+        assertThat(first).startsWith("studio-dlq-resend-");
+        assertThat(second).startsWith("studio-dlq-resend-").isNotEqualTo(first);
     }
 }
