@@ -18,7 +18,6 @@
 package org.apache.rocketmq.studio.instance.topic;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import lombok.Data;
 
@@ -26,7 +25,6 @@ import lombok.Data;
 public class LiteTopicTTLUpdateDTO {
     @NotBlank(message = "topicPattern is required")
     private String topicPattern;
-    @NotNull(message = "newTTL is required")
     @Positive(message = "newTTL must be positive")
     private Long newTTL;
 }

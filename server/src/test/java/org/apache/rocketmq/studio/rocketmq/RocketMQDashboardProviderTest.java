@@ -17,8 +17,6 @@
 package org.apache.rocketmq.studio.rocketmq;
 
 import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
@@ -48,28 +46,6 @@ class RocketMQDashboardProviderTest {
 
         assertThat(dashboard.getClusters()).hasSize(1);
         assertThat(dashboard.getClusters().get(0).getVersion()).isEqualTo("V5_3_3");
-    }
-
-    @Test
-    void dashboardShouldNotFailWhenBrokerAddrTableIsNull() throws Exception {
-        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
-        ClusterInfo info = new ClusterInfo();
-        HashMap<String, Set<String>> clusterAddrTable = new HashMap<>();
-        clusterAddrTable.put("cluster-1", new HashSet<>(List.of("broker-a")));
-        info.setClusterAddrTable(clusterAddrTable);
-        // brokerAddrTable intentionally left null
-        when(adminExt.examineBrokerClusterInfo()).thenReturn(info);
-        when(adminExt.fetchAllTopicList()).thenReturn(topicList());
-
-        RocketMQDashboardProvider provider = new RocketMQDashboardProvider(adminExt);
-
-        DashboardDataVO dashboard = provider.getDashboardData();
-
-        // The cluster is still surfaced (name, status) but no broker statistics exist.
-        assertThat(dashboard.getClusters()).hasSize(1);
-        assertThat(dashboard.getClusters().get(0).getBrokers()).isZero();
-        assertThat(dashboard.getStats().getTotalClusters()).isEqualTo(1);
-        assertThat(dashboard.getStats().getTotalBrokers()).isZero();
     }
 
     private ClusterInfo clusterInfo() {

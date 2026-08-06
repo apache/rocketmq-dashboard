@@ -31,9 +31,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.SynchronousQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.Executors;
 
 @Slf4j
 @Primary
@@ -45,12 +43,7 @@ public class OpenAiCompatibleLlmGateway implements LlmGateway {
     private final OpenAiCompatibleLlmClient llmClient;
     private final AgentProviderRegistry agentProviders;
     private final ObjectMapper objectMapper;
-    // Bounded pool: cached threads grow without limit under load and, combined with a hung CLI
-    // child, can exhaust memory. CallerRunsPolicy keeps SSE work from being dropped under load.
-    private final ExecutorService executor = new ThreadPoolExecutor(
-            0, 16, 60L, TimeUnit.SECONDS,
-            new SynchronousQueue<>(),
-            new ThreadPoolExecutor.CallerRunsPolicy());
+    private final ExecutorService executor = Executors.newCachedThreadPool();
 
     @Override
     public SseEmitter chat(ChatDTO request) {

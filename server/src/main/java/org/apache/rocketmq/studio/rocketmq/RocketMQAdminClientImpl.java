@@ -347,14 +347,8 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
             SendResult sendResult = producer.send(msg);
 
-            // The message is already delivered by now; an audit write failure must not turn a
-            // successful send into an error, or callers would retry and duplicate the message.
-            try {
-                auditService.record("SEND_MESSAGE", topic,
-                        "tag=" + tag + ", key=" + key + ", msgId=" + sendResult.getMsgId(), "SUCCESS");
-            } catch (Exception auditFailure) {
-                log.warn("Failed to record send message audit: {}", auditFailure.getMessage());
-            }
+            auditService.record("SEND_MESSAGE", topic,
+                    "tag=" + tag + ", key=" + key + ", msgId=" + sendResult.getMsgId(), "SUCCESS");
 
             return SendMessageVO.builder()
                     .msgId(sendResult.getMsgId())
