@@ -53,10 +53,12 @@ public class LiteTopicSummary {
         long now = System.currentTimeMillis();
         long elapsed = now - lastActiveTime.getTime();
 
-        if (averageTTL != null && elapsed > averageTTL * 0.8) {
-            return "EXPIRING_SOON";
-        } else if (averageTTL != null && elapsed > averageTTL) {
+        // EXPIRED must be checked first: elapsed > averageTTL implies elapsed > averageTTL * 0.8,
+        // so ordering it second would make EXPIRED unreachable.
+        if (averageTTL != null && elapsed > averageTTL) {
             return "EXPIRED";
+        } else if (averageTTL != null && elapsed > averageTTL * 0.8) {
+            return "EXPIRING_SOON";
         } else {
             return "ACTIVE";
         }
