@@ -22,7 +22,12 @@ import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
 import OpsPage from '../Ops';
-import { deleteNameSvrAddr, queryOpsHomePage } from '../../../api/ops';
+import {
+  deleteNameSvrAddr,
+  queryOpsHomePage,
+  updateIsVIPChannel,
+  updateUseTLS,
+} from '../../../api/ops';
 import useAuthStore from '../../../stores/authStore';
 
 vi.mock('../../../api/ops', () => ({
@@ -108,6 +113,28 @@ describe('OpsPage', () => {
 
     expect(await screen.findByPlaceholderText('NamesrvAddr')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /新增|添加/ })).toBeInTheDocument();
+  });
+
+  it('persists each channel setting once when its switch changes', async () => {
+    renderWithProviders(<OpsPage />);
+
+    await waitFor(() => {
+      expect(queryOpsHomePage).toHaveBeenCalledTimes(1);
+    });
+
+    const [vipChannelSwitch, tlsSwitch] = screen.getAllByRole('switch');
+    fireEvent.click(vipChannelSwitch);
+    await waitFor(() => {
+      expect(updateIsVIPChannel).toHaveBeenCalledWith(false);
+    });
+    expect(updateIsVIPChannel).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(tlsSwitch);
+    await waitFor(() => {
+      expect(updateUseTLS).toHaveBeenCalledWith(true);
+    });
+    expect(updateUseTLS).toHaveBeenCalledTimes(1);
+    expect(screen.getAllByRole('button', { name: /更新|Update/ })).toHaveLength(1);
   });
 
   it('deletes a non-current NameServer and restores the current selection', async () => {

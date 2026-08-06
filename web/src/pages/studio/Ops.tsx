@@ -204,15 +204,6 @@ const OpsPage: React.FC = () => {
             onChange={handleUpdateIsVIPChannel}
             disabled={!writeOperationEnabled}
           />
-          {writeOperationEnabled && (
-            <Button
-              type="primary"
-              icon={<FloppyDisk size={16} />}
-              onClick={() => handleUpdateIsVIPChannel(useVIPChannel)}
-            >
-              {t('common.update')}
-            </Button>
-          )}
         </Space>
       </div>
 
@@ -225,15 +216,6 @@ const OpsPage: React.FC = () => {
             onChange={handleUpdateUseTLS}
             disabled={!writeOperationEnabled}
           />
-          {writeOperationEnabled && (
-            <Button
-              type="primary"
-              icon={<FloppyDisk size={16} />}
-              onClick={() => handleUpdateUseTLS(useTLS)}
-            >
-              {t('common.update')}
-            </Button>
-          )}
         </Space>
       </div>
     </div>
