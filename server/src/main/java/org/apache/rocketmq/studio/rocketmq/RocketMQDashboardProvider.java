@@ -96,6 +96,7 @@ public class RocketMQDashboardProvider implements DashboardProvider {
 
             // Collect all unique broker addresses (master only, brokerId=0)
             Set<String> masterAddrs = new HashSet<>();
+
             for (BrokerData brokerData : brokerAddrTable.values()) {
                 if (brokerData == null || brokerData.getBrokerAddrs() == null) {
                     continue;
@@ -104,6 +105,9 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                 if (masterAddr != null) {
                     masterAddrs.add(masterAddr);
                 }
+            }
+            if (masterAddrs.isEmpty()) {
+                log.warn("No master broker addresses discovered for dashboard overview");
             }
 
             // Count topics
