@@ -1055,6 +1055,11 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '配置 SSL/TLS 设置以实现安全通信，更改后需重启服务器。',
     en: 'Configure SSL/TLS for secure communication. Changes require server restart.',
   },
+  'ssl.unavailable': { zh: 'SSL/TLS 配置暂不可用', en: 'SSL/TLS configuration is unavailable' },
+  'ssl.unavailableDesc': {
+    zh: 'Studio 尚未提供用于验证、持久化或应用 KeyStore/TrustStore 配置的服务端接口。为避免产生未生效的安全配置，此页面暂不支持保存或上传。',
+    en: 'Studio does not yet provide a server API to validate, persist, or apply KeyStore/TrustStore configuration. Saving and uploading are unavailable to avoid implying that security settings are active.',
+  },
   'ssl.enabled': { zh: '启用 SSL/TLS', en: 'Enable SSL/TLS' },
   'ssl.protocol': { zh: 'SSL 协议', en: 'SSL Protocol' },
   'ssl.selectProtocol': { zh: '请选择协议', en: 'Select protocol' },
