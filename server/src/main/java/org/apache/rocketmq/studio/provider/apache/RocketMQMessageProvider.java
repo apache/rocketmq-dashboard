@@ -25,6 +25,7 @@ import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageId;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
 import org.apache.rocketmq.studio.instance.message.ConsumerStatusVO;
 import org.apache.rocketmq.studio.instance.message.MessageProvider;
@@ -175,7 +176,7 @@ public class RocketMQMessageProvider implements MessageProvider {
             return result;
         } catch (Exception e) {
             log.warn("queryMessage(topic={}, key={}) failed: {}", topic, key, e.getMessage());
-            return Collections.emptyList();
+            throw new BusinessException(502, "Failed to query messages by key: " + e.getMessage());
         }
     }
 
@@ -223,6 +224,7 @@ public class RocketMQMessageProvider implements MessageProvider {
             }
         } catch (Exception e) {
             log.warn("queryByTopic(topic={}) failed: {}", topic, e.getMessage());
+            throw new BusinessException(502, "Failed to query messages by topic: " + e.getMessage());
         } finally {
             consumer.shutdown();
         }
