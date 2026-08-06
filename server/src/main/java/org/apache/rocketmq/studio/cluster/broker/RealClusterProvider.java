@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.cluster.broker;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
+import org.apache.rocketmq.studio.cluster.config.ClusterConfigVO;
 import org.apache.rocketmq.studio.cluster.nameserver.NameServerVO;
 import org.apache.rocketmq.studio.common.domain.enums.BrokerStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
@@ -105,6 +106,8 @@ public class RealClusterProvider implements ClusterProvider {
                 .map(addr -> NameServerVO.builder().addr(addr).status(ClusterStatus.healthy).build())
                 .toList();
 
+        // A live cluster has no proxy or config history until one is provisioned;
+        // default to empty collections so the web UI never dereferences nulls.
         ClusterVO cluster = ClusterVO.builder()
                 .name(clusterName)
                 .nsClusterName(clusterName)
@@ -114,6 +117,8 @@ public class RealClusterProvider implements ClusterProvider {
                 .brokers(brokers)
                 .proxies(List.of())
                 .nameServers(nameServers)
+                .config(new ClusterConfigVO())
+                .tpsHistory(List.of())
                 .build();
         cluster.setId(clusterName);
         return cluster;
