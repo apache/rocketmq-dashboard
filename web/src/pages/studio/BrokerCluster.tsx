@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Table,
   Button,
@@ -43,6 +43,8 @@ import type { ClusterInfo } from '../../api/cluster';
 
 // ─── Types ──────────────────────────────────────────────────────
 type NodeStatus = 'running' | 'readonly' | 'maintenance';
+
+const REFRESH_INTERVAL_MS = 2000;
 
 interface BrokerRecord {
   key: string;
@@ -187,11 +189,21 @@ const BrokerClusterPage = () => {
     }
   };
 
-  const initialized = useRef<boolean | null>(null);
-  if (initialized.current == null) {
-    initialized.current = true;
-    void loadData();
-  }
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void loadData();
+    });
+    return () => window.clearTimeout(timeoutId);
+  }, [loadData]);
+
+  useEffect(() => {
+    if (!autoRefresh) return;
+
+    const intervalId = window.setInterval(() => {
+      void loadData();
+    }, REFRESH_INTERVAL_MS);
+    return () => window.clearInterval(intervalId);
+  }, [autoRefresh, loadData]);
 
   const renderStatus = (status: string) => {
     const config: Record<string, { color: string; label: string }> = {
