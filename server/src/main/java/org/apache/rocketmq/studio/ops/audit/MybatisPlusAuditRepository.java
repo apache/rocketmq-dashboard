@@ -64,10 +64,12 @@ public class MybatisPlusAuditRepository implements AuditRepository {
     public void save(AuditRecordVO record) {
         RmqOperationAudit entity = new RmqOperationAudit();
         entity.setOperation(record.getOperationType());
-        entity.setResourceType("GENERAL");
+        entity.setResourceType(record.getResourceType() == null ? "GENERAL" : record.getResourceType());
         entity.setResourceName(record.getTarget());
+        entity.setClusterId(record.getClusterId());
         entity.setDetail(record.getDetail());
         entity.setResult(record.getResult());
+        entity.setErrorMessage(record.getErrorMessage());
         entity.setOperator(record.getOperator());
         entity.setOperatedAt(record.getTimestamp() == null ? LocalDateTime.now() : record.getTimestamp());
         auditMapper.insert(entity);
