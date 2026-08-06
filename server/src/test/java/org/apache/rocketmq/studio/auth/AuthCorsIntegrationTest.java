@@ -20,7 +20,6 @@ package org.apache.rocketmq.studio.auth;
 import org.apache.rocketmq.studio.common.config.CorsConfig;
 import org.apache.rocketmq.studio.instance.InstanceController;
 import org.apache.rocketmq.studio.instance.InstanceService;
-import org.apache.rocketmq.studio.settings.SettingsRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -60,9 +59,6 @@ class AuthCorsIntegrationTest {
 
     @MockBean
     private AuthService authService;
-
-    @MockBean
-    private SettingsRepository settingsRepository;
 
     @BeforeEach
     void enableLoginProtection() {

@@ -91,7 +91,7 @@ public class AclService {
         return aclRepository.saveUser(user);
     }
 
-    public AclUserVO updateUser(UpdateAclUserDTO user) {
+    public AclUserVO updateUser(AclUserVO user) {
         if (isBlank(user.getId())) {
             throw new BusinessException(400, "ACL user id is required");
         }
@@ -103,7 +103,7 @@ public class AclService {
                 .username(user.getUsername() == null ? existing.getUsername() : user.getUsername())
                 .accessKey(existing.getAccessKey())
                 .secretKey(existing.getSecretKey())
-                .admin(user.getAdmin() == null ? existing.isAdmin() : user.getAdmin())
+                .admin(user.isAdmin())
                 .clusters(user.getClusters() == null ? existing.getClusters() : user.getClusters())
                 .createdAt(existing.getCreatedAt())
                 .build();
