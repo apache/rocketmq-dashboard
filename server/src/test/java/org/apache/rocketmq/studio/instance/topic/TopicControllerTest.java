@@ -180,7 +180,7 @@ class TopicControllerTest {
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400))
-                .andExpect(jsonPath("$.message").value("writeQueues must be zero or positive"));
+                .andExpect(jsonPath("$.message").value("writeQueues must be positive"));
 
         verifyNoInteractions(metadataService);
     }
