@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.instance.topic;
 
+import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -28,6 +29,7 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 public class SendMessageDTO {
+    @NotBlank(message = "topic is required")
     private String topic;
     private String tag;
     private String key;
