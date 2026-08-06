@@ -38,6 +38,14 @@ public class RmqInstance {
 
     private String endpoint;
 
+    private String vendor;
+
+    private String cloudInstanceId;
+
+    private String credentialId;
+
+    private String regionId;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;

@@ -11,6 +11,7 @@
 package org.apache.rocketmq.studio.instance.message;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -22,7 +23,8 @@ class MessageServiceTest {
     @Test
     void rejectsReversedTopicQueryWindowBeforeCallingProvider() {
         MessageProvider provider = mock(MessageProvider.class);
-        MessageService service = new MessageService(provider);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(provider, registry);
 
         assertThatThrownBy(() -> service.queryMessages("instance-a", "TopicA", null, null, null, 200L, 100L))
                 .isInstanceOf(BusinessException.class)
@@ -34,7 +36,8 @@ class MessageServiceTest {
     @Test
     void rejectsTopicQueryWindowLongerThanSevenDaysBeforeCallingProvider() {
         MessageProvider provider = mock(MessageProvider.class);
-        MessageService service = new MessageService(provider);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(provider, registry);
 
         assertThatThrownBy(() -> service.queryMessages("instance-a", "TopicA", null, null, null, 0L,
                 8L * 24 * 60 * 60 * 1000))

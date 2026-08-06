@@ -14,27 +14,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.instance.topic;
+package org.apache.rocketmq.studio.provider;
 
-import jakarta.validation.constraints.NotBlank;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 
-import java.util.Map;
+import java.util.List;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class SendMessageDTO {
-    private String instanceId;
+/**
+ * Cloud catalog discovery SPI: list regions / cloud instances with a stored credential.
+ * Commercial instances are never created manually; users pick one from this catalog.
+ */
+public interface CloudCatalogProvider {
 
-    @NotBlank(message = "topic is required")
-    private String topic;
-    private String tag;
-    private String key;
-    private String body;
-    private Map<String, String> properties;
+    InstanceVendor vendor();
+
+    List<CloudRegionVO> listRegions(String credentialId);
+
+    List<CloudInstanceOptionVO> listCloudInstances(String credentialId, String regionId, String search);
+
+    CloudInstanceDetailVO getCloudInstance(String credentialId, String regionId, String cloudInstanceId);
 }

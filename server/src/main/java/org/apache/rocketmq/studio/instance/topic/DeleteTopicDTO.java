@@ -29,4 +29,6 @@ import lombok.NoArgsConstructor;
 public class DeleteTopicDTO {
     @NotBlank(message = "name is required")
     private String name;
+
+    private String instanceId;
 }

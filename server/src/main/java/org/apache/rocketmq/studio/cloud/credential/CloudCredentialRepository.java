@@ -14,27 +14,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.instance.topic;
+package org.apache.rocketmq.studio.cloud.credential;
 
-import jakarta.validation.constraints.NotBlank;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 
-import java.util.Map;
+import java.util.List;
+import java.util.Optional;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class SendMessageDTO {
-    private String instanceId;
+public interface CloudCredentialRepository {
 
-    @NotBlank(message = "topic is required")
-    private String topic;
-    private String tag;
-    private String key;
-    private String body;
-    private Map<String, String> properties;
+    List<CloudCredentialVO> findAll();
+
+    Optional<CloudCredentialVO> findById(String id);
+
+    Optional<CloudCredentialVO> findByVendorAndAccessKey(InstanceVendor vendor, String accessKey);
+
+    CloudCredentialVO save(CloudCredentialVO credential);
+
+    boolean deleteById(String id);
 }

@@ -17,8 +17,14 @@
 
 package org.apache.rocketmq.studio.instance;
 
+import org.apache.rocketmq.studio.cloud.credential.CloudCredentialRepository;
+import org.apache.rocketmq.studio.cloud.credential.CloudCredentialVO;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.provider.CloudCatalogProvider;
+import org.apache.rocketmq.studio.provider.CloudInstanceDetailVO;
+import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -42,6 +48,12 @@ class InstanceServiceTest {
 
     @Mock
     private InstanceRepository instanceRepository;
+
+    @Mock
+    private CloudCredentialRepository cloudCredentialRepository;
+
+    @Mock
+    private InstanceProviderRegistry providerRegistry;
 
     @InjectMocks
     private InstanceService instanceService;
@@ -417,5 +429,101 @@ class InstanceServiceTest {
         assertThatThrownBy(() -> instanceService.deleteInstance("missing"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("InstanceVO not found: missing");
+    }
+
+    @Test
+    void createInstanceShouldDefaultToApacheVendorTest() {
+        InstanceVO instance = InstanceVO.builder().name("inst").endpoint("10.0.0.1:8080").build();
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        InstanceVO created = instanceService.createInstance(instance);
+
+        assertThat(created.getVendor()).isEqualTo(InstanceVendor.APACHE);
+        verifyNoInteractions(cloudCredentialRepository, providerRegistry);
+    }
+
+    @Test
+    void createInstanceShouldRejectManualEndpointForAliyunTest() {
+        InstanceVO instance = InstanceVO.builder()
+                .vendor(InstanceVendor.ALIYUN)
+                .endpoint("rmq-xxx.cn-hangzhou.rmq.aliyuncs.com:8080")
+                .build();
+
+        assertThatThrownBy(() -> instanceService.createInstance(instance))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("cannot be set manually");
+        verify(instanceRepository, never()).save(any(InstanceVO.class));
+    }
+
+    @Test
+    void createInstanceShouldRequireCloudFieldsForAliyunTest() {
+        InstanceVO instance = InstanceVO.builder().vendor(InstanceVendor.ALIYUN).build();
+
+        assertThatThrownBy(() -> instanceService.createInstance(instance))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("credentialId");
+    }
+
+    @Test
+    void createInstanceShouldResolveAliyunEndpointFromCatalogTest() {
+        InstanceVO instance = InstanceVO.builder()
+                .vendor(InstanceVendor.ALIYUN)
+                .credentialId("cred-1")
+                .cloudInstanceId("rmq-cn-xxx")
+                .regionId("cn-hangzhou")
+                .build();
+        CloudCredentialVO credential = new CloudCredentialVO();
+        credential.setId("cred-1");
+        credential.setVendor(InstanceVendor.ALIYUN);
+        when(cloudCredentialRepository.findById("cred-1")).thenReturn(Optional.of(credential));
+        CloudCatalogProvider catalog = org.mockito.Mockito.mock(CloudCatalogProvider.class);
+        CloudInstanceDetailVO detail = new CloudInstanceDetailVO();
+        detail.setInstanceId("rmq-cn-xxx");
+        detail.setInstanceName("prod-mq");
+        detail.setEndpoints(List.of(
+                new CloudInstanceDetailVO.CloudEndpoint("TCP_INTERNET", "public:8080"),
+                new CloudInstanceDetailVO.CloudEndpoint("TCP_VPC", "vpc:8080")));
+        when(providerRegistry.catalogFor(InstanceVendor.ALIYUN)).thenReturn(catalog);
+        when(catalog.getCloudInstance("cred-1", "cn-hangzhou", "rmq-cn-xxx")).thenReturn(detail);
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        InstanceVO created = instanceService.createInstance(instance);
+
+        assertThat(created.getName()).isEqualTo("prod-mq");
+        assertThat(created.getEndpoint()).isEqualTo("vpc:8080");
+        assertThat(created.getType()).isEqualTo(InstanceType.PROXY);
+    }
+
+    @Test
+    void createInstanceShouldRejectTencentVendorTest() {
+        InstanceVO instance = InstanceVO.builder().vendor(InstanceVendor.TENCENT).build();
+
+        assertThatThrownBy(() -> instanceService.createInstance(instance))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(501));
+    }
+
+    @Test
+    void updateInstanceShouldKeepCloudFieldsImmutableTest() {
+        InstanceVO existing = InstanceVO.builder()
+                .name("aliyun-inst")
+                .vendor(InstanceVendor.ALIYUN)
+                .cloudInstanceId("rmq-cn-xxx")
+                .credentialId("cred-1")
+                .regionId("cn-hangzhou")
+                .type(InstanceType.PROXY)
+                .endpoint("vpc:8080")
+                .build();
+        existing.setId("inst-1");
+        when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(existing));
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        InstanceVO request = InstanceVO.builder().endpoint("hacked:8080").remark("updated").build();
+        request.setId("inst-1");
+        InstanceVO updated = instanceService.updateInstance(request);
+
+        assertThat(updated.getEndpoint()).isEqualTo("vpc:8080");
+        assertThat(updated.getRemark()).isEqualTo("updated");
+        assertThat(updated.getCloudInstanceId()).isEqualTo("rmq-cn-xxx");
     }
 }

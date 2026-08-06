@@ -62,7 +62,7 @@ class TopicControllerTest {
         topic.setWriteQueues(8);
         topic.setReadQueues(8);
 
-        when(metadataService.listTopics(isNull(), isNull(), isNull())).thenReturn(List.of(topic));
+        when(metadataService.listTopics(isNull(), isNull(), isNull(), isNull())).thenReturn(List.of(topic));
 
         mockMvc.perform(get("/api/topics"))
                 .andExpect(status().isOk())
@@ -74,7 +74,7 @@ class TopicControllerTest {
 
     @Test
     void listTopicsShouldPassQueryParams() throws Exception {
-        when(metadataService.listTopics(eq("cluster-1"), eq("NORMAL"), eq("test")))
+        when(metadataService.listTopics(isNull(), eq("cluster-1"), eq("NORMAL"), eq("test")))
                 .thenReturn(List.of());
 
         mockMvc.perform(get("/api/topics")
@@ -84,7 +84,7 @@ class TopicControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray());
 
-        verify(metadataService).listTopics(eq("cluster-1"), eq("NORMAL"), eq("test"));
+        verify(metadataService).listTopics(isNull(), eq("cluster-1"), eq("NORMAL"), eq("test"));
     }
 
     @Test
@@ -230,7 +230,7 @@ class TopicControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.message").value("success"));
 
-        verify(metadataService).deleteTopic("test-topic");
+        verify(metadataService).deleteTopic(isNull(), eq("test-topic"));
     }
 
     @Test

@@ -16,7 +16,9 @@
  */
 package org.apache.rocketmq.studio.instance.dlq;
 
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -31,17 +33,28 @@ import java.util.List;
 public class DLQService {
 
     private final DLQProvider dlqProvider;
+    private final InstanceProviderRegistry providerRegistry;
 
     public List<DLQGroupVO> listDLQGroups(String instanceId) {
+        requireApacheInstance(instanceId);
         log.info("Listing DLQ groups for instance: {}", instanceId);
         return dlqProvider.listDLQGroups(instanceId);
     }
 
     public DLQResendResultVO resendMessages(String instanceId, String groupName, Long startTime, Long endTime,
                                              String targetTopic) {
+        requireApacheInstance(instanceId);
         validateResendRequest(groupName, startTime, endTime);
         log.info("Resending DLQ messages: group={}, targetTopic={}", groupName, targetTopic);
         return dlqProvider.resendMessages(instanceId, groupName, startTime, endTime, targetTopic);
+    }
+
+    private void requireApacheInstance(String instanceId) {
+        providerRegistry.byInstanceId(instanceId).ifPresent(provider -> {
+            if (provider.vendor() != InstanceVendor.APACHE) {
+                throw new BusinessException(501, "DLQ operations are not supported for cloud instances");
+            }
+        });
     }
 
     private void validateResendRequest(String groupName, Long startTime, Long endTime) {

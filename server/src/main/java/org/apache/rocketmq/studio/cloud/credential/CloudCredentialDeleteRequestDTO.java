@@ -14,27 +14,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.instance.topic;
+package org.apache.rocketmq.studio.cloud.credential;
 
 import jakarta.validation.constraints.NotBlank;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
 
-import java.util.Map;
+public class CloudCredentialDeleteRequestDTO {
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class SendMessageDTO {
-    private String instanceId;
+    @NotBlank(message = "credential id is required")
+    private String id;
 
-    @NotBlank(message = "topic is required")
-    private String topic;
-    private String tag;
-    private String key;
-    private String body;
-    private Map<String, String> properties;
+    public String getId() {
+        return id;
+    }
+
+    public void setId(String id) {
+        this.id = id;
+    }
 }

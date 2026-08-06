@@ -17,6 +17,7 @@
 
 package org.apache.rocketmq.studio.instance.dlq;
 
+import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -36,6 +37,9 @@ class DLQServiceTest {
 
     @Mock
     private DLQProvider dlqProvider;
+
+    @Mock
+    private InstanceProviderRegistry providerRegistry;
 
     @InjectMocks
     private DLQService dlqService;
