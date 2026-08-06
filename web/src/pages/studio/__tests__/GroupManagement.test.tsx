@@ -108,6 +108,7 @@ describe('GroupManagement Page', () => {
     });
     expect(screen.queryByText('创建消费组')).not.toBeInTheDocument();
     expect(screen.queryByText('配置')).not.toBeInTheDocument();
+    expect(screen.queryByText('查看分布')).not.toBeInTheDocument();
   });
 
   it('should render reset button', () => {

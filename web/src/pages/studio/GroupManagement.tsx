@@ -31,7 +31,7 @@ import {
   Switch,
   message,
 } from 'antd';
-import { MagnifyingGlass, ArrowClockwise, Users, Eye } from '@phosphor-icons/react';
+import { MagnifyingGlass, ArrowClockwise, Users } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
 import type { ConsumerGroup, QueueProgress, SubscriptionEntry } from '../../api/metadata';
 import {
@@ -230,15 +230,6 @@ const GroupManagementPage = () => {
         <code style={{ background: '#f5f5f5', padding: '2px 6px', borderRadius: 4, fontSize: 12 }}>
           {text}
         </code>
-      ),
-    },
-    {
-      title: t('common.actions'),
-      key: 'action',
-      render: () => (
-        <Button type="link" size="small" icon={<Eye size={14} />}>
-          {t('groupMgmt.viewDistribution')}
-        </Button>
       ),
     },
   ];
