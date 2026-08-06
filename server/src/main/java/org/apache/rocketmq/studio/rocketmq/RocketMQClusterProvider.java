@@ -23,6 +23,7 @@ import org.apache.rocketmq.studio.cluster.broker.BrokerVO;
 import org.apache.rocketmq.studio.cluster.broker.ClusterProvider;
 import org.apache.rocketmq.studio.cluster.broker.ClusterVO;
 import org.apache.rocketmq.studio.cluster.nameserver.NameServerVO;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.BrokerStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
@@ -89,7 +90,8 @@ public class RocketMQClusterProvider implements ClusterProvider {
             return clusters;
         } catch (Exception e) {
             log.warn("Failed to discover clusters via NameServer: {}", e.getMessage());
-            return Collections.emptyList();
+            throw new BusinessException(502,
+                    "Failed to discover clusters via NameServer: " + rootMessage(e));
         }
     }
 
@@ -177,6 +179,17 @@ public class RocketMQClusterProvider implements ClusterProvider {
             brokers.add(builder.build());
         }
         return brokers;
+    }
+
+    private String rootMessage(Throwable error) {
+        Throwable current = error;
+        while (current.getCause() != null) {
+            current = current.getCause();
+        }
+        String message = current.getMessage();
+        return message == null || message.isBlank()
+                ? current.getClass().getSimpleName()
+                : message;
     }
 
     private void enrichBrokerWithRuntimeInfo(BrokerVO.BrokerVOBuilder builder, String brokerAddr) {
