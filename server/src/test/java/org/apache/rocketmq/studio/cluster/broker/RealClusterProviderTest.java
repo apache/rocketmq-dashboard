@@ -20,6 +20,7 @@ import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.common.domain.enums.BrokerStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,6 +33,7 @@ import java.util.List;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -76,6 +78,16 @@ class RealClusterProviderTest {
         HashMap<String, Set<String>> clusterAddrTable = new HashMap<>();
         clusterAddrTable.put("DefaultCluster", Set.of("broker-a", "broker-b"));
         info.setClusterAddrTable(clusterAddrTable);
+        return info;
+    }
+
+    private ClusterInfo multiClusterInfo() {
+        ClusterInfo info = sampleClusterInfo();
+        HashMap<Long, String> addrs = new HashMap<>();
+        addrs.put(0L, "10.0.0.21:10911");
+        info.getBrokerAddrTable().put("broker-c",
+                new BrokerData("AnalyticsCluster", "broker-c", addrs));
+        info.getClusterAddrTable().put("AnalyticsCluster", Set.of("broker-c"));
         return info;
     }
 
@@ -125,5 +137,34 @@ class RealClusterProviderTest {
 
         assertThat(clusters).hasSize(1);
         assertThat(clusters.get(0).getBrokers()).hasSize(2);
+    }
+
+    @Test
+    void discoversAndRefreshesEachClusterWithOnlyItsOwnBrokers() throws Exception {
+        properties.setNamesrvAddr("10.0.0.1:9876");
+        stubClusterInfo("10.0.0.1:9876", multiClusterInfo());
+
+        List<ClusterVO> clusters = provider.discoverClusters();
+
+        assertThat(clusters).extracting(ClusterVO::getId)
+                .containsExactly("AnalyticsCluster", "DefaultCluster");
+        assertThat(clusters.get(0).getBrokers()).extracting(BrokerVO::getName)
+                .containsExactly("broker-c");
+        assertThat(clusters.get(1).getBrokers()).extracting(BrokerVO::getName)
+                .containsExactly("broker-a", "broker-b");
+
+        ClusterVO refreshed = provider.refreshClusterDetail("AnalyticsCluster");
+        assertThat(refreshed.getId()).isEqualTo("AnalyticsCluster");
+        assertThat(refreshed.getBrokers()).extracting(BrokerVO::getName).containsExactly("broker-c");
+    }
+
+    @Test
+    void rejectsUnknownClusterRefreshes() throws Exception {
+        properties.setNamesrvAddr("10.0.0.1:9876");
+        stubClusterInfo("10.0.0.1:9876", sampleClusterInfo());
+
+        assertThatThrownBy(() -> provider.refreshClusterDetail("missing"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Cluster not found");
     }
 }
