@@ -16,7 +16,9 @@
  */
 package org.apache.rocketmq.studio.rocketmq;
 
+import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.remoting.protocol.LanguageCode;
+import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.Connection;
 import org.apache.rocketmq.remoting.protocol.body.ConsumerConnection;
@@ -163,6 +165,29 @@ class RocketMQClientProviderTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Failed to query producer connections: broker unavailable")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void exactProducerQueryReturnsEmptyForNonExistentTopic() throws Exception {
+        when(adminExt.examineProducerConnectionInfo("pg-order", "NoSuchTopic"))
+                .thenThrow(new MQClientException(ResponseCode.TOPIC_NOT_EXIST,
+                        "CAN'T FIND BROKER FOR TOPIC: NoSuchTopic"));
+
+        List<ClientConnectionVO> connections = provider.findProducerConnections("NoSuchTopic", "pg-order");
+
+        assertThat(connections).isEmpty();
+        verify(adminExt).examineProducerConnectionInfo("pg-order", "NoSuchTopic");
+    }
+
+    @Test
+    void exactProducerQueryReturnsEmptyWhenTopicHasNoRoute() throws Exception {
+        when(adminExt.examineProducerConnectionInfo("pg-order", "NoRouteTopic"))
+                .thenThrow(new MQClientException(ResponseCode.TOPIC_NOT_EXIST,
+                        "connect to ns failed, route info of this topic not found"));
+
+        List<ClientConnectionVO> connections = provider.findProducerConnections("NoRouteTopic", "pg-order");
+
+        assertThat(connections).isEmpty();
     }
 
     @Test
