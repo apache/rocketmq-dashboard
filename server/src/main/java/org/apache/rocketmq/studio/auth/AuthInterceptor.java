@@ -20,6 +20,8 @@ package org.apache.rocketmq.studio.auth;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
+import org.apache.rocketmq.studio.settings.SettingsRepository;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
@@ -37,17 +39,17 @@ public class AuthInterceptor implements HandlerInterceptor {
             "/api/ai/chat",
             "/api/clusters/test-connection",
             "/api/llm/config/test",
-            "/api/metrics/query",
-            "/api/settings/datasources/test");
+            "/api/metrics/query");
 
     private final AuthProperties authProperties;
     private final AuthService authService;
+    private final SettingsRepository settingsRepository;
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response,
                              Object handler) throws Exception {
         AuthenticatedUserContext.clear();
-        if (!authProperties.isLoginRequired() || CorsUtils.isPreFlightRequest(request)
+        if (!isLoginRequired() || CorsUtils.isPreFlightRequest(request)
                 || isPublicPath(requestPath(request))) {
             return true;
         }
@@ -65,13 +67,38 @@ public class AuthInterceptor implements HandlerInterceptor {
         return true;
     }
 
+    /**
+     * Login enforcement comes from the static {@code studio.auth.login-required} property OR the
+     * runtime "requireLogin" toggle persisted in the settings database, so toggling it in the
+     * settings UI actually changes the enforced policy.
+     */
+    private boolean isLoginRequired() {
+        if (authProperties != null && authProperties.isLoginRequired()) {
+            return true;
+        }
+        if (settingsRepository == null) {
+            return false;
+        }
+        try {
+            GeneralSettingsVO settings = settingsRepository.loadGeneralSettings();
+            return settings != null && settings.isRequireLogin();
+        } catch (Exception exception) {
+            return false;
+        }
+    }
+
     private boolean requiresAdmin(HttpServletRequest request, String path) {
         String method = request.getMethod();
         if (HttpMethod.GET.matches(method) || HttpMethod.HEAD.matches(method)
                 || HttpMethod.OPTIONS.matches(method)) {
-            return false;
+            // Read endpoints stay open to readers, except credential views that expose secrets.
+            return isAdminOnlyGetPath(path);
         }
         return !HttpMethod.POST.matches(method) || !READER_POST_PATHS.contains(normalizePath(path));
+    }
+
+    private boolean isAdminOnlyGetPath(String path) {
+        return path.startsWith("/api/acl/users/") && path.endsWith("/credentials");
     }
 
     private void writeError(HttpServletResponse response, HttpStatus status, String message)

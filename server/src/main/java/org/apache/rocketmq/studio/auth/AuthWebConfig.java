@@ -18,21 +18,33 @@
 package org.apache.rocketmq.studio.auth;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.apache.rocketmq.studio.settings.SettingsRepository;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
+/**
+ * The interceptor is always registered: enforcement itself decides whether login is required,
+ * merging the static {@code studio.auth.login-required} property with the runtime "requireLogin"
+ * toggle from the settings database. A conditional registration would make the UI toggle a no-op
+ * whenever the static property is false.
+ */
 @Configuration
 @RequiredArgsConstructor
-@ConditionalOnProperty(prefix = "studio.auth", name = "login-required", havingValue = "true")
 public class AuthWebConfig implements WebMvcConfigurer {
 
-    private final AuthProperties authProperties;
-    private final AuthService authService;
+    private final ObjectProvider<AuthProperties> authPropertiesProvider;
+    private final ObjectProvider<AuthService> authServiceProvider;
+    private final ObjectProvider<SettingsRepository> settingsRepositoryProvider;
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(new AuthInterceptor(authProperties, authService)).addPathPatterns("/api/**");
+        // Slice tests and minimal contexts may not provide any of these beans; when they are
+        // missing the interceptor falls back to the static login-required property (effectively
+        // no enforcement), matching the old conditional-registration behaviour.
+        registry.addInterceptor(new AuthInterceptor(authPropertiesProvider.getIfAvailable(),
+                        authServiceProvider.getIfAvailable(), settingsRepositoryProvider.getIfAvailable()))
+                .addPathPatterns("/api/**");
     }
 }

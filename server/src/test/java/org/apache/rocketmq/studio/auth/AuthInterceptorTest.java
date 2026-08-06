@@ -41,7 +41,7 @@ class AuthInterceptorTest {
     @Test
     void shouldAllowRequestsWhenLoginIsDisabled() throws Exception {
         AuthProperties properties = new AuthProperties();
-        AuthInterceptor interceptor = new AuthInterceptor(properties, authService(properties));
+        AuthInterceptor interceptor = new AuthInterceptor(properties, authService(properties), settingsRepository());
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/clusters");
 
         boolean allowed = interceptor.preHandle(request, new MockHttpServletResponse(), new Object());
@@ -55,7 +55,7 @@ class AuthInterceptorTest {
     void shouldRejectProtectedApiWithoutTokenWhenLoginIsEnabled() throws Exception {
         AuthProperties properties = new AuthProperties();
         properties.setLoginRequired(true);
-        AuthInterceptor interceptor = new AuthInterceptor(properties, authService(properties));
+        AuthInterceptor interceptor = new AuthInterceptor(properties, authService(properties), settingsRepository());
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/clusters");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -76,7 +76,7 @@ class AuthInterceptorTest {
         user.setAdmin(true);
         properties.setUsers(List.of(user));
         AuthService authService = authService(properties);
-        AuthInterceptor interceptor = new AuthInterceptor(properties, authService);
+        AuthInterceptor interceptor = new AuthInterceptor(properties, authService, settingsRepository());
         LoginDTO login = new LoginDTO();
         login.setUsername("admin");
         login.setPassword("secret");
@@ -98,10 +98,24 @@ class AuthInterceptorTest {
     }
 
     @Test
+    void shouldEnforceLoginWhenDatabaseRequiresItEvenIfPropertyIsDisabled() throws Exception {
+        AuthProperties properties = new AuthProperties();
+        AuthInterceptor interceptor = new AuthInterceptor(properties, authService(properties),
+                settingsRepositoryRequiringLogin());
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/clusters");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        boolean allowed = interceptor.preHandle(request, response, new Object());
+
+        assertThat(allowed).isFalse();
+        assertThat(response.getStatus()).isEqualTo(401);
+    }
+
+    @Test
     void shouldAllowLoginEndpointWhenLoginIsEnabled() throws Exception {
         AuthProperties properties = new AuthProperties();
         properties.setLoginRequired(true);
-        AuthInterceptor interceptor = new AuthInterceptor(properties, authService(properties));
+        AuthInterceptor interceptor = new AuthInterceptor(properties, authService(properties), settingsRepository());
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/auth/login");
 
         boolean allowed = interceptor.preHandle(request, new MockHttpServletResponse(), new Object());
@@ -113,7 +127,7 @@ class AuthInterceptorTest {
     void shouldAllowLoginEndpointWithTrailingSlashWhenLoginIsEnabled() throws Exception {
         AuthProperties properties = new AuthProperties();
         properties.setLoginRequired(true);
-        AuthInterceptor interceptor = new AuthInterceptor(properties, authService(properties));
+        AuthInterceptor interceptor = new AuthInterceptor(properties, authService(properties), settingsRepository());
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/auth/login/");
 
         boolean allowed = interceptor.preHandle(request, new MockHttpServletResponse(), new Object());
@@ -125,7 +139,7 @@ class AuthInterceptorTest {
     void shouldAllowAuthStatusEndpointWhenLoginIsEnabled() throws Exception {
         AuthProperties properties = new AuthProperties();
         properties.setLoginRequired(true);
-        AuthInterceptor interceptor = new AuthInterceptor(properties, authService(properties));
+        AuthInterceptor interceptor = new AuthInterceptor(properties, authService(properties), settingsRepository());
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/auth/status");
 
         boolean allowed = interceptor.preHandle(request, new MockHttpServletResponse(), new Object());
@@ -137,7 +151,7 @@ class AuthInterceptorTest {
     void shouldAllowAuthStatusEndpointWithTrailingSlashWhenLoginIsEnabled() throws Exception {
         AuthProperties properties = new AuthProperties();
         properties.setLoginRequired(true);
-        AuthInterceptor interceptor = new AuthInterceptor(properties, authService(properties));
+        AuthInterceptor interceptor = new AuthInterceptor(properties, authService(properties), settingsRepository());
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/auth/status/");
 
         boolean allowed = interceptor.preHandle(request, new MockHttpServletResponse(), new Object());
@@ -153,6 +167,22 @@ class AuthInterceptorTest {
         SettingsRepository settingsRepository = mock(SettingsRepository.class);
         when(settingsRepository.loadGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
                 .sessionTimeout(sessionTimeout)
+                .build());
+        return settingsRepository;
+    }
+
+    private SettingsRepository settingsRepository() {
+        SettingsRepository settingsRepository = mock(SettingsRepository.class);
+        when(settingsRepository.loadGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
+                .requireLogin(false)
+                .build());
+        return settingsRepository;
+    }
+
+    private SettingsRepository settingsRepositoryRequiringLogin() {
+        SettingsRepository settingsRepository = mock(SettingsRepository.class);
+        when(settingsRepository.loadGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
+                .requireLogin(true)
                 .build());
         return settingsRepository;
     }
@@ -208,10 +238,49 @@ class AuthInterceptorTest {
     }
 
     @Test
+    void shouldRejectDataSourceTestForNonAdminUser() throws Exception {
+        TestSession session = login(false);
+        MockHttpServletRequest request = authenticatedRequest(
+                "POST", "/api/settings/datasources/test", session.token());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        boolean allowed = session.interceptor().preHandle(request, response, new Object());
+
+        assertThat(allowed).isFalse();
+        assertThat(response.getStatus()).isEqualTo(403);
+    }
+
+    @Test
     void shouldAllowLogoutForNonAdminUser() throws Exception {
         TestSession session = login(false);
         MockHttpServletRequest request = authenticatedRequest(
                 "POST", "/api/auth/logout", session.token());
+
+        boolean allowed = session.interceptor().preHandle(
+                request, new MockHttpServletResponse(), new Object());
+
+        assertThat(allowed).isTrue();
+    }
+
+    @Test
+    void shouldRejectCredentialsViewForNonAdminUser() throws Exception {
+        TestSession session = login(false);
+        MockHttpServletRequest request = authenticatedRequest(
+                "GET", "/api/acl/users/user-1/credentials", session.token());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        boolean allowed = session.interceptor().preHandle(request, response, new Object());
+
+        assertThat(allowed).isFalse();
+        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(response.getContentAsString()).contains("Admin permission required");
+    }
+
+    @Test
+    void shouldAllowCredentialsViewForAdminUser() throws Exception {
+        TestSession session = login(true);
+        MockHttpServletRequest request = authenticatedRequest(
+                "GET", "/api/acl/users/user-1/credentials", session.token());
 
         boolean allowed = session.interceptor().preHandle(
                 request, new MockHttpServletResponse(), new Object());
@@ -232,7 +301,7 @@ class AuthInterceptorTest {
         login.setUsername("test-user");
         login.setPassword("secret");
         String token = authService.login(login).getToken();
-        return new TestSession(new AuthInterceptor(properties, authService), token);
+        return new TestSession(new AuthInterceptor(properties, authService, settingsRepository()), token);
     }
 
     private MockHttpServletRequest authenticatedRequest(String method, String path, String token) {
