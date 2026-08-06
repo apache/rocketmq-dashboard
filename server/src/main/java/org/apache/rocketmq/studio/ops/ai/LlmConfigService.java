@@ -110,6 +110,8 @@ public class LlmConfigService {
                 .apiKey(persistedApiKey)
                 .model(normalized.getModel())
                 .baseUrl(normalized.getApiBase())
+                .maxTokens(normalized.getMaxTokens())
+                .temperature(normalized.getTemperature())
                 .build();
         LlmConfigVO nextOverrides = copy(normalized);
         settingsService.saveGeneralSettings(updated);
@@ -213,8 +215,8 @@ public class LlmConfigService {
                 .apiKey(apiKey)
                 .apiBase(apiBase)
                 .model(model)
-                .maxTokens(DEFAULT_MAX_TOKENS)
-                .temperature(DEFAULT_TEMPERATURE)
+                .maxTokens(settings.getMaxTokens() != null ? settings.getMaxTokens() : DEFAULT_MAX_TOKENS)
+                .temperature(settings.getTemperature() != null ? settings.getTemperature() : DEFAULT_TEMPERATURE)
                 .enabled(!requiresApiKey(provider) || !isBlank(apiKey))
                 .apiVersion("2024-02-15-preview")
                 .awsRegion("us-east-1")
