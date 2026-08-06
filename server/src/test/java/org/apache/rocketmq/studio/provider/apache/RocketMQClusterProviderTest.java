@@ -22,6 +22,7 @@ import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.broker.ClusterVO;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.junit.jupiter.api.Test;
 
@@ -30,6 +31,7 @@ import java.util.List;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -112,6 +114,20 @@ class RocketMQClusterProviderTest {
         RocketMQProperties properties = new RocketMQProperties();
         properties.setNamesrvAddr("10.0.0.1:9876");
         return new RocketMQClusterProvider(adminFactory, properties);
+    }
+
+    @Test
+    void discoverClustersShouldExposeNameServerFailures() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RocketMQClusterProvider provider = newProvider(adminExt);
+
+        when(adminExt.examineBrokerClusterInfo()).thenThrow(new IllegalStateException("NameServer unavailable"));
+
+        assertThatThrownBy(provider::discoverClusters)
+                .isInstanceOfSatisfying(BusinessException.class, error -> {
+                    assertThat(error.getCode()).isEqualTo(502);
+                    assertThat(error.getMessage()).contains("NameServer unavailable");
+                });
     }
 
     private ClusterInfo clusterInfo() {
