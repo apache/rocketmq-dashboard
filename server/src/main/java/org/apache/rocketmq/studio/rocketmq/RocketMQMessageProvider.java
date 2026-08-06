@@ -213,7 +213,16 @@ public class RocketMQMessageProvider implements MessageProvider {
                         break outer;
                     }
                     PullResult pullResult = consumer.pull(queue, "*", offset, 32);
-                    offset = pullResult.getNextBeginOffset();
+                    if (pullResult == null) {
+                        log.warn("Stop topic query for {} because queue {} returned no pull result", topic, queue);
+                        break;
+                    }
+                    long nextOffset = pullResult.getNextBeginOffset();
+                    if (nextOffset <= offset) {
+                        log.warn("Stop topic query for {} because queue {} did not advance offset {}", topic, queue, offset);
+                        break;
+                    }
+                    offset = nextOffset;
                     if (pullResult.getPullStatus() != PullStatus.FOUND
                             || pullResult.getMsgFoundList() == null) {
                         break;

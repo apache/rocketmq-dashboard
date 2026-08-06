@@ -18,6 +18,8 @@ package org.apache.rocketmq.studio.rocketmq;
 
 import org.apache.rocketmq.client.QueryResult;
 import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
+import org.apache.rocketmq.client.consumer.PullResult;
+import org.apache.rocketmq.client.consumer.PullStatus;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
@@ -30,6 +32,7 @@ import org.apache.rocketmq.studio.queryhistory.QueryHistoryService;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.MockedConstruction;
@@ -38,6 +41,8 @@ import org.springframework.beans.factory.ObjectProvider;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -49,6 +54,7 @@ import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -104,6 +110,27 @@ class RocketMQMessageProviderTest {
         verify(runtimeAdminClientResolver).execute(eq("instance-a"), any());
         verify(queryHistoryService).recordMessageQuery(null, "TOPIC", "TopicA", null, null, null,
                 100L, 200L, 0);
+    }
+
+    @Test
+    @Timeout(value = 1, unit = TimeUnit.SECONDS)
+    void queryByTopicStopsWhenPullOffsetDoesNotAdvance() throws Exception {
+        MessageQueue queue = new MessageQueue("TopicA", "broker-a", 0);
+        PullResult stalledResult = new PullResult(PullStatus.FOUND, 10, 0, 10, List.of());
+        try (MockedConstruction<DefaultMQPullConsumer> mockedConsumers =
+                     mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
+                         doNothing().when(consumer).start();
+                         when(consumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
+                         when(consumer.searchOffset(eq(queue), anyLong())).thenReturn(10L);
+                         when(consumer.pull(eq(queue), eq("*"), eq(10L), eq(32))).thenReturn(stalledResult);
+                         doNothing().when(consumer).shutdown();
+                     })) {
+            List<MessageRecordVO> messages = provider.queryMessages(
+                    "instance-a", "TopicA", null, null, null, 100L, 200L);
+
+            assertThat(messages).isEmpty();
+            verify(mockedConsumers.constructed().get(0), times(1)).pull(queue, "*", 10L, 32);
+        }
     }
 
     @Test
