@@ -357,66 +357,72 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
     @Override
     public ConsumerGroupVO createConsumerGroup(ConsumerGroupVO group) {
+        if (group != null && StringUtils.hasText(group.getInstanceId())) {
+            return runtimeAdminClientResolver.execute(group.getInstanceId(),
+                    admin -> createConsumerGroup(admin, group));
+        }
+        return adminFactory.execute(namesrvAddr(), null, admin -> createConsumerGroup(admin, group));
+    }
+
+    private ConsumerGroupVO createConsumerGroup(MQAdminExt admin, ConsumerGroupVO group) {
         String groupName = group.getName();
 
-        return adminFactory.execute(namesrvAddr(), null, admin -> {
-            try {
-                Set<String> brokerAddrs = getAllMasterBrokerAddrs(admin);
-                if (brokerAddrs.isEmpty()) {
-                    throw new BusinessException(500, "No broker available to create consumer group");
-                }
-
-                SubscriptionGroupConfig config = new SubscriptionGroupConfig();
-                config.setGroupName(groupName);
-                config.setConsumeEnable(true);
-                config.setConsumeBroadcastEnable(true);
-                config.setRetryQueueNums(1);
-                config.setRetryMaxTimes(group.getRetryMaxTimes() > 0 ? group.getRetryMaxTimes() : 16);
-
-                for (String addr : brokerAddrs) {
-                    admin.createAndUpdateSubscriptionGroupConfig(addr, config);
-                }
-
-                // Persist to DB, upserting so re-creating an existing group does not violate the
-                // unique (cluster_id, name) key.
-                String groupClusterName = getClusterName(admin);
-                RmqGroup entity = groupMapper.selectOne(new LambdaQueryWrapper<RmqGroup>()
-                        .eq(RmqGroup::getClusterId, groupClusterName)
-                        .eq(RmqGroup::getName, groupName));
-                boolean isNewGroup = entity == null;
-                if (isNewGroup) {
-                    entity = new RmqGroup();
-                    entity.setName(groupName);
-                    entity.setClusterId(groupClusterName);
-                    entity.setCreatedAt(LocalDateTime.now());
-                }
-                if (StringUtils.hasText(group.getInstanceId())) {
-                    entity.setInstanceId(group.getInstanceId());
-                }
-                entity.setConsumeType(group.getConsumeType() != null ? group.getConsumeType().name() : "CLUSTERING");
-                entity.setMessageModel(group.getSubscriptionMode() != null ? group.getSubscriptionMode().name() : "Push");
-                entity.setMaxRetry(config.getRetryMaxTimes());
-                entity.setStatus("ACTIVE");
-                entity.setUpdatedAt(LocalDateTime.now());
-                if (isNewGroup) {
-                    groupMapper.insert(entity);
-                } else {
-                    groupMapper.updateById(entity);
-                }
-
-                auditService.record("CREATE_GROUP", groupName,
-                        "retryMaxTimes=" + config.getRetryMaxTimes(), "SUCCESS");
-
-                group.setId(groupName);
-                return group;
-            } catch (BusinessException e) {
-                auditService.record("CREATE_GROUP", groupName, e.getMessage(), "FAILED");
-                throw e;
-            } catch (Exception e) {
-                auditService.record("CREATE_GROUP", groupName, e.getMessage(), "FAILED");
-                throw new BusinessException(500, "Failed to create consumer group: " + e.getMessage());
+        try {
+            Set<String> brokerAddrs = getAllMasterBrokerAddrs(admin);
+            if (brokerAddrs.isEmpty()) {
+                throw new BusinessException(500, "No broker available to create consumer group");
             }
-        });
+
+            SubscriptionGroupConfig config = new SubscriptionGroupConfig();
+            config.setGroupName(groupName);
+            config.setConsumeEnable(true);
+            config.setConsumeBroadcastEnable(true);
+            config.setRetryQueueNums(1);
+            config.setRetryMaxTimes(group.getRetryMaxTimes() > 0 ? group.getRetryMaxTimes() : 16);
+
+            for (String addr : brokerAddrs) {
+                admin.createAndUpdateSubscriptionGroupConfig(addr, config);
+            }
+
+            // Persist to DB, upserting so re-creating an existing group does not violate the
+            // unique (cluster_id, name) key.
+            String groupClusterName = getClusterName(admin);
+            RmqGroup entity = groupMapper.selectOne(new LambdaQueryWrapper<RmqGroup>()
+                    .eq(RmqGroup::getClusterId, groupClusterName)
+                    .eq(RmqGroup::getName, groupName));
+            boolean isNewGroup = entity == null;
+            if (isNewGroup) {
+                entity = new RmqGroup();
+                entity.setName(groupName);
+                entity.setClusterId(groupClusterName);
+                entity.setCreatedAt(LocalDateTime.now());
+            }
+            if (StringUtils.hasText(group.getInstanceId())) {
+                entity.setInstanceId(group.getInstanceId());
+            }
+            entity.setConsumeType(group.getConsumeType() != null ? group.getConsumeType().name() : "CLUSTERING");
+            entity.setMessageModel(group.getSubscriptionMode() != null ? group.getSubscriptionMode().name() : "Push");
+            entity.setMaxRetry(config.getRetryMaxTimes());
+            entity.setStatus("ACTIVE");
+            entity.setUpdatedAt(LocalDateTime.now());
+            if (isNewGroup) {
+                groupMapper.insert(entity);
+            } else {
+                groupMapper.updateById(entity);
+            }
+
+            auditService.record("CREATE_GROUP", groupName,
+                    "retryMaxTimes=" + config.getRetryMaxTimes(), "SUCCESS");
+
+            group.setId(groupName);
+            return group;
+        } catch (BusinessException e) {
+            auditService.record("CREATE_GROUP", groupName, e.getMessage(), "FAILED");
+            throw e;
+        } catch (Exception e) {
+            auditService.record("CREATE_GROUP", groupName, e.getMessage(), "FAILED");
+            throw new BusinessException(500, "Failed to create consumer group: " + e.getMessage());
+        }
     }
 
     @Override

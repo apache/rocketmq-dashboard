@@ -107,12 +107,12 @@ public class ApacheInstanceProvider implements InstanceProvider {
 
     @Override
     public List<QueueProgressVO> getGroupProgress(String instanceId, String groupName) {
-        return metadataProvider.getGroupProgress(groupName);
+        return metadataProvider.getGroupProgress(instanceId, groupName);
     }
 
     @Override
     public List<SubscriptionEntryVO> getGroupSubscriptions(String instanceId, String groupName) {
-        return metadataProvider.getGroupSubscriptions(groupName);
+        return metadataProvider.getGroupSubscriptions(instanceId, groupName);
     }
 
     @Override

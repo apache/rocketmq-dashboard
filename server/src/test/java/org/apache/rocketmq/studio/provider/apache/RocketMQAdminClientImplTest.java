@@ -32,6 +32,7 @@ import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageVO;
 import org.apache.rocketmq.studio.ops.audit.AuditService;
+import org.apache.rocketmq.studio.persistence.entity.RmqGroup;
 import org.apache.rocketmq.studio.persistence.entity.RmqTopic;
 import org.apache.rocketmq.studio.persistence.mapper.RmqGroupMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqTopicMapper;
@@ -60,6 +61,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mockConstruction;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -159,6 +161,37 @@ class RocketMQAdminClientImplTest {
         for (LambdaQueryWrapper<RmqTopic> wrapper : captor.getAllValues()) {
             assertThat(wrapper.getSqlSegment()).contains("cluster_id");
         }
+    }
+
+    @Test
+    void createConsumerGroupUsesSelectedInstanceAdmin() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        ClusterInfo clusterInfo = new ClusterInfo();
+        clusterInfo.setClusterAddrTable(new HashMap<>(Map.of("cluster-1", new HashSet<>(List.of("broker-1")))));
+        BrokerData brokerData = new BrokerData();
+        brokerData.setBrokerName("broker-1");
+        brokerData.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.1:10911")));
+        clusterInfo.setBrokerAddrTable(new HashMap<>(Map.of("broker-1", brokerData)));
+        when(selectedAdmin.examineBrokerClusterInfo()).thenReturn(clusterInfo);
+        when(groupMapper.selectOne(any())).thenReturn(null);
+        doNothing().when(selectedAdmin).createAndUpdateSubscriptionGroupConfig(anyString(), any());
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
+                .thenAnswer(invocation -> {
+                    MqAdminExtFactory.AdminAction<?> action = invocation.getArgument(1);
+                    return action.apply(selectedAdmin);
+                });
+
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("cg-orders");
+        group.setInstanceId("instance-a");
+
+        adminClient.createConsumerGroup(group);
+
+        verify(runtimeAdminClientResolver).execute(org.mockito.ArgumentMatchers.eq("instance-a"), any());
+        verify(selectedAdmin).createAndUpdateSubscriptionGroupConfig(
+                org.mockito.ArgumentMatchers.eq("10.0.0.1:10911"), any());
+        verify(adminExt, never()).createAndUpdateSubscriptionGroupConfig(anyString(), any());
     }
 
     @Test

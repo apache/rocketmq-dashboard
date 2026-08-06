@@ -40,6 +40,4 @@ public class ResetConsumerOffsetDTO {
     private Long timestamp;
 
     private String topic;
-
-    private String instanceId;
 }

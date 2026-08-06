@@ -107,6 +107,19 @@ const renderWithProviders = (ui: React.ReactElement) =>
 describe('Consumer page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(instanceService.listInstances).mockResolvedValue([
+      {
+        id: 'instance-1',
+        name: 'instance-1',
+        remark: '',
+        type: 'PROXY',
+        endpoint: '10.0.0.1:8080',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      },
+    ]);
     vi.mocked(consumerService.listConsumerGroups).mockResolvedValue([group]);
     vi.mocked(consumerService.createConsumerGroup).mockImplementation(
       async (data: Partial<ConsumerGroup>) =>
@@ -228,6 +241,9 @@ describe('Consumer page', () => {
         createdAt: '2026-07-23T00:00:00Z',
         updatedAt: '2026-07-23T00:00:00Z',
       },
+    ]);
+    vi.mocked(consumerService.listConsumerGroups).mockResolvedValue([
+      { ...group, instanceId: 'instance-a' },
     ]);
     const user = userEvent.setup();
     renderWithProviders(<ConsumerPage />);
