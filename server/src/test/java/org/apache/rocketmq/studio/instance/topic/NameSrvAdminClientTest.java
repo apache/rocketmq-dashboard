@@ -35,7 +35,7 @@ class NameSrvAdminClientTest {
 
         assertUnavailable(() -> adminClient.getConsumerGroup("cg-order"));
         assertUnavailable(() -> adminClient.createConsumerGroup(group));
-        assertUnavailable(() -> adminClient.deleteConsumerGroup("cg-order"));
+        assertUnavailable(() -> adminClient.deleteConsumerGroup("instance-a", "cg-order"));
         assertUnavailable(() -> adminClient.resetOffset("instance-a", "cg-order", 1784246400000L, "order-topic"));
     }
 

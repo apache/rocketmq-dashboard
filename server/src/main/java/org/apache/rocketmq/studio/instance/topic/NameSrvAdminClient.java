@@ -64,7 +64,7 @@ public class NameSrvAdminClient implements AdminClient {
     }
 
     @Override
-    public void deleteConsumerGroup(String name) {
+    public void deleteConsumerGroup(String instanceId, String name) {
         throw consumerGroupAdminUnavailable();
     }
 

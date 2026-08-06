@@ -102,7 +102,7 @@ public class ApacheInstanceProvider implements InstanceProvider {
 
     @Override
     public void deleteConsumerGroup(String instanceId, String groupName) {
-        adminClient.deleteConsumerGroup(groupName);
+        adminClient.deleteConsumerGroup(instanceId, groupName);
     }
 
     @Override

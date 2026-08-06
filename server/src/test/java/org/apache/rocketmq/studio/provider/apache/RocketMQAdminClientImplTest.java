@@ -195,6 +195,29 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void deleteConsumerGroupUsesSelectedInstanceAdmin() throws Exception {
+        DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        ClusterInfo clusterInfo = new ClusterInfo();
+        BrokerData brokerData = new BrokerData();
+        brokerData.setBrokerName("broker-1");
+        brokerData.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.1:10911")));
+        clusterInfo.setBrokerAddrTable(new HashMap<>(Map.of("broker-1", brokerData)));
+        when(selectedAdmin.examineBrokerClusterInfo()).thenReturn(clusterInfo);
+        doNothing().when(selectedAdmin).deleteSubscriptionGroup(anyString(), anyString(), org.mockito.ArgumentMatchers.anyBoolean());
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
+                .thenAnswer(invocation -> {
+                    MqAdminExtFactory.AdminAction<?> action = invocation.getArgument(1);
+                    return action.apply(selectedAdmin);
+                });
+
+        adminClient.deleteConsumerGroup("instance-a", "cg-orders");
+
+        verify(runtimeAdminClientResolver).execute(org.mockito.ArgumentMatchers.eq("instance-a"), any());
+        verify(selectedAdmin).deleteSubscriptionGroup("10.0.0.1:10911", "cg-orders", true);
+        verify(adminExt, never()).deleteSubscriptionGroup(anyString(), anyString(), org.mockito.ArgumentMatchers.anyBoolean());
+    }
+
+    @Test
     void sendMessageShouldNotFailWhenAuditRecordingFails() throws Exception {
         when(properties.getNamesrvAddr()).thenReturn("10.0.0.1:9876");
         doThrow(new RuntimeException("audit db down")).when(auditService)

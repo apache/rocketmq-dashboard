@@ -426,28 +426,39 @@ public class RocketMQAdminClientImpl implements AdminClient {
     }
 
     @Override
-    public void deleteConsumerGroup(String name) {
-        adminFactory.execute(namesrvAddr(), null, admin -> {
-            try {
-                Set<String> brokerAddrs = getAllMasterBrokerAddrs(admin);
-
-                for (String addr : brokerAddrs) {
-                    admin.deleteSubscriptionGroup(addr, name, true);
-                }
-
-                // Delete from DB
-                groupMapper.delete(new LambdaQueryWrapper<RmqGroup>().eq(RmqGroup::getName, name));
-
-                auditService.record("DELETE_GROUP", name, "", "SUCCESS");
+    public void deleteConsumerGroup(String instanceId, String name) {
+        if (StringUtils.hasText(instanceId)) {
+            runtimeAdminClientResolver.execute(instanceId, admin -> {
+                doDeleteConsumerGroup(admin, name);
                 return null;
-            } catch (BusinessException e) {
-                auditService.record("DELETE_GROUP", name, e.getMessage(), "FAILED");
-                throw e;
-            } catch (Exception e) {
-                auditService.record("DELETE_GROUP", name, e.getMessage(), "FAILED");
-                throw new BusinessException(500, "Failed to delete consumer group: " + e.getMessage());
-            }
+            });
+            return;
+        }
+        adminFactory.execute(namesrvAddr(), null, admin -> {
+            doDeleteConsumerGroup(admin, name);
+            return null;
         });
+    }
+
+    private void doDeleteConsumerGroup(MQAdminExt admin, String name) {
+        try {
+            Set<String> brokerAddrs = getAllMasterBrokerAddrs(admin);
+
+            for (String addr : brokerAddrs) {
+                admin.deleteSubscriptionGroup(addr, name, true);
+            }
+
+            // Delete from DB
+            groupMapper.delete(new LambdaQueryWrapper<RmqGroup>().eq(RmqGroup::getName, name));
+
+            auditService.record("DELETE_GROUP", name, "", "SUCCESS");
+        } catch (BusinessException e) {
+            auditService.record("DELETE_GROUP", name, e.getMessage(), "FAILED");
+            throw e;
+        } catch (Exception e) {
+            auditService.record("DELETE_GROUP", name, e.getMessage(), "FAILED");
+            throw new BusinessException(500, "Failed to delete consumer group: " + e.getMessage());
+        }
     }
 
     @Override

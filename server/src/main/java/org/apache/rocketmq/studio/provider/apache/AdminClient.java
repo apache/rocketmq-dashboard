@@ -30,6 +30,6 @@ public interface AdminClient {
     void deleteTopic(String name);
     SendMessageVO sendMessage(SendMessageDTO request);
     ConsumerGroupVO createConsumerGroup(ConsumerGroupVO group);
-    void deleteConsumerGroup(String name);
+    void deleteConsumerGroup(String instanceId, String name);
     void resetOffset(String instanceId, String name, long timestamp, String topic);
 }
