@@ -33,14 +33,11 @@ import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.io.IOException;
-import java.net.InetAddress;
-import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.net.UnknownHostException;
+import java.net.SocketTimeoutException;
 import java.time.Duration;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 
@@ -230,38 +227,10 @@ public class SettingsService {
         if (!"http".equalsIgnoreCase(baseUri.getScheme()) && !"https".equalsIgnoreCase(baseUri.getScheme())) {
             throw new IllegalArgumentException("Data source URL must start with http:// or https://");
         }
-        if (!isAllowedDataSourceHost(baseUri.getHost())) {
-            throw new IllegalArgumentException(
-                    "Data source URL must not point to a local or private address");
-        }
         return UriComponentsBuilder.fromUriString(normalized + "/api/v1/query")
                 .queryParam("query", PROMETHEUS_TEST_QUERY)
                 .build()
                 .toUri();
-    }
-
-    /**
-     * SSRF guard: the test endpoint performs a server-side HTTP request to an attacker-supplied
-     * URL. The hostname {@code localhost} and link-local addresses (169.254.x.x, fe80:: — the
-     * cloud metadata range) are never legitimate Prometheus endpoints and are rejected. Loopback
-     * IPs and private site-local ranges stay allowed because on-premise Prometheus servers live
-     * on the internal network and the endpoint itself requires admin rights.
-     */
-    private boolean isAllowedDataSourceHost(String host) {
-        if (!StringUtils.hasText(host)) {
-            return false;
-        }
-        String normalized = host.toLowerCase(Locale.ROOT);
-        if ("localhost".equals(normalized)) {
-            return false;
-        }
-        try {
-            InetAddress address = InetAddress.getByName(normalized);
-            return !address.isAnyLocalAddress() && !address.isLinkLocalAddress();
-        } catch (UnknownHostException exception) {
-            // Unresolvable host: let the connection attempt surface the real connectivity error.
-            return true;
-        }
     }
 
     private DataSourceTestResultVO prometheusSuccess(JsonNode response) {

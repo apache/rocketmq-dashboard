@@ -18,7 +18,6 @@ package org.apache.rocketmq.studio.ops.ai;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -35,23 +34,12 @@ public class AiService {
 
 
     public SseEmitter chat(ChatDTO request) {
-        if (request == null) {
-            log.warn("Chat request body is missing");
-            throw new BusinessException(400, "Chat request is required");
-        }
         log.info("Chat request received: mode={}, conversationId={}", request.getMode(), request.getConversationId());
         return llmGateway.chat(request);
     }
 
 
     public AiExecuteResultVO execute(AiCommandDTO command) {
-        if (command == null) {
-            log.warn("AI command body is missing");
-            return AiExecuteResultVO.builder()
-                    .success(false)
-                    .result("Command request is required")
-                    .build();
-        }
         log.info("Executing AI command: {}", command.getCommand());
         try {
             String result = llmGateway.execute(command);
