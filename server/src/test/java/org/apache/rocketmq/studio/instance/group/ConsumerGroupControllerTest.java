@@ -66,7 +66,6 @@ class ConsumerGroupControllerTest {
                 "instanceId", "instance-a",
                 "name", "cg-orders",
                 "clusterId", "cluster-a",
-                "instanceId", "instance-a",
                 "retryMaxTimes", 8,
                 "delaySeconds", 0
         );
