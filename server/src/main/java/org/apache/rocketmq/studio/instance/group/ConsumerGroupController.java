@@ -81,7 +81,7 @@ public class ConsumerGroupController {
 
     @PostMapping("/reset-offset")
     public Result<Void> resetOffset(@Valid @RequestBody ResetConsumerOffsetDTO request) {
-        metadataService.resetOffset(request.getName(), request.getTimestamp(), request.getTopic());
+        metadataService.resetOffset(request.getInstanceId(), request.getName(), request.getTimestamp(), request.getTopic());
         return Result.ok();
     }
 }

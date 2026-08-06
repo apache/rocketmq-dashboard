@@ -25,6 +25,7 @@ import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
@@ -69,6 +70,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
     private final RmqTopicMapper topicMapper;
     private final RmqGroupMapper groupMapper;
     private final AuditService auditService;
+    private final RuntimeAdminClientResolver runtimeAdminClientResolver;
 
     @Autowired
     public RocketMQAdminClientImpl(
@@ -76,12 +78,14 @@ public class RocketMQAdminClientImpl implements AdminClient {
             RocketMQProperties properties,
             RmqTopicMapper topicMapper,
             RmqGroupMapper groupMapper,
-            AuditService auditService) {
+            AuditService auditService,
+            RuntimeAdminClientResolver runtimeAdminClientResolver) {
         this.adminExt = adminExt;
         this.properties = properties;
         this.topicMapper = topicMapper;
         this.groupMapper = groupMapper;
         this.auditService = auditService;
+        this.runtimeAdminClientResolver = runtimeAdminClientResolver;
     }
 
     @Override
@@ -476,15 +480,15 @@ public class RocketMQAdminClientImpl implements AdminClient {
     }
 
     @Override
-    public void resetOffset(String name, long timestamp, String topic) {
-        if (adminExt == null) {
-            throw new BusinessException(503, "RocketMQ admin not connected");
-        }
-
+    public void resetOffset(String instanceId, String name, long timestamp, String topic) {
         try {
-            adminExt.resetOffsetByTimestamp(getClusterName(), topic, name, timestamp, false);
+            runtimeAdminClientResolver.execute(instanceId, resolvedAdmin -> {
+                DefaultMQAdminExt targetAdmin = (DefaultMQAdminExt) resolvedAdmin;
+                targetAdmin.resetOffsetByTimestamp(getClusterName(targetAdmin), topic, name, timestamp, false);
+                return null;
+            });
             auditService.record("RESET_OFFSET", name,
-                    "topic=" + topic + ", timestamp=" + timestamp, "SUCCESS");
+                    "instanceId=" + instanceId + ", topic=" + topic + ", timestamp=" + timestamp, "SUCCESS");
         } catch (Exception e) {
             auditService.record("RESET_OFFSET", name, e.getMessage(), "FAILED");
             throw new BusinessException(500, "Failed to reset offset: " + e.getMessage());
@@ -517,8 +521,12 @@ public class RocketMQAdminClientImpl implements AdminClient {
     }
 
     private String getClusterName() {
+        return getClusterName(adminExt);
+    }
+
+    private String getClusterName(DefaultMQAdminExt targetAdmin) {
         try {
-            ClusterInfo clusterInfo = adminExt.examineBrokerClusterInfo();
+            ClusterInfo clusterInfo = targetAdmin.examineBrokerClusterInfo();
             if (clusterInfo != null && clusterInfo.getClusterAddrTable() != null
                     && !clusterInfo.getClusterAddrTable().isEmpty()) {
                 return clusterInfo.getClusterAddrTable().keySet().iterator().next();

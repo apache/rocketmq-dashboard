@@ -111,8 +111,8 @@ public class MetadataService {
     }
 
 
-    public void resetOffset(String name, long timestamp, String topic) {
-        adminClient.resetOffset(name, timestamp, topic);
+    public void resetOffset(String instanceId, String name, long timestamp, String topic) {
+        adminClient.resetOffset(instanceId, name, timestamp, topic);
     }
 
     // ── NamespaceVO ───────────────────────────────────────────────────

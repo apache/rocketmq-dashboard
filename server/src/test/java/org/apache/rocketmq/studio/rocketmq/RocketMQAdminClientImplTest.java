@@ -25,6 +25,7 @@ import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
@@ -72,12 +73,15 @@ class RocketMQAdminClientImplTest {
     private RmqGroupMapper groupMapper;
     @Mock
     private AuditService auditService;
+    @Mock
+    private RuntimeAdminClientResolver runtimeAdminClientResolver;
 
     private RocketMQAdminClientImpl adminClient;
 
     @BeforeEach
     void setUp() {
-        adminClient = new RocketMQAdminClientImpl(adminExt, properties, topicMapper, groupMapper, auditService);
+        adminClient = new RocketMQAdminClientImpl(adminExt, properties, topicMapper, groupMapper, auditService,
+                runtimeAdminClientResolver);
     }
 
     @Test
@@ -90,6 +94,15 @@ class RocketMQAdminClientImplTest {
 
         assertThat(group.getId()).isEqualTo("orders");
         assertThat(group.getOnlineInstances()).isZero();
+    }
+
+    @Test
+    void resetOffsetShouldUseSelectedInstanceRuntimeClient() {
+        adminClient.resetOffset("instance-a", "cg-orders", 1784246400000L, "orders");
+
+        verify(runtimeAdminClientResolver).execute(org.mockito.ArgumentMatchers.eq("instance-a"), any());
+        verify(auditService).record("RESET_OFFSET", "cg-orders",
+                "instanceId=instance-a, topic=orders, timestamp=1784246400000", "SUCCESS");
     }
 
     @Test
