@@ -284,11 +284,10 @@ class AclControllerTest {
 
     @Test
     void updateUserShouldReturnMaskedUpdatedUser() throws Exception {
-        AclUserVO input = AclUserVO.builder()
-                .id("user-1")
-                .username("admin")
-                .admin(false)
-                .build();
+        UpdateAclUserDTO input = new UpdateAclUserDTO();
+        input.setId("user-1");
+        input.setUsername("admin");
+        input.setAdmin(false);
         AclUserVO updated = AclUserVO.builder()
                 .id("user-1")
                 .username("admin")
@@ -297,7 +296,7 @@ class AclControllerTest {
                 .admin(false)
                 .build();
 
-        when(aclService.updateUser(any(AclUserVO.class))).thenReturn(updated);
+        when(aclService.updateUser(any(UpdateAclUserDTO.class))).thenReturn(updated);
 
         mockMvc.perform(post("/api/acl/users/update")
                         .contentType(MediaType.APPLICATION_JSON)

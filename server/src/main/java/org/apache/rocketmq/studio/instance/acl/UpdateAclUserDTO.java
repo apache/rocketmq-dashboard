@@ -26,14 +26,18 @@ public class UpdateAclUserDTO {
     @NotBlank(message = "id is required")
     private String id;
     private String username;
-    private boolean admin;
+    /**
+     * Null when the admin flag was not part of the partial update, in which case the existing
+     * value must be preserved instead of being reset to {@code false}.
+     */
+    private Boolean admin;
     private List<String> clusters;
 
     public AclUserVO toAclUserVO() {
         return AclUserVO.builder()
                 .id(id)
                 .username(username)
-                .admin(admin)
+                .admin(admin != null && admin)
                 .clusters(clusters)
                 .build();
     }
