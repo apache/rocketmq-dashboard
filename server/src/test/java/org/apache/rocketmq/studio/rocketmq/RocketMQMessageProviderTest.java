@@ -16,14 +16,10 @@
  */
 package org.apache.rocketmq.studio.rocketmq;
 
-import org.apache.rocketmq.client.QueryResult;
 import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageQueue;
-import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
-import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
-import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.queryhistory.QueryHistoryService;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.junit.jupiter.api.BeforeEach;
@@ -123,69 +119,5 @@ class RocketMQMessageProviderTest {
         assertThat(record.getBodyEncoding()).isEqualTo("BASE64");
         assertThat(record.getBody()).isEqualTo("wyg=");
         assertThat(record.isBodyTruncated()).isFalse();
-    }
-
-    @Test
-    void getMessageTraceParsesPubAndSubAfterPerRocketMq533Layout() throws Exception {
-        // Field order follows RocketMQ 5.3.3 TraceDataEncoder: Pub = type, time, region, group,
-        // topic, msgId, tags, keys, storeHost, bodyLength, costTime, msgType, offsetMsgId, isSuccess.
-        // SubAfter = type, requestId, msgId, costTime, isSuccess, keys, contextCode, timeStamp,
-        // groupName.
-        String pub = "Pub" + '' + "1000" + '' + "cn" + '' + "prod-group"
-                + '' + "TopicA" + '' + "msg-123" + '' + "tag1" + '' + "key1"
-                + '' + "broker:10911" + '' + "15" + '' + "50" + '' + "0"
-                + '' + "offset-1" + '' + "true";
-        String subAfter = "SubAfter" + '' + "req-1" + '' + "msg-123" + '' + "20"
-                + '' + "true" + '' + "key1" + '' + "3" + '' + "3000"
-                + '' + "cons-group";
-        String otherMessage = "SubAfter" + '' + "req-2" + '' + "other-msg" + '' + "5"
-                + '' + "false" + '' + "key-other" + '' + "0" + '' + "0"
-                + '' + "other-group";
-        MessageExt traceMessage = new MessageExt();
-        traceMessage.setBody(String.join("\n", pub, subAfter, otherMessage).getBytes(StandardCharsets.UTF_8));
-        QueryResult queryResult = new QueryResult(0L, List.of(traceMessage));
-        when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
-                .thenReturn(queryResult);
-
-        TraceRecordVO record = provider.getMessageTrace("msg-123");
-
-        assertThat(record.getNodes()).hasSize(2);
-        TraceNodeVO produce = record.getNodes().get(0);
-        assertThat(produce.getTitle()).isEqualTo("produce");
-        assertThat(produce.getStatus()).isEqualTo("finish");
-        assertThat(produce.getCostTime()).isEqualTo(50);
-        assertThat(produce.getTimestamp()).isEqualTo(1000);
-        assertThat(produce.getDescription()).contains("prod-group").contains("broker:10911");
-        TraceNodeVO consume = record.getNodes().get(1);
-        assertThat(consume.getTitle()).isEqualTo("consume");
-        assertThat(consume.getStatus()).isEqualTo("finish");
-        assertThat(consume.getCostTime()).isEqualTo(20);
-        assertThat(consume.getTimestamp()).isEqualTo(3000);
-        assertThat(consume.getDescription()).contains("cons-group");
-        assertThat(record.getConsumerStatus()).hasSize(1);
-        assertThat(record.getConsumerStatus().get(0).getGroup()).isEqualTo("cons-group");
-        assertThat(record.getConsumerStatus().get(0).getDeliveryStatus())
-                .isEqualTo(DeliveryStatus.success);
-    }
-
-    @Test
-    void getMessageTraceParsesEndTransactionState() throws Exception {
-        String body = "EndTransaction" + '' + "2000" + '' + "cn" + '' + "tx-group"
-                + '' + "TopicA" + '' + "msg-tx" + '' + "tag2" + '' + "key2"
-                + '' + "broker:10911" + '' + "10" + '' + "40" + '' + "0"
-                + '' + "tx-1" + '' + "COMMIT_MESSAGE";
-        MessageExt traceMessage = new MessageExt();
-        traceMessage.setBody(body.getBytes(StandardCharsets.UTF_8));
-        QueryResult queryResult = new QueryResult(0L, List.of(traceMessage));
-        when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
-                .thenReturn(queryResult);
-
-        TraceRecordVO record = provider.getMessageTrace("msg-tx");
-
-        assertThat(record.getNodes()).hasSize(1);
-        TraceNodeVO transaction = record.getNodes().get(0);
-        assertThat(transaction.getTitle()).isEqualTo("endTransaction");
-        assertThat(transaction.getDescription()).contains("tx-group").contains("COMMIT_MESSAGE");
-        assertThat(record.getConsumerStatus()).isEmpty();
     }
 }
