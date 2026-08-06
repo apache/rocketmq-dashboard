@@ -43,6 +43,13 @@ public class GlobalExceptionHandler {
                 .body(Result.error(ex.getCode(), ex.getMessage()));
     }
 
+    @ExceptionHandler(UnsupportedOperationException.class)
+    @ResponseStatus(HttpStatus.NOT_IMPLEMENTED)
+    public Result<?> handleUnsupportedOperationException(UnsupportedOperationException ex) {
+        log.warn("Unsupported operation: {}", ex.getMessage());
+        return Result.error(HttpStatus.NOT_IMPLEMENTED.value(), ex.getMessage());
+    }
+
     @ExceptionHandler(PrometheusException.class)
     public ResponseEntity<Result<?>> handlePrometheusException(PrometheusException ex) {
         log.warn("Prometheus exception: status={}, message={}", ex.getStatusCode(), ex.getMessage());

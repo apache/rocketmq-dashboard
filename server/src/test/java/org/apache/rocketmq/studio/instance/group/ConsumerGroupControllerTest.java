@@ -35,6 +35,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -169,7 +170,7 @@ class ConsumerGroupControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.message").value("success"));
 
-        verify(metadataService).resetOffset(eq("cg-orders"), eq(1784246400000L), eq("orders"));
+        verify(metadataService).resetOffset(isNull(), eq("cg-orders"), eq(1784246400000L), eq("orders"));
     }
 
     @Test
@@ -181,7 +182,7 @@ class ConsumerGroupControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.message").value("success"));
 
-        verify(metadataService).deleteConsumerGroup("cg-orders");
+        verify(metadataService).deleteConsumerGroup(isNull(), eq("cg-orders"));
     }
 
     @Test

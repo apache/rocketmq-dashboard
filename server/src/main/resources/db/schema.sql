@@ -25,6 +25,10 @@ CREATE TABLE IF NOT EXISTS rmq_instance (
   remark VARCHAR(255),
   type VARCHAR(32) NOT NULL COMMENT 'PROXY/DIRECT',
   endpoint VARCHAR(512) NOT NULL,
+  vendor VARCHAR(32) NOT NULL DEFAULT 'APACHE' COMMENT 'APACHE/ALIYUN/TENCENT',
+  cloud_instance_id VARCHAR(128) COMMENT '云厂商实例 ID（vendor 非 APACHE 时必填）',
+  credential_id VARCHAR(64) COMMENT '引用 rmq_cloud_credential.id',
+  region_id VARCHAR(64) COMMENT '云 region',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -207,6 +211,19 @@ CREATE TABLE IF NOT EXISTS rmq_system_alert (
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_level (level),
   INDEX idx_acknowledged (acknowledged)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 15. 云厂商凭据（secret_key 为 base64 编码，禁止明文；access_key 明文用于唯一键与打码展示）
+CREATE TABLE IF NOT EXISTS rmq_cloud_credential (
+  id VARCHAR(64) PRIMARY KEY,
+  name VARCHAR(128) NOT NULL COMMENT '凭据显示名',
+  vendor VARCHAR(32) NOT NULL COMMENT 'ALIYUN/TENCENT',
+  access_key VARCHAR(255) NOT NULL,
+  secret_key VARCHAR(512) NOT NULL COMMENT 'base64 编码的 SK',
+  remark VARCHAR(255),
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_vendor_access_key (vendor, access_key)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ============================================================

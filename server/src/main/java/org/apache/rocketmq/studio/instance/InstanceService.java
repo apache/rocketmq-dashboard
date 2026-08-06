@@ -17,8 +17,13 @@
 
 package org.apache.rocketmq.studio.instance;
 
+import org.apache.rocketmq.studio.cloud.credential.CloudCredentialRepository;
+import org.apache.rocketmq.studio.cloud.credential.CloudCredentialVO;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.provider.CloudInstanceDetailVO;
+import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -33,36 +38,127 @@ import java.util.UUID;
 public class InstanceService {
 
     private final InstanceRepository instanceRepository;
+    private final CloudCredentialRepository cloudCredentialRepository;
+    private final InstanceProviderRegistry providerRegistry;
 
     public List<InstanceVO> listInstances(InstanceType type, String search) {
         log.debug("Listing instances, type={}, search={}", type, search);
         String normalizedSearch = search == null || search.isBlank() ? null : search.trim();
 
+        List<InstanceVO> instances;
         if (type != null && normalizedSearch != null) {
-            return instanceRepository.findByTypeAndSearch(type, normalizedSearch);
+            instances = instanceRepository.findByTypeAndSearch(type, normalizedSearch);
         } else if (type != null) {
-            return instanceRepository.findByType(type);
+            instances = instanceRepository.findByType(type);
         } else if (normalizedSearch != null) {
-            return instanceRepository.search(normalizedSearch);
+            instances = instanceRepository.search(normalizedSearch);
+        } else {
+            instances = instanceRepository.findAll();
         }
-        return instanceRepository.findAll();
+        instances.forEach(this::fillCloudCounts);
+        return instances;
+    }
+
+    /**
+     * Cloud instances keep topics/groups on the vendor side, so the local table counts are
+     * always zero; pull live counts through the vendor provider instead.
+     */
+    private void fillCloudCounts(InstanceVO instance) {
+        if (instance.getVendor() == null || instance.getVendor() == InstanceVendor.APACHE) {
+            return;
+        }
+        try {
+            org.apache.rocketmq.studio.provider.InstanceProvider provider =
+                    providerRegistry.forVendor(instance.getVendor());
+            instance.setTopicCount(provider.listTopics(instance.getId(), null, null).size());
+            instance.setConsumerGroupCount(provider.listConsumerGroups(instance.getId(), null).size());
+        } catch (RuntimeException ex) {
+            log.warn("Failed to load cloud resource counts for instance {}: {}",
+                    instance.getId(), ex.getMessage());
+        }
     }
 
     public InstanceVO createInstance(InstanceVO instance) {
         requireInstance(instance);
-        log.info("Creating instance: {}", instance.getName());
+        InstanceVendor vendor = instance.getVendor() == null ? InstanceVendor.APACHE : instance.getVendor();
+        log.info("Creating instance: name={}, vendor={}", instance.getName(), vendor);
 
-        if (instance.getName() == null || instance.getName().isBlank()) {
-            throw new BusinessException(400, "InstanceVO name is required");
-        }
-        if (instance.getEndpoint() == null || instance.getEndpoint().isBlank()) {
-            throw new BusinessException(400, "InstanceVO endpoint is required");
+        switch (vendor) {
+            case APACHE -> createApacheInstance(instance);
+            case ALIYUN -> createAliyunInstance(instance);
+            case TENCENT -> throw new BusinessException(501, "Tencent Cloud instance is not supported yet");
         }
 
         instance.setId(UUID.randomUUID().toString());
         instance.setCreatedAt(LocalDateTime.now());
         instance.setUpdatedAt(LocalDateTime.now());
         return instanceRepository.save(instance);
+    }
+
+    private void createApacheInstance(InstanceVO instance) {
+        instance.setVendor(InstanceVendor.APACHE);
+        if (instance.getName() == null || instance.getName().isBlank()) {
+            throw new BusinessException(400, "InstanceVO name is required");
+        }
+        if (instance.getEndpoint() == null || instance.getEndpoint().isBlank()) {
+            throw new BusinessException(400, "InstanceVO endpoint is required");
+        }
+    }
+
+    /**
+     * Commercial instances are never created manually: the user picks a stored credential and
+     * one of the cloud instances returned by the vendor catalog; endpoint is resolved from the
+     * cloud instance detail (VPC endpoint preferred).
+     */
+    private void createAliyunInstance(InstanceVO instance) {
+        instance.setVendor(InstanceVendor.ALIYUN);
+        if (instance.getEndpoint() != null && !instance.getEndpoint().isBlank()) {
+            throw new BusinessException(400, "Commercial instances must be selected from the cloud catalog, endpoint cannot be set manually");
+        }
+        if (isBlank(instance.getCredentialId()) || isBlank(instance.getCloudInstanceId())
+                || isBlank(instance.getRegionId())) {
+            throw new BusinessException(400, "credentialId, cloudInstanceId and regionId are required for Aliyun instances");
+        }
+        CloudCredentialVO credential = cloudCredentialRepository.findById(instance.getCredentialId())
+                .orElseThrow(() -> new BusinessException(404, "Cloud credential not found: " + instance.getCredentialId()));
+        if (credential.getVendor() != InstanceVendor.ALIYUN) {
+            throw new BusinessException(400, "Cloud credential vendor does not match ALIYUN");
+        }
+        CloudInstanceDetailVO detail = providerRegistry.catalogFor(InstanceVendor.ALIYUN)
+                .getCloudInstance(instance.getCredentialId(), instance.getRegionId(), instance.getCloudInstanceId());
+        if (instance.getName() == null || instance.getName().isBlank()) {
+            instance.setName(detail.getInstanceName() != null && !detail.getInstanceName().isBlank()
+                    ? detail.getInstanceName() : detail.getInstanceId());
+        }
+        instance.setType(InstanceType.PROXY);
+        instance.setEndpoint(resolveEndpoint(detail));
+    }
+
+    private String resolveEndpoint(CloudInstanceDetailVO detail) {
+        if (detail.getEndpoints() == null || detail.getEndpoints().isEmpty()) {
+            throw new BusinessException(502, "Cloud instance has no endpoint: " + detail.getInstanceId());
+        }
+        return detail.getEndpoints().stream()
+                .filter(endpoint -> endpoint.getEndpointUrl() != null && !endpoint.getEndpointUrl().isBlank())
+                .sorted((a, b) -> Integer.compare(endpointPriority(a.getEndpointType()), endpointPriority(b.getEndpointType())))
+                .map(CloudInstanceDetailVO.CloudEndpoint::getEndpointUrl)
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(502, "Cloud instance has no usable endpoint: " + detail.getInstanceId()));
+    }
+
+    private int endpointPriority(String endpointType) {
+        if (endpointType == null) {
+            return 2;
+        }
+        return switch (endpointType.toUpperCase()) {
+            case "TCP_VPC" -> 0;
+            case "TCP_INTERNET" -> 1;
+            default -> 2;
+        };
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     public InstanceVO updateInstance(InstanceVO instance) {
@@ -84,14 +180,17 @@ public class InstanceService {
         }
 
         InstanceVO updated = copyOf(existing);
+        boolean cloudInstance = existing.getVendor() != null && existing.getVendor() != InstanceVendor.APACHE;
         if (instance.getName() != null) {
             updated.setName(instance.getName());
         }
-        if (instance.getType() != null) {
-            updated.setType(instance.getType());
-        }
-        if (instance.getEndpoint() != null) {
-            updated.setEndpoint(instance.getEndpoint());
+        if (!cloudInstance) {
+            if (instance.getType() != null) {
+                updated.setType(instance.getType());
+            }
+            if (instance.getEndpoint() != null) {
+                updated.setEndpoint(instance.getEndpoint());
+            }
         }
         if (instance.getRemark() != null) {
             updated.setRemark(instance.getRemark());
@@ -125,6 +224,10 @@ public class InstanceService {
                 .remark(instance.getRemark())
                 .type(instance.getType())
                 .endpoint(instance.getEndpoint())
+                .vendor(instance.getVendor() == null ? InstanceVendor.APACHE : instance.getVendor())
+                .cloudInstanceId(instance.getCloudInstanceId())
+                .credentialId(instance.getCredentialId())
+                .regionId(instance.getRegionId())
                 .topicCount(instance.getTopicCount())
                 .consumerGroupCount(instance.getConsumerGroupCount())
                 .build();

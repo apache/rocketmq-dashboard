@@ -37,8 +37,11 @@ public class CreateConsumerGroupDTO {
     @PositiveOrZero(message = "delaySeconds must be zero or positive")
     private Integer delaySeconds;
 
+    private String instanceId;
+
     public ConsumerGroupVO toConsumerGroupVO() {
         ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setInstanceId(instanceId);
         group.setName(name);
         group.setNamespace(namespace);
         group.setClusterId(clusterId);

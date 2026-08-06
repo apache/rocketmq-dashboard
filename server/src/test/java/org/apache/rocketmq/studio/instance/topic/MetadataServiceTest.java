@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.instance.topic;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
+import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -42,6 +43,9 @@ class MetadataServiceTest {
 
     @Mock
     private AdminClient adminClient;
+
+    @Mock
+    private InstanceProviderRegistry providerRegistry;
 
     @InjectMocks
     private MetadataService metadataService;

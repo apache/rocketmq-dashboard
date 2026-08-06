@@ -14,27 +14,34 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.instance.topic;
+package org.apache.rocketmq.studio.provider;
 
-import jakarta.validation.constraints.NotBlank;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+public class CloudRegionVO {
 
-import java.util.Map;
+    private String regionId;
+    private String regionName;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class SendMessageDTO {
-    private String instanceId;
+    public CloudRegionVO() {
+    }
 
-    @NotBlank(message = "topic is required")
-    private String topic;
-    private String tag;
-    private String key;
-    private String body;
-    private Map<String, String> properties;
+    public CloudRegionVO(String regionId, String regionName) {
+        this.regionId = regionId;
+        this.regionName = regionName;
+    }
+
+    public String getRegionId() {
+        return regionId;
+    }
+
+    public void setRegionId(String regionId) {
+        this.regionId = regionId;
+    }
+
+    public String getRegionName() {
+        return regionName;
+    }
+
+    public void setRegionName(String regionName) {
+        this.regionName = regionName;
+    }
 }

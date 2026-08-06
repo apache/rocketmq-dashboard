@@ -41,24 +41,31 @@ public class ConsumerGroupController {
 
     @GetMapping
     public Result<List<ConsumerGroupVO>> listConsumerGroups(
+            @RequestParam(required = false) String instanceId,
             @RequestParam(required = false) String clusterId,
             @RequestParam(required = false) String search) {
-        return Result.ok(metadataService.listConsumerGroups(clusterId, search));
+        return Result.ok(metadataService.listConsumerGroups(instanceId, clusterId, search));
     }
 
     @GetMapping("/{name}")
-    public Result<ConsumerGroupVO> getConsumerGroup(@PathVariable String name) {
-        return Result.ok(metadataService.getConsumerGroup(name));
+    public Result<ConsumerGroupVO> getConsumerGroup(
+            @PathVariable String name,
+            @RequestParam(required = false) String instanceId) {
+        return Result.ok(metadataService.getConsumerGroup(instanceId, name));
     }
 
     @GetMapping("/{name}/progress")
-    public Result<List<QueueProgressVO>> getGroupProgress(@PathVariable String name) {
-        return Result.ok(metadataService.getGroupProgress(name));
+    public Result<List<QueueProgressVO>> getGroupProgress(
+            @PathVariable String name,
+            @RequestParam(required = false) String instanceId) {
+        return Result.ok(metadataService.getGroupProgress(instanceId, name));
     }
 
     @GetMapping("/{name}/subscriptions")
-    public Result<List<SubscriptionEntryVO>> getGroupSubscriptions(@PathVariable String name) {
-        return Result.ok(metadataService.getGroupSubscriptions(name));
+    public Result<List<SubscriptionEntryVO>> getGroupSubscriptions(
+            @PathVariable String name,
+            @RequestParam(required = false) String instanceId) {
+        return Result.ok(metadataService.getGroupSubscriptions(instanceId, name));
     }
 
     @GetMapping("/{name}/instances/{clientId}/stack")
@@ -75,13 +82,14 @@ public class ConsumerGroupController {
 
     @PostMapping("/delete")
     public Result<Void> deleteConsumerGroup(@Valid @RequestBody DeleteConsumerGroupDTO request) {
-        metadataService.deleteConsumerGroup(request.getName());
+        metadataService.deleteConsumerGroup(request.getInstanceId(), request.getName());
         return Result.ok();
     }
 
     @PostMapping("/reset-offset")
     public Result<Void> resetOffset(@Valid @RequestBody ResetConsumerOffsetDTO request) {
-        metadataService.resetOffset(request.getName(), request.getTimestamp(), request.getTopic());
+        metadataService.resetOffset(request.getInstanceId(), request.getName(),
+                request.getTimestamp(), request.getTopic());
         return Result.ok();
     }
 }

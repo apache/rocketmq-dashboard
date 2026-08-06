@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.instance;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.persistence.entity.RmqGroup;
 import org.apache.rocketmq.studio.persistence.entity.RmqInstance;
 import org.apache.rocketmq.studio.persistence.entity.RmqTopic;
@@ -114,6 +115,15 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
         instanceMapper.deleteById(id);
     }
 
+    @Override
+    public boolean existsByCredentialId(String credentialId) {
+        if (credentialId == null || credentialId.isBlank()) {
+            return false;
+        }
+        return instanceMapper.selectCount(
+                new QueryWrapper<RmqInstance>().eq("credential_id", credentialId)) > 0;
+    }
+
     private List<InstanceVO> withCounts(List<RmqInstance> entities) {
         if (entities.isEmpty()) {
             return List.of();
@@ -149,6 +159,10 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
                 .remark(entity.getRemark())
                 .type(parseType(entity.getType()))
                 .endpoint(entity.getEndpoint())
+                .vendor(parseVendor(entity.getVendor()))
+                .cloudInstanceId(entity.getCloudInstanceId())
+                .credentialId(entity.getCredentialId())
+                .regionId(entity.getRegionId())
                 .topicCount(topicCounts.getOrDefault(entity.getId(), 0L).intValue())
                 .consumerGroupCount(groupCounts.getOrDefault(entity.getId(), 0L).intValue())
                 .build();
@@ -166,6 +180,14 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
         }
     }
 
+    private InstanceVendor parseVendor(String vendor) {
+        try {
+            return InstanceVendor.valueOf(vendor);
+        } catch (IllegalArgumentException | NullPointerException ex) {
+            return InstanceVendor.APACHE;
+        }
+    }
+
     private RmqInstance toEntity(InstanceVO vo) {
         RmqInstance entity = new RmqInstance();
         entity.setId(vo.getId());
@@ -173,6 +195,10 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
         entity.setRemark(vo.getRemark());
         entity.setType(vo.getType() == null ? null : vo.getType().name());
         entity.setEndpoint(vo.getEndpoint());
+        entity.setVendor(vo.getVendor() == null ? InstanceVendor.APACHE.name() : vo.getVendor().name());
+        entity.setCloudInstanceId(vo.getCloudInstanceId());
+        entity.setCredentialId(vo.getCredentialId());
+        entity.setRegionId(vo.getRegionId());
         entity.setCreatedAt(vo.getCreatedAt());
         entity.setUpdatedAt(vo.getUpdatedAt());
         return entity;

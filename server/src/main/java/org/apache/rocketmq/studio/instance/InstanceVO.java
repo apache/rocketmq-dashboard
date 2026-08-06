@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.instance;
 
 import org.apache.rocketmq.studio.common.domain.BaseEntity;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -35,6 +36,10 @@ public class InstanceVO extends BaseEntity {
     private String remark;
     private InstanceType type;
     private String endpoint;
+    private InstanceVendor vendor;
+    private String cloudInstanceId;
+    private String credentialId;
+    private String regionId;
     private int topicCount;
     private int consumerGroupCount;
 }

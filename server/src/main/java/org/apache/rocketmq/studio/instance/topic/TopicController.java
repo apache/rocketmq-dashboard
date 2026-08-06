@@ -39,10 +39,11 @@ public class TopicController {
 
     @GetMapping
     public Result<List<TopicVO>> listTopics(
+            @RequestParam(required = false) String instanceId,
             @RequestParam(required = false) String clusterId,
             @RequestParam(required = false) String type,
             @RequestParam(required = false) String search) {
-        return Result.ok(metadataService.listTopics(clusterId, type, search));
+        return Result.ok(metadataService.listTopics(instanceId, clusterId, type, search));
     }
 
     @PostMapping("/create")
@@ -60,18 +61,22 @@ public class TopicController {
     @PostMapping("/delete")
     public Result<Void> deleteTopic(@Valid @RequestBody(required = false) DeleteTopicDTO request) {
         requireDeleteTopicRequest(request);
-        metadataService.deleteTopic(request.getName());
+        metadataService.deleteTopic(request.getInstanceId(), request.getName());
         return Result.ok();
     }
 
     @GetMapping("/{name}/routes")
-    public Result<List<BrokerRouteVO>> getTopicRoutes(@PathVariable String name) {
-        return Result.ok(metadataService.getTopicRoutes(name));
+    public Result<List<BrokerRouteVO>> getTopicRoutes(
+            @PathVariable String name,
+            @RequestParam(required = false) String instanceId) {
+        return Result.ok(metadataService.getTopicRoutes(instanceId, name));
     }
 
     @GetMapping("/{name}/consumers")
-    public Result<List<TopicConsumerVO>> getTopicConsumers(@PathVariable String name) {
-        return Result.ok(metadataService.getTopicConsumers(name));
+    public Result<List<TopicConsumerVO>> getTopicConsumers(
+            @PathVariable String name,
+            @RequestParam(required = false) String instanceId) {
+        return Result.ok(metadataService.getTopicConsumers(instanceId, name));
     }
 
     @PostMapping("/send")

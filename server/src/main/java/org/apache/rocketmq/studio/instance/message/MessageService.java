@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.instance.message;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -31,17 +32,22 @@ public class MessageService {
     private static final long MAX_TOPIC_QUERY_WINDOW_MILLIS = 7L * 24 * 60 * 60 * 1000;
 
     private final MessageProvider messageProvider;
+    private final InstanceProviderRegistry providerRegistry;
 
     public List<MessageRecordVO> queryMessages(
             String instanceId, String topic, String msgId, String tag, String key, Long startTime, Long endTime) {
         validateTopicQueryWindow(topic, msgId, key, startTime, endTime);
         log.info("Querying messages: topic={}, msgId={}, tag={}, key={}", topic, msgId, tag, key);
-        return messageProvider.queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime);
+        return providerRegistry.byInstanceId(instanceId)
+                .map(provider -> provider.queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime))
+                .orElseGet(() -> messageProvider.queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime));
     }
 
     public TraceRecordVO getMessageTrace(String instanceId, String msgId) {
         log.info("Getting message trace: msgId={}", msgId);
-        return messageProvider.getMessageTrace(instanceId, msgId);
+        return providerRegistry.byInstanceId(instanceId)
+                .map(provider -> provider.getMessageTrace(instanceId, msgId))
+                .orElseGet(() -> messageProvider.getMessageTrace(instanceId, msgId));
     }
 
     private void validateTopicQueryWindow(String topic, String msgId, String key, Long startTime, Long endTime) {
