@@ -61,13 +61,22 @@ public class RocketMQBrokerConfigService {
         try {
             adminExt.updateBrokerConfig(brokerAddr, newConfig);
             String detail = "brokerAddr=" + brokerAddr + ", config=" + newConfig;
-            auditService.record("UPDATE_BROKER_CONFIG", "CLUSTER:" + clusterId, detail, "SUCCESS");
+            recordAudit(clusterId, detail, "SUCCESS");
             log.info("Broker config updated successfully: {}", brokerAddr);
         } catch (Exception e) {
             log.error("Failed to update broker config at {}", brokerAddr, e);
             String detail = "brokerAddr=" + brokerAddr + ", error=" + e.getMessage();
-            auditService.record("UPDATE_BROKER_CONFIG", "CLUSTER:" + clusterId, detail, "FAILURE");
+            recordAudit(clusterId, detail, "FAILURE");
             throw new BusinessException(500, "Failed to update broker config: " + e.getMessage());
+        }
+    }
+
+    private void recordAudit(String clusterId, String detail, String result) {
+        try {
+            auditService.record("UPDATE_BROKER_CONFIG", "CLUSTER:" + clusterId, detail, result);
+        } catch (Exception auditFailure) {
+            log.warn("Failed to record broker config audit for cluster {}: {}", clusterId,
+                    auditFailure.getMessage());
         }
     }
 
