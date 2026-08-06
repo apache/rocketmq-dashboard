@@ -180,7 +180,7 @@ const ClientsPage = () => {
     return clusterConnections.filter(
       (connection) =>
         connection.clientId.toLowerCase().includes(normalizedSearch) ||
-        connection.address?.toLowerCase().includes(normalizedSearch),
+        connection.address.includes(search),
     );
   }, [clusterConnections, search]);
 

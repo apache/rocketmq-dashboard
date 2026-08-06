@@ -252,9 +252,6 @@ const MetricsExplorer = () => {
   const [dataSourceKey, setDataSourceKey] = useState('');
   const [dataSourcesLoading, setDataSourcesLoading] = useState(true);
   const requestId = useRef(0);
-  // Keeps the latest data source readable from the stable loadMetrics callback so switching
-  // the source uses the new key instead of a stale closure value.
-  const dataSourceKeyRef = useRef(dataSourceKey);
 
   const selectedProfile = useMemo(
     () => profiles.find((profile) => profile.id === profileId),
@@ -280,8 +277,8 @@ const MetricsExplorer = () => {
       setQueryLoading(true);
       setQueryError(false);
       try {
-        const result = dataSourceKeyRef.current
-          ? await queryByDataSource({ key: dataSourceKeyRef.current, query })
+        const result = dataSourceKey
+          ? await queryByDataSource({ key: dataSourceKey, query })
           : await queryMetrics(query);
         if (currentRequest === requestId.current) setData(result);
       } catch {
@@ -293,7 +290,7 @@ const MetricsExplorer = () => {
         if (currentRequest === requestId.current) setQueryLoading(false);
       }
     },
-    [],
+    [dataSourceKey],
   );
 
   useEffect(() => {
@@ -346,7 +343,6 @@ const MetricsExplorer = () => {
   };
 
   const handleDataSourceChange = (nextKey: string) => {
-    dataSourceKeyRef.current = nextKey;
     setDataSourceKey(nextKey);
     setData(null);
     void loadMetrics(selectedMetric, selectedRange);

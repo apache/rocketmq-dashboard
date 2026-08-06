@@ -520,38 +520,34 @@ const ClusterPage = () => {
             onOk={() => {
               configForm.validateFields().then(async (values) => {
                 if (!selectedCluster) return;
-                try {
-                  const { maxMessageSizeMB, ...configValues } = values;
-                  const nextConfig: ClusterConfig = {
-                    ...(selectedCluster.config ?? {}),
-                    ...configValues,
-                    maxMessageSize: maxMessageSizeMB * 1048576,
-                  };
-                  const result = await updateClusterConfig({
-                    id: selectedCluster.id,
-                    ...nextConfig,
-                  });
-                  if (result.status === 'SUCCESS') {
-                    await requestRefresh('operation');
-                    message.success(t('cluster.configUpdated'));
-                    setConfigModalOpen(false);
-                    return;
-                  }
-
-                  const failedAddresses = result.failedBrokers
-                    .map((failure) => failure.address)
-                    .join(', ');
-                  if (result.status === 'PARTIAL') {
-                    await requestRefresh('operation');
-                    message.warning(
-                      t('cluster.configPartiallyUpdated', { brokers: failedAddresses }),
-                    );
-                    return;
-                  }
-                  message.error(t('cluster.configUpdateFailed', { brokers: failedAddresses }));
-                } catch {
-                  message.error(t('cluster.configUpdateFailed', { brokers: '' }));
+                const { maxMessageSizeMB, ...configValues } = values;
+                const nextConfig: ClusterConfig = {
+                  ...(selectedCluster.config ?? {}),
+                  ...configValues,
+                  maxMessageSize: maxMessageSizeMB * 1048576,
+                };
+                const result = await updateClusterConfig({
+                  id: selectedCluster.id,
+                  ...nextConfig,
+                });
+                if (result.status === 'SUCCESS') {
+                  await requestRefresh('operation');
+                  message.success(t('cluster.configUpdated'));
+                  setConfigModalOpen(false);
+                  return;
                 }
+
+                const failedAddresses = result.failedBrokers
+                  .map((failure) => failure.address)
+                  .join(', ');
+                if (result.status === 'PARTIAL') {
+                  await requestRefresh('operation');
+                  message.warning(
+                    t('cluster.configPartiallyUpdated', { brokers: failedAddresses }),
+                  );
+                  return;
+                }
+                message.error(t('cluster.configUpdateFailed', { brokers: failedAddresses }));
               });
             }}
             width={560}
