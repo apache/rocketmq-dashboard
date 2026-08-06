@@ -28,6 +28,7 @@ import org.apache.rocketmq.remoting.protocol.heartbeat.SubscriptionData;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.route.QueueData;
 import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
@@ -236,7 +237,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             return routes;
         } catch (Exception e) {
             log.warn("Failed to get routes for topic {}: {}", name, e.getMessage());
-            return Collections.emptyList();
+            throw new BusinessException(502, "Failed to get routes for topic " + name + ": " + e.getMessage());
         }
     }
 
@@ -357,7 +358,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             return progress;
         } catch (Exception e) {
             log.warn("Failed to get progress for group {}: {}", name, e.getMessage());
-            return Collections.emptyList();
+            throw new BusinessException(502, "Failed to get progress for group " + name + ": " + e.getMessage());
         }
     }
 

@@ -17,10 +17,12 @@
 package org.apache.rocketmq.studio.rocketmq;
 
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.persistence.entity.RmqGroup;
 import org.apache.rocketmq.studio.persistence.mapper.RmqGroupMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqTopicMapper;
+import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -29,6 +31,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
@@ -40,6 +43,9 @@ class RocketMQMetadataProviderTest {
 
     @Mock
     private RmqGroupMapper groupMapper;
+
+    @Mock
+    private DefaultMQAdminExt adminExt;
 
     @Test
     void listConsumerGroupsReadsConsumeTypeColumn() {
@@ -75,5 +81,27 @@ class RocketMQMetadataProviderTest {
 
         assertThat(groups).hasSize(1);
         assertThat(groups.get(0).getConsumeType()).isEqualTo(ConsumeType.CLUSTERING);
+    }
+
+    @Test
+    void getTopicRoutesSurfacesAdminFailure() throws Exception {
+        when(adminExt.examineTopicRouteInfo("TopicA")).thenThrow(new IllegalStateException("broker unavailable"));
+        RocketMQMetadataProvider provider = new RocketMQMetadataProvider(adminExt, topicMapper, groupMapper);
+
+        assertThatThrownBy(() -> provider.getTopicRoutes("TopicA"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Failed to get routes for topic TopicA: broker unavailable")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void getGroupProgressSurfacesAdminFailure() throws Exception {
+        when(adminExt.examineConsumeStats("group-a")).thenThrow(new IllegalStateException("broker unavailable"));
+        RocketMQMetadataProvider provider = new RocketMQMetadataProvider(adminExt, topicMapper, groupMapper);
+
+        assertThatThrownBy(() -> provider.getGroupProgress("group-a"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Failed to get progress for group group-a: broker unavailable")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
     }
 }
