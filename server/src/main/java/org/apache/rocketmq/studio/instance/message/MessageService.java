@@ -33,10 +33,10 @@ public class MessageService {
     private final MessageProvider messageProvider;
 
     public List<MessageRecordVO> queryMessages(
-            String topic, String msgId, String tag, String key, Long startTime, Long endTime) {
+            String instanceId, String topic, String msgId, String tag, String key, Long startTime, Long endTime) {
         validateTopicQueryWindow(topic, msgId, key, startTime, endTime);
         log.info("Querying messages: topic={}, msgId={}, tag={}, key={}", topic, msgId, tag, key);
-        return messageProvider.queryMessages(topic, msgId, tag, key, startTime, endTime);
+        return messageProvider.queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime);
     }
 
     public TraceRecordVO getMessageTrace(String msgId) {

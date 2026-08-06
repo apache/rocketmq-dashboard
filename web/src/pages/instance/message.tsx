@@ -291,7 +291,7 @@ const MessagePage = () => {
     setQueryLoading(true);
     setQueryError(null);
     try {
-      const result = await queryMessages(params);
+      const result = await queryMessages({ ...params, instanceId: selectedInstanceId });
       if (queryGenerationRef.current !== requestGeneration) return;
       setMessages(result);
       setQueryError(null);

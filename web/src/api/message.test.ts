@@ -35,6 +35,7 @@ describe('message API', () => {
 
   it('sends the backend-supported query fields with epoch timestamps', async () => {
     const params = {
+      instanceId: 'instance-a',
       topic: 'orders',
       tag: 'created',
       key: 'order-1',

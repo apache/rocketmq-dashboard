@@ -100,7 +100,10 @@ describe('Message page query history', () => {
     await user.click(screen.getByRole('button', { name: /^search查询$/ }));
 
     await waitFor(() => {
-      expect(messageServiceMocks.queryMessages).toHaveBeenCalledWith({ msgId: 'MID-001' });
+      expect(messageServiceMocks.queryMessages).toHaveBeenCalledWith({
+        msgId: 'MID-001',
+        instanceId: '',
+      });
       expect(screen.getByRole('button', { name: /最近查询/ })).toBeEnabled();
     });
 
@@ -113,7 +116,10 @@ describe('Message page query history', () => {
 
     expect(screen.getByPlaceholderText('输入 Message ID')).toHaveValue('MID-001');
     await waitFor(() => {
-      expect(messageServiceMocks.queryMessages).toHaveBeenCalledWith({ msgId: 'MID-001' });
+      expect(messageServiceMocks.queryMessages).toHaveBeenCalledWith({
+        msgId: 'MID-001',
+        instanceId: '',
+      });
     });
 
     await user.click(screen.getByRole('button', { name: /最近查询/ }));
@@ -132,7 +138,10 @@ describe('Message page query history', () => {
     await user.click(screen.getByRole('button', { name: /^search查询$/ }));
 
     await waitFor(() => {
-      expect(messageServiceMocks.queryMessages).toHaveBeenCalledWith({ msgId: 'MID-FAILED' });
+      expect(messageServiceMocks.queryMessages).toHaveBeenCalledWith({
+        msgId: 'MID-FAILED',
+        instanceId: '',
+      });
     });
     expect(screen.getByRole('button', { name: /最近查询/ })).toBeDisabled();
     expect(localStorage).toHaveLength(0);
@@ -207,13 +216,19 @@ describe('Message page query history', () => {
     await user.click(screen.getByRole('button', { name: /最近查询/ }));
     await user.click(await screen.findByText('Topic: order-create'));
     await waitFor(() => {
-      expect(messageServiceMocks.queryMessages).toHaveBeenLastCalledWith(topicParams);
+      expect(messageServiceMocks.queryMessages).toHaveBeenLastCalledWith({
+        ...topicParams,
+        instanceId: '',
+      });
     });
 
     await user.click(screen.getByRole('button', { name: /最近查询/ }));
     await user.click(await screen.findByText('Key: ORDER-001 · Topic: payment-callback'));
     await waitFor(() => {
-      expect(messageServiceMocks.queryMessages).toHaveBeenLastCalledWith(keyParams);
+      expect(messageServiceMocks.queryMessages).toHaveBeenLastCalledWith({
+        ...keyParams,
+        instanceId: '',
+      });
       expect(screen.getByPlaceholderText('输入 Message Key')).toHaveValue('ORDER-001');
     });
   });

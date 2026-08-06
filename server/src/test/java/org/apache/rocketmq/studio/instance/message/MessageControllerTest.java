@@ -52,10 +52,11 @@ class MessageControllerTest {
                 .tag("created")
                 .key("order-1")
                 .build();
-        when(messageService.queryMessages(eq("orders"), isNull(), eq("created"), eq("order-1"),
+        when(messageService.queryMessages(eq("instance-a"), eq("orders"), isNull(), eq("created"), eq("order-1"),
                 eq(1784246400000L), eq(1784332800000L))).thenReturn(List.of(message));
 
         mockMvc.perform(get("/api/messages")
+                        .param("instanceId", "instance-a")
                         .param("topic", "orders")
                         .param("tag", "created")
                         .param("key", "order-1")
@@ -66,7 +67,7 @@ class MessageControllerTest {
                 .andExpect(jsonPath("$.data[0].msgId").value("msg-001"))
                 .andExpect(jsonPath("$.data[0].tag").value("created"));
 
-        verify(messageService).queryMessages(eq("orders"), isNull(), eq("created"), eq("order-1"),
+        verify(messageService).queryMessages(eq("instance-a"), eq("orders"), isNull(), eq("created"), eq("order-1"),
                 eq(1784246400000L), eq(1784332800000L));
     }
 }

@@ -35,13 +35,14 @@ public class MessageController {
 
     @GetMapping
     public Result<List<MessageRecordVO>> queryMessages(
+            @RequestParam String instanceId,
             @RequestParam(required = false) String topic,
             @RequestParam(required = false) String msgId,
             @RequestParam(required = false) String tag,
             @RequestParam(required = false) String key,
             @RequestParam(required = false) Long startTime,
             @RequestParam(required = false) Long endTime) {
-        return Result.ok(messageService.queryMessages(topic, msgId, tag, key, startTime, endTime));
+        return Result.ok(messageService.queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime));
     }
 
     @GetMapping("/{msgId}/trace")

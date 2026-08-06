@@ -28,7 +28,7 @@ class MessageProviderStubTest {
 
     @Test
     void queryMessagesShouldFailExplicitlyWhenRealProviderIsMissing() {
-        assertThatThrownBy(() -> provider.queryMessages("orders", null, null, null, null, null))
+        assertThatThrownBy(() -> provider.queryMessages("instance-a", "orders", null, null, null, null, null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Message query provider is not configured")
                 .extracting("code")
