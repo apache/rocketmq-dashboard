@@ -489,8 +489,8 @@ public class RocketMQMessageProvider implements MessageProvider {
     private void recordMessageQuery(String queryType, String topic, String msgId, String tag, String key,
                                     Long startTime, Long endTime, int resultCount) {
         try {
-            queryHistoryService.recordMessageQuery(queryType, topic, msgId, tag, key, startTime, endTime,
-                    resultCount);
+            queryHistoryService.recordMessageQuery(clusterContext(), queryType, topic, msgId, tag, key,
+                    startTime, endTime, resultCount);
         } catch (Exception e) {
             log.warn("Failed to record message query history: {}", e.getMessage());
         }
@@ -498,10 +498,14 @@ public class RocketMQMessageProvider implements MessageProvider {
 
     private void recordTraceQuery(String msgId, String topic, int nodeCount, int consumerCount) {
         try {
-            queryHistoryService.recordTraceQuery(msgId, topic, nodeCount, consumerCount);
+            queryHistoryService.recordTraceQuery(clusterContext(), msgId, topic, nodeCount, consumerCount);
         } catch (Exception e) {
             log.warn("Failed to record trace query history: {}", e.getMessage());
         }
+    }
+
+    private String clusterContext() {
+        return StringUtils.hasText(properties.getNamesrvAddr()) ? properties.getNamesrvAddr() : null;
     }
 
     private static TraceRecordVO emptyTrace() {

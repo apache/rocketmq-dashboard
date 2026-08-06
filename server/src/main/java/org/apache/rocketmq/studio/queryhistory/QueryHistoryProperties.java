@@ -14,33 +14,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.persistence.entity;
+package org.apache.rocketmq.studio.queryhistory;
 
-import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableName;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
 
-import java.time.LocalDateTime;
+@Getter
+@Setter
+@Component
+@ConfigurationProperties(prefix = "studio.query-history")
+public class QueryHistoryProperties {
 
-@Data
-@TableName("rmq_trace_query")
-public class RmqTraceQuery {
-
-    @TableId(type = IdType.AUTO)
-    private Long id;
-
-    private String msgId;
-
-    private String topic;
-
-    private Integer nodeCount;
-
-    private Integer consumerCount;
-
-    private String clusterId;
-
-    private String queriedBy;
-
-    private LocalDateTime queriedAt;
+    /**
+     * Number of days query records are retained. A non-positive value disables cleanup.
+     */
+    private int retentionDays = 90;
 }
