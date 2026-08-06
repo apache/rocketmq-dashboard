@@ -126,8 +126,10 @@ public class OpenAiCompatibleLlmClient {
             HttpResponse<java.io.InputStream> response = httpClient.send(
                     request, HttpResponse.BodyHandlers.ofInputStream());
             if (response.statusCode() >= 400) {
-                throw upstreamException(response.statusCode(),
-                        new String(response.body().readAllBytes(), StandardCharsets.UTF_8));
+                try (java.io.InputStream errorBody = response.body()) {
+                    throw upstreamException(response.statusCode(),
+                            new String(errorBody.readAllBytes(), StandardCharsets.UTF_8));
+                }
             }
             parseStream(response, tokenConsumer);
         } catch (HttpTimeoutException exception) {
