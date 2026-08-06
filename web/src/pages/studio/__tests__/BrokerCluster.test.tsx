@@ -20,12 +20,13 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
-import { listClusters } from '../../../services/clusterService';
+import { listClusters, restartBroker } from '../../../services/clusterService';
 import type { ClusterInfo } from '../../../api/cluster';
 import BrokerCluster from '../BrokerCluster';
 
 vi.mock('../../../services/clusterService', () => ({
   listClusters: vi.fn(),
+  restartBroker: vi.fn(),
 }));
 
 // Mock matchMedia for antd responsive components
@@ -120,6 +121,7 @@ describe('BrokerCluster Page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(listClusters).mockResolvedValue(clusterFixture);
+    vi.mocked(restartBroker).mockResolvedValue({ success: true, message: 'restarted' });
   });
 
   it('should render the page title', () => {
@@ -183,6 +185,23 @@ describe('BrokerCluster Page', () => {
     expect(configButtons.length).toBeGreaterThan(0);
     const restartButtons = screen.getAllByText('重启');
     expect(restartButtons.length).toBeGreaterThan(0);
+  });
+
+  it('restarts a broker after confirmation and refreshes the cluster data', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<BrokerCluster />);
+    await screen.findByText('broker-api-a');
+
+    await user.click(screen.getAllByText('重启')[0]);
+    expect(await screen.findByText('确定要重启 Broker "broker-api-a" 吗？')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /确\s*认/ }));
+
+    await waitFor(() => {
+      expect(restartBroker).toHaveBeenCalledWith('cluster-1', 'broker-api-a');
+    });
+    await waitFor(() => {
+      expect(listClusters).toHaveBeenCalledTimes(2);
+    });
   });
 
   it('does not show mock infrastructure data when the API fails', async () => {
