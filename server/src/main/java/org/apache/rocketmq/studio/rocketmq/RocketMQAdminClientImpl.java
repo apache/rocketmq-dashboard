@@ -62,6 +62,7 @@ import java.util.Set;
 public class RocketMQAdminClientImpl implements AdminClient {
 
     private static final Logger log = LoggerFactory.getLogger(RocketMQAdminClientImpl.class);
+    private static final String MESSAGE_SENDER_GROUP_PREFIX = "studio-msg-sender";
 
     private final DefaultMQAdminExt adminExt;
     private final RocketMQProperties properties;
@@ -323,7 +324,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
             throw new BusinessException(500, "Nameserver address not configured");
         }
 
-        DefaultMQProducer producer = new DefaultMQProducer("studio_msg_sender_" + System.currentTimeMillis());
+        DefaultMQProducer producer = new DefaultMQProducer(nextMessageSenderGroup());
         producer.setNamesrvAddr(namesrvAddr);
         producer.setSendMsgTimeout(5000);
 
@@ -361,6 +362,10 @@ public class RocketMQAdminClientImpl implements AdminClient {
         } finally {
             producer.shutdown();
         }
+    }
+
+    static String nextMessageSenderGroup() {
+        return ShortLivedClientName.next(MESSAGE_SENDER_GROUP_PREFIX);
     }
 
     @Override

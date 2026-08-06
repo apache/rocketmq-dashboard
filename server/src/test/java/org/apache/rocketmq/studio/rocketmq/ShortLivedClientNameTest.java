@@ -28,9 +28,10 @@ class ShortLivedClientNameTest {
     @Test
     void generatesUniqueNamesWithoutClockDelays() {
         Set<String> names = IntStream.range(0, 100)
-                .mapToObj(ignored -> ShortLivedClientName.next("studio-query"))
+                .parallel()
+                .mapToObj(ignored -> RocketMQAdminClientImpl.nextMessageSenderGroup())
                 .collect(Collectors.toSet());
 
-        assertThat(names).hasSize(100).allMatch(name -> name.startsWith("studio-query-"));
+        assertThat(names).hasSize(100).allMatch(name -> name.startsWith("studio-msg-sender-"));
     }
 }
