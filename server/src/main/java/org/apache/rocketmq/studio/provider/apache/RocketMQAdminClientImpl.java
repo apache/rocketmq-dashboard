@@ -193,7 +193,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     topicMapper.updateById(entity);
                 }
 
-                auditService.record("CREATE_TOPIC", topicName,
+                recordAudit("CREATE_TOPIC", topicName,
                         "queues=" + writeQueues + "/" + readQueues, "SUCCESS");
 
                 topic.setId(topicName);
@@ -201,10 +201,10 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 topic.setReadQueues(readQueues);
                 return topic;
             } catch (BusinessException e) {
-                auditService.record("CREATE_TOPIC", topicName, e.getMessage(), "FAILED");
+                recordAudit("CREATE_TOPIC", topicName, e.getMessage(), "FAILED");
                 throw e;
             } catch (Exception e) {
-                auditService.record("CREATE_TOPIC", topicName, e.getMessage(), "FAILED");
+                recordAudit("CREATE_TOPIC", topicName, e.getMessage(), "FAILED");
                 throw new BusinessException(500, "Failed to create topic: " + e.getMessage());
             }
         });
@@ -252,7 +252,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     topicMapper.updateById(existing);
                 }
 
-                auditService.record("UPDATE_TOPIC", topicName,
+                recordAudit("UPDATE_TOPIC", topicName,
                         "queues=" + writeQueues + "/" + readQueues, "SUCCESS");
 
                 topic.setId(topicName);
@@ -260,10 +260,10 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 topic.setReadQueues(readQueues);
                 return topic;
             } catch (BusinessException e) {
-                auditService.record("UPDATE_TOPIC", topicName, e.getMessage(), "FAILED");
+                recordAudit("UPDATE_TOPIC", topicName, e.getMessage(), "FAILED");
                 throw e;
             } catch (Exception e) {
-                auditService.record("UPDATE_TOPIC", topicName, e.getMessage(), "FAILED");
+                recordAudit("UPDATE_TOPIC", topicName, e.getMessage(), "FAILED");
                 throw new BusinessException(500, "Failed to update topic: " + e.getMessage());
             }
         });
@@ -294,13 +294,13 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 // Delete from DB
                 topicMapper.delete(new LambdaQueryWrapper<RmqTopic>().eq(RmqTopic::getName, name));
 
-                auditService.record("DELETE_TOPIC", name, "", "SUCCESS");
+                recordAudit("DELETE_TOPIC", name, "", "SUCCESS");
                 return null;
             } catch (BusinessException e) {
-                auditService.record("DELETE_TOPIC", name, e.getMessage(), "FAILED");
+                recordAudit("DELETE_TOPIC", name, e.getMessage(), "FAILED");
                 throw e;
             } catch (Exception e) {
-                auditService.record("DELETE_TOPIC", name, e.getMessage(), "FAILED");
+                recordAudit("DELETE_TOPIC", name, e.getMessage(), "FAILED");
                 throw new BusinessException(500, "Failed to delete topic: " + e.getMessage());
             }
         });
@@ -336,12 +336,8 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
             // The message is already delivered by now; an audit write failure must not turn a
             // successful send into an error, or callers would retry and duplicate the message.
-            try {
-                auditService.record("SEND_MESSAGE", topic,
-                        "tag=" + tag + ", key=" + key + ", msgId=" + sendResult.getMsgId(), "SUCCESS");
-            } catch (Exception auditFailure) {
-                log.warn("Failed to record send message audit: {}", auditFailure.getMessage());
-            }
+            recordAudit("SEND_MESSAGE", topic,
+                    "tag=" + tag + ", key=" + key + ", msgId=" + sendResult.getMsgId(), "SUCCESS");
 
             return SendMessageVO.builder()
                     .msgId(sendResult.getMsgId())
@@ -349,7 +345,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     .offsetMsgId(sendResult.getOffsetMsgId())
                     .build();
         } catch (Exception e) {
-            auditService.record("SEND_MESSAGE", request.getTopic(), e.getMessage(), "FAILED");
+            recordAudit("SEND_MESSAGE", request.getTopic(), e.getMessage(), "FAILED");
             throw new BusinessException(500, "Failed to send message: " + e.getMessage());
         } finally {
             producer.shutdown();
@@ -416,16 +412,16 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 groupMapper.updateById(entity);
             }
 
-            auditService.record("CREATE_GROUP", groupName,
+            recordAudit("CREATE_GROUP", groupName,
                     "retryMaxTimes=" + config.getRetryMaxTimes(), "SUCCESS");
 
             group.setId(groupName);
             return group;
         } catch (BusinessException e) {
-            auditService.record("CREATE_GROUP", groupName, e.getMessage(), "FAILED");
+            recordAudit("CREATE_GROUP", groupName, e.getMessage(), "FAILED");
             throw e;
         } catch (Exception e) {
-            auditService.record("CREATE_GROUP", groupName, e.getMessage(), "FAILED");
+            recordAudit("CREATE_GROUP", groupName, e.getMessage(), "FAILED");
             throw new BusinessException(500, "Failed to create consumer group: " + e.getMessage());
         }
     }
@@ -456,12 +452,12 @@ public class RocketMQAdminClientImpl implements AdminClient {
             // Delete from DB
             groupMapper.delete(new LambdaQueryWrapper<RmqGroup>().eq(RmqGroup::getName, name));
 
-            auditService.record("DELETE_GROUP", name, "", "SUCCESS");
+            recordAudit("DELETE_GROUP", name, "", "SUCCESS");
         } catch (BusinessException e) {
-            auditService.record("DELETE_GROUP", name, e.getMessage(), "FAILED");
+            recordAudit("DELETE_GROUP", name, e.getMessage(), "FAILED");
             throw e;
         } catch (Exception e) {
-            auditService.record("DELETE_GROUP", name, e.getMessage(), "FAILED");
+            recordAudit("DELETE_GROUP", name, e.getMessage(), "FAILED");
             throw new BusinessException(500, "Failed to delete consumer group: " + e.getMessage());
         }
     }
@@ -480,15 +476,24 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     return null;
                 });
             }
-            auditService.record("RESET_OFFSET", name,
+            recordAudit("RESET_OFFSET", name,
                     "instanceId=" + instanceId + ", topic=" + topic + ", timestamp=" + timestamp, "SUCCESS");
         } catch (Exception e) {
-            auditService.record("RESET_OFFSET", name, e.getMessage(), "FAILED");
+            recordAudit("RESET_OFFSET", name, e.getMessage(), "FAILED");
             throw new BusinessException(500, "Failed to reset offset: " + e.getMessage());
         }
     }
 
     // ── Helper methods ──────────────────────────────────────────────────
+
+    private void recordAudit(String action, String resource, String detail, String result) {
+        try {
+            auditService.record(action, resource, detail, result);
+        } catch (Exception auditFailure) {
+            log.warn("Failed to record audit action={} resource={}: {}", action, resource,
+                    auditFailure.getMessage());
+        }
+    }
 
     /**
      * Returns the configured default NameServer address, failing fast when the studio has no
