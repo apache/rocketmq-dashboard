@@ -10,24 +10,45 @@
  */
 package org.apache.rocketmq.studio.rocketmq;
 
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.apache.rocketmq.client.exception.MQBrokerException;
 import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
+import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
+import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
+import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.ops.audit.AuditService;
+import org.apache.rocketmq.studio.persistence.entity.RmqTopic;
 import org.apache.rocketmq.studio.persistence.mapper.RmqGroupMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqTopicMapper;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -81,5 +102,34 @@ class RocketMQAdminClientImplTest {
         assertThatThrownBy(() -> adminClient.getConsumerGroup("orders"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("ACL denied");
+    }
+
+    @Test
+    void createTopicScopesLookupToCluster() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        ClusterInfo clusterInfo = new ClusterInfo();
+        Map<String, Set<String>> clusterAddrTable = new HashMap<>();
+        clusterAddrTable.put("cluster-1", new HashSet<>(List.of("broker-1")));
+        clusterInfo.setClusterAddrTable(clusterAddrTable);
+        Map<String, BrokerData> brokerAddrTable = new HashMap<>();
+        BrokerData brokerData = new BrokerData();
+        brokerData.setBrokerName("broker-1");
+        brokerData.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.1:10911")));
+        brokerAddrTable.put("broker-1", brokerData);
+        clusterInfo.setBrokerAddrTable(brokerAddrTable);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo);
+        when(topicMapper.selectOne(any())).thenReturn(null);
+        doNothing().when(adminExt).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+
+        TopicVO topic = new TopicVO();
+        topic.setName("topicA");
+        adminClient.createTopic(topic);
+
+        ArgumentCaptor<LambdaQueryWrapper<RmqTopic>> captor =
+                ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(topicMapper, times(2)).selectOne(captor.capture());
+        for (LambdaQueryWrapper<RmqTopic> wrapper : captor.getAllValues()) {
+            assertThat(wrapper.getSqlSegment()).contains("cluster_id");
+        }
     }
 }
