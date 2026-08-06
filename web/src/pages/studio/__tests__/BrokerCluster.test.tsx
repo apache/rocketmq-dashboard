@@ -129,11 +129,6 @@ describe('BrokerCluster Page', () => {
     expect(screen.getByText('Broker 集群')).toBeInTheDocument();
   });
 
-  it('should render create cluster button', () => {
-    renderWithProviders(<BrokerCluster />);
-    expect(screen.getByText('创建集群')).toBeInTheDocument();
-  });
-
   it('should render reset button', () => {
     renderWithProviders(<BrokerCluster />);
     expect(screen.getByText('重置')).toBeInTheDocument();
@@ -178,13 +173,13 @@ describe('BrokerCluster Page', () => {
     expect(screen.getAllByText('10.0.1.30:8080').length).toBeGreaterThan(0);
   });
 
-  it('should render config and restart action buttons', async () => {
+  it('should render only supported broker restart actions', async () => {
     renderWithProviders(<BrokerCluster />);
     await screen.findByText('broker-api-a');
-    const configButtons = screen.getAllByText('配置');
-    expect(configButtons.length).toBeGreaterThan(0);
+    expect(screen.queryByText('创建集群')).not.toBeInTheDocument();
+    expect(screen.queryByText('配置')).not.toBeInTheDocument();
     const restartButtons = screen.getAllByText('重启');
-    expect(restartButtons.length).toBeGreaterThan(0);
+    expect(restartButtons).toHaveLength(2);
   });
 
   it('restarts a broker after confirmation and refreshes the cluster data', async () => {
