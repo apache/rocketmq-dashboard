@@ -154,11 +154,14 @@ public class ClusterService {
         if (command.getFileReservedTime() != null) {
             config.setFileReservedTime(command.getFileReservedTime());
         }
-        if (command.getWriteQueueNums() != null) {
-            config.setWriteQueueNums(command.getWriteQueueNums());
-        }
-        if (command.getReadQueueNums() != null) {
-            config.setReadQueueNums(command.getReadQueueNums());
+        // The broker exposes a single defaultTopicQueueNums property, so a partial update of only
+        // one of the write/read queues must mirror the value onto the other to keep the stored
+        // config consistent with what the broker actually applies.
+        if (command.getWriteQueueNums() != null || command.getReadQueueNums() != null) {
+            int queueNums = command.getWriteQueueNums() != null
+                    ? command.getWriteQueueNums() : command.getReadQueueNums();
+            config.setWriteQueueNums(queueNums);
+            config.setReadQueueNums(queueNums);
         }
         if (command.getBrokerPermission() != null) {
             config.setBrokerPermission(command.getBrokerPermission());
