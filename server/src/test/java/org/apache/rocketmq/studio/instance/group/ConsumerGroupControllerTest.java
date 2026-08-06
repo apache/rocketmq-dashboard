@@ -156,6 +156,22 @@ class ConsumerGroupControllerTest {
     }
 
     @Test
+    void groupRuntimeDiagnosticsShouldPassSelectedInstance() throws Exception {
+        when(metadataService.getGroupProgress("instance-a", "cg-orders")).thenReturn(List.of());
+        when(metadataService.getGroupSubscriptions("instance-a", "cg-orders")).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/groups/cg-orders/progress").param("instanceId", "instance-a"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+        mockMvc.perform(get("/api/groups/cg-orders/subscriptions").param("instanceId", "instance-a"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(metadataService).getGroupProgress("instance-a", "cg-orders");
+        verify(metadataService).getGroupSubscriptions("instance-a", "cg-orders");
+    }
+
+    @Test
     void resetOffsetShouldPassValidatedRequest() throws Exception {
         Map<String, Object> body = Map.of(
                 "name", "cg-orders",
