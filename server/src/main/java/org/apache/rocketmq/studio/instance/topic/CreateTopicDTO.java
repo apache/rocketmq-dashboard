@@ -17,7 +17,7 @@
 package org.apache.rocketmq.studio.instance.topic;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 import lombok.Data;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
@@ -29,9 +29,9 @@ public class CreateTopicDTO {
     private String namespace;
     private String clusterId;
     private TopicType type;
-    @Positive(message = "writeQueues must be positive")
+    @PositiveOrZero(message = "writeQueues must be zero or positive")
     private Integer writeQueues;
-    @Positive(message = "readQueues must be positive")
+    @PositiveOrZero(message = "readQueues must be zero or positive")
     private Integer readQueues;
     private TopicPerm perm;
     private String remark;
