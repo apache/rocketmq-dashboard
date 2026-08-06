@@ -24,7 +24,7 @@ import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 
 public interface AdminClient {
     TopicVO getTopic(String name);
-    ConsumerGroupVO getConsumerGroup(String name);
+    ConsumerGroupVO getConsumerGroup(String instanceId, String name);
     TopicVO createTopic(TopicVO topic);
     TopicVO updateTopic(TopicVO topic);
     void deleteTopic(String name);

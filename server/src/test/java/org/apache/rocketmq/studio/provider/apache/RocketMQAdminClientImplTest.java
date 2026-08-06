@@ -99,10 +99,27 @@ class RocketMQAdminClientImplTest {
                 .thenThrow(new MQClientException(ResponseCode.CONSUMER_NOT_ONLINE,
                         "Not found the consumer group connection"));
 
-        ConsumerGroupVO group = adminClient.getConsumerGroup("orders");
+        ConsumerGroupVO group = adminClient.getConsumerGroup(null, "orders");
 
         assertThat(group.getId()).isEqualTo("orders");
         assertThat(group.getOnlineInstances()).isZero();
+    }
+
+    @Test
+    void getConsumerGroupUsesSelectedInstanceAdmin() throws Exception {
+        DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
+                .thenAnswer(invocation -> {
+                    MqAdminExtFactory.AdminAction<?> action = invocation.getArgument(1);
+                    return action.apply(selectedAdmin);
+                });
+
+        ConsumerGroupVO group = adminClient.getConsumerGroup("instance-a", "cg-orders");
+
+        assertThat(group.getName()).isEqualTo("cg-orders");
+        verify(runtimeAdminClientResolver).execute(org.mockito.ArgumentMatchers.eq("instance-a"), any());
+        verify(selectedAdmin).examineConsumerConnectionInfo("cg-orders");
+        verify(adminExt, never()).examineConsumerConnectionInfo(anyString());
     }
 
     @Test
@@ -119,7 +136,7 @@ class RocketMQAdminClientImplTest {
         when(adminExt.examineConsumerConnectionInfo("orders"))
                 .thenThrow(new RemotingTimeoutException("broker-0", 3_000));
 
-        assertThatThrownBy(() -> adminClient.getConsumerGroup("orders"))
+        assertThatThrownBy(() -> adminClient.getConsumerGroup(null, "orders"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Failed to get consumer group");
     }
@@ -129,7 +146,7 @@ class RocketMQAdminClientImplTest {
         when(adminExt.examineConsumerConnectionInfo("orders"))
                 .thenThrow(new MQBrokerException(16, "ACL denied"));
 
-        assertThatThrownBy(() -> adminClient.getConsumerGroup("orders"))
+        assertThatThrownBy(() -> adminClient.getConsumerGroup(null, "orders"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("ACL denied");
     }

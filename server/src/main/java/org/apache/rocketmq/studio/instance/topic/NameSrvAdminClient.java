@@ -34,7 +34,7 @@ public class NameSrvAdminClient implements AdminClient {
     }
 
     @Override
-    public ConsumerGroupVO getConsumerGroup(String name) {
+    public ConsumerGroupVO getConsumerGroup(String instanceId, String name) {
         throw consumerGroupAdminUnavailable();
     }
 

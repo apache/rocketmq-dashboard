@@ -96,32 +96,37 @@ public class RocketMQAdminClientImpl implements AdminClient {
     }
 
     @Override
-    public ConsumerGroupVO getConsumerGroup(String name) {
-        return adminFactory.execute(namesrvAddr(), null, admin -> {
-            ConsumerGroupVO vo = new ConsumerGroupVO();
-            vo.setId(name);
-            vo.setName(name);
-            try {
-                var conn = admin.examineConsumerConnectionInfo(name);
-                if (conn != null) {
-                    if (conn.getConnectionSet() != null) {
-                        vo.setOnlineInstances(conn.getConnectionSet().size());
-                    }
-                    if (conn.getSubscriptionTable() != null) {
-                        vo.setSubscribedTopics(new ArrayList<>(conn.getSubscriptionTable().keySet()));
-                    }
+    public ConsumerGroupVO getConsumerGroup(String instanceId, String name) {
+        if (StringUtils.hasText(instanceId)) {
+            return runtimeAdminClientResolver.execute(instanceId, admin -> getConsumerGroup(admin, name));
+        }
+        return adminFactory.execute(namesrvAddr(), null, admin -> getConsumerGroup(admin, name));
+    }
+
+    private ConsumerGroupVO getConsumerGroup(MQAdminExt admin, String name) {
+        ConsumerGroupVO vo = new ConsumerGroupVO();
+        vo.setId(name);
+        vo.setName(name);
+        try {
+            var conn = admin.examineConsumerConnectionInfo(name);
+            if (conn != null) {
+                if (conn.getConnectionSet() != null) {
+                    vo.setOnlineInstances(conn.getConnectionSet().size());
                 }
-            } catch (MQClientException exception) {
-                if (exception.getResponseCode() == ResponseCode.CONSUMER_NOT_ONLINE) {
-                    log.debug("Consumer group {} is offline", name);
-                    return vo;
+                if (conn.getSubscriptionTable() != null) {
+                    vo.setSubscribedTopics(new ArrayList<>(conn.getSubscriptionTable().keySet()));
                 }
-                throw new BusinessException(502, "Failed to get consumer group: " + exception.getMessage());
-            } catch (Exception exception) {
-                throw new BusinessException(502, "Failed to get consumer group: " + exception.getMessage());
             }
-            return vo;
-        });
+        } catch (MQClientException exception) {
+            if (exception.getResponseCode() == ResponseCode.CONSUMER_NOT_ONLINE) {
+                log.debug("Consumer group {} is offline", name);
+                return vo;
+            }
+            throw new BusinessException(502, "Failed to get consumer group: " + exception.getMessage());
+        } catch (Exception exception) {
+            throw new BusinessException(502, "Failed to get consumer group: " + exception.getMessage());
+        }
+        return vo;
     }
 
     @Override

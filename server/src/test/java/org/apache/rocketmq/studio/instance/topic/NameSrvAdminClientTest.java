@@ -33,7 +33,7 @@ class NameSrvAdminClientTest {
         ConsumerGroupVO group = new ConsumerGroupVO();
         group.setName("cg-order");
 
-        assertUnavailable(() -> adminClient.getConsumerGroup("cg-order"));
+        assertUnavailable(() -> adminClient.getConsumerGroup("instance-a", "cg-order"));
         assertUnavailable(() -> adminClient.createConsumerGroup(group));
         assertUnavailable(() -> adminClient.deleteConsumerGroup("instance-a", "cg-order"));
         assertUnavailable(() -> adminClient.resetOffset("instance-a", "cg-order", 1784246400000L, "order-topic"));
