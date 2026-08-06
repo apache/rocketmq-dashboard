@@ -39,9 +39,9 @@ public class MessageService {
         return messageProvider.queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime);
     }
 
-    public TraceRecordVO getMessageTrace(String msgId) {
+    public TraceRecordVO getMessageTrace(String instanceId, String msgId) {
         log.info("Getting message trace: msgId={}", msgId);
-        return messageProvider.getMessageTrace(msgId);
+        return messageProvider.getMessageTrace(instanceId, msgId);
     }
 
     private void validateTopicQueryWindow(String topic, String msgId, String key, Long startTime, Long endTime) {

@@ -24,8 +24,8 @@ import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageId;
 import org.apache.rocketmq.common.message.MessageQueue;
-import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
+import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
 import org.apache.rocketmq.studio.instance.message.ConsumerStatusVO;
 import org.apache.rocketmq.studio.instance.message.MessageProvider;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
@@ -84,13 +84,16 @@ public class RocketMQMessageProvider implements MessageProvider {
     private final ObjectProvider<DefaultMQAdminExt> adminExtProvider;
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
     private final QueryHistoryService queryHistoryService;
+    private final RocketMQProperties properties;
 
     public RocketMQMessageProvider(ObjectProvider<DefaultMQAdminExt> adminExtProvider,
                                    RuntimeAdminClientResolver runtimeAdminClientResolver,
-                                   QueryHistoryService queryHistoryService) {
+                                   QueryHistoryService queryHistoryService,
+                                   RocketMQProperties properties) {
         this.adminExtProvider = adminExtProvider;
         this.runtimeAdminClientResolver = runtimeAdminClientResolver;
         this.queryHistoryService = queryHistoryService;
+        this.properties = properties;
     }
 
     @Override
@@ -239,12 +242,12 @@ public class RocketMQMessageProvider implements MessageProvider {
     }
 
     @Override
-    public TraceRecordVO getMessageTrace(String msgId) {
-        DefaultMQAdminExt adminExt = adminExtProvider.getIfAvailable();
-        if (adminExt == null) {
-            log.warn("DefaultMQAdminExt is not configured, returning empty trace");
-            return emptyTrace();
-        }
+    public TraceRecordVO getMessageTrace(String instanceId, String msgId) {
+        return runtimeAdminClientResolver.execute(instanceId,
+                adminExt -> getMessageTrace((DefaultMQAdminExt) adminExt, msgId));
+    }
+
+    private TraceRecordVO getMessageTrace(DefaultMQAdminExt adminExt, String msgId) {
 
         long now = System.currentTimeMillis();
         long begin = now - ONE_HOUR_MILLIS;

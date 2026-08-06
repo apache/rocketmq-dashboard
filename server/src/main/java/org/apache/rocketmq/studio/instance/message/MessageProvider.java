@@ -23,5 +23,5 @@ public interface MessageProvider {
     List<MessageRecordVO> queryMessages(String instanceId, String topic, String msgId, String tag, String key, Long startTime,
                                         Long endTime);
 
-    TraceRecordVO getMessageTrace(String msgId);
+    TraceRecordVO getMessageTrace(String instanceId, String msgId);
 }
