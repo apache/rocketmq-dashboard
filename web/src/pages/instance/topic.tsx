@@ -269,6 +269,7 @@ const TopicPage = () => {
   const { t } = useLang();
   const { selectedInstanceId, selectedInstance, selectInstance, instanceOptions } =
     useInstanceFilter();
+  const hasSelectedInstance = Boolean(selectedInstanceId);
 
   // ─── State ─────────────────────────────────────────────────────
   const [topics, setTopics] = useState<Topic[]>([]);
@@ -656,11 +657,15 @@ const TopicPage = () => {
 
   // ─── Create modal submit ──────────────────────────────────────
   const handleCreate = async () => {
+    if (!selectedInstanceId) {
+      message.error('请先选择实例');
+      return;
+    }
     try {
       const values = await form.validateFields();
       const created = await createTopic({
         ...values,
-        ...(selectedInstanceId ? { instanceId: selectedInstanceId } : {}),
+        instanceId: selectedInstanceId,
       });
       setTopics((previous) => [created, ...previous]);
       message.success(`Topic「${created.name}」创建成功`);
@@ -672,6 +677,10 @@ const TopicPage = () => {
   };
 
   const handleImportFile = async (file: File) => {
+    if (!selectedInstanceId) {
+      message.error('请先选择实例');
+      return;
+    }
     setImportFilename(file.name);
     setImporting(false);
     setImportModalOpen(true);
@@ -689,6 +698,10 @@ const TopicPage = () => {
   };
 
   const handleImportTopics = async () => {
+    if (!selectedInstanceId) {
+      message.error('请先选择实例');
+      return;
+    }
     const targetIndexes = importRows
       .map((row, index) => ({ row, index }))
       .filter(({ row }) => row.status === 'pending' || row.status === 'failed');
@@ -933,7 +946,7 @@ const TopicPage = () => {
           />
           <Button
             icon={<ImportOutlined />}
-            disabled={importing}
+            disabled={!hasSelectedInstance || importing}
             onClick={() => importInputRef.current?.click()}
           >
             导入
@@ -950,7 +963,12 @@ const TopicPage = () => {
           >
             导出
           </Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            disabled={!hasSelectedInstance}
+            onClick={() => setModalOpen(true)}
+          >
             创建 Topic
           </Button>
         </Space>
