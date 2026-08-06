@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.queryhistory;
 
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.persistence.entity.RmqMessageQuery;
 import org.apache.rocketmq.studio.persistence.entity.RmqTraceQuery;
 import org.apache.rocketmq.studio.persistence.mapper.RmqMessageQueryMapper;
@@ -51,6 +52,7 @@ public class QueryHistoryService {
         query.setEndTime(endTime);
         query.setResultCount(resultCount);
         query.setQueriedAt(LocalDateTime.now());
+        query.setQueriedBy(AuthenticatedUserContext.currentUsernameOrSystem());
         messageQueryMapper.insert(query);
         log.debug("Message query recorded: type={} topic={}", queryType, topic);
     }
@@ -62,6 +64,7 @@ public class QueryHistoryService {
         query.setNodeCount(nodeCount);
         query.setConsumerCount(consumerCount);
         query.setQueriedAt(LocalDateTime.now());
+        query.setQueriedBy(AuthenticatedUserContext.currentUsernameOrSystem());
         traceQueryMapper.insert(query);
         log.debug("Trace query recorded: msgId={} topic={}", msgId, topic);
     }
