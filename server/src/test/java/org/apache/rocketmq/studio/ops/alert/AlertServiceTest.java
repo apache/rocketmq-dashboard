@@ -115,6 +115,37 @@ class AlertServiceTest {
     }
 
     @Test
+    void exportPrometheusRulesYamlShouldEmitSingleGroupForSameTeamRules() {
+        AlertRuleVO first = AlertRuleVO.builder()
+                .name("Lag Alert A")
+                .metric("rocketmq_consumer_lag_messages")
+                .operator(">")
+                .threshold(1000)
+                .duration("3m")
+                .description("First lag alert")
+                .build();
+        AlertRuleVO second = AlertRuleVO.builder()
+                .name("Lag Alert B")
+                .metric("rocketmq_consumer_lag_messages")
+                .operator(">")
+                .threshold(2000)
+                .duration("5m")
+                .description("Second lag alert")
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(first, second));
+
+        String result = alertService.exportPrometheusRulesYaml();
+
+        long groupOccurrences = result.split("- name: rocketmq-consumer.rules", -1).length - 1;
+        assertThat(groupOccurrences).isEqualTo(1);
+        assertThat(result)
+                .contains("# Rule 1: LagAlertA")
+                .contains("# Rule 2: LagAlertB")
+                .contains("expr: rocketmq_consumer_lag_messages > 1000")
+                .contains("expr: rocketmq_consumer_lag_messages > 2000");
+    }
+
+    @Test
     void exportPrometheusRulesYamlShouldRenderReplicationLagRuleWithScopeAndSeverity() {
         AlertRuleVO rule = AlertRuleVO.builder()
                 .name("Replication Lag High")

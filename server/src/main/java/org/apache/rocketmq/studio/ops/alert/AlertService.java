@@ -21,7 +21,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Slf4j
@@ -47,20 +50,28 @@ public class AlertService {
         StringBuilder yaml = new StringBuilder();
         yaml.append("groups:\n");
         int index = 1;
+        // Prometheus requires each group name to be unique, so rules sharing a group must be
+        // emitted under a single "  - name:" block instead of one block per rule.
+        Map<String, List<PrometheusAlertRule>> rulesByGroup = new LinkedHashMap<>();
         for (PrometheusAlertRule rule : prometheusRules) {
-            yaml.append("  - name: ").append(rule.group()).append('\n');
+            rulesByGroup.computeIfAbsent(rule.group(), key -> new ArrayList<>()).add(rule);
+        }
+        for (Map.Entry<String, List<PrometheusAlertRule>> group : rulesByGroup.entrySet()) {
+            yaml.append("  - name: ").append(group.getKey()).append('\n');
             yaml.append("    rules:\n");
-            yaml.append("      # Rule ").append(index++).append(": ").append(rule.alert()).append('\n');
-            yaml.append("      - alert: ").append(rule.alert()).append('\n');
-            yaml.append("        expr: ").append(rule.expr()).append('\n');
-            yaml.append("        for: ").append(rule.duration()).append('\n');
-            yaml.append("        labels:\n");
-            yaml.append("          severity: ").append(rule.severity()).append('\n');
-            yaml.append("          team: ").append(rule.team()).append('\n');
-            yaml.append("        annotations:\n");
-            yaml.append("          summary: \"").append(escapeDoubleQuotedValue(rule.summary())).append("\"\n");
-            yaml.append("          description: \"").append(escapeDoubleQuotedValue(rule.description()))
-                    .append("\"\n");
+            for (PrometheusAlertRule rule : group.getValue()) {
+                yaml.append("      # Rule ").append(index++).append(": ").append(rule.alert()).append('\n');
+                yaml.append("      - alert: ").append(rule.alert()).append('\n');
+                yaml.append("        expr: ").append(rule.expr()).append('\n');
+                yaml.append("        for: ").append(rule.duration()).append('\n');
+                yaml.append("        labels:\n");
+                yaml.append("          severity: ").append(rule.severity()).append('\n');
+                yaml.append("          team: ").append(rule.team()).append('\n');
+                yaml.append("        annotations:\n");
+                yaml.append("          summary: \"").append(escapeDoubleQuotedValue(rule.summary())).append("\"\n");
+                yaml.append("          description: \"").append(escapeDoubleQuotedValue(rule.description()))
+                        .append("\"\n");
+            }
         }
         return yaml.toString();
     }
