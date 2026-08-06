@@ -807,6 +807,7 @@ const TopicPage = () => {
       }
       const result = await sendTopicMessage({
         topic: values.topic,
+        instanceId: selectedInstanceId || undefined,
         tag: values.tag || undefined,
         key: values.key || undefined,
         body: values.body,

@@ -145,11 +145,11 @@ export async function getTopicConsumers(name: string, instanceId?: string) {
 
 export interface SendTopicMessageRequest {
   topic: string;
+  instanceId?: string;
   tag?: string;
   key?: string;
   body: string;
   properties?: Record<string, string>;
-  instanceId?: string;
 }
 
 export interface SendTopicMessageResult {
