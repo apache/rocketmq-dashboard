@@ -99,6 +99,15 @@ const GroupManagementPage = () => {
     }
   }, [t]);
 
+  // Live refresh: poll while the auto-refresh switch is on.
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const timer = setInterval(() => {
+      void handleRefresh();
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [autoRefresh, handleRefresh]);
+
   const handleViewDetail = useCallback(
     async (group: ConsumerGroup) => {
       setSelectedGroup(group);
