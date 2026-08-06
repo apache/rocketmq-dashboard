@@ -187,7 +187,23 @@ describe('TopicPage', () => {
 
   it('keeps the current table page after opening and closing topic details', async () => {
     const user = userEvent.setup();
-    renderWithProviders();
+    instanceServiceMocks.listInstances.mockResolvedValue([
+      {
+        id: 'instance-a',
+        name: 'Instance A',
+        type: 'DIRECT',
+        endpoint: '127.0.0.1:9876',
+        remark: '',
+        topicCount: 25,
+        consumerGroupCount: 0,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      },
+    ]);
+    topicServiceMocks.listTopics.mockResolvedValue(
+      buildTopics(25).map((topic) => ({ ...topic, instanceId: 'instance-a' })),
+    );
+    renderWithProviders('/instance/instance-a/topic');
 
     expect(await screen.findByText('topic-01')).toBeInTheDocument();
 
@@ -200,7 +216,7 @@ describe('TopicPage', () => {
 
     await user.click(screen.getAllByRole('button', { name: /详情/ })[0]);
     await waitFor(() =>
-      expect(topicServiceMocks.getTopicRoutes).toHaveBeenCalledWith('topic-21', 'instance-proxy-1'),
+      expect(topicServiceMocks.getTopicRoutes).toHaveBeenCalledWith('topic-21', 'instance-a'),
     );
 
     const closeButton = document.querySelector('.ant-modal-close');

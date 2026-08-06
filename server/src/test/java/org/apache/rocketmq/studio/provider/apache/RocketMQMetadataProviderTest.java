@@ -18,6 +18,9 @@ package org.apache.rocketmq.studio.provider.apache;
 
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
+import org.apache.rocketmq.studio.instance.topic.BrokerRouteVO;
+import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.persistence.entity.RmqGroup;
 import org.apache.rocketmq.studio.persistence.mapper.RmqGroupMapper;
@@ -31,7 +34,9 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -43,13 +48,16 @@ class RocketMQMetadataProviderTest {
     @Mock
     private RmqGroupMapper groupMapper;
 
+    @Mock
+    private RuntimeAdminClientResolver runtimeAdminClientResolver;
+
     /**
      * Builds a provider without a configured NameServer, mirroring the former absent admin bean:
      * DB-backed listings work while live enrichment is skipped.
      */
     private RocketMQMetadataProvider newProvider() {
         return new RocketMQMetadataProvider(mock(MqAdminExtFactory.class), new RocketMQProperties(),
-                topicMapper, groupMapper);
+                topicMapper, groupMapper, runtimeAdminClientResolver);
     }
 
     @Test
@@ -84,5 +92,25 @@ class RocketMQMetadataProviderTest {
 
         assertThat(groups).hasSize(1);
         assertThat(groups.get(0).getConsumeType()).isEqualTo(ConsumeType.CLUSTERING);
+    }
+
+    @Test
+    void getTopicRoutesShouldUseSelectedInstanceRuntimeClient() {
+        List<BrokerRouteVO> routes = List.of(BrokerRouteVO.builder().brokerName("broker-a").build());
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any())).thenReturn(routes);
+        RocketMQMetadataProvider provider = newProvider();
+
+        assertThat(provider.getTopicRoutes("instance-a", "orders")).containsExactlyElementsOf(routes);
+        verify(runtimeAdminClientResolver).execute(eq("instance-a"), any());
+    }
+
+    @Test
+    void getTopicConsumersShouldUseSelectedInstanceRuntimeClient() {
+        List<TopicConsumerVO> consumers = List.of(TopicConsumerVO.builder().group("cg-orders").build());
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any())).thenReturn(consumers);
+        RocketMQMetadataProvider provider = newProvider();
+
+        assertThat(provider.getTopicConsumers("instance-a", "orders")).containsExactlyElementsOf(consumers);
+        verify(runtimeAdminClientResolver).execute(eq("instance-a"), any());
     }
 }

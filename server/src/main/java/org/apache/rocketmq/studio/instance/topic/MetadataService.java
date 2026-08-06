@@ -88,7 +88,7 @@ public class MetadataService {
             // broker routing does not apply to serverless cloud instances
             return List.of();
         }
-        return metadataProvider.getTopicRoutes(name);
+        return metadataProvider.getTopicRoutes(instanceId, name);
     }
 
 

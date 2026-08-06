@@ -85,7 +85,7 @@ public class ApacheInstanceProvider implements InstanceProvider {
 
     @Override
     public List<TopicConsumerVO> getTopicConsumers(String instanceId, String topicName) {
-        return metadataProvider.getTopicConsumers(topicName);
+        return metadataProvider.getTopicConsumers(instanceId, topicName);
     }
 
     @Override

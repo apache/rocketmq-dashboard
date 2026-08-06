@@ -88,6 +88,22 @@ class TopicControllerTest {
     }
 
     @Test
+    void topicRuntimeDiagnosticsShouldPassSelectedInstance() throws Exception {
+        when(metadataService.getTopicRoutes("instance-a", "orders")).thenReturn(List.of());
+        when(metadataService.getTopicConsumers("instance-a", "orders")).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/topics/orders/routes").param("instanceId", "instance-a"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+        mockMvc.perform(get("/api/topics/orders/consumers").param("instanceId", "instance-a"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(metadataService).getTopicRoutes("instance-a", "orders");
+        verify(metadataService).getTopicConsumers("instance-a", "orders");
+    }
+
+    @Test
     void createTopicShouldReturnCreatedTopic() throws Exception {
         TopicVO input = new TopicVO();
         input.setName("new-topic");
