@@ -27,8 +27,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Map;
-
 @RestController
 @RequestMapping("/api/nameservers")
 @RequiredArgsConstructor
@@ -50,27 +48,36 @@ public class NameServerController {
     }
 
     @PostMapping("/restart")
-    public Result<Map<String, Boolean>> restartNameServer(
+    public Result<Void> restartNameServer(
             @Valid @RequestBody(required = false) RestartNameServerDTO command) {
         requireCommand(command);
         boolean success = clusterService.restartNameServer(command);
-        return Result.ok(Map.of("success", success));
+        requireOperationSuccess(success, "restart");
+        return Result.ok();
     }
 
     @PostMapping("/upgrade")
-    public Result<Map<String, Boolean>> upgradeNameServer(
+    public Result<Void> upgradeNameServer(
             @Valid @RequestBody(required = false) UpgradeNameServerDTO command) {
         requireCommand(command);
         boolean success = clusterService.upgradeNameServer(command);
-        return Result.ok(Map.of("success", success));
+        requireOperationSuccess(success, "upgrade");
+        return Result.ok();
     }
 
     @PostMapping("/delete")
-    public Result<Map<String, Boolean>> deleteNameServer(
+    public Result<Void> deleteNameServer(
             @Valid @RequestBody(required = false) DeleteNameServerDTO command) {
         requireCommand(command);
         boolean success = clusterService.deleteNameServer(command);
-        return Result.ok(Map.of("success", success));
+        requireOperationSuccess(success, "delete");
+        return Result.ok();
+    }
+
+    private void requireOperationSuccess(boolean success, String operation) {
+        if (!success) {
+            throw new BusinessException(500, "Failed to " + operation + " NameServer");
+        }
     }
 
     private void requireCommand(Object command) {

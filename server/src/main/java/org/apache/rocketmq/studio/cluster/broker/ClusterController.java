@@ -66,8 +66,10 @@ public class ClusterController {
     public Result<Map<String, Object>> restartBroker(@PathVariable String clusterId,
                                                      @PathVariable String name) {
         boolean success = clusterService.restartBroker(clusterId, name);
+        if (!success) {
+            throw new BusinessException(500, "Failed to restart broker: " + name);
+        }
         return Result.ok(Map.of(
-                "success", success,
                 "message", "Broker restart initiated for " + name
         ));
     }

@@ -122,8 +122,7 @@ class NameServerControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.success").value(true));
+                .andExpect(jsonPath("$.code").value(200));
 
         verify(clusterService).restartNameServer(any(RestartNameServerDTO.class));
     }
@@ -173,8 +172,7 @@ class NameServerControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.success").value(true));
+                .andExpect(jsonPath("$.code").value(200));
 
         verify(clusterService).deleteNameServer(any(DeleteNameServerDTO.class));
     }

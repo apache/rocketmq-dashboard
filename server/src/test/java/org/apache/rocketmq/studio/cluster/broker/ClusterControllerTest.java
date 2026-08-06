@@ -299,7 +299,6 @@ class ClusterControllerTest {
         mockMvc.perform(post("/api/clusters/cluster-1/brokers/broker-0/restart"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.success").value(true))
                 .andExpect(jsonPath("$.data.message").value("Broker restart initiated for broker-0"));
     }
 
