@@ -286,15 +286,11 @@ public class RocketMQMessageProvider implements MessageProvider {
             if (fields.length == 0) {
                 continue;
             }
-            String traceType = fields[0].trim();
-            // The message id column differs by trace type: Pub/EndTransaction encode the trace bean
-            // (msgId at index 5), while SubAfter in RocketMQ 5.3.3 places msgId at index 2.
-            int msgIdIndex = "SubAfter".equals(traceType) ? 2 : 5;
-            if (!targetMsgId.equals(field(fields, msgIdIndex))) {
+            if (!targetMsgId.equals(field(fields, 5))) {
                 continue;
             }
             try {
-                switch (traceType) {
+                switch (fields[0].trim()) {
                     case "Pub":
                         nodes.add(buildProduceNode(fields));
                         break;
@@ -315,50 +311,49 @@ public class RocketMQMessageProvider implements MessageProvider {
         }
     }
 
-    // Pub layout (RocketMQ 5.3.3 TraceDataEncoder): type, time, region, group, topic, msgId,
-    //             tags, keys, storeHost, bodyLength, costTime, msgType, offsetMsgId, isSuccess
+    // Pub layout: type, time, region, group, topic, msgId, tags, keys, storeHost, clientHost,
+    //             retryTimes, msgType, status, costTime
     private TraceNodeVO buildProduceNode(String[] f) {
         return TraceNodeVO.builder()
                 .title("produce")
                 .timestamp(parseLong(field(f, 1)))
-                .status(parseBoolean(field(f, 13)) ? "finish" : "failed")
-                .costTime(parseLong(field(f, 10)))
-                .description("producer=" + field(f, 3) + ", storeHost=" + field(f, 8))
+                .status(parseBoolean(field(f, 12)) ? "finish" : "failed")
+                .costTime(parseLong(field(f, 13)))
+                .description("producer=" + field(f, 3) + ", clientHost=" + field(f, 9)
+                        + ", storeHost=" + field(f, 8))
                 .build();
     }
 
-    // SubAfter layout (RocketMQ 5.3.3 TraceDataEncoder): type, requestId, msgId, costTime,
-    //                isSuccess, keys, contextCode, timeStamp, groupName. The trailing
-    //                timeStamp/groupName columns may be absent when the trace has no region info,
-    //                so lookups tolerate short lines.
+    // SubAfter layout: type, time, region, group, traceId, msgId, retryTimes, keys, costTime,
+    //                  status, timestamp
     private TraceNodeVO buildConsumeNode(String[] f) {
         return TraceNodeVO.builder()
                 .title("consume")
-                .timestamp(parseLong(field(f, 7)))
-                .status(parseBoolean(field(f, 4)) ? "finish" : "failed")
-                .costTime(parseLong(field(f, 3)))
-                .description("group=" + field(f, 8) + ", contextCode=" + field(f, 6))
+                .timestamp(parseLong(field(f, 1)))
+                .status(parseBoolean(field(f, 9)) ? "finish" : "failed")
+                .costTime(parseLong(field(f, 8)))
+                .description("group=" + field(f, 3) + ", retryTimes=" + field(f, 6))
                 .build();
     }
 
     private ConsumerStatusVO buildConsumerStatus(String[] f) {
         return ConsumerStatusVO.builder()
-                .group(field(f, 8))
-                .deliveryStatus(parseBoolean(field(f, 4)) ? DeliveryStatus.success : DeliveryStatus.failed)
-                .consumeTime(parseLong(field(f, 7)))
-                .retryCount(0)
+                .group(field(f, 3))
+                .deliveryStatus(parseBoolean(field(f, 9)) ? DeliveryStatus.success : DeliveryStatus.failed)
+                .consumeTime(parseLong(field(f, 1)))
+                .retryCount((int) parseLong(field(f, 6)))
                 .build();
     }
 
-    // EndTransaction layout (RocketMQ 5.3.3): type, time, region, group, topic, msgId, tags,
-    //                     keys, storeHost, bodyLength, costTime, msgType, transactionId, txState
+    // EndTransaction layout: type, time, region, group, topic, msgId, tags, keys, storeHost,
+    //                        clientHost, retryTimes, msgType, status, transactionId, txState
     private TraceNodeVO buildTransactionNode(String[] f) {
         return TraceNodeVO.builder()
                 .title("endTransaction")
                 .timestamp(parseLong(field(f, 1)))
                 .status("finish")
                 .costTime(0L)
-                .description("group=" + field(f, 3) + ", transactionState=" + field(f, 13))
+                .description("group=" + field(f, 3) + ", transactionState=" + field(f, 14))
                 .build();
     }
 
