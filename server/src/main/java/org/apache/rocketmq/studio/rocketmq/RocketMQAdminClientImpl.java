@@ -299,8 +299,11 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 adminExt.deleteTopicInNameServer(nsAddrs, getClusterName(), name);
             }
 
-            // Delete from DB
-            topicMapper.delete(new LambdaQueryWrapper<RmqTopic>().eq(RmqTopic::getName, name));
+            // Delete from DB, scoped to the current cluster so same-named topics in other
+            // clusters are not removed.
+            topicMapper.delete(new LambdaQueryWrapper<RmqTopic>()
+                    .eq(RmqTopic::getClusterId, getClusterName())
+                    .eq(RmqTopic::getName, name));
 
             auditService.record("DELETE_TOPIC", name, "", "SUCCESS");
         } catch (BusinessException e) {
