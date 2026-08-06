@@ -309,8 +309,11 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 adminExt.deleteTopicInNameServer(nsAddrs, getClusterName(), name);
             }
 
-            // Delete from DB
-            topicMapper.delete(new LambdaQueryWrapper<RmqTopic>().eq(RmqTopic::getName, name));
+            // Delete only the current cluster's record. Topic names can be shared by several
+            // clusters managed by the same Studio instance.
+            topicMapper.delete(new LambdaQueryWrapper<RmqTopic>()
+                    .eq(RmqTopic::getClusterId, getClusterName())
+                    .eq(RmqTopic::getName, name));
 
             auditService.record("DELETE_TOPIC", name, "", "SUCCESS");
         } catch (BusinessException e) {
@@ -462,8 +465,11 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 adminExt.deleteSubscriptionGroup(addr, name, true);
             }
 
-            // Delete from DB
-            groupMapper.delete(new LambdaQueryWrapper<RmqGroup>().eq(RmqGroup::getName, name));
+            // Delete only the current cluster's record. Consumer group names can be shared by
+            // several clusters managed by the same Studio instance.
+            groupMapper.delete(new LambdaQueryWrapper<RmqGroup>()
+                    .eq(RmqGroup::getClusterId, getClusterName())
+                    .eq(RmqGroup::getName, name));
 
             auditService.record("DELETE_GROUP", name, "", "SUCCESS");
         } catch (BusinessException e) {

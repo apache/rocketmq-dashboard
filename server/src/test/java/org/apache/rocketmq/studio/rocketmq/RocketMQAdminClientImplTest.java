@@ -30,6 +30,7 @@ import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageVO;
 import org.apache.rocketmq.studio.ops.audit.AuditService;
+import org.apache.rocketmq.studio.persistence.entity.RmqGroup;
 import org.apache.rocketmq.studio.persistence.entity.RmqTopic;
 import org.apache.rocketmq.studio.persistence.mapper.RmqGroupMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqTopicMapper;
@@ -162,5 +163,39 @@ class RocketMQAdminClientImplTest {
             // The message was already delivered; an audit failure must not turn this into an error.
             assertThat(result.getMsgId()).isEqualTo("msg-1");
         }
+    }
+
+    @Test
+    void deleteTopicScopesDatabaseDeleteToCurrentCluster() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo("cluster-1"));
+
+        adminClient.deleteTopic("orders");
+
+        ArgumentCaptor<LambdaQueryWrapper<RmqTopic>> captor =
+                ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(topicMapper).delete(captor.capture());
+        assertThat(captor.getValue().getSqlSegment()).contains("cluster_id", "name");
+    }
+
+    @Test
+    void deleteConsumerGroupScopesDatabaseDeleteToCurrentCluster() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo("cluster-1"));
+
+        adminClient.deleteConsumerGroup("cg-orders");
+
+        ArgumentCaptor<LambdaQueryWrapper<RmqGroup>> captor =
+                ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(groupMapper).delete(captor.capture());
+        assertThat(captor.getValue().getSqlSegment()).contains("cluster_id", "name");
+    }
+
+    private ClusterInfo clusterInfo(String clusterName) {
+        ClusterInfo clusterInfo = new ClusterInfo();
+        Map<String, Set<String>> clusterAddrTable = new HashMap<>();
+        clusterAddrTable.put(clusterName, new HashSet<>(List.of("broker-1")));
+        clusterInfo.setClusterAddrTable(clusterAddrTable);
+        return clusterInfo;
     }
 }
