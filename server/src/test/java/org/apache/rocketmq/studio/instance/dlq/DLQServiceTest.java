@@ -56,43 +56,43 @@ class DLQServiceTest {
                         .status("ACTIVE")
                         .build()
         );
-        when(dlqProvider.listDLQGroups("cluster-1")).thenReturn(groups);
+        when(dlqProvider.listDLQGroups("instance-1")).thenReturn(groups);
 
-        List<DLQGroupVO> result = dlqService.listDLQGroups("cluster-1");
+        List<DLQGroupVO> result = dlqService.listDLQGroups("instance-1");
 
         assertThat(result).hasSize(2);
         assertThat(result.get(0).getGroupName()).isEqualTo("group-1");
         assertThat(result.get(0).getDlqTopic()).isEqualTo("%DLQ%group-1");
-        verify(dlqProvider).listDLQGroups("cluster-1");
+        verify(dlqProvider).listDLQGroups("instance-1");
     }
 
     @Test
     void listDLQGroupsShouldReturnEmptyWhenNone() {
-        when(dlqProvider.listDLQGroups("cluster-2")).thenReturn(List.of());
+        when(dlqProvider.listDLQGroups("instance-2")).thenReturn(List.of());
 
-        List<DLQGroupVO> result = dlqService.listDLQGroups("cluster-2");
+        List<DLQGroupVO> result = dlqService.listDLQGroups("instance-2");
 
         assertThat(result).isEmpty();
-        verify(dlqProvider).listDLQGroups("cluster-2");
+        verify(dlqProvider).listDLQGroups("instance-2");
     }
 
     @Test
     void resendMessagesShouldDelegateToProvider() {
-        dlqService.resendMessages("group-1", 1000L, 2000L, "target-topic");
+        dlqService.resendMessages("instance-1", "group-1", 1000L, 2000L, "target-topic");
 
-        verify(dlqProvider).resendMessages("group-1", 1000L, 2000L, "target-topic");
+        verify(dlqProvider).resendMessages("instance-1", "group-1", 1000L, 2000L, "target-topic");
     }
 
     @Test
     void resendMessagesShouldAcceptNullTimeRange() {
-        dlqService.resendMessages("group-1", null, null, "target-topic");
+        dlqService.resendMessages("instance-1", "group-1", null, null, "target-topic");
 
-        verify(dlqProvider).resendMessages("group-1", null, null, "target-topic");
+        verify(dlqProvider).resendMessages("instance-1", "group-1", null, null, "target-topic");
     }
 
     @Test
     void resendMessagesShouldRejectBlankGroupName() {
-        assertThatThrownBy(() -> dlqService.resendMessages(" ", 1000L, 2000L, "target-topic"))
+        assertThatThrownBy(() -> dlqService.resendMessages("instance-1", " ", 1000L, 2000L, "target-topic"))
                 .hasMessage("groupName is required");
 
         verifyNoInteractions(dlqProvider);
@@ -100,7 +100,7 @@ class DLQServiceTest {
 
     @Test
     void resendMessagesShouldRejectPartialTimeRange() {
-        assertThatThrownBy(() -> dlqService.resendMessages("group-1", 1000L, null, "target-topic"))
+        assertThatThrownBy(() -> dlqService.resendMessages("instance-1", "group-1", 1000L, null, "target-topic"))
                 .hasMessage("startTime and endTime must be provided together");
 
         verifyNoInteractions(dlqProvider);
@@ -108,7 +108,7 @@ class DLQServiceTest {
 
     @Test
     void resendMessagesShouldRejectNonPositiveTimeRange() {
-        assertThatThrownBy(() -> dlqService.resendMessages("group-1", 0L, 2000L, "target-topic"))
+        assertThatThrownBy(() -> dlqService.resendMessages("instance-1", "group-1", 0L, 2000L, "target-topic"))
                 .hasMessage("startTime and endTime must be positive");
 
         verifyNoInteractions(dlqProvider);
@@ -116,7 +116,7 @@ class DLQServiceTest {
 
     @Test
     void resendMessagesShouldRejectReversedTimeRange() {
-        assertThatThrownBy(() -> dlqService.resendMessages("group-1", 2000L, 1000L, "target-topic"))
+        assertThatThrownBy(() -> dlqService.resendMessages("instance-1", "group-1", 2000L, 1000L, "target-topic"))
                 .hasMessage("endTime must not be earlier than startTime");
 
         verifyNoInteractions(dlqProvider);

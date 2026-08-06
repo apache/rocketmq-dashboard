@@ -31,7 +31,19 @@ vi.mock('../../../services/messageService', () => ({
   resendDLQ: vi.fn(),
 }));
 vi.mock('../../../services/instanceService', () => ({
-  listInstances: vi.fn().mockResolvedValue([]),
+  listInstances: vi.fn().mockResolvedValue([
+    {
+      id: 'instance-1',
+      name: 'Instance 1',
+      endpoint: 'namesrv-1:9876',
+      type: 'DIRECT',
+      remark: '',
+      topicCount: 0,
+      consumerGroupCount: 0,
+      createdAt: '',
+      updatedAt: '',
+    },
+  ]),
 }));
 
 const dlqGroup: DLQGroup = {
@@ -56,7 +68,7 @@ const renderWithProviders = (ui: React.ReactElement) =>
   render(
     <App>
       <LangProvider>
-        <MemoryRouter>{ui}</MemoryRouter>
+        <MemoryRouter initialEntries={['/instance/instance-1/dlq']}>{ui}</MemoryRouter>
       </LangProvider>
     </App>,
   );
@@ -107,7 +119,7 @@ describe('DLQ page', () => {
 
     expect(await screen.findByText('cg-order')).toBeInTheDocument();
     expect(screen.getByText('%DLQ%cg-order')).toBeInTheDocument();
-    expect(messageService.listDLQGroups).toHaveBeenCalledTimes(1);
+    expect(messageService.listDLQGroups).toHaveBeenCalledWith('instance-1');
   });
 
   it('surfaces unavailable DLQ provider errors when loading groups', async () => {

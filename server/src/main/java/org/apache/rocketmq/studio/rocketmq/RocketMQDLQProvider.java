@@ -29,14 +29,14 @@ import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.protocol.admin.TopicOffset;
 import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.instance.dlq.DLQGroupVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQProvider;
 import org.apache.rocketmq.studio.instance.dlq.DLQResendResultVO;
 import org.apache.rocketmq.studio.ops.audit.AuditService;
-import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
+import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -63,34 +63,24 @@ public class RocketMQDLQProvider implements DLQProvider {
     private static final long ONE_HOUR_MILLIS = 3600_000L;
     private static final int RESEND_HARD_CAP = 5000;
 
-    private final ObjectProvider<DefaultMQAdminExt> adminExtProvider;
+    private final RuntimeAdminClientResolver runtimeAdminClientResolver;
     private final AuditService auditService;
-    private final RocketMQProperties properties;
 
-    public RocketMQDLQProvider(ObjectProvider<DefaultMQAdminExt> adminExtProvider,
-                               AuditService auditService,
-                               RocketMQProperties properties) {
-        this.adminExtProvider = adminExtProvider;
+    public RocketMQDLQProvider(RuntimeAdminClientResolver runtimeAdminClientResolver,
+                               AuditService auditService) {
+        this.runtimeAdminClientResolver = runtimeAdminClientResolver;
         this.auditService = auditService;
-        this.properties = properties;
     }
 
     @Override
-    public List<DLQGroupVO> listDLQGroups(String clusterId) {
-        DefaultMQAdminExt adminExt = adminExtProvider.getIfAvailable();
-        if (adminExt == null) {
-            log.warn("DefaultMQAdminExt is not configured, returning empty DLQ group list");
-            return Collections.emptyList();
-        }
+    public List<DLQGroupVO> listDLQGroups(String instanceId) {
+        return runtimeAdminClientResolver.execute(instanceId, this::listDLQGroups);
+    }
 
+    private List<DLQGroupVO> listDLQGroups(MQAdminExt adminExt) throws Exception {
         Set<String> topics;
-        try {
-            TopicList topicList = adminExt.fetchAllTopicList();
-            topics = topicList == null ? Collections.emptySet() : topicList.getTopicList();
-        } catch (Exception e) {
-            log.warn("Failed to fetch topic list for DLQ scan: {}", e.getMessage());
-            return Collections.emptyList();
-        }
+        TopicList topicList = adminExt.fetchAllTopicList();
+        topics = topicList == null ? Collections.emptySet() : topicList.getTopicList();
 
         List<DLQGroupVO> groups = new ArrayList<>();
         for (String topic : topics) {
@@ -106,7 +96,7 @@ public class RocketMQDLQProvider implements DLQProvider {
         return groups;
     }
 
-    private DLQGroupVO buildDLQGroup(DefaultMQAdminExt adminExt, String groupName, String dlqTopic) {
+    private DLQGroupVO buildDLQGroup(MQAdminExt adminExt, String groupName, String dlqTopic) {
         long messageCount = 0L;
         LocalDateTime lastEnqueueTime = null;
         try {
@@ -143,18 +133,19 @@ public class RocketMQDLQProvider implements DLQProvider {
     }
 
     @Override
-    public DLQResendResultVO resendMessages(String groupName, Long startTime, Long endTime, String targetTopic) {
-        DefaultMQAdminExt adminExt = adminExtProvider.getIfAvailable();
+    public DLQResendResultVO resendMessages(String instanceId, String groupName, Long startTime, Long endTime,
+                                             String targetTopic) {
+        String endpoint = runtimeAdminClientResolver.resolveEndpoint(instanceId);
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + groupName;
 
         long end = endTime != null ? endTime : System.currentTimeMillis();
         long begin = startTime != null ? startTime : end - ONE_HOUR_MILLIS;
 
-        List<MessageExt> deadLetters = collectDeadLetters(dlqTopic, begin, end);
+        List<MessageExt> deadLetters = collectDeadLetters(endpoint, dlqTopic, begin, end);
         int resent = 0;
         int failed = 0;
         if (!deadLetters.isEmpty()) {
-            DefaultMQProducer producer = newProducer();
+            DefaultMQProducer producer = newProducer(endpoint);
             try {
                 producer.start();
                 for (MessageExt deadLetter : deadLetters) {
@@ -172,8 +163,8 @@ public class RocketMQDLQProvider implements DLQProvider {
             }
         }
 
-        String detail = String.format("group=%s, dlqTopic=%s, targetTopic=%s, matched=%d, resent=%d, failed=%d",
-                groupName, dlqTopic, StringUtils.hasText(targetTopic) ? targetTopic : "<original>",
+        String detail = String.format("instanceId=%s, group=%s, dlqTopic=%s, targetTopic=%s, matched=%d, resent=%d, failed=%d",
+                instanceId, groupName, dlqTopic, StringUtils.hasText(targetTopic) ? targetTopic : "<original>",
                 deadLetters.size(), resent, failed);
         recordAudit(groupName, detail, failed == 0 ? "SUCCESS" : "PARTIAL");
         log.info("DLQ resend completed: {}", detail);
@@ -185,8 +176,8 @@ public class RocketMQDLQProvider implements DLQProvider {
                 .build();
     }
 
-    private List<MessageExt> collectDeadLetters(String dlqTopic, long begin, long end) {
-        DefaultMQPullConsumer consumer = newPullConsumer();
+    private List<MessageExt> collectDeadLetters(String endpoint, String dlqTopic, long begin, long end) {
+        DefaultMQPullConsumer consumer = newPullConsumer(endpoint);
         List<MessageExt> result = new ArrayList<>();
         try {
             consumer.start();
@@ -272,22 +263,18 @@ public class RocketMQDLQProvider implements DLQProvider {
         return null;
     }
 
-    private DefaultMQPullConsumer newPullConsumer() {
+    private DefaultMQPullConsumer newPullConsumer(String endpoint) {
         DefaultMQPullConsumer consumer = new DefaultMQPullConsumer("studio-dlq-query-group");
         consumer.setInstanceName(ShortLivedClientName.next("studio-dlq-query"));
-        if (StringUtils.hasText(properties.getNamesrvAddr())) {
-            consumer.setNamesrvAddr(properties.getNamesrvAddr());
-        }
+        consumer.setNamesrvAddr(endpoint);
         return consumer;
     }
 
-    private DefaultMQProducer newProducer() {
+    private DefaultMQProducer newProducer(String endpoint) {
         DefaultMQProducer producer = new DefaultMQProducer(nextResendProducerGroup());
         producer.setInstanceName(ShortLivedClientName.next("studio-dlq-resend"));
         producer.setRetryTimesWhenSendFailed(2);
-        if (StringUtils.hasText(properties.getNamesrvAddr())) {
-            producer.setNamesrvAddr(properties.getNamesrvAddr());
-        }
+        producer.setNamesrvAddr(endpoint);
         return producer;
     }
 

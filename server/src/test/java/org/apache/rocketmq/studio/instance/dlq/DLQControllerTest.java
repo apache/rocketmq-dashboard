@@ -64,9 +64,9 @@ class DLQControllerTest {
                 .status("ACTIVE")
                 .build();
 
-        when(dlqService.listDLQGroups(isNull())).thenReturn(List.of(group));
+        when(dlqService.listDLQGroups("instance-1")).thenReturn(List.of(group));
 
-        mockMvc.perform(get("/api/dlq"))
+        mockMvc.perform(get("/api/dlq").param("instanceId", "instance-1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data").isArray())
@@ -76,20 +76,21 @@ class DLQControllerTest {
     }
 
     @Test
-    void listDLQGroupsShouldPassClusterId() throws Exception {
-        when(dlqService.listDLQGroups(eq("cluster-1"))).thenReturn(List.of());
+    void listDLQGroupsShouldPassInstanceId() throws Exception {
+        when(dlqService.listDLQGroups(eq("instance-1"))).thenReturn(List.of());
 
         mockMvc.perform(get("/api/dlq")
-                        .param("clusterId", "cluster-1"))
+                        .param("instanceId", "instance-1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray());
 
-        verify(dlqService).listDLQGroups(eq("cluster-1"));
+        verify(dlqService).listDLQGroups(eq("instance-1"));
     }
 
     @Test
     void resendMessagesShouldReturnSuccess() throws Exception {
         Map<String, Object> body = Map.of(
+                "instanceId", "instance-1",
                 "groupName", "test-group",
                 "startTime", 1000,
                 "endTime", 2000,
@@ -104,12 +105,13 @@ class DLQControllerTest {
                 .andExpect(jsonPath("$.message").value("success"));
 
         verify(dlqService).resendMessages(
-                eq("test-group"), eq(1000L), eq(2000L), eq("target-topic"));
+                eq("instance-1"), eq("test-group"), eq(1000L), eq(2000L), eq("target-topic"));
     }
 
     @Test
     void resendMessagesShouldHandleNullTimeRange() throws Exception {
         Map<String, Object> body = Map.of(
+                "instanceId", "instance-1",
                 "groupName", "test-group",
                 "targetTopic", "target-topic"
         );
@@ -121,7 +123,7 @@ class DLQControllerTest {
                 .andExpect(jsonPath("$.code").value(200));
 
         verify(dlqService).resendMessages(
-                eq("test-group"), isNull(), isNull(), eq("target-topic"));
+                eq("instance-1"), eq("test-group"), isNull(), isNull(), eq("target-topic"));
     }
 
     @Test
@@ -139,6 +141,7 @@ class DLQControllerTest {
     @Test
     void resendMessagesShouldRejectMissingGroupName() throws Exception {
         Map<String, Object> body = Map.of(
+                "instanceId", "instance-1",
                 "startTime", 1000,
                 "endTime", 2000,
                 "targetTopic", "target-topic"
@@ -157,6 +160,7 @@ class DLQControllerTest {
     @Test
     void resendMessagesShouldRejectInvalidTimeType() throws Exception {
         Map<String, Object> body = Map.of(
+                "instanceId", "instance-1",
                 "groupName", "test-group",
                 "startTime", "invalid",
                 "endTime", 2000,

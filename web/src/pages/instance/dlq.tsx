@@ -123,7 +123,20 @@ const DLQPage = () => {
   useEffect(() => {
     let cancelled = false;
 
-    void listDLQGroups()
+    if (!selectedInstanceId) {
+      void Promise.resolve().then(() => {
+        if (cancelled) return;
+        setGroups([]);
+        setSelectedGroupNames([]);
+        setLoadError(null);
+        setLoading(false);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void listDLQGroups(selectedInstanceId)
       .then((nextGroups) => {
         if (!cancelled) {
           setGroups(nextGroups);
@@ -146,7 +159,7 @@ const DLQPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [refreshKey]);
+  }, [refreshKey, selectedInstanceId]);
 
   /* ─── Filtering ─── */
   const filtered = useMemo(() => {
@@ -176,12 +189,13 @@ const DLQPage = () => {
       message.warning('请输入目标 Topic');
       return;
     }
-    if (!retryGroup) return;
+    if (!retryGroup || !selectedInstanceId) return;
 
     setRetrySubmitting(true);
     setRetryError(null);
     try {
       const result = await resendDLQ({
+        instanceId: selectedInstanceId,
         groupName: retryGroup.groupName,
         startTime: retryRange[0].valueOf(),
         endTime: retryRange[1].valueOf(),

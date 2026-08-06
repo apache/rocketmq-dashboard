@@ -26,14 +26,22 @@ import { listConnections } from './connectionsService';
 
 describe('connectionsService mock connections', () => {
   it('returns defensive copies after applying filters', async () => {
-    const connections = await listConnections({ clusterId: 'ns-prod', type: 'Consumer' });
+    const connections = await listConnections({
+      instanceId: 'instance-1',
+      clusterId: 'ns-prod',
+      type: 'Consumer',
+    });
     const originalClientId = connections[0].clientId;
     const originalAddress = connections[0].address;
 
     connections[0].clientId = 'mutated-client';
     connections[0].address = '127.0.0.1:8081';
 
-    const fresh = await listConnections({ clusterId: 'ns-prod', type: 'Consumer' });
+    const fresh = await listConnections({
+      instanceId: 'instance-1',
+      clusterId: 'ns-prod',
+      type: 'Consumer',
+    });
 
     expect(fresh[0].clientId).toBe(originalClientId);
     expect(fresh[0].address).toBe(originalAddress);

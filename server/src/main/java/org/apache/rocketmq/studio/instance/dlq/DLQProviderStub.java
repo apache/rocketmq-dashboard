@@ -29,14 +29,15 @@ import java.util.List;
 public class DLQProviderStub implements DLQProvider {
 
     @Override
-    public List<DLQGroupVO> listDLQGroups(String clusterId) {
-        log.warn("DLQProviderStub.listDLQGroups called but no real DLQ provider is configured. clusterId={}",
-                clusterId);
+    public List<DLQGroupVO> listDLQGroups(String instanceId) {
+        log.warn("DLQProviderStub.listDLQGroups called but no real DLQ provider is configured. instanceId={}",
+                instanceId);
         throw unsupported();
     }
 
     @Override
-    public DLQResendResultVO resendMessages(String groupName, Long startTime, Long endTime, String targetTopic) {
+    public DLQResendResultVO resendMessages(String instanceId, String groupName, Long startTime, Long endTime,
+                                             String targetTopic) {
         log.warn("DLQProviderStub.resendMessages called but no real DLQ provider is configured. group={}, targetTopic={}",
                 groupName, targetTopic);
         throw unsupported();

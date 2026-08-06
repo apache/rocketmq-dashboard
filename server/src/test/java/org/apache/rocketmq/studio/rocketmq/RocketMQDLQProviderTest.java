@@ -20,15 +20,14 @@ import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
 import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.ops.audit.AuditService;
-import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.MockedConstruction;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.beans.factory.ObjectProvider;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -48,10 +47,7 @@ import static org.mockito.Mockito.when;
 class RocketMQDLQProviderTest {
 
     @Mock
-    private ObjectProvider<DefaultMQAdminExt> adminExtProvider;
-
-    @Mock
-    private DefaultMQAdminExt adminExt;
+    private RuntimeAdminClientResolver runtimeAdminClientResolver;
 
     @Mock
     private AuditService auditService;
@@ -60,8 +56,8 @@ class RocketMQDLQProviderTest {
 
     @BeforeEach
     void setUp() {
-        lenient().when(adminExtProvider.getIfAvailable()).thenReturn(adminExt);
-        provider = new RocketMQDLQProvider(adminExtProvider, auditService, new RocketMQProperties());
+        lenient().when(runtimeAdminClientResolver.resolveEndpoint("instance-a")).thenReturn("namesrv-a:9876");
+        provider = new RocketMQDLQProvider(runtimeAdminClientResolver, auditService);
     }
 
     @Test
@@ -75,10 +71,11 @@ class RocketMQDLQProviderTest {
                      });
              MockedConstruction<DefaultMQProducer> mockedProducers =
                      mockConstruction(DefaultMQProducer.class)) {
-            provider.resendMessages("group-a", 100L, 200L, "target-topic");
+            provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic");
 
             assertThat(mockedConsumers.constructed()).hasSize(1);
             DefaultMQPullConsumer consumer = mockedConsumers.constructed().get(0);
+            verify(consumer).setNamesrvAddr("namesrv-a:9876");
             verify(consumer).start();
             verify(consumer).fetchSubscribeMessageQueues(dlqTopic);
             verify(consumer, never()).pull(any(MessageQueue.class), anyString(), anyLong(), anyInt());
@@ -90,6 +87,7 @@ class RocketMQDLQProviderTest {
                 eq("group-a"),
                 contains("matched=0, resent=0, failed=0"),
                 eq("SUCCESS"));
+        verify(runtimeAdminClientResolver).resolveEndpoint("instance-a");
     }
 
     @Test

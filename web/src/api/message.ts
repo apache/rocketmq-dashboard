@@ -84,12 +84,13 @@ export async function getMessageTrace(msgId: string) {
 }
 
 // ─── DLQ ────────────────────────────────────────────────────────
-export async function listDLQGroups() {
-  const res = await client.get<{ data: DLQGroup[] }>('/dlq');
+export async function listDLQGroups(instanceId: string) {
+  const res = await client.get<{ data: DLQGroup[] }>('/dlq', { params: { instanceId } });
   return res.data.data;
 }
 
 export async function resendDLQ(data: {
+  instanceId: string;
   groupName: string;
   startTime: number;
   endTime: number;

@@ -47,12 +47,20 @@ describe('client connections API', () => {
 
   it('uses the query parameters supported by the backend', async () => {
     mock.onGet('/clients').reply((config) => {
-      expect(config.params).toEqual({ clusterId: 'production-cluster', type: 'Producer' });
+      expect(config.params).toEqual({
+        instanceId: 'instance-1',
+        clusterId: 'production-cluster',
+        type: 'Producer',
+      });
       return [200, { code: 200, data: [connection] }];
     });
 
     await expect(
-      listConnections({ clusterId: 'production-cluster', type: 'Producer' }),
+      listConnections({
+        instanceId: 'instance-1',
+        clusterId: 'production-cluster',
+        type: 'Producer',
+      }),
     ).resolves.toEqual([connection]);
   });
 });

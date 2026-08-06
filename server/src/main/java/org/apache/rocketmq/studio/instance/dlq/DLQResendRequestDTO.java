@@ -27,6 +27,9 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class DLQResendRequestDTO {
+    @NotBlank(message = "instanceId is required")
+    private String instanceId;
+
     @NotBlank(message = "groupName is required")
     private String groupName;
     private Long startTime;
