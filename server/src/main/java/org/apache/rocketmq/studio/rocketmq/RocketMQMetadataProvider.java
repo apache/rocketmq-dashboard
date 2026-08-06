@@ -166,9 +166,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             vo.setName(entity.getName());
             vo.setClusterId(entity.getClusterId());
             vo.setInstanceId(entity.getInstanceId());
-            // consumeType stores the real ConsumeType ("CLUSTERING"/"BROADCASTING"); messageModel
-            // holds the subscription mode ("Push"/"Pop") and is not a ConsumeType.
-            vo.setConsumeType(parseConsumeType(entity.getConsumeType()));
+            vo.setConsumeType(parseConsumeType(entity.getMessageModel()));
             vo.setRetryMaxTimes(entity.getMaxRetry() == null ? 0 : entity.getMaxRetry());
             vo.setCreatedAt(entity.getCreatedAt());
             vo.setUpdatedAt(entity.getUpdatedAt());
