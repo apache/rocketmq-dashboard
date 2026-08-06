@@ -194,7 +194,17 @@ public class RocketMQDLQProvider implements DLQProvider {
                             break outer;
                         }
                         PullResult pullResult = consumer.pull(queue, "*", offset, 32);
-                        offset = pullResult.getNextBeginOffset();
+                        if (pullResult == null) {
+                            log.warn("Stop DLQ scan for {} because queue {} returned no pull result", dlqTopic, queue);
+                            break;
+                        }
+                        long nextOffset = pullResult.getNextBeginOffset();
+                        if (nextOffset <= offset) {
+                            log.warn("Stop DLQ scan for {} because queue {} did not advance offset {}",
+                                    dlqTopic, queue, offset);
+                            break;
+                        }
+                        offset = nextOffset;
                         if (pullResult.getPullStatus() != PullStatus.FOUND
                                 || pullResult.getMsgFoundList() == null) {
                             break;
