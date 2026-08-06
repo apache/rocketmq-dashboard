@@ -256,4 +256,16 @@ class TopicControllerTest {
 
         verifyNoInteractions(metadataService);
     }
+
+    @Test
+    void sendMessageShouldRejectMissingTopic() throws Exception {
+        mockMvc.perform(post("/api/topics/send")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"hello\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("topic is required"));
+
+        verifyNoInteractions(metadataService);
+    }
 }

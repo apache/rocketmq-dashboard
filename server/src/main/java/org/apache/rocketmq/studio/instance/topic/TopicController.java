@@ -75,7 +75,7 @@ public class TopicController {
     }
 
     @PostMapping("/send")
-    public Result<SendMessageVO> sendMessage(@RequestBody(required = false) SendMessageDTO request) {
+    public Result<SendMessageVO> sendMessage(@Valid @RequestBody(required = false) SendMessageDTO request) {
         requireSendMessageRequest(request);
         return Result.ok(metadataService.sendMessage(request));
     }
