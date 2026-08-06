@@ -77,8 +77,7 @@ class RocketMQMessageProviderTest {
             MqAdminExtFactory.AdminAction<Object> action = invocation.getArgument(1);
             return action == null ? null : action.apply(adminExt);
         });
-        provider = new RocketMQMessageProvider(adminExtProvider, runtimeAdminClientResolver, queryHistoryService,
-                new RocketMQProperties());
+        provider = new RocketMQMessageProvider(adminExtProvider, runtimeAdminClientResolver, queryHistoryService);
     }
 
     @Test
@@ -102,7 +101,7 @@ class RocketMQMessageProviderTest {
         }
         verify(runtimeAdminClientResolver).resolveEndpoint("instance-a");
         verify(runtimeAdminClientResolver).execute(eq("instance-a"), any());
-        verify(queryHistoryService).recordMessageQuery(null, "TOPIC", "TopicA", null, null, null,
+        verify(queryHistoryService).recordMessageQuery("instance-a", "TOPIC", "TopicA", null, null, null,
                 100L, 200L, 0);
     }
 
@@ -166,6 +165,7 @@ class RocketMQMessageProviderTest {
         TraceRecordVO record = provider.getMessageTrace("instance-a", "msg-123");
 
         assertThat(record.getNodes()).hasSize(2);
+        verify(queryHistoryService).recordTraceQuery(eq("instance-a"), eq("msg-123"), eq(null), eq(2), eq(1));
         TraceNodeVO produce = record.getNodes().get(0);
         assertThat(produce.getTitle()).isEqualTo("produce");
         assertThat(produce.getStatus()).isEqualTo("finish");
