@@ -31,7 +31,7 @@ public interface AclRepository {
      */
     Optional<AclRuleVO> replaceRule(AclRuleVO rule);
 
-    void deleteRule(String id);
+    boolean deleteRule(String id);
 
     List<AclUserVO> findUsers();
 
@@ -39,5 +39,5 @@ public interface AclRepository {
 
     AclUserVO saveUser(AclUserVO user);
 
-    void deleteUser(String id);
+    boolean deleteUser(String id);
 }

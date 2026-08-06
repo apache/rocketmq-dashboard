@@ -72,8 +72,8 @@ public class MybatisPlusAlertRepository implements AlertRepository {
     }
 
     @Override
-    public void deleteRule(String id) {
-        ruleMapper.deleteById(id);
+    public boolean deleteRule(String id) {
+        return ruleMapper.deleteById(id) > 0;
     }
 
     @Override

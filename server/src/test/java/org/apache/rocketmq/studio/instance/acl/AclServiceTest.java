@@ -111,6 +111,7 @@ class AclServiceTest {
 
     @Test
     void deleteRuleShouldDelegateToRepository() {
+        when(aclRepository.deleteRule("rule-1")).thenReturn(true);
         aclService.deleteRule("rule-1");
 
         verify(aclRepository).deleteRule("rule-1");
@@ -310,9 +311,28 @@ class AclServiceTest {
 
     @Test
     void deleteUserShouldDelegateToRepository() {
+        when(aclRepository.deleteUser("user-1")).thenReturn(true);
         aclService.deleteUser("user-1");
 
         verify(aclRepository).deleteUser("user-1");
+    }
+
+    @Test
+    void deleteRuleShouldRejectUnknownRule() {
+        when(aclRepository.deleteRule("missing")).thenReturn(false);
+
+        assertThatThrownBy(() -> aclService.deleteRule("missing"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
+    }
+
+    @Test
+    void deleteUserShouldRejectUnknownUser() {
+        when(aclRepository.deleteUser("missing")).thenReturn(false);
+
+        assertThatThrownBy(() -> aclService.deleteUser("missing"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
     }
 
     @Test

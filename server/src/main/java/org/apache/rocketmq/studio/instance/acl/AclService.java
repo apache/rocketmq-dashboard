@@ -67,7 +67,9 @@ public class AclService {
 
     public void deleteRule(String id) {
         log.info("Deleting ACL rule id={}", id);
-        aclRepository.deleteRule(id);
+        if (!aclRepository.deleteRule(id)) {
+            throw new BusinessException(404, "ACL rule not found: " + id);
+        }
     }
 
 
@@ -112,7 +114,9 @@ public class AclService {
 
     public void deleteUser(String id) {
         log.info("Deleting ACL user id={}", id);
-        aclRepository.deleteUser(id);
+        if (!aclRepository.deleteUser(id)) {
+            throw new BusinessException(404, "ACL user not found: " + id);
+        }
     }
 
     /**
