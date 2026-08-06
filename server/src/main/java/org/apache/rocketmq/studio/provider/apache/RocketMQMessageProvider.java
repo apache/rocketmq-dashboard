@@ -83,17 +83,18 @@ public class RocketMQMessageProvider implements MessageProvider {
 
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
     private final QueryHistoryService queryHistoryService;
-    private final RocketMQProperties properties;
 
     @Override
     public List<MessageRecordVO> queryMessages(String instanceId, String topic, String msgId, String tag, String key,
                                                Long startTime, Long endTime) {
         String endpoint = runtimeAdminClientResolver.resolveEndpoint(instanceId);
         return runtimeAdminClientResolver.execute(instanceId,
-                adminExt -> queryMessages((DefaultMQAdminExt) adminExt, endpoint, topic, msgId, tag, key, startTime, endTime));
+                adminExt -> queryMessages(instanceId, (DefaultMQAdminExt) adminExt, endpoint,
+                        topic, msgId, tag, key, startTime, endTime));
     }
 
-    private List<MessageRecordVO> queryMessages(DefaultMQAdminExt adminExt, String endpoint, String topic, String msgId, String tag, String key,
+    private List<MessageRecordVO> queryMessages(String instanceId, DefaultMQAdminExt adminExt, String endpoint,
+                                                 String topic, String msgId, String tag, String key,
                                                  Long startTime, Long endTime) {
 
         long end = endTime != null ? endTime : System.currentTimeMillis();
@@ -115,7 +116,7 @@ public class RocketMQMessageProvider implements MessageProvider {
             return Collections.emptyList();
         }
 
-        recordMessageQuery(queryType, topic, msgId, tag, key, startTime, endTime, result.size());
+        recordMessageQuery(instanceId, queryType, topic, msgId, tag, key, startTime, endTime, result.size());
         return result;
     }
 
@@ -234,10 +235,10 @@ public class RocketMQMessageProvider implements MessageProvider {
     @Override
     public TraceRecordVO getMessageTrace(String instanceId, String msgId) {
         return runtimeAdminClientResolver.execute(instanceId,
-                adminExt -> getMessageTrace((DefaultMQAdminExt) adminExt, msgId));
+                adminExt -> getMessageTrace(instanceId, (DefaultMQAdminExt) adminExt, msgId));
     }
 
-    private TraceRecordVO getMessageTrace(DefaultMQAdminExt adminExt, String msgId) {
+    private TraceRecordVO getMessageTrace(String instanceId, DefaultMQAdminExt adminExt, String msgId) {
 
         long now = System.currentTimeMillis();
         long begin = now - ONE_HOUR_MILLIS;
@@ -257,7 +258,7 @@ public class RocketMQMessageProvider implements MessageProvider {
             log.warn("Trace query for msgId={} failed: {}", msgId, e.getMessage());
         }
 
-        recordTraceQuery(msgId, null, nodes.size(), consumerStatus.size());
+        recordTraceQuery(instanceId, msgId, null, nodes.size(), consumerStatus.size());
         return TraceRecordVO.builder()
                 .nodes(nodes)
                 .consumerStatus(consumerStatus)
@@ -480,26 +481,22 @@ public class RocketMQMessageProvider implements MessageProvider {
         return consumer;
     }
 
-    private void recordMessageQuery(String queryType, String topic, String msgId, String tag, String key,
+    private void recordMessageQuery(String instanceId, String queryType, String topic, String msgId, String tag, String key,
                                     Long startTime, Long endTime, int resultCount) {
         try {
-            queryHistoryService.recordMessageQuery(clusterContext(), queryType, topic, msgId, tag, key,
+            queryHistoryService.recordMessageQuery(instanceId, queryType, topic, msgId, tag, key,
                     startTime, endTime, resultCount);
         } catch (Exception e) {
             log.warn("Failed to record message query history: {}", e.getMessage());
         }
     }
 
-    private void recordTraceQuery(String msgId, String topic, int nodeCount, int consumerCount) {
+    private void recordTraceQuery(String instanceId, String msgId, String topic, int nodeCount, int consumerCount) {
         try {
-            queryHistoryService.recordTraceQuery(clusterContext(), msgId, topic, nodeCount, consumerCount);
+            queryHistoryService.recordTraceQuery(instanceId, msgId, topic, nodeCount, consumerCount);
         } catch (Exception e) {
             log.warn("Failed to record trace query history: {}", e.getMessage());
         }
-    }
-
-    private String clusterContext() {
-        return StringUtils.hasText(properties.getNamesrvAddr()) ? properties.getNamesrvAddr() : null;
     }
 
     private static TraceRecordVO emptyTrace() {
