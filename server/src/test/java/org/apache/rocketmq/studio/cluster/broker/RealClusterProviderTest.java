@@ -97,6 +97,19 @@ class RealClusterProviderTest {
     }
 
     @Test
+    void describeClusterShouldDefaultAbsentRuntimeCollectionsToEmpty() throws Exception {
+        stubClusterInfo("10.0.0.1:9876", sampleClusterInfo());
+
+        ClusterVO cluster = provider.describeCluster("10.0.0.1:9876");
+
+        // A live cluster without a proxy must still serialize non-null collections
+        // so the web UI never dereferences null component lists.
+        assertThat(cluster.getProxies()).isEmpty();
+        assertThat(cluster.getTpsHistory()).isEmpty();
+        assertThat(cluster.getConfig()).isNotNull();
+    }
+
+    @Test
     void discoverClustersShouldReturnEmptyWhenNoNamesrvConfigured() {
         properties.setNamesrvAddr("  ");
 

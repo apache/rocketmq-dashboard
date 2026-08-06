@@ -47,6 +47,7 @@ import {
 import { Cpu, HardDrives, Globe } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
+import { countClusterComponents } from './clusterStats';
 import type {
   BrokerInfo,
   ProxyInfo,
@@ -934,9 +935,11 @@ const ClusterPage = () => {
 
   // ─── Render ─────────────────────────────────────────────────────────────────
 
-  const totalBrokers = clusters.reduce((s, c) => s + (c.brokers?.length ?? 0), 0);
-  const totalNameServers = clusters.reduce((s, c) => s + (c.nameServers?.length ?? 0), 0);
-  const totalProxies = clusters.reduce((s, c) => s + (c.proxies?.length ?? 0), 0);
+  const {
+    brokers: totalBrokers,
+    nameServers: totalNameServers,
+    proxies: totalProxies,
+  } = countClusterComponents(clusters);
 
   return (
     <div style={{ padding: 24 }}>
