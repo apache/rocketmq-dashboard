@@ -457,3 +457,70 @@ tools:
                         - 'null'
     viewHint: object
     deprecated: false
+  - name: rmq.message.trace
+    cli:
+      resource: message
+      verb: trace
+    description: Get the message trace timeline for one message id in a RocketMQ cluster.
+    riskLevel: L1
+    permission: message:read
+    requiredCapabilities: []
+    inputSchema:
+      type: object
+      required:
+        - cluster
+        - msgId
+      additionalProperties: false
+      properties:
+        cluster:
+          type: string
+          minLength: 1
+        msgId:
+          type: string
+          minLength: 1
+    outputSchema:
+      type: object
+      required:
+        - msgId
+        - nodes
+        - consumerStatus
+      additionalProperties: false
+      properties:
+        msgId:
+          type: string
+        nodes:
+          type: array
+          items:
+            type: object
+            required:
+              - title
+            additionalProperties: false
+            properties:
+              title:
+                type: string
+              timestamp:
+                type: integer
+              status:
+                type: string
+              costTime:
+                type: integer
+              description:
+                type: string
+        consumerStatus:
+          type: array
+          items:
+            type: object
+            required:
+              - group
+            additionalProperties: false
+            properties:
+              group:
+                type: string
+              deliveryStatus:
+                type: string
+              consumeTime:
+                type: integer
+              retryCount:
+                type: integer
+    viewHint: object
+    deprecated: false

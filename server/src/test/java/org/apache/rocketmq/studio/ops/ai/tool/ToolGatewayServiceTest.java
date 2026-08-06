@@ -45,6 +45,7 @@ import org.springframework.core.io.ClassPathResource;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -122,7 +123,8 @@ class ToolGatewayServiceTest {
                         "rmq.topic.list",
                         "rmq.group.list",
                         "rmq.alert.rule.list",
-                        "rmq.nameserver.config.diff");
+                        "rmq.nameserver.config.diff",
+                        "rmq.message.trace");
     }
 
     @Test
@@ -507,7 +509,8 @@ class ToolGatewayServiceTest {
 
     @Test
     void failsStartupWhenCatalogAndHandlersDoNotMatch() {
-        assertThatThrownBy(() -> gateway(catalog, clusterListHandler))
+        assertThatThrownBy(() -> new ToolGatewayService(
+                catalog, capabilityResolver, new ObjectMapper(), List.of(clusterListHandler)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("missing handler");
     }
@@ -600,11 +603,22 @@ class ToolGatewayServiceTest {
     }
 
     private ToolGatewayService gateway(ToolCatalog toolCatalog, ToolHandler... handlers) {
+        List<ToolHandler> all = new ArrayList<>(List.of(handlers));
+        // The canonical catalog gains tools over time; fill any handler the test did not pass in
+        // with a stub so gateway construction stays valid for every catalog entry.
+        for (ToolDefinition definition : toolCatalog.list()) {
+            boolean provided = all.stream().anyMatch(h -> h.name().equals(definition.name()));
+            if (!provided) {
+                ToolHandler stub = mock(ToolHandler.class);
+                when(stub.name()).thenReturn(definition.name());
+                all.add(stub);
+            }
+        }
         return new ToolGatewayService(
                 toolCatalog,
                 capabilityResolver,
                 new ObjectMapper(),
-                List.of(handlers));
+                all);
     }
 
     private static ToolCatalog canonicalCatalog() {
