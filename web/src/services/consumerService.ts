@@ -115,24 +115,9 @@ export async function resetConsumerOffset(data: ResetConsumerOffsetRequest): Pro
   return metadataApi.resetConsumerOffset(data);
 }
 
-export interface BatchDeleteConsumerGroupsResult {
-  deleted: string[];
-  failed: string[];
-}
-
-// Batch delete: attempt every selected group and report partial failures so a single
-// failing group cannot silently abort the whole batch.
-export async function batchDeleteConsumerGroups(
-  names: string[],
-): Promise<BatchDeleteConsumerGroupsResult> {
-  const result: BatchDeleteConsumerGroupsResult = { deleted: [], failed: [] };
+// Batch delete: loop through single delete calls
+export async function batchDeleteConsumerGroups(names: string[]): Promise<void> {
   for (const name of names) {
-    try {
-      await deleteConsumerGroup(name);
-      result.deleted.push(name);
-    } catch {
-      result.failed.push(name);
-    }
+    await deleteConsumerGroup(name);
   }
-  return result;
 }
