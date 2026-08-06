@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Table,
   Button,
@@ -65,6 +65,7 @@ const GroupManagementPage = () => {
   const [subscriptions, setSubscriptions] = useState<SubscriptionEntry[]>([]);
   const [progress, setProgress] = useState<QueueProgress[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
+  const detailRequestId = useRef(0);
   const { t } = useLang();
 
   useEffect(() => {
@@ -101,6 +102,7 @@ const GroupManagementPage = () => {
 
   const handleViewDetail = useCallback(
     async (group: ConsumerGroup) => {
+      const requestId = ++detailRequestId.current;
       setSelectedGroup(group);
       setModalVisible(true);
       setSubscriptions([]);
@@ -111,12 +113,16 @@ const GroupManagementPage = () => {
           getConsumerSubscriptions(group.name),
           getConsumerProgress(group.name),
         ]);
+        if (requestId !== detailRequestId.current) return;
         setSubscriptions(subs);
         setProgress(prog);
       } catch {
+        if (requestId !== detailRequestId.current) return;
         message.error(t('consumer.fetchProgressFailed', { name: group.name }));
       } finally {
-        setDetailLoading(false);
+        if (requestId === detailRequestId.current) {
+          setDetailLoading(false);
+        }
       }
     },
     [t],
@@ -317,7 +323,10 @@ const GroupManagementPage = () => {
       <Modal
         title={null}
         open={modalVisible}
-        onCancel={() => setModalVisible(false)}
+        onCancel={() => {
+          ++detailRequestId.current;
+          setModalVisible(false);
+        }}
         footer={null}
         width={720}
         destroyOnClose

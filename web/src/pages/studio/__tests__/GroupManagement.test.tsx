@@ -16,11 +16,11 @@
  */
 
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
-import type { ConsumerGroup } from '../../../api/metadata';
+import type { ConsumerGroup, QueueProgress, SubscriptionEntry } from '../../../api/metadata';
 import * as consumerService from '../../../services/consumerService';
 import GroupManagement from '../GroupManagement';
 
@@ -84,6 +84,14 @@ const renderWithProviders = (ui: React.ReactElement) => {
   );
 };
 
+const createDeferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+};
+
 describe('GroupManagement Page', () => {
   beforeEach(() => {
     vi.mocked(consumerService.listConsumerGroups).mockResolvedValue(groups);
@@ -126,6 +134,58 @@ describe('GroupManagement Page', () => {
     });
     const detailButtons = screen.getAllByText('详情');
     expect(detailButtons.length).toBeGreaterThan(0);
+  });
+
+  it('keeps the latest group detail when an earlier request resolves last', async () => {
+    const firstSubscriptions = createDeferred<SubscriptionEntry[]>();
+    const firstProgress = createDeferred<QueueProgress[]>();
+    const secondSubscriptions = createDeferred<SubscriptionEntry[]>();
+    const secondProgress = createDeferred<QueueProgress[]>();
+    vi.mocked(consumerService.getConsumerSubscriptions).mockImplementation((groupName) =>
+      groupName === 'order-consumer-group'
+        ? firstSubscriptions.promise
+        : secondSubscriptions.promise,
+    );
+    vi.mocked(consumerService.getConsumerProgress).mockImplementation((groupName) =>
+      groupName === 'order-consumer-group' ? firstProgress.promise : secondProgress.promise,
+    );
+
+    const user = userEvent.setup();
+    renderWithProviders(<GroupManagement />);
+    await screen.findByText('order-consumer-group');
+
+    const detailButtons = screen.getAllByText('详情');
+    await user.click(detailButtons[0]);
+    await user.click(detailButtons[1]);
+
+    await act(async () => {
+      secondSubscriptions.resolve([
+        {
+          topic: 'SECOND_GROUP_TOPIC',
+          expression: '*',
+          type: 'TAG',
+          filterMode: 'TAG',
+          consistency: 'consistent',
+        },
+      ]);
+      secondProgress.resolve([]);
+    });
+    expect(await screen.findByText('SECOND_GROUP_TOPIC')).toBeInTheDocument();
+
+    await act(async () => {
+      firstSubscriptions.resolve([
+        {
+          topic: 'FIRST_GROUP_TOPIC',
+          expression: '*',
+          type: 'TAG',
+          filterMode: 'TAG',
+          consistency: 'consistent',
+        },
+      ]);
+      firstProgress.resolve([]);
+    });
+    expect(screen.getByText('SECOND_GROUP_TOPIC')).toBeInTheDocument();
+    expect(screen.queryByText('FIRST_GROUP_TOPIC')).not.toBeInTheDocument();
   });
 
   it('should filter groups by search text', async () => {
