@@ -46,7 +46,7 @@ public class MessageController {
     }
 
     @GetMapping("/{msgId}/trace")
-    public Result<TraceRecordVO> getMessageTrace(@PathVariable String msgId) {
-        return Result.ok(messageService.getMessageTrace(msgId));
+    public Result<TraceRecordVO> getMessageTrace(@PathVariable String msgId, @RequestParam String instanceId) {
+        return Result.ok(messageService.getMessageTrace(instanceId, msgId));
     }
 }

@@ -163,7 +163,7 @@ class RocketMQMessageProviderTest {
         when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
                 .thenReturn(queryResult);
 
-        TraceRecordVO record = provider.getMessageTrace("msg-123");
+        TraceRecordVO record = provider.getMessageTrace("instance-a", "msg-123");
 
         assertThat(record.getNodes()).hasSize(2);
         TraceNodeVO produce = record.getNodes().get(0);
@@ -196,7 +196,7 @@ class RocketMQMessageProviderTest {
         when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
                 .thenReturn(queryResult);
 
-        TraceRecordVO record = provider.getMessageTrace("msg-tx");
+        TraceRecordVO record = provider.getMessageTrace("instance-a", "msg-tx");
 
         assertThat(record.getNodes()).hasSize(1);
         TraceNodeVO transaction = record.getNodes().get(0);
