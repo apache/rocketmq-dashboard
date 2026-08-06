@@ -107,6 +107,7 @@ class TopicControllerTest {
     void createTopicShouldReturnCreatedTopic() throws Exception {
         TopicVO input = new TopicVO();
         input.setName("new-topic");
+        input.setInstanceId("instance-a");
         input.setWriteQueues(16);
         input.setReadQueues(16);
 
@@ -128,6 +129,7 @@ class TopicControllerTest {
         ArgumentCaptor<TopicVO> captor = ArgumentCaptor.forClass(TopicVO.class);
         verify(metadataService).createTopic(captor.capture());
         assertThat(captor.getValue().getName()).isEqualTo("new-topic");
+        assertThat(captor.getValue().getInstanceId()).isEqualTo("instance-a");
         assertThat(captor.getValue().getWriteQueues()).isEqualTo(16);
         assertThat(captor.getValue().getReadQueues()).isEqualTo(16);
     }

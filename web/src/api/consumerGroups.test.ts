@@ -23,6 +23,7 @@ import {
   getConsumerProgress,
   getConsumerSubscriptions,
   listConsumerGroups,
+  deleteConsumerGroup,
   resetConsumerOffset,
 } from './metadata';
 
@@ -95,5 +96,14 @@ describe('consumer groups API contract', () => {
 
     await expect(getConsumerGroup(group.name)).resolves.toEqual(group);
     await expect(resetConsumerOffset(reset)).resolves.toBeUndefined();
+  });
+
+  it('includes selected instance context when deleting a consumer group', async () => {
+    mock.onPost('/groups/delete').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({ name: group.name, instanceId: 'instance-a' });
+      return [200, { code: 200, data: null }];
+    });
+
+    await expect(deleteConsumerGroup(group.name, 'instance-a')).resolves.toBeUndefined();
   });
 });

@@ -906,7 +906,10 @@ const TopicPage = () => {
                   onOk: async () => {
                     try {
                       const names = selectedRowKeys.map(String);
-                      const { deleted, failed } = await batchDeleteTopics(names);
+                      const { deleted, failed } = await batchDeleteTopics(
+                        names,
+                        selectedInstanceId || undefined,
+                      );
                       if (deleted.length > 0) {
                         const deletedNames = new Set(deleted);
                         setTopics((previous) =>

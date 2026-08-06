@@ -66,6 +66,7 @@ class ConsumerGroupControllerTest {
                 "instanceId", "instance-a",
                 "name", "cg-orders",
                 "clusterId", "cluster-a",
+                "instanceId", "instance-a",
                 "retryMaxTimes", 8,
                 "delaySeconds", 0
         );
@@ -88,6 +89,7 @@ class ConsumerGroupControllerTest {
         verify(metadataService).createConsumerGroup(captor.capture());
         assertThat(captor.getValue().getName()).isEqualTo("cg-orders");
         assertThat(captor.getValue().getClusterId()).isEqualTo("cluster-a");
+        assertThat(captor.getValue().getInstanceId()).isEqualTo("instance-a");
         assertThat(captor.getValue().getRetryMaxTimes()).isEqualTo(8);
     }
 

@@ -797,7 +797,7 @@ const ConsumerPage = () => {
                   cancelText: '取消',
                   onOk: async () => {
                     const names = selectedRowKeys.map(String);
-                    await batchDeleteConsumerGroups(names);
+                    await batchDeleteConsumerGroups(names, selectedInstanceId || undefined);
                     setGroups((prev) => prev.filter((g) => !names.includes(g.name)));
                     message.success(`已删除 ${selectedRowKeys.length} 个 Group`);
                     setSelectedRowKeys([]);

@@ -75,11 +75,14 @@ export interface BatchDeleteTopicsResult {
 }
 
 // Batch delete: attempt every selected topic and report partial failures.
-export async function batchDeleteTopics(names: string[]): Promise<BatchDeleteTopicsResult> {
+export async function batchDeleteTopics(
+  names: string[],
+  instanceId?: string,
+): Promise<BatchDeleteTopicsResult> {
   const result: BatchDeleteTopicsResult = { deleted: [], failed: [] };
   for (const name of names) {
     try {
-      await deleteTopic(name);
+      await deleteTopic(name, instanceId);
       result.deleted.push(name);
     } catch {
       result.failed.push(name);

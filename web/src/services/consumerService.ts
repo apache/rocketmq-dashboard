@@ -122,8 +122,11 @@ export async function resetConsumerOffset(data: ResetConsumerOffsetRequest): Pro
 }
 
 // Batch delete: loop through single delete calls
-export async function batchDeleteConsumerGroups(names: string[]): Promise<void> {
+export async function batchDeleteConsumerGroups(
+  names: string[],
+  instanceId?: string,
+): Promise<void> {
   for (const name of names) {
-    await deleteConsumerGroup(name);
+    await deleteConsumerGroup(name, instanceId);
   }
 }
