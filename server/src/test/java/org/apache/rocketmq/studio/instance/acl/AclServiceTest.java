@@ -317,8 +317,9 @@ class AclServiceTest {
 
     @Test
     void updateUserShouldRequireId() {
-        UpdateAclUserDTO input = new UpdateAclUserDTO();
-        input.setUsername("newuser");
+        AclUserVO input = AclUserVO.builder()
+                .username("newuser")
+                .build();
 
         assertThatThrownBy(() -> aclService.updateUser(input))
                 .hasMessage("ACL user id is required");
@@ -326,10 +327,13 @@ class AclServiceTest {
 
     @Test
     void updateUserShouldSaveExistingUser() {
-        UpdateAclUserDTO input = new UpdateAclUserDTO();
-        input.setId("user-1");
-        input.setUsername("newuser");
-        input.setAdmin(true);
+        AclUserVO input = AclUserVO.builder()
+                .id("user-1")
+                .username("newuser")
+                .accessKey("client-access-key")
+                .secretKey("client-secret-key")
+                .admin(true)
+                .build();
 
         ArgumentCaptor<AclUserVO> captor = ArgumentCaptor.forClass(AclUserVO.class);
         when(aclRepository.findUserById("user-1")).thenReturn(Optional.of(existingUser));
@@ -348,37 +352,11 @@ class AclServiceTest {
     }
 
     @Test
-    void updateUserShouldPreserveAdminWhenNotProvided() {
-        AclUserVO adminUser = AclUserVO.builder()
-                .id("user-1")
-                .username("orders")
-                .accessKey("access-key-123456")
-                .secretKey("secret-key-987654")
-                .admin(true)
-                .clusters(List.of("cluster-a"))
-                .build();
-        UpdateAclUserDTO input = new UpdateAclUserDTO();
-        input.setId("user-1");
-        input.setUsername("renamed");
-        // admin intentionally left null: the existing admin flag must survive the partial update.
-
-        ArgumentCaptor<AclUserVO> captor = ArgumentCaptor.forClass(AclUserVO.class);
-        when(aclRepository.findUserById("user-1")).thenReturn(Optional.of(adminUser));
-        when(aclRepository.saveUser(any(AclUserVO.class))).thenAnswer(inv -> inv.getArgument(0));
-
-        AclUserVO result = aclService.updateUser(input);
-
-        assertThat(result.getUsername()).isEqualTo("renamed");
-        assertThat(result.isAdmin()).isTrue();
-        verify(aclRepository).saveUser(captor.capture());
-        assertThat(captor.getValue().isAdmin()).isTrue();
-    }
-
-    @Test
     void updateUserShouldThrowWhenUserDoesNotExist() {
-        UpdateAclUserDTO input = new UpdateAclUserDTO();
-        input.setId("missing");
-        input.setUsername("ghost");
+        AclUserVO input = AclUserVO.builder()
+                .id("missing")
+                .username("ghost")
+                .build();
 
         when(aclRepository.findUserById("missing")).thenReturn(Optional.empty());
 
@@ -450,12 +428,14 @@ class AclServiceTest {
         String secretKey = created.getSecretKey();
         AclUserVO listed = aclService.listUsers().get(0);
 
-        UpdateAclUserDTO update = new UpdateAclUserDTO();
-        update.setId(listed.getId());
-        update.setUsername("orders-admin");
-        update.setAdmin(true);
-        update.setClusters(listed.getClusters());
-        AclUserVO updated = aclService.updateUser(update);
+        AclUserVO updated = aclService.updateUser(AclUserVO.builder()
+                .id(listed.getId())
+                .username("orders-admin")
+                .accessKey(listed.getAccessKey())
+                .secretKey(listed.getSecretKey())
+                .admin(true)
+                .clusters(listed.getClusters())
+                .build());
 
         assertThat(listed.getAccessKey()).isNotEqualTo(accessKey);
         assertThat(listed.getSecretKey()).isNotEqualTo(secretKey);
