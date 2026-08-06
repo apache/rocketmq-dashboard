@@ -119,7 +119,7 @@ public class MybatisPlusK8sCertRepository implements K8sCertRepository {
         try {
             return CertType.valueOf(value);
         } catch (IllegalArgumentException exception) {
-            return null;
+            throw new IllegalStateException("Invalid persisted certificate type: " + value, exception);
         }
     }
 
@@ -130,7 +130,7 @@ public class MybatisPlusK8sCertRepository implements K8sCertRepository {
         try {
             return CertStatus.valueOf(value);
         } catch (IllegalArgumentException exception) {
-            return null;
+            throw new IllegalStateException("Invalid persisted certificate status: " + value, exception);
         }
     }
 
@@ -142,7 +142,7 @@ public class MybatisPlusK8sCertRepository implements K8sCertRepository {
             return objectMapper.readValue(json, new TypeReference<List<String>>() {
             });
         } catch (JsonProcessingException exception) {
-            return List.of();
+            throw new IllegalStateException("Invalid persisted certificate SAN JSON", exception);
         }
     }
 
@@ -153,7 +153,7 @@ public class MybatisPlusK8sCertRepository implements K8sCertRepository {
         try {
             return objectMapper.writeValueAsString(san);
         } catch (JsonProcessingException exception) {
-            return "[]";
+            throw new IllegalStateException("Failed to serialize certificate SAN values", exception);
         }
     }
 }

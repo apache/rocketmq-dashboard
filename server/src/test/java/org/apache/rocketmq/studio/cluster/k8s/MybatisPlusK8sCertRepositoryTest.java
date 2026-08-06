@@ -1,0 +1,66 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.apache.rocketmq.studio.cluster.k8s;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.persistence.entity.RmqK8sCertificate;
+import org.apache.rocketmq.studio.persistence.mapper.RmqK8sCertificateMapper;
+import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+class MybatisPlusK8sCertRepositoryTest {
+
+    @Test
+    void findByIdSurfacesInvalidPersistedCertificateType() {
+        RmqK8sCertificateMapper mapper = mock(RmqK8sCertificateMapper.class);
+        RmqK8sCertificate entity = certificate();
+        entity.setCertType("UNKNOWN_TYPE");
+        when(mapper.selectById("cert-1")).thenReturn(entity);
+
+        assertThatThrownBy(() -> repository(mapper).findById("cert-1"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("certificate type");
+    }
+
+    @Test
+    void findByIdSurfacesMalformedPersistedSanJson() {
+        RmqK8sCertificateMapper mapper = mock(RmqK8sCertificateMapper.class);
+        RmqK8sCertificate entity = certificate();
+        entity.setSan("not-json");
+        when(mapper.selectById("cert-1")).thenReturn(entity);
+
+        assertThatThrownBy(() -> repository(mapper).findById("cert-1"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("SAN JSON");
+    }
+
+    private MybatisPlusK8sCertRepository repository(RmqK8sCertificateMapper mapper) {
+        return new MybatisPlusK8sCertRepository(mapper, new ObjectMapper());
+    }
+
+    private RmqK8sCertificate certificate() {
+        RmqK8sCertificate entity = new RmqK8sCertificate();
+        entity.setId("cert-1");
+        entity.setCertType("TLS");
+        entity.setStatus("valid");
+        entity.setSan("[\"broker.example\"]");
+        return entity;
+    }
+}
