@@ -28,6 +28,7 @@ import org.apache.rocketmq.studio.persistence.mapper.RmqInstanceMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqTopicMapper;
 import org.springframework.stereotype.Repository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
@@ -93,6 +94,7 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
     }
 
     @Override
+    @Transactional
     public InstanceVO save(InstanceVO instance) {
         RmqInstance entity = toEntity(instance);
         if (instanceMapper.selectById(entity.getId()) != null) {

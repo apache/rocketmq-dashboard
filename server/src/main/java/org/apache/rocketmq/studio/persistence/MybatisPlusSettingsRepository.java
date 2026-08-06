@@ -27,6 +27,7 @@ import org.apache.rocketmq.studio.settings.DataSourceVO;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -88,6 +89,7 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
     }
 
     @Override
+    @Transactional
     public void saveGeneralSettings(GeneralSettingsVO settings) {
         try {
             String json = objectMapper.writeValueAsString(settings);

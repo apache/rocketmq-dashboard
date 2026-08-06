@@ -25,6 +25,7 @@ import org.apache.rocketmq.studio.common.domain.enums.CertType;
 import org.apache.rocketmq.studio.persistence.entity.RmqK8sCertificate;
 import org.apache.rocketmq.studio.persistence.mapper.RmqK8sCertificateMapper;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import lombok.RequiredArgsConstructor;
 
@@ -57,6 +58,7 @@ public class MybatisPlusK8sCertRepository implements K8sCertRepository {
     }
 
     @Override
+    @Transactional
     public K8sCertVO save(K8sCertVO cert) {
         RmqK8sCertificate entity = toEntity(cert);
         if (entity.getId() != null && certMapper.selectById(entity.getId()) != null) {
