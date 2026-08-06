@@ -48,6 +48,47 @@ class RocketMQDashboardProviderTest {
         assertThat(dashboard.getClusters().get(0).getVersion()).isEqualTo("V5_3_3");
     }
 
+    @Test
+    void dashboardShouldSurviveNullTopologyTables() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        ClusterInfo bare = new ClusterInfo();
+        bare.setBrokerAddrTable(null);
+        bare.setClusterAddrTable(null);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(bare);
+        when(adminExt.fetchAllTopicList()).thenReturn(topicList());
+
+        RocketMQDashboardProvider provider = new RocketMQDashboardProvider(adminExt);
+
+        DashboardDataVO dashboard = provider.getDashboardData();
+
+        // A partial NameServer payload must not throw and zero the page.
+        assertThat(dashboard.getStats()).isNotNull();
+        assertThat(dashboard.getClusters()).isEmpty();
+    }
+
+    @Test
+    void dashboardShouldSkipBrokerWithoutAddressTable() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        ClusterInfo info = new ClusterInfo();
+        HashMap<String, BrokerData> brokerAddrTable = new HashMap<>();
+        brokerAddrTable.put("broker-no-addr", new BrokerData("DefaultCluster", "broker-no-addr", null));
+        info.setBrokerAddrTable(brokerAddrTable);
+        HashMap<String, Set<String>> clusterAddrTable = new HashMap<>();
+        clusterAddrTable.put("DefaultCluster", Set.of("broker-no-addr"));
+        info.setClusterAddrTable(clusterAddrTable);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(info);
+        when(adminExt.fetchAllTopicList()).thenReturn(topicList());
+
+        RocketMQDashboardProvider provider = new RocketMQDashboardProvider(adminExt);
+
+        DashboardDataVO dashboard = provider.getDashboardData();
+
+        // A broker without an address table is skipped instead of throwing.
+        assertThat(dashboard.getStats()).isNotNull();
+        assertThat(dashboard.getClusters()).hasSize(1);
+        assertThat(dashboard.getClusters().get(0).getBrokers()).isZero();
+    }
+
     private ClusterInfo clusterInfo() {
         ClusterInfo info = new ClusterInfo();
         HashMap<Long, String> addrs = new HashMap<>();
