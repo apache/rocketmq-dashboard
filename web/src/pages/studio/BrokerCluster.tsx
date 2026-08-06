@@ -16,7 +16,20 @@
  */
 
 import { useCallback, useRef, useState } from 'react';
-import { Table, Button, Tag, Tabs, Card, Space, Switch, Progress, Tooltip, Spin, App } from 'antd';
+import {
+  Table,
+  Button,
+  Tag,
+  Tabs,
+  Card,
+  Space,
+  Switch,
+  Progress,
+  Tooltip,
+  Spin,
+  App,
+  Modal,
+} from 'antd';
 import {
   Plus,
   ArrowClockwise,
@@ -27,7 +40,7 @@ import {
   PlugsConnected,
 } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
-import { listClusters } from '../../services/clusterService';
+import { listClusters, restartBroker } from '../../services/clusterService';
 import type { ClusterInfo } from '../../api/cluster';
 
 // ─── Types ──────────────────────────────────────────────────────
@@ -35,6 +48,7 @@ type NodeStatus = 'running' | 'readonly' | 'maintenance';
 
 interface BrokerRecord {
   key: string;
+  clusterId: string;
   k8sCluster: string;
   brokerName: string;
   status: NodeStatus;
@@ -91,6 +105,7 @@ function mapClusters(clusters: ClusterInfo[]): {
     cluster.brokers.forEach((broker, index) => {
       brokers.push({
         key: `${cluster.id}-broker-${broker.addr || index}`,
+        clusterId: cluster.id,
         k8sCluster: clusterLabel,
         brokerName: broker.name || broker.addr,
         status: normalizeStatus(broker.status),
@@ -157,6 +172,22 @@ const BrokerClusterPage = () => {
       setLoading(false);
     }
   }, [message, t]);
+
+  const handleRestartBroker = async (broker: BrokerRecord) => {
+    try {
+      const result = await restartBroker(broker.clusterId, broker.brokerName);
+      if (!result.success) {
+        message.error(result.message || t('common.failure'));
+        return;
+      }
+      await loadData();
+      message.success(
+        result.message || t('cluster.restartBrokerSubmitted', { name: broker.brokerName }),
+      );
+    } catch {
+      message.error(t('common.failure'));
+    }
+  };
 
   const initialized = useRef<boolean | null>(null);
   if (initialized.current == null) {
@@ -263,7 +294,7 @@ const BrokerClusterPage = () => {
     {
       title: t('common.actions'),
       key: 'action',
-      render: () => (
+      render: (_: unknown, record: BrokerRecord) => (
         <Space size="small">
           <Tooltip title={t('brokerCluster.config')}>
             <Button type="link" size="small" icon={<GearSix size={14} />}>
@@ -271,7 +302,20 @@ const BrokerClusterPage = () => {
             </Button>
           </Tooltip>
           <Tooltip title={t('brokerCluster.restart')}>
-            <Button type="link" size="small" icon={<ArrowsClockwise size={14} />}>
+            <Button
+              type="link"
+              size="small"
+              icon={<ArrowsClockwise size={14} />}
+              onClick={() => {
+                Modal.confirm({
+                  title: t('cluster.confirmRestart'),
+                  content: t('cluster.restartBrokerConfirm', { name: record.brokerName }),
+                  okText: t('common.confirm'),
+                  cancelText: t('common.cancel'),
+                  onOk: () => handleRestartBroker(record),
+                });
+              }}
+            >
               {t('brokerCluster.restart')}
             </Button>
           </Tooltip>
