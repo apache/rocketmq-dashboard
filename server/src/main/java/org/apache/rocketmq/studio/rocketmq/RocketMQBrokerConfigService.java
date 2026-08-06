@@ -66,7 +66,7 @@ public class RocketMQBrokerConfigService {
         } catch (Exception e) {
             log.error("Failed to update broker config at {}", brokerAddr, e);
             String detail = "brokerAddr=" + brokerAddr + ", error=" + e.getMessage();
-            auditService.record("UPDATE_BROKER_CONFIG", "CLUSTER:" + clusterId, detail, "FAILURE");
+            auditService.record("UPDATE_BROKER_CONFIG", "CLUSTER:" + clusterId, detail, "FAILED");
             throw new BusinessException(500, "Failed to update broker config: " + e.getMessage());
         }
     }
