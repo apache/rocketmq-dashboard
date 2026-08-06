@@ -25,9 +25,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -70,6 +72,13 @@ public class GlobalExceptionHandler {
     public Result<?> handleHttpMessageNotReadableException(HttpMessageNotReadableException ex) {
         log.warn("Invalid request body");
         return Result.error(HttpStatus.BAD_REQUEST.value(), "Invalid request body");
+    }
+
+    @ExceptionHandler({MethodArgumentTypeMismatchException.class, MissingServletRequestParameterException.class})
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Result<?> handleBadRequestParameterException(Exception ex) {
+        log.warn("Invalid request parameter: {}", ex.getMessage());
+        return Result.error(HttpStatus.BAD_REQUEST.value(), "Invalid request parameter");
     }
 
     @ExceptionHandler(Exception.class)
