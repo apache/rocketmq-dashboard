@@ -204,8 +204,14 @@ public class InstanceService {
             throw new BusinessException(400, "InstanceVO ID is required");
         }
 
-        instanceRepository.findById(id)
+        InstanceVO existing = instanceRepository.findById(id)
                 .orElseThrow(() -> new BusinessException(404, "InstanceVO not found: " + id));
+
+        if (existing.getTopicCount() > 0 || existing.getConsumerGroupCount() > 0) {
+            throw new BusinessException(409, String.format(
+                    "Cannot delete instance with managed resources: topics=%d, consumerGroups=%d",
+                    existing.getTopicCount(), existing.getConsumerGroupCount()));
+        }
         instanceRepository.deleteById(id);
     }
 

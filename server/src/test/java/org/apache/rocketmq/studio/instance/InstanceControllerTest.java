@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.instance;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -35,6 +36,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -196,6 +198,23 @@ class InstanceControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.message").value("success"));
+
+        verify(instanceService).deleteInstance("inst-1");
+    }
+
+    @Test
+    void deleteInstanceShouldReturnConflictWhenManagedResourcesExist() throws Exception {
+        doThrow(new BusinessException(409,
+                "Cannot delete instance with managed resources: topics=2, consumerGroups=1"))
+                .when(instanceService).deleteInstance("inst-1");
+
+        mockMvc.perform(post("/api/instances/delete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("id", "inst-1"))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value(409))
+                .andExpect(jsonPath("$.message")
+                        .value("Cannot delete instance with managed resources: topics=2, consumerGroups=1"));
 
         verify(instanceService).deleteInstance("inst-1");
     }
