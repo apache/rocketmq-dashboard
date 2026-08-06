@@ -101,9 +101,13 @@ describe('GroupManagement Page', () => {
     expect(screen.getByPlaceholderText('搜索消费组')).toBeInTheDocument();
   });
 
-  it('should render create group button', () => {
+  it('should not render unsupported mutation actions in the global view', async () => {
     renderWithProviders(<GroupManagement />);
-    expect(screen.getByText('创建消费组')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('order-consumer-group')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('创建消费组')).not.toBeInTheDocument();
+    expect(screen.queryByText('配置')).not.toBeInTheDocument();
   });
 
   it('should render reset button', () => {

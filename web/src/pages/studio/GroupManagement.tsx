@@ -31,7 +31,7 @@ import {
   Switch,
   message,
 } from 'antd';
-import { MagnifyingGlass, Plus, ArrowClockwise, Users, Eye } from '@phosphor-icons/react';
+import { MagnifyingGlass, ArrowClockwise, Users, Eye } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
 import type { ConsumerGroup, QueueProgress, SubscriptionEntry } from '../../api/metadata';
 import {
@@ -197,14 +197,9 @@ const GroupManagementPage = () => {
       title: t('common.actions'),
       key: 'action',
       render: (_: unknown, record: ConsumerGroup) => (
-        <Space size="small">
-          <Button type="link" size="small" onClick={() => void handleViewDetail(record)}>
-            {t('common.detail')}
-          </Button>
-          <Button type="link" size="small">
-            {t('brokerCluster.config')}
-          </Button>
-        </Space>
+        <Button type="link" size="small" onClick={() => void handleViewDetail(record)}>
+          {t('common.detail')}
+        </Button>
       ),
     },
   ];
@@ -279,9 +274,6 @@ const GroupManagementPage = () => {
             style={{ width: 240 }}
             allowClear
           />
-          <Button type="primary" icon={<Plus size={14} />}>
-            {t('groupMgmt.createGroup')}
-          </Button>
           <Switch
             checked={autoRefresh}
             onChange={setAutoRefresh}
