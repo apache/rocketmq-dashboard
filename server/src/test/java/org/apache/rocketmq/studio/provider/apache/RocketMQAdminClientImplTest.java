@@ -181,6 +181,51 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void topicWritesUseSelectedInstanceAdmin() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        when(selectedAdmin.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        when(topicMapper.selectOne(any())).thenReturn(null);
+        doNothing().when(selectedAdmin).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
+                .thenAnswer(invocation -> invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1)
+                        .apply(selectedAdmin));
+
+        TopicVO topic = new TopicVO();
+        topic.setName("topicA");
+        topic.setInstanceId("instance-a");
+
+        adminClient.createTopic(topic);
+        adminClient.updateTopic(topic);
+
+        verify(runtimeAdminClientResolver, times(2)).execute(org.mockito.ArgumentMatchers.eq("instance-a"), any());
+        verify(selectedAdmin, times(2)).createAndUpdateTopicConfig(
+                org.mockito.ArgumentMatchers.eq("10.0.0.1:10911"), any(TopicConfig.class));
+        verify(adminExt, never()).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+    }
+
+    @Test
+    void topicDeleteUsesSelectedInstanceAndScopesMetadataToCluster() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        when(selectedAdmin.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        doNothing().when(selectedAdmin).deleteTopicInBroker(any(), anyString());
+        doNothing().when(selectedAdmin).deleteTopicInNameServer(any(), anyString(), anyString());
+        when(runtimeAdminClientResolver.resolveEndpoint("instance-a")).thenReturn("10.0.0.2:9876");
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
+                .thenAnswer(invocation -> invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1)
+                        .apply(selectedAdmin));
+
+        adminClient.deleteTopic("instance-a", "orders");
+
+        ArgumentCaptor<LambdaQueryWrapper<RmqTopic>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(topicMapper).delete(captor.capture());
+        assertThat(captor.getValue().getSqlSegment()).contains("cluster_id", "name");
+        verify(selectedAdmin).deleteTopicInBroker(Set.of("10.0.0.1:10911"), "orders");
+        verify(selectedAdmin).deleteTopicInNameServer(Set.of("10.0.0.2:9876"), "cluster-1", "orders");
+    }
+
+    @Test
     void createConsumerGroupUsesSelectedInstanceAdmin() throws Exception {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
         DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
@@ -213,6 +258,7 @@ class RocketMQAdminClientImplTest {
 
     @Test
     void deleteConsumerGroupUsesSelectedInstanceAdmin() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
         DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
         ClusterInfo clusterInfo = new ClusterInfo();
         BrokerData brokerData = new BrokerData();
@@ -232,6 +278,9 @@ class RocketMQAdminClientImplTest {
         verify(runtimeAdminClientResolver).execute(org.mockito.ArgumentMatchers.eq("instance-a"), any());
         verify(selectedAdmin).deleteSubscriptionGroup("10.0.0.1:10911", "cg-orders", true);
         verify(adminExt, never()).deleteSubscriptionGroup(anyString(), anyString(), org.mockito.ArgumentMatchers.anyBoolean());
+        ArgumentCaptor<LambdaQueryWrapper<RmqGroup>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(groupMapper).delete(captor.capture());
+        assertThat(captor.getValue().getSqlSegment()).contains("cluster_id", "name");
     }
 
     @Test

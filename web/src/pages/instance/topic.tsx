@@ -812,7 +812,6 @@ const TopicPage = () => {
         key: values.key || undefined,
         body: values.body,
         properties: props,
-        instanceId: selectedInstanceId || undefined,
       });
       // Keep the modal open for consecutive sends
       message.success(`消息发送成功！MsgId: ${result.msgId}`);
