@@ -148,13 +148,8 @@ public class RocketMQAdminClientImpl implements AdminClient {
         int readQueues = topic.getReadQueues() > 0 ? topic.getReadQueues() : 8;
 
         try {
-            String clusterName = getClusterName();
-            // Match on the (cluster_id, name) key: the same topic name can exist in several
-            // clusters, and a name-only lookup would blow up with TooManyResultsException.
             RmqTopic existing = topicMapper.selectOne(
-                    new LambdaQueryWrapper<RmqTopic>()
-                            .eq(RmqTopic::getClusterId, clusterName)
-                            .eq(RmqTopic::getName, topicName));
+                    new LambdaQueryWrapper<RmqTopic>().eq(RmqTopic::getName, topicName));
             TopicPerm effectivePerm = topic.getPerm() != null
                     ? topic.getPerm()
                     : existing == null ? TopicPerm.RW : fromRocketMQPerm(existing.getPerm());
@@ -176,6 +171,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
             // Persist to DB. Re-creating a topic that already has a record (for example when
             // rebuilding a broker route from the console) must update it instead of failing on
             // the unique (cluster_id, name) key.
+            String clusterName = getClusterName();
             RmqTopic entity = topicMapper.selectOne(new LambdaQueryWrapper<RmqTopic>()
                     .eq(RmqTopic::getClusterId, clusterName)
                     .eq(RmqTopic::getName, topicName));
@@ -231,13 +227,8 @@ public class RocketMQAdminClientImpl implements AdminClient {
         int readQueues = topic.getReadQueues() > 0 ? topic.getReadQueues() : 8;
 
         try {
-            // Match on the (cluster_id, name) key to avoid ambiguity when several clusters share
-            // the same topic name (a name-only lookup would throw TooManyResultsException).
-            String clusterName = getClusterName();
             RmqTopic existing = topicMapper.selectOne(
-                    new LambdaQueryWrapper<RmqTopic>()
-                            .eq(RmqTopic::getClusterId, clusterName)
-                            .eq(RmqTopic::getName, topicName));
+                    new LambdaQueryWrapper<RmqTopic>().eq(RmqTopic::getName, topicName));
             TopicPerm effectivePerm = topic.getPerm() != null
                     ? topic.getPerm()
                     : existing == null ? TopicPerm.RW : fromRocketMQPerm(existing.getPerm());
