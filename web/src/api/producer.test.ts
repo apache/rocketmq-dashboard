@@ -18,7 +18,7 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { fetchTopicList, queryProducerConnection } from './producer';
+import { fetchProducerGroups, fetchTopicList, queryProducerConnection } from './producer';
 
 const mock = new MockAdapter(client);
 
@@ -57,6 +57,15 @@ describe('Producer API', () => {
 
     const result = await fetchTopicList();
     expect(result).toEqual([]);
+  });
+
+  it('fetches active producer group suggestions', async () => {
+    mock.onGet('/producer/groups').reply(200, {
+      code: 200,
+      data: ['pg-order', 'pg-payment'],
+    });
+
+    await expect(fetchProducerGroups()).resolves.toEqual(['pg-order', 'pg-payment']);
   });
 
   it('queries producer connections by topic and group', async () => {

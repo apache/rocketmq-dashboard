@@ -43,6 +43,19 @@ class ProducerControllerTest {
     private ProducerConnectionService producerConnectionService;
 
     @Test
+    void listProducerGroupsShouldReturnSuggestions() throws Exception {
+        when(producerConnectionService.listProducerGroups())
+                .thenReturn(List.of("pg-order", "pg-payment"));
+
+        mockMvc.perform(get("/api/producer/groups"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0]").value("pg-order"))
+                .andExpect(jsonPath("$.data[1]").value("pg-payment"));
+
+        verify(producerConnectionService).listProducerGroups();
+    }
+
+    @Test
     void listConnectionsShouldReturnLegacyConnectionSetPayload() throws Exception {
         ProducerConnectionVO connection = ProducerConnectionVO.builder()
                 .clientId("producer-1")

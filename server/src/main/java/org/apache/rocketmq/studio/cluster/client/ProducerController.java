@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.cluster.client;
 
+import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,12 +24,19 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/producer")
 @RequiredArgsConstructor
 public class ProducerController {
 
     private final ProducerConnectionService producerConnectionService;
+
+    @GetMapping("/groups")
+    public Result<List<String>> listProducerGroups() {
+        return Result.ok(producerConnectionService.listProducerGroups());
+    }
 
     @GetMapping("/connection")
     public ProducerConnectionResultVO listConnections(
