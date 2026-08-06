@@ -16,7 +16,7 @@
  */
 
 import { App } from 'antd';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { MemoryRouter } from 'react-router-dom';
@@ -260,6 +260,33 @@ describe('Consumer page', () => {
     await waitFor(() =>
       expect(consumerService.getConsumerProgress).toHaveBeenCalledWith('remote-cg', 'instance-a'),
     );
+  });
+
+  it('keeps failed groups selected after a partially successful batch deletion', async () => {
+    const user = userEvent.setup();
+    vi.mocked(consumerService.listConsumerGroups).mockResolvedValue([
+      { ...group, name: 'group-01' },
+      { ...group, name: 'group-02' },
+      { ...group, name: 'group-03' },
+    ]);
+    vi.mocked(consumerService.batchDeleteConsumerGroups).mockResolvedValue({
+      deleted: ['group-01', 'group-03'],
+      failed: ['group-02'],
+    });
+    renderWithProviders(<ConsumerPage />);
+
+    expect(await screen.findByText('group-01')).toBeInTheDocument();
+    await user.click(screen.getAllByRole('checkbox')[0]);
+    await user.click(screen.getByRole('button', { name: /删除 \(3\)$/ }));
+
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: /删\s*除/ }));
+
+    await waitFor(() => expect(screen.queryByText('group-01')).not.toBeInTheDocument());
+    expect(screen.getByText('group-02')).toBeInTheDocument();
+    expect(screen.queryByText('group-03')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /删除 \(1\)$/ })).toBeInTheDocument();
+    expect(screen.getByText('已删除 2 个 Group，1 个删除失败')).toBeInTheDocument();
   });
 
   it('highlights inconsistent subscriptions and refreshes the check result', async () => {

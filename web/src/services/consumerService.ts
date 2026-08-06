@@ -121,12 +121,23 @@ export async function resetConsumerOffset(data: ResetConsumerOffsetRequest): Pro
   return metadataApi.resetConsumerOffset(data);
 }
 
-// Batch delete: loop through single delete calls
+export interface BatchDeleteConsumerGroupsResult {
+  deleted: string[];
+  failed: string[];
+}
+
 export async function batchDeleteConsumerGroups(
   names: string[],
   instanceId?: string,
-): Promise<void> {
+): Promise<BatchDeleteConsumerGroupsResult> {
+  const result: BatchDeleteConsumerGroupsResult = { deleted: [], failed: [] };
   for (const name of names) {
-    await deleteConsumerGroup(name, instanceId);
+    try {
+      await deleteConsumerGroup(name, instanceId);
+      result.deleted.push(name);
+    } catch {
+      result.failed.push(name);
+    }
   }
+  return result;
 }

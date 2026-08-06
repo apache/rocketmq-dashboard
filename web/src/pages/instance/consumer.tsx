@@ -806,10 +806,19 @@ const ConsumerPage = () => {
                   cancelText: '取消',
                   onOk: async () => {
                     const names = selectedRowKeys.map(String);
-                    await batchDeleteConsumerGroups(names, selectedInstanceId || undefined);
-                    setGroups((prev) => prev.filter((g) => !names.includes(g.name)));
-                    message.success(`已删除 ${selectedRowKeys.length} 个 Group`);
-                    setSelectedRowKeys([]);
+                    const result = await batchDeleteConsumerGroups(
+                      names,
+                      selectedInstanceId || undefined,
+                    );
+                    setGroups((prev) => prev.filter((g) => !result.deleted.includes(g.name)));
+                    setSelectedRowKeys(result.failed);
+                    if (result.failed.length === 0) {
+                      message.success(`已删除 ${result.deleted.length} 个 Group`);
+                    } else {
+                      message.warning(
+                        `已删除 ${result.deleted.length} 个 Group，${result.failed.length} 个删除失败`,
+                      );
+                    }
                   },
                 });
               }}
