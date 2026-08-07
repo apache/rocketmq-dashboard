@@ -22,6 +22,7 @@ import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
@@ -39,12 +40,14 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.never;
@@ -72,8 +75,7 @@ class RocketMQMessageProviderTest {
             MqAdminExtFactory.AdminAction<Object> action = invocation.getArgument(1);
             return action == null ? null : action.apply(adminExt);
         });
-        provider = new RocketMQMessageProvider(runtimeAdminClientResolver, queryHistoryService,
-                new RocketMQProperties());
+        provider = new RocketMQMessageProvider(runtimeAdminClientResolver, queryHistoryService);
     }
 
     @Test
@@ -97,8 +99,35 @@ class RocketMQMessageProviderTest {
         }
         verify(runtimeAdminClientResolver).resolveEndpoint("instance-a");
         verify(runtimeAdminClientResolver).execute(eq("instance-a"), any());
-        verify(queryHistoryService).recordMessageQuery(null, "TOPIC", "TopicA", null, null, null,
+        verify(queryHistoryService).recordMessageQuery("instance-a", "TOPIC", "TopicA", null, null, null,
                 100L, 200L, 0);
+    }
+
+    @Test
+    void queryByKeySurfacesAdminFailure() throws Exception {
+        when(adminExt.queryMessage("TopicA", "order-1", 64, 100L, 200L))
+                .thenThrow(new IllegalStateException("broker unavailable"));
+
+        assertThatThrownBy(() -> provider.queryMessages(
+                "instance-a", "TopicA", null, null, "order-1", 100L, 200L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Failed to query messages by key: broker unavailable")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void queryByTopicSurfacesPullConsumerFailure() throws Exception {
+        try (MockedConstruction<DefaultMQPullConsumer> ignored =
+                     mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
+                         doThrow(new IllegalStateException("nameserver unavailable")).when(consumer).start();
+                         doNothing().when(consumer).shutdown();
+                     })) {
+            assertThatThrownBy(() -> provider.queryMessages(
+                    "instance-a", "TopicA", null, null, null, 100L, 200L))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("Failed to query messages by topic: nameserver unavailable")
+                    .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+        }
     }
 
     @Test
@@ -161,6 +190,7 @@ class RocketMQMessageProviderTest {
         TraceRecordVO record = provider.getMessageTrace("instance-a", "msg-123");
 
         assertThat(record.getNodes()).hasSize(2);
+        verify(queryHistoryService).recordTraceQuery(eq("instance-a"), eq("msg-123"), eq(null), eq(2), eq(1));
         TraceNodeVO produce = record.getNodes().get(0);
         assertThat(produce.getTitle()).isEqualTo("produce");
         assertThat(produce.getStatus()).isEqualTo("finish");

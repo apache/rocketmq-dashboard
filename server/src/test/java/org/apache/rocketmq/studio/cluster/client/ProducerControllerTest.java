@@ -44,15 +44,15 @@ class ProducerControllerTest {
 
     @Test
     void listProducerGroupsShouldReturnSuggestions() throws Exception {
-        when(producerConnectionService.listProducerGroups())
+        when(producerConnectionService.listProducerGroups("instance-1"))
                 .thenReturn(List.of("pg-order", "pg-payment"));
 
-        mockMvc.perform(get("/api/producer/groups"))
+        mockMvc.perform(get("/api/producer/groups").param("instanceId", "instance-1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0]").value("pg-order"))
                 .andExpect(jsonPath("$.data[1]").value("pg-payment"));
 
-        verify(producerConnectionService).listProducerGroups();
+        verify(producerConnectionService).listProducerGroups("instance-1");
     }
 
     @Test
@@ -63,10 +63,11 @@ class ProducerControllerTest {
                 .language("Java")
                 .versionDesc("5.1.0")
                 .build();
-        when(producerConnectionService.listConnections("order-topic", "pg-order"))
+        when(producerConnectionService.listConnections("instance-1", "order-topic", "pg-order"))
                 .thenReturn(List.of(connection));
 
         mockMvc.perform(get("/api/producer/connection")
+                        .param("instanceId", "instance-1")
                         .param("topic", "order-topic")
                         .param("producerGroup", "pg-order"))
                 .andExpect(status().isOk())
@@ -76,12 +77,13 @@ class ProducerControllerTest {
                 .andExpect(jsonPath("$.connectionSet[0].language").value("Java"))
                 .andExpect(jsonPath("$.connectionSet[0].versionDesc").value("5.1.0"));
 
-        verify(producerConnectionService).listConnections("order-topic", "pg-order");
+        verify(producerConnectionService).listConnections("instance-1", "order-topic", "pg-order");
     }
 
     @Test
     void listConnectionsShouldRequireTopic() throws Exception {
         mockMvc.perform(get("/api/producer/connection")
+                        .param("instanceId", "instance-1")
                         .param("producerGroup", "pg-order"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400))
@@ -93,6 +95,7 @@ class ProducerControllerTest {
     @Test
     void listConnectionsShouldRequireProducerGroup() throws Exception {
         mockMvc.perform(get("/api/producer/connection")
+                        .param("instanceId", "instance-1")
                         .param("topic", "order-topic"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400))
@@ -104,10 +107,23 @@ class ProducerControllerTest {
     @Test
     void listConnectionsShouldRejectBlankParameters() throws Exception {
         mockMvc.perform(get("/api/producer/connection")
+                        .param("instanceId", "instance-1")
                         .param("topic", " ")
                         .param("producerGroup", "pg-order"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("topic is required"));
+
+        verifyNoInteractions(producerConnectionService);
+    }
+
+    @Test
+    void listConnectionsShouldRequireInstanceId() throws Exception {
+        mockMvc.perform(get("/api/producer/connection")
+                        .param("topic", "order-topic")
+                        .param("producerGroup", "pg-order"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("instanceId is required"));
 
         verifyNoInteractions(producerConnectionService);
     }

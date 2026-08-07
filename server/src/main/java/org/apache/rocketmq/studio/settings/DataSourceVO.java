@@ -22,6 +22,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -36,4 +38,6 @@ public class DataSourceVO {
     private String url;
     private String auth;
     private String status;
+    /** Instance IDs this source serves; an empty list keeps the source globally available. */
+    private List<String> instanceIds;
 }

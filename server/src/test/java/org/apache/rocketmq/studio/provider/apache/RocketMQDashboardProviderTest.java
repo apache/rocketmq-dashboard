@@ -26,6 +26,10 @@ import org.apache.rocketmq.remoting.protocol.body.KVTable;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
+import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
+import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardDataVO;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.junit.jupiter.api.Test;
@@ -33,7 +37,9 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class RocketMQDashboardProviderTest {
@@ -116,13 +122,40 @@ class RocketMQDashboardProviderTest {
         assertThat(dashboard.getStats().getTotalBrokers()).isZero();
     }
 
+    @Test
+    void dashboardShouldUseSelectedDirectInstanceAndReportDirectType() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RuntimeAdminClientResolver resolver = mock(RuntimeAdminClientResolver.class);
+        InstanceVO instance = InstanceVO.builder()
+                .type(InstanceType.DIRECT)
+                .endpoint("namesrv-direct:9876")
+                .build();
+        instance.setId("instance-direct");
+        when(resolver.resolveInstance("instance-direct")).thenReturn(instance);
+        when(resolver.execute(eq(instance), any())).thenAnswer(invocation ->
+                invocation.<MqAdminExtFactory.AdminAction<DashboardDataVO>>getArgument(1).apply(adminExt));
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        when(adminExt.fetchAllTopicList()).thenReturn(topicList());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
+
+        DashboardDataVO dashboard = newProvider(adminExt, resolver).getDashboardData("instance-direct");
+
+        assertThat(dashboard.getClusters()).hasSize(1);
+        assertThat(dashboard.getClusters().get(0).getType()).isEqualTo(ClusterType.V4_DIRECT);
+        verify(resolver).execute(eq(instance), any());
+    }
+
     private RocketMQDashboardProvider newProvider(DefaultMQAdminExt adminExt) {
+        return newProvider(adminExt, mock(RuntimeAdminClientResolver.class));
+    }
+
+    private RocketMQDashboardProvider newProvider(DefaultMQAdminExt adminExt, RuntimeAdminClientResolver resolver) {
         MqAdminExtFactory adminFactory = mock(MqAdminExtFactory.class);
         when(adminFactory.execute(anyString(), any(), any())).thenAnswer(invocation ->
                 invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(adminExt));
         RocketMQProperties properties = new RocketMQProperties();
         properties.setNamesrvAddr("10.0.0.1:9876");
-        return new RocketMQDashboardProvider(adminFactory, properties);
+        return new RocketMQDashboardProvider(adminFactory, properties, resolver);
     }
 
     private ClusterInfo clusterInfo() {

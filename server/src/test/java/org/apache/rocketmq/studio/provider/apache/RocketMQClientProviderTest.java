@@ -47,9 +47,10 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
@@ -57,9 +58,6 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class RocketMQClientProviderTest {
-
-    @Mock
-    private MqAdminExtFactory adminFactory;
 
     @Mock
     private DefaultMQAdminExt adminExt;
@@ -71,11 +69,7 @@ class RocketMQClientProviderTest {
 
     @BeforeEach
     void setUp() {
-        lenient().when(adminFactory.execute(anyString(), any(), any())).thenAnswer(invocation ->
-                invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(adminExt));
-        RocketMQProperties properties = new RocketMQProperties();
-        properties.setNamesrvAddr("10.0.0.1:9876");
-        provider = new RocketMQClientProvider(adminFactory, runtimeAdminClientResolver, properties);
+        provider = new RocketMQClientProvider(runtimeAdminClientResolver);
         lenient().when(runtimeAdminClientResolver.execute(anyString(), any())).thenAnswer(invocation ->
                 invocation.<MqAdminExtFactory.AdminAction<Object>>
                         getArgument(1).apply(adminExt));
@@ -159,7 +153,7 @@ class RocketMQClientProviderTest {
         when(adminExt.examineProducerConnectionInfo("pg-order", "TopicA"))
                 .thenReturn(producerConnection);
 
-        List<ClientConnectionVO> connections = provider.findProducerConnections("TopicA", "pg-order");
+        List<ClientConnectionVO> connections = provider.findProducerConnections("instance-a", "TopicA", "pg-order");
 
         assertThat(connections).singleElement().satisfies(connection -> {
             assertThat(connection.getClientId()).isEqualTo("producer-client");
@@ -167,6 +161,7 @@ class RocketMQClientProviderTest {
             assertThat(connection.getProducerGroup()).isEqualTo("pg-order");
         });
         verify(adminExt).examineProducerConnectionInfo("pg-order", "TopicA");
+        verify(runtimeAdminClientResolver).execute(eq("instance-a"), any());
     }
 
     @Test
@@ -174,7 +169,7 @@ class RocketMQClientProviderTest {
         when(adminExt.examineProducerConnectionInfo("pg-order", "TopicA"))
                 .thenThrow(new IllegalStateException("broker unavailable"));
 
-        assertThatThrownBy(() -> provider.findProducerConnections("TopicA", "pg-order"))
+        assertThatThrownBy(() -> provider.findProducerConnections("instance-a", "TopicA", "pg-order"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Failed to query producer connections: broker unavailable")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
@@ -186,7 +181,8 @@ class RocketMQClientProviderTest {
                 .thenThrow(new MQClientException(ResponseCode.TOPIC_NOT_EXIST,
                         "CAN'T FIND BROKER FOR TOPIC: NoSuchTopic"));
 
-        List<ClientConnectionVO> connections = provider.findProducerConnections("NoSuchTopic", "pg-order");
+        List<ClientConnectionVO> connections = provider.findProducerConnections(
+                "instance-a", "NoSuchTopic", "pg-order");
 
         assertThat(connections).isEmpty();
         verify(adminExt).examineProducerConnectionInfo("pg-order", "NoSuchTopic");
@@ -198,7 +194,8 @@ class RocketMQClientProviderTest {
                 .thenThrow(new MQClientException(ResponseCode.TOPIC_NOT_EXIST,
                         "connect to ns failed, route info of this topic not found"));
 
-        List<ClientConnectionVO> connections = provider.findProducerConnections("NoRouteTopic", "pg-order");
+        List<ClientConnectionVO> connections = provider.findProducerConnections(
+                "instance-a", "NoRouteTopic", "pg-order");
 
         assertThat(connections).isEmpty();
     }

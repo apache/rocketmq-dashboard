@@ -25,12 +25,16 @@ import {
   queryProducerConnection,
   type ProducerConnection,
 } from '../../api/producer';
+import type { Instance } from '../../api/instance';
+import { listInstances } from '../../services/instanceService';
 
 const ProducerPage = () => {
   const [form] = Form.useForm();
   const [topicList, setTopicList] = useState<string[]>([]);
   const [producerGroups, setProducerGroups] = useState<string[]>([]);
   const [connectionList, setConnectionList] = useState<ProducerConnection[]>([]);
+  const [instances, setInstances] = useState<Instance[]>([]);
+  const [selectedInstanceId, setSelectedInstanceId] = useState('');
   const [loading, setLoading] = useState(false);
   const { t } = useLang();
   const { message } = App.useApp();
@@ -39,44 +43,81 @@ const ProducerPage = () => {
   useEffect(() => {
     let cancelled = false;
 
-    const loadTopics = async () => {
-      try {
-        const topics = await fetchTopicList();
+    void listInstances()
+      .then((nextInstances) => {
+        if (cancelled) return;
+        setInstances(nextInstances);
+        setSelectedInstanceId((current) => current || nextInstances[0]?.id || '');
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setInstances([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void fetchTopicList()
+      .then((topics) => {
         if (!cancelled) {
           setTopicList(topics);
         }
-      } catch {
+      })
+      .catch(() => {
         if (!cancelled) {
           message.error(fetchTopicFailedMessage);
         }
-      }
-    };
-
-    const loadProducerGroups = async () => {
-      try {
-        const groups = await fetchProducerGroups();
-        if (!cancelled) {
-          setProducerGroups(groups);
-        }
-      } catch {
-        if (!cancelled) {
-          setProducerGroups([]);
-        }
-      }
-    };
-
-    void loadTopics();
-    void loadProducerGroups();
+      });
 
     return () => {
       cancelled = true;
     };
   }, [fetchTopicFailedMessage, message]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!selectedInstanceId) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void fetchProducerGroups(selectedInstanceId)
+      .then((groups) => {
+        if (!cancelled) {
+          setProducerGroups(groups);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setProducerGroups([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedInstanceId]);
+
   const onFinish = async (values: { selectedTopic: string; producerGroup: string }) => {
+    if (!selectedInstanceId) {
+      message.error('Select an instance before querying producer connections.');
+      return;
+    }
     setLoading(true);
     try {
-      const connections = await queryProducerConnection(values.selectedTopic, values.producerGroup);
+      const connections = await queryProducerConnection(
+        selectedInstanceId,
+        values.selectedTopic,
+        values.producerGroup,
+      );
       setConnectionList(connections);
       if (connections.length === 0) {
         message.info(t('producer.noConnections'));
@@ -125,6 +166,16 @@ const ProducerPage = () => {
 
       <Card bordered={false} style={{ borderRadius: 8, boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}>
         <Form form={form} layout="inline" onFinish={onFinish} style={{ marginBottom: 20 }}>
+          <Form.Item label="INSTANCE">
+            <Select
+              aria-label="Instance"
+              value={selectedInstanceId || undefined}
+              onChange={setSelectedInstanceId}
+              placeholder="Select instance"
+              style={{ width: 220 }}
+              options={instances.map((instance) => ({ value: instance.id, label: instance.name }))}
+            />
+          </Form.Item>
           <Form.Item
             label="TOPIC"
             name="selectedTopic"
@@ -158,6 +209,7 @@ const ProducerPage = () => {
               type="primary"
               htmlType="submit"
               loading={loading}
+              disabled={!selectedInstanceId}
               icon={<MagnifyingGlass size={14} />}
             >
               {t('common.search')}

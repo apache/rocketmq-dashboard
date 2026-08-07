@@ -26,15 +26,16 @@ public class ClientProviderStub implements ClientProvider {
 
     @Override
     public List<ClientConnectionVO> findConnections(String instanceId, String clusterId, String type) {
-        log.warn("ClientProviderStub.findConnections called without a real client provider. instanceId={}, clusterId={}, type={}",
+        log.warn("ClientProviderStub.findConnections called without a real client provider. "
+                        + "instanceId={}, clusterId={}, type={}",
                 instanceId, clusterId, type);
         throw new BusinessException(501, "Client connection provider is not configured");
     }
 
     @Override
-    public List<ClientConnectionVO> findProducerConnections(String topic, String producerGroup) {
+    public List<ClientConnectionVO> findProducerConnections(String instanceId, String topic, String producerGroup) {
         log.warn("ClientProviderStub.findProducerConnections called without a real client provider. "
-                + "topic={}, producerGroup={}", topic, producerGroup);
+                + "instanceId={}, topic={}, producerGroup={}", instanceId, topic, producerGroup);
         throw new BusinessException(501, "Client connection provider is not configured");
     }
 }

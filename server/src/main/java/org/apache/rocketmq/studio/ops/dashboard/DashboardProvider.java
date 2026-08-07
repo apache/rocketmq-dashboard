@@ -20,4 +20,8 @@ package org.apache.rocketmq.studio.ops.dashboard;
 
 public interface DashboardProvider {
     DashboardDataVO getDashboardData();
+
+    default DashboardDataVO getDashboardData(String instanceId) {
+        return getDashboardData();
+    }
 }

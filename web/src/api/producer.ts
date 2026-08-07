@@ -44,18 +44,19 @@ export async function fetchTopicList(): Promise<string[]> {
 }
 
 /** Fetch active producer groups for query suggestions */
-export async function fetchProducerGroups(): Promise<string[]> {
-  const res = await client.get<{ data?: string[] }>('/producer/groups');
+export async function fetchProducerGroups(instanceId: string): Promise<string[]> {
+  const res = await client.get<{ data?: string[] }>('/producer/groups', { params: { instanceId } });
   return res.data.data ?? [];
 }
 
 /** Query producer connections by topic and producer group */
 export async function queryProducerConnection(
+  instanceId: string,
   topic: string,
   producerGroup: string,
 ): Promise<ProducerConnection[]> {
   const res = await client.get<{ connectionSet: ProducerConnection[] }>('/producer/connection', {
-    params: { topic, producerGroup },
+    params: { instanceId, topic, producerGroup },
   });
   return res.data?.connectionSet ?? [];
 }
