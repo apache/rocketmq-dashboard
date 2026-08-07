@@ -18,14 +18,13 @@ package org.apache.rocketmq.studio.cluster.proxy;
 
 import org.apache.rocketmq.studio.cluster.broker.ClusterService;
 import org.apache.rocketmq.studio.common.domain.Result;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/proxies")
@@ -35,8 +34,11 @@ public class ProxyController {
     private final ClusterService clusterService;
 
     @PostMapping("/restart")
-    public Result<Map<String, Boolean>> restartProxy(@Valid @RequestBody RestartProxyDTO command) {
+    public Result<Void> restartProxy(@Valid @RequestBody RestartProxyDTO command) {
         boolean success = clusterService.restartProxy(command);
-        return Result.ok(Map.of("success", success));
+        if (!success) {
+            throw new BusinessException(500, "Failed to restart proxy");
+        }
+        return Result.ok();
     }
 }

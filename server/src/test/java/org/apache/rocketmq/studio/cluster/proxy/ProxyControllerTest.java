@@ -59,8 +59,7 @@ class ProxyControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.success").value(true));
+                .andExpect(jsonPath("$.code").value(200));
 
         verify(clusterService).restartProxy(any(RestartProxyDTO.class));
     }
