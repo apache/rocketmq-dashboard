@@ -35,6 +35,7 @@ import org.apache.rocketmq.studio.rocketmq.RocketMQBrokerConfigService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -102,24 +103,28 @@ public class ClusterService {
         ClusterConfigVO config = copyConfig(cluster.getConfig());
         applyConfig(command, config);
 
+        List<BrokerVO> brokerTargets = cluster.getBrokers() == null ? List.of()
+                : cluster.getBrokers().stream()
+                        .filter(broker -> StringUtils.hasText(broker.getAddr()))
+                        .toList();
+        if (brokerTargets.isEmpty()) {
+            throw new BusinessException(409,
+                    "Cluster has no addressable brokers for config update: " + command.getId());
+        }
+
         List<String> successfulBrokers = new ArrayList<>();
         List<BrokerConfigUpdateFailureVO> failedBrokers = new ArrayList<>();
-        if (cluster.getBrokers() != null && !cluster.getBrokers().isEmpty()) {
-            Properties brokerProps = buildBrokerProperties(command);
-            for (BrokerVO broker : cluster.getBrokers()) {
-                String address = broker.getAddr();
-                if (address == null || address.isEmpty()) {
-                    continue;
-                }
-                try {
-                    brokerConfigService.updateBrokerConfig(address, command.getId(), brokerProps);
-                    successfulBrokers.add(address);
-                } catch (Exception e) {
-                    failedBrokers.add(BrokerConfigUpdateFailureVO.builder()
-                            .address(address)
-                            .message(e.getMessage())
-                            .build());
-                }
+        Properties brokerProps = buildBrokerProperties(command);
+        for (BrokerVO broker : brokerTargets) {
+            String address = broker.getAddr();
+            try {
+                brokerConfigService.updateBrokerConfig(address, command.getId(), brokerProps);
+                successfulBrokers.add(address);
+            } catch (Exception e) {
+                failedBrokers.add(BrokerConfigUpdateFailureVO.builder()
+                        .address(address)
+                        .message(e.getMessage())
+                        .build());
             }
         }
 
