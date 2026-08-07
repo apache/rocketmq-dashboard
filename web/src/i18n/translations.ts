@@ -700,6 +700,11 @@ const translations: Record<string, Record<Lang, string>> = {
   'ops.value': { zh: '值', en: 'Value' },
   'ops.description': { zh: '描述', en: 'Description' },
   'ops.nameServerAddressList': { zh: 'NameServer 地址列表', en: 'NameServer Address List' },
+  'ops.settingsUnavailable': { zh: 'Ops 设置未连接', en: 'Ops settings unavailable' },
+  'ops.settingsUnavailableHint': {
+    zh: '当前未连接到集群 admin 配置，以下设置仅为只读状态。',
+    en: 'Not connected to a cluster admin configuration; the settings below are read-only.',
+  },
   'ops.isUseVIPChannel': { zh: '是否使用 VIP 通道', en: 'Is Use VIP Channel' },
   'ops.useTLS': { zh: '使用 TLS', en: 'Use TLS' },
   'ops.selectNamesrv': { zh: '请选择 NameServer 地址', en: 'Please select a NameServer address' },

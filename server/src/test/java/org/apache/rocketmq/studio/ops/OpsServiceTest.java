@@ -28,13 +28,16 @@ class OpsServiceTest {
     private final OpsService opsService = new OpsService();
 
     @Test
-    void getHomePageShouldReturnDefaultSettings() {
+    void getHomePageShouldReturnUnavailableStateWhenNotConnected() {
         OpsHomeVO home = opsService.getHomePage();
 
-        assertThat(home.getNamesvrAddrList()).containsExactly("127.0.0.1:9876");
-        assertThat(home.getCurrentNamesrv()).isEqualTo("127.0.0.1:9876");
-        assertThat(home.isUseVIPChannel()).isTrue();
+        // Ops settings are not connected to a cluster admin configuration; the page must not
+        // present simulated values as live state.
+        assertThat(home.getNamesvrAddrList()).isEmpty();
+        assertThat(home.getCurrentNamesrv()).isEmpty();
+        assertThat(home.isUseVIPChannel()).isFalse();
         assertThat(home.isUseTLS()).isFalse();
+        assertThat(home.isAvailable()).isFalse();
     }
 
     @Test
@@ -53,8 +56,8 @@ class OpsServiceTest {
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(501));
 
         OpsHomeVO home = opsService.getHomePage();
-        assertThat(home.getNamesvrAddrList()).containsExactly("127.0.0.1:9876");
-        assertThat(home.getCurrentNamesrv()).isEqualTo("127.0.0.1:9876");
+        assertThat(home.getNamesvrAddrList()).isEmpty();
+        assertThat(home.getCurrentNamesrv()).isEmpty();
     }
 
     @Test
@@ -69,7 +72,7 @@ class OpsServiceTest {
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(501));
 
         OpsHomeVO home = opsService.getHomePage();
-        assertThat(home.isUseVIPChannel()).isTrue();
+        assertThat(home.isUseVIPChannel()).isFalse();
         assertThat(home.isUseTLS()).isFalse();
     }
 

@@ -21,7 +21,6 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -39,11 +38,14 @@ public class OpsService {
     private boolean useTLS;
 
     public synchronized OpsHomeVO getHomePage() {
+        // Ops settings are not connected to a cluster admin configuration, so return an explicit
+        // unavailable state instead of simulated values that would be mistaken for live data.
         return OpsHomeVO.builder()
-                .namesvrAddrList(new ArrayList<>(namesrvAddrs))
-                .currentNamesrv(currentNamesrv)
-                .useVIPChannel(useVIPChannel)
-                .useTLS(useTLS)
+                .namesvrAddrList(List.of())
+                .currentNamesrv("")
+                .useVIPChannel(false)
+                .useTLS(false)
+                .available(false)
                 .build();
     }
 

@@ -29,4 +29,6 @@ public class OpsHomeVO {
     private boolean useVIPChannel;
     private boolean useTLS;
     private String currentNamesrv;
+    /** False when Ops settings are not connected to a cluster admin configuration. */
+    private boolean available;
 }

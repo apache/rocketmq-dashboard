@@ -117,6 +117,7 @@ export interface OpsHomeData {
   useVIPChannel: boolean;
   useTLS: boolean;
   currentNamesrv: string;
+  available: boolean;
 }
 
 export async function queryOpsHomePage(): Promise<OpsHomeData> {

@@ -16,7 +16,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { App, Button, Input, Popconfirm, Select, Space, Switch, Tooltip, Typography } from 'antd';
+import { Alert, App, Button, Input, Popconfirm, Select, Space, Switch, Tooltip, Typography } from 'antd';
 import { FloppyDisk, Plus, Trash } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
 import useAuthStore from '../../stores/authStore';
@@ -42,6 +42,7 @@ const OpsPage: React.FC = () => {
   const [newNamesrvAddr, setNewNamesrvAddr] = useState('');
   const [useVIPChannel, setUseVIPChannel] = useState(false);
   const [useTLS, setUseTLS] = useState(false);
+  const [opsAvailable, setOpsAvailable] = useState(true);
   const writeOperationEnabled = !token || admin === true;
   const deleteNameServerDisabled =
     !selectedNamesrv || selectedNamesrv === currentNamesrv || namesrvAddrList.length <= 1;
@@ -58,6 +59,7 @@ const OpsPage: React.FC = () => {
           setUseTLS(data.useTLS);
           setSelectedNamesrv(data.currentNamesrv);
           setCurrentNamesrv(data.currentNamesrv);
+          setOpsAvailable(data.available);
         }
       } catch {
         if (!cancelled) {
@@ -140,6 +142,15 @@ const OpsPage: React.FC = () => {
 
   return (
     <div style={{ padding: 24 }}>
+      {!opsAvailable && (
+        <Alert
+          type="warning"
+          showIcon
+          message={t('ops.settingsUnavailable')}
+          description={t('ops.settingsUnavailableHint')}
+          style={{ marginBottom: 16 }}
+        />
+      )}
       {/* NameServer Address List */}
       <div style={{ marginBottom: 24 }}>
         <Typography.Title level={4}>{t('ops.nameServerAddressList')}</Typography.Title>
