@@ -58,6 +58,10 @@ public class GrafanaDashboardService {
             }
             try (InputStream in = resource.getInputStream()) {
                 JsonNode root = objectMapper.readTree(in);
+                if (root == null || !root.isObject()) {
+                    log.warn("Skipping invalid Grafana dashboard resource {}: expected a JSON object", resource);
+                    continue;
+                }
                 String title = textOr(root, "title", uid);
                 String description = textOr(root, "description", "");
                 List<String> tags = parseTags(root);
@@ -115,7 +119,7 @@ public class GrafanaDashboardService {
         return null;
     }
 
-    private Resource[] resolveResources() {
+    protected Resource[] resolveResources() {
         try {
             return resourceResolver.getResources(LOCATION_PATTERN);
         } catch (IOException e) {
