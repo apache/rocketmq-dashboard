@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.instance.topic;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
+import lombok.Builder.Default;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -32,4 +33,6 @@ public class TopicConsumerVO {
     private String messageModel;
     private double consumeTps;
     private long diffTotal;
+    @Default
+    private boolean metricsAvailable = true;
 }

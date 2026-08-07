@@ -18,14 +18,18 @@ package org.apache.rocketmq.studio.rocketmq;
 
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
+import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.persistence.entity.RmqGroup;
 import org.apache.rocketmq.studio.persistence.mapper.RmqGroupMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqTopicMapper;
+import org.apache.rocketmq.remoting.protocol.body.GroupList;
+import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.HashSet;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -40,6 +44,9 @@ class RocketMQMetadataProviderTest {
 
     @Mock
     private RmqGroupMapper groupMapper;
+
+    @Mock
+    private DefaultMQAdminExt adminExt;
 
     @Test
     void listConsumerGroupsReadsConsumeTypeColumn() {
@@ -75,5 +82,25 @@ class RocketMQMetadataProviderTest {
 
         assertThat(groups).hasSize(1);
         assertThat(groups.get(0).getConsumeType()).isEqualTo(ConsumeType.CLUSTERING);
+    }
+
+    @Test
+    void topicConsumersShouldMarkMetricsUnavailableWhenStatsCannotBeRead() throws Exception {
+        GroupList groups = new GroupList();
+        groups.setGroupList(new HashSet<>(List.of("order-consumer")));
+        when(adminExt.queryTopicConsumeByWho("orders")).thenReturn(groups);
+        when(adminExt.examineConsumeStats("order-consumer", "orders"))
+                .thenThrow(new RuntimeException("broker unavailable"));
+
+        RocketMQMetadataProvider provider =
+                new RocketMQMetadataProvider(adminExt, topicMapper, groupMapper);
+
+        List<TopicConsumerVO> consumers = provider.getTopicConsumers("orders");
+
+        assertThat(consumers).singleElement().satisfies(consumer -> {
+            assertThat(consumer.getDiffTotal()).isZero();
+            assertThat(consumer.getConsumeTps()).isZero();
+            assertThat(consumer.isMetricsAvailable()).isFalse();
+        });
     }
 }
