@@ -208,6 +208,10 @@ public abstract class AbstractPrometheusCompatibleMetricsSource implements Metri
     }
 
     private MetricDataVO.MetricSeriesVO parseSeries(JsonNode seriesNode) {
+        if (seriesNode == null) {
+            throw new PrometheusException(HttpStatus.BAD_GATEWAY.value(),
+                    backendLabel() + " returned a malformed time series");
+        }
         JsonNode metric = seriesNode.path("metric");
         JsonNode values = seriesNode.path("values");
         JsonNode histograms = seriesNode.path("histograms");
@@ -239,7 +243,8 @@ public abstract class AbstractPrometheusCompatibleMetricsSource implements Metri
     }
 
     private MetricDataVO.MetricSampleVO parseSample(JsonNode sampleNode) {
-        if (!sampleNode.isArray() || sampleNode.size() != 2 || !sampleNode.get(0).isNumber()) {
+        if (sampleNode == null || !sampleNode.isArray() || sampleNode.size() != 2
+                || !sampleNode.get(0).isNumber()) {
             throw new PrometheusException(HttpStatus.BAD_GATEWAY.value(),
                     backendLabel() + " returned a malformed sample");
         }
@@ -292,6 +297,9 @@ public abstract class AbstractPrometheusCompatibleMetricsSource implements Metri
         }
         long totalSamples = 0;
         for (JsonNode series : result) {
+            if (series == null) {
+                continue;
+            }
             totalSamples += series.path("values").size();
             totalSamples += series.path("histograms").size();
             if (totalSamples > MAX_TOTAL_SAMPLES) {
@@ -304,7 +312,7 @@ public abstract class AbstractPrometheusCompatibleMetricsSource implements Metri
     private int responseStatus(HttpStatusCode statusCode) {
         int upstreamStatus = statusCode.value();
         return switch (upstreamStatus) {
-            case 400, 422, 503 -> upstreamStatus;
+            case 400, 422, 503, 504 -> upstreamStatus;
             default -> HttpStatus.BAD_GATEWAY.value();
         };
     }
