@@ -31,6 +31,8 @@ import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfi
 import org.apache.rocketmq.studio.cluster.client.ClientConnectionVO;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.instance.InstanceRepository;
+import org.apache.rocketmq.studio.rip2.Rip2ProxyAdminClient;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -66,12 +68,19 @@ class RocketMQClientProviderTest {
     @Mock
     private RuntimeAdminClientResolver runtimeAdminClientResolver;
 
+    @Mock
+    private InstanceRepository instanceRepository;
+
+    @Mock
+    private Rip2ProxyAdminClient rip2ProxyAdminClient;
+
     private RocketMQClientProvider provider;
 
     @BeforeEach
     void setUp() {
         lenient().when(adminExtProvider.getIfAvailable()).thenReturn(adminExt);
-        provider = new RocketMQClientProvider(adminExtProvider, runtimeAdminClientResolver);
+        provider = new RocketMQClientProvider(adminExtProvider, runtimeAdminClientResolver,
+                instanceRepository, rip2ProxyAdminClient);
         lenient().when(runtimeAdminClientResolver.execute(anyString(), any())).thenAnswer(invocation ->
                 invocation.<org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory.AdminAction<Object>>
                         getArgument(1).apply(adminExt));

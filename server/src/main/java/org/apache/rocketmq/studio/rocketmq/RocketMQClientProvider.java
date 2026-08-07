@@ -34,12 +34,17 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.ClientLanguage;
 import org.apache.rocketmq.studio.common.domain.enums.ClientType;
 import org.apache.rocketmq.studio.common.domain.enums.Protocol;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
+import org.apache.rocketmq.studio.instance.InstanceRepository;
+import org.apache.rocketmq.studio.instance.InstanceVO;
+import org.apache.rocketmq.studio.rip2.Rip2ProxyAdminClient;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -54,6 +59,12 @@ import java.util.Set;
  * Live {@link ClientProvider} backed by the RocketMQ admin API. It discovers producer
  * connections from each broker's producer table and consumer connections by scanning
  * subscription groups across all brokers in the cluster.
+ *
+ * <p>RIP-1 CLIENT-01 routing: gRPC clients attached to a 5.0 proxy never register on the
+ * brokers, so broker-side admin cannot see them. For PROXY instances the query is routed
+ * to the proxy's RIP-2 {@code ProxyAdminService} (scope ALL_PROXIES, cluster-wide view);
+ * the PROXY instance endpoint must be the proxy admin gRPC address. DIRECT instances keep
+ * the broker-admin path.
  */
 @Slf4j
 @Service
@@ -64,15 +75,28 @@ public class RocketMQClientProvider implements ClientProvider {
 
     private final ObjectProvider<DefaultMQAdminExt> adminExtProvider;
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
+    private final InstanceRepository instanceRepository;
+    private final Rip2ProxyAdminClient rip2ProxyAdminClient;
 
     public RocketMQClientProvider(ObjectProvider<DefaultMQAdminExt> adminExtProvider,
-                                  RuntimeAdminClientResolver runtimeAdminClientResolver) {
+                                  RuntimeAdminClientResolver runtimeAdminClientResolver,
+                                  InstanceRepository instanceRepository,
+                                  Rip2ProxyAdminClient rip2ProxyAdminClient) {
         this.adminExtProvider = adminExtProvider;
         this.runtimeAdminClientResolver = runtimeAdminClientResolver;
+        this.instanceRepository = instanceRepository;
+        this.rip2ProxyAdminClient = rip2ProxyAdminClient;
     }
 
     @Override
     public List<ClientConnectionVO> findConnections(String instanceId, String clusterId, String type) {
+        // RIP-2 path: PROXY instance clients live inside the proxy, query its admin surface.
+        if (StringUtils.hasText(instanceId)) {
+            InstanceVO instance = instanceRepository.findById(instanceId).orElse(null);
+            if (instance != null && instance.getType() == InstanceType.PROXY) {
+                return rip2ProxyAdminClient.listClients(instance.getEndpoint(), type);
+            }
+        }
         return runtimeAdminClientResolver.execute(instanceId, adminExt -> findConnections(adminExt, clusterId, type));
     }
 

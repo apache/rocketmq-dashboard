@@ -46,6 +46,11 @@ studio:
       bearer-token: ${STUDIO_METRICS_PROMETHEUS_BEARER_TOKEN:}
   rocketmq:
     namesrv-addr: ${STUDIO_ROCKETMQ_NAMESRV_ADDR:}
+  # RIP-2 ProxyAdminService credentials (ACL 2.0). Least privilege: a read-only admin
+  # account (e.g. grants Get,List on cluster:proxy.admin.client) is sufficient.
+  rip2:
+    username: ${STUDIO_RIP2_USERNAME:}
+    password: ${STUDIO_RIP2_PASSWORD:}
   query-history:
     retention-days: ${STUDIO_QUERY_HISTORY_RETENTION_DAYS:90}
     cleanup-interval: ${STUDIO_QUERY_HISTORY_CLEANUP_INTERVAL:PT24H}
