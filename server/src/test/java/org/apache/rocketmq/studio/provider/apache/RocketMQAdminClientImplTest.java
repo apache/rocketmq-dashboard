@@ -235,6 +235,52 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void createTopicSucceedsWhenAuditRecordingFails() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        ClusterInfo clusterInfo = clusterInfoWithMaster();
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo);
+        when(topicMapper.selectOne(any())).thenReturn(null);
+        doNothing().when(adminExt).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+        doThrow(new RuntimeException("audit db down")).when(auditService)
+                .record(anyString(), anyString(), anyString(), anyString());
+
+        TopicVO topic = new TopicVO();
+        topic.setName("topicA");
+
+        assertThat(adminClient.createTopic(topic).getId()).isEqualTo("topicA");
+        verify(auditService).record("CREATE_TOPIC", "topicA", "queues=8/8", "SUCCESS");
+    }
+
+    @Test
+    void createTopicPreservesRemoteFailureWhenAuditRecordingFails() throws Exception {
+        when(adminExt.examineBrokerClusterInfo())
+                .thenThrow(new IllegalStateException("broker unavailable"));
+        doThrow(new RuntimeException("audit db down")).when(auditService)
+                .record(anyString(), anyString(), anyString(), anyString());
+
+        TopicVO topic = new TopicVO();
+        topic.setName("topicA");
+
+        assertThatThrownBy(() -> adminClient.createTopic(topic))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Failed to create topic: broker unavailable");
+    }
+
+    private ClusterInfo clusterInfoWithMaster() {
+        ClusterInfo clusterInfo = new ClusterInfo();
+        Map<String, Set<String>> clusterAddrTable = new HashMap<>();
+        clusterAddrTable.put("cluster-1", new HashSet<>(List.of("broker-1")));
+        clusterInfo.setClusterAddrTable(clusterAddrTable);
+        Map<String, BrokerData> brokerAddrTable = new HashMap<>();
+        BrokerData brokerData = new BrokerData();
+        brokerData.setBrokerName("broker-1");
+        brokerData.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.1:10911")));
+        brokerAddrTable.put("broker-1", brokerData);
+        clusterInfo.setBrokerAddrTable(brokerAddrTable);
+        return clusterInfo;
+    }
+
+    @Test
     void sendMessageShouldNotFailWhenAuditRecordingFails() throws Exception {
         when(properties.getNamesrvAddr()).thenReturn("10.0.0.1:9876");
         doThrow(new RuntimeException("audit db down")).when(auditService)

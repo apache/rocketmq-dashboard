@@ -195,6 +195,21 @@ class ClusterServiceTest {
     }
 
     @Test
+    void updateConfigShouldSucceedWhenAuditRecordingFails() {
+        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+        doThrow(new IllegalStateException("audit storage unavailable")).when(auditService)
+                .record(any(), any(), any(), any());
+
+        ClusterConfigUpdateResultVO result = clusterService.updateClusterConfig(UpdateConfigDTO.builder()
+                .id("cluster-1")
+                .flushDiskType("SYNC_FLUSH")
+                .build());
+
+        assertThat(result.getStatus()).isEqualTo(ClusterConfigUpdateResultVO.Status.SUCCESS);
+        verify(clusterRepository).updateConfig(eq("cluster-1"), any(ClusterConfigVO.class));
+    }
+
+    @Test
     void updateConfigShouldUpdateMultipleFields() {
         when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
 
