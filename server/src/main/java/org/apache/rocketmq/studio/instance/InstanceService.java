@@ -72,7 +72,9 @@ public class InstanceService {
             InstanceProvider provider = providerRegistry.forVendor(vendor);
             instance.setTopicCount(provider.countTopics(instance.getId()));
             instance.setConsumerGroupCount(provider.countGroups(instance.getId()));
+            instance.setResourceCountsAvailable(true);
         } catch (RuntimeException ex) {
+            instance.setResourceCountsAvailable(false);
             log.warn("Failed to load resource counts for instance {}: {}",
                     instance.getId(), ex.getMessage());
         }

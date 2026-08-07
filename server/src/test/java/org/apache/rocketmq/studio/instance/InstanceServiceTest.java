@@ -24,8 +24,8 @@ import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.provider.CloudCatalogProvider;
 import org.apache.rocketmq.studio.provider.CloudInstanceDetailVO;
-import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
+import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -75,6 +75,37 @@ class InstanceServiceTest {
 
         assertThat(result).hasSize(2);
         verify(instanceRepository).findAll();
+    }
+
+    @Test
+    void listInstancesMarksCloudCountsUnavailableWhenProviderFails() {
+        InstanceVO instance = InstanceVO.builder().vendor(InstanceVendor.ALIYUN).build();
+        instance.setId("cloud-1");
+        InstanceProvider provider = org.mockito.Mockito.mock(InstanceProvider.class);
+        when(instanceRepository.findAll()).thenReturn(List.of(instance));
+        when(providerRegistry.forVendor(InstanceVendor.ALIYUN)).thenReturn(provider);
+        when(provider.countTopics("cloud-1")).thenThrow(new IllegalStateException("access denied"));
+
+        InstanceVO result = instanceService.listInstances(null, null).get(0);
+
+        assertThat(result.isResourceCountsAvailable()).isFalse();
+    }
+
+    @Test
+    void listInstancesKeepsCloudCountsAvailableWhenProviderReturnsEmptyLists() {
+        InstanceVO instance = InstanceVO.builder().vendor(InstanceVendor.ALIYUN).build();
+        instance.setId("cloud-1");
+        InstanceProvider provider = org.mockito.Mockito.mock(InstanceProvider.class);
+        when(instanceRepository.findAll()).thenReturn(List.of(instance));
+        when(providerRegistry.forVendor(InstanceVendor.ALIYUN)).thenReturn(provider);
+        when(provider.countTopics("cloud-1")).thenReturn(0);
+        when(provider.countGroups("cloud-1")).thenReturn(0);
+
+        InstanceVO result = instanceService.listInstances(null, null).get(0);
+
+        assertThat(result.isResourceCountsAvailable()).isTrue();
+        assertThat(result.getTopicCount()).isZero();
+        assertThat(result.getConsumerGroupCount()).isZero();
     }
 
     @Test
