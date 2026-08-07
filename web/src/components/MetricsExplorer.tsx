@@ -211,7 +211,11 @@ const MetricChart = ({ data, metric, locale, noSamples }: MetricChartProps) => {
   );
 };
 
-const MetricsExplorer = () => {
+interface MetricsExplorerProps {
+  instanceId?: string;
+}
+
+const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
   const { lang } = useLang();
   const copy =
     lang === 'zh'
@@ -262,6 +266,14 @@ const MetricsExplorer = () => {
     [metricId, selectedProfile],
   );
   const selectedRange = RANGE_OPTIONS.find((range) => range.value === rangeId) ?? RANGE_OPTIONS[0];
+  const availableDataSources = useMemo(
+    () =>
+      dataSources.filter(
+        (source) =>
+          !source.instanceIds?.length || (instanceId !== undefined && source.instanceIds.includes(instanceId)),
+      ),
+    [dataSources, instanceId],
+  );
 
   const loadMetrics = useCallback(
     async (metric: MetricMapping | undefined, range: (typeof RANGE_OPTIONS)[number]) => {
@@ -365,6 +377,13 @@ const MetricsExplorer = () => {
     };
   }, []);
 
+  useEffect(() => {
+    if (dataSourceKey && !availableDataSources.some((source) => source.key === dataSourceKey)) {
+      setDataSourceKey('');
+      setData(null);
+    }
+  }, [availableDataSources, dataSourceKey]);
+
   return (
     <section aria-labelledby="metrics-explorer-title" style={{ marginTop: 24 }}>
       <Flex
@@ -389,7 +408,7 @@ const MetricsExplorer = () => {
             onChange={handleDataSourceChange}
             options={[
               { label: copy.defaultDataSource, value: '' },
-              ...dataSources.map((ds) => ({ label: ds.name, value: ds.key })),
+              ...availableDataSources.map((ds) => ({ label: ds.name, value: ds.key })),
             ]}
             style={{ width: 200, maxWidth: '100%' }}
           />

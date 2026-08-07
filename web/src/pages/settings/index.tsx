@@ -61,6 +61,8 @@ import {
 } from '../../api/settings';
 import type { DataSource } from '../../api/settings';
 import { STATUS_MAP } from '../../constants/theme';
+import { listInstances } from '../../services/instanceService';
+import type { Instance } from '../../api/instance';
 
 const { Title, Text, Link: TypoLink } = Typography;
 
@@ -279,6 +281,7 @@ const GeneralSettingsTab = () => {
 
 export const DataSourceTab = () => {
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
+  const [instances, setInstances] = useState<Instance[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingDataSource, setEditingDataSource] = useState<DataSource | null>(null);
@@ -300,6 +303,20 @@ export const DataSourceTab = () => {
         if (!cancelled) setLoading(false);
       });
 
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void listInstances()
+      .then((nextInstances) => {
+        if (!cancelled) setInstances(nextInstances);
+      })
+      .catch(() => {
+        if (!cancelled) setInstances([]);
+      });
     return () => {
       cancelled = true;
     };
@@ -380,6 +397,17 @@ export const DataSourceTab = () => {
       render: (t: string) => <Tag color={typeTagColor[t]}>{t}</Tag>,
     },
     { title: 'URL', dataIndex: 'url', key: 'url' },
+    {
+      title: '适用实例',
+      dataIndex: 'instanceIds',
+      key: 'instanceIds',
+      render: (instanceIds: string[] | undefined) => {
+        if (!instanceIds?.length) return '全局';
+        return instanceIds
+          .map((instanceId) => instances.find((instance) => instance.id === instanceId)?.name ?? instanceId)
+          .join('、');
+      },
+    },
     { title: '认证方式', dataIndex: 'auth', key: 'auth' },
     {
       title: '状态',
@@ -479,6 +507,15 @@ export const DataSourceTab = () => {
             rules={[{ required: true, message: '请输入数据源 URL' }]}
           >
             <Input placeholder="http://localhost:9090" />
+          </Form.Item>
+
+          <Form.Item label="适用实例" name="instanceIds" extra="留空时可用于所有实例">
+            <Select
+              mode="multiple"
+              allowClear
+              placeholder="选择此数据源对应的实例"
+              options={instances.map((instance) => ({ value: instance.id, label: instance.name }))}
+            />
           </Form.Item>
 
           <Form.Item label="认证方式" name="auth" initialValue="None">

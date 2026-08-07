@@ -283,7 +283,7 @@ const DashboardPage = () => {
         />
       </Card>
 
-      <MetricsExplorer />
+      <MetricsExplorer instanceId={selectedInstanceId} />
     </div>
   );
 };
