@@ -215,7 +215,10 @@ const InstancePage = () => {
       setAddModalOpen(false);
       addForm.resetFields();
       setVendor(DEFAULT_VENDOR);
-    } catch {
+    } catch (error) {
+      if (error && typeof error === 'object' && 'errorFields' in error) {
+        return; // validation failure; antd already shows field-level errors
+      }
       message.error('添加实例失败，请稍后重试');
     } finally {
       setSubmitting(false);
@@ -232,7 +235,10 @@ const InstancePage = () => {
       message.success(`实例「${updated.name}」备注已更新`);
       setEditModalOpen(false);
       editForm.resetFields();
-    } catch {
+    } catch (error) {
+      if (error && typeof error === 'object' && 'errorFields' in error) {
+        return; // validation failure; antd already shows field-level errors
+      }
       message.error('更新实例失败，请稍后重试');
     } finally {
       setSubmitting(false);
