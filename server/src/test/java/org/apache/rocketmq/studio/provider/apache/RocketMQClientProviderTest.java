@@ -49,6 +49,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
@@ -223,6 +224,16 @@ class RocketMQClientProviderTest {
     }
 
     @Test
+    void consumerScanFailsWhenBrokerDiscoveryFails() throws Exception {
+        when(adminExt.examineBrokerClusterInfo()).thenThrow(new IllegalStateException("broker unavailable"));
+
+        assertThatThrownBy(() -> provider.findConnections("instance-a", "cluster-a", "Consumer"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Failed to discover brokers for consumer connections: broker unavailable")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
     void consumerScanSkipsNullConnectionEntries() throws Exception {
         ClusterInfo clusterInfo = new ClusterInfo();
         clusterInfo.setBrokerAddrTable(Map.of("broker-a", new BrokerData("cluster-a", "broker-a",
@@ -244,6 +255,62 @@ class RocketMQClientProviderTest {
 
         assertThat(connections).hasSize(1);
         assertThat(connections.get(0).getClientId()).isEqualTo("consumer-client");
+    }
+
+    @Test
+    void consumerScanFailsWhenEveryBrokerGroupQueryFails() throws Exception {
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo(
+                "127.0.0.1:10911", "127.0.0.2:10911"));
+        when(adminExt.getAllSubscriptionGroup(anyString(), anyLong())).thenThrow(
+                new IllegalStateException("broker unavailable"));
+
+        assertThatThrownBy(() -> provider.findConnections("instance-a", "cluster-a", "Consumer"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Failed to query subscription groups from all brokers")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void consumerScanFailsWhenEveryGroupConnectionQueryFails() throws Exception {
+        SubscriptionGroupWrapper wrapper = subscriptionGroups("group-a", "group-b");
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo("127.0.0.1:10911"));
+        when(adminExt.getAllSubscriptionGroup("127.0.0.1:10911", 5000L)).thenReturn(wrapper);
+        when(adminExt.examineConsumerConnectionInfo(anyString()))
+                .thenThrow(new IllegalStateException("broker unavailable"));
+
+        assertThatThrownBy(() -> provider.findConnections("instance-a", "cluster-a", "Consumer"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Failed to query consumer connections from all groups")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void consumerScanReturnsPartialResultsWhenOneGroupQueryFails() throws Exception {
+        SubscriptionGroupWrapper wrapper = subscriptionGroups("group-a", "group-b");
+        ConsumerConnection consumerConnection = new ConsumerConnection();
+        consumerConnection.setConnectionSet(new HashSet<>(List.of(connection("consumer-client", "10.0.0.2:1000"))));
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo("127.0.0.1:10911"));
+        when(adminExt.getAllSubscriptionGroup("127.0.0.1:10911", 5000L)).thenReturn(wrapper);
+        when(adminExt.examineConsumerConnectionInfo("group-a"))
+                .thenThrow(new IllegalStateException("broker unavailable"));
+        when(adminExt.examineConsumerConnectionInfo("group-b")).thenReturn(consumerConnection);
+
+        List<ClientConnectionVO> connections = provider.findConnections("instance-a", "cluster-a", "Consumer");
+
+        assertThat(connections).singleElement().satisfies(connection -> {
+            assertThat(connection.getClientId()).isEqualTo("consumer-client");
+            assertThat(connection.getGroupOrTopic()).isEqualTo("group-b");
+        });
+    }
+
+    private static SubscriptionGroupWrapper subscriptionGroups(String... names) {
+        SubscriptionGroupWrapper wrapper = new SubscriptionGroupWrapper();
+        ConcurrentHashMap<String, SubscriptionGroupConfig> groups = new ConcurrentHashMap<>();
+        for (String name : names) {
+            groups.put(name, new SubscriptionGroupConfig());
+        }
+        wrapper.setSubscriptionGroupTable(groups);
+        return wrapper;
     }
 
     private static Connection connection(String clientId, String clientAddr) {
