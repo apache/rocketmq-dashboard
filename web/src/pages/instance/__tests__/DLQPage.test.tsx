@@ -55,6 +55,13 @@ const dlqGroup: DLQGroup = {
   status: 'ACTIVE',
 };
 
+const unavailableDlqGroup: DLQGroup = {
+  ...dlqGroup,
+  messageCount: 0,
+  statsAvailable: false,
+  status: 'UNAVAILABLE',
+};
+
 const secondDlqGroup: DLQGroup = {
   groupName: '-cg-"payment"',
   dlqTopic: '%DLQ%cg-payment',
@@ -129,6 +136,19 @@ describe('DLQ page', () => {
     renderWithProviders(<DLQPage />);
 
     expect(await screen.findByText('DLQ provider is not configured')).toBeInTheDocument();
+  });
+
+  it('does not present unavailable DLQ statistics as an empty queue', async () => {
+    vi.mocked(messageService.listDLQGroups).mockResolvedValue([unavailableDlqGroup]);
+    renderWithProviders(<DLQPage />);
+
+    const row = (await screen.findByText('cg-order')).closest('tr');
+    if (!row) throw new Error('DLQ group row not found');
+
+    expect(within(row).getByText('不可用')).toBeInTheDocument();
+    expect(within(row).getByRole('button', { name: '重投消息' })).toBeDisabled();
+    expect(within(row).getByRole('button', { name: '导出' })).toBeDisabled();
+    expect(within(row).getByRole('checkbox')).toBeDisabled();
   });
 
   it('opens a detail dialog with the selected group metadata', async () => {

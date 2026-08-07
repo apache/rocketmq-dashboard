@@ -62,6 +62,7 @@ export interface DLQGroup {
   lastEnqueueTime: string;
   retryCount: number;
   status: string;
+  statsAvailable?: boolean;
 }
 
 export interface DLQResendResult {

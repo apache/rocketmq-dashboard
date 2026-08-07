@@ -93,6 +93,7 @@ public class RocketMQDLQProvider implements DLQProvider {
     private DLQGroupVO buildDLQGroup(MQAdminExt adminExt, String groupName, String dlqTopic) {
         long messageCount = 0L;
         LocalDateTime lastEnqueueTime = null;
+        boolean statsAvailable = true;
         try {
             TopicStatsTable statsTable = adminExt.examineTopicStats(dlqTopic);
             if (statsTable != null && statsTable.getOffsetTable() != null) {
@@ -113,6 +114,7 @@ public class RocketMQDLQProvider implements DLQProvider {
                 }
             }
         } catch (Exception e) {
+            statsAvailable = false;
             log.warn("Failed to examine stats for DLQ topic {}: {}", dlqTopic, e.getMessage());
         }
 
@@ -122,7 +124,8 @@ public class RocketMQDLQProvider implements DLQProvider {
                 .messageCount(messageCount)
                 .lastEnqueueTime(lastEnqueueTime)
                 .retryCount(0)
-                .status(messageCount > 0 ? "ACTIVE" : "EMPTY")
+                .status(statsAvailable ? (messageCount > 0 ? "ACTIVE" : "EMPTY") : "UNAVAILABLE")
+                .statsAvailable(statsAvailable)
                 .build();
     }
 

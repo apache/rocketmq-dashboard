@@ -20,14 +20,22 @@ import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
 import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
+import org.apache.rocketmq.remoting.protocol.body.TopicList;
+import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
+import org.apache.rocketmq.studio.instance.dlq.DLQGroupVO;
 import org.apache.rocketmq.studio.ops.audit.AuditService;
+import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.MockedConstruction;
 import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -52,12 +60,51 @@ class RocketMQDLQProviderTest {
     @Mock
     private AuditService auditService;
 
+    @Mock
+    private MQAdminExt adminExt;
+
     private RocketMQDLQProvider provider;
 
     @BeforeEach
     void setUp() {
         lenient().when(runtimeAdminClientResolver.resolveEndpoint("instance-a")).thenReturn("namesrv-a:9876");
+        lenient().when(runtimeAdminClientResolver.execute(anyString(), any())).thenAnswer(invocation -> {
+            MqAdminExtFactory.AdminAction<Object> action = invocation.getArgument(1);
+            return action.apply(adminExt);
+        });
         provider = new RocketMQDLQProvider(runtimeAdminClientResolver, auditService);
+    }
+
+    @Test
+    void marksStatsUnavailableWhenTopicStatsCannotBeRead() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        TopicList topicList = new TopicList();
+        topicList.setTopicList(Set.of(dlqTopic));
+        when(adminExt.fetchAllTopicList()).thenReturn(topicList);
+        when(adminExt.examineTopicStats(dlqTopic)).thenThrow(new IllegalStateException("access denied"));
+
+        List<DLQGroupVO> groups = provider.listDLQGroups("instance-a");
+
+        assertThat(groups).singleElement().satisfies(group -> {
+            assertThat(group.isStatsAvailable()).isFalse();
+            assertThat(group.getStatus()).isEqualTo("UNAVAILABLE");
+        });
+    }
+
+    @Test
+    void keepsEmptyStatusWhenTopicStatsAreSuccessfullyRead() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        TopicList topicList = new TopicList();
+        topicList.setTopicList(Set.of(dlqTopic));
+        when(adminExt.fetchAllTopicList()).thenReturn(topicList);
+        when(adminExt.examineTopicStats(dlqTopic)).thenReturn(new TopicStatsTable());
+
+        List<DLQGroupVO> groups = provider.listDLQGroups("instance-a");
+
+        assertThat(groups).singleElement().satisfies(group -> {
+            assertThat(group.isStatsAvailable()).isTrue();
+            assertThat(group.getStatus()).isEqualTo("EMPTY");
+        });
     }
 
     @Test
