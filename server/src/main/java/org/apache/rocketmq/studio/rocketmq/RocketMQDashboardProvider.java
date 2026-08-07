@@ -113,7 +113,8 @@ public class RocketMQDashboardProvider implements DashboardProvider {
             // Count topics
             try {
                 TopicList topicList = adminExt.fetchAllTopicList();
-                Set<String> topics = topicList.getTopicList();
+                Set<String> topics = topicList == null || topicList.getTopicList() == null
+                        ? Set.of() : topicList.getTopicList();
                 totalTopics = (int) topics.stream()
                         .filter(t -> !isSystemTopic(t))
                         .count();
@@ -164,7 +165,7 @@ public class RocketMQDashboardProvider implements DashboardProvider {
             // Build per-cluster overview
             for (Map.Entry<String, Set<String>> clusterEntry : clusterAddrTable.entrySet()) {
                 String clusterName = clusterEntry.getKey();
-                Set<String> brokerNames = clusterEntry.getValue();
+                Set<String> brokerNames = clusterEntry.getValue() == null ? Set.of() : clusterEntry.getValue();
                 int clusterBrokers = 0;
                 int clusterTpsIn = 0;
                 int clusterTpsOut = 0;

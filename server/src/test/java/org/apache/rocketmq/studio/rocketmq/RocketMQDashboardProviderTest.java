@@ -113,6 +113,26 @@ class RocketMQDashboardProviderTest {
         assertThat(dashboard.getStats().getTotalBrokers()).isZero();
     }
 
+    @Test
+    void dashboardShouldTolerateMissingTopicListAndClusterMembership() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        ClusterInfo info = new ClusterInfo();
+        info.setBrokerAddrTable(new HashMap<>());
+        HashMap<String, Set<String>> clusterAddrTable = new HashMap<>();
+        clusterAddrTable.put("cluster-without-members", null);
+        info.setClusterAddrTable(clusterAddrTable);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(info);
+        when(adminExt.fetchAllTopicList()).thenReturn(null);
+
+        DashboardDataVO dashboard = new RocketMQDashboardProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getStats().getTotalTopics()).isZero();
+        assertThat(dashboard.getClusters()).singleElement().satisfies(cluster -> {
+            assertThat(cluster.getName()).isEqualTo("cluster-without-members");
+            assertThat(cluster.getBrokers()).isZero();
+        });
+    }
+
     private ClusterInfo clusterInfo() {
         ClusterInfo info = new ClusterInfo();
         HashMap<Long, String> addrs = new HashMap<>();
