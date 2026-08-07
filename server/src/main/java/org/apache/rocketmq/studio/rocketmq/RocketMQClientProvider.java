@@ -239,7 +239,8 @@ public class RocketMQClientProvider implements ClientProvider {
             clusterInfo = adminExt.examineBrokerClusterInfo();
         } catch (Exception e) {
             log.warn("Failed to fetch cluster info for consumer connection scan", e);
-            return groups;
+            throw new BusinessException(502, "Failed to discover brokers for consumer connections: "
+                    + rootMessage(e));
         }
         if (clusterInfo == null || clusterInfo.getBrokerAddrTable() == null) {
             return groups;

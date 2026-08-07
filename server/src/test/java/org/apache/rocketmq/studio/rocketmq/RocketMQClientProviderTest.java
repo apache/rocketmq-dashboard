@@ -220,6 +220,16 @@ class RocketMQClientProviderTest {
     }
 
     @Test
+    void consumerScanFailsWhenBrokerDiscoveryFails() throws Exception {
+        when(adminExt.examineBrokerClusterInfo()).thenThrow(new IllegalStateException("broker unavailable"));
+
+        assertThatThrownBy(() -> provider.findConnections("instance-a", "cluster-a", "Consumer"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Failed to discover brokers for consumer connections: broker unavailable")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
     void consumerScanSkipsNullConnectionEntries() throws Exception {
         ClusterInfo clusterInfo = new ClusterInfo();
         clusterInfo.setBrokerAddrTable(Map.of("broker-a", new BrokerData("cluster-a", "broker-a",
