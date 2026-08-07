@@ -61,7 +61,7 @@ public class ClusterService {
     }
 
     public List<ClusterVO> listClusters(String instanceId) {
-        log.info("Listing all clusters");
+        log.info("Listing clusters for instance: {}", instanceId);
         List<ClusterVO> discovered = clusterProvider.discoverClusters(instanceId);
         if (discovered != null && !discovered.isEmpty()) {
             discovered.forEach(cluster -> enrichWithLiveConfig(cluster, instanceId));
