@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.provider.apache;
 
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.cluster.config.ClusterConfigVO;
 import org.apache.rocketmq.studio.common.domain.enums.FlushDiskType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -35,13 +36,18 @@ public class RocketMQBrokerConfigService {
 
     private final MqAdminExtFactory adminFactory;
     private final RocketMQProperties properties;
+    private final RuntimeAdminClientResolver runtimeAdminClientResolver;
     private final AuditService auditService;
 
     /**
      * Read broker config from the live broker via admin API.
      */
     public ClusterConfigVO getBrokerConfig(String brokerAddr) {
-        return adminFactory.execute(namesrvAddr(), null, admin -> {
+        return getBrokerConfig(brokerAddr, null);
+    }
+
+    public ClusterConfigVO getBrokerConfig(String brokerAddr, String instanceId) {
+        return execute(instanceId, admin -> {
             try {
                 Properties props = admin.getBrokerConfig(brokerAddr);
                 return mapToClusterConfigVO(props);
@@ -52,11 +58,22 @@ public class RocketMQBrokerConfigService {
         });
     }
 
+    private <T> T execute(String instanceId, MqAdminExtFactory.AdminAction<T> action) {
+        if (StringUtils.hasText(instanceId)) {
+            return runtimeAdminClientResolver.execute(instanceId, action);
+        }
+        return adminFactory.execute(namesrvAddr(), null, action);
+    }
+
     /**
      * Update broker config on the live broker via admin API, then record audit.
      */
     public void updateBrokerConfig(String brokerAddr, String clusterId, Properties newConfig) {
-        adminFactory.execute(namesrvAddr(), null, admin -> {
+        updateBrokerConfig(brokerAddr, clusterId, null, newConfig);
+    }
+
+    public void updateBrokerConfig(String brokerAddr, String clusterId, String instanceId, Properties newConfig) {
+        execute(instanceId, admin -> {
             try {
                 admin.updateBrokerConfig(brokerAddr, newConfig);
                 String detail = "brokerAddr=" + brokerAddr + ", config=" + newConfig;

@@ -51,20 +51,28 @@ public class ClusterService {
     private final AuditService auditService;
 
     public List<ClusterVO> listClusters() {
+        return listClusters(null);
+    }
+
+    public List<ClusterVO> listClusters(String instanceId) {
         log.info("Listing all clusters");
-        List<ClusterVO> discovered = clusterProvider.discoverClusters();
+        List<ClusterVO> discovered = clusterProvider.discoverClusters(instanceId);
         if (discovered != null && !discovered.isEmpty()) {
-            discovered.forEach(this::enrichWithLiveConfig);
+            discovered.forEach(cluster -> enrichWithLiveConfig(cluster, instanceId));
             return discovered;
         }
         return List.of();
     }
 
     public ClusterVO getCluster(String id) {
+        return getCluster(id, null);
+    }
+
+    public ClusterVO getCluster(String id, String instanceId) {
         log.info("Getting cluster detail: {}", id);
-        ClusterVO live = clusterProvider.refreshClusterDetail(id);
+        ClusterVO live = clusterProvider.refreshClusterDetail(id, instanceId);
         if (live != null) {
-            enrichWithLiveConfig(live);
+            enrichWithLiveConfig(live, instanceId);
             return live;
         }
         throw new BusinessException(503, "Cluster details are unavailable: " + id);
@@ -76,11 +84,15 @@ public class ClusterService {
      * live read is unavailable.
      */
     private void enrichWithLiveConfig(ClusterVO cluster) {
+        enrichWithLiveConfig(cluster, null);
+    }
+
+    private void enrichWithLiveConfig(ClusterVO cluster, String instanceId) {
         if (cluster.getBrokers() != null) {
             for (BrokerVO broker : cluster.getBrokers()) {
                 if (broker.getAddr() != null && !broker.getAddr().isEmpty()) {
                     try {
-                        cluster.setConfig(brokerConfigService.getBrokerConfig(broker.getAddr()));
+                        cluster.setConfig(brokerConfigService.getBrokerConfig(broker.getAddr(), instanceId));
                         return;
                     } catch (Exception e) {
                         log.warn("Failed to read live config from broker {}: {}",
@@ -97,7 +109,7 @@ public class ClusterService {
     public ClusterConfigUpdateResultVO updateClusterConfig(UpdateConfigDTO command) {
         log.info("Updating cluster config for: {}", command.getId());
         requireMatchingDefaultQueueNums(command);
-        ClusterVO cluster = resolveCluster(command.getId());
+        ClusterVO cluster = resolveCluster(command.getId(), command.getInstanceId());
 
         ClusterConfigVO config = copyConfig(cluster.getConfig());
         applyConfig(command, config);
@@ -112,7 +124,7 @@ public class ClusterService {
                     continue;
                 }
                 try {
-                    brokerConfigService.updateBrokerConfig(address, command.getId(), brokerProps);
+                    brokerConfigService.updateBrokerConfig(address, command.getId(), command.getInstanceId(), brokerProps);
                     successfulBrokers.add(address);
                 } catch (Exception e) {
                     failedBrokers.add(BrokerConfigUpdateFailureVO.builder()
@@ -197,9 +209,13 @@ public class ClusterService {
     }
 
     private ClusterVO resolveCluster(String clusterId) {
-        ClusterVO live = clusterProvider.refreshClusterDetail(clusterId);
+        return resolveCluster(clusterId, null);
+    }
+
+    private ClusterVO resolveCluster(String clusterId, String instanceId) {
+        ClusterVO live = clusterProvider.refreshClusterDetail(clusterId, instanceId);
         if (live != null) {
-            enrichWithLiveConfig(live);
+            enrichWithLiveConfig(live, instanceId);
             return live;
         }
         return clusterRepository.findById(clusterId)

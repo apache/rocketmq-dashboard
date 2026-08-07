@@ -135,8 +135,10 @@ export interface NameServerConfigDiffResult {
 }
 
 // ─── Cluster ────────────────────────────────────────────────────
-export async function listClusters() {
-  const res = await client.get<{ data: ClusterInfo[] }>('/clusters');
+export async function listClusters(instanceId?: string) {
+  const res = await client.get<{ data: ClusterInfo[] }>('/clusters', {
+    params: instanceId ? { instanceId } : undefined,
+  });
   return res.data.data;
 }
 
@@ -147,12 +149,16 @@ export async function testClusterConnection(namesrvAddr: string) {
   return res.data.data;
 }
 
-export async function getCluster(id: string) {
-  const res = await client.get<{ data: ClusterInfo }>(`/clusters/${pathSegment(id)}`);
+export async function getCluster(id: string, instanceId?: string) {
+  const res = await client.get<{ data: ClusterInfo }>(`/clusters/${pathSegment(id)}`, {
+    params: instanceId ? { instanceId } : undefined,
+  });
   return res.data.data;
 }
 
-export async function updateClusterConfig(data: { id: string } & Partial<ClusterConfig>) {
+export async function updateClusterConfig(
+  data: { id: string; instanceId?: string } & Partial<ClusterConfig>,
+) {
   const res = await client.post<{ data: ClusterConfigUpdateResult }>(
     '/clusters/config/update',
     data,

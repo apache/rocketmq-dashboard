@@ -64,6 +64,8 @@ import {
   updateClusterConfig,
   updateNameServer,
 } from '../../services/clusterService';
+import { listInstances } from '../../services/instanceService';
+import type { Instance } from '../../api/instance';
 
 const { Text } = Typography;
 
@@ -83,6 +85,8 @@ const compareText = (left: string | null | undefined, right: string | null | und
 const ClusterPage = () => {
   const { t } = useLang();
   const [clusters, setClusters] = useState<ClusterInfo[]>([]);
+  const [instances, setInstances] = useState<Instance[]>([]);
+  const [selectedInstanceId, setSelectedInstanceId] = useState('');
   const [loading, setLoading] = useState(true);
   const [nsSearch, setNsSearch] = useState('');
   const [brokerSearch, setBrokerSearch] = useState('');
@@ -148,6 +152,18 @@ const ClusterPage = () => {
     Promise.resolve(),
   );
   const tRef = useRef(t);
+  const selectedInstanceIdRef = useRef('');
+
+  useEffect(() => {
+    void listInstances().then((nextInstances) => {
+      const apacheInstances = nextInstances.filter((instance) => instance.vendor === 'APACHE');
+      setInstances(apacheInstances);
+      const initialInstanceId = apacheInstances[0]?.id ?? '';
+      selectedInstanceIdRef.current = initialInstanceId;
+      setSelectedInstanceId(initialInstanceId);
+      void requestRefreshRef.current('manual');
+    });
+  }, []);
 
   const clearRefreshTimer = useCallback(() => {
     if (refreshTimerRef.current !== null) {
@@ -177,7 +193,7 @@ const ClusterPage = () => {
 
         while (currentSource && mountedRef.current) {
           try {
-            const nextClusters = await listClusters();
+            const nextClusters = await listClusters(selectedInstanceIdRef.current || undefined);
             if (!mountedRef.current) return;
             setClusters(nextClusters);
             setSelectedProxy((current) => {
@@ -530,6 +546,7 @@ const ClusterPage = () => {
                   };
                   const result = await updateClusterConfig({
                     id: selectedCluster.id,
+                    instanceId: selectedInstanceIdRef.current || undefined,
                     ...nextConfig,
                   });
                   if (result.status === 'SUCCESS') {
@@ -730,6 +747,17 @@ const ClusterPage = () => {
       <div>
         <Flex justify="space-between" style={{ marginBottom: 16 }}>
           <Space>
+            <Select
+              value={selectedInstanceId || undefined}
+              onChange={(instanceId) => {
+                selectedInstanceIdRef.current = instanceId;
+                setSelectedInstanceId(instanceId);
+                void requestRefresh('manual');
+              }}
+              placeholder="Select instance"
+              style={{ width: 180 }}
+              options={instances.map((instance) => ({ value: instance.id, label: instance.name }))}
+            />
             <Input.Search
               placeholder={t('cluster.searchNs')}
               allowClear
