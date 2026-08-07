@@ -207,7 +207,7 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                 clusters.add(ClusterOverviewVO.builder()
                         .id(clusterName)
                         .name(clusterName)
-                        .type(ClusterType.V5_PROXY_CLUSTER)
+                        .type(ClusterType.V4_DIRECT)
                         .status(runtimeMetricsUnavailable ? ClusterStatus.warning : ClusterStatus.healthy)
                         .brokers(clusterBrokers)
                         .proxies(0)
