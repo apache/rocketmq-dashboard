@@ -31,17 +31,21 @@ public class ProducerConnectionService {
 
     private final ClientProvider clientProvider;
 
-    public List<ProducerConnectionVO> listConnections(String topic, String producerGroup) {
-        log.info("Listing producer connections, topic={}, producerGroup={}", topic, producerGroup);
+    public List<ProducerConnectionVO> listConnections(String instanceId, String topic, String producerGroup) {
+        log.info("Listing producer connections, instanceId={}, topic={}, producerGroup={}",
+                instanceId, topic, producerGroup);
+        String normalizedInstanceId = requireFilter(instanceId, "instanceId");
         String normalizedTopic = requireFilter(topic, "topic");
         String normalizedProducerGroup = requireFilter(producerGroup, "producerGroup");
-        return clientProvider.findProducerConnections(normalizedTopic, normalizedProducerGroup).stream()
+        return clientProvider.findProducerConnections(normalizedInstanceId, normalizedTopic, normalizedProducerGroup)
+                .stream()
                 .map(this::toProducerConnection)
                 .toList();
     }
 
-    public List<String> listProducerGroups() {
-        return clientProvider.findConnections(null, null, ClientType.Producer.name()).stream()
+    public List<String> listProducerGroups(String instanceId) {
+        String normalizedInstanceId = requireFilter(instanceId, "instanceId");
+        return clientProvider.findConnections(normalizedInstanceId, null, ClientType.Producer.name()).stream()
                 .map(ClientConnectionVO::getProducerGroup)
                 .filter(this::hasText)
                 .map(String::trim)

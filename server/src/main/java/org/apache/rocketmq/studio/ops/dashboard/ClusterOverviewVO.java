@@ -39,8 +39,8 @@ public class ClusterOverviewVO {
     private int proxies;
     private int topics;
     private int groups;
-    private int tpsIn;
-    private int tpsOut;
+    private long tpsIn;
+    private long tpsOut;
     private String version;
     private List<Integer> throughput;
 }

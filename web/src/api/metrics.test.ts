@@ -63,6 +63,15 @@ describe('metrics API', () => {
     await expect(getDashboard()).resolves.toEqual(dashboard);
   });
 
+  it('forwards the selected instance to the dashboard endpoint', async () => {
+    mock.onGet('/dashboard').reply((config) => {
+      expect(config.params).toEqual({ instanceId: 'instance-prod' });
+      return [200, { code: 200, data: dashboard }];
+    });
+
+    await expect(getDashboard('instance-prod')).resolves.toEqual(dashboard);
+  });
+
   it('posts a metrics query and returns its result', async () => {
     const query = { metric: 'TPS_IN', start: 1, end: 2, step: '1m' };
     const result = {

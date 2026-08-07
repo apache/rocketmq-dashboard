@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Table,
   Button,
@@ -31,7 +31,7 @@ import {
   Switch,
   message,
 } from 'antd';
-import { MagnifyingGlass, Plus, ArrowClockwise, Users, Eye } from '@phosphor-icons/react';
+import { MagnifyingGlass, ArrowClockwise, Users } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
 import type { ConsumerGroup, QueueProgress, SubscriptionEntry } from '../../api/metadata';
 import {
@@ -44,6 +44,7 @@ import {
 type GroupStatus = 'running' | 'warning' | 'stopped';
 
 const BACKLOG_WARNING_THRESHOLD = 10000;
+const GROUP_REFRESH_INTERVAL_MS = 2000;
 
 const deriveStatus = (group: ConsumerGroup): GroupStatus => {
   if (group.onlineInstances <= 0) return 'stopped';
@@ -65,51 +66,50 @@ const GroupManagementPage = () => {
   const [subscriptions, setSubscriptions] = useState<SubscriptionEntry[]>([]);
   const [progress, setProgress] = useState<QueueProgress[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
+  const listRequestId = useRef(0);
+  const detailRequestId = useRef(0);
   const { t } = useLang();
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const fetchGroups = async () => {
-      try {
-        const data = await listConsumerGroups();
-        if (!cancelled) setGroups(data);
-      } catch {
-        if (!cancelled) message.error(t('consumer.fetchListFailed'));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    void fetchGroups();
-    return () => {
-      cancelled = true;
-    };
-  }, [t]);
-
-  const handleRefresh = useCallback(async () => {
+  const loadGroups = useCallback(async () => {
+    const requestId = ++listRequestId.current;
     setLoading(true);
     try {
       const data = await listConsumerGroups();
+      if (requestId !== listRequestId.current) return;
       setGroups(data);
     } catch {
+      if (requestId !== listRequestId.current) return;
       message.error(t('consumer.fetchListFailed'));
     } finally {
-      setLoading(false);
+      if (requestId === listRequestId.current) {
+        setLoading(false);
+      }
     }
   }, [t]);
 
-  // Live refresh: poll while the auto-refresh switch is on.
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void loadGroups();
+    });
+    return () => window.clearTimeout(timeoutId);
+  }, [loadGroups]);
+
   useEffect(() => {
     if (!autoRefresh) return;
-    const timer = setInterval(() => {
-      void handleRefresh();
-    }, 5000);
-    return () => clearInterval(timer);
-  }, [autoRefresh, handleRefresh]);
+
+    const intervalId = window.setInterval(() => {
+      void loadGroups();
+    }, GROUP_REFRESH_INTERVAL_MS);
+    return () => window.clearInterval(intervalId);
+  }, [autoRefresh, loadGroups]);
+
+  const handleRefresh = useCallback(() => {
+    void loadGroups();
+  }, [loadGroups]);
 
   const handleViewDetail = useCallback(
     async (group: ConsumerGroup) => {
+      const requestId = ++detailRequestId.current;
       setSelectedGroup(group);
       setModalVisible(true);
       setSubscriptions([]);
@@ -120,12 +120,16 @@ const GroupManagementPage = () => {
           getConsumerSubscriptions(group.name),
           getConsumerProgress(group.name),
         ]);
+        if (requestId !== detailRequestId.current) return;
         setSubscriptions(subs);
         setProgress(prog);
       } catch {
+        if (requestId !== detailRequestId.current) return;
         message.error(t('consumer.fetchProgressFailed', { name: group.name }));
       } finally {
-        setDetailLoading(false);
+        if (requestId === detailRequestId.current) {
+          setDetailLoading(false);
+        }
       }
     },
     [t],
@@ -206,14 +210,9 @@ const GroupManagementPage = () => {
       title: t('common.actions'),
       key: 'action',
       render: (_: unknown, record: ConsumerGroup) => (
-        <Space size="small">
-          <Button type="link" size="small" onClick={() => void handleViewDetail(record)}>
-            {t('common.detail')}
-          </Button>
-          <Button type="link" size="small">
-            {t('brokerCluster.config')}
-          </Button>
-        </Space>
+        <Button type="link" size="small" onClick={() => void handleViewDetail(record)}>
+          {t('common.detail')}
+        </Button>
       ),
     },
   ];
@@ -244,15 +243,6 @@ const GroupManagementPage = () => {
         <code style={{ background: '#f5f5f5', padding: '2px 6px', borderRadius: 4, fontSize: 12 }}>
           {text}
         </code>
-      ),
-    },
-    {
-      title: t('common.actions'),
-      key: 'action',
-      render: () => (
-        <Button type="link" size="small" icon={<Eye size={14} />}>
-          {t('groupMgmt.viewDistribution')}
-        </Button>
       ),
     },
   ];
@@ -288,9 +278,6 @@ const GroupManagementPage = () => {
             style={{ width: 240 }}
             allowClear
           />
-          <Button type="primary" icon={<Plus size={14} />}>
-            {t('groupMgmt.createGroup')}
-          </Button>
           <Switch
             checked={autoRefresh}
             onChange={setAutoRefresh}
@@ -298,11 +285,7 @@ const GroupManagementPage = () => {
             unCheckedChildren={t('groupMgmt.manual')}
             size="small"
           />
-          <Button
-            icon={<ArrowClockwise size={14} />}
-            size="small"
-            onClick={() => void handleRefresh()}
-          >
+          <Button icon={<ArrowClockwise size={14} />} size="small" onClick={handleRefresh}>
             {t('common.reset')}
           </Button>
         </Space>
@@ -326,7 +309,10 @@ const GroupManagementPage = () => {
       <Modal
         title={null}
         open={modalVisible}
-        onCancel={() => setModalVisible(false)}
+        onCancel={() => {
+          ++detailRequestId.current;
+          setModalVisible(false);
+        }}
         footer={null}
         width={720}
         destroyOnClose

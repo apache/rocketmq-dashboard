@@ -28,6 +28,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -58,6 +59,10 @@ public class GrafanaDashboardService {
             }
             try (InputStream in = resource.getInputStream()) {
                 JsonNode root = objectMapper.readTree(in);
+                if (root == null || !root.isObject()) {
+                    log.warn("Skipping invalid Grafana dashboard resource {}: expected a JSON object", resource);
+                    continue;
+                }
                 String title = textOr(root, "title", uid);
                 String description = textOr(root, "description", "");
                 List<String> tags = parseTags(root);
@@ -100,7 +105,7 @@ public class GrafanaDashboardService {
             throw new BusinessException(404, "Grafana dashboard not found: " + uid);
         }
         try (InputStream in = resource.getInputStream()) {
-            return new String(in.readAllBytes());
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new BusinessException(500, "Failed to read Grafana dashboard: " + uid);
         }
@@ -115,7 +120,7 @@ public class GrafanaDashboardService {
         return null;
     }
 
-    private Resource[] resolveResources() {
+    protected Resource[] resolveResources() {
         try {
             return resourceResolver.getResources(LOCATION_PATTERN);
         } catch (IOException e) {

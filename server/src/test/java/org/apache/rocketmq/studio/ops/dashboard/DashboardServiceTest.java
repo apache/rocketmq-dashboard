@@ -110,4 +110,32 @@ class DashboardServiceTest {
         assertThat(result.getClusters()).isEmpty();
         verify(dashboardProvider).getDashboardData();
     }
+
+    @Test
+    void getDashboardShouldUseSelectedInstanceWhenProvided() {
+        DashboardDataVO instanceData = DashboardDataVO.builder()
+                .stats(DashboardStatsVO.builder().totalClusters(1).build())
+                .clusters(List.of())
+                .build();
+        when(dashboardProvider.getDashboardData("instance-a")).thenReturn(instanceData);
+
+        DashboardDataVO result = dashboardService.getDashboard(" instance-a ");
+
+        assertThat(result).isSameAs(instanceData);
+        verify(dashboardProvider).getDashboardData("instance-a");
+    }
+
+    @Test
+    void getDashboardShouldKeepDefaultPathForBlankInstance() {
+        DashboardDataVO defaultData = DashboardDataVO.builder()
+                .stats(DashboardStatsVO.builder().build())
+                .clusters(List.of())
+                .build();
+        when(dashboardProvider.getDashboardData()).thenReturn(defaultData);
+
+        DashboardDataVO result = dashboardService.getDashboard(" ");
+
+        assertThat(result).isSameAs(defaultData);
+        verify(dashboardProvider).getDashboardData();
+    }
 }

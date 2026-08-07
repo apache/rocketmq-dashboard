@@ -14,11 +14,41 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.junit.jupiter.api.Test;
 
+import java.util.Collections;
+
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 class MessageServiceTest {
+
+    @Test
+    void rejectsKeyQueryWithoutTopicBeforeCallingProvider() {
+        MessageProvider provider = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(provider, registry);
+
+        assertThatThrownBy(() -> service.queryMessages(null, null, null, null, "order-1", null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("topic is required when key is specified");
+
+        verifyNoInteractions(provider);
+    }
+
+    @Test
+    void keepsMessageIdQueryWithoutTopicValid() {
+        MessageProvider provider = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        when(provider.queryMessages(null, null, "msg-001", null, null, null, null))
+                .thenReturn(Collections.emptyList());
+        MessageService service = new MessageService(provider, registry);
+
+        service.queryMessages(null, null, "msg-001", null, null, null, null);
+
+        verify(provider).queryMessages(null, null, "msg-001", null, null, null, null);
+    }
 
     @Test
     void rejectsReversedTopicQueryWindowBeforeCallingProvider() {

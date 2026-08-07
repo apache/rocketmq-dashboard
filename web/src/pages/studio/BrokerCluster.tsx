@@ -15,34 +15,48 @@
  * limitations under the License.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Table, Button, Tag, Tabs, Card, Space, Switch, Progress, Tooltip, Spin, App } from 'antd';
+import { useCallback, useEffect, useState } from 'react';
 import {
-  Plus,
+  Table,
+  Button,
+  Tag,
+  Tabs,
+  Card,
+  Space,
+  Switch,
+  Progress,
+  Tooltip,
+  Spin,
+  App,
+  Modal,
+} from 'antd';
+import {
   ArrowClockwise,
-  GearSix,
   ArrowsClockwise,
   Cloud,
   ChartBar,
   PlugsConnected,
 } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
-import { listClusters } from '../../services/clusterService';
+import { listClusters, restartBroker } from '../../services/clusterService';
 import type { ClusterInfo } from '../../api/cluster';
 
 // ─── Types ──────────────────────────────────────────────────────
 type NodeStatus = 'running' | 'readonly' | 'maintenance';
 
+const REFRESH_INTERVAL_MS = 2000;
+
 interface BrokerRecord {
   key: string;
+  clusterId: string;
   k8sCluster: string;
   brokerName: string;
   status: NodeStatus;
   version: string;
-  diskUsage: number;
+  diskUsage: number | null;
   address: string;
-  tpsIn: number;
-  tpsOut: number;
+  tpsIn: number | null;
+  tpsOut: number | null;
 }
 
 interface NameServerRecord {
@@ -91,14 +105,15 @@ function mapClusters(clusters: ClusterInfo[]): {
     cluster.brokers.forEach((broker, index) => {
       brokers.push({
         key: `${cluster.id}-broker-${broker.addr || index}`,
+        clusterId: cluster.id,
         k8sCluster: clusterLabel,
         brokerName: broker.name || broker.addr,
         status: normalizeStatus(broker.status),
-        version: broker.version || cluster.version,
-        diskUsage: broker.diskUsage ?? 0,
+        version: broker.version || '-',
+        diskUsage: broker.runtimeStatsAvailable === false ? null : (broker.diskUsage ?? 0),
         address: broker.addr,
-        tpsIn: broker.tpsIn ?? 0,
-        tpsOut: broker.tpsOut ?? 0,
+        tpsIn: broker.runtimeStatsAvailable === false ? null : (broker.tpsIn ?? 0),
+        tpsOut: broker.runtimeStatsAvailable === false ? null : (broker.tpsOut ?? 0),
       });
     });
 
@@ -167,11 +182,37 @@ const BrokerClusterPage = () => {
     return () => clearInterval(timer);
   }, [autoRefresh, loadData]);
 
-  const initialized = useRef<boolean | null>(null);
-  if (initialized.current == null) {
-    initialized.current = true;
-    void loadData();
-  }
+  const handleRestartBroker = async (broker: BrokerRecord) => {
+    try {
+      const result = await restartBroker(broker.clusterId, broker.brokerName);
+      if (!result.success) {
+        message.error(result.message || t('common.failure'));
+        return;
+      }
+      await loadData();
+      message.success(
+        result.message || t('cluster.restartBrokerSubmitted', { name: broker.brokerName }),
+      );
+    } catch {
+      message.error(t('common.failure'));
+    }
+  };
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void loadData();
+    });
+    return () => window.clearTimeout(timeoutId);
+  }, [loadData]);
+
+  useEffect(() => {
+    if (!autoRefresh) return;
+
+    const intervalId = window.setInterval(() => {
+      void loadData();
+    }, REFRESH_INTERVAL_MS);
+    return () => window.clearInterval(intervalId);
+  }, [autoRefresh, loadData]);
 
   const renderStatus = (status: string) => {
     const config: Record<string, { color: string; label: string }> = {
@@ -186,7 +227,8 @@ const BrokerClusterPage = () => {
     return <Tag color={color}>{label}</Tag>;
   };
 
-  const renderDiskUsage = (percent: number) => {
+  const renderDiskUsage = (percent: number | null) => {
+    if (percent == null) return '-';
     let status: 'normal' | 'active' | 'exception' = 'normal';
     let color = '#52c41a';
     if (percent > 85) {
@@ -258,32 +300,42 @@ const BrokerClusterPage = () => {
       title: t('brokerCluster.tpsIn'),
       dataIndex: 'tpsIn',
       key: 'tpsIn',
-      render: (value: number) => <span style={{ fontWeight: 500 }}>{value.toLocaleString()}</span>,
-      sorter: (a: BrokerRecord, b: BrokerRecord) => a.tpsIn - b.tpsIn,
+      render: (value: number | null) => (
+        <span style={{ fontWeight: 500 }}>{value?.toLocaleString() ?? '-'}</span>
+      ),
+      sorter: (a: BrokerRecord, b: BrokerRecord) => (a.tpsIn ?? -1) - (b.tpsIn ?? -1),
     },
     {
       title: t('brokerCluster.tpsOut'),
       dataIndex: 'tpsOut',
       key: 'tpsOut',
-      render: (value: number) => <span style={{ fontWeight: 500 }}>{value.toLocaleString()}</span>,
-      sorter: (a: BrokerRecord, b: BrokerRecord) => a.tpsOut - b.tpsOut,
+      render: (value: number | null) => (
+        <span style={{ fontWeight: 500 }}>{value?.toLocaleString() ?? '-'}</span>
+      ),
+      sorter: (a: BrokerRecord, b: BrokerRecord) => (a.tpsOut ?? -1) - (b.tpsOut ?? -1),
     },
     {
       title: t('common.actions'),
       key: 'action',
-      render: () => (
-        <Space size="small">
-          <Tooltip title={t('brokerCluster.config')}>
-            <Button type="link" size="small" icon={<GearSix size={14} />}>
-              {t('brokerCluster.config')}
-            </Button>
-          </Tooltip>
-          <Tooltip title={t('brokerCluster.restart')}>
-            <Button type="link" size="small" icon={<ArrowsClockwise size={14} />}>
-              {t('brokerCluster.restart')}
-            </Button>
-          </Tooltip>
-        </Space>
+      render: (_: unknown, record: BrokerRecord) => (
+        <Tooltip title={t('brokerCluster.restart')}>
+          <Button
+            type="link"
+            size="small"
+            icon={<ArrowsClockwise size={14} />}
+            onClick={() => {
+              Modal.confirm({
+                title: t('cluster.confirmRestart'),
+                content: t('cluster.restartBrokerConfirm', { name: record.brokerName }),
+                okText: t('common.confirm'),
+                cancelText: t('common.cancel'),
+                onOk: () => handleRestartBroker(record),
+              });
+            }}
+          >
+            {t('brokerCluster.restart')}
+          </Button>
+        </Tooltip>
       ),
     },
   ];
@@ -330,20 +382,6 @@ const BrokerClusterPage = () => {
       dataIndex: 'connections',
       key: 'connections',
       render: (text: number) => <span style={{ fontWeight: 500 }}>{text.toLocaleString()}</span>,
-    },
-    {
-      title: t('common.actions'),
-      key: 'action',
-      render: () => (
-        <Space size="small">
-          <Button type="link" size="small" icon={<GearSix size={14} />}>
-            {t('brokerCluster.config')}
-          </Button>
-          <Button type="link" size="small" icon={<ArrowsClockwise size={14} />}>
-            {t('brokerCluster.restart')}
-          </Button>
-        </Space>
-      ),
     },
   ];
 
@@ -407,20 +445,6 @@ const BrokerClusterPage = () => {
       key: 'connections',
       render: (text: number) => <span style={{ fontWeight: 500 }}>{text.toLocaleString()}</span>,
     },
-    {
-      title: t('common.actions'),
-      key: 'action',
-      render: () => (
-        <Space size="small">
-          <Button type="link" size="small" icon={<GearSix size={14} />}>
-            {t('brokerCluster.config')}
-          </Button>
-          <Button type="link" size="small" icon={<ArrowsClockwise size={14} />}>
-            {t('brokerCluster.restart')}
-          </Button>
-        </Space>
-      ),
-    },
   ];
 
   return (
@@ -455,9 +479,6 @@ const BrokerClusterPage = () => {
           />
           <Button icon={<ArrowClockwise size={14} />} size="small" onClick={() => void loadData()}>
             {t('common.reset')}
-          </Button>
-          <Button type="primary" icon={<Plus size={14} />}>
-            {t('brokerCluster.createCluster')}
           </Button>
         </Space>
       </div>

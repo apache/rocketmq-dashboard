@@ -21,6 +21,7 @@ import org.apache.rocketmq.studio.common.domain.Result;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -31,7 +32,7 @@ public class DashboardController {
     private final DashboardService dashboardService;
 
     @GetMapping
-    public Result<DashboardDataVO> getDashboard() {
-        return Result.ok(dashboardService.getDashboard());
+    public Result<DashboardDataVO> getDashboard(@RequestParam(required = false) String instanceId) {
+        return Result.ok(dashboardService.getDashboard(instanceId));
     }
 }

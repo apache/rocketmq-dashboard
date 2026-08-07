@@ -269,4 +269,45 @@ describe('MetricsExplorer', () => {
     );
     expect(vi.mocked(queryMetrics).mock.calls.length).toBe(queryMetricsCallsBefore);
   });
+
+  it('only offers data sources bound to the selected instance or globally available', async () => {
+    vi.mocked(listDataSources).mockResolvedValue([
+      {
+        key: 'ds-global',
+        name: 'Global Prometheus',
+        type: 'Prometheus',
+        url: '',
+        auth: 'None',
+        status: 'healthy',
+      },
+      {
+        key: 'ds-instance-a',
+        name: 'Instance A Prometheus',
+        type: 'Prometheus',
+        url: '',
+        auth: 'None',
+        status: 'healthy',
+        instanceIds: ['instance-a'],
+      },
+      {
+        key: 'ds-instance-b',
+        name: 'Instance B Prometheus',
+        type: 'Prometheus',
+        url: '',
+        auth: 'None',
+        status: 'healthy',
+        instanceIds: ['instance-b'],
+      },
+    ]);
+
+    const user = userEvent.setup();
+    renderWithProviders(<MetricsExplorer instanceId="instance-a" />);
+
+    await screen.findByRole('combobox', { name: '数据源' });
+    await user.click(screen.getByRole('combobox', { name: '数据源' }));
+
+    expect(await screen.findByText('Global Prometheus')).toBeInTheDocument();
+    expect(screen.getByText('Instance A Prometheus')).toBeInTheDocument();
+    expect(screen.queryByText('Instance B Prometheus')).not.toBeInTheDocument();
+  });
 });

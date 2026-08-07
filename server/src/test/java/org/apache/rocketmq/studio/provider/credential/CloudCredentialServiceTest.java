@@ -20,6 +20,7 @@ import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
+import org.apache.rocketmq.studio.provider.alibaba.AliyunClientFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -44,6 +45,9 @@ class CloudCredentialServiceTest {
 
     @Mock
     private InstanceRepository instanceRepository;
+
+    @Mock
+    private AliyunClientFactory aliyunClientFactory;
 
     @InjectMocks
     private CloudCredentialService service;
@@ -133,6 +137,40 @@ class CloudCredentialServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("referenced");
         verify(credentialRepository, never()).deleteById(any());
+    }
+
+    @Test
+    void updateShouldInvalidateAliyunClientsAfterSavingCredentialTest() {
+        CloudCredentialVO stored = new CloudCredentialVO();
+        stored.setId("cred-1");
+        stored.setVendor(InstanceVendor.ALIYUN);
+        stored.setAccessKey("LTAI5tUpdateKey000000001");
+        stored.setSecretKey("old-secret");
+        when(credentialRepository.findById("cred-1")).thenReturn(Optional.of(stored));
+        when(credentialRepository.save(any(CloudCredentialVO.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        UpdateCloudCredentialDTO request = new UpdateCloudCredentialDTO();
+        request.setId("cred-1");
+        request.setSecretKey("new-secret");
+
+        service.update(request);
+
+        verify(aliyunClientFactory).invalidateCredential("cred-1");
+    }
+
+    @Test
+    void deleteShouldInvalidateAliyunClientsAfterRemovingCredentialTest() {
+        CloudCredentialVO stored = new CloudCredentialVO();
+        stored.setId("cred-1");
+        stored.setVendor(InstanceVendor.ALIYUN);
+        when(credentialRepository.findById("cred-1")).thenReturn(Optional.of(stored));
+        when(instanceRepository.existsByCredentialId("cred-1")).thenReturn(false);
+
+        service.delete("cred-1");
+
+        verify(credentialRepository).deleteById("cred-1");
+        verify(aliyunClientFactory).invalidateCredential("cred-1");
     }
 
     @Test

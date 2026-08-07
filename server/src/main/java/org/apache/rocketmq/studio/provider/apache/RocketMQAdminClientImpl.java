@@ -135,7 +135,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
         int writeQueues = topic.getWriteQueues() > 0 ? topic.getWriteQueues() : 8;
         int readQueues = topic.getReadQueues() > 0 ? topic.getReadQueues() : 8;
 
-        return adminFactory.execute(namesrvAddr(), null, admin -> {
+        return executeForInstance(topic.getInstanceId(), admin -> {
             try {
                 String clusterName = getClusterName(admin);
                 // Match on the (cluster_id, name) key: the same topic name can exist in several
@@ -216,7 +216,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
         int writeQueues = topic.getWriteQueues() > 0 ? topic.getWriteQueues() : 8;
         int readQueues = topic.getReadQueues() > 0 ? topic.getReadQueues() : 8;
 
-        return adminFactory.execute(namesrvAddr(), null, admin -> {
+        return executeForInstance(topic.getInstanceId(), admin -> {
             try {
                 // Match on the (cluster_id, name) key to avoid ambiguity when several clusters share
                 // the same topic name (a name-only lookup would throw TooManyResultsException).
@@ -270,9 +270,9 @@ public class RocketMQAdminClientImpl implements AdminClient {
     }
 
     @Override
-    public void deleteTopic(String name) {
-        String namesrvAddr = namesrvAddr();
-        adminFactory.execute(namesrvAddr, null, admin -> {
+    public void deleteTopic(String instanceId, String name) {
+        String namesrvAddr = namesrvAddr(instanceId);
+        executeForInstance(instanceId, admin -> {
             try {
                 Set<String> brokerAddrs = getAllMasterBrokerAddrs(admin);
 
@@ -291,8 +291,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 }
                 admin.deleteTopicInNameServer(nsAddrs, getClusterName(admin), name);
 
-                // Delete from DB, scoped to the current cluster so same-named topics in other
-                // clusters are not removed.
+                // Topic names may be shared by several clusters managed by this Studio instance.
                 topicMapper.delete(new LambdaQueryWrapper<RmqTopic>()
                         .eq(RmqTopic::getClusterId, getClusterName(admin))
                         .eq(RmqTopic::getName, name));
@@ -311,7 +310,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
     @Override
     public SendMessageVO sendMessage(SendMessageDTO request) {
-        String namesrvAddr = namesrvAddr();
+        String namesrvAddr = namesrvAddr(request.getInstanceId());
 
         DefaultMQProducer producer = new DefaultMQProducer(nextMessageSenderGroup());
         producer.setNamesrvAddr(namesrvAddr);
@@ -452,8 +451,10 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 admin.deleteSubscriptionGroup(addr, name, true);
             }
 
-            // Delete from DB
-            groupMapper.delete(new LambdaQueryWrapper<RmqGroup>().eq(RmqGroup::getName, name));
+            // Consumer group names may be shared by several clusters managed by this Studio instance.
+            groupMapper.delete(new LambdaQueryWrapper<RmqGroup>()
+                    .eq(RmqGroup::getClusterId, getClusterName(admin))
+                    .eq(RmqGroup::getName, name));
 
             recordAudit("DELETE_GROUP", name, "", "SUCCESS");
         } catch (BusinessException e) {
@@ -508,6 +509,19 @@ public class RocketMQAdminClientImpl implements AdminClient {
             throw new BusinessException(503, "RocketMQ admin not connected");
         }
         return namesrvAddr;
+    }
+
+    private String namesrvAddr(String instanceId) {
+        return StringUtils.hasText(instanceId)
+                ? runtimeAdminClientResolver.resolveEndpoint(instanceId)
+                : namesrvAddr();
+    }
+
+    private <T> T executeForInstance(String instanceId, MqAdminExtFactory.AdminAction<T> action) {
+        if (StringUtils.hasText(instanceId)) {
+            return runtimeAdminClientResolver.execute(instanceId, action);
+        }
+        return adminFactory.execute(namesrvAddr(), null, action);
     }
 
     private Set<String> getAllMasterBrokerAddrs(MQAdminExt admin) throws Exception {

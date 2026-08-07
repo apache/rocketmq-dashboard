@@ -26,11 +26,16 @@ import {
   fetchTopicList,
   queryProducerConnection,
 } from '../../../api/producer';
+import { listInstances } from '../../../services/instanceService';
 
 vi.mock('../../../api/producer', () => ({
   fetchProducerGroups: vi.fn(),
   fetchTopicList: vi.fn(),
   queryProducerConnection: vi.fn(),
+}));
+
+vi.mock('../../../services/instanceService', () => ({
+  listInstances: vi.fn(),
 }));
 
 beforeAll(() => {
@@ -60,6 +65,19 @@ const renderWithProviders = (ui: React.ReactElement) => {
 describe('ProducerPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(listInstances).mockResolvedValue([
+      {
+        id: 'instance-1',
+        name: 'Primary instance',
+        remark: '',
+        type: 'DIRECT',
+        endpoint: '127.0.0.1:9876',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        createdAt: '2026-08-01T00:00:00',
+        updatedAt: '2026-08-01T00:00:00',
+      },
+    ]);
     vi.mocked(fetchTopicList).mockResolvedValue(['order-events', 'payment-events']);
     vi.mocked(fetchProducerGroups).mockResolvedValue(['pg-order', 'pg-payment']);
     vi.mocked(queryProducerConnection).mockResolvedValue([]);
@@ -81,7 +99,7 @@ describe('ProducerPage', () => {
       expect(fetchTopicList).toHaveBeenCalledTimes(1);
     });
 
-    await user.click(screen.getAllByRole('combobox')[0]);
+    await user.click(screen.getAllByRole('combobox')[1]);
     await screen.findByRole('option', { name: 'order-events' });
     expect(await screen.findByRole('option', { name: 'payment-events' })).toBeInTheDocument();
   });
@@ -91,7 +109,7 @@ describe('ProducerPage', () => {
     renderWithProviders(<ProducerPage />);
 
     await waitFor(() => expect(fetchProducerGroups).toHaveBeenCalledTimes(1));
-    const groupInput = screen.getAllByRole('combobox')[1];
+    const groupInput = screen.getAllByRole('combobox')[2];
     await user.type(groupInput, 'payment');
 
     expect(await screen.findByRole('option', { name: 'pg-payment' })).toBeInTheDocument();
@@ -110,7 +128,7 @@ describe('ProducerPage', () => {
     renderWithProviders(<ProducerPage />);
 
     await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
-    const [topicSelect, groupInput] = screen.getAllByRole('combobox');
+    const [, topicSelect, groupInput] = screen.getAllByRole('combobox');
     fireEvent.mouseDown(topicSelect.parentElement!);
     await user.click(
       await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
@@ -119,7 +137,11 @@ describe('ProducerPage', () => {
     await user.click(screen.getByRole('button', { name: /搜索/ }));
 
     await waitFor(() => {
-      expect(queryProducerConnection).toHaveBeenCalledWith('order-events', 'order-producer');
+      expect(queryProducerConnection).toHaveBeenCalledWith(
+        'instance-1',
+        'order-events',
+        'order-producer',
+      );
     });
     expect(await screen.findByText('producer-1')).toBeInTheDocument();
   });
@@ -129,7 +151,7 @@ describe('ProducerPage', () => {
     renderWithProviders(<ProducerPage />);
 
     await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
-    const [topicSelect] = screen.getAllByRole('combobox');
+    const [, topicSelect] = screen.getAllByRole('combobox');
     fireEvent.mouseDown(topicSelect.parentElement!);
     await user.click(
       await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
@@ -148,7 +170,7 @@ describe('ProducerPage', () => {
     renderWithProviders(<ProducerPage />);
 
     await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
-    const [topicSelect, groupInput] = screen.getAllByRole('combobox');
+    const [, topicSelect, groupInput] = screen.getAllByRole('combobox');
     fireEvent.mouseDown(topicSelect.parentElement!);
     await user.click(
       await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
@@ -157,7 +179,11 @@ describe('ProducerPage', () => {
     await user.click(screen.getByRole('button', { name: /搜索/ }));
 
     await waitFor(() => {
-      expect(queryProducerConnection).toHaveBeenCalledWith('order-events', 'manual-producer');
+      expect(queryProducerConnection).toHaveBeenCalledWith(
+        'instance-1',
+        'order-events',
+        'manual-producer',
+      );
     });
   });
 });

@@ -34,4 +34,6 @@ public class DLQGroupVO {
     private LocalDateTime lastEnqueueTime;
     private int retryCount;
     private String status;
+    @Builder.Default
+    private boolean statsAvailable = true;
 }

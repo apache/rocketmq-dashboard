@@ -32,6 +32,7 @@ export interface Instance {
   regionId?: string;
   topicCount: number;
   consumerGroupCount: number;
+  resourceCountsAvailable?: boolean;
   createdAt: string;
   updatedAt: string;
 }
