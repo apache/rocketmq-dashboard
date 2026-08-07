@@ -407,6 +407,30 @@ class InstanceServiceTest {
     }
 
     @Test
+    void updateInstanceShouldKeepEndpointClientWhenAnotherInstanceUsesEquivalentAddressList() {
+        InstanceVO existing = InstanceVO.builder()
+                .name("instance")
+                .endpoint("namesrv-b:9876;namesrv-a:9876")
+                .build();
+        existing.setId("inst-1");
+        InstanceVO shared = InstanceVO.builder()
+                .name("shared-instance")
+                .endpoint(" namesrv-a:9876, namesrv-b:9876 ")
+                .build();
+        shared.setId("inst-2");
+        InstanceVO update = InstanceVO.builder().endpoint("new-namesrv:9876").build();
+        update.setId("inst-1");
+
+        when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(existing));
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(instanceRepository.findAll()).thenReturn(List.of(shared));
+
+        instanceService.updateInstance(update);
+
+        verifyNoInteractions(adminFactory);
+    }
+
+    @Test
     void updateInstanceShouldThrowWhenRequestIsNull() {
         assertThatThrownBy(() -> instanceService.updateInstance(null))
                 .isInstanceOf(BusinessException.class)

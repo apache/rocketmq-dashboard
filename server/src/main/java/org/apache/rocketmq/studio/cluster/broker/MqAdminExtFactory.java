@@ -95,10 +95,14 @@ public class MqAdminExtFactory {
         if (namesrvAddr == null || namesrvAddr.isBlank()) {
             return;
         }
-        DefaultMQAdminExt admin = cache.remove(namesrvAddr.trim());
+        String normalizedNamesrvAddr = normalizeNamesrvAddr(namesrvAddr);
+        if (normalizedNamesrvAddr.isEmpty()) {
+            return;
+        }
+        DefaultMQAdminExt admin = cache.remove(normalizedNamesrvAddr);
         if (admin != null) {
             safeShutdown(admin);
-            log.info("Released RocketMQ admin client for namesrv {}", namesrvAddr.trim());
+            log.info("Released RocketMQ admin client for namesrv {}", normalizedNamesrvAddr);
         }
     }
 
@@ -130,7 +134,7 @@ public class MqAdminExtFactory {
                 + "-" + instanceCounter.incrementAndGet();
     }
 
-    static String normalizeNamesrvAddr(String namesrvAddr) {
+    public static String normalizeNamesrvAddr(String namesrvAddr) {
         return Arrays.stream(namesrvAddr.split("[;,]"))
                 .map(String::trim)
                 .filter(address -> !address.isEmpty())

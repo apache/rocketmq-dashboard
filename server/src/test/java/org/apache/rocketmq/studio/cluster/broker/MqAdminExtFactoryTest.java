@@ -85,6 +85,19 @@ class MqAdminExtFactoryTest {
     }
 
     @Test
+    void releaseShouldEvictClientUsingEquivalentNameServerAddressList() throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        RecordingFactory factory = new RecordingFactory(admin);
+
+        factory.execute("10.0.0.2:9876,10.0.0.1:9876", null, ignored -> "first");
+        factory.release("10.0.0.1:9876;10.0.0.2:9876");
+        factory.execute("10.0.0.1:9876;10.0.0.2:9876", null, ignored -> "second");
+
+        assertThat(factory.created.get()).isEqualTo(2);
+        verify(admin).shutdown();
+    }
+
+    @Test
     void executeShouldReuseClientForEquivalentNameServerAddressLists() throws Exception {
         DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
         RecordingFactory factory = new RecordingFactory(admin);
