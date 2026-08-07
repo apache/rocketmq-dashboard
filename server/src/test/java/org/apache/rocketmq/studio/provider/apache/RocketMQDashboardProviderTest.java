@@ -150,7 +150,7 @@ class RocketMQDashboardProviderTest {
         HashMap<String, String> table = new HashMap<>();
         table.put("brokerVersionDesc", "  V5_3_3  ");
         table.put("putTps", "1.0 2.0 3.0");
-        table.put("getTransferedTps", "4.0 5.0 6.0");
+        table.put("getTransferredTps", "4.0 5.0 6.0");
         table.put("msgPutTotalTodayMorning", "42");
 
         KVTable kvTable = new KVTable();
