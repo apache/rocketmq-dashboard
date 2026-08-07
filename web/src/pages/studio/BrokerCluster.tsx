@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Table, Button, Tag, Tabs, Card, Space, Switch, Progress, Tooltip, Spin, App } from 'antd';
 import {
   Plus,
@@ -157,6 +157,15 @@ const BrokerClusterPage = () => {
       setLoading(false);
     }
   }, [message, t]);
+
+  // Live refresh: poll while the auto-refresh switch is on.
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const timer = setInterval(() => {
+      void loadData();
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [autoRefresh, loadData]);
 
   const initialized = useRef<boolean | null>(null);
   if (initialized.current == null) {
