@@ -98,6 +98,24 @@ class AlertRuleAssetServiceTest {
                 "warning", "broker", "BrokerDown", "")), service.loadDefaultRules());
     }
 
+    @Test
+    void assetLoadingShouldSkipRulesWithoutAlertOrExpression() {
+        AlertRuleAssetService service = serviceWithResources(resource("mixed.yaml", """
+                groups:
+                  - name: broker
+                    rules:
+                      - alert: MissingExpression
+                      - expr: up == 0
+                      - alert: BrokerDown
+                        expr: up == 0
+                """));
+
+        assertEquals(List.of(new AlertRuleAssetInfo("mixed", "broker", 1, List.of("warning"))),
+                service.listAssets());
+        assertEquals(List.of(new PrometheusAlertRule("broker", "BrokerDown", "up == 0", "5m",
+                "warning", "broker", "BrokerDown", "")), service.loadDefaultRules());
+    }
+
     private static AlertRuleAssetService serviceWithResources(Resource... resources) {
         return new AlertRuleAssetService() {
             @Override

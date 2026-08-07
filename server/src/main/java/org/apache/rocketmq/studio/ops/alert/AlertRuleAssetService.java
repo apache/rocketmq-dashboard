@@ -133,6 +133,10 @@ public class AlertRuleAssetService {
                 }
                 String alert = textOr(rule, "alert", "");
                 String expr = textOr(rule, "expr", "");
+                if (alert.isBlank() || expr.isBlank()) {
+                    log.warn("Skipping incomplete alert rule in group {}", groupName);
+                    continue;
+                }
                 String duration = textOr(rule, "for", "5m");
                 String severity = textOr(labelsOf(rule), "severity", "warning");
                 String team = textOr(labelsOf(rule), "team", "broker");
