@@ -60,6 +60,10 @@ public class AlertRuleAssetService {
             }
             try (InputStream in = resource.getInputStream()) {
                 JsonNode root = yamlMapper.readTree(in);
+                if (root == null || !root.isObject()) {
+                    log.warn("Skipping invalid alert rule asset {}: expected a YAML object", resource);
+                    continue;
+                }
                 List<PrometheusAlertRule> rules = parseRules(root);
                 Set<String> severities = new LinkedHashSet<>();
                 String group = rules.isEmpty() ? "" : rules.get(0).group();
@@ -109,6 +113,9 @@ public class AlertRuleAssetService {
     }
 
     private List<PrometheusAlertRule> parseRules(JsonNode root) {
+        if (root == null || !root.isObject()) {
+            return List.of();
+        }
         List<PrometheusAlertRule> rules = new ArrayList<>();
         JsonNode groups = root.get("groups");
         if (groups == null || !groups.isArray()) {
@@ -146,7 +153,7 @@ public class AlertRuleAssetService {
         return null;
     }
 
-    private Resource[] resolveResources() {
+    protected Resource[] resolveResources() {
         try {
             return resourceResolver.getResources(LOCATION_PATTERN);
         } catch (IOException e) {
