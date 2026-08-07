@@ -17,18 +17,18 @@
 package org.apache.rocketmq.studio.provider.apache;
 
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.message.MessageProvider;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
-import org.apache.rocketmq.studio.instance.topic.AdminClient;
-import org.apache.rocketmq.studio.instance.topic.MetadataProvider;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.springframework.stereotype.Component;
+import lombok.RequiredArgsConstructor;
 
 import java.util.List;
 import java.util.Objects;
@@ -37,24 +37,28 @@ import java.util.Objects;
  * Open-source Apache RocketMQ implementation: pure delegation to the existing admin-client
  * beans, keeping behavior identical to the pre-provider code path.
  */
+@RequiredArgsConstructor
 @Component
 public class ApacheInstanceProvider implements InstanceProvider {
 
     private final MetadataProvider metadataProvider;
     private final AdminClient adminClient;
     private final MessageProvider messageProvider;
-
-    public ApacheInstanceProvider(MetadataProvider metadataProvider,
-                                  AdminClient adminClient,
-                                  MessageProvider messageProvider) {
-        this.metadataProvider = metadataProvider;
-        this.adminClient = adminClient;
-        this.messageProvider = messageProvider;
-    }
+    private final InstanceRepository instanceRepository;
 
     @Override
     public InstanceVendor vendor() {
         return InstanceVendor.APACHE;
+    }
+
+    @Override
+    public int countTopics(String instanceId) {
+        return (int) instanceRepository.countTopicsByInstance(instanceId);
+    }
+
+    @Override
+    public int countGroups(String instanceId) {
+        return (int) instanceRepository.countGroupsByInstance(instanceId);
     }
 
     @Override

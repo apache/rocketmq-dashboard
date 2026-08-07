@@ -17,45 +17,13 @@
 
 package org.apache.rocketmq.studio.model;
 
-
+import lombok.Data;
 import java.util.List;
 
+@Data
 public class Entry {
     private List<String> resource;
     private List<String> actions;
     private List<String> sourceIps;
     private String decision;
-
-    public List<String> getResource() {
-        return resource;
-    }
-
-    public void setResource(List<String> resource) {
-        this.resource = resource;
-    }
-
-    public List<String> getActions() {
-        return actions;
-    }
-
-    public void setActions(List<String> actions) {
-        this.actions = actions;
-    }
-
-    public List<String> getSourceIps() {
-        return sourceIps;
-    }
-
-    public void setSourceIps(List<String> sourceIps) {
-        this.sourceIps = sourceIps;
-    }
-
-    public String getDecision() {
-        return decision;
-    }
-
-    public void setDecision(String decision) {
-        this.decision = decision;
-    }
-
 }

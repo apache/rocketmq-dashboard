@@ -8,7 +8,7 @@ services:
     environment:
       TZ: ${TZ:-Asia/Shanghai}
       MYSQL_ROOT_PASSWORD: studio123
-      MYSQL_DATABASE: rocketmq_studio
+      MYSQL_DATABASE: rocketmq
     ports:
       - "3306:3306"
     volumes:
@@ -41,7 +41,7 @@ services:
       STUDIO_METRICS_PROMETHEUS_PASSWORD: ${STUDIO_METRICS_PROMETHEUS_PASSWORD:-}
       STUDIO_METRICS_PROMETHEUS_BEARER_TOKEN: ${STUDIO_METRICS_PROMETHEUS_BEARER_TOKEN:-}
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/rocketmq_studio?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=UTF-8&connectionCollation=utf8mb4_unicode_ci
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/rocketmq?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=UTF-8&connectionCollation=utf8mb4_unicode_ci
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: studio123
       STUDIO_ROCKETMQ_NAMESRV_ADDR: ${STUDIO_ROCKETMQ_NAMESRV_ADDR:-nameserver:9876}

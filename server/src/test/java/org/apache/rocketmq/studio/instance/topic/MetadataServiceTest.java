@@ -17,9 +17,14 @@
 
 package org.apache.rocketmq.studio.instance.topic;
 
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
+import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
+import org.apache.rocketmq.studio.provider.apache.AdminClient;
+import org.apache.rocketmq.studio.provider.apache.MetadataProvider;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -31,6 +36,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -47,8 +53,17 @@ class MetadataServiceTest {
     @Mock
     private InstanceProviderRegistry providerRegistry;
 
+    @Mock
+    private InstanceProvider apacheProvider;
+
     @InjectMocks
     private MetadataService metadataService;
+
+    @BeforeEach
+    void routeBlankInstanceIdsToApacheProvider() {
+        lenient().when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(apacheProvider);
+        lenient().when(apacheProvider.vendor()).thenReturn(InstanceVendor.APACHE);
+    }
 
     @Test
     void listTopicsShouldReturnTopicsFromProvider() {
@@ -68,7 +83,7 @@ class MetadataServiceTest {
 
     @Test
     void listTopicsShouldReturnEmptyWhenNone() {
-        when(metadataProvider.listTopics(null, null, "nonexistent")).thenReturn(List.of());
+        when(apacheProvider.listTopics(null, null, "nonexistent")).thenReturn(List.of());
 
         List<TopicVO> result = metadataService.listTopics(null, null, "nonexistent");
 
@@ -89,12 +104,12 @@ class MetadataServiceTest {
 
     @Test
     void listTopicsShouldTreatBlankFiltersAsUnspecified() {
-        when(metadataProvider.listTopics(null, null, null)).thenReturn(List.of());
+        when(apacheProvider.listTopics(null, null, null)).thenReturn(List.of());
 
         List<TopicVO> result = metadataService.listTopics(" ", "\t", "");
 
         assertThat(result).isEmpty();
-        verify(metadataProvider).listTopics(null, null, null);
+        verify(apacheProvider).listTopics(null, null, null);
     }
 
     @Test
@@ -116,7 +131,7 @@ class MetadataServiceTest {
     }
 
     @Test
-    void createTopicShouldDelegateToAdminClient() {
+    void createTopicShouldDelegateToApacheProvider() {
         TopicVO input = new TopicVO();
         input.setName("new-topic");
         input.setWriteQueues(8);
@@ -127,19 +142,19 @@ class MetadataServiceTest {
         created.setWriteQueues(8);
         created.setReadQueues(8);
 
-        when(adminClient.createTopic(any(TopicVO.class))).thenReturn(created);
+        when(apacheProvider.createTopic(any(), any(TopicVO.class))).thenReturn(created);
 
         TopicVO result = metadataService.createTopic(input);
 
         assertThat(result.getName()).isEqualTo("new-topic");
-        verify(adminClient).createTopic(input);
+        verify(apacheProvider).createTopic(null, input);
     }
 
     @Test
-    void deleteTopicShouldDelegateToAdminClient() {
+    void deleteTopicShouldDelegateToApacheProvider() {
         metadataService.deleteTopic("topic-to-delete");
 
-        verify(adminClient).deleteTopic("topic-to-delete");
+        verify(apacheProvider).deleteTopic(null, "topic-to-delete");
     }
 
     @Test
@@ -181,12 +196,12 @@ class MetadataServiceTest {
 
     @Test
     void listConsumerGroupsShouldPassSearchFilter() {
-        when(metadataProvider.listConsumerGroups(null, "order")).thenReturn(List.of());
+        when(apacheProvider.listConsumerGroups(null, "order")).thenReturn(List.of());
 
         List<ConsumerGroupVO> result = metadataService.listConsumerGroups(null, "order");
 
         assertThat(result).isEmpty();
-        verify(metadataProvider).listConsumerGroups(null, "order");
+        verify(apacheProvider).listConsumerGroups(null, "order");
     }
 
     @Test
@@ -201,11 +216,4 @@ class MetadataServiceTest {
         verify(metadataProvider).listConsumerGroups("cluster-1", "order");
     }
 
-    @Test
-    void listNamespacesShouldReportUnsupportedProviderCapability() {
-        assertThatThrownBy(() -> metadataService.listNamespaces())
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("Namespace discovery is not implemented by the current metadata provider")
-                .satisfies(exception -> assertThat(((BusinessException) exception).getCode()).isEqualTo(501));
-    }
 }

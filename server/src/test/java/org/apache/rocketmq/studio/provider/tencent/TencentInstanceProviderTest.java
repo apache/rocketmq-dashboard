@@ -35,6 +35,10 @@ class TencentInstanceProviderTest {
 
     @Test
     void allOperationsShouldThrowUnsupportedTest() {
+        assertThatThrownBy(() -> provider.countTopics("inst"))
+                .isInstanceOf(UnsupportedOperationException.class);
+        assertThatThrownBy(() -> provider.countGroups("inst"))
+                .isInstanceOf(UnsupportedOperationException.class);
         assertThatThrownBy(() -> provider.listTopics("inst", null, null))
                 .isInstanceOf(UnsupportedOperationException.class);
         assertThatThrownBy(() -> provider.createTopic("inst", new TopicVO()))

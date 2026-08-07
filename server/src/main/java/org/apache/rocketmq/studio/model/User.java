@@ -17,17 +17,20 @@
 package org.apache.rocketmq.studio.model;
 
 import org.hibernate.validator.constraints.Range;
+import lombok.Data;
+import lombok.ToString;
 
+@Data
 public class User {
     public static final int SUPER = 0;
     public static final int NORMAL = 1;
 
     private long id;
     private String name;
+    @ToString.Exclude
     private String password;
     @Range(min = 0, max = 1)
     private int type = 0;
-
 
     public User(String name, String password, int type) {
         this.name = name;
@@ -37,47 +40,5 @@ public class User {
 
     public User cloneOne() {
         return new User(this.name, this.password, this.type);
-    }
-
-    public long getId() {
-        return id;
-    }
-
-    public void setId(long id) {
-        this.id = id;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public String getPassword() {
-        return password;
-    }
-
-    public void setPassword(String password) {
-        this.password = password;
-    }
-
-    public int getType() {
-        return type;
-    }
-
-    public void setType(int type) {
-        this.type = type;
-    }
-
-    @Override
-    public String toString() {
-        return "User{" +
-                "id=" + id +
-                ", name='" + name + '\'' +
-                ", password='******'" +
-                ", type=" + type +
-                '}';
     }
 }

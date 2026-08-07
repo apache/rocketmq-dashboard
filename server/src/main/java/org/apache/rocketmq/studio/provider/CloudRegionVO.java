@@ -16,32 +16,15 @@
  */
 package org.apache.rocketmq.studio.provider;
 
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class CloudRegionVO {
 
     private String regionId;
     private String regionName;
-
-    public CloudRegionVO() {
-    }
-
-    public CloudRegionVO(String regionId, String regionName) {
-        this.regionId = regionId;
-        this.regionName = regionName;
-    }
-
-    public String getRegionId() {
-        return regionId;
-    }
-
-    public void setRegionId(String regionId) {
-        this.regionId = regionId;
-    }
-
-    public String getRegionName() {
-        return regionName;
-    }
-
-    public void setRegionName(String regionName) {
-        this.regionName = regionName;
-    }
 }

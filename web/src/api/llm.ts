@@ -56,21 +56,21 @@ export interface LlmModelsResult {
 }
 
 export async function getLlmConfig(): Promise<LlmConfig> {
-  const res = await client.get('/llm/config');
-  return res.data;
+  const res = await client.get<{ data: LlmConfig }>('/llm/config');
+  return res.data.data;
 }
 
 export async function saveLlmConfig(config: LlmConfig): Promise<LlmTestResult> {
-  const res = await client.post('/llm/config', config);
-  return res.data;
+  const res = await client.post<{ data: LlmTestResult }>('/llm/config', config);
+  return res.data.data;
 }
 
 export async function testLlmConnection(config: LlmConfig): Promise<LlmTestResult> {
-  const res = await client.post('/llm/config/test', config);
-  return res.data;
+  const res = await client.post<{ data: LlmTestResult }>('/llm/config/test', config);
+  return res.data.data;
 }
 
 export async function getLlmModels(): Promise<LlmModelsResult> {
-  const res = await client.get('/llm/models');
-  return res.data;
+  const res = await client.get<{ data: LlmModelsResult }>('/llm/models');
+  return res.data.data;
 }

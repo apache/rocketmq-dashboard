@@ -20,7 +20,7 @@ import org.apache.rocketmq.acl.common.AclClientRPCHook;
 import org.apache.rocketmq.acl.common.SessionCredentials;
 import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
-import org.apache.rocketmq.studio.rocketmq.RocketMQProperties;
+import org.apache.rocketmq.studio.provider.apache.RocketMQProperties;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 

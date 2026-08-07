@@ -17,16 +17,16 @@
 package org.apache.rocketmq.studio.instance.acl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.persistence.entity.RmqAclRule;
 import org.apache.rocketmq.studio.persistence.entity.RmqAclUser;
 import org.apache.rocketmq.studio.persistence.mapper.RmqAclRuleMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqAclUserMapper;
 import org.springframework.stereotype.Repository;
+import lombok.RequiredArgsConstructor;
 
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.Arrays;
-import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -35,16 +35,12 @@ import java.util.stream.Collectors;
  * MySQL-backed ACL repository. User passwords are stored base64-encoded in
  * {@code rmq_acl_user.secret_key} and decoded when read; plain text is never persisted.
  */
+@RequiredArgsConstructor
 @Repository
 public class MybatisPlusAclRepository implements AclRepository {
 
     private final RmqAclRuleMapper ruleMapper;
     private final RmqAclUserMapper userMapper;
-
-    public MybatisPlusAclRepository(RmqAclRuleMapper ruleMapper, RmqAclUserMapper userMapper) {
-        this.ruleMapper = ruleMapper;
-        this.userMapper = userMapper;
-    }
 
     @Override
     public List<AclRuleVO> findRules(String clusterId, String principal) {
@@ -153,7 +149,7 @@ public class MybatisPlusAclRepository implements AclRepository {
                 .id(entity.getId())
                 .username(entity.getUsername())
                 .accessKey(entity.getAccessKey())
-                .secretKey(decodeBase64(entity.getSecretKey()))
+                .secretKey(CredentialUtils.decodeBase64(entity.getSecretKey()))
                 .admin(Boolean.TRUE.equals(entity.getAdmin()))
                 .clusters(splitCsv(entity.getClusters()))
                 .createdAt(entity.getCreatedAt())
@@ -165,7 +161,7 @@ public class MybatisPlusAclRepository implements AclRepository {
         entity.setId(user.getId());
         entity.setUsername(user.getUsername());
         entity.setAccessKey(user.getAccessKey());
-        entity.setSecretKey(encodeBase64(user.getSecretKey()));
+        entity.setSecretKey(CredentialUtils.encodeBase64(user.getSecretKey()));
         entity.setAdmin(user.isAdmin());
         entity.setClusters(user.getClusters() == null ? null : String.join(",", user.getClusters()));
         entity.setCreatedAt(user.getCreatedAt());
@@ -181,24 +177,5 @@ public class MybatisPlusAclRepository implements AclRepository {
                 .map(String::trim)
                 .filter(part -> !part.isEmpty())
                 .collect(Collectors.toList());
-    }
-
-    private static String encodeBase64(String plainText) {
-        if (plainText == null) {
-            return null;
-        }
-        return Base64.getEncoder().encodeToString(plainText.getBytes(StandardCharsets.UTF_8));
-    }
-
-    private static String decodeBase64(String stored) {
-        if (stored == null) {
-            return null;
-        }
-        try {
-            return new String(Base64.getDecoder().decode(stored), StandardCharsets.UTF_8);
-        } catch (IllegalArgumentException ex) {
-            // tolerate legacy values that were stored without encoding
-            return stored;
-        }
     }
 }

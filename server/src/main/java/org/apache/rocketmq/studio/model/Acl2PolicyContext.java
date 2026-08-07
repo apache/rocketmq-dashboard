@@ -16,7 +16,10 @@
  */
 package org.apache.rocketmq.studio.model;
 
-
+import lombok.AccessLevel;
+import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 import java.util.Date;
 import java.util.List;
 
@@ -30,6 +33,7 @@ import java.util.List;
  *
  * @see ACLPolicy
  */
+@Data
 public class Acl2PolicyContext {
 
     // ========== Base Fields (Compatible with ACL 1.0) ==========
@@ -41,6 +45,8 @@ public class Acl2PolicyContext {
     private String secretKey;
 
     /** Whether this is an admin user */
+    @Getter(AccessLevel.NONE)
+    @Setter(AccessLevel.NONE)
     private boolean isAdmin;
 
     /** IP whitelist patterns */
@@ -82,6 +88,7 @@ public class Acl2PolicyContext {
      * Authorization Rule - defines what actions are allowed/denied on which resources.
      * Supports wildcards in resource patterns following path pattern syntax.
      */
+    @Data
     public static class AuthorizationRule {
 
         /** Resource path pattern supporting wildcards (* matches any single level, ** matches all levels) */
@@ -117,46 +124,6 @@ public class Acl2PolicyContext {
             rule.setEffect("Deny");
             rule.setPriority(0);
             return rule;
-        }
-
-        public String getResourcePattern() {
-            return resourcePattern;
-        }
-
-        public void setResourcePattern(String resourcePattern) {
-            this.resourcePattern = resourcePattern;
-        }
-
-        public List<String> getActions() {
-            return actions;
-        }
-
-        public void setActions(List<String> actions) {
-            this.actions = actions;
-        }
-
-        public String getEffect() {
-            return effect;
-        }
-
-        public void setEffect(String effect) {
-            this.effect = effect;
-        }
-
-        public int getPriority() {
-            return priority;
-        }
-
-        public void setPriority(int priority) {
-            this.priority = priority;
-        }
-
-        public String getDescription() {
-            return description;
-        }
-
-        public void setDescription(String description) {
-            this.description = description;
         }
     }
 
@@ -205,22 +172,6 @@ public class Acl2PolicyContext {
     private boolean isValidBoundType(String type) {
         return "USER".equals(type) || "GROUP".equals(type) || "SERVICE_ACCOUNT".equals(type);
     }
-    public String getAccessKey() {
-        return accessKey;
-    }
-
-    public void setAccessKey(String accessKey) {
-        this.accessKey = accessKey;
-    }
-
-    public String getSecretKey() {
-        return secretKey;
-    }
-
-    public void setSecretKey(String secretKey) {
-        this.secretKey = secretKey;
-    }
-
     public boolean isIsAdmin() {
         return isAdmin;
     }
@@ -228,93 +179,4 @@ public class Acl2PolicyContext {
     public void setIsAdmin(boolean isAdmin) {
         this.isAdmin = isAdmin;
     }
-
-    public List<String> getWhiteSet() {
-        return whiteSet;
-    }
-
-    public void setWhiteSet(List<String> whiteSet) {
-        this.whiteSet = whiteSet;
-    }
-
-    public String getPolicyName() {
-        return policyName;
-    }
-
-    public void setPolicyName(String policyName) {
-        this.policyName = policyName;
-    }
-
-    public String getBoundType() {
-        return boundType;
-    }
-
-    public void setBoundType(String boundType) {
-        this.boundType = boundType;
-    }
-
-    public String getBoundEntityId() {
-        return boundEntityId;
-    }
-
-    public void setBoundEntityId(String boundEntityId) {
-        this.boundEntityId = boundEntityId;
-    }
-
-    public List<AuthorizationRule> getRules() {
-        return rules;
-    }
-
-    public void setRules(List<AuthorizationRule> rules) {
-        this.rules = rules;
-    }
-
-    public boolean isEnabled() {
-        return enabled;
-    }
-
-    public void setEnabled(boolean enabled) {
-        this.enabled = enabled;
-    }
-
-    public String getDescription() {
-        return description;
-    }
-
-    public void setDescription(String description) {
-        this.description = description;
-    }
-
-    public String getClusterName() {
-        return clusterName;
-    }
-
-    public void setClusterName(String clusterName) {
-        this.clusterName = clusterName;
-    }
-
-    public String getBrokerName() {
-        return brokerName;
-    }
-
-    public void setBrokerName(String brokerName) {
-        this.brokerName = brokerName;
-    }
-
-    public Date getCreateTime() {
-        return createTime;
-    }
-
-    public void setCreateTime(Date createTime) {
-        this.createTime = createTime;
-    }
-
-    public Date getUpdateTime() {
-        return updateTime;
-    }
-
-    public void setUpdateTime(Date updateTime) {
-        this.updateTime = updateTime;
-    }
-
 }

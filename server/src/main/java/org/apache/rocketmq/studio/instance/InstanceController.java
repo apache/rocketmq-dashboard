@@ -17,9 +17,9 @@
 
 package org.apache.rocketmq.studio.instance;
 
+import org.apache.rocketmq.studio.common.domain.DeleteRequestDTO;
 import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
-import org.apache.rocketmq.studio.common.exception.BusinessException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -46,26 +46,18 @@ public class InstanceController {
     }
 
     @PostMapping("/create")
-    public Result<InstanceVO> createInstance(@RequestBody(required = false) InstanceVO instance) {
-        requireInstance(instance);
-        return Result.ok(instanceService.createInstance(instance));
+    public Result<InstanceVO> createInstance(@Valid @RequestBody CreateInstanceDTO request) {
+        return Result.ok(instanceService.createInstance(request.toInstanceVO()));
     }
 
     @PostMapping("/update")
-    public Result<InstanceVO> updateInstance(@RequestBody(required = false) InstanceVO instance) {
-        requireInstance(instance);
-        return Result.ok(instanceService.updateInstance(instance));
+    public Result<InstanceVO> updateInstance(@Valid @RequestBody UpdateInstanceDTO request) {
+        return Result.ok(instanceService.updateInstance(request.toInstanceVO()));
     }
 
     @PostMapping("/delete")
-    public Result<Void> deleteInstance(@Valid @RequestBody InstanceDeleteRequestDTO request) {
+    public Result<Void> deleteInstance(@Valid @RequestBody DeleteRequestDTO request) {
         instanceService.deleteInstance(request.getId());
         return Result.ok();
-    }
-
-    private void requireInstance(InstanceVO instance) {
-        if (instance == null) {
-            throw new BusinessException(400, "Instance request is required");
-        }
     }
 }

@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.model;
 
+import lombok.Data;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -25,6 +26,7 @@ import java.util.Map;
  * Unified cluster topology model
  * Hide differences between different cluster architectures
  */
+@Data
 public class ClusterTopology {
 
     /**
@@ -117,7 +119,7 @@ public class ClusterTopology {
             .count();
     }
 
-
+    @Data
     public static class NodeInfo {
         private String nodeName;
         private Long nodeId;
@@ -140,117 +142,5 @@ public class ClusterTopology {
         public boolean isOnline() {
             return "ONLINE".equals(status);
         }
-
-        public String getNodeName() {
-            return nodeName;
-        }
-
-        public void setNodeName(String nodeName) {
-            this.nodeName = nodeName;
-        }
-
-        public Long getNodeId() {
-            return nodeId;
-        }
-
-        public void setNodeId(Long nodeId) {
-            this.nodeId = nodeId;
-        }
-
-        public String getNodeAddress() {
-            return nodeAddress;
-        }
-
-        public void setNodeAddress(String nodeAddress) {
-            this.nodeAddress = nodeAddress;
-        }
-
-        public String getNodeType() {
-            return nodeType;
-        }
-
-        public void setNodeType(String nodeType) {
-            this.nodeType = nodeType;
-        }
-
-        public String getClusterName() {
-            return clusterName;
-        }
-
-        public void setClusterName(String clusterName) {
-            this.clusterName = clusterName;
-        }
-
-        public String getStatus() {
-            return status;
-        }
-
-        public void setStatus(String status) {
-            this.status = status;
-        }
-
-        public Long getVersion() {
-            return version;
-        }
-
-        public void setVersion(Long version) {
-            this.version = version;
-        }
-
-        public Map<String, Object> getMetadata() {
-            return metadata;
-        }
-
-        public void setMetadata(Map<String, Object> metadata) {
-            this.metadata = metadata;
-        }
-    }
-
-    public String getClusterName() {
-        return clusterName;
-    }
-
-    public void setClusterName(String clusterName) {
-        this.clusterName = clusterName;
-    }
-
-    public List<String> getNamesrvAddresses() {
-        return namesrvAddresses;
-    }
-
-    public void setNamesrvAddresses(List<String> namesrvAddresses) {
-        this.namesrvAddresses = namesrvAddresses;
-    }
-
-    public List<NodeInfo> getNamesrvNodes() {
-        return namesrvNodes;
-    }
-
-    public void setNamesrvNodes(List<NodeInfo> namesrvNodes) {
-        this.namesrvNodes = namesrvNodes;
-    }
-
-    public List<NodeInfo> getBrokerNodes() {
-        return brokerNodes;
-    }
-
-    public void setBrokerNodes(List<NodeInfo> brokerNodes) {
-        this.brokerNodes = brokerNodes;
-    }
-
-    public List<NodeInfo> getProxyNodes() {
-        return proxyNodes;
-    }
-
-    public void setProxyNodes(List<NodeInfo> proxyNodes) {
-        this.proxyNodes = proxyNodes;
-    }
-
-    public Map<String, NodeInfo> getNodeMap() {
-        return nodeMap;
-    }
-
-    public void setNodeMap(Map<String, NodeInfo> nodeMap) {
-        this.nodeMap = nodeMap;
     }
 }

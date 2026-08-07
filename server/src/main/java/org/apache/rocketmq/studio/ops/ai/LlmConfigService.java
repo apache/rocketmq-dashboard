@@ -17,6 +17,8 @@
 
 package org.apache.rocketmq.studio.ops.ai;
 
+import org.springframework.util.StringUtils;
+
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.apache.rocketmq.studio.settings.SettingsService;
 import lombok.RequiredArgsConstructor;
@@ -80,7 +82,7 @@ public class LlmConfigService {
                 ? copy(overrides)
                 : fromGeneralSettings(settingsService.getGeneralSettings());
         String token = envToken();
-        if (!isBlank(token)) {
+        if (!!StringUtils.hasText(token)) {
             config.setApiKey(token.trim());
             config.setEnabled(true);
         }
@@ -95,7 +97,7 @@ public class LlmConfigService {
         }
         GeneralSettingsVO current = settingsService.getGeneralSettings();
         // The env-injected token is authoritative at runtime but must never be persisted.
-        String persistedApiKey = isBlank(envToken())
+        String persistedApiKey = !StringUtils.hasText(envToken())
                 ? normalized.getApiKey()
                 : defaultString(current.getApiKey(), "");
         GeneralSettingsVO updated = GeneralSettingsVO.builder()
@@ -155,19 +157,19 @@ public class LlmConfigService {
         }
         boolean keyRequired = !"ollama".equals(provider)
                 && LlmConfigVO.ENGINE_HTTP.equalsIgnoreCase(normalized.normalizeEngine());
-        if (keyRequired && isBlank(normalized.getApiKey())) {
+        if (keyRequired && !StringUtils.hasText(normalized.getApiKey())) {
             return LlmOperationResultVO.failure(
                     "llm.config.missing_api_key",
                     "LLM API key is required",
                     "Configure an API key for provider " + provider + ", or select ollama for a local provider.");
         }
-        if ("azure".equals(provider) && isBlank(normalized.getDeploymentName())) {
+        if ("azure".equals(provider) && !StringUtils.hasText(normalized.getDeploymentName())) {
             return LlmOperationResultVO.failure(
                     "llm.config.missing_deployment",
                     "Azure OpenAI deployment name is required",
                     "Set the Azure deployment name that maps to the selected model.");
         }
-        if (isBlank(normalized.getModel())) {
+        if (!StringUtils.hasText(normalized.getModel())) {
             return LlmOperationResultVO.failure(
                     "llm.config.missing_model",
                     "LLM model is required",
@@ -215,7 +217,7 @@ public class LlmConfigService {
                 .model(model)
                 .maxTokens(DEFAULT_MAX_TOKENS)
                 .temperature(DEFAULT_TEMPERATURE)
-                .enabled(!requiresApiKey(provider) || !isBlank(apiKey))
+                .enabled(!requiresApiKey(provider) || !!StringUtils.hasText(apiKey))
                 .apiVersion("2024-02-15-preview")
                 .awsRegion("us-east-1")
                 .build();
@@ -253,11 +255,11 @@ public class LlmConfigService {
             normalized.setApiKey("");
             return normalized;
         }
-        if (isBlank(normalized.getApiKey())) {
+        if (!StringUtils.hasText(normalized.getApiKey())) {
             // Fall back to the key stored in settings only; the env-injected token
             // must never be persisted into the settings table.
             String storedKey = settingsService.getGeneralSettings().getApiKey();
-            if (!isBlank(envToken())) {
+            if (!!StringUtils.hasText(envToken())) {
                 storedKey = defaultString(storedKey, envToken());
             }
             normalized.setApiKey(defaultString(storedKey, ""));
@@ -319,7 +321,7 @@ public class LlmConfigService {
         try {
             URI uri = new URI(apiBase);
             String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
-            return ("http".equals(scheme) || "https".equals(scheme)) && !isBlank(uri.getHost())
+            return ("http".equals(scheme) || "https".equals(scheme)) && !!StringUtils.hasText(uri.getHost())
                     && !apiBase.endsWith(CHAT_COMPLETIONS_PATH);
         } catch (URISyntaxException exception) {
             return false;
@@ -327,10 +329,7 @@ public class LlmConfigService {
     }
 
     private String defaultString(String value, String fallback) {
-        return isBlank(value) ? fallback : value.trim();
+        return !StringUtils.hasText(value) ? fallback : value.trim();
     }
 
-    private boolean isBlank(String value) {
-        return value == null || value.trim().isEmpty();
-    }
 }

@@ -59,7 +59,7 @@ public class DLQService {
 
     private void validateResendRequest(String groupName, Long startTime, Long endTime) {
         if (!StringUtils.hasText(groupName)) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "groupName is required");
+            throw new BusinessException(400, "groupName is required");
         }
         if ((startTime == null) != (endTime == null)) {
             throw new BusinessException(

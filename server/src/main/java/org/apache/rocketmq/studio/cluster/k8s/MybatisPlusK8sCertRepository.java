@@ -26,6 +26,7 @@ import org.apache.rocketmq.studio.persistence.entity.RmqK8sCertificate;
 import org.apache.rocketmq.studio.persistence.mapper.RmqK8sCertificateMapper;
 import org.springframework.stereotype.Repository;
 import org.springframework.util.StringUtils;
+import lombok.RequiredArgsConstructor;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -36,16 +37,12 @@ import java.util.stream.Collectors;
  * MySQL-backed K8s certificate repository. The SAN list is stored as a JSON
  * array string.
  */
+@RequiredArgsConstructor
 @Repository
 public class MybatisPlusK8sCertRepository implements K8sCertRepository {
 
     private final RmqK8sCertificateMapper certMapper;
     private final ObjectMapper objectMapper;
-
-    public MybatisPlusK8sCertRepository(RmqK8sCertificateMapper certMapper, ObjectMapper objectMapper) {
-        this.certMapper = certMapper;
-        this.objectMapper = objectMapper;
-    }
 
     @Override
     public List<K8sCertVO> findAll() {

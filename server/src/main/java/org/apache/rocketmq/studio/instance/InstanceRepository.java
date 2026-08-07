@@ -38,4 +38,8 @@ public interface InstanceRepository {
     void deleteById(String id);
 
     boolean existsByCredentialId(String credentialId);
+
+    long countTopicsByInstance(String instanceId);
+
+    long countGroupsByInstance(String instanceId);
 }

@@ -33,7 +33,7 @@ import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
 import org.apache.rocketmq.studio.common.domain.enums.FlushDiskType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.ops.audit.AuditService;
-import org.apache.rocketmq.studio.rocketmq.RocketMQBrokerConfigService;
+import org.apache.rocketmq.studio.provider.apache.RocketMQBrokerConfigService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

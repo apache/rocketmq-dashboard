@@ -17,12 +17,15 @@
 
 package org.apache.rocketmq.studio.instance;
 
-import org.apache.rocketmq.studio.cloud.credential.CloudCredentialRepository;
-import org.apache.rocketmq.studio.cloud.credential.CloudCredentialVO;
+import org.springframework.util.StringUtils;
+
+import org.apache.rocketmq.studio.provider.credential.CloudCredentialRepository;
+import org.apache.rocketmq.studio.provider.credential.CloudCredentialVO;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.provider.CloudInstanceDetailVO;
+import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -55,25 +58,22 @@ public class InstanceService {
         } else {
             instances = instanceRepository.findAll();
         }
-        instances.forEach(this::fillCloudCounts);
+        instances.forEach(this::fillCounts);
         return instances;
     }
 
     /**
-     * Cloud instances keep topics/groups on the vendor side, so the local table counts are
-     * always zero; pull live counts through the vendor provider instead.
+     * Resource counts live on the vendor side (cloud APIs) or in the local tables (Apache),
+     * so resolve them uniformly through the vendor provider.
      */
-    private void fillCloudCounts(InstanceVO instance) {
-        if (instance.getVendor() == null || instance.getVendor() == InstanceVendor.APACHE) {
-            return;
-        }
+    private void fillCounts(InstanceVO instance) {
+        InstanceVendor vendor = instance.getVendor() == null ? InstanceVendor.APACHE : instance.getVendor();
         try {
-            org.apache.rocketmq.studio.provider.InstanceProvider provider =
-                    providerRegistry.forVendor(instance.getVendor());
-            instance.setTopicCount(provider.listTopics(instance.getId(), null, null).size());
-            instance.setConsumerGroupCount(provider.listConsumerGroups(instance.getId(), null).size());
+            InstanceProvider provider = providerRegistry.forVendor(vendor);
+            instance.setTopicCount(provider.countTopics(instance.getId()));
+            instance.setConsumerGroupCount(provider.countGroups(instance.getId()));
         } catch (RuntimeException ex) {
-            log.warn("Failed to load cloud resource counts for instance {}: {}",
+            log.warn("Failed to load resource counts for instance {}: {}",
                     instance.getId(), ex.getMessage());
         }
     }
@@ -115,8 +115,8 @@ public class InstanceService {
         if (instance.getEndpoint() != null && !instance.getEndpoint().isBlank()) {
             throw new BusinessException(400, "Commercial instances must be selected from the cloud catalog, endpoint cannot be set manually");
         }
-        if (isBlank(instance.getCredentialId()) || isBlank(instance.getCloudInstanceId())
-                || isBlank(instance.getRegionId())) {
+        if (!StringUtils.hasText(instance.getCredentialId()) || !StringUtils.hasText(instance.getCloudInstanceId())
+                || !StringUtils.hasText(instance.getRegionId())) {
             throw new BusinessException(400, "credentialId, cloudInstanceId and regionId are required for Aliyun instances");
         }
         CloudCredentialVO credential = cloudCredentialRepository.findById(instance.getCredentialId())
@@ -157,9 +157,6 @@ public class InstanceService {
         };
     }
 
-    private static boolean isBlank(String value) {
-        return value == null || value.isBlank();
-    }
 
     public InstanceVO updateInstance(InstanceVO instance) {
         requireInstance(instance);

@@ -23,21 +23,19 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import lombok.RequiredArgsConstructor;
 
 import java.util.List;
 
 /**
  * REST endpoints for browsing the Aliyun cloud catalog with a stored credential.
  */
+@RequiredArgsConstructor
 @RestController
 @RequestMapping("/api/cloud/aliyun")
 public class AliyunCatalogController {
 
     private final AliyunCatalogService catalogService;
-
-    public AliyunCatalogController(AliyunCatalogService catalogService) {
-        this.catalogService = catalogService;
-    }
 
     @GetMapping("/regions")
     public Result<List<CloudRegionVO>> listRegions(@RequestParam String credentialId) {
