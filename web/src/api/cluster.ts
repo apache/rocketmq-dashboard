@@ -44,7 +44,7 @@ export interface BrokerInfo {
   tpsIn: number;
   tpsOut: number;
   diskUsage: number;
-  version: string;
+  version?: string | null;
 }
 
 export interface ProxyInfo {

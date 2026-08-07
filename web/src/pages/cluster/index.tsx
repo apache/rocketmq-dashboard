@@ -403,8 +403,8 @@ const ClusterPage = () => {
         key: 'version',
         width: 80,
         align: 'right',
-        sorter: (a, b) => a.version.localeCompare(b.version),
-        render: (v: string) => <span style={{ fontSize: 13 }}>{v}</span>,
+        sorter: (a, b) => (a.version || '').localeCompare(b.version || ''),
+        render: (v?: string | null) => <span style={{ fontSize: 13 }}>{v || '-'}</span>,
       },
       {
         title: t('cluster.diskUsage'),
