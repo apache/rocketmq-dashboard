@@ -21,6 +21,7 @@ import org.apache.rocketmq.remoting.protocol.body.KVTable;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.broker.ClusterVO;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.junit.jupiter.api.Test;
 
@@ -50,6 +51,8 @@ class RocketMQClusterProviderTest {
         assertThat(clusters.get(0).getBrokers()).hasSize(1);
         assertThat(clusters.get(0).getBrokers().get(0).getTpsIn()).isEqualTo(12);
         assertThat(clusters.get(0).getBrokers().get(0).getTpsOut()).isEqualTo(34);
+        assertThat(clusters.get(0).getBrokers().get(0).isRuntimeStatsAvailable()).isTrue();
+        assertThat(clusters.get(0).getStatus()).isEqualTo(ClusterStatus.healthy);
     }
 
     @Test
@@ -84,6 +87,22 @@ class RocketMQClusterProviderTest {
         assertThat(cluster.getId()).isEqualTo("DefaultCluster");
         assertThat(cluster.getProxies()).isNotNull().isEmpty();
         assertThat(cluster.getTpsHistory()).isNotNull().isEmpty();
+    }
+
+    @Test
+    void discoverClustersMarksWarningWhenBrokerRuntimeStatsAreUnavailable() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RocketMQClusterProvider provider = newProvider(adminExt);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911"))
+                .thenThrow(new IllegalStateException("broker unavailable"));
+
+        ClusterVO cluster = provider.discoverClusters().get(0);
+
+        assertThat(cluster.getStatus()).isEqualTo(ClusterStatus.warning);
+        assertThat(cluster.getBrokers()).singleElement()
+                .extracting(broker -> broker.isRuntimeStatsAvailable())
+                .isEqualTo(false);
     }
 
     private RocketMQClusterProvider newProvider(DefaultMQAdminExt adminExt) {

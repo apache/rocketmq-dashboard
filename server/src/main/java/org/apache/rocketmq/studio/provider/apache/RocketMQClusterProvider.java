@@ -131,7 +131,7 @@ public class RocketMQClusterProvider implements ClusterProvider {
                                      List<NameServerVO> nameServers) {
         ClusterVO cluster = ClusterVO.builder()
                 .name(clusterName)
-                .status(ClusterStatus.healthy)
+                .status(hasUnavailableRuntimeStats(brokers) ? ClusterStatus.warning : ClusterStatus.healthy)
                 .brokers(brokers != null ? brokers : Collections.emptyList())
                 .proxies(Collections.emptyList())
                 .nameServers(nameServers != null ? nameServers : Collections.emptyList())
@@ -171,18 +171,18 @@ public class RocketMQClusterProvider implements ClusterProvider {
                     .status(BrokerStatus.running);
 
             // Try to get runtime info for version and TPS
-            enrichBrokerWithRuntimeInfo(admin, builder, masterAddr);
+            builder.runtimeStatsAvailable(enrichBrokerWithRuntimeInfo(admin, builder, masterAddr));
 
             brokers.add(builder.build());
         }
         return brokers;
     }
 
-    private void enrichBrokerWithRuntimeInfo(MQAdminExt admin, BrokerVO.BrokerVOBuilder builder, String brokerAddr) {
+    private boolean enrichBrokerWithRuntimeInfo(MQAdminExt admin, BrokerVO.BrokerVOBuilder builder, String brokerAddr) {
         try {
             KVTable runtimeInfo = admin.fetchBrokerRuntimeStats(brokerAddr);
             if (runtimeInfo == null || runtimeInfo.getTable() == null) {
-                return;
+                return false;
             }
 
             Map<String, String> table = runtimeInfo.getTable();
@@ -213,9 +213,15 @@ public class RocketMQClusterProvider implements ClusterProvider {
                     // keep default
                 }
             }
+            return true;
         } catch (Exception e) {
-            log.debug("Failed to get runtime info for broker at {}: {}", brokerAddr, e.getMessage());
+            log.warn("Failed to get runtime info for broker at {}: {}", brokerAddr, e.getMessage());
+            return false;
         }
+    }
+
+    private boolean hasUnavailableRuntimeStats(List<BrokerVO> brokers) {
+        return brokers != null && brokers.stream().anyMatch(broker -> !broker.isRuntimeStatsAvailable());
     }
 
     /**
