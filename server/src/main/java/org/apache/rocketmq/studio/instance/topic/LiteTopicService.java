@@ -37,10 +37,10 @@ public class LiteTopicService {
 
     public void extendTTL(String topicPattern, Long newTTL) {
         if (topicPattern == null || topicPattern.isBlank()) {
-            throw new IllegalArgumentException("topicPattern is required");
+            throw new BusinessException(400, "topicPattern is required");
         }
         if (newTTL == null || newTTL <= 0) {
-            throw new IllegalArgumentException("newTTL must be positive");
+            throw new BusinessException(400, "newTTL must be positive");
         }
         throw new BusinessException(NOT_IMPLEMENTED, PROVIDER_UNAVAILABLE_MESSAGE);
     }
