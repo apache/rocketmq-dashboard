@@ -66,6 +66,7 @@ describe('OpsPage', () => {
     useAuthStore.setState({ token: null, user: null, admin: null });
     vi.mocked(queryOpsHomePage).mockResolvedValue({
       namesvrAddrList: ['127.0.0.1:9876', '127.0.0.2:9876'],
+      configurationAvailable: true,
       useVIPChannel: true,
       useTLS: false,
       currentNamesrv: '127.0.0.1:9876',
