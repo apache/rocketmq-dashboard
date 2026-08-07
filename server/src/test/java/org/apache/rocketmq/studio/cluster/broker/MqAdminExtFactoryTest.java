@@ -71,6 +71,27 @@ class MqAdminExtFactoryTest {
     }
 
     @Test
+    void executeShouldReuseClientForEquivalentNameServerAddressLists() throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        RecordingFactory factory = new RecordingFactory(admin);
+
+        factory.execute("10.0.0.2:9876, 10.0.0.1:9876;10.0.0.2:9876", null, ignored -> null);
+        factory.execute("10.0.0.1:9876;10.0.0.2:9876", null, ignored -> null);
+
+        assertThat(factory.created.get()).isEqualTo(1);
+        verify(admin).setNamesrvAddr("10.0.0.1:9876;10.0.0.2:9876");
+    }
+
+    @Test
+    void executeShouldRejectAddressListsWithoutUsableEntries() {
+        MqAdminExtFactory factory = new MqAdminExtFactory();
+
+        assertThatThrownBy(() -> factory.execute(" ; , ", null, ignored -> null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("NameServer address is required");
+    }
+
+    @Test
     void executeShouldWrapConnectionFailure() throws Exception {
         DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
         doThrow(new RuntimeException("connection refused")).when(admin).start();
