@@ -45,9 +45,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
-import java.util.List;
-import java.util.Set;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -200,7 +197,7 @@ class RocketMQDLQProviderTest {
                          when(producer.send(any(Message.class))).thenReturn(sendResult);
                          doNothing().when(producer).shutdown();
                      })) {
-            assertThat(provider.resendMessages("group-a", 100L, 200L, "target-topic"))
+            assertThat(provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic"))
                     .extracting("matched", "resent", "failed", "outcome")
                     .containsExactly(1, 0, 1, "PARTIAL");
 
