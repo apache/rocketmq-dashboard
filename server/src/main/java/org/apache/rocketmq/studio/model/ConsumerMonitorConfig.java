@@ -16,31 +16,14 @@
  */
 package org.apache.rocketmq.studio.model;
 
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class ConsumerMonitorConfig {
     private int minCount;
     private int maxDiffTotal;
-
-    public ConsumerMonitorConfig() {
-    }
-
-    public ConsumerMonitorConfig(int minCount, int maxDiffTotal) {
-        this.minCount = minCount;
-        this.maxDiffTotal = maxDiffTotal;
-    }
-
-    public int getMinCount() {
-        return minCount;
-    }
-
-    public void setMinCount(int minCount) {
-        this.minCount = minCount;
-    }
-
-    public int getMaxDiffTotal() {
-        return maxDiffTotal;
-    }
-
-    public void setMaxDiffTotal(int maxDiffTotal) {
-        this.maxDiffTotal = maxDiffTotal;
-    }
 }

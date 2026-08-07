@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.cluster.metrics;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import lombok.RequiredArgsConstructor;
 
 import java.time.Duration;
 
@@ -30,16 +31,12 @@ import java.time.Duration;
  * query/parse logic via {@link AbstractPrometheusCompatibleMetricsSource}.
  * </p>
  */
+@RequiredArgsConstructor
 @Component
 public class MetricsSourceFactory {
 
     private final RestClient.Builder restClientBuilder;
     private final ObjectMapper objectMapper;
-
-    public MetricsSourceFactory(RestClient.Builder restClientBuilder, ObjectMapper objectMapper) {
-        this.restClientBuilder = restClientBuilder;
-        this.objectMapper = objectMapper;
-    }
 
     public MetricsSource create(org.apache.rocketmq.studio.model.MetricsDataSourceConfig config) {
         MetricsBackendType backendType = MetricsBackendType.fromProviderType(config.getProviderType());

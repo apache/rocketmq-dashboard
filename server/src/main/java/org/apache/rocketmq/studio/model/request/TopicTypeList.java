@@ -16,27 +16,13 @@
  */
 package org.apache.rocketmq.studio.model.request;
 
+import lombok.Data;
 import java.util.List;
 
+@Data
 public class TopicTypeList {
     private List<String> topicNameList;
     private List<String> messageTypeList;
-
-    public List<String> getTopicNameList() {
-        return topicNameList;
-    }
-
-    public void setTopicNameList(List<String> topicNameList) {
-        this.topicNameList = topicNameList;
-    }
-
-    public List<String> getMessageTypeList() {
-        return messageTypeList;
-    }
-
-    public void setMessageTypeList(List<String> messageTypeList) {
-        this.messageTypeList = messageTypeList;
-    }
 
     public TopicTypeList(List<String> topicNameList, List<String> messageTypeList) {
         this.topicNameList = topicNameList;

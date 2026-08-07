@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.instance.topic;
 
+import org.apache.rocketmq.studio.provider.apache.AdminClient;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 

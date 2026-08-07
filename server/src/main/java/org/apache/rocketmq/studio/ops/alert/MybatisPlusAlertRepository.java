@@ -24,6 +24,7 @@ import org.apache.rocketmq.studio.persistence.mapper.RmqAlertRuleMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqSystemAlertMapper;
 import org.springframework.stereotype.Repository;
 import org.springframework.util.StringUtils;
+import lombok.RequiredArgsConstructor;
 
 import java.time.LocalDateTime;
 import java.util.Arrays;
@@ -33,16 +34,12 @@ import java.util.stream.Collectors;
 /**
  * MySQL-backed alert repository for alert rules and system alert events.
  */
+@RequiredArgsConstructor
 @Repository
 public class MybatisPlusAlertRepository implements AlertRepository {
 
     private final RmqAlertRuleMapper ruleMapper;
     private final RmqSystemAlertMapper alertMapper;
-
-    public MybatisPlusAlertRepository(RmqAlertRuleMapper ruleMapper, RmqSystemAlertMapper alertMapper) {
-        this.ruleMapper = ruleMapper;
-        this.alertMapper = alertMapper;
-    }
 
     @Override
     public List<AlertRuleVO> findAllRules() {

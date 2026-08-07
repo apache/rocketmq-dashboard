@@ -16,6 +16,8 @@
  */
 package org.apache.rocketmq.studio.model.request;
 
+import lombok.Data;
+
 /**
  * Request body for architecture switch operation.
  *
@@ -26,6 +28,7 @@ package org.apache.rocketmq.studio.model.request;
  * {@code proxyAddresses} and {@code nameSrvAddress} fields are required.
  * For V4 architecture, only {@code accessType} is needed.</p>
  */
+@Data
 public class ArchitectureSwitchRequest {
 
     /**
@@ -45,28 +48,4 @@ public class ArchitectureSwitchRequest {
      * Required when accessType is V5_PROXY_LOCAL or V5_PROXY_CLUSTER.
      */
     private String nameSrvAddress;
-
-    public String getAccessType() {
-        return accessType;
-    }
-
-    public void setAccessType(String accessType) {
-        this.accessType = accessType;
-    }
-
-    public String[] getProxyAddresses() {
-        return proxyAddresses;
-    }
-
-    public void setProxyAddresses(String[] proxyAddresses) {
-        this.proxyAddresses = proxyAddresses;
-    }
-
-    public String getNameSrvAddress() {
-        return nameSrvAddress;
-    }
-
-    public void setNameSrvAddress(String nameSrvAddress) {
-        this.nameSrvAddress = nameSrvAddress;
-    }
 }

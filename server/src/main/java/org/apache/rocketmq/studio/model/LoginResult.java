@@ -16,7 +16,9 @@
  */
 package org.apache.rocketmq.studio.model;
 
+import lombok.Data;
 
+@Data
 public class LoginResult {
 
     private String loginUserName;
@@ -27,28 +29,4 @@ public class LoginResult {
     private int loginUserRole;
 
     private String contextPath;
-    public String getLoginUserName() {
-        return loginUserName;
-    }
-
-    public void setLoginUserName(String loginUserName) {
-        this.loginUserName = loginUserName;
-    }
-
-    public int getLoginUserRole() {
-        return loginUserRole;
-    }
-
-    public void setLoginUserRole(int loginUserRole) {
-        this.loginUserRole = loginUserRole;
-    }
-
-    public String getContextPath() {
-        return contextPath;
-    }
-
-    public void setContextPath(String contextPath) {
-        this.contextPath = contextPath;
-    }
-
 }

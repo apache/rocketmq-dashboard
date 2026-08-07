@@ -16,7 +16,6 @@
  */
 package org.apache.rocketmq.studio.instance.acl;
 
-import org.springframework.http.HttpStatus;
 import org.apache.rocketmq.studio.common.domain.DeleteRequestDTO;
 import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -90,7 +89,7 @@ public class AclController {
 
     private <T> T requireRequest(T request, String message) {
         if (request == null) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), message);
+            throw new BusinessException(400, message);
         }
         return request;
     }

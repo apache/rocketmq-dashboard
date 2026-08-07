@@ -23,6 +23,7 @@ import com.networknt.schema.InputFormat;
 import com.networknt.schema.Schema;
 import com.networknt.schema.SchemaRegistry;
 import com.networknt.schema.SpecificationVersion;
+import lombok.Getter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
@@ -49,8 +50,11 @@ public class ToolCatalog {
     private static final String CLUSTER_LIST_TOOL = "rmq.cluster.list";
     private static final ObjectMapper YAML_MAPPER = new ObjectMapper(new YAMLFactory());
 
+    @Getter
     private final String version;
+    @Getter
     private final String minimumClientVersion;
+    @Getter
     private final String digest;
     private final List<ToolDefinition> definitions;
     private final Map<String, ToolDefinition> definitionsByName;
@@ -153,18 +157,6 @@ public class ToolCatalog {
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 is unavailable", e);
         }
-    }
-
-    public String getVersion() {
-        return version;
-    }
-
-    public String getMinimumClientVersion() {
-        return minimumClientVersion;
-    }
-
-    public String getDigest() {
-        return digest;
     }
 
     public List<ToolDefinition> list() {

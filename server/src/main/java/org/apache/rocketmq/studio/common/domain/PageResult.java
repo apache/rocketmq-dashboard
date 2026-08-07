@@ -16,9 +16,11 @@
  */
 package org.apache.rocketmq.studio.common.domain;
 
+import lombok.Getter;
 import java.util.Collections;
 import java.util.List;
 
+@Getter
 public class PageResult<T> {
     private List<T> items;
     private long total;
@@ -39,9 +41,4 @@ public class PageResult<T> {
     public static <T> PageResult<T> empty(int page, int size) {
         return of(Collections.emptyList(), 0, page, size);
     }
-
-    public List<T> getItems() { return items; }
-    public long getTotal() { return total; }
-    public int getPage() { return page; }
-    public int getSize() { return size; }
 }

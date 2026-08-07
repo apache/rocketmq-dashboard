@@ -16,7 +16,9 @@
  */
 package org.apache.rocketmq.studio.model;
 
+import lombok.Data;
 
+@Data
 public class LiteTopicQuota {
 
     private Integer maxTopicCount;
@@ -63,68 +65,4 @@ public class LiteTopicQuota {
         }
         return Math.max(0, maxTopicCount - currentTopicCount);
     }
-    public Integer getMaxTopicCount() {
-        return maxTopicCount;
-    }
-
-    public void setMaxTopicCount(Integer maxTopicCount) {
-        this.maxTopicCount = maxTopicCount;
-    }
-
-    public Integer getCurrentTopicCount() {
-        return currentTopicCount;
-    }
-
-    public void setCurrentTopicCount(Integer currentTopicCount) {
-        this.currentTopicCount = currentTopicCount;
-    }
-
-    public Integer getMaxSessionCount() {
-        return maxSessionCount;
-    }
-
-    public void setMaxSessionCount(Integer maxSessionCount) {
-        this.maxSessionCount = maxSessionCount;
-    }
-
-    public Integer getCurrentSessionCount() {
-        return currentSessionCount;
-    }
-
-    public void setCurrentSessionCount(Integer currentSessionCount) {
-        this.currentSessionCount = currentSessionCount;
-    }
-
-    public Long getDefaultTTL() {
-        return defaultTTL;
-    }
-
-    public void setDefaultTTL(Long defaultTTL) {
-        this.defaultTTL = defaultTTL;
-    }
-
-    public Long getMaxTTL() {
-        return maxTTL;
-    }
-
-    public void setMaxTTL(Long maxTTL) {
-        this.maxTTL = maxTTL;
-    }
-
-    public Double getCurrentCreationRate() {
-        return currentCreationRate;
-    }
-
-    public void setCurrentCreationRate(Double currentCreationRate) {
-        this.currentCreationRate = currentCreationRate;
-    }
-
-    public Double getMaxCreationRate() {
-        return maxCreationRate;
-    }
-
-    public void setMaxCreationRate(Double maxCreationRate) {
-        this.maxCreationRate = maxCreationRate;
-    }
-
 }
