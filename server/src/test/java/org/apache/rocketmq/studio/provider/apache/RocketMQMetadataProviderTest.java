@@ -44,6 +44,7 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -100,6 +101,21 @@ class RocketMQMetadataProviderTest {
 
         assertThat(groups).hasSize(1);
         assertThat(groups.get(0).getConsumeType()).isEqualTo(ConsumeType.CLUSTERING);
+    }
+
+    @Test
+    void listConsumerGroupsShouldUseSelectedInstanceForRuntimeEnrichment() {
+        RmqGroup entity = new RmqGroup();
+        entity.setName("group-a");
+        entity.setInstanceId("instance-a");
+        entity.setClusterId("cluster-a");
+        when(groupMapper.selectList(any())).thenReturn(List.of(entity));
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any())).thenReturn(null);
+
+        List<ConsumerGroupVO> groups = newProvider().listConsumerGroups("instance-a", null, null);
+
+        assertThat(groups).singleElement().extracting(ConsumerGroupVO::getName).isEqualTo("group-a");
+        verify(runtimeAdminClientResolver, times(2)).execute(eq("instance-a"), any());
     }
 
     @Test
