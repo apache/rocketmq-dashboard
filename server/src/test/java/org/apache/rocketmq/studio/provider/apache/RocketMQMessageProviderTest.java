@@ -75,8 +75,7 @@ class RocketMQMessageProviderTest {
             MqAdminExtFactory.AdminAction<Object> action = invocation.getArgument(1);
             return action == null ? null : action.apply(adminExt);
         });
-        provider = new RocketMQMessageProvider(runtimeAdminClientResolver, queryHistoryService,
-                new RocketMQProperties());
+        provider = new RocketMQMessageProvider(runtimeAdminClientResolver, queryHistoryService);
     }
 
     @Test
