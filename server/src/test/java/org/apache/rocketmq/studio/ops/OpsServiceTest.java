@@ -28,12 +28,13 @@ class OpsServiceTest {
     private final OpsService opsService = new OpsService();
 
     @Test
-    void getHomePageShouldReturnDefaultSettings() {
+    void getHomePageShouldReportUnavailableConfiguration() {
         OpsHomeVO home = opsService.getHomePage();
 
-        assertThat(home.getNamesvrAddrList()).containsExactly("127.0.0.1:9876");
-        assertThat(home.getCurrentNamesrv()).isEqualTo("127.0.0.1:9876");
-        assertThat(home.isUseVIPChannel()).isTrue();
+        assertThat(home.isConfigurationAvailable()).isFalse();
+        assertThat(home.getNamesvrAddrList()).isEmpty();
+        assertThat(home.getCurrentNamesrv()).isEmpty();
+        assertThat(home.isUseVIPChannel()).isFalse();
         assertThat(home.isUseTLS()).isFalse();
     }
 
@@ -53,8 +54,8 @@ class OpsServiceTest {
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(501));
 
         OpsHomeVO home = opsService.getHomePage();
-        assertThat(home.getNamesvrAddrList()).containsExactly("127.0.0.1:9876");
-        assertThat(home.getCurrentNamesrv()).isEqualTo("127.0.0.1:9876");
+        assertThat(home.getNamesvrAddrList()).isEmpty();
+        assertThat(home.getCurrentNamesrv()).isEmpty();
     }
 
     @Test
@@ -69,7 +70,7 @@ class OpsServiceTest {
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(501));
 
         OpsHomeVO home = opsService.getHomePage();
-        assertThat(home.isUseVIPChannel()).isTrue();
+        assertThat(home.isUseVIPChannel()).isFalse();
         assertThat(home.isUseTLS()).isFalse();
     }
 

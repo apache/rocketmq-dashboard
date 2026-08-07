@@ -113,6 +113,8 @@ export async function cleanupAuditLogs(beforeDays: number) {
 
 // ─── NameServer Operations ──────────────────────────────────────
 export interface OpsHomeData {
+  configurationAvailable: boolean;
+  unavailableReason?: string;
   namesvrAddrList: string[];
   useVIPChannel: boolean;
   useTLS: boolean;
