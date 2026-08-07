@@ -29,6 +29,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -51,6 +52,7 @@ public class ClusterRepositoryImpl implements ClusterRepository {
     @Override
     public List<ClusterVO> findAll() {
         return store.values().stream()
+                .map(this::defensiveCopy)
                 .sorted(Comparator
                         .comparing(ClusterVO::getName, Comparator.nullsLast(String::compareToIgnoreCase))
                         .thenComparing(ClusterVO::getId, Comparator.nullsLast(String::compareTo)))
@@ -59,17 +61,48 @@ public class ClusterRepositoryImpl implements ClusterRepository {
 
     @Override
     public Optional<ClusterVO> findById(String id) {
-        return Optional.ofNullable(store.get(id));
+        return Optional.ofNullable(store.get(id)).map(this::defensiveCopy);
     }
 
     @Override
     public void updateConfig(String clusterId, ClusterConfigVO config) {
-        ClusterVO cluster = store.get(clusterId);
-        if (cluster != null) {
-            cluster.setConfig(config);
-            cluster.setUpdatedAt(LocalDateTime.now());
+        // Atomically replace the stored cluster with a fresh copy so concurrent readers never
+        // observe a partially updated snapshot (new config, old updatedAt).
+        store.computeIfPresent(clusterId, (id, cluster) -> {
+            ClusterVO updated = defensiveCopy(cluster);
+            updated.setConfig(config);
+            updated.setUpdatedAt(LocalDateTime.now());
             log.info("Config updated for cluster: {}", clusterId);
-        }
+            return updated;
+        });
+    }
+
+    /**
+     * Returns an independent copy so callers cannot mutate the cached cluster and concurrent
+     * readers never share a partially-updated object. Nested lists are copied as immutable lists.
+     */
+    private ClusterVO defensiveCopy(ClusterVO cluster) {
+        ClusterVO copy = ClusterVO.builder()
+                .name(cluster.getName())
+                .nsClusterName(cluster.getNsClusterName())
+                .type(cluster.getType())
+                .endpoint(cluster.getEndpoint())
+                .status(cluster.getStatus())
+                .version(cluster.getVersion())
+                // new ArrayList forces a fresh list even when the source is already immutable
+                // (List.copyOf would return the source reference for immutable inputs).
+                .brokers(cluster.getBrokers() == null ? null : new ArrayList<>(cluster.getBrokers()))
+                .proxies(cluster.getProxies() == null ? null : new ArrayList<>(cluster.getProxies()))
+                .nameServers(cluster.getNameServers() == null ? null : new ArrayList<>(cluster.getNameServers()))
+                .config(cluster.getConfig())
+                .topicCount(cluster.getTopicCount())
+                .groupCount(cluster.getGroupCount())
+                .tpsHistory(cluster.getTpsHistory() == null ? null : new ArrayList<>(cluster.getTpsHistory()))
+                .build();
+        copy.setId(cluster.getId());
+        copy.setCreatedAt(cluster.getCreatedAt());
+        copy.setUpdatedAt(cluster.getUpdatedAt());
+        return copy;
     }
 
     private void initStubData() {
