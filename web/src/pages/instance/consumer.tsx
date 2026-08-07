@@ -806,10 +806,22 @@ const ConsumerPage = () => {
                   cancelText: '取消',
                   onOk: async () => {
                     const names = selectedRowKeys.map(String);
-                    await batchDeleteConsumerGroups(names, selectedInstanceId || undefined);
-                    setGroups((prev) => prev.filter((g) => !names.includes(g.name)));
-                    message.success(`已删除 ${selectedRowKeys.length} 个 Group`);
-                    setSelectedRowKeys([]);
+                    const { deleted, failed } = await batchDeleteConsumerGroups(
+                      names,
+                      selectedInstanceId || undefined,
+                    );
+                    setGroups((prev) => prev.filter((g) => !deleted.includes(g.name)));
+                    if (failed.length > 0) {
+                      message.warning(
+                        `已删除 ${deleted.length} 个，失败 ${failed.length} 个：${failed.join(', ')}`,
+                      );
+                      setSelectedRowKeys((prev) =>
+                        prev.filter((key) => !deleted.includes(String(key))),
+                      );
+                    } else {
+                      message.success(`已删除 ${deleted.length} 个 Group`);
+                      setSelectedRowKeys([]);
+                    }
                   },
                 });
               }}
@@ -1419,11 +1431,11 @@ const ConsumerPage = () => {
           if (resetGroup) {
             setResetSubmitting(true);
             try {
-                await resetConsumerOffset({
-                  name: resetGroup.name,
-                  instanceId: selectedInstanceId || undefined,
-                  timestamp: resetTime.valueOf(),
-                });
+              await resetConsumerOffset({
+                name: resetGroup.name,
+                instanceId: selectedInstanceId || undefined,
+                timestamp: resetTime.valueOf(),
+              });
               message.success(
                 `${resetGroup.name} 消费位点已重置到 ${resetTime.format('YYYY-MM-DD HH:mm:ss')}`,
               );
