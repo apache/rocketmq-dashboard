@@ -39,10 +39,10 @@ interface BrokerRecord {
   brokerName: string;
   status: NodeStatus;
   version: string;
-  diskUsage: number;
+  diskUsage: number | null;
   address: string;
-  tpsIn: number;
-  tpsOut: number;
+  tpsIn: number | null;
+  tpsOut: number | null;
 }
 
 interface NameServerRecord {
@@ -94,11 +94,11 @@ function mapClusters(clusters: ClusterInfo[]): {
         k8sCluster: clusterLabel,
         brokerName: broker.name || broker.addr,
         status: normalizeStatus(broker.status),
-        version: broker.version || cluster.version,
-        diskUsage: broker.diskUsage ?? 0,
+        version: broker.version || '-',
+        diskUsage: broker.runtimeStatsAvailable === false ? null : broker.diskUsage ?? 0,
         address: broker.addr,
-        tpsIn: broker.tpsIn ?? 0,
-        tpsOut: broker.tpsOut ?? 0,
+        tpsIn: broker.runtimeStatsAvailable === false ? null : broker.tpsIn ?? 0,
+        tpsOut: broker.runtimeStatsAvailable === false ? null : broker.tpsOut ?? 0,
       });
     });
 
@@ -177,7 +177,8 @@ const BrokerClusterPage = () => {
     return <Tag color={color}>{label}</Tag>;
   };
 
-  const renderDiskUsage = (percent: number) => {
+  const renderDiskUsage = (percent: number | null) => {
+    if (percent == null) return '-';
     let status: 'normal' | 'active' | 'exception' = 'normal';
     let color = '#52c41a';
     if (percent > 85) {
@@ -249,15 +250,15 @@ const BrokerClusterPage = () => {
       title: t('brokerCluster.tpsIn'),
       dataIndex: 'tpsIn',
       key: 'tpsIn',
-      render: (value: number) => <span style={{ fontWeight: 500 }}>{value.toLocaleString()}</span>,
-      sorter: (a: BrokerRecord, b: BrokerRecord) => a.tpsIn - b.tpsIn,
+      render: (value: number | null) => <span style={{ fontWeight: 500 }}>{value?.toLocaleString() ?? '-'}</span>,
+      sorter: (a: BrokerRecord, b: BrokerRecord) => (a.tpsIn ?? -1) - (b.tpsIn ?? -1),
     },
     {
       title: t('brokerCluster.tpsOut'),
       dataIndex: 'tpsOut',
       key: 'tpsOut',
-      render: (value: number) => <span style={{ fontWeight: 500 }}>{value.toLocaleString()}</span>,
-      sorter: (a: BrokerRecord, b: BrokerRecord) => a.tpsOut - b.tpsOut,
+      render: (value: number | null) => <span style={{ fontWeight: 500 }}>{value?.toLocaleString() ?? '-'}</span>,
+      sorter: (a: BrokerRecord, b: BrokerRecord) => (a.tpsOut ?? -1) - (b.tpsOut ?? -1),
     },
     {
       title: t('common.actions'),
