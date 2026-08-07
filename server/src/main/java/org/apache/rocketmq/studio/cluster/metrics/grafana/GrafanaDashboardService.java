@@ -28,6 +28,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -100,7 +101,7 @@ public class GrafanaDashboardService {
             throw new BusinessException(404, "Grafana dashboard not found: " + uid);
         }
         try (InputStream in = resource.getInputStream()) {
-            return new String(in.readAllBytes());
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new BusinessException(500, "Failed to read Grafana dashboard: " + uid);
         }

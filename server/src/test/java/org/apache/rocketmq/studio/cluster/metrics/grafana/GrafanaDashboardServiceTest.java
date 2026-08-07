@@ -20,6 +20,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
@@ -69,6 +71,17 @@ class GrafanaDashboardServiceTest {
         assertFalse(json.isBlank());
         assertTrue(json.contains("\"uid\""));
         assertTrue(json.contains("rocketmq-broker"));
+    }
+
+    @Test
+    void getDashboardJsonShouldDecodeBundledAssetAsUtf8() throws Exception {
+        try (InputStream input = getClass().getClassLoader()
+                .getResourceAsStream("grafana/rocketmq-broker.json")) {
+            assertTrue(input != null, "expected bundled dashboard resource");
+            String expected = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+
+            assertEquals(expected, service.getDashboardJson("rocketmq-broker"));
+        }
     }
 
     @Test
