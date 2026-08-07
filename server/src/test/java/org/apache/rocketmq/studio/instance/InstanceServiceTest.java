@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.instance;
 
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialRepository;
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialVO;
+import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -58,6 +59,9 @@ class InstanceServiceTest {
 
     @Mock
     private InstanceProvider instanceProvider;
+
+    @Mock
+    private MqAdminExtFactory adminFactory;
 
     @InjectMocks
     private InstanceService instanceService;
@@ -360,6 +364,49 @@ class InstanceServiceTest {
     }
 
     @Test
+    void updateInstanceShouldReleaseUnusedPreviousEndpoint() {
+        InstanceVO existing = InstanceVO.builder()
+                .name("instance")
+                .endpoint("old-namesrv:9876")
+                .build();
+        existing.setId("inst-1");
+        InstanceVO update = InstanceVO.builder().endpoint("new-namesrv:9876").build();
+        update.setId("inst-1");
+
+        when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(existing));
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(instanceRepository.findAll()).thenReturn(List.of());
+
+        instanceService.updateInstance(update);
+
+        verify(adminFactory).release("old-namesrv:9876");
+    }
+
+    @Test
+    void updateInstanceShouldKeepEndpointClientWhenAnotherInstanceReferencesIt() {
+        InstanceVO existing = InstanceVO.builder()
+                .name("instance")
+                .endpoint("shared-namesrv:9876")
+                .build();
+        existing.setId("inst-1");
+        InstanceVO shared = InstanceVO.builder()
+                .name("shared-instance")
+                .endpoint(" shared-namesrv:9876 ")
+                .build();
+        shared.setId("inst-2");
+        InstanceVO update = InstanceVO.builder().endpoint("new-namesrv:9876").build();
+        update.setId("inst-1");
+
+        when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(existing));
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(instanceRepository.findAll()).thenReturn(List.of(shared));
+
+        instanceService.updateInstance(update);
+
+        verify(adminFactory, never()).release("shared-namesrv:9876");
+    }
+
+    @Test
     void updateInstanceShouldThrowWhenRequestIsNull() {
         assertThatThrownBy(() -> instanceService.updateInstance(null))
                 .isInstanceOf(BusinessException.class)
@@ -489,6 +536,22 @@ class InstanceServiceTest {
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
 
         verify(instanceRepository, never()).deleteById("inst-1");
+    }
+
+    @Test
+    void deleteInstanceShouldReleaseUnusedEndpoint() {
+        InstanceVO existing = InstanceVO.builder()
+                .name("to-delete")
+                .endpoint("namesrv:9876")
+                .build();
+        existing.setId("inst-1");
+        when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(existing));
+        when(instanceRepository.findAll()).thenReturn(List.of());
+
+        instanceService.deleteInstance("inst-1");
+
+        verify(instanceRepository).deleteById("inst-1");
+        verify(adminFactory).release("namesrv:9876");
     }
 
     @Test

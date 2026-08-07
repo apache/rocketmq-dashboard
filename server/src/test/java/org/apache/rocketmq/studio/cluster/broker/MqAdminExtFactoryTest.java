@@ -71,6 +71,20 @@ class MqAdminExtFactoryTest {
     }
 
     @Test
+    void releaseShouldShutdownAndEvictCachedClient() throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        RecordingFactory factory = new RecordingFactory(admin);
+
+        factory.execute("10.0.0.1:9876", null, ignored -> "first");
+        factory.release(" 10.0.0.1:9876 ");
+        factory.execute("10.0.0.1:9876", null, ignored -> "second");
+
+        assertThat(factory.created.get()).isEqualTo(2);
+        verify(admin, times(2)).start();
+        verify(admin).shutdown();
+    }
+
+    @Test
     void executeShouldWrapConnectionFailure() throws Exception {
         DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
         doThrow(new RuntimeException("connection refused")).when(admin).start();

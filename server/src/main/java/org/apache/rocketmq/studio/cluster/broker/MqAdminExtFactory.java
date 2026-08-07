@@ -80,6 +80,22 @@ public class MqAdminExtFactory {
         }
     }
 
+    /**
+     * Stops and removes the cached client for an endpoint that is no longer referenced by Studio.
+     *
+     * <p>Callers must ensure the endpoint is not still used by another configured instance.
+     */
+    public void release(String namesrvAddr) {
+        if (namesrvAddr == null || namesrvAddr.isBlank()) {
+            return;
+        }
+        DefaultMQAdminExt admin = cache.remove(namesrvAddr.trim());
+        if (admin != null) {
+            safeShutdown(admin);
+            log.info("Released RocketMQ admin client for namesrv {}", namesrvAddr.trim());
+        }
+    }
+
     private DefaultMQAdminExt createAndStart(String namesrvAddr, RPCHook rpcHook) {
         DefaultMQAdminExt admin = newAdmin(rpcHook);
         admin.setNamesrvAddr(namesrvAddr);

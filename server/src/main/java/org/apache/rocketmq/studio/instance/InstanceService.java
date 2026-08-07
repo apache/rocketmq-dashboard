@@ -21,6 +21,7 @@ import org.springframework.util.StringUtils;
 
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialRepository;
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialVO;
+import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -43,6 +44,7 @@ public class InstanceService {
     private final InstanceRepository instanceRepository;
     private final CloudCredentialRepository cloudCredentialRepository;
     private final InstanceProviderRegistry providerRegistry;
+    private final MqAdminExtFactory adminFactory;
 
     public List<InstanceVO> listInstances(InstanceType type, String search) {
         log.debug("Listing instances, type={}, search={}", type, search);
@@ -194,7 +196,9 @@ public class InstanceService {
         }
         updated.setUpdatedAt(LocalDateTime.now());
 
-        return instanceRepository.save(updated);
+        InstanceVO saved = instanceRepository.save(updated);
+        releaseApacheEndpointIfUnused(existing, saved.getEndpoint());
+        return saved;
     }
 
     public void deleteInstance(String id) {
@@ -213,6 +217,7 @@ public class InstanceService {
                     existing.getTopicCount(), existing.getConsumerGroupCount()));
         }
         instanceRepository.deleteById(id);
+        releaseApacheEndpointIfUnused(existing, null);
     }
 
     private void requireInstance(InstanceVO instance) {
@@ -238,5 +243,34 @@ public class InstanceService {
         copy.setCreatedAt(instance.getCreatedAt());
         copy.setUpdatedAt(instance.getUpdatedAt());
         return copy;
+    }
+
+    private void releaseApacheEndpointIfUnused(InstanceVO existing, String currentEndpoint) {
+        InstanceVendor vendor = existing.getVendor() == null ? InstanceVendor.APACHE : existing.getVendor();
+        if (vendor != InstanceVendor.APACHE) {
+            return;
+        }
+        releaseEndpointIfUnused(existing.getEndpoint(), currentEndpoint, existing.getId());
+    }
+
+    private void releaseEndpointIfUnused(String previousEndpoint, String currentEndpoint, String excludedInstanceId) {
+        String oldEndpoint = normalizeEndpoint(previousEndpoint);
+        if (oldEndpoint == null || oldEndpoint.equals(normalizeEndpoint(currentEndpoint))) {
+            return;
+        }
+        boolean stillReferenced = instanceRepository.findAll().stream()
+                .anyMatch(instance -> !excludedInstanceId.equals(instance.getId())
+                        && oldEndpoint.equals(normalizeEndpoint(instance.getEndpoint())));
+        if (!stillReferenced) {
+            adminFactory.release(oldEndpoint);
+        }
+    }
+
+    private String normalizeEndpoint(String endpoint) {
+        if (endpoint == null || endpoint.isBlank()) {
+            return null;
+        }
+        String normalizedEndpoint = MqAdminExtFactory.normalizeNamesrvAddr(endpoint);
+        return normalizedEndpoint.isEmpty() ? null : normalizedEndpoint;
     }
 }
