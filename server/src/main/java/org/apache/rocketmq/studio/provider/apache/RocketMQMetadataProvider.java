@@ -412,7 +412,8 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             return subscriptions;
         } catch (Exception e) {
             log.warn("Failed to get subscriptions for group {}: {}", name, e.getMessage());
-            return Collections.emptyList();
+            throw new BusinessException(502,
+                    "Failed to get subscriptions for group " + name + ": " + e.getMessage());
         }
     }
 

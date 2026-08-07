@@ -169,6 +169,18 @@ class RocketMQMetadataProviderTest {
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
     }
 
+    @Test
+    void getGroupSubscriptionsSurfacesAdminFailure() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        when(admin.examineConsumerConnectionInfo("group-a"))
+                .thenThrow(new IllegalStateException("broker unavailable"));
+
+        assertThatThrownBy(() -> newLiveProvider(admin).getGroupSubscriptions(null, "group-a"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Failed to get subscriptions for group group-a: broker unavailable")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
     private RocketMQMetadataProvider newLiveProvider(MQAdminExt admin) throws Exception {
         MqAdminExtFactory factory = mock(MqAdminExtFactory.class);
         RocketMQProperties liveProperties = new RocketMQProperties();
