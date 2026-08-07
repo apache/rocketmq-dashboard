@@ -59,6 +59,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class RocketMQClientProviderTest {
 
+    @Mock
     private DefaultMQAdminExt adminExt;
 
     @Mock
