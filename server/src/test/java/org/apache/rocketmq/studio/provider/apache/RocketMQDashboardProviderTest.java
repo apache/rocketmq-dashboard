@@ -148,6 +148,26 @@ class RocketMQDashboardProviderTest {
         });
     }
 
+    @Test
+    void dashboardShouldTolerateMissingTopicListAndClusterMembership() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        ClusterInfo info = new ClusterInfo();
+        info.setBrokerAddrTable(new HashMap<>());
+        HashMap<String, Set<String>> clusterAddrTable = new HashMap<>();
+        clusterAddrTable.put("cluster-without-members", null);
+        info.setClusterAddrTable(clusterAddrTable);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(info);
+        when(adminExt.fetchAllTopicList()).thenReturn(null);
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getStats().getTotalTopics()).isZero();
+        assertThat(dashboard.getClusters()).singleElement().satisfies(cluster -> {
+            assertThat(cluster.getName()).isEqualTo("cluster-without-members");
+            assertThat(cluster.getBrokers()).isZero();
+        });
+    }
+
     private RocketMQDashboardProvider newProvider(DefaultMQAdminExt adminExt) {
         MqAdminExtFactory adminFactory = mock(MqAdminExtFactory.class);
         when(adminFactory.execute(anyString(), any(), any())).thenAnswer(invocation ->
@@ -156,7 +176,6 @@ class RocketMQDashboardProviderTest {
         properties.setNamesrvAddr("10.0.0.1:9876");
         return new RocketMQDashboardProvider(adminFactory, properties);
     }
-
     private ClusterInfo clusterInfo() {
         ClusterInfo info = new ClusterInfo();
         HashMap<Long, String> addrs = new HashMap<>();
