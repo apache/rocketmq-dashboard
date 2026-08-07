@@ -18,9 +18,28 @@ package org.apache.rocketmq.studio.rocketmq;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.util.StringUtils;
 
 @Data
 @ConfigurationProperties(prefix = "studio.rocketmq")
 public class RocketMQProperties {
     private String namesrvAddr;
+
+    /**
+     * ACL 2.0 credentials for broker-admin connections (AUTH-01). When both values are
+     * present, every admin client created by the studio attaches an AclClientRPCHook so
+     * it can manage ACL-enabled clusters (broker config reads, topic/group CRUD, client
+     * connection queries, ...). Leave empty for clusters without authentication.
+     */
+    private Acl acl = new Acl();
+
+    @Data
+    public static class Acl {
+        private String accessKey;
+        private String secretKey;
+
+        public boolean isEnabled() {
+            return StringUtils.hasText(accessKey) && StringUtils.hasText(secretKey);
+        }
+    }
 }

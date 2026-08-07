@@ -16,8 +16,11 @@
  */
 package org.apache.rocketmq.studio.cluster.broker;
 
+import org.apache.rocketmq.acl.common.AclClientRPCHook;
+import org.apache.rocketmq.acl.common.SessionCredentials;
 import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.rocketmq.RocketMQProperties;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 
@@ -36,9 +39,10 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Admin clients are created lazily, started once and cached per NameServer address so subsequent
  * calls reuse the established connection. All cached clients are shut down on context destruction.
  *
- * <p>The {@link RPCHook} parameter is reserved for the ACL / authentication work (AUTH-01); it is
- * currently always {@code null} but is threaded through so credentials can be injected later
- * without changing this contract.
+ * <p>AUTH-01: when the caller passes no explicit {@link RPCHook} and ACL credentials are
+ * configured ({@code studio.rocketmq.acl.access-key/secret-key}), the factory attaches an
+ * {@link AclClientRPCHook} automatically, so every admin client authenticates against
+ * ACL 2.0 enabled clusters.
  */
 @Slf4j
 @Component
@@ -49,13 +53,19 @@ public class MqAdminExtFactory {
 
     private final Map<String, DefaultMQAdminExt> cache = new ConcurrentHashMap<>();
     private final AtomicInteger instanceCounter = new AtomicInteger();
+    private final RocketMQProperties properties;
     private volatile boolean closed = false;
+
+    public MqAdminExtFactory(RocketMQProperties properties) {
+        this.properties = properties;
+    }
 
     /**
      * Runs an action against a started admin client bound to the given NameServer address.
      *
      * @param namesrvAddr NameServer address list, e.g. {@code host1:9876;host2:9876}
-     * @param rpcHook     optional RPC hook for authentication, may be {@code null}
+     * @param rpcHook     optional RPC hook for authentication; when {@code null} the configured
+     *                    ACL credentials are applied automatically (AUTH-01)
      * @param action      the admin interaction to execute
      * @param <T>         result type
      * @return the action result
@@ -68,8 +78,9 @@ public class MqAdminExtFactory {
         if (closed) {
             throw new BusinessException(503, "Admin factory is shutting down");
         }
+        RPCHook effectiveHook = rpcHook != null ? rpcHook : buildConfiguredAclHook();
         DefaultMQAdminExt admin = cache.computeIfAbsent(namesrvAddr.trim(),
-                addr -> createAndStart(addr, rpcHook));
+                addr -> createAndStart(addr, effectiveHook));
         try {
             return action.apply(admin);
         } catch (BusinessException ex) {
@@ -86,13 +97,26 @@ public class MqAdminExtFactory {
         admin.setInstanceName(buildInstanceName(namesrvAddr));
         try {
             admin.start();
-            log.info("Started RocketMQ admin client for namesrv {}", namesrvAddr);
+            log.info("Started RocketMQ admin client for namesrv {}{}", namesrvAddr,
+                    rpcHook != null ? " (ACL hook attached)" : "");
             return admin;
         } catch (Exception ex) {
             safeShutdown(admin);
             throw new BusinessException(502,
                     "Failed to connect NameServer " + namesrvAddr + ": " + rootMessage(ex));
         }
+    }
+
+    /**
+     * Builds the ACL hook from {@code studio.rocketmq.acl.*} credentials, or {@code null}
+     * when credentials are not configured (open clusters).
+     */
+    RPCHook buildConfiguredAclHook() {
+        RocketMQProperties.Acl acl = properties == null ? null : properties.getAcl();
+        if (acl == null || !acl.isEnabled()) {
+            return null;
+        }
+        return new AclClientRPCHook(new SessionCredentials(acl.getAccessKey(), acl.getSecretKey()));
     }
 
     /**

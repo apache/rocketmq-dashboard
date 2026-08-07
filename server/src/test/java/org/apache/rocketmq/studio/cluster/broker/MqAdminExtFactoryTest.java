@@ -16,8 +16,10 @@
  */
 package org.apache.rocketmq.studio.cluster.broker;
 
+import org.apache.rocketmq.acl.common.AclClientRPCHook;
 import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.rocketmq.RocketMQProperties;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.junit.jupiter.api.Test;
 
@@ -32,11 +34,23 @@ import static org.mockito.Mockito.verify;
 
 class MqAdminExtFactoryTest {
 
+    private static RocketMQProperties openProperties() {
+        return new RocketMQProperties();
+    }
+
+    private static RocketMQProperties aclProperties(String accessKey, String secretKey) {
+        RocketMQProperties properties = new RocketMQProperties();
+        properties.getAcl().setAccessKey(accessKey);
+        properties.getAcl().setSecretKey(secretKey);
+        return properties;
+    }
+
     private static final class RecordingFactory extends MqAdminExtFactory {
         private final DefaultMQAdminExt admin;
         private final AtomicInteger created = new AtomicInteger();
 
         private RecordingFactory(DefaultMQAdminExt admin) {
+            super(openProperties());
             this.admin = admin;
         }
 
@@ -49,7 +63,7 @@ class MqAdminExtFactoryTest {
 
     @Test
     void executeShouldRejectBlankNamesrvAddr() {
-        MqAdminExtFactory factory = new MqAdminExtFactory();
+        MqAdminExtFactory factory = new MqAdminExtFactory(openProperties());
 
         assertThatThrownBy(() -> factory.execute("  ", null, admin -> "unused"))
                 .isInstanceOf(BusinessException.class)
@@ -91,5 +105,34 @@ class MqAdminExtFactoryTest {
         assertThatThrownBy(() -> factory.execute("10.0.0.1:9876", null, a -> "unused"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("shutting down");
+    }
+
+    // ---- AUTH-01: ACL hook injection ----
+
+    @Test
+    void buildsAclHookWhenCredentialsConfigured() {
+        MqAdminExtFactory factory = new MqAdminExtFactory(aclProperties("rocketmq", "12345678"));
+        RPCHook hook = factory.buildConfiguredAclHook();
+        assertThat(hook).isInstanceOf(AclClientRPCHook.class);
+    }
+
+    @Test
+    void hookIsNullWhenAccessKeyMissing() {
+        MqAdminExtFactory factory = new MqAdminExtFactory(aclProperties("", "12345678"));
+        assertThat(factory.buildConfiguredAclHook()).isNull();
+    }
+
+    @Test
+    void hookIsNullWhenSecretKeyBlank() {
+        MqAdminExtFactory factory = new MqAdminExtFactory(aclProperties("rocketmq", " "));
+        assertThat(factory.buildConfiguredAclHook()).isNull();
+    }
+
+    @Test
+    void hookIsNullWhenAclBlockAbsent() {
+        RocketMQProperties properties = new RocketMQProperties();
+        properties.setAcl(null);
+        MqAdminExtFactory factory = new MqAdminExtFactory(properties);
+        assertThat(factory.buildConfiguredAclHook()).isNull();
     }
 }

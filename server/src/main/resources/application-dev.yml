@@ -5,6 +5,13 @@ spring:
     username: sa
     password:
     driver-class-name: org.h2.Driver
+  # Auto-create tables from the authoritative DDL on startup. The schema lives in
+  # db/schema.sql (not the classpath root), so it must be named explicitly; it uses
+  # IF NOT EXISTS + INSERT IGNORE and is idempotent, safe to run on every dev start.
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/schema.sql
   h2:
     console:
       enabled: true

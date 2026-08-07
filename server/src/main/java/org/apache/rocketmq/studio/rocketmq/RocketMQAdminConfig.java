@@ -16,6 +16,8 @@
  */
 package org.apache.rocketmq.studio.rocketmq;
 
+import org.apache.rocketmq.acl.common.AclClientRPCHook;
+import org.apache.rocketmq.acl.common.SessionCredentials;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,9 +36,16 @@ public class RocketMQAdminConfig {
     @Bean(initMethod = "start", destroyMethod = "shutdown")
     @ConditionalOnProperty(prefix = "studio.rocketmq", name = "namesrv-addr")
     public DefaultMQAdminExt defaultMQAdminExt(
-            @Value("${studio.rocketmq.namesrv-addr:}") String namesrvAddr) {
-        log.info("Initializing DefaultMQAdminExt with namesrvAddr=[{}]", namesrvAddr);
-        DefaultMQAdminExt adminExt = new DefaultMQAdminExt();
+            @Value("${studio.rocketmq.namesrv-addr:}") String namesrvAddr,
+            RocketMQProperties properties) {
+        RocketMQProperties.Acl acl = properties == null ? null : properties.getAcl();
+        boolean aclEnabled = acl != null && acl.isEnabled();
+        log.info("Initializing DefaultMQAdminExt with namesrvAddr=[{}] acl=[{}]",
+                namesrvAddr, aclEnabled ? "enabled" : "disabled");
+        DefaultMQAdminExt adminExt = aclEnabled
+                ? new DefaultMQAdminExt(
+                        new AclClientRPCHook(new SessionCredentials(acl.getAccessKey(), acl.getSecretKey())))
+                : new DefaultMQAdminExt();
         adminExt.setNamesrvAddr(namesrvAddr);
         adminExt.setInstanceName("studio-admin-" + System.currentTimeMillis());
         return adminExt;

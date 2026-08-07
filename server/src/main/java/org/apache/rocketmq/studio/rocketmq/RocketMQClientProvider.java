@@ -37,7 +37,7 @@ import org.apache.rocketmq.studio.common.domain.enums.Protocol;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
-import org.apache.rocketmq.studio.rip2.Rip2ProxyAdminClient;
+import org.apache.rocketmq.studio.proxyadmin.ProxyAdminClient;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import lombok.extern.slf4j.Slf4j;
@@ -76,16 +76,16 @@ public class RocketMQClientProvider implements ClientProvider {
     private final ObjectProvider<DefaultMQAdminExt> adminExtProvider;
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
     private final InstanceRepository instanceRepository;
-    private final Rip2ProxyAdminClient rip2ProxyAdminClient;
+    private final ProxyAdminClient proxyAdminClient;
 
     public RocketMQClientProvider(ObjectProvider<DefaultMQAdminExt> adminExtProvider,
                                   RuntimeAdminClientResolver runtimeAdminClientResolver,
                                   InstanceRepository instanceRepository,
-                                  Rip2ProxyAdminClient rip2ProxyAdminClient) {
+                                  ProxyAdminClient proxyAdminClient) {
         this.adminExtProvider = adminExtProvider;
         this.runtimeAdminClientResolver = runtimeAdminClientResolver;
         this.instanceRepository = instanceRepository;
-        this.rip2ProxyAdminClient = rip2ProxyAdminClient;
+        this.proxyAdminClient = proxyAdminClient;
     }
 
     @Override
@@ -94,7 +94,7 @@ public class RocketMQClientProvider implements ClientProvider {
         if (StringUtils.hasText(instanceId)) {
             InstanceVO instance = instanceRepository.findById(instanceId).orElse(null);
             if (instance != null && instance.getType() == InstanceType.PROXY) {
-                return rip2ProxyAdminClient.listClients(instance.getEndpoint(), type);
+                return proxyAdminClient.listClients(instance.getEndpoint(), type);
             }
         }
         return runtimeAdminClientResolver.execute(instanceId, adminExt -> findConnections(adminExt, clusterId, type));

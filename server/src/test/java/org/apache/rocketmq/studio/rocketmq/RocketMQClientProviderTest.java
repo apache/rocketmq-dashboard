@@ -32,7 +32,7 @@ import org.apache.rocketmq.studio.cluster.client.ClientConnectionVO;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
-import org.apache.rocketmq.studio.rip2.Rip2ProxyAdminClient;
+import org.apache.rocketmq.studio.proxyadmin.ProxyAdminClient;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -72,7 +72,7 @@ class RocketMQClientProviderTest {
     private InstanceRepository instanceRepository;
 
     @Mock
-    private Rip2ProxyAdminClient rip2ProxyAdminClient;
+    private ProxyAdminClient proxyAdminClient;
 
     private RocketMQClientProvider provider;
 
@@ -80,10 +80,49 @@ class RocketMQClientProviderTest {
     void setUp() {
         lenient().when(adminExtProvider.getIfAvailable()).thenReturn(adminExt);
         provider = new RocketMQClientProvider(adminExtProvider, runtimeAdminClientResolver,
-                instanceRepository, rip2ProxyAdminClient);
+                instanceRepository, proxyAdminClient);
         lenient().when(runtimeAdminClientResolver.execute(anyString(), any())).thenAnswer(invocation ->
                 invocation.<org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory.AdminAction<Object>>
                         getArgument(1).apply(adminExt));
+    }
+
+    @Test
+    void findConnectionsRoutesProxyInstanceViaProxyAdmin() {
+        org.apache.rocketmq.studio.instance.InstanceVO proxyInstance =
+                org.apache.rocketmq.studio.instance.InstanceVO.builder()
+                        .type(org.apache.rocketmq.studio.common.domain.enums.InstanceType.PROXY)
+                        .endpoint("127.0.0.1:8083")
+                        .build();
+        proxyInstance.setId("proxy-1");
+        when(instanceRepository.findById("proxy-1")).thenReturn(java.util.Optional.of(proxyInstance));
+        ClientConnectionVO vo = ClientConnectionVO.builder().clientId("cid").build();
+        when(proxyAdminClient.listClients("127.0.0.1:8083", null)).thenReturn(List.of(vo));
+
+        List<ClientConnectionVO> result = provider.findConnections("proxy-1", null, null);
+
+        assertThat(result).containsExactly(vo);
+        verify(proxyAdminClient).listClients("127.0.0.1:8083", null);
+        verify(runtimeAdminClientResolver, never()).execute(anyString(), any());
+    }
+
+    @Test
+    void findConnectionsRoutesDirectInstanceToBrokerAdmin() throws Exception {
+        org.apache.rocketmq.studio.instance.InstanceVO directInstance =
+                org.apache.rocketmq.studio.instance.InstanceVO.builder()
+                        .type(org.apache.rocketmq.studio.common.domain.enums.InstanceType.DIRECT)
+                        .endpoint("127.0.0.1:9876")
+                        .build();
+        directInstance.setId("direct-1");
+        when(instanceRepository.findById("direct-1")).thenReturn(java.util.Optional.of(directInstance));
+        org.apache.rocketmq.remoting.protocol.body.ClusterInfo clusterInfo =
+                new org.apache.rocketmq.remoting.protocol.body.ClusterInfo();
+        clusterInfo.setBrokerAddrTable(null);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo);
+
+        List<ClientConnectionVO> result = provider.findConnections("direct-1", null, "Producer");
+
+        assertThat(result).isEmpty();
+        verify(proxyAdminClient, never()).listClients(anyString(), any());
     }
 
     @Test
