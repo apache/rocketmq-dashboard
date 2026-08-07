@@ -103,6 +103,9 @@ public class InstanceService {
         if (instance.getEndpoint() == null || instance.getEndpoint().isBlank()) {
             throw new BusinessException(400, "InstanceVO endpoint is required");
         }
+        if (instance.getType() == null) {
+            throw new BusinessException(400, "InstanceVO type is required");
+        }
     }
 
     /**

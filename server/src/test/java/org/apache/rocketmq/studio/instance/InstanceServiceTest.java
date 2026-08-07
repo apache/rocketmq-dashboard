@@ -516,13 +516,32 @@ class InstanceServiceTest {
 
     @Test
     void createInstanceShouldDefaultToApacheVendorTest() {
-        InstanceVO instance = InstanceVO.builder().name("inst").endpoint("10.0.0.1:8080").build();
+        InstanceVO instance = InstanceVO.builder()
+                .name("inst")
+                .endpoint("10.0.0.1:8080")
+                .type(InstanceType.PROXY)
+                .build();
         when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         InstanceVO created = instanceService.createInstance(instance);
 
         assertThat(created.getVendor()).isEqualTo(InstanceVendor.APACHE);
         verifyNoInteractions(cloudCredentialRepository, providerRegistry);
+    }
+
+    @Test
+    void createApacheInstanceShouldRequireTypeTest() {
+        InstanceVO instance = InstanceVO.builder()
+                .name("inst")
+                .endpoint("10.0.0.1:8080")
+                .build();
+
+        assertThatThrownBy(() -> instanceService.createInstance(instance))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("InstanceVO type is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verify(instanceRepository, never()).save(any(InstanceVO.class));
     }
 
     @Test
