@@ -132,7 +132,7 @@ public class MetadataService {
         if (resolve(instanceId).vendor() != InstanceVendor.APACHE) {
             throw new BusinessException(501, "Consumer group detail is not supported for cloud instances");
         }
-        return adminClient.getConsumerGroup(name);
+        return adminClient.getConsumerGroup(instanceId, name);
     }
 
 

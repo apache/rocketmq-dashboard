@@ -30,6 +30,6 @@ public interface MetadataProvider {
     List<ConsumerGroupVO> listConsumerGroups(String clusterId, String search);
     List<BrokerRouteVO> getTopicRoutes(String instanceId, String name);
     List<TopicConsumerVO> getTopicConsumers(String instanceId, String name);
-    List<QueueProgressVO> getGroupProgress(String name);
-    List<SubscriptionEntryVO> getGroupSubscriptions(String name);
+    List<QueueProgressVO> getGroupProgress(String instanceId, String name);
+    List<SubscriptionEntryVO> getGroupSubscriptions(String instanceId, String name);
 }

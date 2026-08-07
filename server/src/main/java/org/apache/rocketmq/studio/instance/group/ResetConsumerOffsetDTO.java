@@ -29,6 +29,9 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ResetConsumerOffsetDTO {
+    @NotBlank(message = "instanceId is required")
+    private String instanceId;
+
     @NotBlank(message = "name is required")
     private String name;
 
@@ -37,6 +40,4 @@ public class ResetConsumerOffsetDTO {
     private Long timestamp;
 
     private String topic;
-
-    private String instanceId;
 }

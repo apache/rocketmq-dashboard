@@ -26,6 +26,7 @@ import org.apache.rocketmq.remoting.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
@@ -69,6 +70,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
     private final RmqTopicMapper topicMapper;
     private final RmqGroupMapper groupMapper;
     private final AuditService auditService;
+    private final RuntimeAdminClientResolver runtimeAdminClientResolver;
 
     @Override
     public TopicVO getTopic(String name) {
@@ -94,32 +96,37 @@ public class RocketMQAdminClientImpl implements AdminClient {
     }
 
     @Override
-    public ConsumerGroupVO getConsumerGroup(String name) {
-        return adminFactory.execute(namesrvAddr(), null, admin -> {
-            ConsumerGroupVO vo = new ConsumerGroupVO();
-            vo.setId(name);
-            vo.setName(name);
-            try {
-                var conn = admin.examineConsumerConnectionInfo(name);
-                if (conn != null) {
-                    if (conn.getConnectionSet() != null) {
-                        vo.setOnlineInstances(conn.getConnectionSet().size());
-                    }
-                    if (conn.getSubscriptionTable() != null) {
-                        vo.setSubscribedTopics(new ArrayList<>(conn.getSubscriptionTable().keySet()));
-                    }
+    public ConsumerGroupVO getConsumerGroup(String instanceId, String name) {
+        if (StringUtils.hasText(instanceId)) {
+            return runtimeAdminClientResolver.execute(instanceId, admin -> getConsumerGroup(admin, name));
+        }
+        return adminFactory.execute(namesrvAddr(), null, admin -> getConsumerGroup(admin, name));
+    }
+
+    private ConsumerGroupVO getConsumerGroup(MQAdminExt admin, String name) {
+        ConsumerGroupVO vo = new ConsumerGroupVO();
+        vo.setId(name);
+        vo.setName(name);
+        try {
+            var conn = admin.examineConsumerConnectionInfo(name);
+            if (conn != null) {
+                if (conn.getConnectionSet() != null) {
+                    vo.setOnlineInstances(conn.getConnectionSet().size());
                 }
-            } catch (MQClientException exception) {
-                if (exception.getResponseCode() == ResponseCode.CONSUMER_NOT_ONLINE) {
-                    log.debug("Consumer group {} is offline", name);
-                    return vo;
+                if (conn.getSubscriptionTable() != null) {
+                    vo.setSubscribedTopics(new ArrayList<>(conn.getSubscriptionTable().keySet()));
                 }
-                throw new BusinessException(502, "Failed to get consumer group: " + exception.getMessage());
-            } catch (Exception exception) {
-                throw new BusinessException(502, "Failed to get consumer group: " + exception.getMessage());
             }
-            return vo;
-        });
+        } catch (MQClientException exception) {
+            if (exception.getResponseCode() == ResponseCode.CONSUMER_NOT_ONLINE) {
+                log.debug("Consumer group {} is offline", name);
+                return vo;
+            }
+            throw new BusinessException(502, "Failed to get consumer group: " + exception.getMessage());
+        } catch (Exception exception) {
+            throw new BusinessException(502, "Failed to get consumer group: " + exception.getMessage());
+        }
+        return vo;
     }
 
     @Override
@@ -355,106 +362,130 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
     @Override
     public ConsumerGroupVO createConsumerGroup(ConsumerGroupVO group) {
+        if (group != null && StringUtils.hasText(group.getInstanceId())) {
+            return runtimeAdminClientResolver.execute(group.getInstanceId(),
+                    admin -> createConsumerGroup(admin, group));
+        }
+        return adminFactory.execute(namesrvAddr(), null, admin -> createConsumerGroup(admin, group));
+    }
+
+    private ConsumerGroupVO createConsumerGroup(MQAdminExt admin, ConsumerGroupVO group) {
         String groupName = group.getName();
 
-        return adminFactory.execute(namesrvAddr(), null, admin -> {
-            try {
-                Set<String> brokerAddrs = getAllMasterBrokerAddrs(admin);
-                if (brokerAddrs.isEmpty()) {
-                    throw new BusinessException(500, "No broker available to create consumer group");
-                }
-
-                SubscriptionGroupConfig config = new SubscriptionGroupConfig();
-                config.setGroupName(groupName);
-                config.setConsumeEnable(true);
-                config.setConsumeBroadcastEnable(true);
-                config.setRetryQueueNums(1);
-                config.setRetryMaxTimes(group.getRetryMaxTimes() > 0 ? group.getRetryMaxTimes() : 16);
-
-                for (String addr : brokerAddrs) {
-                    admin.createAndUpdateSubscriptionGroupConfig(addr, config);
-                }
-
-                // Persist to DB, upserting so re-creating an existing group does not violate the
-                // unique (cluster_id, name) key.
-                String groupClusterName = getClusterName(admin);
-                RmqGroup entity = groupMapper.selectOne(new LambdaQueryWrapper<RmqGroup>()
-                        .eq(RmqGroup::getClusterId, groupClusterName)
-                        .eq(RmqGroup::getName, groupName));
-                boolean isNewGroup = entity == null;
-                if (isNewGroup) {
-                    entity = new RmqGroup();
-                    entity.setName(groupName);
-                    entity.setClusterId(groupClusterName);
-                    entity.setCreatedAt(LocalDateTime.now());
-                }
-                if (StringUtils.hasText(group.getInstanceId())) {
-                    entity.setInstanceId(group.getInstanceId());
-                }
-                entity.setConsumeType(group.getConsumeType() != null ? group.getConsumeType().name() : "CLUSTERING");
-                entity.setMessageModel(group.getSubscriptionMode() != null ? group.getSubscriptionMode().name() : "Push");
-                entity.setMaxRetry(config.getRetryMaxTimes());
-                entity.setStatus("ACTIVE");
-                entity.setUpdatedAt(LocalDateTime.now());
-                if (isNewGroup) {
-                    groupMapper.insert(entity);
-                } else {
-                    groupMapper.updateById(entity);
-                }
-
-                auditService.record("CREATE_GROUP", groupName,
-                        "retryMaxTimes=" + config.getRetryMaxTimes(), "SUCCESS");
-
-                group.setId(groupName);
-                return group;
-            } catch (BusinessException e) {
-                auditService.record("CREATE_GROUP", groupName, e.getMessage(), "FAILED");
-                throw e;
-            } catch (Exception e) {
-                auditService.record("CREATE_GROUP", groupName, e.getMessage(), "FAILED");
-                throw new BusinessException(500, "Failed to create consumer group: " + e.getMessage());
+        try {
+            Set<String> brokerAddrs = getAllMasterBrokerAddrs(admin);
+            if (brokerAddrs.isEmpty()) {
+                throw new BusinessException(500, "No broker available to create consumer group");
             }
-        });
+
+            SubscriptionGroupConfig config = new SubscriptionGroupConfig();
+            config.setGroupName(groupName);
+            config.setConsumeEnable(true);
+            config.setConsumeBroadcastEnable(true);
+            config.setRetryQueueNums(1);
+            config.setRetryMaxTimes(group.getRetryMaxTimes() > 0 ? group.getRetryMaxTimes() : 16);
+
+            for (String addr : brokerAddrs) {
+                admin.createAndUpdateSubscriptionGroupConfig(addr, config);
+            }
+
+            // Persist to DB, upserting so re-creating an existing group does not violate the
+            // unique (cluster_id, name) key.
+            String groupClusterName = getClusterName(admin);
+            RmqGroup entity = groupMapper.selectOne(new LambdaQueryWrapper<RmqGroup>()
+                    .eq(RmqGroup::getClusterId, groupClusterName)
+                    .eq(RmqGroup::getName, groupName));
+            boolean isNewGroup = entity == null;
+            if (isNewGroup) {
+                entity = new RmqGroup();
+                entity.setName(groupName);
+                entity.setClusterId(groupClusterName);
+                entity.setCreatedAt(LocalDateTime.now());
+            }
+            if (StringUtils.hasText(group.getInstanceId())) {
+                entity.setInstanceId(group.getInstanceId());
+            }
+            entity.setConsumeType(group.getConsumeType() != null ? group.getConsumeType().name() : "CLUSTERING");
+            entity.setMessageModel(group.getSubscriptionMode() != null ? group.getSubscriptionMode().name() : "Push");
+            entity.setMaxRetry(config.getRetryMaxTimes());
+            entity.setStatus("ACTIVE");
+            entity.setUpdatedAt(LocalDateTime.now());
+            if (isNewGroup) {
+                groupMapper.insert(entity);
+            } else {
+                groupMapper.updateById(entity);
+            }
+
+            auditService.record("CREATE_GROUP", groupName,
+                    "retryMaxTimes=" + config.getRetryMaxTimes(), "SUCCESS");
+
+            group.setId(groupName);
+            return group;
+        } catch (BusinessException e) {
+            auditService.record("CREATE_GROUP", groupName, e.getMessage(), "FAILED");
+            throw e;
+        } catch (Exception e) {
+            auditService.record("CREATE_GROUP", groupName, e.getMessage(), "FAILED");
+            throw new BusinessException(500, "Failed to create consumer group: " + e.getMessage());
+        }
     }
 
     @Override
-    public void deleteConsumerGroup(String name) {
-        adminFactory.execute(namesrvAddr(), null, admin -> {
-            try {
-                Set<String> brokerAddrs = getAllMasterBrokerAddrs(admin);
-
-                for (String addr : brokerAddrs) {
-                    admin.deleteSubscriptionGroup(addr, name, true);
-                }
-
-                // Delete from DB
-                groupMapper.delete(new LambdaQueryWrapper<RmqGroup>().eq(RmqGroup::getName, name));
-
-                auditService.record("DELETE_GROUP", name, "", "SUCCESS");
+    public void deleteConsumerGroup(String instanceId, String name) {
+        if (StringUtils.hasText(instanceId)) {
+            runtimeAdminClientResolver.execute(instanceId, admin -> {
+                doDeleteConsumerGroup(admin, name);
                 return null;
-            } catch (BusinessException e) {
-                auditService.record("DELETE_GROUP", name, e.getMessage(), "FAILED");
-                throw e;
-            } catch (Exception e) {
-                auditService.record("DELETE_GROUP", name, e.getMessage(), "FAILED");
-                throw new BusinessException(500, "Failed to delete consumer group: " + e.getMessage());
-            }
+            });
+            return;
+        }
+        adminFactory.execute(namesrvAddr(), null, admin -> {
+            doDeleteConsumerGroup(admin, name);
+            return null;
         });
     }
 
-    @Override
-    public void resetOffset(String name, long timestamp, String topic) {
-        adminFactory.execute(namesrvAddr(), null, admin -> {
-            try {
-                admin.resetOffsetByTimestamp(getClusterName(admin), topic, name, timestamp, false);
-                auditService.record("RESET_OFFSET", name,
-                        "topic=" + topic + ", timestamp=" + timestamp, "SUCCESS");
-                return null;
-            } catch (Exception e) {
-                auditService.record("RESET_OFFSET", name, e.getMessage(), "FAILED");
-                throw new BusinessException(500, "Failed to reset offset: " + e.getMessage());
+    private void doDeleteConsumerGroup(MQAdminExt admin, String name) {
+        try {
+            Set<String> brokerAddrs = getAllMasterBrokerAddrs(admin);
+
+            for (String addr : brokerAddrs) {
+                admin.deleteSubscriptionGroup(addr, name, true);
             }
-        });
+
+            // Delete from DB
+            groupMapper.delete(new LambdaQueryWrapper<RmqGroup>().eq(RmqGroup::getName, name));
+
+            auditService.record("DELETE_GROUP", name, "", "SUCCESS");
+        } catch (BusinessException e) {
+            auditService.record("DELETE_GROUP", name, e.getMessage(), "FAILED");
+            throw e;
+        } catch (Exception e) {
+            auditService.record("DELETE_GROUP", name, e.getMessage(), "FAILED");
+            throw new BusinessException(500, "Failed to delete consumer group: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public void resetOffset(String instanceId, String name, long timestamp, String topic) {
+        try {
+            if (StringUtils.hasText(instanceId)) {
+                runtimeAdminClientResolver.execute(instanceId, admin -> {
+                    admin.resetOffsetByTimestamp(getClusterName(admin), topic, name, timestamp, false);
+                    return null;
+                });
+            } else {
+                adminFactory.execute(namesrvAddr(), null, admin -> {
+                    admin.resetOffsetByTimestamp(getClusterName(admin), topic, name, timestamp, false);
+                    return null;
+                });
+            }
+            auditService.record("RESET_OFFSET", name,
+                    "instanceId=" + instanceId + ", topic=" + topic + ", timestamp=" + timestamp, "SUCCESS");
+        } catch (Exception e) {
+            auditService.record("RESET_OFFSET", name, e.getMessage(), "FAILED");
+            throw new BusinessException(500, "Failed to reset offset: " + e.getMessage());
+        }
     }
 
     // ── Helper methods ──────────────────────────────────────────────────

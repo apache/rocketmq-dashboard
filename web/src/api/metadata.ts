@@ -204,9 +204,9 @@ export async function deleteConsumerGroup(name: string, instanceId?: string) {
 
 export interface ResetConsumerOffsetRequest {
   name: string;
+  instanceId?: string;
   timestamp: number;
   topic?: string;
-  instanceId?: string;
 }
 
 export async function resetConsumerOffset(data: ResetConsumerOffsetRequest) {

@@ -24,12 +24,12 @@ import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 
 public interface AdminClient {
     TopicVO getTopic(String name);
-    ConsumerGroupVO getConsumerGroup(String name);
+    ConsumerGroupVO getConsumerGroup(String instanceId, String name);
     TopicVO createTopic(TopicVO topic);
     TopicVO updateTopic(TopicVO topic);
     void deleteTopic(String name);
     SendMessageVO sendMessage(SendMessageDTO request);
     ConsumerGroupVO createConsumerGroup(ConsumerGroupVO group);
-    void deleteConsumerGroup(String name);
-    void resetOffset(String name, long timestamp, String topic);
+    void deleteConsumerGroup(String instanceId, String name);
+    void resetOffset(String instanceId, String name, long timestamp, String topic);
 }

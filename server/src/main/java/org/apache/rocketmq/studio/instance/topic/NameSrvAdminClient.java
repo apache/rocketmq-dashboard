@@ -34,7 +34,7 @@ public class NameSrvAdminClient implements AdminClient {
     }
 
     @Override
-    public ConsumerGroupVO getConsumerGroup(String name) {
+    public ConsumerGroupVO getConsumerGroup(String instanceId, String name) {
         throw consumerGroupAdminUnavailable();
     }
 
@@ -64,12 +64,12 @@ public class NameSrvAdminClient implements AdminClient {
     }
 
     @Override
-    public void deleteConsumerGroup(String name) {
+    public void deleteConsumerGroup(String instanceId, String name) {
         throw consumerGroupAdminUnavailable();
     }
 
     @Override
-    public void resetOffset(String name, long timestamp, String topic) {
+    public void resetOffset(String instanceId, String name, long timestamp, String topic) {
         throw consumerGroupAdminUnavailable();
     }
 

@@ -19,6 +19,8 @@ package org.apache.rocketmq.studio.provider.apache;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
+import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
+import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.topic.BrokerRouteVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
@@ -112,5 +114,19 @@ class RocketMQMetadataProviderTest {
 
         assertThat(provider.getTopicConsumers("instance-a", "orders")).containsExactlyElementsOf(consumers);
         verify(runtimeAdminClientResolver).execute(eq("instance-a"), any());
+    }
+
+    @Test
+    void groupRuntimeDiagnosticsShouldUseSelectedInstanceRuntimeClient() {
+        List<QueueProgressVO> progress = List.of(QueueProgressVO.builder().broker("broker-a").build());
+        List<SubscriptionEntryVO> subscriptions = List.of(SubscriptionEntryVO.builder().topic("orders").build());
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any()))
+                .thenReturn(progress, subscriptions);
+        RocketMQMetadataProvider provider = newProvider();
+
+        assertThat(provider.getGroupProgress("instance-a", "cg-orders")).containsExactlyElementsOf(progress);
+        assertThat(provider.getGroupSubscriptions("instance-a", "cg-orders"))
+                .containsExactlyElementsOf(subscriptions);
+        verify(runtimeAdminClientResolver, org.mockito.Mockito.times(2)).execute(eq("instance-a"), any());
     }
 }

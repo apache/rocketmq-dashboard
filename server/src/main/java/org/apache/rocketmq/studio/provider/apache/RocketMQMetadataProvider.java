@@ -337,74 +337,82 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     }
 
     @Override
-    public List<QueueProgressVO> getGroupProgress(String name) {
+    public List<QueueProgressVO> getGroupProgress(String instanceId, String name) {
+        if (StringUtils.hasText(instanceId)) {
+            return runtimeAdminClientResolver.execute(instanceId, admin -> getGroupProgress(admin, name));
+        }
         if (!hasAdmin()) {
             return Collections.emptyList();
         }
+        return adminExecute(admin -> getGroupProgress(admin, name));
+    }
 
-        return adminExecute(admin -> {
-            try {
-                ConsumeStats stats = admin.examineConsumeStats(name);
-                if (stats == null || stats.getOffsetTable() == null) {
-                    return Collections.emptyList();
-                }
-
-                List<QueueProgressVO> progress = new ArrayList<>();
-                for (Map.Entry<MessageQueue, OffsetWrapper> entry : stats.getOffsetTable().entrySet()) {
-                    MessageQueue mq = entry.getKey();
-                    OffsetWrapper ow = entry.getValue();
-                    long diff = Math.max(0, ow.getBrokerOffset() - ow.getConsumerOffset());
-
-                    progress.add(QueueProgressVO.builder()
-                            .broker(mq.getBrokerName())
-                            .queueId(mq.getQueueId())
-                            .brokerOffset(ow.getBrokerOffset())
-                            .consumerOffset(ow.getConsumerOffset())
-                            .diffTotal(diff)
-                            .build());
-                }
-
-                progress.sort((a, b) -> {
-                    int cmp = a.getBroker().compareToIgnoreCase(b.getBroker());
-                    return cmp != 0 ? cmp : Integer.compare(a.getQueueId(), b.getQueueId());
-                });
-                return progress;
-            } catch (Exception e) {
-                log.warn("Failed to get progress for group {}: {}", name, e.getMessage());
+    private List<QueueProgressVO> getGroupProgress(MQAdminExt admin, String name) {
+        try {
+            ConsumeStats stats = admin.examineConsumeStats(name);
+            if (stats == null || stats.getOffsetTable() == null) {
                 return Collections.emptyList();
             }
-        });
+
+            List<QueueProgressVO> progress = new ArrayList<>();
+            for (Map.Entry<MessageQueue, OffsetWrapper> entry : stats.getOffsetTable().entrySet()) {
+                MessageQueue mq = entry.getKey();
+                OffsetWrapper ow = entry.getValue();
+                long diff = Math.max(0, ow.getBrokerOffset() - ow.getConsumerOffset());
+
+                progress.add(QueueProgressVO.builder()
+                        .broker(mq.getBrokerName())
+                        .queueId(mq.getQueueId())
+                        .brokerOffset(ow.getBrokerOffset())
+                        .consumerOffset(ow.getConsumerOffset())
+                        .diffTotal(diff)
+                        .build());
+            }
+
+            progress.sort((a, b) -> {
+                int cmp = a.getBroker().compareToIgnoreCase(b.getBroker());
+                return cmp != 0 ? cmp : Integer.compare(a.getQueueId(), b.getQueueId());
+            });
+            return progress;
+        } catch (Exception e) {
+            log.warn("Failed to get progress for group {}: {}", name, e.getMessage());
+            return Collections.emptyList();
+        }
     }
 
     @Override
-    public List<SubscriptionEntryVO> getGroupSubscriptions(String name) {
+    public List<SubscriptionEntryVO> getGroupSubscriptions(String instanceId, String name) {
+        if (StringUtils.hasText(instanceId)) {
+            return runtimeAdminClientResolver.execute(instanceId, admin -> getGroupSubscriptions(admin, name));
+        }
         if (!hasAdmin()) {
             return Collections.emptyList();
         }
+        return adminExecute(admin -> getGroupSubscriptions(admin, name));
+    }
 
-        return adminExecute(admin -> {
-            try {
-                ConsumerConnection conn = admin.examineConsumerConnectionInfo(name);
-                if (conn == null || conn.getSubscriptionTable() == null) {
-                    return Collections.emptyList();
-                }
-
-                List<SubscriptionEntryVO> subscriptions = new ArrayList<>();
-                for (Map.Entry<String, SubscriptionData> entry : conn.getSubscriptionTable().entrySet()) {
-                    SubscriptionData sd = entry.getValue();
-                    subscriptions.add(SubscriptionEntryVO.builder()
-                            .topic(sd.getTopic())
-                            .expression(sd.getSubString())
-                            .type(sd.getExpressionType())
-                            .filterMode(filterMode(sd.getExpressionType()))
-                            .build());
-                }
-                return subscriptions;
-            } catch (Exception e) {
-                log.warn("Failed to get subscriptions for group {}: {}", name, e.getMessage());
+    private List<SubscriptionEntryVO> getGroupSubscriptions(MQAdminExt admin, String name) {
+        try {
+            ConsumerConnection conn = admin.examineConsumerConnectionInfo(name);
+            if (conn == null || conn.getSubscriptionTable() == null) {
                 return Collections.emptyList();
             }
-        });
+
+            List<SubscriptionEntryVO> subscriptions = new ArrayList<>();
+            for (Map.Entry<String, SubscriptionData> entry : conn.getSubscriptionTable().entrySet()) {
+                SubscriptionData sd = entry.getValue();
+                subscriptions.add(SubscriptionEntryVO.builder()
+                        .topic(sd.getTopic())
+                        .expression(sd.getSubString())
+                        .type(sd.getExpressionType())
+                        .filterMode(filterMode(sd.getExpressionType()))
+                        .build());
+            }
+            return subscriptions;
+        } catch (Exception e) {
+            log.warn("Failed to get subscriptions for group {}: {}", name, e.getMessage());
+            return Collections.emptyList();
+        }
     }
 
     // ── Helper methods ──────────────────────────────────────────────────

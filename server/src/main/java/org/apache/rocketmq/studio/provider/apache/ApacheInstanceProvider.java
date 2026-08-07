@@ -102,22 +102,22 @@ public class ApacheInstanceProvider implements InstanceProvider {
 
     @Override
     public void deleteConsumerGroup(String instanceId, String groupName) {
-        adminClient.deleteConsumerGroup(groupName);
+        adminClient.deleteConsumerGroup(instanceId, groupName);
     }
 
     @Override
     public List<QueueProgressVO> getGroupProgress(String instanceId, String groupName) {
-        return metadataProvider.getGroupProgress(groupName);
+        return metadataProvider.getGroupProgress(instanceId, groupName);
     }
 
     @Override
     public List<SubscriptionEntryVO> getGroupSubscriptions(String instanceId, String groupName) {
-        return metadataProvider.getGroupSubscriptions(groupName);
+        return metadataProvider.getGroupSubscriptions(instanceId, groupName);
     }
 
     @Override
     public void resetOffset(String instanceId, String groupName, long timestamp, String topic) {
-        adminClient.resetOffset(groupName, timestamp, topic);
+        adminClient.resetOffset(instanceId, groupName, timestamp, topic);
     }
 
     @Override
