@@ -17,13 +17,14 @@
 
 package org.apache.rocketmq.studio.instance;
 
-import org.apache.rocketmq.studio.cloud.credential.CloudCredentialRepository;
-import org.apache.rocketmq.studio.cloud.credential.CloudCredentialVO;
+import org.apache.rocketmq.studio.provider.credential.CloudCredentialRepository;
+import org.apache.rocketmq.studio.provider.credential.CloudCredentialVO;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.provider.CloudCatalogProvider;
 import org.apache.rocketmq.studio.provider.CloudInstanceDetailVO;
+import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -55,6 +56,9 @@ class InstanceServiceTest {
     @Mock
     private InstanceProviderRegistry providerRegistry;
 
+    @Mock
+    private InstanceProvider instanceProvider;
+
     @InjectMocks
     private InstanceService instanceService;
 
@@ -65,6 +69,7 @@ class InstanceServiceTest {
                 InstanceVO.builder().name("inst-2").build()
         );
         when(instanceRepository.findAll()).thenReturn(instances);
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
 
         List<InstanceVO> result = instanceService.listInstances(null, null);
 
@@ -78,6 +83,7 @@ class InstanceServiceTest {
                 InstanceVO.builder().name("proxy-1").type(InstanceType.PROXY).build()
         );
         when(instanceRepository.findByType(InstanceType.PROXY)).thenReturn(instances);
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
 
         List<InstanceVO> result = instanceService.listInstances(InstanceType.PROXY, null);
 
@@ -91,6 +97,7 @@ class InstanceServiceTest {
                 InstanceVO.builder().name("production").build()
         );
         when(instanceRepository.search("prod")).thenReturn(instances);
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
 
         List<InstanceVO> result = instanceService.listInstances(null, "prod");
 
@@ -104,6 +111,7 @@ class InstanceServiceTest {
                 InstanceVO.builder().name("production").build()
         );
         when(instanceRepository.search("prod")).thenReturn(instances);
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
 
         List<InstanceVO> result = instanceService.listInstances(null, " prod ");
 
@@ -117,6 +125,7 @@ class InstanceServiceTest {
                 InstanceVO.builder().name("production-proxy").type(InstanceType.PROXY).build()
         );
         when(instanceRepository.findByTypeAndSearch(InstanceType.PROXY, "prod")).thenReturn(instances);
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
 
         List<InstanceVO> result = instanceService.listInstances(InstanceType.PROXY, "prod");
 
@@ -130,6 +139,7 @@ class InstanceServiceTest {
                 InstanceVO.builder().name("production-proxy").type(InstanceType.PROXY).build()
         );
         when(instanceRepository.findByTypeAndSearch(InstanceType.PROXY, "prod")).thenReturn(instances);
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
 
         List<InstanceVO> result = instanceService.listInstances(InstanceType.PROXY, " prod ");
 
@@ -141,11 +151,50 @@ class InstanceServiceTest {
     void listInstancesShouldIgnoreBlankSearch() {
         List<InstanceVO> instances = List.of(InstanceVO.builder().name("inst").build());
         when(instanceRepository.findAll()).thenReturn(instances);
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
 
         List<InstanceVO> result = instanceService.listInstances(null, "   ");
 
         assertThat(result).hasSize(1);
         verify(instanceRepository).findAll();
+    }
+
+    @Test
+    void listInstancesShouldFillCountsThroughVendorProviderTest() {
+        InstanceVO apache = InstanceVO.builder().name("apache").build();
+        apache.setId("inst-apache");
+        InstanceVO aliyun = InstanceVO.builder().name("aliyun").vendor(InstanceVendor.ALIYUN).build();
+        aliyun.setId("inst-aliyun");
+        InstanceProvider aliyunProvider = org.mockito.Mockito.mock(InstanceProvider.class);
+        when(instanceRepository.findAll()).thenReturn(List.of(apache, aliyun));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(providerRegistry.forVendor(InstanceVendor.ALIYUN)).thenReturn(aliyunProvider);
+        when(instanceProvider.countTopics("inst-apache")).thenReturn(3);
+        when(instanceProvider.countGroups("inst-apache")).thenReturn(2);
+        when(aliyunProvider.countTopics("inst-aliyun")).thenReturn(5);
+        when(aliyunProvider.countGroups("inst-aliyun")).thenReturn(4);
+
+        List<InstanceVO> result = instanceService.listInstances(null, null);
+
+        assertThat(result.get(0).getTopicCount()).isEqualTo(3);
+        assertThat(result.get(0).getConsumerGroupCount()).isEqualTo(2);
+        assertThat(result.get(1).getTopicCount()).isEqualTo(5);
+        assertThat(result.get(1).getConsumerGroupCount()).isEqualTo(4);
+    }
+
+    @Test
+    void listInstancesShouldKeepZeroCountsWhenProviderFailsTest() {
+        InstanceVO instance = InstanceVO.builder().name("broken").build();
+        instance.setId("inst-broken");
+        when(instanceRepository.findAll()).thenReturn(List.of(instance));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceProvider.countTopics("inst-broken"))
+                .thenThrow(new IllegalStateException("admin unavailable"));
+
+        List<InstanceVO> result = instanceService.listInstances(null, null);
+
+        assertThat(result.get(0).getTopicCount()).isZero();
+        assertThat(result.get(0).getConsumerGroupCount()).isZero();
     }
 
     @Test

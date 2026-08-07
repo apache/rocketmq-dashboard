@@ -16,6 +16,9 @@
  */
 package org.apache.rocketmq.studio.common.domain;
 
+import lombok.Getter;
+
+@Getter
 public class Result<T> {
     private int code;
     private String message;
@@ -40,8 +43,4 @@ public class Result<T> {
     public static <T> Result<T> error(int code, String message) {
         return new Result<>(code, message, null);
     }
-
-    public int getCode() { return code; }
-    public String getMessage() { return message; }
-    public T getData() { return data; }
 }

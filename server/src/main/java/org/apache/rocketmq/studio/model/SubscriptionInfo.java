@@ -16,8 +16,10 @@
  */
 package org.apache.rocketmq.studio.model;
 
+import lombok.Data;
 import java.util.Map;
 
+@Data
 public class SubscriptionInfo {
 
     private String topic;
@@ -47,84 +49,4 @@ public class SubscriptionInfo {
     public boolean isSQL92Subscription() {
         return "SQL92".equals(subscriptionType);
     }
-    public String getTopic() {
-        return topic;
-    }
-
-    public void setTopic(String topic) {
-        this.topic = topic;
-    }
-
-    public String getConsumerGroup() {
-        return consumerGroup;
-    }
-
-    public void setConsumerGroup(String consumerGroup) {
-        this.consumerGroup = consumerGroup;
-    }
-
-    public String getSubExpression() {
-        return subExpression;
-    }
-
-    public void setSubExpression(String subExpression) {
-        this.subExpression = subExpression;
-    }
-
-    public String getSubscriptionType() {
-        return subscriptionType;
-    }
-
-    public void setSubscriptionType(String subscriptionType) {
-        this.subscriptionType = subscriptionType;
-    }
-
-    public Long getVersion() {
-        return version;
-    }
-
-    public void setVersion(Long version) {
-        this.version = version;
-    }
-
-    public Boolean getBroadcast() {
-        return broadcast;
-    }
-
-    public void setBroadcast(Boolean broadcast) {
-        this.broadcast = broadcast;
-    }
-
-    public String getConsumeFromWhere() {
-        return consumeFromWhere;
-    }
-
-    public void setConsumeFromWhere(String consumeFromWhere) {
-        this.consumeFromWhere = consumeFromWhere;
-    }
-
-    public Long getConsumeProgress() {
-        return consumeProgress;
-    }
-
-    public void setConsumeProgress(Long consumeProgress) {
-        this.consumeProgress = consumeProgress;
-    }
-
-    public Long getBacklogCount() {
-        return backlogCount;
-    }
-
-    public void setBacklogCount(Long backlogCount) {
-        this.backlogCount = backlogCount;
-    }
-
-    public Map<String, Object> getAttributes() {
-        return attributes;
-    }
-
-    public void setAttributes(Map<String, Object> attributes) {
-        this.attributes = attributes;
-    }
-
 }

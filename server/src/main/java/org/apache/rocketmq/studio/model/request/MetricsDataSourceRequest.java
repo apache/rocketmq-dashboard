@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.model.request;
 
+import lombok.Data;
 
 /**
  * Metrics data source configuration request DTO.
@@ -31,6 +32,7 @@ package org.apache.rocketmq.studio.model.request;
  *   <li><b>CORTEX:</b> Cortex (Prometheus-compatible)</li>
  * </ul>
  */
+@Data
 public class MetricsDataSourceRequest {
 
     /**
@@ -104,108 +106,4 @@ public class MetricsDataSourceRequest {
      * Additional description or notes about this data source.
      */
     private String description;
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public String getType() {
-        return type;
-    }
-
-    public void setType(String type) {
-        this.type = type;
-    }
-
-    public String getProviderType() {
-        return providerType;
-    }
-
-    public void setProviderType(String providerType) {
-        this.providerType = providerType;
-    }
-
-    public String getUrl() {
-        return url;
-    }
-
-    public void setUrl(String url) {
-        this.url = url;
-    }
-
-    public String getUsername() {
-        return username;
-    }
-
-    public void setUsername(String username) {
-        this.username = username;
-    }
-
-    public String getPassword() {
-        return password;
-    }
-
-    public void setPassword(String password) {
-        this.password = password;
-    }
-
-    public String getBearerToken() {
-        return bearerToken;
-    }
-
-    public void setBearerToken(String bearerToken) {
-        this.bearerToken = bearerToken;
-    }
-
-    public boolean isIsDefault() {
-        return isDefault;
-    }
-
-    public void setIsDefault(boolean isDefault) {
-        this.isDefault = isDefault;
-    }
-
-    public boolean isReadOnly() {
-        return readOnly;
-    }
-
-    public void setReadOnly(boolean readOnly) {
-        this.readOnly = readOnly;
-    }
-
-    public String getCustomHeaders() {
-        return customHeaders;
-    }
-
-    public void setCustomHeaders(String customHeaders) {
-        this.customHeaders = customHeaders;
-    }
-
-    public Integer getConnectionTimeoutMs() {
-        return connectionTimeoutMs;
-    }
-
-    public void setConnectionTimeoutMs(Integer connectionTimeoutMs) {
-        this.connectionTimeoutMs = connectionTimeoutMs;
-    }
-
-    public Integer getReadTimeoutMs() {
-        return readTimeoutMs;
-    }
-
-    public void setReadTimeoutMs(Integer readTimeoutMs) {
-        this.readTimeoutMs = readTimeoutMs;
-    }
-
-    public String getDescription() {
-        return description;
-    }
-
-    public void setDescription(String description) {
-        this.description = description;
-    }
-
 }

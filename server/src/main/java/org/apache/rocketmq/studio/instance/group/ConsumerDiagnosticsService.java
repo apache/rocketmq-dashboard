@@ -19,7 +19,6 @@ package org.apache.rocketmq.studio.instance.group;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -37,7 +36,7 @@ public class ConsumerDiagnosticsService {
 
     private String normalizeRequired(String value, String fieldName) {
         if (!StringUtils.hasText(value)) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), fieldName + " is required");
+            throw new BusinessException(400, fieldName + " is required");
         }
         return value.trim();
     }

@@ -18,6 +18,7 @@
 package org.apache.rocketmq.studio.ops.ai;
 
 import lombok.RequiredArgsConstructor;
+import org.apache.rocketmq.studio.common.domain.Result;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -32,23 +33,23 @@ public class LlmController {
     private final LlmConfigService llmConfigService;
 
     @GetMapping("/config")
-    public LlmConfigVO getConfig() {
-        return llmConfigService.getConfig();
+    public Result<LlmConfigVO> getConfig() {
+        return Result.ok(llmConfigService.getConfig());
     }
 
     @PostMapping("/config")
-    public LlmOperationResultVO saveConfig(@RequestBody LlmConfigVO config) {
-        llmConfigService.saveConfig(config);
-        return LlmOperationResultVO.success("saved");
+    public Result<LlmOperationResultVO> saveConfig(@RequestBody LlmConfigDTO config) {
+        llmConfigService.saveConfig(config.toLlmConfigVO());
+        return Result.ok(LlmOperationResultVO.success("saved"));
     }
 
     @PostMapping("/config/test")
-    public LlmOperationResultVO testConfig(@RequestBody LlmConfigVO config) {
-        return llmConfigService.testConfig(config);
+    public Result<LlmOperationResultVO> testConfig(@RequestBody LlmConfigDTO config) {
+        return Result.ok(llmConfigService.testConfig(config.toLlmConfigVO()));
     }
 
     @GetMapping("/models")
-    public LlmModelsResultVO listModels() {
-        return llmConfigService.listModels();
+    public Result<LlmModelsResultVO> listModels() {
+        return Result.ok(llmConfigService.listModels());
     }
 }

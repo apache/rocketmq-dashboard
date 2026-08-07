@@ -28,8 +28,8 @@ class UserTest {
 
         String value = user.toString();
 
-        assertThat(value).contains("name='admin'");
-        assertThat(value).contains("password='******'");
+        assertThat(value).contains("name=admin");
+        assertThat(value).doesNotContain("password");
         assertThat(value).doesNotContain("plain-secret");
     }
 }

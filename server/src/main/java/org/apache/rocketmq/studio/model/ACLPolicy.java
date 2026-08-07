@@ -16,9 +16,11 @@
  */
 package org.apache.rocketmq.studio.model;
 
+import lombok.Data;
 import java.util.Date;
 import java.util.Set;
 
+@Data
 public class ACLPolicy {
 
     private String policyId;
@@ -82,116 +84,4 @@ public class ACLPolicy {
 
         return "ALLOW".equals(policyType);
     }
-    public String getPolicyId() {
-        return policyId;
-    }
-
-    public void setPolicyId(String policyId) {
-        this.policyId = policyId;
-    }
-
-    public String getPolicyName() {
-        return policyName;
-    }
-
-    public void setPolicyName(String policyName) {
-        this.policyName = policyName;
-    }
-
-    public String getDescription() {
-        return description;
-    }
-
-    public void setDescription(String description) {
-        this.description = description;
-    }
-
-    public Set<String> getUsers() {
-        return users;
-    }
-
-    public void setUsers(Set<String> users) {
-        this.users = users;
-    }
-
-    public Set<String> getResources() {
-        return resources;
-    }
-
-    public void setResources(Set<String> resources) {
-        this.resources = resources;
-    }
-
-    public Set<String> getActions() {
-        return actions;
-    }
-
-    public void setActions(Set<String> actions) {
-        this.actions = actions;
-    }
-
-    public String getPolicyType() {
-        return policyType;
-    }
-
-    public void setPolicyType(String policyType) {
-        this.policyType = policyType;
-    }
-
-    public Set<String> getIpWhiteList() {
-        return ipWhiteList;
-    }
-
-    public void setIpWhiteList(Set<String> ipWhiteList) {
-        this.ipWhiteList = ipWhiteList;
-    }
-
-    public Date getEffectiveTime() {
-        return effectiveTime;
-    }
-
-    public void setEffectiveTime(Date effectiveTime) {
-        this.effectiveTime = effectiveTime;
-    }
-
-    public Date getExpirationTime() {
-        return expirationTime;
-    }
-
-    public void setExpirationTime(Date expirationTime) {
-        this.expirationTime = expirationTime;
-    }
-
-    public Date getCreateTime() {
-        return createTime;
-    }
-
-    public void setCreateTime(Date createTime) {
-        this.createTime = createTime;
-    }
-
-    public Date getUpdateTime() {
-        return updateTime;
-    }
-
-    public void setUpdateTime(Date updateTime) {
-        this.updateTime = updateTime;
-    }
-
-    public String getStatus() {
-        return status;
-    }
-
-    public void setStatus(String status) {
-        this.status = status;
-    }
-
-    public Boolean getDefaultPolicy() {
-        return defaultPolicy;
-    }
-
-    public void setDefaultPolicy(Boolean defaultPolicy) {
-        this.defaultPolicy = defaultPolicy;
-    }
-
 }

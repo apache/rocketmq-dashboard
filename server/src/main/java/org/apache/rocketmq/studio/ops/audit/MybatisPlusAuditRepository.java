@@ -23,20 +23,18 @@ import org.apache.rocketmq.studio.persistence.entity.RmqOperationAudit;
 import org.apache.rocketmq.studio.persistence.mapper.RmqOperationAuditMapper;
 import org.springframework.stereotype.Repository;
 import org.springframework.util.StringUtils;
+import lombok.RequiredArgsConstructor;
 
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
 /** MySQL-backed audit repository (rmq_operation_audit). */
+@RequiredArgsConstructor
 @Repository
 public class MybatisPlusAuditRepository implements AuditRepository {
 
     private final RmqOperationAuditMapper auditMapper;
-
-    public MybatisPlusAuditRepository(RmqOperationAuditMapper auditMapper) {
-        this.auditMapper = auditMapper;
-    }
 
     @Override
     public PageResult<AuditRecordVO> findPage(String search, String operationType,

@@ -229,7 +229,7 @@ class SettingsControllerTest {
                         .content("null"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code", is(400)))
-                .andExpect(jsonPath("$.message", is("Data source request is required")));
+                .andExpect(jsonPath("$.message", is("Invalid request body")));
 
         verifyNoInteractions(settingsService);
     }
@@ -274,7 +274,7 @@ class SettingsControllerTest {
                         .content("null"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code", is(400)))
-                .andExpect(jsonPath("$.message", is("Data source request is required")));
+                .andExpect(jsonPath("$.message", is("Invalid request body")));
 
         verifyNoInteractions(settingsService);
     }

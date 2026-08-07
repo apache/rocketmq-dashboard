@@ -3,7 +3,7 @@
 -- Fresh volumes already receive these columns from server/src/main/resources/db/schema.sql.
 --
 -- Run once on existing deployments:
---   docker exec -i rocketmq-studio-mysql mysql -uroot -pstudio123 rocketmq_studio < upgrade-query-history-context.sql
+--   docker exec -i rocketmq-studio-mysql mysql -uroot -pstudio123 rocketmq < upgrade-query-history-context.sql
 
 SET @schema_name := DATABASE();
 

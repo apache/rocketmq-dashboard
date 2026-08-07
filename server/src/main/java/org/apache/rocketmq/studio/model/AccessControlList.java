@@ -16,12 +16,14 @@
  */
 package org.apache.rocketmq.studio.model;
 
+import lombok.Data;
 import java.util.List;
 
 /**
  * Access Control List model for ACL management.
  * Represents the ACL configuration for a broker.
  */
+@Data
 public class AccessControlList {
 
     private String brokerAddr;
@@ -29,41 +31,10 @@ public class AccessControlList {
     private List<AccessControlEntry> entries;
     private long version;
 
-    public String getBrokerAddr() {
-        return brokerAddr;
-    }
-
-    public void setBrokerAddr(String brokerAddr) {
-        this.brokerAddr = brokerAddr;
-    }
-
-    public String getClusterName() {
-        return clusterName;
-    }
-
-    public void setClusterName(String clusterName) {
-        this.clusterName = clusterName;
-    }
-
-    public List<AccessControlEntry> getEntries() {
-        return entries;
-    }
-
-    public void setEntries(List<AccessControlEntry> entries) {
-        this.entries = entries;
-    }
-
-    public long getVersion() {
-        return version;
-    }
-
-    public void setVersion(long version) {
-        this.version = version;
-    }
-
     /**
      * Individual access control entry within an ACL.
      */
+    @Data
     public static class AccessControlEntry {
 
         private String accessKey;
@@ -73,61 +44,5 @@ public class AccessControlList {
         private String defaultGroupPerm;
         private List<String> topicPerms;
         private List<String> groupPerms;
-
-        public String getAccessKey() {
-            return accessKey;
-        }
-
-        public void setAccessKey(String accessKey) {
-            this.accessKey = accessKey;
-        }
-
-        public String getSecretKey() {
-            return secretKey;
-        }
-
-        public void setSecretKey(String secretKey) {
-            this.secretKey = secretKey;
-        }
-
-        public String getAdmin() {
-            return admin;
-        }
-
-        public void setAdmin(String admin) {
-            this.admin = admin;
-        }
-
-        public String getDefaultTopicPerm() {
-            return defaultTopicPerm;
-        }
-
-        public void setDefaultTopicPerm(String defaultTopicPerm) {
-            this.defaultTopicPerm = defaultTopicPerm;
-        }
-
-        public String getDefaultGroupPerm() {
-            return defaultGroupPerm;
-        }
-
-        public void setDefaultGroupPerm(String defaultGroupPerm) {
-            this.defaultGroupPerm = defaultGroupPerm;
-        }
-
-        public List<String> getTopicPerms() {
-            return topicPerms;
-        }
-
-        public void setTopicPerms(List<String> topicPerms) {
-            this.topicPerms = topicPerms;
-        }
-
-        public List<String> getGroupPerms() {
-            return groupPerms;
-        }
-
-        public void setGroupPerms(List<String> groupPerms) {
-            this.groupPerms = groupPerms;
-        }
     }
 }

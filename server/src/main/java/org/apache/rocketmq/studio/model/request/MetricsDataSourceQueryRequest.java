@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.model.request;
 
 import org.apache.rocketmq.studio.cluster.metrics.MetricQueryDTO;
+import lombok.Data;
 
 /**
  * Request to run a PromQL range query against a configured data source.
@@ -26,6 +27,7 @@ import org.apache.rocketmq.studio.cluster.metrics.MetricQueryDTO;
  * never persisted, mirroring the existing {@code /api/settings/datasources/test}
  * flow.</p>
  */
+@Data
 public class MetricsDataSourceQueryRequest {
 
     private MetricQueryDTO query;
@@ -35,36 +37,4 @@ public class MetricsDataSourceQueryRequest {
     private String password;
 
     private String bearerToken;
-
-    public MetricQueryDTO getQuery() {
-        return query;
-    }
-
-    public void setQuery(MetricQueryDTO query) {
-        this.query = query;
-    }
-
-    public String getUsername() {
-        return username;
-    }
-
-    public void setUsername(String username) {
-        this.username = username;
-    }
-
-    public String getPassword() {
-        return password;
-    }
-
-    public void setPassword(String password) {
-        this.password = password;
-    }
-
-    public String getBearerToken() {
-        return bearerToken;
-    }
-
-    public void setBearerToken(String bearerToken) {
-        this.bearerToken = bearerToken;
-    }
 }

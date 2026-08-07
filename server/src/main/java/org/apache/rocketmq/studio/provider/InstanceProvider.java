@@ -36,6 +36,10 @@ public interface InstanceProvider {
 
     InstanceVendor vendor();
 
+    int countTopics(String instanceId);
+
+    int countGroups(String instanceId);
+
     List<TopicVO> listTopics(String instanceId, String type, String search);
 
     TopicVO createTopic(String instanceId, TopicVO topic);

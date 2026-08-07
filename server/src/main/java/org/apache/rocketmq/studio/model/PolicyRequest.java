@@ -17,44 +17,13 @@
 
 package org.apache.rocketmq.studio.model;
 
-
+import lombok.Data;
 import java.util.List;
 
+@Data
 public class PolicyRequest {
     private String clusterName;
     private String brokerName;
     private String subject;
     private List<Policy> policies;
-    public String getClusterName() {
-        return clusterName;
-    }
-
-    public void setClusterName(String clusterName) {
-        this.clusterName = clusterName;
-    }
-
-    public String getBrokerName() {
-        return brokerName;
-    }
-
-    public void setBrokerName(String brokerName) {
-        this.brokerName = brokerName;
-    }
-
-    public String getSubject() {
-        return subject;
-    }
-
-    public void setSubject(String subject) {
-        this.subject = subject;
-    }
-
-    public List<Policy> getPolicies() {
-        return policies;
-    }
-
-    public void setPolicies(List<Policy> policies) {
-        this.policies = policies;
-    }
-
 }

@@ -31,13 +31,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -56,15 +56,10 @@ class MybatisPlusInstanceRepositoryTest {
     private MybatisPlusInstanceRepository repository;
 
     @Test
-    void findAllShouldPopulateCountsGroupedByInstance() {
+    void findAllShouldMapEntitiesWithoutCountsTest() {
         when(instanceMapper.selectList(any(QueryWrapper.class)))
                 .thenReturn(List.of(entity("instance-direct-1", InstanceType.DIRECT),
                         entity("instance-proxy-1", InstanceType.PROXY)));
-        when(topicMapper.selectMaps(any(QueryWrapper.class)))
-                .thenReturn(List.of(Map.of("instance_id", "instance-proxy-1", "total", 3L)));
-        when(groupMapper.selectMaps(any(QueryWrapper.class)))
-                .thenReturn(List.of(Map.of("instance_id", "instance-proxy-1", "total", 2L),
-                        Map.of("instance_id", "instance-direct-1", "total", 1L)));
 
         List<InstanceVO> result = repository.findAll();
 
@@ -74,9 +69,10 @@ class MybatisPlusInstanceRepositoryTest {
         InstanceVO proxy = result.stream()
                 .filter(i -> "instance-proxy-1".equals(i.getId())).findFirst().orElseThrow();
         assertThat(direct.getTopicCount()).isZero();
-        assertThat(direct.getConsumerGroupCount()).isEqualTo(1);
-        assertThat(proxy.getTopicCount()).isEqualTo(3);
-        assertThat(proxy.getConsumerGroupCount()).isEqualTo(2);
+        assertThat(direct.getConsumerGroupCount()).isZero();
+        assertThat(proxy.getTopicCount()).isZero();
+        assertThat(proxy.getConsumerGroupCount()).isZero();
+        verifyNoInteractions(topicMapper, groupMapper);
     }
 
     @Test
@@ -92,8 +88,7 @@ class MybatisPlusInstanceRepositoryTest {
         when(instanceMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of());
 
         assertThat(repository.findAll()).isEmpty();
-        verify(topicMapper, never()).selectMaps(any(QueryWrapper.class));
-        verify(groupMapper, never()).selectMaps(any(QueryWrapper.class));
+        verifyNoInteractions(topicMapper, groupMapper);
     }
 
     @Test
@@ -104,17 +99,31 @@ class MybatisPlusInstanceRepositoryTest {
     }
 
     @Test
-    void findByIdShouldPopulateCountsForSingleInstance() {
+    void findByIdShouldNotComputeCountsTest() {
         when(instanceMapper.selectById("instance-proxy-1")).thenReturn(entity("instance-proxy-1", InstanceType.PROXY));
-        when(topicMapper.selectMaps(any(QueryWrapper.class)))
-                .thenReturn(List.of(Map.of("instance_id", "instance-proxy-1", "total", 5L)));
-        when(groupMapper.selectMaps(any(QueryWrapper.class))).thenReturn(List.of());
 
         Optional<InstanceVO> result = repository.findById("instance-proxy-1");
 
         assertThat(result).isPresent();
-        assertThat(result.get().getTopicCount()).isEqualTo(5);
+        assertThat(result.get().getTopicCount()).isZero();
         assertThat(result.get().getConsumerGroupCount()).isZero();
+        verifyNoInteractions(topicMapper, groupMapper);
+    }
+
+    @Test
+    void countTopicsByInstanceShouldDelegateToTopicMapperTest() {
+        when(topicMapper.selectCount(any(QueryWrapper.class))).thenReturn(5L);
+
+        assertThat(repository.countTopicsByInstance("instance-proxy-1")).isEqualTo(5L);
+        verify(topicMapper).selectCount(any(QueryWrapper.class));
+    }
+
+    @Test
+    void countGroupsByInstanceShouldDelegateToGroupMapperTest() {
+        when(groupMapper.selectCount(any(QueryWrapper.class))).thenReturn(2L);
+
+        assertThat(repository.countGroupsByInstance("instance-proxy-1")).isEqualTo(2L);
+        verify(groupMapper).selectCount(any(QueryWrapper.class));
     }
 
     @Test

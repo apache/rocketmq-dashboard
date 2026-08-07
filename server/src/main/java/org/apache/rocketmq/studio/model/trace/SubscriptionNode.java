@@ -16,26 +16,11 @@
  */
 package org.apache.rocketmq.studio.model.trace;
 
-
+import lombok.Data;
 import java.util.List;
 
+@Data
 public class SubscriptionNode {
     private String subscriptionGroup;
     private List<TraceNode> consumeNodeList;
-    public String getSubscriptionGroup() {
-        return subscriptionGroup;
-    }
-
-    public void setSubscriptionGroup(String subscriptionGroup) {
-        this.subscriptionGroup = subscriptionGroup;
-    }
-
-    public List<TraceNode> getConsumeNodeList() {
-        return consumeNodeList;
-    }
-
-    public void setConsumeNodeList(List<TraceNode> consumeNodeList) {
-        this.consumeNodeList = consumeNodeList;
-    }
-
 }

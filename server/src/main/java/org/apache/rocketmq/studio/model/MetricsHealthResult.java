@@ -16,7 +16,7 @@
  */
 package org.apache.rocketmq.studio.model;
 
-
+import lombok.Data;
 import java.io.Serializable;
 import java.util.List;
 
@@ -24,6 +24,7 @@ import java.util.List;
  * Result object returned by data-source health checks.
  * Contains connection status, discovered metric families, and latency.
  */
+@Data
 public class MetricsHealthResult implements Serializable {
 
     private static final long serialVersionUID = 1L;
@@ -42,46 +43,4 @@ public class MetricsHealthResult implements Serializable {
 
     /** Round-trip query latency in milliseconds during the health probe. */
     private long queryLatencyMs;
-
-
-    public boolean isConnected() {
-        return connected;
-    }
-
-    public void setConnected(boolean connected) {
-        this.connected = connected;
-    }
-
-    public String getStatusMessage() {
-        return statusMessage;
-    }
-
-    public void setStatusMessage(String statusMessage) {
-        this.statusMessage = statusMessage;
-    }
-
-    public List<String> getMissingMetricFamilies() {
-        return missingMetricFamilies;
-    }
-
-    public void setMissingMetricFamilies(List<String> missingMetricFamilies) {
-        this.missingMetricFamilies = missingMetricFamilies;
-    }
-
-    public List<String> getAvailableMetricFamilies() {
-        return availableMetricFamilies;
-    }
-
-    public void setAvailableMetricFamilies(List<String> availableMetricFamilies) {
-        this.availableMetricFamilies = availableMetricFamilies;
-    }
-
-    public long getQueryLatencyMs() {
-        return queryLatencyMs;
-    }
-
-    public void setQueryLatencyMs(long queryLatencyMs) {
-        this.queryLatencyMs = queryLatencyMs;
-    }
-
 }

@@ -31,7 +31,7 @@ import org.apache.rocketmq.studio.cluster.proxy.RestartProxyDTO;
 import org.apache.rocketmq.studio.common.domain.enums.FlushDiskType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.ops.audit.AuditService;
-import org.apache.rocketmq.studio.rocketmq.RocketMQBrokerConfigService;
+import org.apache.rocketmq.studio.provider.apache.RocketMQBrokerConfigService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

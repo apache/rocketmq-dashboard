@@ -17,36 +17,12 @@
 
 package org.apache.rocketmq.studio.model.trace;
 
-
+import lombok.Data;
 import java.util.List;
 
+@Data
 public class MessageTraceGraph {
     private ProducerNode producerNode;
     private List<SubscriptionNode> subscriptionNodeList;
     private List<Object> messageTraceViews;
-
-    public ProducerNode getProducerNode() {
-        return producerNode;
-    }
-
-    public void setProducerNode(ProducerNode producerNode) {
-        this.producerNode = producerNode;
-    }
-
-    public List<SubscriptionNode> getSubscriptionNodeList() {
-        return subscriptionNodeList;
-    }
-
-    public void setSubscriptionNodeList(List<SubscriptionNode> subscriptionNodeList) {
-        this.subscriptionNodeList = subscriptionNodeList;
-    }
-
-    public List<Object> getMessageTraceViews() {
-        return messageTraceViews;
-    }
-
-    public void setMessageTraceViews(List<Object> messageTraceViews) {
-        this.messageTraceViews = messageTraceViews;
-    }
-
 }

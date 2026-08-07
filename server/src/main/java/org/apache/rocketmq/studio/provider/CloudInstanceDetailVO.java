@@ -16,8 +16,12 @@
  */
 package org.apache.rocketmq.studio.provider;
 
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 import java.util.List;
 
+@Data
 public class CloudInstanceDetailVO {
 
     private String instanceId;
@@ -27,80 +31,11 @@ public class CloudInstanceDetailVO {
     private String remark;
     private List<CloudEndpoint> endpoints;
 
-    public String getInstanceId() {
-        return instanceId;
-    }
-
-    public void setInstanceId(String instanceId) {
-        this.instanceId = instanceId;
-    }
-
-    public String getInstanceName() {
-        return instanceName;
-    }
-
-    public void setInstanceName(String instanceName) {
-        this.instanceName = instanceName;
-    }
-
-    public String getStatus() {
-        return status;
-    }
-
-    public void setStatus(String status) {
-        this.status = status;
-    }
-
-    public String getRegionId() {
-        return regionId;
-    }
-
-    public void setRegionId(String regionId) {
-        this.regionId = regionId;
-    }
-
-    public String getRemark() {
-        return remark;
-    }
-
-    public void setRemark(String remark) {
-        this.remark = remark;
-    }
-
-    public List<CloudEndpoint> getEndpoints() {
-        return endpoints;
-    }
-
-    public void setEndpoints(List<CloudEndpoint> endpoints) {
-        this.endpoints = endpoints;
-    }
-
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class CloudEndpoint {
         private String endpointType;
         private String endpointUrl;
-
-        public CloudEndpoint() {
-        }
-
-        public CloudEndpoint(String endpointType, String endpointUrl) {
-            this.endpointType = endpointType;
-            this.endpointUrl = endpointUrl;
-        }
-
-        public String getEndpointType() {
-            return endpointType;
-        }
-
-        public void setEndpointType(String endpointType) {
-            this.endpointType = endpointType;
-        }
-
-        public String getEndpointUrl() {
-            return endpointUrl;
-        }
-
-        public void setEndpointUrl(String endpointUrl) {
-            this.endpointUrl = endpointUrl;
-        }
     }
 }
