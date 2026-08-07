@@ -31,6 +31,8 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class RocketMQDashboardProviderTest {
@@ -48,6 +50,7 @@ class RocketMQDashboardProviderTest {
 
         assertThat(dashboard.getClusters()).hasSize(1);
         assertThat(dashboard.getClusters().get(0).getVersion()).isEqualTo("V5_3_3");
+        verify(adminExt, times(1)).fetchBrokerRuntimeStats("10.0.0.11:10911");
     }
 
     @Test
