@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.provider.apache;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -76,6 +77,7 @@ public class RocketMQDashboardProvider implements DashboardProvider {
         long tpsOut = 0;
         long messagesToday = 0;
         List<ClusterOverviewVO> clusters = new ArrayList<>();
+        Map<String, KVTable> runtimeStatsByBroker = new HashMap<>();
 
         try {
             ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
@@ -145,6 +147,7 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                 // Get runtime stats for TPS
                 try {
                     KVTable runtimeInfo = admin.fetchBrokerRuntimeStats(brokerAddr);
+                    runtimeStatsByBroker.put(brokerAddr, runtimeInfo);
                     if (runtimeInfo != null && runtimeInfo.getTable() != null) {
                         Map<String, String> table = runtimeInfo.getTable();
                         tpsIn += parseTps(table.get("putTps"));
@@ -180,25 +183,19 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                         clusterBrokers++;
                         String masterAddr = brokerData.getBrokerAddrs().get(0L);
                         if (masterAddr != null) {
-                            try {
-                                KVTable rt = admin.fetchBrokerRuntimeStats(masterAddr);
-                                if (rt != null && rt.getTable() != null) {
-                                    clusterTpsIn += parseTps(rt.getTable().get("putTps"));
-                                    clusterTpsOut += parseTps(rt.getTable().get("getTransferedTps"));
-                                    String v = rt.getTable().get("brokerVersionDesc");
-                                    if (v != null && "unknown".equals(version)) {
-                                        String brokerVersion = v.trim();
-                                        if (!brokerVersion.isEmpty()) {
-                                            version = brokerVersion;
-                                        }
+                            KVTable runtimeInfo = runtimeStatsByBroker.get(masterAddr);
+                            if (runtimeInfo != null && runtimeInfo.getTable() != null) {
+                                clusterTpsIn += parseTps(runtimeInfo.getTable().get("putTps"));
+                                clusterTpsOut += parseTps(runtimeInfo.getTable().get("getTransferedTps"));
+                                String value = runtimeInfo.getTable().get("brokerVersionDesc");
+                                if (value != null && "unknown".equals(version)) {
+                                    String brokerVersion = value.trim();
+                                    if (!brokerVersion.isEmpty()) {
+                                        version = brokerVersion;
                                     }
-                                } else {
-                                    runtimeMetricsUnavailable = true;
                                 }
-                            } catch (Exception e) {
+                            } else {
                                 runtimeMetricsUnavailable = true;
-                                log.warn("Failed to get runtime info for dashboard cluster {} from broker {}: {}",
-                                        clusterName, masterAddr, e.getMessage());
                             }
                         }
                     }
