@@ -279,6 +279,23 @@ class InstanceServiceTest {
     }
 
     @Test
+    void createInstanceShouldRejectEndpointWithEmptyAddressSegment() {
+        InstanceVO input = InstanceVO.builder().name("valid-name").endpoint("namesrv:9876;").build();
+
+        assertThatThrownBy(() -> instanceService.createInstance(input))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("InstanceVO endpoint must not contain empty addresses");
+    }
+
+    @Test
+    void createInstanceShouldTrimEndpointBeforeSaving() {
+        InstanceVO input = InstanceVO.builder().name("valid-name").endpoint("  namesrv:9876  ").build();
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertThat(instanceService.createInstance(input).getEndpoint()).isEqualTo("namesrv:9876");
+    }
+
+    @Test
     void updateInstanceShouldMergeFieldsOntoExisting() {
         LocalDateTime originalCreatedAt = LocalDateTime.of(2025, 1, 2, 3, 4, 5);
         LocalDateTime originalUpdatedAt = LocalDateTime.of(2025, 2, 3, 4, 5, 6);
@@ -513,6 +530,20 @@ class InstanceServiceTest {
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
         assertThat(existing.getName()).isEqualTo("existing-name");
         assertThat(existing.getEndpoint()).isEqualTo("10.0.1.1:8080");
+        verify(instanceRepository, never()).save(any(InstanceVO.class));
+    }
+
+    @Test
+    void updateInstanceShouldRejectEndpointWithEmptyAddressSegment() {
+        InstanceVO existing = InstanceVO.builder().name("instance").endpoint("namesrv:9876").build();
+        existing.setId("inst-1");
+        InstanceVO update = InstanceVO.builder().endpoint("; ;").build();
+        update.setId("inst-1");
+        when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> instanceService.updateInstance(update))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("InstanceVO endpoint must not contain empty addresses");
         verify(instanceRepository, never()).save(any(InstanceVO.class));
     }
 
