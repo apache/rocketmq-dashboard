@@ -131,6 +131,20 @@ describe('DLQ page', () => {
     expect(await screen.findByText('DLQ provider is not configured')).toBeInTheDocument();
   });
 
+  it('sorts DLQ rows with missing enqueue timestamps', async () => {
+    vi.mocked(messageService.listDLQGroups).mockResolvedValue([
+      dlqGroup,
+      { ...secondDlqGroup, lastEnqueueTime: null },
+    ]);
+    const user = userEvent.setup();
+    renderWithProviders(<DLQPage />);
+
+    await screen.findByText('cg-order');
+    await user.click(screen.getByText('最近入队时间'));
+
+    expect(screen.getByText('-')).toBeInTheDocument();
+  });
+
   it('opens a detail dialog with the selected group metadata', async () => {
     const user = userEvent.setup();
     renderWithProviders(<DLQPage />);

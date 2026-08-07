@@ -69,8 +69,10 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
   return fallback;
 };
 
-const formatDateTime = (iso: string): string => {
+const formatDateTime = (iso?: string | null): string => {
+  if (!iso) return '-';
   const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '-';
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 };
@@ -89,7 +91,7 @@ const exportDLQGroups = (groups: DLQGroup[], filename: string) => {
       String(group.messageCount),
       String(group.retryCount),
       group.status,
-      group.lastEnqueueTime,
+      group.lastEnqueueTime || '',
     ]),
   ];
   const csv = rows.map((row) => row.map(escapeCSVValue).join(',')).join('\n');
@@ -276,8 +278,8 @@ const DLQPage = () => {
       dataIndex: 'lastEnqueueTime',
       key: 'lastEnqueueTime',
       width: 180,
-      sorter: (a, b) => a.lastEnqueueTime.localeCompare(b.lastEnqueueTime),
-      render: (time: string) => (
+      sorter: (a, b) => (a.lastEnqueueTime || '').localeCompare(b.lastEnqueueTime || ''),
+      render: (time?: string | null) => (
         <Text type="secondary" style={{ fontSize: 13 }}>
           {formatDateTime(time)}
         </Text>
