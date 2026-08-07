@@ -168,8 +168,8 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                 String clusterName = clusterEntry.getKey();
                 Set<String> brokerNames = clusterEntry.getValue();
                 int clusterBrokers = 0;
-                int clusterTpsIn = 0;
-                int clusterTpsOut = 0;
+                long clusterTpsIn = 0;
+                long clusterTpsOut = 0;
                 String version = "unknown";
                 boolean runtimeMetricsUnavailable = false;
 
@@ -182,8 +182,8 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                             try {
                                 KVTable rt = admin.fetchBrokerRuntimeStats(masterAddr);
                                 if (rt != null && rt.getTable() != null) {
-                                    clusterTpsIn += (int) parseTps(rt.getTable().get("putTps"));
-                                    clusterTpsOut += (int) parseTps(rt.getTable().get("getTransferedTps"));
+                                    clusterTpsIn += parseTps(rt.getTable().get("putTps"));
+                                    clusterTpsOut += parseTps(rt.getTable().get("getTransferedTps"));
                                     String v = rt.getTable().get("brokerVersionDesc");
                                     if (v != null && "unknown".equals(version)) {
                                         String brokerVersion = v.trim();

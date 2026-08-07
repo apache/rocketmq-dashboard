@@ -132,6 +132,22 @@ class RocketMQDashboardProviderTest {
                 .isEqualTo(ClusterStatus.warning);
     }
 
+    @Test
+    void dashboardShouldKeepPerClusterTpsAboveIntegerRange() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        when(adminExt.fetchAllTopicList()).thenReturn(topicList());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911"))
+                .thenReturn(runtimeStats("3000000000.0", "4000000000.0"));
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getClusters()).singleElement().satisfies(cluster -> {
+            assertThat(cluster.getTpsIn()).isEqualTo(3_000_000_000L);
+            assertThat(cluster.getTpsOut()).isEqualTo(4_000_000_000L);
+        });
+    }
+
     private RocketMQDashboardProvider newProvider(DefaultMQAdminExt adminExt) {
         MqAdminExtFactory adminFactory = mock(MqAdminExtFactory.class);
         when(adminFactory.execute(anyString(), any(), any())).thenAnswer(invocation ->
@@ -163,10 +179,14 @@ class RocketMQDashboardProviderTest {
     }
 
     private KVTable runtimeStats() {
+        return runtimeStats("2.0", "5.0");
+    }
+
+    private KVTable runtimeStats(String putTps, String getTransferredTps) {
         HashMap<String, String> table = new HashMap<>();
         table.put("brokerVersionDesc", "  V5_3_3  ");
-        table.put("putTps", "1.0 2.0 3.0");
-        table.put("getTransferedTps", "4.0 5.0 6.0");
+        table.put("putTps", "1.0 " + putTps + " 3.0");
+        table.put("getTransferedTps", "4.0 " + getTransferredTps + " 6.0");
         table.put("msgPutTotalTodayMorning", "42");
 
         KVTable kvTable = new KVTable();
