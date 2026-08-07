@@ -171,6 +171,7 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                 int clusterTpsIn = 0;
                 int clusterTpsOut = 0;
                 String version = "unknown";
+                boolean runtimeMetricsUnavailable = false;
 
                 for (String brokerName : brokerNames) {
                     BrokerData brokerData = brokerAddrTable.get(brokerName);
@@ -190,8 +191,13 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                                             version = brokerVersion;
                                         }
                                     }
+                                } else {
+                                    runtimeMetricsUnavailable = true;
                                 }
-                            } catch (Exception ignored) {
+                            } catch (Exception e) {
+                                runtimeMetricsUnavailable = true;
+                                log.warn("Failed to get runtime info for dashboard cluster {} from broker {}: {}",
+                                        clusterName, masterAddr, e.getMessage());
                             }
                         }
                     }
@@ -201,7 +207,7 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                         .id(clusterName)
                         .name(clusterName)
                         .type(ClusterType.V5_PROXY_CLUSTER)
-                        .status(ClusterStatus.healthy)
+                        .status(runtimeMetricsUnavailable ? ClusterStatus.warning : ClusterStatus.healthy)
                         .brokers(clusterBrokers)
                         .proxies(0)
                         .topics(0)

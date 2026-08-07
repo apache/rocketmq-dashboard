@@ -26,6 +26,7 @@ import org.apache.rocketmq.remoting.protocol.body.KVTable;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardDataVO;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.junit.jupiter.api.Test;
@@ -114,6 +115,21 @@ class RocketMQDashboardProviderTest {
         assertThat(dashboard.getClusters().get(0).getBrokers()).isZero();
         assertThat(dashboard.getStats().getTotalClusters()).isEqualTo(1);
         assertThat(dashboard.getStats().getTotalBrokers()).isZero();
+    }
+
+    @Test
+    void dashboardShouldMarkClusterWarningWhenBrokerRuntimeStatsFail() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        when(adminExt.fetchAllTopicList()).thenReturn(topicList());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911"))
+                .thenThrow(new RuntimeException("broker unavailable"));
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getClusters()).singleElement()
+                .extracting(cluster -> cluster.getStatus())
+                .isEqualTo(ClusterStatus.warning);
     }
 
     private RocketMQDashboardProvider newProvider(DefaultMQAdminExt adminExt) {
