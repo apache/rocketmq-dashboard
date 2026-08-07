@@ -458,6 +458,40 @@ class InstanceServiceTest {
     }
 
     @Test
+    void deleteInstanceShouldRejectInstanceWithTopics() {
+        InstanceVO existing = InstanceVO.builder()
+                .name("with-topics")
+                .topicCount(2)
+                .build();
+        existing.setId("inst-1");
+        when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> instanceService.deleteInstance("inst-1"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Cannot delete instance with managed resources: topics=2, consumerGroups=0")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
+
+        verify(instanceRepository, never()).deleteById("inst-1");
+    }
+
+    @Test
+    void deleteInstanceShouldRejectInstanceWithConsumerGroups() {
+        InstanceVO existing = InstanceVO.builder()
+                .name("with-consumer-groups")
+                .consumerGroupCount(3)
+                .build();
+        existing.setId("inst-1");
+        when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> instanceService.deleteInstance("inst-1"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Cannot delete instance with managed resources: topics=0, consumerGroups=3")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
+
+        verify(instanceRepository, never()).deleteById("inst-1");
+    }
+
+    @Test
     void deleteInstanceShouldThrowWhenIdIsNull() {
         assertThatThrownBy(() -> instanceService.deleteInstance(null))
                 .isInstanceOf(BusinessException.class)
