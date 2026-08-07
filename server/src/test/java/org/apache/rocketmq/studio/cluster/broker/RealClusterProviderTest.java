@@ -113,4 +113,35 @@ class RealClusterProviderTest {
         assertThat(clusters).hasSize(1);
         assertThat(clusters.get(0).getBrokers()).hasSize(2);
     }
+
+    @Test
+    void discoverClustersShouldGroupBrokersByCluster() throws Exception {
+        ClusterInfo info = new ClusterInfo();
+        HashMap<Long, String> addrs = new HashMap<>();
+        addrs.put(0L, "10.0.0.11:10911");
+        HashMap<String, BrokerData> brokerAddrTable = new HashMap<>();
+        brokerAddrTable.put("broker-a1",
+                new BrokerData("ClusterA", "broker-a1", new HashMap<>(addrs)));
+        brokerAddrTable.put("broker-b1",
+                new BrokerData("ClusterB", "broker-b1", new HashMap<>(addrs)));
+        info.setBrokerAddrTable(brokerAddrTable);
+        HashMap<String, Set<String>> clusterAddrTable = new HashMap<>();
+        clusterAddrTable.put("ClusterA", Set.of("broker-a1"));
+        clusterAddrTable.put("ClusterB", Set.of("broker-b1"));
+        info.setClusterAddrTable(clusterAddrTable);
+        properties.setNamesrvAddr("10.0.0.1:9876");
+        stubClusterInfo("10.0.0.1:9876", info);
+
+        List<ClusterVO> clusters = provider.discoverClusters();
+
+        assertThat(clusters).hasSize(2);
+        ClusterVO clusterA = clusters.stream()
+                .filter(cluster -> cluster.getId().equals("ClusterA")).findFirst().orElseThrow();
+        ClusterVO clusterB = clusters.stream()
+                .filter(cluster -> cluster.getId().equals("ClusterB")).findFirst().orElseThrow();
+        assertThat(clusterA.getBrokers()).extracting(BrokerVO::getName)
+                .containsExactly("broker-a1");
+        assertThat(clusterB.getBrokers()).extracting(BrokerVO::getName)
+                .containsExactly("broker-b1");
+    }
 }

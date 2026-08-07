@@ -29,6 +29,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
@@ -58,7 +59,7 @@ public class RealClusterProvider implements ClusterProvider {
             log.info("No NameServer configured; skipping cluster discovery");
             return List.of();
         }
-        return List.of(describeCluster(namesrvAddr));
+        return describeClusters(namesrvAddr);
     }
 
     @Override
@@ -67,7 +68,71 @@ public class RealClusterProvider implements ClusterProvider {
         if (namesrvAddr == null || namesrvAddr.isBlank()) {
             throw new BusinessException(400, "No NameServer configured for cluster " + clusterId);
         }
-        return describeCluster(namesrvAddr);
+        return describeClusters(namesrvAddr).stream()
+                .filter(cluster -> clusterId.equals(cluster.getId()))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + clusterId));
+    }
+
+    /**
+     * Maps the live topology into one {@link ClusterVO} per cluster known to the NameServer.
+     * Brokers are grouped by their owning cluster, so a NameServer that manages several clusters
+     * no longer lumps every broker into a single cluster.
+     */
+    public List<ClusterVO> describeClusters(String namesrvAddr) {
+        return adminFactory.execute(namesrvAddr, null,
+                admin -> toClusterVOs(namesrvAddr, admin.examineBrokerClusterInfo()));
+    }
+
+    private List<ClusterVO> toClusterVOs(String namesrvAddr, ClusterInfo clusterInfo) {
+        Map<String, BrokerData> brokerAddrTable =
+                clusterInfo.getBrokerAddrTable() == null ? Map.of() : clusterInfo.getBrokerAddrTable();
+        Map<String, Set<String>> clusterAddrTable =
+                clusterInfo.getClusterAddrTable() == null ? Map.of() : clusterInfo.getClusterAddrTable();
+        List<NameServerVO> nameServers = Arrays.stream(namesrvAddr.split("[;,]"))
+                .map(String::trim)
+                .filter(addr -> !addr.isEmpty())
+                .map(addr -> NameServerVO.builder().addr(addr).status(ClusterStatus.healthy).build())
+                .toList();
+
+        if (clusterAddrTable.isEmpty()) {
+            List<BrokerVO> allBrokers = brokerAddrTable.values().stream()
+                    .map(this::toBrokerVO)
+                    .sorted(Comparator.comparing(BrokerVO::getName,
+                            Comparator.nullsLast(Comparator.naturalOrder())))
+                    .toList();
+            return List.of(buildClusterVO(namesrvAddr, "DefaultCluster", allBrokers, nameServers));
+        }
+
+        List<ClusterVO> clusters = new ArrayList<>();
+        for (Map.Entry<String, Set<String>> entry : clusterAddrTable.entrySet()) {
+            String clusterName = entry.getKey();
+            List<BrokerVO> brokers = entry.getValue().stream()
+                    .filter(brokerAddrTable::containsKey)
+                    .map(brokerAddrTable::get)
+                    .map(this::toBrokerVO)
+                    .sorted(Comparator.comparing(BrokerVO::getName,
+                            Comparator.nullsLast(Comparator.naturalOrder())))
+                    .toList();
+            clusters.add(buildClusterVO(namesrvAddr, clusterName, brokers, nameServers));
+        }
+        return clusters;
+    }
+
+    private ClusterVO buildClusterVO(String namesrvAddr, String clusterName,
+                                     List<BrokerVO> brokers, List<NameServerVO> nameServers) {
+        ClusterVO cluster = ClusterVO.builder()
+                .name(clusterName)
+                .nsClusterName(clusterName)
+                .type(ClusterType.V4_DIRECT)
+                .endpoint(namesrvAddr)
+                .status(ClusterStatus.healthy)
+                .brokers(brokers)
+                .proxies(List.of())
+                .nameServers(nameServers)
+                .build();
+        cluster.setId(clusterName);
+        return cluster;
     }
 
     /**
