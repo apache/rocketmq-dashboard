@@ -14,32 +14,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.rocketmq.studio.provider.credential;
 
-package org.apache.rocketmq.studio.instance;
+import org.apache.rocketmq.studio.common.domain.BaseEntity;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
 
-import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
+@Data
+@EqualsAndHashCode(callSuper = true)
+public class CloudCredentialVO extends BaseEntity {
 
-import java.util.List;
-import java.util.Optional;
-
-public interface InstanceRepository {
-    List<InstanceVO> findAll();
-
-    List<InstanceVO> findByType(InstanceType type);
-
-    List<InstanceVO> search(String keyword);
-
-    List<InstanceVO> findByTypeAndSearch(InstanceType type, String keyword);
-
-    Optional<InstanceVO> findById(String id);
-
-    InstanceVO save(InstanceVO instance);
-
-    void deleteById(String id);
-
-    boolean existsByCredentialId(String credentialId);
-
-    long countTopicsByInstance(String instanceId);
-
-    long countGroupsByInstance(String instanceId);
+    private String name;
+    private InstanceVendor vendor;
+    private String accessKey;
+    @ToString.Exclude
+    private String secretKey;
+    private String remark;
 }

@@ -14,32 +14,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.rocketmq.studio.provider.credential;
 
-package org.apache.rocketmq.studio.instance;
+import jakarta.validation.constraints.NotBlank;
+import lombok.Data;
 
-import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
+@Data
+public class UpdateCloudCredentialDTO {
 
-import java.util.List;
-import java.util.Optional;
+    @NotBlank(message = "credential id is required")
+    private String id;
 
-public interface InstanceRepository {
-    List<InstanceVO> findAll();
+    private String name;
 
-    List<InstanceVO> findByType(InstanceType type);
+    private String secretKey;
 
-    List<InstanceVO> search(String keyword);
-
-    List<InstanceVO> findByTypeAndSearch(InstanceType type, String keyword);
-
-    Optional<InstanceVO> findById(String id);
-
-    InstanceVO save(InstanceVO instance);
-
-    void deleteById(String id);
-
-    boolean existsByCredentialId(String credentialId);
-
-    long countTopicsByInstance(String instanceId);
-
-    long countGroupsByInstance(String instanceId);
+    private String remark;
 }

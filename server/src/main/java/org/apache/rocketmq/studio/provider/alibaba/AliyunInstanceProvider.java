@@ -43,7 +43,6 @@ import com.aliyun.sdk.service.rocketmq20220801.models.ListTopicsResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListTopicsResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.ResetConsumeOffsetRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.UpdateTopicRequest;
-import org.springframework.http.HttpStatus;
 import org.springframework.util.StringUtils;
 
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
@@ -90,6 +89,16 @@ public class AliyunInstanceProvider implements InstanceProvider {
     }
 
     @Override
+    public int countTopics(String instanceId) {
+        return listTopics(instanceId, null, null).size();
+    }
+
+    @Override
+    public int countGroups(String instanceId) {
+        return listConsumerGroups(instanceId, null).size();
+    }
+
+    @Override
     public List<TopicVO> listTopics(String instanceId, String type, String search) {
         Context ctx = resolve(instanceId);
         List<ListTopicsResponseBody.List> all = new ArrayList<>();
@@ -129,10 +138,10 @@ public class AliyunInstanceProvider implements InstanceProvider {
     public TopicVO createTopic(String instanceId, TopicVO topic) {
         Context ctx = resolve(instanceId);
         if (topic == null || !StringUtils.hasText(topic.getName())) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "Topic name is required");
+            throw new BusinessException(400, "Topic name is required");
         }
         if (topic.getType() == null) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "Topic type is required");
+            throw new BusinessException(400, "Topic type is required");
         }
         CreateTopicRequest request = CreateTopicRequest.builder()
                 .instanceId(ctx.cloudInstanceId())
@@ -151,7 +160,7 @@ public class AliyunInstanceProvider implements InstanceProvider {
     public TopicVO updateTopic(String instanceId, TopicVO topic) {
         Context ctx = resolve(instanceId);
         if (topic == null || !StringUtils.hasText(topic.getName())) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "Topic name is required");
+            throw new BusinessException(400, "Topic name is required");
         }
         UpdateTopicRequest request = UpdateTopicRequest.builder()
                 .instanceId(ctx.cloudInstanceId())
@@ -231,7 +240,7 @@ public class AliyunInstanceProvider implements InstanceProvider {
     public ConsumerGroupVO createConsumerGroup(String instanceId, ConsumerGroupVO group) {
         Context ctx = resolve(instanceId);
         if (group == null || !StringUtils.hasText(group.getName())) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "Consumer group name is required");
+            throw new BusinessException(400, "Consumer group name is required");
         }
         String deliveryOrderType = normalizeDeliveryOrderType(group.getDeliveryOrderType());
         int maxRetryTimes = group.getRetryMaxTimes() > 0 ? group.getRetryMaxTimes() : DEFAULT_MAX_RETRY_TIMES;
@@ -401,20 +410,20 @@ public class AliyunInstanceProvider implements InstanceProvider {
         GetTraceResponseBody body = response == null ? null : response.getBody();
         GetTraceResponseBody.Data data = body == null ? null : body.getData();
         if (data == null) {
-            throw new BusinessException(HttpStatus.NOT_FOUND.value(), "Message trace not found: " + msgId);
+            throw new BusinessException(404, "Message trace not found: " + msgId);
         }
         return AliyunConverters.toTraceRecord(data);
     }
 
     private Context resolve(String instanceId) {
         if (!StringUtils.hasText(instanceId)) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "instanceId is required");
+            throw new BusinessException(400, "instanceId is required");
         }
         InstanceVO instance = instanceRepository.findById(instanceId)
-                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND.value(), "Instance not found: " + instanceId));
+                .orElseThrow(() -> new BusinessException(404, "Instance not found: " + instanceId));
         if (!StringUtils.hasText(instance.getCloudInstanceId()) || !StringUtils.hasText(instance.getRegionId())
                 || !StringUtils.hasText(instance.getCredentialId())) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "Instance " + instanceId + " is missing Aliyun cloud binding");
+            throw new BusinessException(400, "Instance " + instanceId + " is missing Aliyun cloud binding");
         }
         return new Context(instance.getCloudInstanceId(), instance.getRegionId(), instance.getCredentialId());
     }

@@ -43,6 +43,16 @@ public class TencentInstanceProvider implements InstanceProvider {
     }
 
     @Override
+    public int countTopics(String instanceId) {
+        throw new UnsupportedOperationException(NOT_IMPLEMENTED);
+    }
+
+    @Override
+    public int countGroups(String instanceId) {
+        throw new UnsupportedOperationException(NOT_IMPLEMENTED);
+    }
+
+    @Override
     public List<TopicVO> listTopics(String instanceId, String type, String search) {
         throw new UnsupportedOperationException(NOT_IMPLEMENTED);
     }

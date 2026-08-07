@@ -14,32 +14,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.rocketmq.studio.provider.apache;
 
-package org.apache.rocketmq.studio.instance;
+import static org.assertj.core.api.Assertions.assertThat;
 
-import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+import org.junit.jupiter.api.Test;
 
-import java.util.List;
-import java.util.Optional;
+class ShortLivedClientNameTest {
 
-public interface InstanceRepository {
-    List<InstanceVO> findAll();
+    @Test
+    void generatesUniqueNamesWithoutClockDelays() {
+        Set<String> names = IntStream.range(0, 100)
+                .parallel()
+                .mapToObj(ignored -> RocketMQAdminClientImpl.nextMessageSenderGroup())
+                .collect(Collectors.toSet());
 
-    List<InstanceVO> findByType(InstanceType type);
-
-    List<InstanceVO> search(String keyword);
-
-    List<InstanceVO> findByTypeAndSearch(InstanceType type, String keyword);
-
-    Optional<InstanceVO> findById(String id);
-
-    InstanceVO save(InstanceVO instance);
-
-    void deleteById(String id);
-
-    boolean existsByCredentialId(String credentialId);
-
-    long countTopicsByInstance(String instanceId);
-
-    long countGroupsByInstance(String instanceId);
+        assertThat(names).hasSize(100).allMatch(name -> name.startsWith("studio-msg-sender-"));
+    }
 }

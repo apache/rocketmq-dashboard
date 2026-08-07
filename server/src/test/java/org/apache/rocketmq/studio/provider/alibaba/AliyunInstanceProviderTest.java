@@ -427,6 +427,45 @@ class AliyunInstanceProviderTest {
     }
 
     @Test
+    void countTopicsShouldReuseListTopicsSizeTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.listTopics(any(ListTopicsRequest.class)))
+                .thenReturn(CompletableFuture.completedFuture(topicsResponse(
+                        topicRow("topic-a", "NORMAL"),
+                        topicRow("topic-b", "FIFO"))));
+
+        assertThat(provider.countTopics(STUDIO_INSTANCE_ID)).isEqualTo(2);
+    }
+
+    @Test
+    void countGroupsShouldReuseListConsumerGroupsSizeTest() {
+        stubInstance();
+        stubCallThrough();
+        ListConsumerGroupsResponse response = ListConsumerGroupsResponse.create().toBuilder()
+                .statusCode(200)
+                .body(ListConsumerGroupsResponseBody.builder()
+                        .data(ListConsumerGroupsResponseBody.Data.builder()
+                                .list(List.of(
+                                        ListConsumerGroupsResponseBody.List.builder()
+                                                .consumerGroupId("GID_one")
+                                                .build(),
+                                        ListConsumerGroupsResponseBody.List.builder()
+                                                .consumerGroupId("GID_two")
+                                                .build()))
+                                .pageNumber(1L)
+                                .pageSize(100L)
+                                .totalCount(2L)
+                                .build())
+                        .build())
+                .build();
+        when(asyncClient.listConsumerGroups(any()))
+                .thenReturn(CompletableFuture.completedFuture(response));
+
+        assertThat(provider.countGroups(STUDIO_INSTANCE_ID)).isEqualTo(2);
+    }
+
+    @Test
     void normalizeDeliveryOrderTypeShouldMapFifoToOrderlyTest() {
         org.junit.jupiter.api.Assertions.assertEquals("Orderly",
                 AliyunInstanceProvider.normalizeDeliveryOrderType("FIFO"));

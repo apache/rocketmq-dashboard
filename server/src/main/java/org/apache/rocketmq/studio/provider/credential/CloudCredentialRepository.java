@@ -14,32 +14,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.rocketmq.studio.provider.credential;
 
-package org.apache.rocketmq.studio.instance;
-
-import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 
 import java.util.List;
 import java.util.Optional;
 
-public interface InstanceRepository {
-    List<InstanceVO> findAll();
+public interface CloudCredentialRepository {
 
-    List<InstanceVO> findByType(InstanceType type);
+    List<CloudCredentialVO> findAll();
 
-    List<InstanceVO> search(String keyword);
+    Optional<CloudCredentialVO> findById(String id);
 
-    List<InstanceVO> findByTypeAndSearch(InstanceType type, String keyword);
+    Optional<CloudCredentialVO> findByVendorAndAccessKey(InstanceVendor vendor, String accessKey);
 
-    Optional<InstanceVO> findById(String id);
+    CloudCredentialVO save(CloudCredentialVO credential);
 
-    InstanceVO save(InstanceVO instance);
-
-    void deleteById(String id);
-
-    boolean existsByCredentialId(String credentialId);
-
-    long countTopicsByInstance(String instanceId);
-
-    long countGroupsByInstance(String instanceId);
+    boolean deleteById(String id);
 }

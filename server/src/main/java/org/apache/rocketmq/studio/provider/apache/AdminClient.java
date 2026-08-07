@@ -14,32 +14,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.rocketmq.studio.provider.apache;
 
-package org.apache.rocketmq.studio.instance;
+import org.apache.rocketmq.studio.instance.topic.SendMessageVO;
+import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
+import org.apache.rocketmq.studio.instance.topic.TopicVO;
+import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 
-import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 
-import java.util.List;
-import java.util.Optional;
-
-public interface InstanceRepository {
-    List<InstanceVO> findAll();
-
-    List<InstanceVO> findByType(InstanceType type);
-
-    List<InstanceVO> search(String keyword);
-
-    List<InstanceVO> findByTypeAndSearch(InstanceType type, String keyword);
-
-    Optional<InstanceVO> findById(String id);
-
-    InstanceVO save(InstanceVO instance);
-
-    void deleteById(String id);
-
-    boolean existsByCredentialId(String credentialId);
-
-    long countTopicsByInstance(String instanceId);
-
-    long countGroupsByInstance(String instanceId);
+public interface AdminClient {
+    TopicVO getTopic(String name);
+    ConsumerGroupVO getConsumerGroup(String name);
+    TopicVO createTopic(TopicVO topic);
+    TopicVO updateTopic(TopicVO topic);
+    void deleteTopic(String name);
+    SendMessageVO sendMessage(SendMessageDTO request);
+    ConsumerGroupVO createConsumerGroup(ConsumerGroupVO group);
+    void deleteConsumerGroup(String name);
+    void resetOffset(String name, long timestamp, String topic);
 }

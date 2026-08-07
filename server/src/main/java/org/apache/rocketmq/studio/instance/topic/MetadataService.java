@@ -16,7 +16,8 @@
  */
 package org.apache.rocketmq.studio.instance.topic;
 
-import org.springframework.http.HttpStatus;
+import org.apache.rocketmq.studio.provider.apache.AdminClient;
+import org.apache.rocketmq.studio.provider.apache.MetadataProvider;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
@@ -30,7 +31,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.Optional;
 
 @Slf4j
 @Service
@@ -49,28 +49,24 @@ public class MetadataService {
     }
 
     public List<TopicVO> listTopics(String instanceId, String clusterId, String type, String search) {
-        return providerFor(instanceId)
-                .map(provider -> provider.listTopics(instanceId, normalizeFilter(type), normalizeFilter(search)))
-                .orElseGet(() -> metadataProvider.listTopics(
-                        normalizeFilter(clusterId),
-                        normalizeFilter(type),
-                        normalizeFilter(search)));
+        if (isBlank(instanceId) && !isBlank(clusterId)) {
+            // legacy cluster-scoped read kept for AI tool handlers
+            return metadataProvider.listTopics(
+                    normalizeFilter(clusterId), normalizeFilter(type), normalizeFilter(search));
+        }
+        return resolve(instanceId).listTopics(instanceId, normalizeFilter(type), normalizeFilter(search));
     }
 
 
     public TopicVO createTopic(TopicVO topic) {
         requireTopic(topic);
-        return providerFor(topic.getInstanceId())
-                .map(provider -> provider.createTopic(topic.getInstanceId(), topic))
-                .orElseGet(() -> adminClient.createTopic(topic));
+        return resolve(topic.getInstanceId()).createTopic(topic.getInstanceId(), topic);
     }
 
 
     public TopicVO updateTopic(TopicVO topic) {
         requireTopic(topic);
-        return providerFor(topic.getInstanceId())
-                .map(provider -> provider.updateTopic(topic.getInstanceId(), topic))
-                .orElseGet(() -> adminClient.updateTopic(topic));
+        return resolve(topic.getInstanceId()).updateTopic(topic.getInstanceId(), topic);
     }
 
 
@@ -79,12 +75,7 @@ public class MetadataService {
     }
 
     public void deleteTopic(String instanceId, String name) {
-        Optional<InstanceProvider> provider = providerFor(instanceId);
-        if (provider.isPresent()) {
-            provider.get().deleteTopic(instanceId, name);
-        } else {
-            adminClient.deleteTopic(name);
-        }
+        resolve(instanceId).deleteTopic(instanceId, name);
     }
 
 
@@ -93,8 +84,7 @@ public class MetadataService {
     }
 
     public List<BrokerRouteVO> getTopicRoutes(String instanceId, String name) {
-        Optional<InstanceProvider> provider = providerFor(instanceId);
-        if (provider.isPresent() && provider.get().vendor() != InstanceVendor.APACHE) {
+        if (resolve(instanceId).vendor() != InstanceVendor.APACHE) {
             // broker routing does not apply to serverless cloud instances
             return List.of();
         }
@@ -107,19 +97,15 @@ public class MetadataService {
     }
 
     public List<TopicConsumerVO> getTopicConsumers(String instanceId, String name) {
-        return providerFor(instanceId)
-                .map(provider -> provider.getTopicConsumers(instanceId, name))
-                .orElseGet(() -> metadataProvider.getTopicConsumers(name));
+        return resolve(instanceId).getTopicConsumers(instanceId, name);
     }
 
 
     public SendMessageVO sendMessage(SendMessageDTO request) {
         requireSendMessageRequest(request);
-        providerFor(request.getInstanceId()).ifPresent(provider -> {
-            if (provider.vendor() != InstanceVendor.APACHE) {
-                throw new BusinessException(HttpStatus.NOT_IMPLEMENTED.value(), "Sending messages is not supported for cloud instances");
-            }
-        });
+        if (resolve(request.getInstanceId()).vendor() != InstanceVendor.APACHE) {
+            throw new BusinessException(501, "Sending messages is not supported for cloud instances");
+        }
         return adminClient.sendMessage(request);
     }
 
@@ -131,10 +117,10 @@ public class MetadataService {
     }
 
     public List<ConsumerGroupVO> listConsumerGroups(String instanceId, String clusterId, String search) {
-        return providerFor(instanceId)
-                .map(provider -> provider.listConsumerGroups(instanceId, normalizeFilter(search)))
-                .orElseGet(() -> metadataProvider.listConsumerGroups(
-                        normalizeFilter(clusterId), normalizeFilter(search)));
+        if (isBlank(instanceId) && !isBlank(clusterId)) {
+            return metadataProvider.listConsumerGroups(normalizeFilter(clusterId), normalizeFilter(search));
+        }
+        return resolve(instanceId).listConsumerGroups(instanceId, normalizeFilter(search));
     }
 
 
@@ -143,11 +129,9 @@ public class MetadataService {
     }
 
     public ConsumerGroupVO getConsumerGroup(String instanceId, String name) {
-        providerFor(instanceId).ifPresent(provider -> {
-            if (provider.vendor() != InstanceVendor.APACHE) {
-                throw new BusinessException(HttpStatus.NOT_IMPLEMENTED.value(), "Consumer group detail is not supported for cloud instances");
-            }
-        });
+        if (resolve(instanceId).vendor() != InstanceVendor.APACHE) {
+            throw new BusinessException(501, "Consumer group detail is not supported for cloud instances");
+        }
         return adminClient.getConsumerGroup(name);
     }
 
@@ -157,9 +141,7 @@ public class MetadataService {
     }
 
     public List<QueueProgressVO> getGroupProgress(String instanceId, String name) {
-        return providerFor(instanceId)
-                .map(provider -> provider.getGroupProgress(instanceId, name))
-                .orElseGet(() -> metadataProvider.getGroupProgress(name));
+        return resolve(instanceId).getGroupProgress(instanceId, name);
     }
 
 
@@ -168,16 +150,13 @@ public class MetadataService {
     }
 
     public List<SubscriptionEntryVO> getGroupSubscriptions(String instanceId, String name) {
-        return providerFor(instanceId)
-                .map(provider -> provider.getGroupSubscriptions(instanceId, name))
-                .orElseGet(() -> metadataProvider.getGroupSubscriptions(name));
+        return resolve(instanceId).getGroupSubscriptions(instanceId, name);
     }
 
 
     public ConsumerGroupVO createConsumerGroup(ConsumerGroupVO group) {
-        return providerFor(group == null ? null : group.getInstanceId())
-                .map(provider -> provider.createConsumerGroup(group.getInstanceId(), group))
-                .orElseGet(() -> adminClient.createConsumerGroup(group));
+        String instanceId = group == null ? null : group.getInstanceId();
+        return resolve(instanceId).createConsumerGroup(instanceId, group);
     }
 
 
@@ -186,12 +165,7 @@ public class MetadataService {
     }
 
     public void deleteConsumerGroup(String instanceId, String name) {
-        Optional<InstanceProvider> provider = providerFor(instanceId);
-        if (provider.isPresent()) {
-            provider.get().deleteConsumerGroup(instanceId, name);
-        } else {
-            adminClient.deleteConsumerGroup(name);
-        }
+        resolve(instanceId).deleteConsumerGroup(instanceId, name);
     }
 
 
@@ -200,17 +174,21 @@ public class MetadataService {
     }
 
     public void resetOffset(String instanceId, String name, long timestamp, String topic) {
-        Optional<InstanceProvider> provider = providerFor(instanceId);
-        if (provider.isPresent()) {
-            provider.get().resetOffset(instanceId, name, timestamp, topic);
-        } else {
-            adminClient.resetOffset(name, timestamp, topic);
-        }
+        resolve(instanceId).resetOffset(instanceId, name, timestamp, topic);
     }
 
 
-    private Optional<InstanceProvider> providerFor(String instanceId) {
-        return providerRegistry.byInstanceId(instanceId);
+    /**
+     * Every metadata operation goes through the provider registry; a blank instance id keeps the
+     * legacy global behavior by defaulting to the Apache provider.
+     */
+    private InstanceProvider resolve(String instanceId) {
+        return providerRegistry.byInstanceId(instanceId)
+                .orElseGet(() -> providerRegistry.forVendor(InstanceVendor.APACHE));
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     private String normalizeFilter(String value) {
@@ -219,13 +197,13 @@ public class MetadataService {
 
     private void requireTopic(TopicVO topic) {
         if (topic == null) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "Topic request is required");
+            throw new BusinessException(400, "Topic request is required");
         }
     }
 
     private void requireSendMessageRequest(SendMessageDTO request) {
         if (request == null) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST.value(), "Topic send message request is required");
+            throw new BusinessException(400, "Topic send message request is required");
         }
     }
 }

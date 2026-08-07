@@ -14,32 +14,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.rocketmq.studio.provider.apache;
 
-package org.apache.rocketmq.studio.instance;
+import java.util.UUID;
 
-import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
+final class ShortLivedClientName {
 
-import java.util.List;
-import java.util.Optional;
+    private ShortLivedClientName() {
+    }
 
-public interface InstanceRepository {
-    List<InstanceVO> findAll();
-
-    List<InstanceVO> findByType(InstanceType type);
-
-    List<InstanceVO> search(String keyword);
-
-    List<InstanceVO> findByTypeAndSearch(InstanceType type, String keyword);
-
-    Optional<InstanceVO> findById(String id);
-
-    InstanceVO save(InstanceVO instance);
-
-    void deleteById(String id);
-
-    boolean existsByCredentialId(String credentialId);
-
-    long countTopicsByInstance(String instanceId);
-
-    long countGroupsByInstance(String instanceId);
+    static String next(String prefix) {
+        return prefix + "-" + UUID.randomUUID();
+    }
 }

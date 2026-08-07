@@ -32,6 +32,7 @@ import org.apache.rocketmq.studio.provider.CloudInstanceDetailVO;
 import org.apache.rocketmq.studio.provider.CloudInstanceOptionVO;
 import org.apache.rocketmq.studio.provider.CloudRegionVO;
 import org.springframework.stereotype.Component;
+import lombok.RequiredArgsConstructor;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -41,6 +42,7 @@ import java.util.Locale;
 /**
  * Aliyun cloud catalog: regions and commercial RocketMQ 5.x instances visible to a credential.
  */
+@RequiredArgsConstructor
 @Component
 public class AliyunCatalogService implements CloudCatalogProvider {
 
@@ -50,10 +52,6 @@ public class AliyunCatalogService implements CloudCatalogProvider {
     static final String DEFAULT_REGION = "cn-hangzhou";
 
     private final AliyunClientFactory clientFactory;
-
-    public AliyunCatalogService(AliyunClientFactory clientFactory) {
-        this.clientFactory = clientFactory;
-    }
 
     @Override
     public InstanceVendor vendor() {

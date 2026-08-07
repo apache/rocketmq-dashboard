@@ -16,6 +16,9 @@
  */
 package org.apache.rocketmq.studio.provider;
 
+import lombok.Data;
+
+@Data
 public class CloudInstanceOptionVO {
 
     private String instanceId;
@@ -25,60 +28,4 @@ public class CloudInstanceOptionVO {
     private Integer topicCount;
     private Integer groupCount;
     private String remark;
-
-    public String getInstanceId() {
-        return instanceId;
-    }
-
-    public void setInstanceId(String instanceId) {
-        this.instanceId = instanceId;
-    }
-
-    public String getInstanceName() {
-        return instanceName;
-    }
-
-    public void setInstanceName(String instanceName) {
-        this.instanceName = instanceName;
-    }
-
-    public String getStatus() {
-        return status;
-    }
-
-    public void setStatus(String status) {
-        this.status = status;
-    }
-
-    public String getRegionId() {
-        return regionId;
-    }
-
-    public void setRegionId(String regionId) {
-        this.regionId = regionId;
-    }
-
-    public Integer getTopicCount() {
-        return topicCount;
-    }
-
-    public void setTopicCount(Integer topicCount) {
-        this.topicCount = topicCount;
-    }
-
-    public Integer getGroupCount() {
-        return groupCount;
-    }
-
-    public void setGroupCount(Integer groupCount) {
-        this.groupCount = groupCount;
-    }
-
-    public String getRemark() {
-        return remark;
-    }
-
-    public void setRemark(String remark) {
-        this.remark = remark;
-    }
 }

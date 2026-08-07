@@ -25,12 +25,12 @@ import darabonba.core.client.ClientOverrideConfiguration;
 import darabonba.core.exception.ClientException;
 import darabonba.core.exception.ServerException;
 import jakarta.annotation.PreDestroy;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.apache.rocketmq.studio.cloud.credential.CloudCredentialRepository;
-import org.apache.rocketmq.studio.cloud.credential.CloudCredentialVO;
+import org.apache.rocketmq.studio.provider.credential.CloudCredentialRepository;
+import org.apache.rocketmq.studio.provider.credential.CloudCredentialVO;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.springframework.stereotype.Component;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import java.time.Duration;
 import java.util.Map;
@@ -46,10 +46,10 @@ import java.util.function.Function;
  * Builds and caches Aliyun RocketMQ 5.x OpenAPI async clients per credential#region, and
  * converts SDK failures into {@link BusinessException} with meaningful HTTP-style codes.
  */
+@Slf4j
+@RequiredArgsConstructor
 @Component
 public class AliyunClientFactory {
-
-    private static final Logger log = LoggerFactory.getLogger(AliyunClientFactory.class);
 
     static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
     static final Duration RESPONSE_TIMEOUT = Duration.ofSeconds(20);
@@ -58,10 +58,6 @@ public class AliyunClientFactory {
     private final CloudCredentialRepository credentialRepository;
     private final Map<String, AsyncClient> clients = new ConcurrentHashMap<>();
     private long callTimeoutSeconds = DEFAULT_CALL_TIMEOUT_SECONDS;
-
-    public AliyunClientFactory(CloudCredentialRepository credentialRepository) {
-        this.credentialRepository = credentialRepository;
-    }
 
     public AsyncClient client(String credentialId, String region) {
         String key = cacheKey(credentialId, region);
