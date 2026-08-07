@@ -23,6 +23,7 @@ import org.apache.rocketmq.studio.persistence.entity.RmqSystemAlert;
 import org.apache.rocketmq.studio.persistence.mapper.RmqAlertRuleMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqSystemAlertMapper;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import lombok.RequiredArgsConstructor;
 
@@ -49,6 +50,7 @@ public class MybatisPlusAlertRepository implements AlertRepository {
     }
 
     @Override
+    @Transactional
     public AlertRuleVO saveRule(AlertRuleVO rule) {
         RmqAlertRule entity = toRuleEntity(rule);
         if (entity.getId() != null && ruleMapper.selectById(entity.getId()) != null) {
