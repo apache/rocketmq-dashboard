@@ -153,7 +153,8 @@ const DLQPage = () => {
     if (!search) return groups;
     return groups.filter(
       (g) =>
-        g.groupName.includes(search) || g.dlqTopic.toLowerCase().includes(search.toLowerCase()),
+        g.groupName.toLowerCase().includes(search.toLowerCase()) ||
+        g.dlqTopic.toLowerCase().includes(search.toLowerCase()),
     );
   }, [groups, search]);
 
