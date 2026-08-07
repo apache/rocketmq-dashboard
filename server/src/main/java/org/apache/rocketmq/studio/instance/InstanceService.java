@@ -100,9 +100,7 @@ public class InstanceService {
         if (instance.getName() == null || instance.getName().isBlank()) {
             throw new BusinessException(400, "InstanceVO name is required");
         }
-        if (instance.getEndpoint() == null || instance.getEndpoint().isBlank()) {
-            throw new BusinessException(400, "InstanceVO endpoint is required");
-        }
+        instance.setEndpoint(requireValidEndpoint(instance.getEndpoint()));
     }
 
     /**
@@ -161,6 +159,19 @@ public class InstanceService {
         return value == null || value.isBlank();
     }
 
+    private String requireValidEndpoint(String endpoint) {
+        if (isBlank(endpoint)) {
+            throw new BusinessException(400, "InstanceVO endpoint is required");
+        }
+        String normalized = endpoint.trim();
+        for (String address : normalized.split("[;,]", -1)) {
+            if (address.isBlank()) {
+                throw new BusinessException(400, "InstanceVO endpoint must not contain empty addresses");
+            }
+        }
+        return normalized;
+    }
+
     public InstanceVO updateInstance(InstanceVO instance) {
         requireInstance(instance);
         log.info("Updating instance: {}", instance.getId());
@@ -175,9 +186,6 @@ public class InstanceService {
         if (instance.getName() != null && instance.getName().isBlank()) {
             throw new BusinessException(400, "InstanceVO name is required");
         }
-        if (instance.getEndpoint() != null && instance.getEndpoint().isBlank()) {
-            throw new BusinessException(400, "InstanceVO endpoint is required");
-        }
 
         InstanceVO updated = copyOf(existing);
         boolean cloudInstance = existing.getVendor() != null && existing.getVendor() != InstanceVendor.APACHE;
@@ -189,7 +197,7 @@ public class InstanceService {
                 updated.setType(instance.getType());
             }
             if (instance.getEndpoint() != null) {
-                updated.setEndpoint(instance.getEndpoint());
+                updated.setEndpoint(requireValidEndpoint(instance.getEndpoint()));
             }
         }
         if (instance.getRemark() != null) {
