@@ -185,6 +185,7 @@ const ConsumerPage = () => {
     useInstanceFilter();
   const isCloudInstance =
     selectedInstance?.vendor === 'ALIYUN' || selectedInstance?.vendor === 'TENCENT';
+  const hasSelectedInstance = Boolean(selectedInstanceId);
   const [groups, setGroups] = useState<ConsumerGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -324,6 +325,10 @@ const ConsumerPage = () => {
   const selectedProgress = selectedGroup ? (progressByGroup[selectedGroup.name] ?? []) : [];
 
   const handleImportFile = async (file: File) => {
+    if (!selectedInstanceId) {
+      message.error('请先选择实例');
+      return;
+    }
     setImportFilename(file.name);
     setImporting(false);
     setImportModalOpen(true);
@@ -341,6 +346,10 @@ const ConsumerPage = () => {
   };
 
   const handleImportConsumerGroups = async () => {
+    if (!selectedInstanceId) {
+      message.error('请先选择实例');
+      return;
+    }
     const targetIndexes = importRows
       .map((row, index) => ({ row, index }))
       .filter(({ row }) => row.status === 'pending' || row.status === 'failed');
@@ -797,7 +806,7 @@ const ConsumerPage = () => {
                   cancelText: '取消',
                   onOk: async () => {
                     const names = selectedRowKeys.map(String);
-                    await batchDeleteConsumerGroups(names);
+                    await batchDeleteConsumerGroups(names, selectedInstanceId || undefined);
                     setGroups((prev) => prev.filter((g) => !names.includes(g.name)));
                     message.success(`已删除 ${selectedRowKeys.length} 个 Group`);
                     setSelectedRowKeys([]);
@@ -821,7 +830,7 @@ const ConsumerPage = () => {
           />
           <Button
             icon={<ImportOutlined />}
-            disabled={importing}
+            disabled={!hasSelectedInstance || importing}
             onClick={() => importInputRef.current?.click()}
           >
             导入
@@ -841,6 +850,7 @@ const ConsumerPage = () => {
           <Button
             type="primary"
             icon={<Plus size={14} weight="bold" />}
+            disabled={!hasSelectedInstance}
             onClick={() => setCreateModalOpen(true)}
           >
             创建 Group
@@ -1208,6 +1218,10 @@ const ConsumerPage = () => {
           form
             .validateFields()
             .then((values) => {
+              if (!selectedInstanceId) {
+                message.error('请先选择实例');
+                return;
+              }
               Modal.confirm({
                 title: '确认创建',
                 content: `将创建消费组 "${values.name}"`,
@@ -1224,7 +1238,7 @@ const ConsumerPage = () => {
                       subscriptionDataType: values.dataType || 'NORMAL',
                       deliveryOrderType: values.deliveryOrderType,
                       subscribedTopics: [],
-                      ...(selectedInstanceId ? { instanceId: selectedInstanceId } : {}),
+                      instanceId: selectedInstanceId,
                     });
                     setGroups((prev) => [
                       created,
