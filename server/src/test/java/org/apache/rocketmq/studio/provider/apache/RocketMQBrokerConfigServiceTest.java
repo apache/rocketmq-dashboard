@@ -6,6 +6,7 @@
  */
 package org.apache.rocketmq.studio.provider.apache;
 
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.ops.audit.AuditService;
@@ -36,6 +37,8 @@ class RocketMQBrokerConfigServiceTest {
     private DefaultMQAdminExt adminExt;
     @Mock
     private AuditService auditService;
+    @Mock
+    private RuntimeAdminClientResolver runtimeAdminClientResolver;
 
     private RocketMQBrokerConfigService brokerConfigService;
 
@@ -44,7 +47,8 @@ class RocketMQBrokerConfigServiceTest {
         lenient().when(properties.getNamesrvAddr()).thenReturn("10.0.0.1:9876");
         lenient().when(adminFactory.execute(anyString(), any(), any())).thenAnswer(invocation ->
                 invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(adminExt));
-        brokerConfigService = new RocketMQBrokerConfigService(adminFactory, properties, auditService);
+        brokerConfigService = new RocketMQBrokerConfigService(
+                adminFactory, properties, runtimeAdminClientResolver, auditService);
     }
 
     @Test

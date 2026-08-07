@@ -51,7 +51,13 @@ public class ClusterService {
     private final AuditService auditService;
 
     public List<ClusterVO> listClusters() {
-        return listClusters(null);
+        log.info("Listing all clusters");
+        List<ClusterVO> discovered = clusterProvider.discoverClusters();
+        if (discovered != null && !discovered.isEmpty()) {
+            discovered.forEach(this::enrichWithLiveConfig);
+            return discovered;
+        }
+        return List.of();
     }
 
     public List<ClusterVO> listClusters(String instanceId) {
@@ -65,7 +71,13 @@ public class ClusterService {
     }
 
     public ClusterVO getCluster(String id) {
-        return getCluster(id, null);
+        log.info("Getting cluster detail: {}", id);
+        ClusterVO live = clusterProvider.refreshClusterDetail(id);
+        if (live != null) {
+            enrichWithLiveConfig(live);
+            return live;
+        }
+        throw new BusinessException(503, "Cluster details are unavailable: " + id);
     }
 
     public ClusterVO getCluster(String id, String instanceId) {
@@ -124,7 +136,12 @@ public class ClusterService {
                     continue;
                 }
                 try {
-                    brokerConfigService.updateBrokerConfig(address, command.getId(), command.getInstanceId(), brokerProps);
+                    if (command.getInstanceId() == null || command.getInstanceId().isBlank()) {
+                        brokerConfigService.updateBrokerConfig(address, command.getId(), brokerProps);
+                    } else {
+                        brokerConfigService.updateBrokerConfig(
+                                address, command.getId(), command.getInstanceId(), brokerProps);
+                    }
                     successfulBrokers.add(address);
                 } catch (Exception e) {
                     failedBrokers.add(BrokerConfigUpdateFailureVO.builder()
@@ -209,10 +226,19 @@ public class ClusterService {
     }
 
     private ClusterVO resolveCluster(String clusterId) {
-        return resolveCluster(clusterId, null);
+        ClusterVO live = clusterProvider.refreshClusterDetail(clusterId);
+        if (live != null) {
+            enrichWithLiveConfig(live);
+            return live;
+        }
+        return clusterRepository.findById(clusterId)
+                .orElseThrow(() -> new BusinessException(404, "Cluster not found: " + clusterId));
     }
 
     private ClusterVO resolveCluster(String clusterId, String instanceId) {
+        if (instanceId == null || instanceId.isBlank()) {
+            return resolveCluster(clusterId);
+        }
         ClusterVO live = clusterProvider.refreshClusterDetail(clusterId, instanceId);
         if (live != null) {
             enrichWithLiveConfig(live, instanceId);
