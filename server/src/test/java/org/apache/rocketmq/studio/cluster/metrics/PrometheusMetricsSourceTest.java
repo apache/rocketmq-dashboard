@@ -252,6 +252,30 @@ class PrometheusMetricsSourceTest {
     }
 
     @Test
+    void queryShouldRejectResponseWithTooManyLabelsInOneSeries() {
+        server.createContext("/api/v1/query_range", exchange -> respond(exchange, 200, responseWithLabels(65)));
+
+        assertThatThrownBy(() -> source(Duration.ofSeconds(2)).query(query()))
+                .isInstanceOf(PrometheusException.class)
+                .satisfies(exception -> assertThat(((PrometheusException) exception).getStatusCode())
+                        .isEqualTo(HttpStatus.PAYLOAD_TOO_LARGE.value()))
+                .hasMessage("Prometheus query returned too many labels in a time series; narrow the query");
+    }
+
+    @Test
+    void queryShouldRejectResponseWithOversizedLabelValue() {
+        server.createContext("/api/v1/query_range", exchange -> respond(exchange, 200,
+                "{\"status\":\"success\",\"data\":{\"resultType\":\"matrix\",\"result\":[{\"metric\":{\"topic\":\""
+                        + "x".repeat(4_097) + "\"},\"values\":[[1784107658,\"1\"]]}]}}"));
+
+        assertThatThrownBy(() -> source(Duration.ofSeconds(2)).query(query()))
+                .isInstanceOf(PrometheusException.class)
+                .satisfies(exception -> assertThat(((PrometheusException) exception).getStatusCode())
+                        .isEqualTo(HttpStatus.PAYLOAD_TOO_LARGE.value()))
+                .hasMessage("Prometheus query returned an oversized time-series label; narrow the query");
+    }
+
+    @Test
     void queryShouldRejectResponseLargerThanFiveMebibytes() {
         server.createContext("/api/v1/query_range", exchange -> respond(exchange, 200,
                 "{\"status\":\"success\",\"padding\":\"" + "x".repeat(5 * 1024 * 1024) + "\"}"));
@@ -434,5 +458,17 @@ class PrometheusMetricsSourceTest {
         }
         return "{\"status\":\"success\",\"data\":{\"resultType\":\"matrix\",\"result\":[{\"metric\":{},\"values\":["
                 + values + "]}]}}";
+    }
+
+    private String responseWithLabels(int count) {
+        StringBuilder labels = new StringBuilder();
+        for (int index = 0; index < count; index++) {
+            if (index > 0) {
+                labels.append(',');
+            }
+            labels.append("\"label_").append(index).append("\":\"value\"");
+        }
+        return "{\"status\":\"success\",\"data\":{\"resultType\":\"matrix\",\"result\":[{\"metric\":{" + labels
+                + "},\"values\":[[1784107658,\"1\"]]}]}}";
     }
 }

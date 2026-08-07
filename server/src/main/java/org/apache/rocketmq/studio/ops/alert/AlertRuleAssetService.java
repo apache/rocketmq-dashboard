@@ -60,6 +60,10 @@ public class AlertRuleAssetService {
             }
             try (InputStream in = resource.getInputStream()) {
                 JsonNode root = yamlMapper.readTree(in);
+                if (root == null || !root.isObject()) {
+                    log.warn("Skipping invalid alert rule asset {}: expected a YAML object", resource);
+                    continue;
+                }
                 List<PrometheusAlertRule> rules = parseRules(root);
                 Set<String> severities = new LinkedHashSet<>();
                 String group = rules.isEmpty() ? "" : rules.get(0).group();
@@ -100,7 +104,12 @@ public class AlertRuleAssetService {
                 continue;
             }
             try (InputStream in = resource.getInputStream()) {
-                rules.addAll(parseRules(yamlMapper.readTree(in)));
+                JsonNode root = yamlMapper.readTree(in);
+                if (root == null || !root.isObject()) {
+                    log.warn("Skipping invalid alert rule asset {}: expected a YAML object", resource);
+                    continue;
+                }
+                rules.addAll(parseRules(root));
             } catch (IOException e) {
                 log.warn("Skipping unreadable alert rule asset {}: {}", resource, e.getMessage());
             }
@@ -110,6 +119,9 @@ public class AlertRuleAssetService {
 
     private List<PrometheusAlertRule> parseRules(JsonNode root) {
         List<PrometheusAlertRule> rules = new ArrayList<>();
+        if (root == null || !root.isObject()) {
+            return rules;
+        }
         JsonNode groups = root.get("groups");
         if (groups == null || !groups.isArray()) {
             return rules;
@@ -126,6 +138,10 @@ public class AlertRuleAssetService {
                 }
                 String alert = textOr(rule, "alert", "");
                 String expr = textOr(rule, "expr", "");
+                if (alert.isBlank() || expr.isBlank()) {
+                    log.warn("Skipping incomplete alert rule in group {}", groupName);
+                    continue;
+                }
                 String duration = textOr(rule, "for", "5m");
                 String severity = textOr(labelsOf(rule), "severity", "warning");
                 String team = textOr(labelsOf(rule), "team", "broker");
@@ -146,7 +162,7 @@ public class AlertRuleAssetService {
         return null;
     }
 
-    private Resource[] resolveResources() {
+    protected Resource[] resolveResources() {
         try {
             return resourceResolver.getResources(LOCATION_PATTERN);
         } catch (IOException e) {

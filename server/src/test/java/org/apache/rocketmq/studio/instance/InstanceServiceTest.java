@@ -320,7 +320,8 @@ class InstanceServiceTest {
 
     @Test
     void createInstanceShouldTrimEndpointBeforeSaving() {
-        InstanceVO input = InstanceVO.builder().name("valid-name").endpoint("  namesrv:9876  ").build();
+        InstanceVO input = InstanceVO.builder().name("valid-name").type(InstanceType.PROXY)
+                .endpoint("  namesrv:9876  ").build();
         when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         assertThat(instanceService.createInstance(input).getEndpoint()).isEqualTo("namesrv:9876");
@@ -642,6 +643,7 @@ class InstanceServiceTest {
         existing.setId("inst-1");
         when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(existing));
         when(instanceRepository.findAll()).thenReturn(List.of());
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
 
         instanceService.deleteInstance("inst-1");
 
