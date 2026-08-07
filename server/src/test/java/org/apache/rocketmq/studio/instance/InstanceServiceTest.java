@@ -19,13 +19,14 @@ package org.apache.rocketmq.studio.instance;
 
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialRepository;
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialVO;
+import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.provider.CloudCatalogProvider;
 import org.apache.rocketmq.studio.provider.CloudInstanceDetailVO;
-import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
+import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -59,6 +60,9 @@ class InstanceServiceTest {
     @Mock
     private InstanceProvider instanceProvider;
 
+    @Mock
+    private MqAdminExtFactory adminFactory;
+
     @InjectMocks
     private InstanceService instanceService;
 
@@ -75,6 +79,37 @@ class InstanceServiceTest {
 
         assertThat(result).hasSize(2);
         verify(instanceRepository).findAll();
+    }
+
+    @Test
+    void listInstancesMarksCloudCountsUnavailableWhenProviderFails() {
+        InstanceVO instance = InstanceVO.builder().vendor(InstanceVendor.ALIYUN).build();
+        instance.setId("cloud-1");
+        InstanceProvider provider = org.mockito.Mockito.mock(InstanceProvider.class);
+        when(instanceRepository.findAll()).thenReturn(List.of(instance));
+        when(providerRegistry.forVendor(InstanceVendor.ALIYUN)).thenReturn(provider);
+        when(provider.countTopics("cloud-1")).thenThrow(new IllegalStateException("access denied"));
+
+        InstanceVO result = instanceService.listInstances(null, null).get(0);
+
+        assertThat(result.isResourceCountsAvailable()).isFalse();
+    }
+
+    @Test
+    void listInstancesKeepsCloudCountsAvailableWhenProviderReturnsEmptyLists() {
+        InstanceVO instance = InstanceVO.builder().vendor(InstanceVendor.ALIYUN).build();
+        instance.setId("cloud-1");
+        InstanceProvider provider = org.mockito.Mockito.mock(InstanceProvider.class);
+        when(instanceRepository.findAll()).thenReturn(List.of(instance));
+        when(providerRegistry.forVendor(InstanceVendor.ALIYUN)).thenReturn(provider);
+        when(provider.countTopics("cloud-1")).thenReturn(0);
+        when(provider.countGroups("cloud-1")).thenReturn(0);
+
+        InstanceVO result = instanceService.listInstances(null, null).get(0);
+
+        assertThat(result.isResourceCountsAvailable()).isTrue();
+        assertThat(result.getTopicCount()).isZero();
+        assertThat(result.getConsumerGroupCount()).isZero();
     }
 
     @Test
@@ -275,6 +310,23 @@ class InstanceServiceTest {
     }
 
     @Test
+    void createInstanceShouldRejectEndpointWithEmptyAddressSegment() {
+        InstanceVO input = InstanceVO.builder().name("valid-name").endpoint("namesrv:9876;").build();
+
+        assertThatThrownBy(() -> instanceService.createInstance(input))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("InstanceVO endpoint must not contain empty addresses");
+    }
+
+    @Test
+    void createInstanceShouldTrimEndpointBeforeSaving() {
+        InstanceVO input = InstanceVO.builder().name("valid-name").endpoint("  namesrv:9876  ").build();
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertThat(instanceService.createInstance(input).getEndpoint()).isEqualTo("namesrv:9876");
+    }
+
+    @Test
     void updateInstanceShouldMergeFieldsOntoExisting() {
         LocalDateTime originalCreatedAt = LocalDateTime.of(2025, 1, 2, 3, 4, 5);
         LocalDateTime originalUpdatedAt = LocalDateTime.of(2025, 2, 3, 4, 5, 6);
@@ -357,6 +409,73 @@ class InstanceServiceTest {
         assertThat(stored.getId()).isEqualTo("inst-1");
         assertThat(stored.getCreatedAt()).isEqualTo(originalCreatedAt);
         assertThat(stored.getUpdatedAt()).isEqualTo(originalUpdatedAt);
+    }
+
+    @Test
+    void updateInstanceShouldReleaseUnusedPreviousEndpoint() {
+        InstanceVO existing = InstanceVO.builder()
+                .name("instance")
+                .endpoint("old-namesrv:9876")
+                .build();
+        existing.setId("inst-1");
+        InstanceVO update = InstanceVO.builder().endpoint("new-namesrv:9876").build();
+        update.setId("inst-1");
+
+        when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(existing));
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(instanceRepository.findAll()).thenReturn(List.of());
+
+        instanceService.updateInstance(update);
+
+        verify(adminFactory).release("old-namesrv:9876");
+    }
+
+    @Test
+    void updateInstanceShouldKeepEndpointClientWhenAnotherInstanceReferencesIt() {
+        InstanceVO existing = InstanceVO.builder()
+                .name("instance")
+                .endpoint("shared-namesrv:9876")
+                .build();
+        existing.setId("inst-1");
+        InstanceVO shared = InstanceVO.builder()
+                .name("shared-instance")
+                .endpoint(" shared-namesrv:9876 ")
+                .build();
+        shared.setId("inst-2");
+        InstanceVO update = InstanceVO.builder().endpoint("new-namesrv:9876").build();
+        update.setId("inst-1");
+
+        when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(existing));
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(instanceRepository.findAll()).thenReturn(List.of(shared));
+
+        instanceService.updateInstance(update);
+
+        verify(adminFactory, never()).release("shared-namesrv:9876");
+    }
+
+    @Test
+    void updateInstanceShouldKeepEndpointClientWhenAnotherInstanceUsesEquivalentAddressList() {
+        InstanceVO existing = InstanceVO.builder()
+                .name("instance")
+                .endpoint("namesrv-b:9876;namesrv-a:9876")
+                .build();
+        existing.setId("inst-1");
+        InstanceVO shared = InstanceVO.builder()
+                .name("shared-instance")
+                .endpoint(" namesrv-a:9876, namesrv-b:9876 ")
+                .build();
+        shared.setId("inst-2");
+        InstanceVO update = InstanceVO.builder().endpoint("new-namesrv:9876").build();
+        update.setId("inst-1");
+
+        when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(existing));
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(instanceRepository.findAll()).thenReturn(List.of(shared));
+
+        instanceService.updateInstance(update);
+
+        verifyNoInteractions(adminFactory);
     }
 
     @Test
@@ -446,11 +565,28 @@ class InstanceServiceTest {
     }
 
     @Test
+    void updateInstanceShouldRejectEndpointWithEmptyAddressSegment() {
+        InstanceVO existing = InstanceVO.builder().name("instance").endpoint("namesrv:9876").build();
+        existing.setId("inst-1");
+        InstanceVO update = InstanceVO.builder().endpoint("; ;").build();
+        update.setId("inst-1");
+        when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> instanceService.updateInstance(update))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("InstanceVO endpoint must not contain empty addresses");
+        verify(instanceRepository, never()).save(any(InstanceVO.class));
+    }
+
+    @Test
     void deleteInstanceShouldRemoveExistingInstance() {
         InstanceVO existing = InstanceVO.builder().name("to-delete").build();
         existing.setId("inst-1");
 
         when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(existing));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceProvider.countTopics("inst-1")).thenReturn(0);
+        when(instanceProvider.countGroups("inst-1")).thenReturn(0);
 
         instanceService.deleteInstance("inst-1");
 
@@ -461,10 +597,13 @@ class InstanceServiceTest {
     void deleteInstanceShouldRejectInstanceWithTopics() {
         InstanceVO existing = InstanceVO.builder()
                 .name("with-topics")
-                .topicCount(2)
+                .topicCount(0)
                 .build();
         existing.setId("inst-1");
         when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(existing));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceProvider.countTopics("inst-1")).thenReturn(2);
+        when(instanceProvider.countGroups("inst-1")).thenReturn(0);
 
         assertThatThrownBy(() -> instanceService.deleteInstance("inst-1"))
                 .isInstanceOf(BusinessException.class)
@@ -478,10 +617,13 @@ class InstanceServiceTest {
     void deleteInstanceShouldRejectInstanceWithConsumerGroups() {
         InstanceVO existing = InstanceVO.builder()
                 .name("with-consumer-groups")
-                .consumerGroupCount(3)
+                .consumerGroupCount(0)
                 .build();
         existing.setId("inst-1");
         when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(existing));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceProvider.countTopics("inst-1")).thenReturn(0);
+        when(instanceProvider.countGroups("inst-1")).thenReturn(3);
 
         assertThatThrownBy(() -> instanceService.deleteInstance("inst-1"))
                 .isInstanceOf(BusinessException.class)
@@ -489,6 +631,22 @@ class InstanceServiceTest {
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
 
         verify(instanceRepository, never()).deleteById("inst-1");
+    }
+
+    @Test
+    void deleteInstanceShouldReleaseUnusedEndpoint() {
+        InstanceVO existing = InstanceVO.builder()
+                .name("to-delete")
+                .endpoint("namesrv:9876")
+                .build();
+        existing.setId("inst-1");
+        when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(existing));
+        when(instanceRepository.findAll()).thenReturn(List.of());
+
+        instanceService.deleteInstance("inst-1");
+
+        verify(instanceRepository).deleteById("inst-1");
+        verify(adminFactory).release("namesrv:9876");
     }
 
     @Test
@@ -516,13 +674,32 @@ class InstanceServiceTest {
 
     @Test
     void createInstanceShouldDefaultToApacheVendorTest() {
-        InstanceVO instance = InstanceVO.builder().name("inst").endpoint("10.0.0.1:8080").build();
+        InstanceVO instance = InstanceVO.builder()
+                .name("inst")
+                .endpoint("10.0.0.1:8080")
+                .type(InstanceType.PROXY)
+                .build();
         when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         InstanceVO created = instanceService.createInstance(instance);
 
         assertThat(created.getVendor()).isEqualTo(InstanceVendor.APACHE);
         verifyNoInteractions(cloudCredentialRepository, providerRegistry);
+    }
+
+    @Test
+    void createApacheInstanceShouldRequireTypeTest() {
+        InstanceVO instance = InstanceVO.builder()
+                .name("inst")
+                .endpoint("10.0.0.1:8080")
+                .build();
+
+        assertThatThrownBy(() -> instanceService.createInstance(instance))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("InstanceVO type is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verify(instanceRepository, never()).save(any(InstanceVO.class));
     }
 
     @Test

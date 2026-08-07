@@ -312,6 +312,8 @@ const InstancePage = () => {
       width: 80,
       align: 'center' as const,
       sorter: (a, b) => a.topicCount - b.topicCount,
+      render: (count: number, record: Instance) =>
+        record.resourceCountsAvailable === false ? '不可用' : count,
     },
     {
       title: 'Group',
@@ -320,6 +322,8 @@ const InstancePage = () => {
       width: 80,
       align: 'center' as const,
       sorter: (a, b) => a.consumerGroupCount - b.consumerGroupCount,
+      render: (count: number, record: Instance) =>
+        record.resourceCountsAvailable === false ? '不可用' : count,
     },
     {
       title: '创建时间',

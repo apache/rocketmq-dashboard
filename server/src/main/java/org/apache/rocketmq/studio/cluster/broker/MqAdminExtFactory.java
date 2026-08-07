@@ -25,9 +25,11 @@ import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 /**
  * Central lifecycle owner for real {@link DefaultMQAdminExt} connections.
@@ -68,7 +70,11 @@ public class MqAdminExtFactory {
         if (closed) {
             throw new BusinessException(503, "Admin factory is shutting down");
         }
-        DefaultMQAdminExt admin = cache.computeIfAbsent(namesrvAddr.trim(),
+        String normalizedNamesrvAddr = normalizeNamesrvAddr(namesrvAddr);
+        if (normalizedNamesrvAddr.isEmpty()) {
+            throw new BusinessException(400, "NameServer address is required");
+        }
+        DefaultMQAdminExt admin = cache.computeIfAbsent(normalizedNamesrvAddr,
                 addr -> createAndStart(addr, rpcHook));
         try {
             return action.apply(admin);
@@ -77,6 +83,26 @@ public class MqAdminExtFactory {
         } catch (Exception ex) {
             log.warn("Admin action failed against namesrv {}: {}", namesrvAddr, ex.getMessage());
             throw new BusinessException(502, "RocketMQ admin call failed: " + rootMessage(ex));
+        }
+    }
+
+    /**
+     * Stops and removes the cached client for an endpoint that is no longer referenced by Studio.
+     *
+     * <p>Callers must ensure the endpoint is not still used by another configured instance.
+     */
+    public void release(String namesrvAddr) {
+        if (namesrvAddr == null || namesrvAddr.isBlank()) {
+            return;
+        }
+        String normalizedNamesrvAddr = normalizeNamesrvAddr(namesrvAddr);
+        if (normalizedNamesrvAddr.isEmpty()) {
+            return;
+        }
+        DefaultMQAdminExt admin = cache.remove(normalizedNamesrvAddr);
+        if (admin != null) {
+            safeShutdown(admin);
+            log.info("Released RocketMQ admin client for namesrv {}", normalizedNamesrvAddr);
         }
     }
 
@@ -106,6 +132,15 @@ public class MqAdminExtFactory {
     private String buildInstanceName(String namesrvAddr) {
         return "rmq-studio-" + Integer.toHexString(namesrvAddr.hashCode())
                 + "-" + instanceCounter.incrementAndGet();
+    }
+
+    public static String normalizeNamesrvAddr(String namesrvAddr) {
+        return Arrays.stream(namesrvAddr.split("[;,]"))
+                .map(String::trim)
+                .filter(address -> !address.isEmpty())
+                .distinct()
+                .sorted()
+                .collect(Collectors.joining(";"));
     }
 
     private void safeShutdown(MQAdminExt admin) {

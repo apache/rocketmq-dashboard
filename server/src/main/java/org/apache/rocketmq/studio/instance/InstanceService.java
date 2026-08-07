@@ -21,6 +21,7 @@ import org.springframework.util.StringUtils;
 
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialRepository;
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialVO;
+import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -43,6 +44,7 @@ public class InstanceService {
     private final InstanceRepository instanceRepository;
     private final CloudCredentialRepository cloudCredentialRepository;
     private final InstanceProviderRegistry providerRegistry;
+    private final MqAdminExtFactory adminFactory;
 
     public List<InstanceVO> listInstances(InstanceType type, String search) {
         log.debug("Listing instances, type={}, search={}", type, search);
@@ -72,7 +74,9 @@ public class InstanceService {
             InstanceProvider provider = providerRegistry.forVendor(vendor);
             instance.setTopicCount(provider.countTopics(instance.getId()));
             instance.setConsumerGroupCount(provider.countGroups(instance.getId()));
+            instance.setResourceCountsAvailable(true);
         } catch (RuntimeException ex) {
+            instance.setResourceCountsAvailable(false);
             log.warn("Failed to load resource counts for instance {}: {}",
                     instance.getId(), ex.getMessage());
         }
@@ -100,8 +104,9 @@ public class InstanceService {
         if (instance.getName() == null || instance.getName().isBlank()) {
             throw new BusinessException(400, "InstanceVO name is required");
         }
-        if (instance.getEndpoint() == null || instance.getEndpoint().isBlank()) {
-            throw new BusinessException(400, "InstanceVO endpoint is required");
+        instance.setEndpoint(requireValidEndpoint(instance.getEndpoint()));
+        if (instance.getType() == null) {
+            throw new BusinessException(400, "InstanceVO type is required");
         }
     }
 
@@ -158,6 +163,19 @@ public class InstanceService {
     }
 
 
+    private String requireValidEndpoint(String endpoint) {
+        if (!StringUtils.hasText(endpoint)) {
+            throw new BusinessException(400, "InstanceVO endpoint is required");
+        }
+        String normalized = endpoint.trim();
+        for (String address : normalized.split("[;,]", -1)) {
+            if (address.isBlank()) {
+                throw new BusinessException(400, "InstanceVO endpoint must not contain empty addresses");
+            }
+        }
+        return normalized;
+    }
+
     public InstanceVO updateInstance(InstanceVO instance) {
         requireInstance(instance);
         log.info("Updating instance: {}", instance.getId());
@@ -172,9 +190,6 @@ public class InstanceService {
         if (instance.getName() != null && instance.getName().isBlank()) {
             throw new BusinessException(400, "InstanceVO name is required");
         }
-        if (instance.getEndpoint() != null && instance.getEndpoint().isBlank()) {
-            throw new BusinessException(400, "InstanceVO endpoint is required");
-        }
 
         InstanceVO updated = copyOf(existing);
         boolean cloudInstance = existing.getVendor() != null && existing.getVendor() != InstanceVendor.APACHE;
@@ -186,7 +201,7 @@ public class InstanceService {
                 updated.setType(instance.getType());
             }
             if (instance.getEndpoint() != null) {
-                updated.setEndpoint(instance.getEndpoint());
+                updated.setEndpoint(requireValidEndpoint(instance.getEndpoint()));
             }
         }
         if (instance.getRemark() != null) {
@@ -194,7 +209,9 @@ public class InstanceService {
         }
         updated.setUpdatedAt(LocalDateTime.now());
 
-        return instanceRepository.save(updated);
+        InstanceVO saved = instanceRepository.save(updated);
+        releaseApacheEndpointIfUnused(existing, saved.getEndpoint());
+        return saved;
     }
 
     public void deleteInstance(String id) {
@@ -207,12 +224,17 @@ public class InstanceService {
         InstanceVO existing = instanceRepository.findById(id)
                 .orElseThrow(() -> new BusinessException(404, "InstanceVO not found: " + id));
 
-        if (existing.getTopicCount() > 0 || existing.getConsumerGroupCount() > 0) {
+        InstanceProvider provider = providerRegistry.forVendor(
+                existing.getVendor() == null ? InstanceVendor.APACHE : existing.getVendor());
+        int topicCount = provider.countTopics(id);
+        int consumerGroupCount = provider.countGroups(id);
+        if (topicCount > 0 || consumerGroupCount > 0) {
             throw new BusinessException(409, String.format(
                     "Cannot delete instance with managed resources: topics=%d, consumerGroups=%d",
-                    existing.getTopicCount(), existing.getConsumerGroupCount()));
+                    topicCount, consumerGroupCount));
         }
         instanceRepository.deleteById(id);
+        releaseApacheEndpointIfUnused(existing, null);
     }
 
     private void requireInstance(InstanceVO instance) {
@@ -238,5 +260,34 @@ public class InstanceService {
         copy.setCreatedAt(instance.getCreatedAt());
         copy.setUpdatedAt(instance.getUpdatedAt());
         return copy;
+    }
+
+    private void releaseApacheEndpointIfUnused(InstanceVO existing, String currentEndpoint) {
+        InstanceVendor vendor = existing.getVendor() == null ? InstanceVendor.APACHE : existing.getVendor();
+        if (vendor != InstanceVendor.APACHE) {
+            return;
+        }
+        releaseEndpointIfUnused(existing.getEndpoint(), currentEndpoint, existing.getId());
+    }
+
+    private void releaseEndpointIfUnused(String previousEndpoint, String currentEndpoint, String excludedInstanceId) {
+        String oldEndpoint = normalizeEndpoint(previousEndpoint);
+        if (oldEndpoint == null || oldEndpoint.equals(normalizeEndpoint(currentEndpoint))) {
+            return;
+        }
+        boolean stillReferenced = instanceRepository.findAll().stream()
+                .anyMatch(instance -> !excludedInstanceId.equals(instance.getId())
+                        && oldEndpoint.equals(normalizeEndpoint(instance.getEndpoint())));
+        if (!stillReferenced) {
+            adminFactory.release(oldEndpoint);
+        }
+    }
+
+    private String normalizeEndpoint(String endpoint) {
+        if (endpoint == null || endpoint.isBlank()) {
+            return null;
+        }
+        String normalizedEndpoint = MqAdminExtFactory.normalizeNamesrvAddr(endpoint);
+        return normalizedEndpoint.isEmpty() ? null : normalizedEndpoint;
     }
 }
