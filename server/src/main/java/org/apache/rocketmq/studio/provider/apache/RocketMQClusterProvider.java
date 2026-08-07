@@ -199,7 +199,7 @@ public class RocketMQClusterProvider implements ClusterProvider {
                 builder.tpsIn(parseFirstTpsValue(putTps));
             }
 
-            String getTransferredTps = table.get("getTransferedTps");
+            String getTransferredTps = table.get("getTransferredTps");
             if (getTransferredTps != null && !getTransferredTps.isEmpty()) {
                 builder.tpsOut(parseFirstTpsValue(getTransferredTps));
             }
