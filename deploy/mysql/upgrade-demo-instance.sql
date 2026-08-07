@@ -5,7 +5,7 @@
 -- 幂等：可重复执行。
 --
 -- 用法（远程容器内执行）：
---   docker exec -i rocketmq-studio-mysql mysql -uroot -pstudio123 rocketmq_studio < upgrade-demo-instance.sql
+--   docker exec -i rocketmq-studio-mysql mysql -uroot -pstudio123 rocketmq < upgrade-demo-instance.sql
 
 -- 固定连接编码，防止 mysql 客户端以 latin1 解释 UTF-8 字节导致中文双重编码
 SET NAMES utf8mb4;
