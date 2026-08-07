@@ -354,7 +354,10 @@ export const DataSourceTab = () => {
       message.success(editingDataSource ? '数据源已更新' : '数据源已添加');
       setModalOpen(false);
       dsForm.resetFields();
-    } catch {
+    } catch (error) {
+      if (error && typeof error === 'object' && 'errorFields' in error) {
+        return; // validation failure; antd already shows field-level errors
+      }
       message.error('保存数据源失败，请稍后重试');
     } finally {
       setSubmitting(false);

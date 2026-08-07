@@ -308,7 +308,10 @@ const AlertsPage = () => {
       }
       setModalVisible(false);
       form.resetFields();
-    } catch {
+    } catch (error) {
+      if (error && typeof error === 'object' && 'errorFields' in error) {
+        return; // validation failure; antd already shows field-level errors
+      }
       message.error('保存告警规则失败，请稍后重试');
     } finally {
       setSubmitting(false);
