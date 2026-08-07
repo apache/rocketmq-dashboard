@@ -451,6 +451,9 @@ class InstanceServiceTest {
         existing.setId("inst-1");
 
         when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(existing));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceProvider.countTopics("inst-1")).thenReturn(0);
+        when(instanceProvider.countGroups("inst-1")).thenReturn(0);
 
         instanceService.deleteInstance("inst-1");
 
@@ -461,10 +464,13 @@ class InstanceServiceTest {
     void deleteInstanceShouldRejectInstanceWithTopics() {
         InstanceVO existing = InstanceVO.builder()
                 .name("with-topics")
-                .topicCount(2)
+                .topicCount(0)
                 .build();
         existing.setId("inst-1");
         when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(existing));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceProvider.countTopics("inst-1")).thenReturn(2);
+        when(instanceProvider.countGroups("inst-1")).thenReturn(0);
 
         assertThatThrownBy(() -> instanceService.deleteInstance("inst-1"))
                 .isInstanceOf(BusinessException.class)
@@ -478,10 +484,13 @@ class InstanceServiceTest {
     void deleteInstanceShouldRejectInstanceWithConsumerGroups() {
         InstanceVO existing = InstanceVO.builder()
                 .name("with-consumer-groups")
-                .consumerGroupCount(3)
+                .consumerGroupCount(0)
                 .build();
         existing.setId("inst-1");
         when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(existing));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceProvider.countTopics("inst-1")).thenReturn(0);
+        when(instanceProvider.countGroups("inst-1")).thenReturn(3);
 
         assertThatThrownBy(() -> instanceService.deleteInstance("inst-1"))
                 .isInstanceOf(BusinessException.class)

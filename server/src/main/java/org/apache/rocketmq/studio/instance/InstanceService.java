@@ -207,10 +207,14 @@ public class InstanceService {
         InstanceVO existing = instanceRepository.findById(id)
                 .orElseThrow(() -> new BusinessException(404, "InstanceVO not found: " + id));
 
-        if (existing.getTopicCount() > 0 || existing.getConsumerGroupCount() > 0) {
+        InstanceProvider provider = providerRegistry.forVendor(
+                existing.getVendor() == null ? InstanceVendor.APACHE : existing.getVendor());
+        int topicCount = provider.countTopics(id);
+        int consumerGroupCount = provider.countGroups(id);
+        if (topicCount > 0 || consumerGroupCount > 0) {
             throw new BusinessException(409, String.format(
                     "Cannot delete instance with managed resources: topics=%d, consumerGroups=%d",
-                    existing.getTopicCount(), existing.getConsumerGroupCount()));
+                    topicCount, consumerGroupCount));
         }
         instanceRepository.deleteById(id);
     }
