@@ -92,8 +92,10 @@ export interface MetricProfile {
 }
 
 // ─── Dashboard ──────────────────────────────────────────────────
-export async function getDashboard() {
-  const res = await client.get<{ data: DashboardData }>('/dashboard');
+export async function getDashboard(instanceId?: string) {
+  const res = await client.get<{ data: DashboardData }>('/dashboard', {
+    params: instanceId ? { instanceId } : undefined,
+  });
   return res.data.data;
 }
 

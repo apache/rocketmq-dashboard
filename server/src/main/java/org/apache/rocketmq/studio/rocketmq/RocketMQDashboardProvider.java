@@ -30,11 +30,15 @@ import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
+import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.ops.dashboard.ClusterOverviewVO;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardDataVO;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardProvider;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardStatsVO;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
+import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Primary;
@@ -54,9 +58,12 @@ public class RocketMQDashboardProvider implements DashboardProvider {
     );
 
     private final DefaultMQAdminExt adminExt;
+    private final RuntimeAdminClientResolver runtimeAdminClientResolver;
 
-    public RocketMQDashboardProvider(@Nullable DefaultMQAdminExt adminExt) {
+    public RocketMQDashboardProvider(@Nullable DefaultMQAdminExt adminExt,
+                                     RuntimeAdminClientResolver runtimeAdminClientResolver) {
         this.adminExt = adminExt;
+        this.runtimeAdminClientResolver = runtimeAdminClientResolver;
     }
 
     @Override
@@ -65,6 +72,17 @@ public class RocketMQDashboardProvider implements DashboardProvider {
             log.warn("DefaultMQAdminExt not available, returning empty dashboard");
             return emptyDashboard();
         }
+        return getDashboardData(adminExt, ClusterType.V5_PROXY_CLUSTER);
+    }
+
+    @Override
+    public DashboardDataVO getDashboardData(String instanceId) {
+        InstanceVO instance = runtimeAdminClientResolver.resolveInstance(instanceId);
+        return runtimeAdminClientResolver.execute(instance,
+                resolvedAdmin -> getDashboardData(resolvedAdmin, clusterTypeFor(instance)));
+    }
+
+    private DashboardDataVO getDashboardData(MQAdminExt adminExt, ClusterType clusterType) {
 
         int totalClusters = 0;
         int totalBrokers = 0;
@@ -198,7 +216,7 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                 clusters.add(ClusterOverviewVO.builder()
                         .id(clusterName)
                         .name(clusterName)
-                        .type(ClusterType.V5_PROXY_CLUSTER)
+                        .type(clusterType)
                         .status(ClusterStatus.healthy)
                         .brokers(clusterBrokers)
                         .proxies(0)
@@ -236,6 +254,11 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                 .stats(stats)
                 .clusters(clusters)
                 .build();
+    }
+
+    private ClusterType clusterTypeFor(InstanceVO instance) {
+        return instance.getType() == InstanceType.DIRECT
+                ? ClusterType.V4_DIRECT : ClusterType.V5_PROXY_CLUSTER;
     }
 
     private DashboardDataVO emptyDashboard() {

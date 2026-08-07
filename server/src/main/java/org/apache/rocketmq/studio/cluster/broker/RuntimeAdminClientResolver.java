@@ -20,12 +20,16 @@ public class RuntimeAdminClientResolver {
     private final InstanceRepository instanceRepository;
     private final MqAdminExtFactory adminFactory;
 
-    public String resolveEndpoint(String instanceId) {
+    public InstanceVO resolveInstance(String instanceId) {
         if (!StringUtils.hasText(instanceId)) {
             throw new BusinessException(400, "instanceId is required");
         }
-        InstanceVO instance = instanceRepository.findById(instanceId)
+        return instanceRepository.findById(instanceId)
                 .orElseThrow(() -> new BusinessException(404, "Instance not found: " + instanceId));
+    }
+
+    public String resolveEndpoint(String instanceId) {
+        InstanceVO instance = resolveInstance(instanceId);
         if (!StringUtils.hasText(instance.getEndpoint())) {
             throw new BusinessException(400, "Instance has no endpoint: " + instanceId);
         }
@@ -33,6 +37,13 @@ public class RuntimeAdminClientResolver {
     }
 
     public <T> T execute(String instanceId, MqAdminExtFactory.AdminAction<T> action) {
-        return adminFactory.execute(resolveEndpoint(instanceId), null, action);
+        return execute(resolveInstance(instanceId), action);
+    }
+
+    public <T> T execute(InstanceVO instance, MqAdminExtFactory.AdminAction<T> action) {
+        if (instance == null || !StringUtils.hasText(instance.getEndpoint())) {
+            throw new BusinessException(400, "Instance endpoint is required");
+        }
+        return adminFactory.execute(instance.getEndpoint().trim(), null, action);
     }
 }

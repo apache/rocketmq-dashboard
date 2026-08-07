@@ -10,12 +10,12 @@ function copyClusterOverview(cluster: DashboardData['clusters'][number]) {
   };
 }
 
-export async function getDashboard(): Promise<DashboardData> {
+export async function getDashboard(instanceId?: string): Promise<DashboardData> {
   if (isMockMode()) {
     return {
       stats: { ...dashboardStats },
       clusters: (clusterOverview as DashboardData['clusters']).map(copyClusterOverview),
     };
   }
-  return metricsApi.getDashboard();
+  return metricsApi.getDashboard(instanceId);
 }

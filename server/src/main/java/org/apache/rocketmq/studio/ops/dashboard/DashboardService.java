@@ -20,6 +20,7 @@ package org.apache.rocketmq.studio.ops.dashboard;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 @Slf4j
 @Service
@@ -31,5 +32,13 @@ public class DashboardService {
     public DashboardDataVO getDashboard() {
         log.debug("Fetching dashboard data");
         return dashboardProvider.getDashboardData();
+    }
+
+    public DashboardDataVO getDashboard(String instanceId) {
+        if (!StringUtils.hasText(instanceId)) {
+            return getDashboard();
+        }
+        log.debug("Fetching dashboard data for instance={}", instanceId);
+        return dashboardProvider.getDashboardData(instanceId.trim());
     }
 }

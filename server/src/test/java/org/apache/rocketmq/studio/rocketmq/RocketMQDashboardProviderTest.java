@@ -25,12 +25,20 @@ import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.KVTable;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
+import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
+import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
+import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardDataVO;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class RocketMQDashboardProviderTest {
@@ -42,7 +50,7 @@ class RocketMQDashboardProviderTest {
         when(adminExt.fetchAllTopicList()).thenReturn(topicList());
         when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
 
-        RocketMQDashboardProvider provider = new RocketMQDashboardProvider(adminExt);
+        RocketMQDashboardProvider provider = provider(adminExt);
 
         DashboardDataVO dashboard = provider.getDashboardData();
 
@@ -59,7 +67,7 @@ class RocketMQDashboardProviderTest {
         when(adminExt.examineBrokerClusterInfo()).thenReturn(bare);
         when(adminExt.fetchAllTopicList()).thenReturn(topicList());
 
-        RocketMQDashboardProvider provider = new RocketMQDashboardProvider(adminExt);
+        RocketMQDashboardProvider provider = provider(adminExt);
 
         DashboardDataVO dashboard = provider.getDashboardData();
 
@@ -81,7 +89,7 @@ class RocketMQDashboardProviderTest {
         when(adminExt.examineBrokerClusterInfo()).thenReturn(info);
         when(adminExt.fetchAllTopicList()).thenReturn(topicList());
 
-        RocketMQDashboardProvider provider = new RocketMQDashboardProvider(adminExt);
+        RocketMQDashboardProvider provider = provider(adminExt);
 
         DashboardDataVO dashboard = provider.getDashboardData();
 
@@ -102,7 +110,7 @@ class RocketMQDashboardProviderTest {
         when(adminExt.examineBrokerClusterInfo()).thenReturn(info);
         when(adminExt.fetchAllTopicList()).thenReturn(topicList());
 
-        RocketMQDashboardProvider provider = new RocketMQDashboardProvider(adminExt);
+        RocketMQDashboardProvider provider = provider(adminExt);
 
         DashboardDataVO dashboard = provider.getDashboardData();
 
@@ -111,6 +119,36 @@ class RocketMQDashboardProviderTest {
         assertThat(dashboard.getClusters().get(0).getBrokers()).isZero();
         assertThat(dashboard.getStats().getTotalClusters()).isEqualTo(1);
         assertThat(dashboard.getStats().getTotalBrokers()).isZero();
+    }
+
+    @Test
+    void dashboardShouldUseSelectedDirectInstanceAndReportDirectType() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RuntimeAdminClientResolver resolver = mock(RuntimeAdminClientResolver.class);
+        InstanceVO instance = InstanceVO.builder()
+                .type(InstanceType.DIRECT)
+                .endpoint("namesrv-direct:9876")
+                .build();
+        instance.setId("instance-direct");
+        when(resolver.resolveInstance("instance-direct")).thenReturn(instance);
+        when(resolver.execute(eq(instance), any())).thenAnswer(invocation -> {
+            MqAdminExtFactory.AdminAction<DashboardDataVO> action = invocation.getArgument(1);
+            return action.apply(adminExt);
+        });
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        when(adminExt.fetchAllTopicList()).thenReturn(topicList());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
+
+        DashboardDataVO dashboard = new RocketMQDashboardProvider(null, resolver)
+                .getDashboardData("instance-direct");
+
+        assertThat(dashboard.getClusters()).hasSize(1);
+        assertThat(dashboard.getClusters().get(0).getType()).isEqualTo(ClusterType.V4_DIRECT);
+        verify(resolver).execute(eq(instance), any());
+    }
+
+    private RocketMQDashboardProvider provider(DefaultMQAdminExt adminExt) {
+        return new RocketMQDashboardProvider(adminExt, mock(RuntimeAdminClientResolver.class));
     }
 
     private ClusterInfo clusterInfo() {

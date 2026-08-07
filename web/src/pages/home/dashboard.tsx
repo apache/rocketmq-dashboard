@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Alert, Button, Card, Col, Row, Skeleton, Statistic, Table, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Col, Row, Select, Skeleton, Space, Statistic, Table, Tag, Typography } from 'antd';
 import { ClusterOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { ListDashes, ArrowDown } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
@@ -10,6 +10,8 @@ import MetricsExplorer from '../../components/MetricsExplorer';
 import { CLUSTER_TYPE_MAP } from '../../constants/theme';
 import { getDashboard } from '../../services/dashboardService';
 import type { DashboardData } from '../../api/metrics';
+import { listInstances } from '../../services/instanceService';
+import type { Instance } from '../../api/instance';
 import { useLang } from '../../i18n/LangContext';
 
 const { Text } = Typography;
@@ -18,6 +20,8 @@ const DashboardPage = () => {
   const navigate = useNavigate();
   const { t } = useLang();
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
+  const [instances, setInstances] = useState<Instance[]>([]);
+  const [selectedInstanceId, setSelectedInstanceId] = useState<string>();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
 
@@ -25,22 +29,59 @@ const DashboardPage = () => {
     setLoading(true);
     setLoadError(false);
     try {
-      setDashboard(await getDashboard());
+      setDashboard(await getDashboard(selectedInstanceId));
     } catch {
       setLoadError(true);
     } finally {
       setLoading(false);
     }
+  }, [selectedInstanceId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void listInstances()
+      .then((nextInstances) => {
+        if (!cancelled) setInstances(nextInstances);
+      })
+      .catch(() => {
+        if (!cancelled) setInstances([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
     void Promise.resolve().then(loadDashboard);
   }, [loadDashboard]);
 
+  const dashboardHeader = (
+    <PageHeader
+      title={t('dashboard.title')}
+      subtitle={t('dashboard.subtitle')}
+      extra={
+        <Space>
+          <Select
+            aria-label="Dashboard instance"
+            allowClear
+            placeholder="All configured instances"
+            value={selectedInstanceId}
+            onChange={setSelectedInstanceId}
+            options={instances.map((instance) => ({ value: instance.id, label: instance.name }))}
+            style={{ width: 220 }}
+          />
+          <Button onClick={() => void loadDashboard()} loading={loading}>
+            Refresh
+          </Button>
+        </Space>
+      }
+    />
+  );
+
   if (loading && !dashboard) {
     return (
       <div style={{ padding: 24 }}>
-        <PageHeader title={t('dashboard.title')} subtitle={t('dashboard.subtitle')} />
+        {dashboardHeader}
         <Skeleton active paragraph={{ rows: 8 }} />
       </div>
     );
@@ -49,7 +90,7 @@ const DashboardPage = () => {
   if (loadError || !dashboard) {
     return (
       <div style={{ padding: 24 }}>
-        <PageHeader title={t('dashboard.title')} subtitle={t('dashboard.subtitle')} />
+        {dashboardHeader}
         <Alert
           type="error"
           showIcon
@@ -203,7 +244,7 @@ const DashboardPage = () => {
 
   return (
     <div style={{ padding: 24 }}>
-      <PageHeader title={t('dashboard.title')} subtitle={t('dashboard.subtitle')} />
+      {dashboardHeader}
 
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         {statCards.map((card) => (
