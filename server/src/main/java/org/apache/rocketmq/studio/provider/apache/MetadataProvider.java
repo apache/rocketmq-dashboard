@@ -28,8 +28,8 @@ import java.util.List;
 public interface MetadataProvider {
     List<TopicVO> listTopics(String clusterId, String type, String search);
     List<ConsumerGroupVO> listConsumerGroups(String clusterId, String search);
-    List<BrokerRouteVO> getTopicRoutes(String name);
-    List<TopicConsumerVO> getTopicConsumers(String name);
+    List<BrokerRouteVO> getTopicRoutes(String instanceId, String name);
+    List<TopicConsumerVO> getTopicConsumers(String instanceId, String name);
     List<QueueProgressVO> getGroupProgress(String name);
     List<SubscriptionEntryVO> getGroupSubscriptions(String name);
 }

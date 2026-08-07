@@ -52,11 +52,15 @@ describe('topic metadata API', () => {
 
   it('encodes topic names used in path segments', async () => {
     const topicName = '%DLQ%cg-order';
-    mock.onGet('/topics/%25DLQ%25cg-order/routes').reply(200, { code: 200, data: [] });
-    mock.onGet('/topics/%25DLQ%25cg-order/consumers').reply(200, { code: 200, data: [] });
+    mock
+      .onGet('/topics/%25DLQ%25cg-order/routes', { params: { instanceId: 'instance-a' } })
+      .reply(200, { code: 200, data: [] });
+    mock
+      .onGet('/topics/%25DLQ%25cg-order/consumers', { params: { instanceId: 'instance-a' } })
+      .reply(200, { code: 200, data: [] });
 
-    await expect(getTopicRoutes(topicName)).resolves.toEqual([]);
-    await expect(getTopicConsumers(topicName)).resolves.toEqual([]);
+    await expect(getTopicRoutes(topicName, 'instance-a')).resolves.toEqual([]);
+    await expect(getTopicConsumers(topicName, 'instance-a')).resolves.toEqual([]);
   });
 
   it('persists topic creation, deletion, and sending through API endpoints', async () => {

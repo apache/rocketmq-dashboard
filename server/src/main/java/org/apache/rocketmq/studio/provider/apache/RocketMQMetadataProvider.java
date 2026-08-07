@@ -28,6 +28,8 @@ import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.route.QueueData;
 import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
+import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
@@ -83,6 +85,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     private final RocketMQProperties properties;
     private final RmqTopicMapper topicMapper;
     private final RmqGroupMapper groupMapper;
+    private final RuntimeAdminClientResolver runtimeAdminClientResolver;
 
     /** Whether a default NameServer is configured and live queries are therefore possible. */
     private boolean hasAdmin() {
@@ -192,125 +195,133 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     }
 
     @Override
-    public List<BrokerRouteVO> getTopicRoutes(String name) {
+    public List<BrokerRouteVO> getTopicRoutes(String instanceId, String name) {
+        if (StringUtils.hasText(instanceId)) {
+            return runtimeAdminClientResolver.execute(instanceId, admin -> getTopicRoutes(admin, name));
+        }
         if (!hasAdmin()) {
             return Collections.emptyList();
         }
+        return adminExecute(admin -> getTopicRoutes(admin, name));
+    }
 
-        return adminExecute(admin -> {
-            try {
-                TopicRouteData routeData = admin.examineTopicRouteInfo(name);
-                if (routeData == null) {
-                    return Collections.emptyList();
-                }
-
-                Map<String, BrokerData> brokerDataMap = new HashMap<>();
-                if (routeData.getBrokerDatas() != null) {
-                    for (BrokerData bd : routeData.getBrokerDatas()) {
-                        brokerDataMap.put(bd.getBrokerName(), bd);
-                    }
-                }
-
-                List<BrokerRouteVO> routes = new ArrayList<>();
-                if (routeData.getQueueDatas() != null) {
-                    for (QueueData qd : routeData.getQueueDatas()) {
-                        BrokerData bd = brokerDataMap.get(qd.getBrokerName());
-                        String brokerAddr = "";
-                        if (bd != null && bd.getBrokerAddrs() != null && !bd.getBrokerAddrs().isEmpty()) {
-                            brokerAddr = bd.getBrokerAddrs().get(MixAll.MASTER_ID);
-                            if (brokerAddr == null) {
-                                brokerAddr = bd.getBrokerAddrs().values().iterator().next();
-                            }
-                        }
-
-                        routes.add(BrokerRouteVO.builder()
-                                .brokerName(qd.getBrokerName())
-                                .brokerAddr(brokerAddr)
-                                .writeQueues(qd.getWriteQueueNums())
-                                .readQueues(qd.getReadQueueNums())
-                                .perm(mapPerm(qd.getPerm()))
-                                .build());
-                    }
-                }
-                return routes;
-            } catch (Exception e) {
-                log.warn("Failed to get routes for topic {}: {}", name, e.getMessage());
+    private List<BrokerRouteVO> getTopicRoutes(MQAdminExt admin, String name) {
+        try {
+            TopicRouteData routeData = admin.examineTopicRouteInfo(name);
+            if (routeData == null) {
                 return Collections.emptyList();
             }
-        });
+
+            Map<String, BrokerData> brokerDataMap = new HashMap<>();
+            if (routeData.getBrokerDatas() != null) {
+                for (BrokerData bd : routeData.getBrokerDatas()) {
+                    brokerDataMap.put(bd.getBrokerName(), bd);
+                }
+            }
+
+            List<BrokerRouteVO> routes = new ArrayList<>();
+            if (routeData.getQueueDatas() != null) {
+                for (QueueData qd : routeData.getQueueDatas()) {
+                    BrokerData bd = brokerDataMap.get(qd.getBrokerName());
+                    String brokerAddr = "";
+                    if (bd != null && bd.getBrokerAddrs() != null && !bd.getBrokerAddrs().isEmpty()) {
+                        brokerAddr = bd.getBrokerAddrs().get(MixAll.MASTER_ID);
+                        if (brokerAddr == null) {
+                            brokerAddr = bd.getBrokerAddrs().values().iterator().next();
+                        }
+                    }
+
+                    routes.add(BrokerRouteVO.builder()
+                            .brokerName(qd.getBrokerName())
+                            .brokerAddr(brokerAddr)
+                            .writeQueues(qd.getWriteQueueNums())
+                            .readQueues(qd.getReadQueueNums())
+                            .perm(mapPerm(qd.getPerm()))
+                            .build());
+                }
+            }
+            return routes;
+        } catch (Exception e) {
+            log.warn("Failed to get routes for topic {}: {}", name, e.getMessage());
+            return Collections.emptyList();
+        }
     }
 
     @Override
-    public List<TopicConsumerVO> getTopicConsumers(String name) {
+    public List<TopicConsumerVO> getTopicConsumers(String instanceId, String name) {
+        if (StringUtils.hasText(instanceId)) {
+            return runtimeAdminClientResolver.execute(instanceId, admin -> getTopicConsumers(admin, name));
+        }
         if (!hasAdmin()) {
             return Collections.emptyList();
         }
+        return adminExecute(admin -> getTopicConsumers(admin, name));
+    }
 
-        return adminExecute(admin -> {
-            try {
-                // Ask the broker who consumes this topic instead of scanning every subscription
-                // group, which floods the result with system groups.
-                GroupList groupList = admin.queryTopicConsumeByWho(name);
-                Set<String> subscribingGroups = new HashSet<>();
-                if (groupList != null && groupList.getGroupList() != null) {
-                    for (String group : groupList.getGroupList()) {
-                        if (!isSystemConsumerGroup(group)) {
-                            subscribingGroups.add(group);
-                        }
+    private List<TopicConsumerVO> getTopicConsumers(MQAdminExt admin, String name) {
+        try {
+            // Ask the broker who consumes this topic instead of scanning every subscription
+            // group, which floods the result with system groups.
+            GroupList groupList = admin.queryTopicConsumeByWho(name);
+            Set<String> subscribingGroups = new HashSet<>();
+            if (groupList != null && groupList.getGroupList() != null) {
+                for (String group : groupList.getGroupList()) {
+                    if (!isSystemConsumerGroup(group)) {
+                        subscribingGroups.add(group);
                     }
                 }
-
-                List<TopicConsumerVO> consumers = new ArrayList<>();
-                for (String group : subscribingGroups) {
-                    try {
-                        ConsumeStats stats = admin.examineConsumeStats(group, name);
-                        long diffTotal = 0;
-                        double consumeTps = 0;
-                        if (stats != null && stats.getOffsetTable() != null) {
-                            for (Map.Entry<MessageQueue, OffsetWrapper> entry : stats.getOffsetTable().entrySet()) {
-                                OffsetWrapper ow = entry.getValue();
-                                diffTotal += Math.max(0, ow.getBrokerOffset() - ow.getConsumerOffset());
-                            }
-                            consumeTps = stats.getConsumeTps();
-                        }
-
-                        ConsumeType consumeType = ConsumeType.CLUSTERING;
-                        String messageModel = "CLUSTERING";
-                        try {
-                            ConsumerConnection conn = admin.examineConsumerConnectionInfo(group);
-                            if (conn != null && conn.getMessageModel() != null) {
-                                messageModel = conn.getMessageModel().name();
-                                consumeType = parseConsumeType(messageModel);
-                            }
-                        } catch (Exception ignored) {
-                            // group may be offline
-                        }
-
-                        consumers.add(TopicConsumerVO.builder()
-                                .group(group)
-                                .consumeType(consumeType)
-                                .messageModel(messageModel)
-                                .consumeTps(consumeTps)
-                                .diffTotal(diffTotal)
-                                .build());
-                    } catch (Exception ignored) {
-                        // stats unavailable for this group, still list it below without numbers
-                        consumers.add(TopicConsumerVO.builder()
-                                .group(group)
-                                .consumeType(ConsumeType.CLUSTERING)
-                                .messageModel("CLUSTERING")
-                                .consumeTps(0)
-                                .diffTotal(0)
-                                .build());
-                    }
-                }
-                consumers.sort((a, b) -> a.getGroup().compareToIgnoreCase(b.getGroup()));
-                return consumers;
-            } catch (Exception e) {
-                log.warn("Failed to get consumers for topic {}: {}", name, e.getMessage());
-                return Collections.emptyList();
             }
-        });
+
+            List<TopicConsumerVO> consumers = new ArrayList<>();
+            for (String group : subscribingGroups) {
+                try {
+                    ConsumeStats stats = admin.examineConsumeStats(group, name);
+                    long diffTotal = 0;
+                    double consumeTps = 0;
+                    if (stats != null && stats.getOffsetTable() != null) {
+                        for (Map.Entry<MessageQueue, OffsetWrapper> entry : stats.getOffsetTable().entrySet()) {
+                            OffsetWrapper ow = entry.getValue();
+                            diffTotal += Math.max(0, ow.getBrokerOffset() - ow.getConsumerOffset());
+                        }
+                        consumeTps = stats.getConsumeTps();
+                    }
+
+                    ConsumeType consumeType = ConsumeType.CLUSTERING;
+                    String messageModel = "CLUSTERING";
+                    try {
+                        ConsumerConnection conn = admin.examineConsumerConnectionInfo(group);
+                        if (conn != null && conn.getMessageModel() != null) {
+                            messageModel = conn.getMessageModel().name();
+                            consumeType = parseConsumeType(messageModel);
+                        }
+                    } catch (Exception ignored) {
+                        // group may be offline
+                    }
+
+                    consumers.add(TopicConsumerVO.builder()
+                            .group(group)
+                            .consumeType(consumeType)
+                            .messageModel(messageModel)
+                            .consumeTps(consumeTps)
+                            .diffTotal(diffTotal)
+                            .build());
+                } catch (Exception ignored) {
+                    // stats unavailable for this group, still list it below without numbers
+                    consumers.add(TopicConsumerVO.builder()
+                            .group(group)
+                            .consumeType(ConsumeType.CLUSTERING)
+                            .messageModel("CLUSTERING")
+                            .consumeTps(0)
+                            .diffTotal(0)
+                            .build());
+                }
+            }
+            consumers.sort((a, b) -> a.getGroup().compareToIgnoreCase(b.getGroup()));
+            return consumers;
+        } catch (Exception e) {
+            log.warn("Failed to get consumers for topic {}: {}", name, e.getMessage());
+            return Collections.emptyList();
+        }
     }
 
     private boolean isSystemConsumerGroup(String group) {

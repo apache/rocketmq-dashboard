@@ -158,6 +158,20 @@ class MetadataServiceTest {
     }
 
     @Test
+    void topicRuntimeDiagnosticsShouldDelegateWithSelectedInstance() {
+        BrokerRouteVO route = BrokerRouteVO.builder().brokerName("broker-a").build();
+        TopicConsumerVO consumer = TopicConsumerVO.builder().group("cg-orders").build();
+        when(metadataProvider.getTopicRoutes("instance-a", "orders")).thenReturn(List.of(route));
+        when(apacheProvider.getTopicConsumers("instance-a", "orders")).thenReturn(List.of(consumer));
+
+        assertThat(metadataService.getTopicRoutes("instance-a", "orders")).containsExactly(route);
+        assertThat(metadataService.getTopicConsumers("instance-a", "orders")).containsExactly(consumer);
+
+        verify(metadataProvider).getTopicRoutes("instance-a", "orders");
+        verify(apacheProvider).getTopicConsumers("instance-a", "orders");
+    }
+
+    @Test
     void sendMessageShouldReturnResult() {
         SendMessageDTO request = SendMessageDTO.builder()
                 .topic("test-topic")
