@@ -27,6 +27,7 @@ import org.apache.rocketmq.remoting.protocol.body.TopicList;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
+import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.instance.InstanceVO;
@@ -39,6 +40,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -57,6 +59,8 @@ class RocketMQDashboardProviderTest {
 
         assertThat(dashboard.getClusters()).hasSize(1);
         assertThat(dashboard.getClusters().get(0).getVersion()).isEqualTo("V5_3_3");
+        assertThat(dashboard.getClusters().get(0).getType()).isEqualTo(ClusterType.V4_DIRECT);
+        verify(adminExt, times(1)).fetchBrokerRuntimeStats("10.0.0.11:10911");
     }
 
     @Test
@@ -145,6 +149,57 @@ class RocketMQDashboardProviderTest {
         verify(resolver).execute(eq(instance), any());
     }
 
+    @Test
+    void dashboardShouldMarkClusterWarningWhenBrokerRuntimeStatsFail() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        when(adminExt.fetchAllTopicList()).thenReturn(topicList());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911"))
+                .thenThrow(new RuntimeException("broker unavailable"));
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getClusters()).singleElement()
+                .extracting(cluster -> cluster.getStatus())
+                .isEqualTo(ClusterStatus.warning);
+    }
+
+    @Test
+    void dashboardShouldKeepPerClusterTpsAboveIntegerRange() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        when(adminExt.fetchAllTopicList()).thenReturn(topicList());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911"))
+                .thenReturn(runtimeStats("3000000000.0", "4000000000.0"));
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getClusters()).singleElement().satisfies(cluster -> {
+            assertThat(cluster.getTpsIn()).isEqualTo(3_000_000_000L);
+            assertThat(cluster.getTpsOut()).isEqualTo(4_000_000_000L);
+        });
+    }
+
+    @Test
+    void dashboardShouldTolerateMissingTopicListAndClusterMembership() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        ClusterInfo info = new ClusterInfo();
+        info.setBrokerAddrTable(new HashMap<>());
+        HashMap<String, Set<String>> clusterAddrTable = new HashMap<>();
+        clusterAddrTable.put("cluster-without-members", null);
+        info.setClusterAddrTable(clusterAddrTable);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(info);
+        when(adminExt.fetchAllTopicList()).thenReturn(null);
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getStats().getTotalTopics()).isZero();
+        assertThat(dashboard.getClusters()).singleElement().satisfies(cluster -> {
+            assertThat(cluster.getName()).isEqualTo("cluster-without-members");
+            assertThat(cluster.getBrokers()).isZero();
+        });
+    }
+
     private RocketMQDashboardProvider newProvider(DefaultMQAdminExt adminExt) {
         return newProvider(adminExt, mock(RuntimeAdminClientResolver.class));
     }
@@ -157,7 +212,6 @@ class RocketMQDashboardProviderTest {
         properties.setNamesrvAddr("10.0.0.1:9876");
         return new RocketMQDashboardProvider(adminFactory, properties, resolver);
     }
-
     private ClusterInfo clusterInfo() {
         ClusterInfo info = new ClusterInfo();
         HashMap<Long, String> addrs = new HashMap<>();
@@ -180,10 +234,14 @@ class RocketMQDashboardProviderTest {
     }
 
     private KVTable runtimeStats() {
+        return runtimeStats("2.0", "5.0");
+    }
+
+    private KVTable runtimeStats(String putTps, String getTransferredTps) {
         HashMap<String, String> table = new HashMap<>();
         table.put("brokerVersionDesc", "  V5_3_3  ");
-        table.put("putTps", "1.0 2.0 3.0");
-        table.put("getTransferredTps", "4.0 5.0 6.0");
+        table.put("putTps", "1.0 " + putTps + " 3.0");
+        table.put("getTransferredTps", "4.0 " + getTransferredTps + " 6.0");
         table.put("msgPutTotalTodayMorning", "42");
 
         KVTable kvTable = new KVTable();

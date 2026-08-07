@@ -69,8 +69,10 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
   return fallback;
 };
 
-const formatDateTime = (iso: string): string => {
+const formatDateTime = (iso?: string | null): string => {
+  if (!iso) return '-';
   const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '-';
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 };
@@ -89,7 +91,7 @@ const exportDLQGroups = (groups: DLQGroup[], filename: string) => {
       String(group.messageCount),
       String(group.retryCount),
       group.status,
-      group.lastEnqueueTime,
+      group.lastEnqueueTime || '',
     ]),
   ];
   const csv = rows.map((row) => row.map(escapeCSVValue).join(',')).join('\n');
@@ -259,15 +261,22 @@ const DLQPage = () => {
       width: 100,
       align: 'right',
       sorter: (a, b) => a.messageCount - b.messageCount,
-      render: (count: number) => (
+      render: (count: number, record: DLQGroup) => (
         <Text
           style={{
             fontFamily: 'monospace',
             fontWeight: 600,
-            color: count > 50 ? '#ff4d4f' : count > 0 ? '#fa8c16' : undefined,
+            color:
+              record.statsAvailable === false
+                ? undefined
+                : count > 50
+                  ? '#ff4d4f'
+                  : count > 0
+                    ? '#fa8c16'
+                    : undefined,
           }}
         >
-          {count.toLocaleString()}
+          {record.statsAvailable === false ? '不可用' : count.toLocaleString()}
         </Text>
       ),
     },
@@ -276,8 +285,8 @@ const DLQPage = () => {
       dataIndex: 'lastEnqueueTime',
       key: 'lastEnqueueTime',
       width: 180,
-      sorter: (a, b) => a.lastEnqueueTime.localeCompare(b.lastEnqueueTime),
-      render: (time: string) => (
+      sorter: (a, b) => (a.lastEnqueueTime || '').localeCompare(b.lastEnqueueTime || ''),
+      render: (time?: string | null) => (
         <Text type="secondary" style={{ fontSize: 13 }}>
           {formatDateTime(time)}
         </Text>
@@ -302,7 +311,7 @@ const DLQPage = () => {
             icon={<ArrowsCounterClockwise size={14} />}
             style={{ borderColor: '#fa8c16', color: '#fa8c16' }}
             onClick={() => openRetryModal(record)}
-            disabled={record.messageCount === 0}
+            disabled={record.statsAvailable === false || record.messageCount === 0}
           >
             重投消息
           </Button>
@@ -311,7 +320,7 @@ const DLQPage = () => {
             icon={<Download size={14} />}
             style={{ borderColor: '#52c41a', color: '#52c41a' }}
             onClick={() => handleExport(record)}
-            disabled={record.messageCount === 0}
+            disabled={record.statsAvailable === false || record.messageCount === 0}
           >
             导出
           </Button>
@@ -373,7 +382,9 @@ const DLQPage = () => {
             selectedRowKeys: selectedGroupNames,
             preserveSelectedRowKeys: true,
             onChange: (keys) => setSelectedGroupNames(keys.map(String)),
-            getCheckboxProps: (record) => ({ disabled: record.messageCount === 0 }),
+            getCheckboxProps: (record) => ({
+              disabled: record.statsAvailable === false || record.messageCount === 0,
+            }),
           }}
           pagination={{
             pageSize: 20,
@@ -511,7 +522,9 @@ const DLQPage = () => {
                   strong
                   style={{ color: detailGroup.messageCount > 0 ? '#fa8c16' : undefined }}
                 >
-                  {detailGroup.messageCount.toLocaleString()}
+                  {detailGroup.statsAvailable === false
+                    ? '不可用'
+                    : detailGroup.messageCount.toLocaleString()}
                 </Text>
               </div>
               <div>
@@ -524,7 +537,9 @@ const DLQPage = () => {
                 <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>
                   状态
                 </Text>
-                <Text>{detailGroup.status}</Text>
+                <Text>
+                  {detailGroup.statsAvailable === false ? '统计不可用' : detailGroup.status}
+                </Text>
               </div>
             </Flex>
             <div style={{ marginTop: 16 }}>

@@ -15,12 +15,12 @@
  * limitations under the License.
  */
 
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
-import type { ConsumerGroup } from '../../../api/metadata';
+import type { ConsumerGroup, QueueProgress, SubscriptionEntry } from '../../../api/metadata';
 import * as consumerService from '../../../services/consumerService';
 import GroupManagement from '../GroupManagement';
 
@@ -84,11 +84,24 @@ const renderWithProviders = (ui: React.ReactElement) => {
   );
 };
 
+const createDeferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+};
+
 describe('GroupManagement Page', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.mocked(consumerService.listConsumerGroups).mockResolvedValue(groups);
     vi.mocked(consumerService.getConsumerProgress).mockResolvedValue([]);
     vi.mocked(consumerService.getConsumerSubscriptions).mockResolvedValue([]);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('should render the page title', () => {
@@ -101,9 +114,14 @@ describe('GroupManagement Page', () => {
     expect(screen.getByPlaceholderText('搜索消费组')).toBeInTheDocument();
   });
 
-  it('should render create group button', () => {
+  it('should not render unsupported mutation actions in the global view', async () => {
     renderWithProviders(<GroupManagement />);
-    expect(screen.getByText('创建消费组')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('order-consumer-group')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('创建消费组')).not.toBeInTheDocument();
+    expect(screen.queryByText('配置')).not.toBeInTheDocument();
+    expect(screen.queryByText('查看分布')).not.toBeInTheDocument();
   });
 
   it('should render reset button', () => {
@@ -126,6 +144,109 @@ describe('GroupManagement Page', () => {
     });
     const detailButtons = screen.getAllByText('详情');
     expect(detailButtons.length).toBeGreaterThan(0);
+  });
+
+  it('keeps the latest group detail when an earlier request resolves last', async () => {
+    const firstSubscriptions = createDeferred<SubscriptionEntry[]>();
+    const firstProgress = createDeferred<QueueProgress[]>();
+    const secondSubscriptions = createDeferred<SubscriptionEntry[]>();
+    const secondProgress = createDeferred<QueueProgress[]>();
+    vi.mocked(consumerService.getConsumerSubscriptions).mockImplementation((groupName) =>
+      groupName === 'order-consumer-group'
+        ? firstSubscriptions.promise
+        : secondSubscriptions.promise,
+    );
+    vi.mocked(consumerService.getConsumerProgress).mockImplementation((groupName) =>
+      groupName === 'order-consumer-group' ? firstProgress.promise : secondProgress.promise,
+    );
+
+    const user = userEvent.setup();
+    renderWithProviders(<GroupManagement />);
+    await screen.findByText('order-consumer-group');
+
+    const detailButtons = screen.getAllByText('详情');
+    await user.click(detailButtons[0]);
+    await user.click(detailButtons[1]);
+
+    await act(async () => {
+      secondSubscriptions.resolve([
+        {
+          topic: 'SECOND_GROUP_TOPIC',
+          expression: '*',
+          type: 'TAG',
+          filterMode: 'TAG',
+          consistency: 'consistent',
+        },
+      ]);
+      secondProgress.resolve([]);
+    });
+    expect(await screen.findByText('SECOND_GROUP_TOPIC')).toBeInTheDocument();
+
+    await act(async () => {
+      firstSubscriptions.resolve([
+        {
+          topic: 'FIRST_GROUP_TOPIC',
+          expression: '*',
+          type: 'TAG',
+          filterMode: 'TAG',
+          consistency: 'consistent',
+        },
+      ]);
+      firstProgress.resolve([]);
+    });
+    expect(screen.getByText('SECOND_GROUP_TOPIC')).toBeInTheDocument();
+    expect(screen.queryByText('FIRST_GROUP_TOPIC')).not.toBeInTheDocument();
+  });
+
+  it('keeps the latest group list when an earlier refresh resolves last', async () => {
+    const initialGroups = createDeferred<ConsumerGroup[]>();
+    const refreshedGroups = createDeferred<ConsumerGroup[]>();
+    vi.mocked(consumerService.listConsumerGroups)
+      .mockReturnValueOnce(initialGroups.promise)
+      .mockReturnValueOnce(refreshedGroups.promise);
+    vi.useFakeTimers();
+    renderWithProviders(<GroupManagement />);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    fireEvent.click(screen.getByText('重置'));
+
+    await act(async () => {
+      refreshedGroups.resolve([makeGroup({ name: 'fresh-group' })]);
+      await Promise.resolve();
+    });
+    expect(screen.getByText('fresh-group')).toBeInTheDocument();
+
+    await act(async () => {
+      initialGroups.resolve([makeGroup({ name: 'stale-group' })]);
+      await Promise.resolve();
+    });
+    expect(screen.getByText('fresh-group')).toBeInTheDocument();
+    expect(screen.queryByText('stale-group')).not.toBeInTheDocument();
+  });
+
+  it('polls only while auto refresh is enabled', async () => {
+    vi.useFakeTimers();
+    renderWithProviders(<GroupManagement />);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(consumerService.listConsumerGroups).toHaveBeenCalledTimes(1);
+
+    const autoRefreshSwitch = screen.getByRole('switch');
+    fireEvent.click(autoRefreshSwitch);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(consumerService.listConsumerGroups).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(autoRefreshSwitch);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000);
+    });
+    expect(consumerService.listConsumerGroups).toHaveBeenCalledTimes(2);
   });
 
   it('should filter groups by search text', async () => {

@@ -24,6 +24,7 @@ import org.apache.rocketmq.studio.cluster.broker.ClusterProvider;
 import org.apache.rocketmq.studio.cluster.broker.ClusterVO;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.nameserver.NameServerVO;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.BrokerStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
@@ -85,7 +86,8 @@ public class RocketMQClusterProvider implements ClusterProvider {
             });
         } catch (Exception e) {
             log.warn("Failed to discover clusters via NameServer: {}", e.getMessage());
-            return Collections.emptyList();
+            throw new BusinessException(502,
+                    "Failed to discover clusters via NameServer: " + rootMessage(e));
         }
     }
 
@@ -131,7 +133,7 @@ public class RocketMQClusterProvider implements ClusterProvider {
                                      List<NameServerVO> nameServers) {
         ClusterVO cluster = ClusterVO.builder()
                 .name(clusterName)
-                .status(ClusterStatus.healthy)
+                .status(hasUnavailableRuntimeStats(brokers) ? ClusterStatus.warning : ClusterStatus.healthy)
                 .brokers(brokers != null ? brokers : Collections.emptyList())
                 .proxies(Collections.emptyList())
                 .nameServers(nameServers != null ? nameServers : Collections.emptyList())
@@ -171,18 +173,29 @@ public class RocketMQClusterProvider implements ClusterProvider {
                     .status(BrokerStatus.running);
 
             // Try to get runtime info for version and TPS
-            enrichBrokerWithRuntimeInfo(admin, builder, masterAddr);
+            builder.runtimeStatsAvailable(enrichBrokerWithRuntimeInfo(admin, builder, masterAddr));
 
             brokers.add(builder.build());
         }
         return brokers;
     }
 
-    private void enrichBrokerWithRuntimeInfo(MQAdminExt admin, BrokerVO.BrokerVOBuilder builder, String brokerAddr) {
+    private String rootMessage(Throwable error) {
+        Throwable current = error;
+        while (current.getCause() != null) {
+            current = current.getCause();
+        }
+        String message = current.getMessage();
+        return message == null || message.isBlank()
+                ? current.getClass().getSimpleName()
+                : message;
+    }
+
+    private boolean enrichBrokerWithRuntimeInfo(MQAdminExt admin, BrokerVO.BrokerVOBuilder builder, String brokerAddr) {
         try {
             KVTable runtimeInfo = admin.fetchBrokerRuntimeStats(brokerAddr);
             if (runtimeInfo == null || runtimeInfo.getTable() == null) {
-                return;
+                return false;
             }
 
             Map<String, String> table = runtimeInfo.getTable();
@@ -213,9 +226,15 @@ public class RocketMQClusterProvider implements ClusterProvider {
                     // keep default
                 }
             }
+            return true;
         } catch (Exception e) {
-            log.debug("Failed to get runtime info for broker at {}: {}", brokerAddr, e.getMessage());
+            log.warn("Failed to get runtime info for broker at {}: {}", brokerAddr, e.getMessage());
+            return false;
         }
+    }
+
+    private boolean hasUnavailableRuntimeStats(List<BrokerVO> brokers) {
+        return brokers != null && brokers.stream().anyMatch(broker -> !broker.isRuntimeStatsAvailable());
     }
 
     /**
