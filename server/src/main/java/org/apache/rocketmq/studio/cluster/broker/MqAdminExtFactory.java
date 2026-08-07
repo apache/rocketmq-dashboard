@@ -25,9 +25,11 @@ import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 /**
  * Central lifecycle owner for real {@link DefaultMQAdminExt} connections.
@@ -68,7 +70,11 @@ public class MqAdminExtFactory {
         if (closed) {
             throw new BusinessException(503, "Admin factory is shutting down");
         }
-        DefaultMQAdminExt admin = cache.computeIfAbsent(namesrvAddr.trim(),
+        String normalizedNamesrvAddr = normalizeNamesrvAddr(namesrvAddr);
+        if (normalizedNamesrvAddr.isEmpty()) {
+            throw new BusinessException(400, "NameServer address is required");
+        }
+        DefaultMQAdminExt admin = cache.computeIfAbsent(normalizedNamesrvAddr,
                 addr -> createAndStart(addr, rpcHook));
         try {
             return action.apply(admin);
@@ -122,6 +128,15 @@ public class MqAdminExtFactory {
     private String buildInstanceName(String namesrvAddr) {
         return "rmq-studio-" + Integer.toHexString(namesrvAddr.hashCode())
                 + "-" + instanceCounter.incrementAndGet();
+    }
+
+    static String normalizeNamesrvAddr(String namesrvAddr) {
+        return Arrays.stream(namesrvAddr.split("[;,]"))
+                .map(String::trim)
+                .filter(address -> !address.isEmpty())
+                .distinct()
+                .sorted()
+                .collect(Collectors.joining(";"));
     }
 
     private void safeShutdown(MQAdminExt admin) {
