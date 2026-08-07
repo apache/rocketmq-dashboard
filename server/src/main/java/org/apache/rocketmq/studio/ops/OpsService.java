@@ -21,10 +21,7 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 
 @Slf4j
 @Service
@@ -33,17 +30,14 @@ public class OpsService {
     private static final String OPS_SETTINGS_UNAVAILABLE =
             "Ops settings are not connected to the cluster admin configuration";
 
-    private final Set<String> namesrvAddrs = new LinkedHashSet<>(List.of("127.0.0.1:9876"));
-    private String currentNamesrv = "127.0.0.1:9876";
-    private boolean useVIPChannel = true;
-    private boolean useTLS;
-
     public synchronized OpsHomeVO getHomePage() {
         return OpsHomeVO.builder()
-                .namesvrAddrList(new ArrayList<>(namesrvAddrs))
-                .currentNamesrv(currentNamesrv)
-                .useVIPChannel(useVIPChannel)
-                .useTLS(useTLS)
+                .configurationAvailable(false)
+                .unavailableReason(OPS_SETTINGS_UNAVAILABLE)
+                .namesvrAddrList(List.of())
+                .currentNamesrv("")
+                .useVIPChannel(false)
+                .useTLS(false)
                 .build();
     }
 

@@ -16,7 +16,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { App, Button, Input, Popconfirm, Select, Space, Switch, Tooltip, Typography } from 'antd';
+import { Alert, App, Button, Input, Popconfirm, Select, Space, Switch, Tooltip, Typography } from 'antd';
 import { FloppyDisk, Plus, Trash } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
 import useAuthStore from '../../stores/authStore';
@@ -42,7 +42,9 @@ const OpsPage: React.FC = () => {
   const [newNamesrvAddr, setNewNamesrvAddr] = useState('');
   const [useVIPChannel, setUseVIPChannel] = useState(false);
   const [useTLS, setUseTLS] = useState(false);
-  const writeOperationEnabled = !token || admin === true;
+  const [configurationAvailable, setConfigurationAvailable] = useState(false);
+  const [unavailableReason, setUnavailableReason] = useState('');
+  const writeOperationEnabled = configurationAvailable && (!token || admin === true);
   const deleteNameServerDisabled =
     !selectedNamesrv || selectedNamesrv === currentNamesrv || namesrvAddrList.length <= 1;
 
@@ -58,6 +60,8 @@ const OpsPage: React.FC = () => {
           setUseTLS(data.useTLS);
           setSelectedNamesrv(data.currentNamesrv);
           setCurrentNamesrv(data.currentNamesrv);
+          setConfigurationAvailable(data.configurationAvailable);
+          setUnavailableReason(data.unavailableReason || '');
         }
       } catch {
         if (!cancelled) {
@@ -140,6 +144,15 @@ const OpsPage: React.FC = () => {
 
   return (
     <div style={{ padding: 24 }}>
+      {!configurationAvailable && (
+        <Alert
+          type="info"
+          showIcon
+          message="运行时配置不可用"
+          description={unavailableReason || '当前集群不支持读取或更新 Ops 配置。'}
+          style={{ marginBottom: 24 }}
+        />
+      )}
       {/* NameServer Address List */}
       <div style={{ marginBottom: 24 }}>
         <Typography.Title level={4}>{t('ops.nameServerAddressList')}</Typography.Title>

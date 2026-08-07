@@ -25,6 +25,8 @@ import java.util.List;
 @Data
 @Builder
 public class OpsHomeVO {
+    private boolean configurationAvailable;
+    private String unavailableReason;
     private List<String> namesvrAddrList;
     private boolean useVIPChannel;
     private boolean useTLS;
