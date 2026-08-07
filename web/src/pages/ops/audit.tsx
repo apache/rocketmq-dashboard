@@ -281,8 +281,13 @@ const AuditPage: React.FC = () => {
             total,
             showSizeChanger: true,
             onChange: (nextPage, nextPageSize) => {
-              setPage(nextPage);
-              setPageSize(nextPageSize);
+              if (nextPageSize !== pageSize) {
+                // A larger page size can make the current page exceed the new total page count.
+                setPage(1);
+                setPageSize(nextPageSize);
+              } else {
+                setPage(nextPage);
+              }
             },
           }}
         />
