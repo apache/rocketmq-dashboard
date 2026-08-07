@@ -100,11 +100,24 @@ public abstract class AbstractPrometheusCompatibleMetricsSource implements Metri
                     .headers(this::applyAuthentication)
                     .body(form)
                     .exchange((request, clientResponse) -> {
-                        JsonNode body = objectMapper.readTree(readResponseBody(clientResponse.getBody()));
+                        byte[] rawBody = readResponseBody(clientResponse.getBody());
+                        int upstreamStatus = responseStatus(clientResponse.getStatusCode());
                         if (clientResponse.getStatusCode().isError()) {
-                            throw responseBodyException(body, responseStatus(clientResponse.getStatusCode()));
+                            // Check the status before parsing so a non-JSON error body (e.g. a proxy
+                            // HTML/plain-text page) is not misreported as a connection failure.
+                            try {
+                                throw responseBodyException(objectMapper.readTree(rawBody), upstreamStatus);
+                            } catch (IOException nonJsonBody) {
+                                throw new PrometheusException(upstreamStatus,
+                                        backendLabel() + " query failed (HTTP " + upstreamStatus + ")");
+                            }
                         }
-                        return body;
+                        try {
+                            return objectMapper.readTree(rawBody);
+                        } catch (IOException malformedBody) {
+                            throw new PrometheusException(HttpStatus.BAD_GATEWAY.value(),
+                                    backendLabel() + " returned a non-JSON response");
+                        }
                     });
             return parseResponse(response);
         } catch (PrometheusException exception) {
