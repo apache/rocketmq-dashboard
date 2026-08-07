@@ -148,6 +148,17 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void getTopicConsumersSurfacesAdminFailure() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        when(admin.queryTopicConsumeByWho("TopicA")).thenThrow(new IllegalStateException("broker unavailable"));
+
+        assertThatThrownBy(() -> newLiveProvider(admin).getTopicConsumers(null, "TopicA"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Failed to get consumers for topic TopicA: broker unavailable")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
     void getGroupProgressSurfacesAdminFailure() throws Exception {
         DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
         when(admin.examineConsumeStats("group-a")).thenThrow(new IllegalStateException("broker unavailable"));

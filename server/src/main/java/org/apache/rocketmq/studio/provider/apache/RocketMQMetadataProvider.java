@@ -321,7 +321,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             return consumers;
         } catch (Exception e) {
             log.warn("Failed to get consumers for topic {}: {}", name, e.getMessage());
-            return Collections.emptyList();
+            throw new BusinessException(502, "Failed to get consumers for topic " + name + ": " + e.getMessage());
         }
     }
 
