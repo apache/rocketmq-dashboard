@@ -65,6 +65,20 @@ public class AliyunClientFactory {
     }
 
     /**
+     * Releases all clients created with a credential so the next call observes rotated secrets.
+     */
+    public void invalidateCredential(String credentialId) {
+        String prefix = credentialId + "#";
+        clients.entrySet().removeIf(entry -> {
+            if (!entry.getKey().startsWith(prefix)) {
+                return false;
+            }
+            entry.getValue().close();
+            return true;
+        });
+    }
+
+    /**
      * Executes an SDK call with a bounded wait and unified exception mapping.
      */
     public <T> T call(String credentialId, String region, Function<AsyncClient, CompletableFuture<T>> action) {
@@ -106,7 +120,7 @@ public class AliyunClientFactory {
         return "rocketmq." + region + ".aliyuncs.com";
     }
 
-    private AsyncClient createClient(String credentialId, String region) {
+    protected AsyncClient createClient(String credentialId, String region) {
         CloudCredentialVO credential = credentialRepository.findById(credentialId)
                 .orElseThrow(() -> new BusinessException(404, "Cloud credential not found: " + credentialId));
         StaticCredentialProvider credentialProvider = StaticCredentialProvider.create(

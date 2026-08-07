@@ -42,4 +42,6 @@ public class InstanceVO extends BaseEntity {
     private String regionId;
     private int topicCount;
     private int consumerGroupCount;
+    @Builder.Default
+    private boolean resourceCountsAvailable = true;
 }

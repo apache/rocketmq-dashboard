@@ -27,7 +27,7 @@ public interface AdminClient {
     ConsumerGroupVO getConsumerGroup(String instanceId, String name);
     TopicVO createTopic(TopicVO topic);
     TopicVO updateTopic(TopicVO topic);
-    void deleteTopic(String name);
+    void deleteTopic(String instanceId, String name);
     SendMessageVO sendMessage(SendMessageDTO request);
     ConsumerGroupVO createConsumerGroup(ConsumerGroupVO group);
     void deleteConsumerGroup(String instanceId, String name);

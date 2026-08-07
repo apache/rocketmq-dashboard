@@ -19,7 +19,11 @@ package org.apache.rocketmq.studio.cluster.metrics.grafana;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.Resource;
 
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
@@ -72,9 +76,50 @@ class GrafanaDashboardServiceTest {
     }
 
     @Test
+    void getDashboardJsonShouldDecodeBundledAssetAsUtf8() throws Exception {
+        try (InputStream input = getClass().getClassLoader()
+                .getResourceAsStream("grafana/rocketmq-broker.json")) {
+            assertTrue(input != null, "expected bundled dashboard resource");
+            String expected = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+
+            assertEquals(expected, service.getDashboardJson("rocketmq-broker"));
+        }
+    }
+
+    @Test
     void getDashboardJsonShouldThrowWhenUidUnknown() {
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> service.getDashboardJson("no-such-dashboard"));
         assertEquals(404, exception.getCode());
+    }
+
+    @Test
+    void listDashboardsShouldSkipEmptyAndNonObjectAssets() {
+        GrafanaDashboardService service = serviceWithResources(
+                resource("empty.json", ""),
+                resource("array.json", "[]"),
+                resource("valid.json", "{\"title\":\"Valid\",\"tags\":[\"rocketmq\"]}"));
+
+        List<GrafanaDashboardInfo> dashboards = service.listDashboards();
+
+        assertEquals(List.of(new GrafanaDashboardInfo("valid", "Valid", "", List.of("rocketmq"))), dashboards);
+    }
+
+    private static GrafanaDashboardService serviceWithResources(Resource... resources) {
+        return new GrafanaDashboardService(new ObjectMapper()) {
+            @Override
+            protected Resource[] resolveResources() {
+                return resources;
+            }
+        };
+    }
+
+    private static Resource resource(String filename, String content) {
+        return new ByteArrayResource(content.getBytes(StandardCharsets.UTF_8)) {
+            @Override
+            public String getFilename() {
+                return filename;
+            }
+        };
     }
 }

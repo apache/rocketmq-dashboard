@@ -18,7 +18,10 @@ package org.apache.rocketmq.studio.ops.alert;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.Resource;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -80,5 +83,53 @@ class AlertRuleAssetServiceTest {
         boolean hasBroker = rules.stream().anyMatch(r -> "broker".equals(r.team()));
         assertTrue(hasCritical, "expected at least one critical rule");
         assertTrue(hasBroker, "expected at least one broker rule");
+    }
+    @Test
+    void assetLoadingShouldSkipEmptyAndNonObjectYaml() {
+        AlertRuleAssetService service = serviceWithResources(
+                resource("empty.yaml", ""),
+                resource("array.yaml", "[]"),
+                resource("valid.yaml", "groups:\n  - name: broker\n    rules:\n      - alert: BrokerDown\n        expr: up == 0\n"));
+
+        assertEquals(List.of(new AlertRuleAssetInfo("valid", "broker", 1, List.of("warning"))),
+                service.listAssets());
+        assertEquals(List.of(new PrometheusAlertRule("broker", "BrokerDown", "up == 0", "5m",
+                "warning", "broker", "BrokerDown", "")), service.loadDefaultRules());
+    }
+
+    @Test
+    void assetLoadingShouldSkipRulesWithoutAlertOrExpression() {
+        AlertRuleAssetService service = serviceWithResources(resource("mixed.yaml", """
+                groups:
+                  - name: broker
+                    rules:
+                      - alert: MissingExpression
+                      - expr: up == 0
+                      - alert: BrokerDown
+                        expr: up == 0
+                """));
+
+        assertEquals(List.of(new AlertRuleAssetInfo("mixed", "broker", 1, List.of("warning"))),
+                service.listAssets());
+        assertEquals(List.of(new PrometheusAlertRule("broker", "BrokerDown", "up == 0", "5m",
+                "warning", "broker", "BrokerDown", "")), service.loadDefaultRules());
+    }
+
+    private static AlertRuleAssetService serviceWithResources(Resource... resources) {
+        return new AlertRuleAssetService() {
+            @Override
+            protected Resource[] resolveResources() {
+                return resources;
+            }
+        };
+    }
+
+    private static Resource resource(String filename, String content) {
+        return new ByteArrayResource(content.getBytes(StandardCharsets.UTF_8)) {
+            @Override
+            public String getFilename() {
+                return filename;
+            }
+        };
     }
 }

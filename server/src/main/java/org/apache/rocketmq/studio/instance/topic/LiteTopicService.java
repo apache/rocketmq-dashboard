@@ -28,7 +28,7 @@ public class LiteTopicService {
     private static final int NOT_IMPLEMENTED = 501;
 
     public List<LiteTopicItemVO> listLiteTopics(String pattern, String namespace) {
-        return List.of();
+        throw new BusinessException(NOT_IMPLEMENTED, PROVIDER_UNAVAILABLE_MESSAGE);
     }
 
     public LiteTopicSessionVO getSession(String sessionId) {

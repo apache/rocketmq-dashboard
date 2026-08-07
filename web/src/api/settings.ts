@@ -46,6 +46,7 @@ export interface DataSource {
   password?: string;
   bearerToken?: string;
   status: string;
+  instanceIds?: string[];
 }
 
 // ─── General Settings ───────────────────────────────────────────

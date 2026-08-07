@@ -20,8 +20,6 @@ package org.apache.rocketmq.studio.instance.topic;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -30,10 +28,12 @@ class LiteTopicServiceTest {
     private final LiteTopicService liteTopicService = new LiteTopicService();
 
     @Test
-    void listLiteTopicsShouldNotReturnSampleData() {
-        List<LiteTopicItemVO> result = liteTopicService.listLiteTopics("hat", " DEFAULT ");
-
-        assertThat(result).isEmpty();
+    void listLiteTopicsShouldReturnUnsupportedWhenProviderIsUnavailable() {
+        assertThatThrownBy(() -> liteTopicService.listLiteTopics("hat", " DEFAULT "))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> {
+                    assertThat(ex.getCode()).isEqualTo(501);
+                    assertThat(ex.getMessage()).isEqualTo("LiteTopic provider integration is not available");
+                });
     }
 
     @Test

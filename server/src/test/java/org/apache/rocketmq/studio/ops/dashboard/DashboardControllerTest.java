@@ -30,6 +30,7 @@ import java.util.List;
 
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -80,7 +81,7 @@ class DashboardControllerTest {
                 .clusters(List.of(cluster))
                 .build();
 
-        when(dashboardService.getDashboard()).thenReturn(data);
+        when(dashboardService.getDashboard(isNull())).thenReturn(data);
 
         mockMvc.perform(get("/api/dashboard"))
                 .andExpect(status().isOk())
@@ -97,7 +98,7 @@ class DashboardControllerTest {
                 .andExpect(jsonPath("$.data.clusters[0].status").value("healthy"))
                 .andExpect(jsonPath("$.data.clusters[0].version").value("5.1.0"));
 
-        verify(dashboardService).getDashboard();
+        verify(dashboardService).getDashboard(isNull());
     }
 
     @Test
@@ -107,12 +108,27 @@ class DashboardControllerTest {
                 .clusters(List.of())
                 .build();
 
-        when(dashboardService.getDashboard()).thenReturn(data);
+        when(dashboardService.getDashboard(isNull())).thenReturn(data);
 
         mockMvc.perform(get("/api/dashboard"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.stats.totalClusters").value(0))
                 .andExpect(jsonPath("$.data.clusters").isArray())
                 .andExpect(jsonPath("$.data.clusters").isEmpty());
+    }
+
+    @Test
+    void getDashboardShouldForwardSelectedInstance() throws Exception {
+        DashboardDataVO data = DashboardDataVO.builder()
+                .stats(DashboardStatsVO.builder().totalClusters(1).build())
+                .clusters(List.of())
+                .build();
+        when(dashboardService.getDashboard("instance-prod")).thenReturn(data);
+
+        mockMvc.perform(get("/api/dashboard").param("instanceId", "instance-prod"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.stats.totalClusters").value(1));
+
+        verify(dashboardService).getDashboard("instance-prod");
     }
 }

@@ -114,6 +114,46 @@ describe('LiteTopic Page', () => {
     expect(within(popProgressLabel.parentElement!).getByText('96%')).toBeInTheDocument();
   });
 
+  it('keeps the latest session detail when an earlier request resolves last', async () => {
+    const firstSession = createDeferred<{
+      sessionId: string;
+      totalMessages: number;
+      consumedMessages: number;
+    }>();
+    const secondSession = createDeferred<{
+      sessionId: string;
+      totalMessages: number;
+      consumedMessages: number;
+    }>();
+    apiMocks.queryLiteTopicList.mockResolvedValue([
+      { namespace: 'default', topicPattern: 'first-*', sessionIds: ['session-1'] },
+      { namespace: 'default', topicPattern: 'second-*', sessionIds: ['session-2'] },
+    ]);
+    apiMocks.queryLiteTopicSession.mockImplementation((sessionId: string) =>
+      sessionId === 'session-1' ? firstSession.promise : secondSession.promise,
+    );
+
+    const user = userEvent.setup();
+    renderPage();
+
+    const viewSessionButtons = await screen.findAllByText('查看会话');
+    await user.click(viewSessionButtons[0]);
+    await user.click(viewSessionButtons[1]);
+
+    await act(async () => {
+      secondSession.resolve({ sessionId: 'session-2', totalMessages: 222, consumedMessages: 22 });
+    });
+    expect(await screen.findByText('session-2')).toBeInTheDocument();
+    expect(screen.getByText('222')).toBeInTheDocument();
+
+    await act(async () => {
+      firstSession.resolve({ sessionId: 'session-1', totalMessages: 111, consumedMessages: 11 });
+    });
+    expect(screen.getByText('session-2')).toBeInTheDocument();
+    expect(screen.getByText('222')).toBeInTheDocument();
+    expect(screen.queryByText('111')).not.toBeInTheDocument();
+  });
+
   it('keeps namespace identity in the table and builds stable options from the initial list', async () => {
     const initialItems: LiteTopicItem[] = [
       { namespace: 'zeta', topicPattern: 'shared-*' },

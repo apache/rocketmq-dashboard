@@ -33,6 +33,7 @@ import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -90,6 +91,25 @@ class AliyunClientFactoryTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("code")
                 .isEqualTo(404);
+    }
+
+    @Test
+    void invalidateCredentialShouldCloseAndRemoveClientsForEveryRegionTest() {
+        AsyncClient first = Mockito.mock(AsyncClient.class);
+        AsyncClient second = Mockito.mock(AsyncClient.class);
+        AtomicInteger created = new AtomicInteger();
+        factory = new AliyunClientFactory(credentialRepository) {
+            @Override
+            protected AsyncClient createClient(String credentialId, String region) {
+                return created.getAndIncrement() == 0 ? first : second;
+            }
+        };
+
+        assertThat(factory.client(CREDENTIAL_ID, REGION)).isSameAs(first);
+        factory.invalidateCredential(CREDENTIAL_ID);
+
+        Mockito.verify(first).close();
+        assertThat(factory.client(CREDENTIAL_ID, REGION)).isSameAs(second);
     }
 
     @Test

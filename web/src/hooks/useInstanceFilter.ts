@@ -44,7 +44,8 @@ export function useInstanceFilter() {
       .then((nextInstances) => {
         if (cancelled) return;
         setInstances(nextInstances);
-        if (!routeInstanceId && nextInstances.length > 0) {
+        const isKnownInstance = nextInstances.some((instance) => instance.id === routeInstanceId);
+        if (nextInstances.length > 0 && !isKnownInstance) {
           navigate(`/instance/${nextInstances[0].id}/${section}`, { replace: true });
         }
       })

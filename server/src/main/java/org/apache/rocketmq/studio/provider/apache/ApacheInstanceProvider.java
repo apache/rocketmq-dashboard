@@ -80,7 +80,7 @@ public class ApacheInstanceProvider implements InstanceProvider {
 
     @Override
     public void deleteTopic(String instanceId, String topicName) {
-        adminClient.deleteTopic(topicName);
+        adminClient.deleteTopic(instanceId, topicName);
     }
 
     @Override

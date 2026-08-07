@@ -34,4 +34,6 @@ public class BrokerVO {
     private double diskUsage;
     private int tpsIn;
     private int tpsOut;
+    @Builder.Default
+    private boolean runtimeStatsAvailable = true;
 }

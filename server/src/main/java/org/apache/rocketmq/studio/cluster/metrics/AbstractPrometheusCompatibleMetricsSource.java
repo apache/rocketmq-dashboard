@@ -57,6 +57,9 @@ public abstract class AbstractPrometheusCompatibleMetricsSource implements Metri
     private static final int MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
     private static final int MAX_SERIES = 1_000;
     private static final int MAX_TOTAL_SAMPLES = 100_000;
+    private static final int MAX_LABELS_PER_SERIES = 64;
+    private static final int MAX_LABEL_KEY_LENGTH = 256;
+    private static final int MAX_LABEL_VALUE_LENGTH = 4_096;
 
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
@@ -220,10 +223,22 @@ public abstract class AbstractPrometheusCompatibleMetricsSource implements Metri
             throw new PrometheusException(HttpStatus.BAD_GATEWAY.value(),
                     backendLabel() + " returned a malformed time series");
         }
+        if (metric.size() > MAX_LABELS_PER_SERIES) {
+            throw new PrometheusException(HttpStatus.PAYLOAD_TOO_LARGE.value(),
+                    backendLabel() + " query returned too many labels in a time series; narrow the query");
+        }
 
         Map<String, String> labels = new LinkedHashMap<>();
         Iterator<Map.Entry<String, JsonNode>> fields = metric.fields();
-        fields.forEachRemaining(entry -> labels.put(entry.getKey(), entry.getValue().asText()));
+        fields.forEachRemaining(entry -> {
+            String key = entry.getKey();
+            String value = entry.getValue().asText();
+            if (key.length() > MAX_LABEL_KEY_LENGTH || value.length() > MAX_LABEL_VALUE_LENGTH) {
+                throw new PrometheusException(HttpStatus.PAYLOAD_TOO_LARGE.value(),
+                        backendLabel() + " query returned an oversized time-series label; narrow the query");
+            }
+            labels.put(key, value);
+        });
 
         List<MetricDataVO.MetricSampleVO> samples = hasValues
                 ? StreamSupport.stream(values.spliterator(), false).map(this::parseSample).toList()

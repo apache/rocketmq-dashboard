@@ -21,6 +21,7 @@ import org.apache.rocketmq.client.consumer.PullResult;
 import org.apache.rocketmq.client.consumer.PullStatus;
 import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.client.producer.SendResult;
+import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.common.message.MessageConst;
@@ -62,6 +63,8 @@ public class RocketMQDLQProvider implements DLQProvider {
 
     private static final long ONE_HOUR_MILLIS = 3600_000L;
     private static final int RESEND_HARD_CAP = 5000;
+    private static final String ORIGIN_MESSAGE_ID_PROPERTY = "studio_dlq_origin_message_id";
+    private static final String ORIGIN_TOPIC_PROPERTY = "studio_dlq_origin_topic";
 
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
     private final AuditService auditService;
@@ -93,6 +96,7 @@ public class RocketMQDLQProvider implements DLQProvider {
     private DLQGroupVO buildDLQGroup(MQAdminExt adminExt, String groupName, String dlqTopic) {
         long messageCount = 0L;
         LocalDateTime lastEnqueueTime = null;
+        boolean statsAvailable = true;
         try {
             TopicStatsTable statsTable = adminExt.examineTopicStats(dlqTopic);
             if (statsTable != null && statsTable.getOffsetTable() != null) {
@@ -113,6 +117,7 @@ public class RocketMQDLQProvider implements DLQProvider {
                 }
             }
         } catch (Exception e) {
+            statsAvailable = false;
             log.warn("Failed to examine stats for DLQ topic {}: {}", dlqTopic, e.getMessage());
         }
 
@@ -122,7 +127,8 @@ public class RocketMQDLQProvider implements DLQProvider {
                 .messageCount(messageCount)
                 .lastEnqueueTime(lastEnqueueTime)
                 .retryCount(0)
-                .status(messageCount > 0 ? "ACTIVE" : "EMPTY")
+                .status(statsAvailable ? (messageCount > 0 ? "ACTIVE" : "EMPTY") : "UNAVAILABLE")
+                .statsAvailable(statsAvailable)
                 .build();
     }
 
@@ -191,7 +197,17 @@ public class RocketMQDLQProvider implements DLQProvider {
                             break outer;
                         }
                         PullResult pullResult = consumer.pull(queue, "*", offset, 32);
-                        offset = pullResult.getNextBeginOffset();
+                        if (pullResult == null) {
+                            log.warn("Stop DLQ scan for {} because queue {} returned no pull result", dlqTopic, queue);
+                            break;
+                        }
+                        long nextOffset = pullResult.getNextBeginOffset();
+                        if (nextOffset <= offset) {
+                            log.warn("Stop DLQ scan for {} because queue {} did not advance offset {}",
+                                    dlqTopic, queue, offset);
+                            break;
+                        }
+                        offset = nextOffset;
                         if (pullResult.getPullStatus() != PullStatus.FOUND
                                 || pullResult.getMsgFoundList() == null) {
                             break;
@@ -232,9 +248,15 @@ public class RocketMQDLQProvider implements DLQProvider {
             if (StringUtils.hasText(deadLetter.getKeys())) {
                 message.setKeys(deadLetter.getKeys());
             }
-            message.putUserProperty("DLQ_ORIGIN_MESSAGE_ID", deadLetter.getMsgId());
-            message.putUserProperty("DLQ_ORIGIN_TOPIC", deadLetter.getTopic());
+            message.putUserProperty(ORIGIN_MESSAGE_ID_PROPERTY, deadLetter.getMsgId());
+            message.putUserProperty(ORIGIN_TOPIC_PROPERTY, deadLetter.getTopic());
             SendResult sendResult = producer.send(message);
+            if (sendResult == null || sendResult.getSendStatus() != SendStatus.SEND_OK) {
+                log.warn("DLQ resend was not accepted: msgId={} topic={} sendStatus={}",
+                        deadLetter.getMsgId(), destination,
+                        sendResult == null ? "<null>" : sendResult.getSendStatus());
+                return false;
+            }
             log.debug("Resent dead letter msgId={} to topic={}, sendStatus={}",
                     deadLetter.getMsgId(), destination, sendResult.getSendStatus());
             return true;

@@ -265,8 +265,8 @@ class ToolGatewayServiceTest {
         assertThat(cluster).containsEntry("proxies", 1);
         assertThat(cluster).containsEntry("topics", 3);
         assertThat(cluster).containsEntry("groups", 4);
-        assertThat(cluster).containsEntry("tpsIn", 7);
-        assertThat(cluster).containsEntry("tpsOut", 8);
+        assertThat(cluster).containsEntry("tpsIn", 7L);
+        assertThat(cluster).containsEntry("tpsOut", 8L);
         assertThat(cluster).containsEntry("version", "5.2.0");
         assertThat(cluster).containsEntry("throughput", List.of(1, 2, 3));
         assertThat(cluster).doesNotContainKeys("endpoint");

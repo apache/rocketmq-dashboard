@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.provider.apache;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -29,8 +30,11 @@ import org.apache.rocketmq.remoting.protocol.body.TopicList;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
+import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.ops.dashboard.ClusterOverviewVO;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardDataVO;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardProvider;
@@ -56,6 +60,7 @@ public class RocketMQDashboardProvider implements DashboardProvider {
 
     private final MqAdminExtFactory adminFactory;
     private final RocketMQProperties properties;
+    private final RuntimeAdminClientResolver runtimeAdminClientResolver;
 
     @Override
     public DashboardDataVO getDashboardData() {
@@ -64,10 +69,18 @@ public class RocketMQDashboardProvider implements DashboardProvider {
             log.warn("NameServer address not configured, returning empty dashboard");
             return emptyDashboard();
         }
-        return adminFactory.execute(namesrvAddr, null, this::collectDashboardData);
+        return adminFactory.execute(namesrvAddr, null,
+                admin -> collectDashboardData(admin, ClusterType.V5_PROXY_CLUSTER));
     }
 
-    private DashboardDataVO collectDashboardData(MQAdminExt admin) {
+    @Override
+    public DashboardDataVO getDashboardData(String instanceId) {
+        InstanceVO instance = runtimeAdminClientResolver.resolveInstance(instanceId);
+        return runtimeAdminClientResolver.execute(instance,
+                admin -> collectDashboardData(admin, clusterTypeFor(instance)));
+    }
+
+    private DashboardDataVO collectDashboardData(MQAdminExt admin, ClusterType clusterType) {
         int totalClusters = 0;
         int totalBrokers = 0;
         int totalTopics = 0;
@@ -76,6 +89,7 @@ public class RocketMQDashboardProvider implements DashboardProvider {
         long tpsOut = 0;
         long messagesToday = 0;
         List<ClusterOverviewVO> clusters = new ArrayList<>();
+        Map<String, KVTable> runtimeStatsByBroker = new HashMap<>();
 
         try {
             ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
@@ -115,7 +129,8 @@ public class RocketMQDashboardProvider implements DashboardProvider {
             // Count topics
             try {
                 TopicList topicList = admin.fetchAllTopicList();
-                Set<String> topics = topicList.getTopicList();
+                Set<String> topics = topicList == null || topicList.getTopicList() == null
+                        ? Set.of() : topicList.getTopicList();
                 totalTopics = (int) topics.stream()
                         .filter(t -> !isSystemTopic(t))
                         .count();
@@ -144,6 +159,7 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                 // Get runtime stats for TPS
                 try {
                     KVTable runtimeInfo = admin.fetchBrokerRuntimeStats(brokerAddr);
+                    runtimeStatsByBroker.put(brokerAddr, runtimeInfo);
                     if (runtimeInfo != null && runtimeInfo.getTable() != null) {
                         Map<String, String> table = runtimeInfo.getTable();
                         tpsIn += parseTps(table.get("putTps"));
@@ -166,11 +182,12 @@ public class RocketMQDashboardProvider implements DashboardProvider {
             // Build per-cluster overview
             for (Map.Entry<String, Set<String>> clusterEntry : clusterAddrTable.entrySet()) {
                 String clusterName = clusterEntry.getKey();
-                Set<String> brokerNames = clusterEntry.getValue();
+                Set<String> brokerNames = clusterEntry.getValue() == null ? Set.of() : clusterEntry.getValue();
                 int clusterBrokers = 0;
-                int clusterTpsIn = 0;
-                int clusterTpsOut = 0;
+                long clusterTpsIn = 0;
+                long clusterTpsOut = 0;
                 String version = "unknown";
+                boolean runtimeMetricsUnavailable = false;
 
                 for (String brokerName : brokerNames) {
                     BrokerData brokerData = brokerAddrTable.get(brokerName);
@@ -178,20 +195,19 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                         clusterBrokers++;
                         String masterAddr = brokerData.getBrokerAddrs().get(0L);
                         if (masterAddr != null) {
-                            try {
-                                KVTable rt = admin.fetchBrokerRuntimeStats(masterAddr);
-                                if (rt != null && rt.getTable() != null) {
-                                    clusterTpsIn += (int) parseTps(rt.getTable().get("putTps"));
-                                    clusterTpsOut += (int) parseTps(rt.getTable().get("getTransferredTps"));
-                                    String v = rt.getTable().get("brokerVersionDesc");
-                                    if (v != null && "unknown".equals(version)) {
-                                        String brokerVersion = v.trim();
-                                        if (!brokerVersion.isEmpty()) {
-                                            version = brokerVersion;
-                                        }
+                            KVTable runtimeInfo = runtimeStatsByBroker.get(masterAddr);
+                            if (runtimeInfo != null && runtimeInfo.getTable() != null) {
+                                clusterTpsIn += parseTps(runtimeInfo.getTable().get("putTps"));
+                                clusterTpsOut += parseTps(runtimeInfo.getTable().get("getTransferredTps"));
+                                String value = runtimeInfo.getTable().get("brokerVersionDesc");
+                                if (value != null && "unknown".equals(version)) {
+                                    String brokerVersion = value.trim();
+                                    if (!brokerVersion.isEmpty()) {
+                                        version = brokerVersion;
                                     }
                                 }
-                            } catch (Exception ignored) {
+                            } else {
+                                runtimeMetricsUnavailable = true;
                             }
                         }
                     }
@@ -200,8 +216,8 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                 clusters.add(ClusterOverviewVO.builder()
                         .id(clusterName)
                         .name(clusterName)
-                        .type(ClusterType.V5_PROXY_CLUSTER)
-                        .status(ClusterStatus.healthy)
+                        .type(clusterType)
+                        .status(runtimeMetricsUnavailable ? ClusterStatus.warning : ClusterStatus.healthy)
                         .brokers(clusterBrokers)
                         .proxies(0)
                         .topics(0)
@@ -238,6 +254,11 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                 .stats(stats)
                 .clusters(clusters)
                 .build();
+    }
+
+    private ClusterType clusterTypeFor(InstanceVO instance) {
+        return instance.getType() == InstanceType.DIRECT
+                ? ClusterType.V4_DIRECT : ClusterType.V5_PROXY_CLUSTER;
     }
 
     private DashboardDataVO emptyDashboard() {

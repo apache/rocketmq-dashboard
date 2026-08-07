@@ -59,9 +59,10 @@ export interface DLQGroup {
   groupName: string;
   dlqTopic: string;
   messageCount: number;
-  lastEnqueueTime: string;
+  lastEnqueueTime?: string | null;
   retryCount: number;
   status: string;
+  statsAvailable?: boolean;
 }
 
 export interface DLQResendResult {
