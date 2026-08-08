@@ -327,6 +327,7 @@ class MetricsServiceTest {
                 .step("1m")
                 .build();
         MetricsDataSourceQueryRequest request = new MetricsDataSourceQueryRequest();
+        request.setInstanceId("instance-a");
         request.setQuery(query);
 
         DataSourceVO dataSource = DataSourceVO.builder()
@@ -352,6 +353,7 @@ class MetricsServiceTest {
     @Test
     void queryByDataSourceShouldRejectMissingKey() {
         MetricsDataSourceQueryRequest request = new MetricsDataSourceQueryRequest();
+        request.setInstanceId("instance-a");
         request.setQuery(MetricQueryDTO.builder()
                 .metric("cpu").start(1700000000L).end(1700003600L).step("1m").build());
 
@@ -359,5 +361,30 @@ class MetricsServiceTest {
                 .isThrownBy(() -> metricsService.queryByDataSource("  ", request))
                 .satisfies(exception -> assertThat(exception.getStatusCode()).isEqualTo(400));
         verifyNoInteractions(settingsService, metricsSourceFactory, metricsSource);
+    }
+
+    @Test
+    void queryByDataSourceShouldRejectAnUnboundInstance() {
+        MetricsDataSourceQueryRequest request = new MetricsDataSourceQueryRequest();
+        request.setInstanceId("instance-b");
+        request.setQuery(MetricQueryDTO.builder()
+                .metric("cpu").start(1700000000L).end(1700003600L).step("1m").build());
+        DataSourceVO dataSource = DataSourceVO.builder()
+                .key("ds-1")
+                .name("thanos-prod")
+                .type("thanos")
+                .url("http://thanos:9090")
+                .instanceIds(List.of("instance-a"))
+                .build();
+        when(settingsService.getDataSource("ds-1")).thenReturn(dataSource);
+
+        assertThatExceptionOfType(PrometheusException.class)
+                .isThrownBy(() -> metricsService.queryByDataSource("ds-1", request))
+                .satisfies(exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(400);
+                    assertThat(exception.getMessage()).isEqualTo("Data source is not bound to instance: instance-b");
+                });
+        verify(settingsService).getDataSource("ds-1");
+        verifyNoInteractions(metricsSourceFactory, metricsSource);
     }
 }

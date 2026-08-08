@@ -273,8 +273,8 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
     () =>
       dataSources.filter(
         (source) =>
-          !source.instanceIds?.length ||
-          (instanceId !== undefined && source.instanceIds.includes(instanceId)),
+          instanceId !== undefined &&
+          (!source.instanceIds?.length || source.instanceIds.includes(instanceId)),
       ),
     [dataSources, instanceId],
   );
@@ -293,9 +293,10 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
       setQueryLoading(true);
       setQueryError(false);
       try {
-        const result = dataSourceKeyRef.current
-          ? await queryByDataSource({ key: dataSourceKeyRef.current, query })
-          : await queryMetrics(query);
+        const result =
+          dataSourceKeyRef.current && instanceId
+            ? await queryByDataSource({ key: dataSourceKeyRef.current, instanceId, query })
+            : await queryMetrics(query);
         if (currentRequest === requestId.current) setData(result);
       } catch {
         if (currentRequest === requestId.current) {
@@ -306,7 +307,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         if (currentRequest === requestId.current) setQueryLoading(false);
       }
     },
-    [],
+    [instanceId],
   );
 
   useEffect(() => {

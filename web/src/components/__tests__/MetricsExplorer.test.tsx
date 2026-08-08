@@ -130,7 +130,7 @@ const createDeferred = <T,>() => {
 
 describe('MetricsExplorer', () => {
   it('loads a metric profile and renders its Prometheus series', async () => {
-    renderWithProviders(<MetricsExplorer />);
+    renderWithProviders(<MetricsExplorer instanceId="instance-prod" />);
 
     expect(await screen.findByText('RocketMQ 5.x Native')).toBeInTheDocument();
     await waitFor(() =>
@@ -246,7 +246,7 @@ describe('MetricsExplorer', () => {
     ]);
     vi.mocked(queryByDataSource).mockResolvedValue(metricData);
 
-    renderWithProviders(<MetricsExplorer />);
+    renderWithProviders(<MetricsExplorer instanceId="instance-prod" />);
 
     await screen.findByRole('combobox', { name: '数据源' });
     await user.click(screen.getByRole('combobox', { name: '数据源' }));
@@ -259,6 +259,7 @@ describe('MetricsExplorer', () => {
     await waitFor(() =>
       expect(queryByDataSource).toHaveBeenCalledWith({
         key: 'ds-prom-1',
+        instanceId: 'instance-prod',
         query: {
           metric: 'sum(rate(rocketmq_messages_in_total[1m])) by (cluster, node_id)',
           start: 1_799_996_400,

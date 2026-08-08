@@ -27,6 +27,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -82,11 +83,29 @@ public class MetricsService {
         MetricQueryDTO resolvedQuery = resolveMetricQuery(request.getQuery());
         validateQueryWindow(resolvedQuery);
         DataSourceVO dataSource = settingsService.getDataSource(dataSourceKey);
+        validateDataSourceBinding(dataSource, request.getInstanceId());
         MetricsSource source = metricsSourceFactory.create(toConfig(dataSource, request));
         log.debug("Querying data source {} (type={}): start={}, end={}, step={}",
                 dataSourceKey, dataSource.getType(),
                 resolvedQuery.getStart(), resolvedQuery.getEnd(), resolvedQuery.getStep());
         return source.query(resolvedQuery);
+    }
+
+    private void validateDataSourceBinding(DataSourceVO dataSource, String instanceId) {
+        if (!StringUtils.hasText(instanceId)) {
+            throw badRequest("instanceId is required");
+        }
+        List<String> instanceIds = dataSource.getInstanceIds();
+        if (instanceIds == null || instanceIds.isEmpty()) {
+            return;
+        }
+        boolean bound = instanceIds.stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .anyMatch(instanceId.trim()::equals);
+        if (!bound) {
+            throw badRequest("Data source is not bound to instance: " + instanceId.trim());
+        }
     }
 
     private MetricsDataSourceConfig toConfig(DataSourceVO dataSource, MetricsDataSourceQueryRequest request) {

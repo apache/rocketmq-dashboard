@@ -166,4 +166,19 @@ class MetricsControllerTest {
 
         verifyNoInteractions(metricsService);
     }
+
+    @Test
+    void queryByDataSourceShouldRequireInstanceId() throws Exception {
+        mockMvc.perform(post("/api/metrics/query/datasource")
+                        .param("key", "ds-prod")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"query":{"metric":"up","start":1784107658,"end":1784108558,"step":"30s"}}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("instanceId is required"));
+
+        verifyNoInteractions(metricsService);
+    }
 }

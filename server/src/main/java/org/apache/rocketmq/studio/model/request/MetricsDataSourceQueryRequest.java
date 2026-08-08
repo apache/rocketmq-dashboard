@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.model.request;
 
 import org.apache.rocketmq.studio.cluster.metrics.MetricQueryDTO;
+import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
 /**
@@ -29,6 +30,9 @@ import lombok.Data;
  */
 @Data
 public class MetricsDataSourceQueryRequest {
+
+    @NotBlank(message = "instanceId is required")
+    private String instanceId;
 
     private MetricQueryDTO query;
 
