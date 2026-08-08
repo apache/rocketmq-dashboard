@@ -1161,6 +1161,33 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'Failed to fetch producer connections',
   },
   'producer.noConnections': { zh: '暂无生产者连接', en: 'No producer connections found' },
+  'producer.readiness': { zh: '生产者连接健康', en: 'Producer connection health' },
+  'producer.readinessREADY': { zh: '就绪', en: 'Ready' },
+  'producer.readinessWARNING': { zh: '存在风险', en: 'Warning' },
+  'producer.readinessUNAVAILABLE': { zh: '无可用连接', en: 'Unavailable' },
+  'producer.connectionTotal': { zh: '连接数', en: 'Connections' },
+  'producer.uniqueClients': { zh: '唯一客户端', en: 'Unique clients' },
+  'producer.uniqueAddresses': { zh: '唯一地址', en: 'Unique addresses' },
+  'producer.languageKinds': { zh: '语言种类', en: 'Languages' },
+  'producer.versionKinds': { zh: '版本种类', en: 'Versions' },
+  'producer.languageDistribution': { zh: '语言分布', en: 'Language distribution' },
+  'producer.versionDistribution': { zh: '版本分布', en: 'Version distribution' },
+  'producer.warningNoConnections': {
+    zh: '未发现活跃连接',
+    en: 'No active producer connection',
+  },
+  'producer.warningDuplicateClientId': {
+    zh: '存在重复 Client ID',
+    en: 'Duplicate client IDs found',
+  },
+  'producer.warningMixedVersion': {
+    zh: '存在多个客户端版本',
+    en: 'Multiple client versions found',
+  },
+  'producer.warningIncompleteMetadata': {
+    zh: '连接元数据不完整',
+    en: 'Incomplete connection metadata',
+  },
 
   // ─── Namespace ───
   'ns.title': { zh: '命名空间管理', en: 'Namespace Management' },

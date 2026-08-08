@@ -25,6 +25,34 @@ export interface ProducerConnection {
   versionDesc: string;
 }
 
+export type ProducerReadiness = 'READY' | 'WARNING' | 'UNAVAILABLE';
+
+export type ProducerConnectionWarning =
+  'NO_CONNECTIONS' | 'DUPLICATE_CLIENT_ID' | 'MIXED_CLIENT_VERSION' | 'INCOMPLETE_CLIENT_METADATA';
+
+export interface ProducerConnectionSummaryItem {
+  value: string;
+  count: number;
+}
+
+export interface ProducerConnectionSummary {
+  totalConnections: number;
+  uniqueClientCount: number;
+  uniqueAddressCount: number;
+  uniqueLanguageCount: number;
+  uniqueVersionCount: number;
+  languages: ProducerConnectionSummaryItem[];
+  versions: ProducerConnectionSummaryItem[];
+  duplicateClientIds: string[];
+  warnings: ProducerConnectionWarning[];
+  readiness: ProducerReadiness;
+}
+
+export interface ProducerConnectionResult {
+  connectionSet: ProducerConnection[];
+  summary: ProducerConnectionSummary;
+}
+
 interface TopicRecord {
   name: string;
 }
@@ -34,7 +62,84 @@ interface TopicListResponse {
   topicList?: string[];
 }
 
+interface ProducerConnectionResponse {
+  connectionSet?: ProducerConnection[];
+  summary?: ProducerConnectionSummary;
+}
+
 // ─── API ────────────────────────────────────────────────────────
+
+const hasText = (value?: string | null) => Boolean(value?.trim() && value.trim() !== 'null');
+
+const normalizeDimension = (value?: string | null) => (hasText(value) ? value!.trim() : 'UNKNOWN');
+
+const countDistinct = (
+  connections: ProducerConnection[],
+  extractor: (connection: ProducerConnection) => string,
+) => new Set(connections.map(extractor).filter(hasText)).size;
+
+const distribution = (
+  connections: ProducerConnection[],
+  extractor: (connection: ProducerConnection) => string,
+): ProducerConnectionSummaryItem[] => {
+  const counts = new Map<string, number>();
+  connections.forEach((connection) => {
+    const value = normalizeDimension(extractor(connection));
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  });
+  return [...counts]
+    .map(([value, count]) => ({ value, count }))
+    .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
+};
+
+export function buildProducerConnectionSummary(
+  connections: ProducerConnection[],
+): ProducerConnectionSummary {
+  const duplicateClientIds = [
+    ...connections.reduce((counts, connection) => {
+      const clientId = connection.clientId?.trim();
+      if (clientId) counts.set(clientId, (counts.get(clientId) ?? 0) + 1);
+      return counts;
+    }, new Map<string, number>()),
+  ]
+    .filter(([, count]) => count > 1)
+    .map(([clientId]) => clientId)
+    .sort();
+  const languages = distribution(connections, (connection) => connection.language);
+  const versions = distribution(connections, (connection) => connection.versionDesc);
+  const warnings: ProducerConnectionWarning[] = [];
+
+  if (connections.length === 0) {
+    warnings.push('NO_CONNECTIONS');
+  } else {
+    if (duplicateClientIds.length > 0) warnings.push('DUPLICATE_CLIENT_ID');
+    if (versions.length > 1) warnings.push('MIXED_CLIENT_VERSION');
+    if (
+      connections.some(
+        (connection) =>
+          !hasText(connection.clientId) ||
+          !hasText(connection.clientAddr) ||
+          !hasText(connection.language) ||
+          !hasText(connection.versionDesc),
+      )
+    ) {
+      warnings.push('INCOMPLETE_CLIENT_METADATA');
+    }
+  }
+
+  return {
+    totalConnections: connections.length,
+    uniqueClientCount: countDistinct(connections, (connection) => connection.clientId),
+    uniqueAddressCount: countDistinct(connections, (connection) => connection.clientAddr),
+    uniqueLanguageCount: languages.length,
+    uniqueVersionCount: versions.length,
+    languages,
+    versions,
+    duplicateClientIds,
+    warnings,
+    readiness: connections.length === 0 ? 'UNAVAILABLE' : warnings.length > 0 ? 'WARNING' : 'READY',
+  };
+}
 
 /** Fetch topic names for a managed instance. */
 export async function fetchTopicList(instanceId: string): Promise<string[]> {
@@ -54,9 +159,13 @@ export async function queryProducerConnection(
   instanceId: string,
   topic: string,
   producerGroup: string,
-): Promise<ProducerConnection[]> {
-  const res = await client.get<{ connectionSet: ProducerConnection[] }>('/producer/connection', {
+): Promise<ProducerConnectionResult> {
+  const res = await client.get<ProducerConnectionResponse>('/producer/connection', {
     params: { instanceId, topic, producerGroup },
   });
-  return res.data?.connectionSet ?? [];
+  const connectionSet = res.data?.connectionSet ?? [];
+  return {
+    connectionSet,
+    summary: res.data?.summary ?? buildProducerConnectionSummary(connectionSet),
+  };
 }

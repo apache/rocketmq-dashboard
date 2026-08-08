@@ -22,6 +22,8 @@ import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
 import ProducerPage from '../Producer';
 import {
+  type ProducerConnection,
+  type ProducerConnectionResult,
   fetchProducerGroups,
   fetchTopicList,
   queryProducerConnection,
@@ -62,6 +64,22 @@ const renderWithProviders = (ui: React.ReactElement) => {
   );
 };
 
+const producerResult = (connectionSet: ProducerConnection[]): ProducerConnectionResult => ({
+  connectionSet,
+  summary: {
+    totalConnections: connectionSet.length,
+    uniqueClientCount: new Set(connectionSet.map((connection) => connection.clientId)).size,
+    uniqueAddressCount: new Set(connectionSet.map((connection) => connection.clientAddr)).size,
+    uniqueLanguageCount: new Set(connectionSet.map((connection) => connection.language)).size,
+    uniqueVersionCount: new Set(connectionSet.map((connection) => connection.versionDesc)).size,
+    languages: connectionSet.map((connection) => ({ value: connection.language, count: 1 })),
+    versions: connectionSet.map((connection) => ({ value: connection.versionDesc, count: 1 })),
+    duplicateClientIds: [],
+    warnings: connectionSet.length === 0 ? ['NO_CONNECTIONS'] : [],
+    readiness: connectionSet.length === 0 ? 'UNAVAILABLE' : 'READY',
+  },
+});
+
 describe('ProducerPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -80,7 +98,7 @@ describe('ProducerPage', () => {
     ]);
     vi.mocked(fetchTopicList).mockResolvedValue(['order-events', 'payment-events']);
     vi.mocked(fetchProducerGroups).mockResolvedValue(['pg-order', 'pg-payment']);
-    vi.mocked(queryProducerConnection).mockResolvedValue([]);
+    vi.mocked(queryProducerConnection).mockResolvedValue(producerResult([]));
   });
 
   it('loads topic options after mount', async () => {
@@ -117,14 +135,16 @@ describe('ProducerPage', () => {
 
   it('queries producer connections with the required topic and group', async () => {
     const user = userEvent.setup();
-    vi.mocked(queryProducerConnection).mockResolvedValue([
-      {
-        clientId: 'producer-1',
-        clientAddr: '192.168.1.10',
-        language: 'JAVA',
-        versionDesc: '5.1.0',
-      },
-    ]);
+    vi.mocked(queryProducerConnection).mockResolvedValue(
+      producerResult([
+        {
+          clientId: 'producer-1',
+          clientAddr: '192.168.1.10',
+          language: 'JAVA',
+          versionDesc: '5.1.0',
+        },
+      ]),
+    );
     renderWithProviders(<ProducerPage />);
 
     await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
@@ -144,6 +164,8 @@ describe('ProducerPage', () => {
       );
     });
     expect(await screen.findByText('producer-1')).toBeInTheDocument();
+    expect(await screen.findByText('生产者连接健康')).toBeInTheDocument();
+    expect(screen.getByText('就绪')).toBeInTheDocument();
   });
 
   it('does not query without a producer group', async () => {
@@ -162,6 +184,55 @@ describe('ProducerPage', () => {
       await screen.findByText('请输入生产者组', { selector: '.ant-form-item-explain-error' }),
     ).toBeInTheDocument();
     expect(queryProducerConnection).not.toHaveBeenCalled();
+  });
+
+  it('renders producer connection warnings from the summary', async () => {
+    const user = userEvent.setup();
+    vi.mocked(queryProducerConnection).mockResolvedValue({
+      connectionSet: [
+        {
+          clientId: 'producer-a',
+          clientAddr: '192.168.1.10',
+          language: 'JAVA',
+          versionDesc: '5.1.0',
+        },
+        {
+          clientId: 'producer-a',
+          clientAddr: '192.168.1.11',
+          language: 'JAVA',
+          versionDesc: '5.2.0',
+        },
+      ],
+      summary: {
+        totalConnections: 2,
+        uniqueClientCount: 1,
+        uniqueAddressCount: 2,
+        uniqueLanguageCount: 1,
+        uniqueVersionCount: 2,
+        languages: [{ value: 'JAVA', count: 2 }],
+        versions: [
+          { value: '5.1.0', count: 1 },
+          { value: '5.2.0', count: 1 },
+        ],
+        duplicateClientIds: ['producer-a'],
+        warnings: ['DUPLICATE_CLIENT_ID', 'MIXED_CLIENT_VERSION'],
+        readiness: 'WARNING',
+      },
+    });
+    renderWithProviders(<ProducerPage />);
+
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
+    const [, topicSelect, groupInput] = screen.getAllByRole('combobox');
+    fireEvent.mouseDown(topicSelect.parentElement!);
+    await user.click(
+      await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.type(groupInput, 'order-producer');
+    await user.click(screen.getByRole('button', { name: /搜索/ }));
+
+    expect(await screen.findByText('存在重复 Client ID')).toBeInTheDocument();
+    expect(screen.getByText('存在多个客户端版本')).toBeInTheDocument();
+    expect(screen.getByText('JAVA: 2')).toBeInTheDocument();
   });
 
   it('keeps manual producer group queries available when suggestions fail', async () => {
@@ -213,14 +284,16 @@ describe('ProducerPage', () => {
       },
     ]);
     vi.mocked(fetchTopicList).mockResolvedValueOnce(['order-events']).mockResolvedValueOnce([]);
-    vi.mocked(queryProducerConnection).mockResolvedValue([
-      {
-        clientId: 'producer-1',
-        clientAddr: '192.168.1.10',
-        language: 'JAVA',
-        versionDesc: '5.1.0',
-      },
-    ]);
+    vi.mocked(queryProducerConnection).mockResolvedValue(
+      producerResult([
+        {
+          clientId: 'producer-1',
+          clientAddr: '192.168.1.10',
+          language: 'JAVA',
+          versionDesc: '5.1.0',
+        },
+      ]),
+    );
     const user = userEvent.setup();
     const { container } = renderWithProviders(<ProducerPage />);
 

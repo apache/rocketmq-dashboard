@@ -75,7 +75,11 @@ class ProducerControllerTest {
                 .andExpect(jsonPath("$.connectionSet[0].clientId").value("producer-1"))
                 .andExpect(jsonPath("$.connectionSet[0].clientAddr").value("10.0.0.1:38888"))
                 .andExpect(jsonPath("$.connectionSet[0].language").value("Java"))
-                .andExpect(jsonPath("$.connectionSet[0].versionDesc").value("5.1.0"));
+                .andExpect(jsonPath("$.connectionSet[0].versionDesc").value("5.1.0"))
+                .andExpect(jsonPath("$.summary.totalConnections").value(1))
+                .andExpect(jsonPath("$.summary.uniqueClientCount").value(1))
+                .andExpect(jsonPath("$.summary.uniqueAddressCount").value(1))
+                .andExpect(jsonPath("$.summary.readiness").value("READY"));
 
         verify(producerConnectionService).listConnections("instance-1", "order-topic", "pg-order");
     }

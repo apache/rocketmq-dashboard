@@ -16,7 +16,19 @@
  */
 
 import { useEffect, useState } from 'react';
-import { App, AutoComplete, Button, Card, Form, Select, Table } from 'antd';
+import {
+  Alert,
+  App,
+  AutoComplete,
+  Button,
+  Card,
+  Flex,
+  Form,
+  Select,
+  Statistic,
+  Table,
+  Tag,
+} from 'antd';
 import { MagnifyingGlass } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
 import {
@@ -24,15 +36,27 @@ import {
   fetchTopicList,
   queryProducerConnection,
   type ProducerConnection,
+  type ProducerConnectionSummary,
+  type ProducerConnectionWarning,
+  type ProducerReadiness,
 } from '../../api/producer';
 import type { Instance } from '../../api/instance';
 import { listInstances } from '../../services/instanceService';
+
+const readinessConfig: Record<ProducerReadiness, { color: string; type: 'success' | 'warning' }> = {
+  READY: { color: 'success', type: 'success' },
+  WARNING: { color: 'warning', type: 'warning' },
+  UNAVAILABLE: { color: 'error', type: 'warning' },
+};
 
 const ProducerPage = () => {
   const [form] = Form.useForm();
   const [topicList, setTopicList] = useState<string[]>([]);
   const [producerGroups, setProducerGroups] = useState<string[]>([]);
   const [connectionList, setConnectionList] = useState<ProducerConnection[]>([]);
+  const [connectionSummary, setConnectionSummary] = useState<ProducerConnectionSummary | null>(
+    null,
+  );
   const [instances, setInstances] = useState<Instance[]>([]);
   const [selectedInstanceId, setSelectedInstanceId] = useState('');
   const [loading, setLoading] = useState(false);
@@ -129,12 +153,14 @@ const ProducerPage = () => {
     }
     setLoading(true);
     try {
-      const connections = await queryProducerConnection(
+      const result = await queryProducerConnection(
         selectedInstanceId,
         values.selectedTopic,
         values.producerGroup,
       );
+      const connections = result.connectionSet;
       setConnectionList(connections);
+      setConnectionSummary(result.summary);
       if (connections.length === 0) {
         message.info(t('producer.noConnections'));
       }
@@ -166,6 +192,26 @@ const ProducerPage = () => {
       align: 'center' as const,
     },
   ];
+
+  const warningLabel: Record<ProducerConnectionWarning, string> = {
+    NO_CONNECTIONS: t('producer.warningNoConnections'),
+    DUPLICATE_CLIENT_ID: t('producer.warningDuplicateClientId'),
+    MIXED_CLIENT_VERSION: t('producer.warningMixedVersion'),
+    INCOMPLETE_CLIENT_METADATA: t('producer.warningIncompleteMetadata'),
+  };
+
+  const renderDistribution = (items: ProducerConnectionSummary['languages']) =>
+    items.length === 0 ? (
+      <Tag>{t('common.noData')}</Tag>
+    ) : (
+      <Flex gap={4} wrap>
+        {items.map((item) => (
+          <Tag key={item.value}>
+            {item.value}: {item.count}
+          </Tag>
+        ))}
+      </Flex>
+    );
 
   return (
     <div style={{ padding: 0 }}>
@@ -233,10 +279,69 @@ const ProducerPage = () => {
           </Form.Item>
         </Form>
 
+        {connectionSummary && (
+          <div style={{ marginBottom: 20 }}>
+            <Alert
+              showIcon
+              type={readinessConfig[connectionSummary.readiness].type}
+              message={
+                <Flex align="center" gap={8} wrap>
+                  <span>{t('producer.readiness')}</span>
+                  <Tag color={readinessConfig[connectionSummary.readiness].color}>
+                    {t(`producer.readiness${connectionSummary.readiness}`)}
+                  </Tag>
+                  {connectionSummary.warnings.map((warning) => (
+                    <Tag key={warning} color="warning">
+                      {warningLabel[warning] ?? warning}
+                    </Tag>
+                  ))}
+                </Flex>
+              }
+              style={{ marginBottom: 12 }}
+            />
+            <Flex gap={24} wrap style={{ marginBottom: 12 }}>
+              <Statistic
+                title={t('producer.connectionTotal')}
+                value={connectionSummary.totalConnections}
+              />
+              <Statistic
+                title={t('producer.uniqueClients')}
+                value={connectionSummary.uniqueClientCount}
+              />
+              <Statistic
+                title={t('producer.uniqueAddresses')}
+                value={connectionSummary.uniqueAddressCount}
+              />
+              <Statistic
+                title={t('producer.languageKinds')}
+                value={connectionSummary.uniqueLanguageCount}
+              />
+              <Statistic
+                title={t('producer.versionKinds')}
+                value={connectionSummary.uniqueVersionCount}
+              />
+            </Flex>
+            <Flex gap={16} wrap>
+              <div>
+                <div style={{ color: '#8c8c8c', fontSize: 12, marginBottom: 6 }}>
+                  {t('producer.languageDistribution')}
+                </div>
+                {renderDistribution(connectionSummary.languages)}
+              </div>
+              <div>
+                <div style={{ color: '#8c8c8c', fontSize: 12, marginBottom: 6 }}>
+                  {t('producer.versionDistribution')}
+                </div>
+                {renderDistribution(connectionSummary.versions)}
+              </div>
+            </Flex>
+          </div>
+        )}
+
         <Table
           dataSource={connectionList}
           columns={columns}
-          rowKey="clientId"
+          rowKey={(record) => `${record.clientId}:${record.clientAddr}`}
           pagination={false}
           bordered
           size="middle"

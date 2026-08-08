@@ -18,7 +18,12 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { fetchProducerGroups, fetchTopicList, queryProducerConnection } from './producer';
+import {
+  buildProducerConnectionSummary,
+  fetchProducerGroups,
+  fetchTopicList,
+  queryProducerConnection,
+} from './producer';
 
 const mock = new MockAdapter(client);
 
@@ -94,14 +99,71 @@ describe('Producer API', () => {
     });
 
     const result = await queryProducerConnection('instance-1', 'order-events', 'order-producer');
-    expect(result).toHaveLength(2);
-    expect(result[0].clientId).toBe('producer-1');
+    expect(result.connectionSet).toHaveLength(2);
+    expect(result.connectionSet[0].clientId).toBe('producer-1');
+    expect(result.summary.totalConnections).toBe(2);
+    expect(result.summary.readiness).toBe('READY');
   });
 
   it('handles empty producer connections', async () => {
     mock.onGet('/producer/connection').reply(200, { connectionSet: [] });
 
     const result = await queryProducerConnection('instance-1', 'topic', 'group');
-    expect(result).toEqual([]);
+    expect(result.connectionSet).toEqual([]);
+    expect(result.summary.readiness).toBe('UNAVAILABLE');
+    expect(result.summary.warnings).toEqual(['NO_CONNECTIONS']);
+  });
+
+  it('uses backend producer connection summaries when provided', async () => {
+    mock.onGet('/producer/connection').reply(200, {
+      connectionSet: [],
+      summary: {
+        totalConnections: 0,
+        uniqueClientCount: 0,
+        uniqueAddressCount: 0,
+        uniqueLanguageCount: 0,
+        uniqueVersionCount: 0,
+        languages: [],
+        versions: [],
+        duplicateClientIds: [],
+        warnings: ['NO_CONNECTIONS'],
+        readiness: 'UNAVAILABLE',
+      },
+    });
+
+    const result = await queryProducerConnection('instance-1', 'topic', 'group');
+    expect(result.summary).toEqual({
+      totalConnections: 0,
+      uniqueClientCount: 0,
+      uniqueAddressCount: 0,
+      uniqueLanguageCount: 0,
+      uniqueVersionCount: 0,
+      languages: [],
+      versions: [],
+      duplicateClientIds: [],
+      warnings: ['NO_CONNECTIONS'],
+      readiness: 'UNAVAILABLE',
+    });
+  });
+
+  it('builds producer connection warning summaries for legacy responses', () => {
+    const result = buildProducerConnectionSummary([
+      {
+        clientId: 'producer-a',
+        clientAddr: '10.0.0.1',
+        language: 'Java',
+        versionDesc: '5.1.0',
+      },
+      {
+        clientId: 'producer-a',
+        clientAddr: '10.0.0.2',
+        language: 'Go',
+        versionDesc: '5.2.0',
+      },
+    ]);
+
+    expect(result.readiness).toBe('WARNING');
+    expect(result.duplicateClientIds).toEqual(['producer-a']);
+    expect(result.warnings).toEqual(['DUPLICATE_CLIENT_ID', 'MIXED_CLIENT_VERSION']);
   });
 });
