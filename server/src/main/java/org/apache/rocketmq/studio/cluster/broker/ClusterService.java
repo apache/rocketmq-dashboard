@@ -190,7 +190,7 @@ public class ClusterService {
                 .map(failure -> failure.getAddress() + ": " + failure.getMessage())
                 .toList();
         try {
-            auditService.record("UPDATE_CLUSTER_CONFIG", "CLUSTER:" + clusterId, detail, status.name());
+            auditService.record("UPDATE_CLUSTER_CONFIG", "CLUSTER:" + clusterId, clusterId, detail, status.name());
         } catch (Exception e) {
             log.warn("Failed to record cluster config update audit for {}: {}", clusterId, e.getMessage());
         }

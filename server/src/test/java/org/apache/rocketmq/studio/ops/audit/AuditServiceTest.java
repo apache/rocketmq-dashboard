@@ -64,6 +64,16 @@ class AuditServiceTest {
     }
 
     @Test
+    void recordShouldPreserveClusterIdWhenProvided() {
+        auditService.record("UPDATE_CLUSTER_CONFIG", "CLUSTER:prod-cn", "prod-cn",
+                "updated broker config", "SUCCESS");
+
+        ArgumentCaptor<AuditRecordVO> captor = ArgumentCaptor.forClass(AuditRecordVO.class);
+        verify(auditRepository).save(captor.capture());
+        assertThat(captor.getValue().getClusterId()).isEqualTo("prod-cn");
+    }
+
+    @Test
     void queryLogsDelegatesPaginationAndFiltersToRepository() {
         AuditRecordVO record = AuditRecordVO.builder().operationType("CREATE").build();
         when(auditRepository.findPage(eq("topic-a"), eq("CREATE"), isNull(), isNull(), eq("SUCCESS"),

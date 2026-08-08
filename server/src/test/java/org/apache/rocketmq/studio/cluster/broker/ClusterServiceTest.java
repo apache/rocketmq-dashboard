@@ -198,7 +198,7 @@ class ClusterServiceTest {
     void updateConfigShouldSucceedWhenAuditRecordingFails() {
         when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
         doThrow(new IllegalStateException("audit storage unavailable")).when(auditService)
-                .record(any(), any(), any(), any());
+                .record(any(), any(), any(), any(), any());
 
         ClusterConfigUpdateResultVO result = clusterService.updateClusterConfig(UpdateConfigDTO.builder()
                 .id("cluster-1")
@@ -294,6 +294,7 @@ class ClusterServiceTest {
         verify(auditService).record(
                 eq("UPDATE_CLUSTER_CONFIG"),
                 eq("CLUSTER:cluster-1"),
+                eq("cluster-1"),
                 org.mockito.ArgumentMatchers.contains("10.0.0.2:10911"),
                 eq("PARTIAL"));
     }

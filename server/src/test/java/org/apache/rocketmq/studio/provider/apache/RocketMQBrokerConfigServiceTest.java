@@ -24,6 +24,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class RocketMQBrokerConfigServiceTest {
@@ -53,7 +54,7 @@ class RocketMQBrokerConfigServiceTest {
         config.setProperty("flushDiskType", "ASYNC_FLUSH");
         doNothing().when(adminExt).updateBrokerConfig("broker-a:10911", config);
         doThrow(new IllegalStateException("audit db down")).when(auditService)
-                .record(anyString(), anyString(), anyString(), anyString());
+                .record(anyString(), anyString(), anyString(), anyString(), anyString());
 
         brokerConfigService.updateBrokerConfig("broker-a:10911", "cluster-a", config);
     }
@@ -64,10 +65,22 @@ class RocketMQBrokerConfigServiceTest {
         doThrow(new IllegalStateException("broker unavailable")).when(adminExt)
                 .updateBrokerConfig("broker-a:10911", config);
         doThrow(new IllegalStateException("audit db down")).when(auditService)
-                .record(anyString(), anyString(), anyString(), anyString());
+                .record(anyString(), anyString(), anyString(), anyString(), anyString());
 
         assertThatThrownBy(() -> brokerConfigService.updateBrokerConfig("broker-a:10911", "cluster-a", config))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Failed to update broker config: broker unavailable");
+    }
+
+    @Test
+    void updateRecordsStructuredClusterId() throws Exception {
+        Properties config = new Properties();
+        doNothing().when(adminExt).updateBrokerConfig("broker-a:10911", config);
+
+        brokerConfigService.updateBrokerConfig("broker-a:10911", "cluster-a", config);
+
+        verify(auditService).record(
+                "UPDATE_BROKER_CONFIG", "CLUSTER:cluster-a", "cluster-a",
+                "brokerAddr=broker-a:10911, config={}", "SUCCESS");
     }
 }
