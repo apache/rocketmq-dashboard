@@ -32,6 +32,7 @@ const ConsumerPage = lazy(() => import('./pages/instance/consumer'));
 const MessagePage = lazy(() => import('./pages/instance/message'));
 const AclPage = lazy(() => import('./pages/instance/acl'));
 const DlqPage = lazy(() => import('./pages/instance/dlq'));
+const ResourcePlanPage = lazy(() => import('./pages/instance/resourcePlan'));
 const ClusterPage = lazy(() => import('./pages/cluster'));
 const K8sCertsPage = lazy(() => import('./pages/cluster/certs'));
 const ClientsPage = lazy(() => import('./pages/cluster/clients'));
@@ -157,6 +158,8 @@ function App() {
             <Route path="instance/:instanceId/acl" element={<AclPage />} />
             <Route path="instance/dlq" element={<DlqPage />} />
             <Route path="instance/:instanceId/dlq" element={<DlqPage />} />
+            <Route path="instance/resource-plan" element={<ResourcePlanPage />} />
+            <Route path="instance/:instanceId/resource-plan" element={<ResourcePlanPage />} />
             <Route path="cluster" element={<ClusterPage />} />
             <Route path="cluster/certs" element={<K8sCertsPage />} />
             <Route path="cluster/clients" element={<ClientsPage />} />

@@ -20,8 +20,9 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { listInstances } from '../services/instanceService';
 import type { Instance } from '../api/instance';
 
-const INSTANCE_SCOPED_PATH = /^\/instance\/([^/]+)\/(topic|consumer|message|acl|dlq)$/;
-const STATIC_SECTION_PATH = /^\/instance\/(topic|consumer|message|acl|dlq)$/;
+const INSTANCE_SCOPED_PATH =
+  /^\/instance\/([^/]+)\/(topic|consumer|message|acl|dlq|resource-plan)$/;
+const STATIC_SECTION_PATH = /^\/instance\/(topic|consumer|message|acl|dlq|resource-plan)$/;
 
 /**
  * 实例维度页面的公共筛选逻辑：从 /instance/:instanceId/<section> 路由解析当前实例，

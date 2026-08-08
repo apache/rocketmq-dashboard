@@ -28,6 +28,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'nav.acl': { zh: 'ACL 管理', en: 'ACL Management' },
   'nav.message': { zh: '消息查询', en: 'Message Search' },
   'nav.dlq': { zh: '死信队列', en: 'Dead Letter Queue' },
+  'nav.resourcePlan': { zh: '资源变更计划', en: 'Resource Plan' },
   'nav.clusterOps': { zh: '集群运维', en: 'Cluster & Ops' },
   'nav.certs': { zh: 'K8s 证书管理', en: 'K8s Certificates' },
   'nav.rocketmqCluster': { zh: 'RocketMQ 集群', en: 'RocketMQ Cluster' },
