@@ -26,9 +26,9 @@ import org.springframework.stereotype.Component;
 public class ConsumerDiagnosticsProviderStub implements ConsumerDiagnosticsProvider {
 
     @Override
-    public ConsumerStackTraceVO getConsumerStack(String groupName, String clientId) {
+    public ConsumerStackTraceVO getConsumerStack(String instanceId, String groupName, String clientId) {
         log.warn("ConsumerDiagnosticsProviderStub.getConsumerStack called without a real diagnostics provider. "
-                + "groupName={}, clientId={}", groupName, clientId);
+                + "instanceId={}, groupName={}, clientId={}", instanceId, groupName, clientId);
         throw new BusinessException(501, "Consumer diagnostics provider is not configured");
     }
 }

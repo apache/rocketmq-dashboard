@@ -20,6 +20,7 @@ import {
   createConsumerGroup,
   getConsumerGroup,
   getConsumerProgress,
+  getConsumerStack,
   getConsumerSubscriptions,
   listConsumerGroups,
 } from './consumerService';
@@ -86,6 +87,15 @@ describe('consumer service mock data', () => {
     expect(secondSubscriptions[0].topic).not.toBe('mutated-topic');
     expect(secondProgress[0]).not.toBe(firstProgress[0]);
     expect(secondSubscriptions[0]).not.toBe(firstSubscriptions[0]);
+  });
+
+  it('returns an empty mock consumer stack trace', async () => {
+    const stack = await getConsumerStack('cg-order-notify', 'client-1');
+
+    expect(stack.groupName).toBe('cg-order-notify');
+    expect(stack.clientId).toBe('client-1');
+    expect(stack.threadCount).toBe(0);
+    expect(stack.threads).toEqual([]);
   });
 
   it('returns a copy after creating consumer groups', async () => {

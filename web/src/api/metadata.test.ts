@@ -21,6 +21,7 @@ import client from './client';
 import {
   createTopic,
   deleteTopic,
+  getConsumerStack,
   getTopicConsumers,
   getTopicRoutes,
   listTopics,
@@ -61,6 +62,25 @@ describe('topic metadata API', () => {
 
     await expect(getTopicRoutes(topicName, 'instance-a')).resolves.toEqual([]);
     await expect(getTopicConsumers(topicName, 'instance-a')).resolves.toEqual([]);
+  });
+
+  it('encodes consumer stack route parameters and passes instanceId', async () => {
+    const stack = {
+      groupName: 'cg/orders',
+      clientId: 'client/10.0.0.1',
+      capturedAt: '2026-07-23T00:00:00Z',
+      threadCount: 0,
+      threads: [],
+    };
+    mock
+      .onGet('/groups/cg%2Forders/instances/client%2F10.0.0.1/stack', {
+        params: { instanceId: 'instance-a' },
+      })
+      .reply(200, { code: 200, data: stack });
+
+    await expect(getConsumerStack('cg/orders', 'client/10.0.0.1', 'instance-a')).resolves.toEqual(
+      stack,
+    );
   });
 
   it('persists topic creation, deletion, and sending through API endpoints', async () => {

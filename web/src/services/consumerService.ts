@@ -4,6 +4,7 @@ import type {
   ConsumerGroup,
   ConsumerGroupQuery,
   ConsumerGroupDetail,
+  ConsumerStackTrace,
   QueueProgress,
   ResetConsumerOffsetRequest,
   SubscriptionEntry,
@@ -83,6 +84,23 @@ export async function getConsumerSubscriptions(
     );
   }
   return metadataApi.getConsumerSubscriptions(name, instanceId);
+}
+
+export async function getConsumerStack(
+  name: string,
+  clientId: string,
+  instanceId?: string,
+): Promise<ConsumerStackTrace> {
+  if (isMockMode()) {
+    return {
+      groupName: name,
+      clientId,
+      capturedAt: new Date().toISOString(),
+      threadCount: 0,
+      threads: [],
+    };
+  }
+  return metadataApi.getConsumerStack(name, clientId, instanceId);
 }
 
 export async function createConsumerGroup(data: Partial<ConsumerGroup>): Promise<ConsumerGroup> {

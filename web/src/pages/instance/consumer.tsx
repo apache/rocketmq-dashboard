@@ -65,6 +65,7 @@ import { formatDateTime } from '../../utils/format';
 import type {
   ConsumerGroup,
   ConsumerInstance,
+  ConsumerStackTrace,
   QueueProgress,
   SubscriptionEntry,
 } from '../../api/metadata';
@@ -73,6 +74,7 @@ import {
   createConsumerGroup,
   deleteConsumerGroup,
   getConsumerProgress,
+  getConsumerStack,
   getConsumerSubscriptions,
   listConsumerGroups,
   resetConsumerOffset,
@@ -216,6 +218,10 @@ const ConsumerPage = () => {
   );
   const [showOnlyInconsistent, setShowOnlyInconsistent] = useState(false);
   const [progressByGroup, setProgressByGroup] = useState<Record<string, QueueProgress[]>>({});
+  const [stackModalOpen, setStackModalOpen] = useState(false);
+  const [stackLoading, setStackLoading] = useState(false);
+  const [selectedStack, setSelectedStack] = useState<ConsumerStackTrace | null>(null);
+  const [selectedStackClient, setSelectedStackClient] = useState<ConsumerInstance | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importFilename, setImportFilename] = useState('');
@@ -342,6 +348,26 @@ const ConsumerPage = () => {
     ? inconsistentSubscriptions
     : selectedSubscriptions;
   const selectedProgress = selectedGroup ? (progressByGroup[selectedDiagnosticKey] ?? []) : [];
+
+  const openStackModal = async (consumerInstance: ConsumerInstance) => {
+    if (!selectedGroup) return;
+    setSelectedStackClient(consumerInstance);
+    setSelectedStack(null);
+    setStackModalOpen(true);
+    setStackLoading(true);
+    try {
+      const stack = await getConsumerStack(
+        selectedGroup.name,
+        consumerInstance.clientId,
+        selectedInstanceId || undefined,
+      );
+      setSelectedStack(stack);
+    } catch {
+      message.error(`客户端 ${consumerInstance.clientId} 线程栈获取失败`);
+    } finally {
+      setStackLoading(false);
+    }
+  };
 
   const handleImportFile = async (file: File) => {
     if (!selectedInstanceId) {
@@ -696,6 +722,20 @@ const ConsumerPage = () => {
         <Text type="secondary" style={{ fontSize: 13 }}>
           {formatDateTime(time)}
         </Text>
+      ),
+    },
+    {
+      title: '诊断',
+      key: 'diagnostics',
+      width: 110,
+      render: (_: unknown, record: ConsumerInstance) => (
+        <Button
+          size="small"
+          icon={<ListBullets size={14} />}
+          onClick={() => void openStackModal(record)}
+        >
+          线程栈
+        </Button>
       ),
     },
   ];
@@ -1229,6 +1269,91 @@ const ConsumerPage = () => {
             ]}
           />
         )}
+      </Modal>
+
+      {/* ═══════════════════════════════════════════
+         Consumer Stack Modal
+         ═══════════════════════════════════════════ */}
+      <Modal
+        title={
+          <Space>
+            <ListBullets size={18} color="#1677ff" />
+            <span>消费者线程栈</span>
+          </Space>
+        }
+        open={stackModalOpen}
+        onCancel={() => {
+          setStackModalOpen(false);
+          setSelectedStack(null);
+          setSelectedStackClient(null);
+        }}
+        footer={null}
+        width={900}
+        destroyOnClose
+      >
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <Descriptions bordered column={2} size="small">
+            <Descriptions.Item label="Group">
+              <Text strong>{selectedStack?.groupName ?? selectedGroup?.name ?? '-'}</Text>
+            </Descriptions.Item>
+            <Descriptions.Item label="Client ID">
+              <Text copyable>
+                {selectedStack?.clientId ?? selectedStackClient?.clientId ?? '-'}
+              </Text>
+            </Descriptions.Item>
+            <Descriptions.Item label="采集时间">
+              {selectedStack?.capturedAt ? formatDateTime(selectedStack.capturedAt) : '-'}
+            </Descriptions.Item>
+            <Descriptions.Item label="线程数">{selectedStack?.threadCount ?? 0}</Descriptions.Item>
+          </Descriptions>
+
+          {stackLoading ? (
+            <Table
+              loading
+              columns={[{ title: '线程', dataIndex: 'threadName', key: 'threadName' }]}
+              dataSource={[]}
+              pagination={false}
+              size="small"
+            />
+          ) : selectedStack && selectedStack.threads.length > 0 ? (
+            selectedStack.threads.map((thread) => (
+              <Card
+                key={`${thread.threadName}-${thread.threadId}`}
+                size="small"
+                title={
+                  <Space>
+                    <Text strong>{thread.threadName}</Text>
+                    <Tag color="blue">TID {thread.threadId}</Tag>
+                    <Tag color={thread.state === 'RUNNABLE' ? 'green' : 'orange'}>
+                      {thread.state}
+                    </Tag>
+                  </Space>
+                }
+              >
+                <pre
+                  style={{
+                    margin: 0,
+                    maxHeight: 240,
+                    overflow: 'auto',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    fontSize: 12,
+                    lineHeight: 1.6,
+                  }}
+                >
+                  {thread.stackTrace.join('\n')}
+                </pre>
+              </Card>
+            ))
+          ) : (
+            <Alert
+              type="info"
+              showIcon
+              message="暂无线程栈数据"
+              description="客户端在线但没有返回可展示的 jstack 内容，或该客户端暂时无法采集线程信息。"
+            />
+          )}
+        </Space>
       </Modal>
 
       {/* ═══════════════════════════════════════════

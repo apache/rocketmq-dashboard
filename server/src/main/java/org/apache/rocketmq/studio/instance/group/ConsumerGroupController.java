@@ -71,8 +71,9 @@ public class ConsumerGroupController {
     @GetMapping("/{name}/instances/{clientId}/stack")
     public Result<ConsumerStackTraceVO> getConsumerStack(
             @PathVariable String name,
-            @PathVariable String clientId) {
-        return Result.ok(consumerDiagnosticsService.getConsumerStack(name, clientId));
+            @PathVariable String clientId,
+            @RequestParam(required = false) String instanceId) {
+        return Result.ok(consumerDiagnosticsService.getConsumerStack(instanceId, name, clientId));
     }
 
     @PostMapping("/create")

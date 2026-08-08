@@ -28,7 +28,7 @@ class ConsumerDiagnosticsProviderStubTest {
 
     @Test
     void getConsumerStackShouldFailWhenRealProviderIsMissing() {
-        assertThatThrownBy(() -> provider.getConsumerStack("cg-orders", "client-1"))
+        assertThatThrownBy(() -> provider.getConsumerStack("instance-a", "cg-orders", "client-1"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Consumer diagnostics provider is not configured")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(501));

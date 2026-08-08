@@ -33,6 +33,7 @@ vi.mock('../../../services/consumerService', () => ({
   deleteConsumerGroup: vi.fn(),
   getConsumerGroup: vi.fn(),
   getConsumerProgress: vi.fn(),
+  getConsumerStack: vi.fn(),
   getConsumerSubscriptions: vi.fn(),
   listConsumerGroups: vi.fn(),
   resetConsumerOffset: vi.fn(),
@@ -143,6 +144,22 @@ describe('Consumer page', () => {
         consistency: '一致',
       },
     ]);
+    vi.mocked(consumerService.getConsumerStack).mockResolvedValue({
+      groupName: 'remote-cg',
+      clientId: 'client-1',
+      capturedAt: '2026-07-23T00:00:00Z',
+      threadCount: 1,
+      threads: [
+        {
+          threadName: 'ConsumeMessageThread_1',
+          threadId: 12,
+          state: 'RUNNABLE',
+          blockedTime: 0,
+          waitedTime: 0,
+          stackTrace: ['org.apache.demo.OrderListener.consume(OrderListener.java:42)'],
+        },
+      ],
+    });
     instanceServiceMocks.listInstances.mockResolvedValue([
       {
         id: 'instance-1',
@@ -311,6 +328,43 @@ describe('Consumer page', () => {
     await waitFor(() =>
       expect(consumerService.getConsumerProgress).toHaveBeenCalledWith('remote-cg', 'instance-b'),
     );
+  });
+
+  it('loads a consumer client stack trace from the selected instance', async () => {
+    vi.mocked(consumerService.listConsumerGroups).mockResolvedValue([
+      {
+        ...group,
+        instances: [
+          {
+            clientId: 'client-1',
+            protocol: 'Remoting',
+            address: '10.0.0.1:39210',
+            subscribedTopics: ['remote-topic'],
+            lastHeartbeat: '2026-07-23T00:00:00Z',
+            topicLag: {},
+          },
+        ],
+      },
+    ]);
+    const user = userEvent.setup();
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+    await user.click(await screen.findByRole('tab', { name: /在线实例/ }));
+    await user.click(await screen.findByRole('button', { name: /线程栈/ }));
+
+    await waitFor(() =>
+      expect(consumerService.getConsumerStack).toHaveBeenCalledWith(
+        'remote-cg',
+        'client-1',
+        'instance-1',
+      ),
+    );
+    expect(await screen.findByText('消费者线程栈')).toBeInTheDocument();
+    expect(screen.getByText('ConsumeMessageThread_1')).toBeInTheDocument();
+    expect(
+      screen.getByText('org.apache.demo.OrderListener.consume(OrderListener.java:42)'),
+    ).toBeInTheDocument();
   });
 
   it('highlights inconsistent subscriptions and refreshes the check result', async () => {
