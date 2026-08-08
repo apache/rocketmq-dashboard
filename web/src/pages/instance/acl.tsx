@@ -70,7 +70,9 @@ const normalizeRule = (rule: AclRule): AclRule => ({
   actions: rule.actions ?? [],
   decision: rule.decision ?? '',
   scope: rule.scope ?? '',
-  aclVersion: rule.aclVersion ?? '2.0',
+  // Normalize to a string so version filters and tag coloring work whether the backend
+  // returns a number (2.0) or a string ("2.0").
+  aclVersion: String(rule.aclVersion ?? '2.0'),
   createdAt: rule.createdAt ?? null,
 });
 
