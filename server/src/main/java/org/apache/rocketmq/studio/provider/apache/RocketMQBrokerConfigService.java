@@ -91,7 +91,7 @@ public class RocketMQBrokerConfigService {
 
     private void recordAudit(String clusterId, String detail, String result) {
         try {
-            auditService.record("UPDATE_BROKER_CONFIG", "CLUSTER:" + clusterId, detail, result);
+            auditService.record("UPDATE_BROKER_CONFIG", "CLUSTER:" + clusterId, clusterId, detail, result);
         } catch (Exception auditFailure) {
             log.warn("Failed to record broker config audit for cluster {}: {}", clusterId,
                     auditFailure.getMessage());
