@@ -39,6 +39,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.UnknownHostException;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -130,6 +131,28 @@ public class SettingsService {
         log.info("Deleting data source: {}", normalizedKey);
         if (!settingsRepository.deleteDataSource(normalizedKey)) {
             throw new BusinessException(404, "Data source not found: " + normalizedKey);
+        }
+    }
+
+    /**
+     * Removes a deleted instance from data-source bindings. An empty binding list
+     * remains the existing representation for a globally available source.
+     */
+    public void removeInstanceBindings(String instanceId) {
+        if (!StringUtils.hasText(instanceId)) {
+            return;
+        }
+        for (DataSourceVO dataSource : settingsRepository.findAllDataSources()) {
+            List<String> instanceIds = dataSource.getInstanceIds();
+            if (instanceIds == null || !instanceIds.contains(instanceId)) {
+                continue;
+            }
+            dataSource.setInstanceIds(new ArrayList<>(instanceIds.stream()
+                    .filter(id -> !instanceId.equals(id))
+                    .toList()));
+            if (!settingsRepository.replaceDataSource(dataSource)) {
+                throw new BusinessException(404, "Data source not found: " + dataSource.getKey());
+            }
         }
     }
 

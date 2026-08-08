@@ -27,6 +27,7 @@ import org.apache.rocketmq.studio.provider.CloudCatalogProvider;
 import org.apache.rocketmq.studio.provider.CloudInstanceDetailVO;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
+import org.apache.rocketmq.studio.settings.SettingsService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -62,6 +63,9 @@ class InstanceServiceTest {
 
     @Mock
     private MqAdminExtFactory adminFactory;
+
+    @Mock
+    private SettingsService settingsService;
 
     @InjectMocks
     private InstanceService instanceService;
@@ -592,6 +596,7 @@ class InstanceServiceTest {
         instanceService.deleteInstance("inst-1");
 
         verify(instanceRepository).deleteById("inst-1");
+        verify(settingsService).removeInstanceBindings("inst-1");
     }
 
     @Test
@@ -612,6 +617,7 @@ class InstanceServiceTest {
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
 
         verify(instanceRepository, never()).deleteById("inst-1");
+        verifyNoInteractions(settingsService);
     }
 
     @Test
@@ -632,6 +638,7 @@ class InstanceServiceTest {
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
 
         verify(instanceRepository, never()).deleteById("inst-1");
+        verifyNoInteractions(settingsService);
     }
 
     @Test
