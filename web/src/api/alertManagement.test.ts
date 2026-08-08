@@ -18,7 +18,15 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { queryAlertRules } from './alertManagement';
+import {
+  createAlertRule,
+  deleteAlertRule,
+  exportAlertRulesYaml,
+  listAlertRules,
+  queryAlertRules,
+  toggleAlertRule,
+  updateAlertRule,
+} from './alertManagement';
 
 const mock = new MockAdapter(client);
 
@@ -36,7 +44,7 @@ describe('AlertManagement API', () => {
   it('queries alert rules data', async () => {
     const rulesYaml =
       'groups:\n  - name: test\n    rules:\n      - alert: HighCPU\n        expr: cpu > 80';
-    mock.onGet('/alert/rules').reply(200, { code: 200, data: { rules: rulesYaml } });
+    mock.onGet('/alert-rules/export').reply(200, { code: 200, data: { rules: rulesYaml } });
 
     const result = await queryAlertRules();
     expect(result.rules).toBe(rulesYaml);
@@ -44,9 +52,76 @@ describe('AlertManagement API', () => {
   });
 
   it('handles empty alert rules', async () => {
-    mock.onGet('/alert/rules').reply(200, { code: 200, data: { rules: '' } });
+    mock.onGet('/alert-rules/export').reply(200, { code: 200, data: { rules: '' } });
 
-    const result = await queryAlertRules();
+    const result = await exportAlertRulesYaml();
     expect(result.rules).toBe('');
+  });
+
+  it('lists persisted alert rules', async () => {
+    mock.onGet('/alert-rules').reply(200, {
+      code: 200,
+      data: [{ id: 'rule-1', name: 'High Lag', metric: 'lag', enabled: true }],
+    });
+
+    await expect(listAlertRules()).resolves.toEqual([
+      { id: 'rule-1', name: 'High Lag', metric: 'lag', enabled: true },
+    ]);
+  });
+
+  it('creates persisted alert rules', async () => {
+    const request = {
+      name: 'High Lag',
+      metric: 'rocketmq_consumer_lag_messages',
+      operator: '>',
+      threshold: 1000,
+      duration: '5m',
+      enabled: true,
+    };
+    mock.onPost('/alert-rules/create').reply((config) => {
+      expect(JSON.parse(config.data as string)).toEqual(request);
+      return [200, { code: 200, data: { ...request, id: 'rule-1' } }];
+    });
+
+    await expect(createAlertRule(request)).resolves.toMatchObject({ id: 'rule-1' });
+  });
+
+  it('updates persisted alert rules', async () => {
+    const request = {
+      id: 'rule-1',
+      name: 'High Lag',
+      metric: 'rocketmq_consumer_lag_messages',
+      operator: '>',
+      threshold: 2000,
+      duration: '5m',
+      enabled: true,
+    };
+    mock.onPost('/alert-rules/update').reply((config) => {
+      expect(JSON.parse(config.data as string)).toEqual(request);
+      return [200, { code: 200, data: request }];
+    });
+
+    await expect(updateAlertRule(request)).resolves.toEqual(request);
+  });
+
+  it('toggles persisted alert rules', async () => {
+    mock.onPost('/alert-rules/toggle').reply((config) => {
+      expect(JSON.parse(config.data as string)).toEqual({ id: 'rule-1', enabled: false });
+      return [200, { code: 200, data: { id: 'rule-1', name: 'High Lag', enabled: false } }];
+    });
+
+    await expect(toggleAlertRule('rule-1', false)).resolves.toMatchObject({
+      id: 'rule-1',
+      enabled: false,
+    });
+  });
+
+  it('deletes persisted alert rules', async () => {
+    mock.onPost('/alert-rules/delete').reply((config) => {
+      expect(JSON.parse(config.data as string)).toEqual({ id: 'rule-1' });
+      return [200, { code: 200, data: null }];
+    });
+
+    await expect(deleteAlertRule('rule-1')).resolves.toBeUndefined();
   });
 });

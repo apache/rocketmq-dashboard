@@ -22,11 +22,50 @@ import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
 import AlertManagementPage from '../AlertManagement';
-import { queryAlertRules } from '../../../api/alertManagement';
+import {
+  createAlertRule,
+  deleteAlertRule,
+  exportAlertRulesYaml,
+  listAlertRules,
+  toggleAlertRule,
+  updateAlertRule,
+} from '../../../api/alertManagement';
 
 vi.mock('../../../api/alertManagement', () => ({
-  queryAlertRules: vi.fn(),
+  createAlertRule: vi.fn(),
+  deleteAlertRule: vi.fn(),
+  exportAlertRulesYaml: vi.fn(),
+  listAlertRules: vi.fn(),
+  toggleAlertRule: vi.fn(),
+  updateAlertRule: vi.fn(),
 }));
+
+const alertRules = [
+  {
+    id: 'rule-broker-down',
+    name: 'BrokerDown',
+    metric: 'up{job="rocketmq-broker"}',
+    operator: '==',
+    threshold: 0,
+    duration: '5m',
+    severity: 'critical',
+    enabled: true,
+    description: 'Broker unavailable - Broker has been unavailable for five minutes',
+  },
+  {
+    id: 'rule-consumer-lag',
+    name: 'ConsumerLagHigh',
+    metric: 'rocketmq_consumer_lag_messages',
+    operator: '>',
+    threshold: 100000,
+    duration: '10m',
+    severity: 'warning',
+    enabled: true,
+    description: 'Consumer lag is high - Consumer lag has exceeded the threshold',
+    brokerName: 'broker-a',
+    clusterName: 'DefaultCluster',
+  },
+];
 
 const rulesYaml = `
 groups:
@@ -97,7 +136,19 @@ describe('AlertManagementPage', () => {
       value: revokeObjectURL,
     });
     clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
-    vi.mocked(queryAlertRules).mockResolvedValue({ rules: rulesYaml });
+    vi.mocked(listAlertRules).mockResolvedValue(alertRules);
+    vi.mocked(exportAlertRulesYaml).mockResolvedValue({ rules: rulesYaml });
+    vi.mocked(createAlertRule).mockImplementation(async (rule) => ({
+      ...rule,
+      id: 'rule-new',
+    }));
+    vi.mocked(updateAlertRule).mockImplementation(async (rule) => rule);
+    vi.mocked(toggleAlertRule).mockImplementation(async (id, enabled) => ({
+      ...alertRules[0],
+      id,
+      enabled,
+    }));
+    vi.mocked(deleteAlertRule).mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -108,10 +159,28 @@ describe('AlertManagementPage', () => {
     renderWithProviders(<AlertManagementPage />);
 
     await waitFor(() => {
-      expect(queryAlertRules).toHaveBeenCalledTimes(1);
+      expect(listAlertRules).toHaveBeenCalledTimes(1);
     });
 
     expect(await screen.findByText('BrokerDown')).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        'rocketmq_consumer_lag_messages{cluster="DefaultCluster",broker="broker-a"} > 100000',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('falls back to default exported YAML when no persisted rules exist', async () => {
+    vi.mocked(listAlertRules).mockResolvedValue([]);
+    renderWithProviders(<AlertManagementPage />);
+
+    const brokerRule = await screen.findByText('BrokerDown');
+
+    expect(exportAlertRulesYaml).toHaveBeenCalledTimes(1);
+    const brokerRow = brokerRule.closest('tr');
+    expect(brokerRow).not.toBeNull();
+    expect(within(brokerRow!).getByRole('switch')).toBeDisabled();
+    expect(within(brokerRow!).getAllByRole('button')[0]).toBeDisabled();
   });
 
   it('exports the server-side YAML verbatim when rows are selected', async () => {
@@ -127,7 +196,7 @@ describe('AlertManagementPage', () => {
     await user.click(screen.getByRole('button', { name: '导出 YAML' }));
 
     await waitFor(() => {
-      expect(queryAlertRules).toHaveBeenCalledTimes(2);
+      expect(exportAlertRulesYaml).toHaveBeenCalledTimes(1);
     });
     expect(createObjectURL).toHaveBeenCalledTimes(1);
     const blob = createObjectURL.mock.calls[0][0] as Blob;
@@ -150,7 +219,7 @@ describe('AlertManagementPage', () => {
     expect(yaml).toContain('alert: ConsumerLagHigh');
   });
 
-  it('keeps the rule unchanged and warns when the toggle is clicked', async () => {
+  it('persists rule status changes through the alert rule API', async () => {
     const user = userEvent.setup();
     renderWithProviders(<AlertManagementPage />);
 
@@ -158,17 +227,97 @@ describe('AlertManagementPage', () => {
     const brokerRow = brokerRule.closest('tr');
     expect(brokerRow).not.toBeNull();
 
-    await user.click(within(brokerRow!).getByRole('checkbox'));
-    expect(screen.getByRole('button', { name: '导出 YAML' })).toBeInTheDocument();
-
     await user.click(within(brokerRow!).getByRole('switch'));
 
-    expect(
-      await screen.findByText(
-        'Alert rule changes are unavailable until a persisted rule editor is available.',
-      ),
-    ).toBeInTheDocument();
-    expect(screen.getByText('BrokerDown')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(toggleAlertRule).toHaveBeenCalledWith('rule-broker-down', false);
+    });
+    expect(await screen.findByText('告警规则已更新')).toBeInTheDocument();
+  });
+
+  it('creates a persisted alert rule from the editor modal', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<AlertManagementPage />);
+
+    await screen.findByText('BrokerDown');
+    await user.click(screen.getByRole('button', { name: '添加规则' }));
+
+    const dialog = await screen.findByRole('dialog', { name: '添加规则' });
+    await user.type(
+      within(dialog).getByPlaceholderText('e.g. RocketMQ_Broker_Down'),
+      'TopicBacklogHigh',
+    );
+    await user.type(
+      within(dialog).getByPlaceholderText('e.g. up{job=~"rocketmq.*broker.*"} == 0'),
+      'rocketmq_topic_messages > 500',
+    );
+    await user.type(
+      within(dialog).getByPlaceholderText('Brief description of the alert'),
+      'Topic backlog high',
+    );
+    await user.click(within(dialog).getByRole('button', { name: /OK|确/ }));
+
+    await waitFor(() => {
+      expect(createAlertRule).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'TopicBacklogHigh',
+          metric: 'rocketmq_topic_messages',
+          operator: '>',
+          threshold: 500,
+          duration: '5m',
+          enabled: true,
+          description: 'Topic backlog high',
+          severity: 'warning',
+        }),
+      );
+    });
+    expect(await screen.findByText('告警规则已创建')).toBeInTheDocument();
+  });
+
+  it('updates a persisted alert rule from the editor modal', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<AlertManagementPage />);
+
+    const brokerRule = await screen.findByText('BrokerDown');
+    const brokerRow = brokerRule.closest('tr');
+    expect(brokerRow).not.toBeNull();
+    await user.click(within(brokerRow!).getAllByRole('button')[0]);
+
+    const dialog = await screen.findByRole('dialog', { name: '编辑规则' });
+    const summaryInput = within(dialog).getByPlaceholderText('Brief description of the alert');
+    await user.clear(summaryInput);
+    await user.type(summaryInput, 'Broker unavailable updated');
+    await user.click(within(dialog).getByRole('button', { name: /OK|确/ }));
+
+    await waitFor(() => {
+      expect(updateAlertRule).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'rule-broker-down',
+          name: 'BrokerDown',
+          metric: 'up{job="rocketmq-broker"}',
+          operator: '==',
+          threshold: 0,
+          description: 'Broker unavailable updated - Broker has been unavailable for five minutes',
+        }),
+      );
+    });
+    expect(await screen.findByText('告警规则已更新')).toBeInTheDocument();
+  });
+
+  it('deletes a persisted alert rule', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<AlertManagementPage />);
+
+    const brokerRule = await screen.findByText('BrokerDown');
+    const brokerRow = brokerRule.closest('tr');
+    expect(brokerRow).not.toBeNull();
+    await user.click(within(brokerRow!).getAllByRole('button')[1]);
+    await user.click(await screen.findByRole('button', { name: /OK|确/ }));
+
+    await waitFor(() => {
+      expect(deleteAlertRule).toHaveBeenCalledWith('rule-broker-down');
+    });
+    expect(screen.queryByText('BrokerDown')).not.toBeInTheDocument();
   });
 
   it('preserves selected rules while filtering the table', async () => {

@@ -40,6 +40,11 @@ public class AlertRuleController {
         return Result.ok(alertService.listRules());
     }
 
+    @GetMapping("/export")
+    public Result<AlertRulesYamlVO> exportRules() {
+        return Result.ok(new AlertRulesYamlVO(alertService.exportPrometheusRulesYaml()));
+    }
+
     @PostMapping("/create")
     public Result<AlertRuleVO> createRule(@Valid @RequestBody(required = false) AlertRuleRequestDTO rule) {
         return Result.ok(alertService.createRule(requireAlertRule(rule).toAlertRuleVO()));
