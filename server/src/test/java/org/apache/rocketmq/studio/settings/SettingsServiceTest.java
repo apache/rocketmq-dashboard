@@ -26,6 +26,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.client.RestClient;
 
@@ -114,6 +115,25 @@ class SettingsServiceTest {
 
         assertThat(update.getApiKey()).isEqualTo("sk-existing");
         verify(settingsRepository).saveGeneralSettings(update);
+    }
+
+    @Test
+    void removeInstanceBindingsUpdatesOnlyBoundDataSources() {
+        DataSourceVO bound = DataSourceVO.builder()
+                .key("bound")
+                .instanceIds(List.of("instance-a", "instance-b"))
+                .build();
+        DataSourceVO global = DataSourceVO.builder().key("global").instanceIds(List.of()).build();
+        DataSourceVO unrelated = DataSourceVO.builder().key("other").instanceIds(List.of("instance-b")).build();
+        when(settingsRepository.findAllDataSources()).thenReturn(List.of(bound, global, unrelated));
+        when(settingsRepository.replaceDataSource(any(DataSourceVO.class))).thenReturn(true);
+
+        settingsService.removeInstanceBindings("instance-a");
+
+        ArgumentCaptor<DataSourceVO> captor = ArgumentCaptor.forClass(DataSourceVO.class);
+        verify(settingsRepository).replaceDataSource(captor.capture());
+        assertThat(captor.getValue().getKey()).isEqualTo("bound");
+        assertThat(captor.getValue().getInstanceIds()).containsExactly("instance-b");
     }
 
     @Test

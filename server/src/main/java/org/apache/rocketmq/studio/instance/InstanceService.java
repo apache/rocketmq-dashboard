@@ -28,9 +28,11 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.provider.CloudInstanceDetailVO;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
+import org.apache.rocketmq.studio.settings.SettingsService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -45,6 +47,7 @@ public class InstanceService {
     private final CloudCredentialRepository cloudCredentialRepository;
     private final InstanceProviderRegistry providerRegistry;
     private final MqAdminExtFactory adminFactory;
+    private final SettingsService settingsService;
 
     public List<InstanceVO> listInstances(InstanceType type, String search) {
         log.debug("Listing instances, type={}, search={}", type, search);
@@ -214,6 +217,7 @@ public class InstanceService {
         return saved;
     }
 
+    @Transactional
     public void deleteInstance(String id) {
         log.info("Deleting instance: {}", id);
 
@@ -234,6 +238,7 @@ public class InstanceService {
                     topicCount, consumerGroupCount));
         }
         instanceRepository.deleteById(id);
+        settingsService.removeInstanceBindings(id);
         releaseApacheEndpointIfUnused(existing, null);
     }
 
