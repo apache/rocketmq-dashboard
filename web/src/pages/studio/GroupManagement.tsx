@@ -318,7 +318,9 @@ const GroupManagementPage = () => {
         <Table
           columns={columns}
           dataSource={filteredGroupData}
-          rowKey="name"
+          rowKey={(record) =>
+            `${record.instanceId || record.clusterId || 'unscoped'}\0${record.name}`
+          }
           loading={loading}
           pagination={{
             pageSize: 10,
