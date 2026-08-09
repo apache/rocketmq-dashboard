@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { App, Button, Modal, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DownloadSimple, Eye } from '@phosphor-icons/react';
@@ -43,6 +43,7 @@ export const AlertRuleAssetList: React.FC = () => {
   const [viewing, setViewing] = useState<AlertRuleAssetInfo | null>(null);
   const [viewContent, setViewContent] = useState('');
   const [viewLoading, setViewLoading] = useState(false);
+  const viewRequestId = useRef(0);
   const [exportingName, setExportingName] = useState<string | null>(null);
 
   useEffect(() => {
@@ -60,20 +61,36 @@ export const AlertRuleAssetList: React.FC = () => {
     void load();
     return () => {
       cancelled = true;
+      viewRequestId.current += 1;
     };
   }, [t, message]);
 
   const handleView = async (info: AlertRuleAssetInfo) => {
+    const requestId = ++viewRequestId.current;
     setViewing(info);
+    setViewContent('');
     setViewLoading(true);
     try {
       const yaml = await getAlertRuleAsset(info.name);
-      setViewContent(yaml);
+      if (requestId === viewRequestId.current) {
+        setViewContent(yaml);
+      }
     } catch {
-      message.error(t('alertAssets.loadFailed'));
+      if (requestId === viewRequestId.current) {
+        message.error(t('alertAssets.loadFailed'));
+      }
     } finally {
-      setViewLoading(false);
+      if (requestId === viewRequestId.current) {
+        setViewLoading(false);
+      }
     }
+  };
+
+  const closeView = () => {
+    viewRequestId.current += 1;
+    setViewing(null);
+    setViewContent('');
+    setViewLoading(false);
   };
 
   const triggerDownload = (name: string, content: Blob | string) => {
@@ -168,8 +185,8 @@ export const AlertRuleAssetList: React.FC = () => {
       <Modal
         title={viewing ? viewing.name : t('alertAssets.title')}
         open={viewing !== null}
-        footer={<Button onClick={() => setViewing(null)}>{t('common.close')}</Button>}
-        onCancel={() => setViewing(null)}
+        footer={<Button onClick={closeView}>{t('common.close')}</Button>}
+        onCancel={closeView}
         width={760}
         destroyOnHidden
       >
