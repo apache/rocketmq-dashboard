@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Card,
   Table,
@@ -63,6 +63,7 @@ const ProxyPage: React.FC = () => {
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [addNodeModalOpen, setAddNodeModalOpen] = useState(false);
   const [form] = Form.useForm();
+  const loadRequestId = useRef(0);
 
   const [clusterStats, setClusterStats] = useState({
     totalNodes: 0,
@@ -72,9 +73,11 @@ const ProxyPage: React.FC = () => {
   });
 
   const loadProxyNodes = useCallback(async () => {
+    const requestId = ++loadRequestId.current;
     setLoading(true);
     try {
       const { proxyAddrList, currentProxyAddr } = await queryProxyHomePage();
+      if (requestId !== loadRequestId.current) return false;
       const nodes: ProxyNode[] = (proxyAddrList || []).map((addr) => ({
         key: addr,
         address: addr,
@@ -103,10 +106,13 @@ const ProxyPage: React.FC = () => {
       }
       return true;
     } catch {
+      if (requestId !== loadRequestId.current) return false;
       message.error(t('proxy.fetchListFailed'));
       return false;
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestId.current) {
+        setLoading(false);
+      }
     }
   }, [message, t]);
 
@@ -114,6 +120,9 @@ const ProxyPage: React.FC = () => {
     // The state updates are performed by the asynchronous Proxy API request, not by this effect itself.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadProxyNodes();
+    return () => {
+      ++loadRequestId.current;
+    };
   }, [loadProxyNodes]);
 
   const handleViewConfig = (node: ProxyNode) => {
