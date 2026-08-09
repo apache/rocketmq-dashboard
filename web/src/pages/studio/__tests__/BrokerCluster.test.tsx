@@ -227,14 +227,14 @@ describe('BrokerCluster Page', () => {
     const liveRefreshSwitch = screen.getByRole('switch');
     fireEvent.click(liveRefreshSwitch);
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(2000);
+      await vi.advanceTimersByTimeAsync(6000);
     });
-    expect(listClusters).toHaveBeenCalledTimes(2);
+    expect(listClusters).toHaveBeenCalledTimes(4);
 
     fireEvent.click(liveRefreshSwitch);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(4000);
     });
-    expect(listClusters).toHaveBeenCalledTimes(2);
+    expect(listClusters).toHaveBeenCalledTimes(4);
   });
 });

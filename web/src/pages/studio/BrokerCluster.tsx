@@ -173,15 +173,6 @@ const BrokerClusterPage = () => {
     }
   }, [message, t]);
 
-  // Live refresh: poll while the auto-refresh switch is on.
-  useEffect(() => {
-    if (!autoRefresh) return;
-    const timer = setInterval(() => {
-      void loadData();
-    }, 5000);
-    return () => clearInterval(timer);
-  }, [autoRefresh, loadData]);
-
   const handleRestartBroker = async (broker: BrokerRecord) => {
     try {
       const result = await restartBroker(broker.clusterId, broker.brokerName);
