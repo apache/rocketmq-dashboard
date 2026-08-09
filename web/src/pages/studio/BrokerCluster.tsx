@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Table,
   Button,
@@ -155,21 +155,27 @@ const BrokerClusterPage = () => {
   const [brokerData, setBrokerData] = useState<BrokerRecord[]>([]);
   const [nameServerData, setNameServerData] = useState<NameServerRecord[]>([]);
   const [proxyData, setProxyData] = useState<ProxyRecord[]>([]);
+  const loadRequestId = useRef(0);
   const { t } = useLang();
   const { message } = App.useApp();
 
   const loadData = useCallback(async () => {
+    const requestId = ++loadRequestId.current;
     setLoading(true);
     try {
       const clusters = await listClusters();
+      if (requestId !== loadRequestId.current) return;
       const mapped = mapClusters(clusters);
       setBrokerData(mapped.brokers);
       setNameServerData(mapped.nameServers);
       setProxyData(mapped.proxies);
     } catch {
+      if (requestId !== loadRequestId.current) return;
       message.error(t('common.refreshFailed'));
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestId.current) {
+        setLoading(false);
+      }
     }
   }, [message, t]);
 
@@ -202,7 +208,10 @@ const BrokerClusterPage = () => {
     const timeoutId = window.setTimeout(() => {
       void loadData();
     });
-    return () => window.clearTimeout(timeoutId);
+    return () => {
+      window.clearTimeout(timeoutId);
+      ++loadRequestId.current;
+    };
   }, [loadData]);
 
   useEffect(() => {
