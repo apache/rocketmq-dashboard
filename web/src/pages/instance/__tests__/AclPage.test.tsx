@@ -131,6 +131,44 @@ describe('ACL page', () => {
     expect(screen.getByText('cluster-a')).toBeInTheDocument();
   });
 
+  it('shows missing backend timestamps as unavailable', async () => {
+    const user = userEvent.setup();
+    vi.mocked(aclService.listAclRules).mockResolvedValue([
+      {
+        id: 'rule-without-time',
+        principal: 'no-time-rule',
+        resource: 'topic-a',
+        resourceType: 'Topic',
+        resourcePattern: 'LITERAL',
+        actions: ['PUB'],
+        decision: 'ALLOW',
+        scope: 'cluster',
+        aclVersion: 2,
+        createdAt: null,
+      },
+    ]);
+    vi.mocked(aclService.listAclUsers).mockResolvedValue([
+      {
+        id: 'user-without-time',
+        username: 'no-time-user',
+        accessKey: 'acce****3456',
+        secretKey: 'secr****7654',
+        admin: false,
+        clusters: [],
+        createdAt: null,
+      },
+    ]);
+    renderWithProviders(<AclPage />);
+
+    expect(await screen.findByText('no-time-rule')).toBeInTheDocument();
+    expect(screen.getByText('-')).toBeInTheDocument();
+
+    await user.click(screen.getByText('用户管理'));
+    const userPanel = screen.getByRole('tabpanel', { name: '用户管理' });
+    expect(await within(userPanel).findByText('no-time-user')).toBeInTheDocument();
+    expect(within(userPanel).getByText('-')).toBeInTheDocument();
+  });
+
   it('does not submit masked credentials when editing a user', async () => {
     const user = userEvent.setup();
     vi.mocked(aclService.updateAclUser).mockResolvedValue({

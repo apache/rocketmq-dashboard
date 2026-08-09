@@ -70,7 +70,7 @@ const normalizeRule = (rule: AclRule): AclRule => ({
   decision: rule.decision ?? '',
   scope: rule.scope ?? '',
   aclVersion: rule.aclVersion ?? '2.0',
-  createdAt: rule.createdAt ?? new Date().toISOString(),
+  createdAt: rule.createdAt ?? null,
 });
 
 const normalizeUser = (user: AclUser): AclUser => ({
@@ -80,7 +80,7 @@ const normalizeUser = (user: AclUser): AclUser => ({
   secretKey: user.secretKey ?? '',
   admin: user.admin ?? false,
   clusters: user.clusters ?? [],
-  createdAt: user.createdAt ?? new Date().toISOString(),
+  createdAt: user.createdAt ?? null,
 });
 
 const isFormValidationError = (error: unknown) =>
@@ -350,7 +350,8 @@ const AclPage = () => {
     }
   };
 
-  const formatDate = (iso: string) => {
+  const formatDate = (iso?: string | null) => {
+    if (!iso) return '-';
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return '-';
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -450,8 +451,8 @@ const AclPage = () => {
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 160,
-      sorter: (a, b) => a.createdAt.localeCompare(b.createdAt),
-      render: (iso: string) => (
+      sorter: (a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''),
+      render: (iso?: string | null) => (
         <span style={{ fontSize: 13, color: '#8c8c8c' }}>{formatDate(iso)}</span>
       ),
     },
@@ -595,8 +596,8 @@ const AclPage = () => {
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 160,
-      sorter: (a, b) => a.createdAt.localeCompare(b.createdAt),
-      render: (iso: string) => (
+      sorter: (a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''),
+      render: (iso?: string | null) => (
         <span style={{ fontSize: 13, color: '#8c8c8c' }}>{formatDate(iso)}</span>
       ),
     },
