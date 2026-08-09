@@ -117,8 +117,8 @@ const GroupManagementPage = () => {
       setDetailLoading(true);
       try {
         const [subs, prog] = await Promise.all([
-          getConsumerSubscriptions(group.name),
-          getConsumerProgress(group.name),
+          getConsumerSubscriptions(group.name, group.instanceId),
+          getConsumerProgress(group.name, group.instanceId),
         ]);
         if (requestId !== detailRequestId.current) return;
         setSubscriptions(subs);
