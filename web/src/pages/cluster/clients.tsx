@@ -114,18 +114,34 @@ const ClientsPage = () => {
   const [clusterFilter, setClusterFilter] = useState<string>('ALL');
   const [selectedConnection, setSelectedConnection] = useState<ClientConnection | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [instanceLoadKey, setInstanceLoadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
-    void listInstances().then((nextInstances) => {
-      if (cancelled) return;
-      setInstances(nextInstances);
-      setSelectedInstanceId((current) => current || nextInstances[0]?.id || '');
-    });
+
+    setLoading(true);
+    void listInstances()
+      .then((nextInstances) => {
+        if (cancelled) return;
+        setInstances(nextInstances);
+        setSelectedInstanceId((current) => current || nextInstances[0]?.id || '');
+        setLoadError(null);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setInstances([]);
+        setSelectedInstanceId('');
+        setConnections([]);
+        setLoadError(getLoadErrorMessage(error));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [instanceLoadKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -355,7 +371,17 @@ const ClientsPage = () => {
       />
 
       {loadError && (
-        <Alert showIcon type="warning" message={loadError} style={{ marginBottom: 16 }} />
+        <Alert
+          showIcon
+          type="warning"
+          message={loadError}
+          style={{ marginBottom: 16 }}
+          action={
+            <Button size="small" onClick={() => setInstanceLoadKey((key) => key + 1)}>
+              重试
+            </Button>
+          }
+        />
       )}
       {connections.some((connection) => connection.partial) && (
         <Alert
