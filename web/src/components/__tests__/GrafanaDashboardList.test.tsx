@@ -148,6 +148,29 @@ describe('GrafanaDashboardList', () => {
     expect(within(dialog).queryByText(/"uid": "rocketmq-overview"/)).not.toBeInTheDocument();
   });
 
+  it('tracks simultaneous dashboard exports independently', async () => {
+    vi.mocked(exportGrafanaDashboard).mockImplementation(() => new Promise(() => {}));
+    const user = userEvent.setup();
+    render(
+      <App>
+        <LangProvider>
+          <GrafanaDashboardList />
+        </LangProvider>
+      </App>,
+    );
+
+    await screen.findByText('RocketMQ Cluster Overview');
+    const exportButtons = screen.getAllByRole('button', { name: /Export|导出/ });
+    await user.click(exportButtons[0]);
+    await user.click(exportButtons[1]);
+
+    await waitFor(() => {
+      expect(exportGrafanaDashboard).toHaveBeenCalledTimes(2);
+      expect(exportButtons[0]).toHaveClass('ant-btn-loading');
+      expect(exportButtons[1]).toHaveClass('ant-btn-loading');
+    });
+  });
+
   it('exports a dashboard and triggers a download', async () => {
     const user = userEvent.setup();
     const createObjectURL = vi.fn().mockReturnValue('blob:grafana');

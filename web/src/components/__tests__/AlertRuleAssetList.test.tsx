@@ -127,6 +127,24 @@ describe('AlertRuleAssetList', () => {
     expect(within(dialog).queryByText(/STALE_BROKER_ALERT/)).not.toBeInTheDocument();
   });
 
+  it('tracks simultaneous asset exports independently', async () => {
+    vi.mocked(alertRuleAssetService.listAlertRuleAssets).mockResolvedValue(sampleAssets);
+    vi.mocked(alertRuleAssetService.exportAlertRuleAsset).mockImplementation(
+      () => new Promise(() => {}),
+    );
+    renderWithProviders(<AlertRuleAssetList />);
+
+    const exportButtons = await screen.findAllByRole('button', { name: /导出|Export/ });
+    fireEvent.click(exportButtons[0]);
+    fireEvent.click(exportButtons[1]);
+
+    await waitFor(() => {
+      expect(alertRuleAssetService.exportAlertRuleAsset).toHaveBeenCalledTimes(2);
+      expect(exportButtons[0]).toHaveClass('ant-btn-loading');
+      expect(exportButtons[1]).toHaveClass('ant-btn-loading');
+    });
+  });
+
   it('downloads the yaml when Export is clicked', async () => {
     const createObjectURLSpy = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:url');
     const revokeSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});

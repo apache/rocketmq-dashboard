@@ -38,7 +38,7 @@ export const GrafanaDashboardList: React.FC = () => {
   const [viewContent, setViewContent] = useState('');
   const [viewLoading, setViewLoading] = useState(false);
   const viewRequestId = useRef(0);
-  const [exportingUid, setExportingUid] = useState<string | null>(null);
+  const [exportingUids, setExportingUids] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -99,7 +99,7 @@ export const GrafanaDashboardList: React.FC = () => {
   };
 
   const handleExport = async (info: GrafanaDashboardInfo) => {
-    setExportingUid(info.uid);
+    setExportingUids((current) => new Set(current).add(info.uid));
     try {
       const blob = await exportGrafanaDashboard(info.uid);
       triggerDownload(info.uid, blob);
@@ -107,7 +107,11 @@ export const GrafanaDashboardList: React.FC = () => {
     } catch {
       message.error(t('grafana.exportFailed'));
     } finally {
-      setExportingUid(null);
+      setExportingUids((current) => {
+        const next = new Set(current);
+        next.delete(info.uid);
+        return next;
+      });
     }
   };
 
@@ -150,7 +154,7 @@ export const GrafanaDashboardList: React.FC = () => {
           <Button
             size="small"
             icon={<DownloadSimple size={16} />}
-            loading={exportingUid === record.uid}
+            loading={exportingUids.has(record.uid)}
             onClick={() => handleExport(record)}
           >
             {t('common.export')}
