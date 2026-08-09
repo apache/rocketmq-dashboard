@@ -16,11 +16,11 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { App } from 'antd';
+import { App, Modal } from 'antd';
 import type { K8sCertInfo } from '../../../api/cluster';
-import { listK8sCerts } from '../../../services/clusterService';
+import { listK8sCerts, renewK8sCert } from '../../../services/clusterService';
 import K8sCertsPage from '../certs';
 
 vi.mock('../../../services/clusterService', () => ({
@@ -79,6 +79,7 @@ beforeAll(() => {
 
 describe('K8sCertsPage', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.mocked(listK8sCerts).mockResolvedValue(certs);
   });
 
@@ -135,6 +136,29 @@ describe('K8sCertsPage', () => {
 
     expect(screen.getByText('rocketmq-staging-tls')).toBeInTheDocument();
     expect(screen.queryByText('rocketmq-prod-tls')).not.toBeInTheDocument();
+  });
+
+  it('tracks simultaneous certificate renewals independently', async () => {
+    vi.mocked(renewK8sCert).mockImplementation(() => new Promise(() => {}));
+    const confirmSpy = vi.spyOn(Modal, 'confirm');
+    renderPage();
+
+    await screen.findByText('rocketmq-prod-tls');
+    const renewButtons = screen.getAllByRole('button', { name: /续期/ });
+    fireEvent.click(renewButtons[0]);
+    fireEvent.click(renewButtons[1]);
+    expect(confirmSpy).toHaveBeenCalledTimes(2);
+
+    void confirmSpy.mock.calls[0][0].onOk?.(() => {});
+    void confirmSpy.mock.calls[1][0].onOk?.(() => {});
+
+    await waitFor(() => {
+      expect(renewK8sCert).toHaveBeenCalledWith('cert-prod');
+      expect(renewK8sCert).toHaveBeenCalledWith('cert-staging');
+      expect(renewButtons[0]).toHaveClass('ant-btn-loading');
+      expect(renewButtons[1]).toHaveClass('ant-btn-loading');
+    });
+    confirmSpy.mockRestore();
   });
 
   it('trims certificate search text before filtering', async () => {
