@@ -237,4 +237,21 @@ describe('BrokerCluster Page', () => {
     });
     expect(listClusters).toHaveBeenCalledTimes(2);
   });
+  it('formats bracketed IPv6 proxy gRPC endpoints without truncating the host', async () => {
+    vi.mocked(listClusters).mockResolvedValue([{
+      ...clusterFixture[0],
+      proxies: [{
+        ...clusterFixture[0].proxies[0],
+        addr: '[2001:db8::10]:8080',
+        grpcPort: 8081,
+      }],
+    }]);
+    const user = userEvent.setup();
+    renderWithProviders(<BrokerCluster />);
+    await screen.findByText('broker-api-a');
+    await user.click(screen.getByText('Proxy 管理'));
+
+    expect(screen.getByText('[2001:db8::10]:8081')).toBeInTheDocument();
+  });
+
 });
