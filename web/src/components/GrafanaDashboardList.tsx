@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { App, Button, Modal, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DownloadSimple, Eye } from '@phosphor-icons/react';
@@ -37,6 +37,7 @@ export const GrafanaDashboardList: React.FC = () => {
   const [viewing, setViewing] = useState<GrafanaDashboardInfo | null>(null);
   const [viewContent, setViewContent] = useState('');
   const [viewLoading, setViewLoading] = useState(false);
+  const viewRequestId = useRef(0);
   const [exportingUid, setExportingUid] = useState<string | null>(null);
 
   useEffect(() => {
@@ -54,20 +55,36 @@ export const GrafanaDashboardList: React.FC = () => {
     void load();
     return () => {
       cancelled = true;
+      viewRequestId.current += 1;
     };
   }, [t, message]);
 
   const handleView = async (info: GrafanaDashboardInfo) => {
+    const requestId = ++viewRequestId.current;
     setViewing(info);
+    setViewContent('');
     setViewLoading(true);
     try {
       const model = await getGrafanaDashboard(info.uid);
-      setViewContent(JSON.stringify(model, null, 2));
+      if (requestId === viewRequestId.current) {
+        setViewContent(JSON.stringify(model, null, 2));
+      }
     } catch {
-      message.error(t('grafana.loadFailed'));
+      if (requestId === viewRequestId.current) {
+        message.error(t('grafana.loadFailed'));
+      }
     } finally {
-      setViewLoading(false);
+      if (requestId === viewRequestId.current) {
+        setViewLoading(false);
+      }
     }
+  };
+
+  const closeView = () => {
+    viewRequestId.current += 1;
+    setViewing(null);
+    setViewContent('');
+    setViewLoading(false);
   };
 
   const triggerDownload = (uid: string, content: Blob | string) => {
@@ -157,8 +174,8 @@ export const GrafanaDashboardList: React.FC = () => {
       <Modal
         title={viewing ? viewing.title : t('grafana.title')}
         open={viewing !== null}
-        footer={<Button onClick={() => setViewing(null)}>{t('common.close')}</Button>}
-        onCancel={() => setViewing(null)}
+        footer={<Button onClick={closeView}>{t('common.close')}</Button>}
+        onCancel={closeView}
         width={760}
         destroyOnHidden
       >
