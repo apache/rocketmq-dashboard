@@ -16,7 +16,7 @@
  */
 
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { App as AntdApp } from 'antd';
 import AlertRuleAssetList from '../AlertRuleAssetList';
 import { LangProvider } from '../../i18n/LangContext';
@@ -95,6 +95,36 @@ describe('AlertRuleAssetList', () => {
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText(/rocketmq-broker.rules/)).toBeInTheDocument();
     expect(alertRuleAssetService.getAlertRuleAsset).toHaveBeenCalledWith('rocketmq-broker-down');
+  });
+
+  it('keeps the latest preview when an earlier request resolves last', async () => {
+    vi.mocked(alertRuleAssetService.listAlertRuleAssets).mockResolvedValue(sampleAssets);
+    let resolveBroker!: (value: string) => void;
+    let resolveConsumer!: (value: string) => void;
+    vi.mocked(alertRuleAssetService.getAlertRuleAsset).mockImplementation(
+      (name) =>
+        new Promise((resolve) => {
+          if (name === 'rocketmq-broker-down') resolveBroker = resolve;
+          else resolveConsumer = resolve;
+        }),
+    );
+    renderWithProviders(<AlertRuleAssetList />);
+
+    const viewButtons = await screen.findAllByRole('button', { name: /查看|View/ });
+    fireEvent.click(viewButtons[0]);
+    fireEvent.click(viewButtons[1]);
+
+    await act(async () => {
+      resolveConsumer('alert: LATEST_CONSUMER_ALERT');
+    });
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(/LATEST_CONSUMER_ALERT/)).toBeInTheDocument();
+
+    await act(async () => {
+      resolveBroker('alert: STALE_BROKER_ALERT');
+    });
+    expect(within(dialog).getByText(/LATEST_CONSUMER_ALERT/)).toBeInTheDocument();
+    expect(within(dialog).queryByText(/STALE_BROKER_ALERT/)).not.toBeInTheDocument();
   });
 
   it('downloads the yaml when Export is clicked', async () => {
