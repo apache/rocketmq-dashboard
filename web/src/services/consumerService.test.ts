@@ -24,10 +24,16 @@ import {
   listConsumerGroups,
 } from './consumerService';
 
-vi.mock('./dataMode', () => ({ isMockMode: () => true }));
+const { mode, metadataApi } = vi.hoisted(() => ({
+  mode: { mock: true },
+  metadataApi: { getConsumerGroup: vi.fn() },
+}));
+
+vi.mock('./dataMode', () => ({ isMockMode: () => mode.mock }));
 vi.mock('../config', () => ({
   API_BASE_URL: '/api',
 }));
+vi.mock('../api/metadata', () => metadataApi);
 
 describe('consumer service mock data', () => {
   it('returns copied consumer group rows', async () => {
@@ -92,5 +98,22 @@ describe('consumer service mock data', () => {
     const detail = await getConsumerGroup('cg-created-copy-test');
     expect(detail.subscribedTopics).toEqual(['created-topic']);
     expect(detail).not.toBe(created);
+  });
+
+  it('forwards the selected instance when loading consumer group details in API mode', async () => {
+    mode.mock = false;
+    const detail = {
+      name: 'cg-orders',
+      subscribedTopics: [],
+      instances: [],
+    };
+    try {
+      metadataApi.getConsumerGroup.mockResolvedValue(detail);
+
+      await expect(getConsumerGroup('cg-orders', 'instance-a')).resolves.toEqual(detail);
+      expect(metadataApi.getConsumerGroup).toHaveBeenCalledWith('cg-orders', 'instance-a');
+    } finally {
+      mode.mock = true;
+    }
   });
 });
