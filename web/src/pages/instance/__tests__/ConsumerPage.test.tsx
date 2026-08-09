@@ -262,6 +262,57 @@ describe('Consumer page', () => {
     );
   });
 
+  it('reloads same-named group diagnostics after changing the selected instance', async () => {
+    vi.mocked(instanceService.listInstances).mockResolvedValue([
+      {
+        id: 'instance-a',
+        name: 'Instance A',
+        remark: '',
+        type: 'DIRECT',
+        endpoint: '127.0.0.1:9876',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        createdAt: '2026-07-23T00:00:00Z',
+        updatedAt: '2026-07-23T00:00:00Z',
+      },
+      {
+        id: 'instance-b',
+        name: 'Instance B',
+        remark: '',
+        type: 'DIRECT',
+        endpoint: '127.0.0.2:9876',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        createdAt: '2026-07-23T00:00:00Z',
+        updatedAt: '2026-07-23T00:00:00Z',
+      },
+    ]);
+    vi.mocked(consumerService.listConsumerGroups).mockImplementation(async (params) => [
+      { ...group, instanceId: params?.instanceId ?? 'instance-a' },
+    ]);
+    const user = userEvent.setup();
+    renderWithProviders(<ConsumerPage />, '/instance/instance-a/consumer');
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+    await waitFor(() =>
+      expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith('remote-cg', 'instance-a'),
+    );
+
+    await user.click(screen.getByText('Instance A'));
+    await user.click(await screen.findByText('Instance B'));
+    await waitFor(() =>
+      expect(consumerService.listConsumerGroups).toHaveBeenCalledWith({ instanceId: 'instance-b' }),
+    );
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+
+    await waitFor(() =>
+      expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith('remote-cg', 'instance-b'),
+    );
+    await waitFor(() =>
+      expect(consumerService.getConsumerProgress).toHaveBeenCalledWith('remote-cg', 'instance-b'),
+    );
+  });
+
   it('highlights inconsistent subscriptions and refreshes the check result', async () => {
     vi.mocked(consumerService.getConsumerSubscriptions)
       .mockResolvedValueOnce([
