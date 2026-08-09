@@ -67,31 +67,54 @@ const GroupManagementPage = () => {
   const [progress, setProgress] = useState<QueueProgress[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const listRequestId = useRef(0);
+  const listInFlight = useRef<Promise<void> | null>(null);
+  const listRefreshQueued = useRef(false);
+  const mountedRef = useRef(true);
   const detailRequestId = useRef(0);
   const { t } = useLang();
 
-  const loadGroups = useCallback(async () => {
-    const requestId = ++listRequestId.current;
+  const loadGroups = useCallback((): Promise<void> => {
+    if (listInFlight.current) {
+      listRefreshQueued.current = true;
+      return listInFlight.current;
+    }
+
     setLoading(true);
-    try {
-      const data = await listConsumerGroups();
-      if (requestId !== listRequestId.current) return;
-      setGroups(data);
-    } catch {
-      if (requestId !== listRequestId.current) return;
-      message.error(t('consumer.fetchListFailed'));
-    } finally {
-      if (requestId === listRequestId.current) {
+    const run = async () => {
+      do {
+        listRefreshQueued.current = false;
+        const requestId = ++listRequestId.current;
+        try {
+          const data = await listConsumerGroups();
+          if (!mountedRef.current || requestId !== listRequestId.current) return;
+          setGroups(data);
+        } catch {
+          if (!mountedRef.current || requestId !== listRequestId.current) return;
+          message.error(t('consumer.fetchListFailed'));
+        }
+      } while (mountedRef.current && listRefreshQueued.current);
+    };
+
+    const cycle = run().finally(() => {
+      listInFlight.current = null;
+      if (mountedRef.current) {
         setLoading(false);
       }
-    }
+    });
+    listInFlight.current = cycle;
+    return cycle;
   }, [t]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       void loadGroups();
     });
-    return () => window.clearTimeout(timeoutId);
+    return () => {
+      window.clearTimeout(timeoutId);
+      mountedRef.current = false;
+      listRefreshQueued.current = false;
+      ++listRequestId.current;
+    };
   }, [loadGroups]);
 
   useEffect(() => {
