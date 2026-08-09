@@ -87,7 +87,7 @@ describe('ProducerPage', () => {
     renderWithProviders(<ProducerPage />);
 
     await waitFor(() => {
-      expect(fetchTopicList).toHaveBeenCalledTimes(1);
+      expect(fetchTopicList).toHaveBeenCalledWith('instance-1');
     });
   });
 
@@ -185,5 +185,53 @@ describe('ProducerPage', () => {
         'manual-producer',
       );
     });
+  });
+
+  it('clears stale producer query state before loading a new instance', async () => {
+    vi.mocked(listInstances).mockResolvedValue([
+      {
+        id: 'instance-1',
+        name: 'Primary instance',
+        remark: '',
+        type: 'DIRECT',
+        endpoint: '127.0.0.1:9876',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        createdAt: '2026-08-01T00:00:00',
+        updatedAt: '2026-08-01T00:00:00',
+      },
+      {
+        id: 'instance-2',
+        name: 'Secondary instance',
+        remark: '',
+        type: 'DIRECT',
+        endpoint: '127.0.0.2:9876',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        createdAt: '2026-08-01T00:00:00',
+        updatedAt: '2026-08-01T00:00:00',
+      },
+    ]);
+    vi.mocked(fetchTopicList).mockResolvedValueOnce(['order-events']).mockResolvedValueOnce([]);
+    vi.mocked(queryProducerConnection).mockResolvedValue([
+      { clientId: 'producer-1', clientAddr: '192.168.1.10', language: 'JAVA', versionDesc: '5.1.0' },
+    ]);
+    const user = userEvent.setup();
+    renderWithProviders(<ProducerPage />);
+
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledWith('instance-1'));
+    const [instanceSelect, topicSelect, groupInput] = screen.getAllByRole('combobox');
+    fireEvent.mouseDown(topicSelect.parentElement!);
+    await user.click(await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }));
+    await user.type(groupInput, 'order-producer');
+    await user.click(screen.getByRole('button', { name: /搜索/ }));
+    expect(await screen.findByText('producer-1')).toBeInTheDocument();
+
+    fireEvent.mouseDown(instanceSelect.parentElement!);
+    await user.click(await screen.findByText('Secondary instance', { selector: '.ant-select-item-option-content' }));
+
+    await waitFor(() => expect(fetchTopicList).toHaveBeenLastCalledWith('instance-2'));
+    expect(screen.queryByText('producer-1')).not.toBeInTheDocument();
+    expect(screen.queryByText('order-events')).not.toBeInTheDocument();
   });
 });

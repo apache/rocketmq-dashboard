@@ -63,7 +63,18 @@ const ProducerPage = () => {
   useEffect(() => {
     let cancelled = false;
 
-    void fetchTopicList()
+    setTopicList([]);
+    setProducerGroups([]);
+    setConnectionList([]);
+    form.resetFields(['selectedTopic', 'producerGroup']);
+
+    if (!selectedInstanceId) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void fetchTopicList(selectedInstanceId)
       .then((topics) => {
         if (!cancelled) {
           setTopicList(topics);
@@ -78,7 +89,7 @@ const ProducerPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [fetchTopicFailedMessage, message]);
+  }, [fetchTopicFailedMessage, form, message, selectedInstanceId]);
 
   useEffect(() => {
     let cancelled = false;
