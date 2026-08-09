@@ -47,6 +47,19 @@ class MessageServiceTest {
     }
 
     @Test
+    void rejectsBlankMessageTraceIdBeforeCallingProvider() {
+        MessageProvider provider = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(provider, registry);
+
+        assertThatThrownBy(() -> service.getMessageTrace("instance-a", "  "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("msgId is required");
+
+        verifyNoInteractions(provider, registry);
+    }
+
+    @Test
     void rejectsReversedTopicQueryWindowBeforeCallingProvider() {
         MessageProvider provider = mock(MessageProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);

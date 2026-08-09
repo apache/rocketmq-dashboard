@@ -45,6 +45,9 @@ public class MessageService {
     }
 
     public TraceRecordVO getMessageTrace(String instanceId, String msgId) {
+        if (!StringUtils.hasText(msgId)) {
+            throw new BusinessException(400, "msgId is required");
+        }
         log.info("Getting message trace: msgId={}", msgId);
         return providerRegistry.byInstanceId(instanceId)
                 .map(provider -> provider.getMessageTrace(instanceId, msgId))
