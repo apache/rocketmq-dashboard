@@ -33,6 +33,7 @@ import {
   Badge,
   Typography,
   Flex,
+  Alert,
   message,
 } from 'antd';
 import { Plus, MagnifyingGlass, ShieldCheck, User, Eye, EyeSlash } from '@phosphor-icons/react';
@@ -645,6 +646,15 @@ const AclPage = () => {
             {activeTab === 'rules' ? t('acl.addRule') : t('acl.addUser')}
           </Button>
         }
+      />
+
+      <Alert
+        data-testid="acl-local-metadata-notice"
+        type="warning"
+        showIcon
+        message={t('acl.localMetadataNotice')}
+        description={t('acl.localMetadataDescription')}
+        style={{ marginBottom: 16 }}
       />
 
       <Card bordered={false} bodyStyle={{ padding: 0 }}>
