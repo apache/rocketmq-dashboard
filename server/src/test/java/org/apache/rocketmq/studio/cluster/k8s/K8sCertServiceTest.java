@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.cluster.k8s;
 import org.apache.rocketmq.studio.common.domain.enums.CertStatus;
 import org.apache.rocketmq.studio.common.domain.enums.CertType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -38,6 +39,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -51,13 +53,16 @@ class K8sCertServiceTest {
     @Mock
     private K8sCertRepository k8sCertRepository;
 
+    @Mock
+    private OperationAuditService operationAuditService;
+
     private K8sCertService k8sCertService;
 
     private K8sCertVO sampleCert;
 
     @BeforeEach
     void setUp() {
-        k8sCertService = new K8sCertService(k8sCertRepository, CLOCK);
+        k8sCertService = new K8sCertService(k8sCertRepository, operationAuditService, CLOCK);
         sampleCert = K8sCertVO.builder()
                 .name("rocketmq-tls")
                 .namespace("mq-system")
@@ -169,6 +174,9 @@ class K8sCertServiceTest {
         assertThat(result.getCreatedAt()).isEqualTo(now);
         assertThat(result.getUpdatedAt()).isEqualTo(now);
         verify(k8sCertRepository).save(any(K8sCertVO.class));
+        verify(operationAuditService).record(eq("CREATE_K8S_CERTIFICATE"), eq("K8S_CERTIFICATE"),
+                eq(result.getId()), eq(null), eq("name=new-tls-cert, namespace=default, cluster=test-cluster"),
+                eq("SUCCESS"), eq(null));
     }
 
     @Test
@@ -246,6 +254,9 @@ class K8sCertServiceTest {
         assertThat(sampleCert.getType()).isEqualTo(CertType.TLS);
         assertThat(sampleCert.getUpdatedAt()).isEqualTo(LocalDateTime.of(2025, 1, 2, 0, 0));
         verify(k8sCertRepository).save(any(K8sCertVO.class));
+        verify(operationAuditService).record(eq("UPDATE_K8S_CERTIFICATE"), eq("K8S_CERTIFICATE"),
+                eq("cert-1"), eq(null), eq("name=updated-name, namespace=new-namespace, cluster=new-cluster"),
+                eq("SUCCESS"), eq(null));
     }
 
     @Test
@@ -351,6 +362,9 @@ class K8sCertServiceTest {
         assertThat(sampleCert.getNotBefore()).isEqualTo(originalNotBefore);
         assertThat(sampleCert.getNotAfter()).isEqualTo(originalNotAfter);
         verify(k8sCertRepository).save(any(K8sCertVO.class));
+        verify(operationAuditService).record(eq("RENEW_K8S_CERTIFICATE"), eq("K8S_CERTIFICATE"),
+                eq("cert-1"), eq(null), eq("name=rocketmq-tls, namespace=mq-system, cluster=prod-cluster"),
+                eq("SUCCESS"), eq(null));
     }
 
     @Test
@@ -396,6 +410,8 @@ class K8sCertServiceTest {
         k8sCertService.deleteCert(command);
 
         verify(k8sCertRepository).deleteById("cert-1");
+        verify(operationAuditService).record(eq("DELETE_K8S_CERTIFICATE"), eq("K8S_CERTIFICATE"),
+                eq("cert-1"), eq(null), eq(null), eq("SUCCESS"), eq(null));
     }
 
     @Test
