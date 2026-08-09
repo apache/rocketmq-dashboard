@@ -126,19 +126,26 @@ const AclPage = () => {
   useEffect(() => {
     let mounted = true;
 
-    Promise.all([listAclRules(), listAclUsers()])
-      .then(([nextRules, nextUsers]) => {
-        if (!mounted) return;
-        setRules(nextRules.map(normalizeRule));
-        setUsers(nextUsers.map(normalizeUser));
+    void listAclRules()
+      .then((nextRules) => {
+        if (mounted) setRules(nextRules.map(normalizeRule));
       })
       .catch(() => {
         if (mounted) message.error(t('common.fetchDataFailed'));
       })
       .finally(() => {
-        if (!mounted) return;
-        setRulesLoading(false);
-        setUsersLoading(false);
+        if (mounted) setRulesLoading(false);
+      });
+
+    void listAclUsers()
+      .then((nextUsers) => {
+        if (mounted) setUsers(nextUsers.map(normalizeUser));
+      })
+      .catch(() => {
+        if (mounted) message.error(t('common.fetchDataFailed'));
+      })
+      .finally(() => {
+        if (mounted) setUsersLoading(false);
       });
 
     return () => {
