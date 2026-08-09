@@ -106,9 +106,7 @@ public class InstanceService {
 
     private void createApacheInstance(InstanceVO instance) {
         instance.setVendor(InstanceVendor.APACHE);
-        if (instance.getName() == null || instance.getName().isBlank()) {
-            throw new BusinessException(400, "InstanceVO name is required");
-        }
+        instance.setName(requireInstanceName(instance.getName()));
         instance.setEndpoint(requireValidEndpoint(instance.getEndpoint()));
         if (instance.getType() == null) {
             throw new BusinessException(400, "InstanceVO type is required");
@@ -136,10 +134,11 @@ public class InstanceService {
         }
         CloudInstanceDetailVO detail = providerRegistry.catalogFor(InstanceVendor.ALIYUN)
                 .getCloudInstance(instance.getCredentialId(), instance.getRegionId(), instance.getCloudInstanceId());
-        if (instance.getName() == null || instance.getName().isBlank()) {
+        if (!StringUtils.hasText(instance.getName())) {
             instance.setName(detail.getInstanceName() != null && !detail.getInstanceName().isBlank()
                     ? detail.getInstanceName() : detail.getInstanceId());
         }
+        instance.setName(requireInstanceName(instance.getName()));
         instance.setType(InstanceType.PROXY);
         instance.setEndpoint(resolveEndpoint(detail));
     }
@@ -181,6 +180,13 @@ public class InstanceService {
         return normalized;
     }
 
+    private String requireInstanceName(String name) {
+        if (!StringUtils.hasText(name)) {
+            throw new BusinessException(400, "InstanceVO name is required");
+        }
+        return name.trim();
+    }
+
     public InstanceVO updateInstance(InstanceVO instance) {
         requireInstance(instance);
         log.info("Updating instance: {}", instance.getId());
@@ -199,7 +205,7 @@ public class InstanceService {
         InstanceVO updated = copyOf(existing);
         boolean cloudInstance = existing.getVendor() != null && existing.getVendor() != InstanceVendor.APACHE;
         if (instance.getName() != null) {
-            updated.setName(instance.getName());
+            updated.setName(requireInstanceName(instance.getName()));
         }
         if (!cloudInstance) {
             if (instance.getType() != null) {
