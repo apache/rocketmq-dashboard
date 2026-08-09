@@ -23,7 +23,7 @@ export async function listInstances(query: InstanceQuery = {}): Promise<Instance
         (instance) =>
           !search ||
           [instance.name, instance.endpoint, instance.remark].some((value) =>
-            value.toLowerCase().includes(search),
+            value?.toLowerCase().includes(search),
           ),
       )
       .map(copyInstance);

@@ -275,10 +275,10 @@ const InstancePage = () => {
       dataIndex: 'remark',
       key: 'remark',
       width: 240,
-      sorter: (a, b) => a.remark.localeCompare(b.remark),
-      render: (remark: string) => (
+      sorter: (a, b) => (a.remark ?? '').localeCompare(b.remark ?? ''),
+      render: (remark: string | null) => (
         <Text type="secondary" style={{ fontSize: 13 }}>
-          {remark}
+          {remark || '-'}
         </Text>
       ),
     },

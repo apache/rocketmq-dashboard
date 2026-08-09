@@ -23,7 +23,7 @@ export type InstanceVendor = 'APACHE' | 'ALIYUN' | 'TENCENT';
 export interface Instance {
   id: string;
   name: string;
-  remark: string;
+  remark: string | null;
   type: 'PROXY' | 'DIRECT';
   endpoint: string;
   vendor?: InstanceVendor;
