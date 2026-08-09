@@ -24,6 +24,10 @@ CREATE TABLE IF NOT EXISTS rmq_instance (
   remark VARCHAR(255),
   type VARCHAR(32) NOT NULL COMMENT 'PROXY/DIRECT',
   endpoint VARCHAR(512) NOT NULL,
+  vendor VARCHAR(32),
+  cloud_instance_id VARCHAR(128),
+  credential_id VARCHAR(64),
+  region_id VARCHAR(128),
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -44,7 +48,7 @@ CREATE TABLE IF NOT EXISTS rmq_topic (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uk_cluster_topic (cluster_id, name),
-  INDEX idx_instance (instance_id)
+  INDEX idx_topic_instance (instance_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 4. Consumer Group 管理记录
@@ -61,7 +65,7 @@ CREATE TABLE IF NOT EXISTS rmq_group (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uk_cluster_group (cluster_id, name),
-  INDEX idx_instance (instance_id)
+  INDEX idx_group_instance (instance_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 5. K8s 证书管理
@@ -95,7 +99,7 @@ CREATE TABLE IF NOT EXISTS rmq_message_query (
   cluster_id VARCHAR(255),
   queried_by VARCHAR(64),
   queried_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_queried_at (queried_at),
+  INDEX idx_message_query_queried_at (queried_at),
   INDEX idx_topic (topic)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -110,7 +114,7 @@ CREATE TABLE IF NOT EXISTS rmq_trace_query (
   queried_by VARCHAR(64),
   queried_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_msg_id (msg_id),
-  INDEX idx_queried_at (queried_at)
+  INDEX idx_trace_query_queried_at (queried_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 8. 操作审计日志（所有写操作）
@@ -132,7 +136,7 @@ CREATE TABLE IF NOT EXISTS rmq_operation_audit (
 
 -- 9. 通用设置（单行）
 CREATE TABLE IF NOT EXISTS rmq_settings (
-  id VARCHAR(16) PRIMARY KEY DEFAULT 'singleton',
+  id VARCHAR(16) DEFAULT 'singleton' PRIMARY KEY,
   json TEXT NOT NULL COMMENT 'GeneralSettingsVO JSON',
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

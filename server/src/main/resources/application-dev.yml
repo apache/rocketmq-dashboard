@@ -5,6 +5,10 @@ spring:
     username: sa
     password:
     driver-class-name: org.h2.Driver
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/schema.sql
   h2:
     console:
       enabled: true
