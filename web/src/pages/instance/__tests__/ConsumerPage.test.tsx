@@ -158,6 +158,18 @@ describe('Consumer page', () => {
     ]);
   });
 
+  it('finishes loading without requesting groups when no instance is available', async () => {
+    instanceServiceMocks.listInstances.mockResolvedValue([]);
+
+    renderWithProviders(<ConsumerPage />);
+
+    await waitFor(() => expect(instanceServiceMocks.listInstances).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(document.querySelector('.ant-spin-spinning')).not.toBeInTheDocument(),
+    );
+    expect(consumerService.listConsumerGroups).not.toHaveBeenCalled();
+  });
+
   it('loads consumer groups through the service layer', async () => {
     renderWithProviders(<ConsumerPage />);
 

@@ -154,6 +154,18 @@ describe('TopicPage', () => {
     vi.clearAllMocks();
   });
 
+  it('finishes loading without requesting topics when no instance is available', async () => {
+    instanceServiceMocks.listInstances.mockResolvedValue([]);
+
+    renderWithProviders();
+
+    await waitFor(() => expect(instanceServiceMocks.listInstances).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(document.querySelector('.ant-spin-spinning')).not.toBeInTheDocument(),
+    );
+    expect(topicServiceMocks.listTopics).not.toHaveBeenCalled();
+  });
+
   it('downloads the currently filtered topics when exporting', async () => {
     const user = userEvent.setup();
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(vi.fn());

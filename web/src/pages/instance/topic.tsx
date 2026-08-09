@@ -306,10 +306,10 @@ const TopicPage = () => {
   const topicRequestIdRef = useRef(0);
 
   useEffect(() => {
+    const requestId = ++topicRequestIdRef.current;
     if (!selectedInstanceId) {
       return;
     }
-    const requestId = ++topicRequestIdRef.current;
     const timer = window.setTimeout(() => {
       setLoading(true);
       void listTopics({ instanceId: selectedInstanceId })
@@ -996,8 +996,8 @@ const TopicPage = () => {
         <Card styles={{ body: { padding: 0 } }} style={{ borderRadius: 8 }}>
           <Table<Topic>
             columns={columns}
-            dataSource={filteredTopics}
-            loading={loading}
+            dataSource={hasSelectedInstance ? filteredTopics : []}
+            loading={hasSelectedInstance && loading}
             rowKey="name"
             rowSelection={{
               selectedRowKeys,

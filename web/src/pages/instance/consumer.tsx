@@ -223,10 +223,10 @@ const ConsumerPage = () => {
   const groupRequestIdRef = useRef(0);
 
   useEffect(() => {
+    const requestId = ++groupRequestIdRef.current;
     if (!selectedInstanceId) {
       return;
     }
-    const requestId = ++groupRequestIdRef.current;
     const timer = window.setTimeout(() => {
       setLoading(true);
       void listConsumerGroups({ instanceId: selectedInstanceId })
@@ -874,8 +874,8 @@ const ConsumerPage = () => {
       <Card bodyStyle={{ padding: 0 }}>
         <Table
           columns={columns}
-          dataSource={filtered}
-          loading={loading}
+          dataSource={hasSelectedInstance ? filtered : []}
+          loading={hasSelectedInstance && loading}
           rowKey="name"
           rowSelection={{
             selectedRowKeys,
