@@ -107,7 +107,10 @@ public class SettingsService {
         }
         log.info("Creating data source: {}", dataSource.getName());
         dataSource.setKey(UUID.randomUUID().toString());
-        return settingsRepository.saveDataSource(dataSource);
+        DataSourceVO saved = settingsRepository.saveDataSource(dataSource);
+        operationAuditService.record("CREATE_DATA_SOURCE", "DATA_SOURCE", saved.getKey(), null,
+                dataSourceAuditDetail(saved), "SUCCESS", null);
+        return saved;
     }
 
 
@@ -121,6 +124,8 @@ public class SettingsService {
         if (!settingsRepository.replaceDataSource(dataSource)) {
             throw new BusinessException(404, "Data source not found: " + key);
         }
+        operationAuditService.record("UPDATE_DATA_SOURCE", "DATA_SOURCE", key, null,
+                dataSourceAuditDetail(dataSource), "SUCCESS", null);
         return dataSource;
     }
 
@@ -131,6 +136,8 @@ public class SettingsService {
         if (!settingsRepository.deleteDataSource(normalizedKey)) {
             throw new BusinessException(404, "Data source not found: " + normalizedKey);
         }
+        operationAuditService.record("DELETE_DATA_SOURCE", "DATA_SOURCE", normalizedKey, null,
+                null, "SUCCESS", null);
     }
 
 
@@ -186,6 +193,10 @@ public class SettingsService {
             throw new BusinessException(400, "Data source key is required");
         }
         return key.trim();
+    }
+
+    private String dataSourceAuditDetail(DataSourceVO dataSource) {
+        return "name=" + dataSource.getName() + ", type=" + dataSource.getType();
     }
 
     private void applyAuthentication(HttpHeaders headers, DataSourceTestDTO request) {
