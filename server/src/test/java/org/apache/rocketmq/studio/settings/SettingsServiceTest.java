@@ -42,6 +42,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -212,7 +214,7 @@ class SettingsServiceTest {
     @Test
     void createDataSourceShouldAssignKeyBeforeSaving() {
         DataSourceVO input = DataSourceVO.builder().name("New DS").type("rocketmq")
-                .url("new-host:9876").build();
+                .url("https://user:password@new-host:9876").auth("Bearer secret-token").build();
         when(settingsRepository.saveDataSource(any(DataSourceVO.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -221,6 +223,10 @@ class SettingsServiceTest {
         assertThat(result.getKey()).isNotBlank();
         assertThat(result.getName()).isEqualTo("New DS");
         verify(settingsRepository).saveDataSource(input);
+        verify(operationAuditService).record(eq("CREATE_DATA_SOURCE"), eq("DATA_SOURCE"), eq(result.getKey()),
+                eq(null), argThat(detail -> detail.equals("name=New DS, type=rocketmq")
+                        && !detail.contains("password") && !detail.contains("secret-token")),
+                eq("SUCCESS"), eq(null));
     }
 
     @Test
@@ -257,6 +263,8 @@ class SettingsServiceTest {
         assertThat(result.getKey()).isEqualTo("ds-1");
         assertThat(result.getName()).isEqualTo("Updated DS");
         verify(settingsRepository).replaceDataSource(input);
+        verify(operationAuditService).record(eq("UPDATE_DATA_SOURCE"), eq("DATA_SOURCE"), eq("ds-1"),
+                eq(null), eq("name=Updated DS, type=rocketmq"), eq("SUCCESS"), eq(null));
     }
 
     @Test
@@ -306,6 +314,8 @@ class SettingsServiceTest {
         settingsService.deleteDataSource("ds-1");
 
         verify(settingsRepository).deleteDataSource("ds-1");
+        verify(operationAuditService).record(eq("DELETE_DATA_SOURCE"), eq("DATA_SOURCE"), eq("ds-1"),
+                eq(null), eq(null), eq("SUCCESS"), eq(null));
     }
 
     @Test
