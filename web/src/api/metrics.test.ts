@@ -23,6 +23,7 @@ import {
   listGrafanaDashboards,
   getGrafanaDashboard,
   exportGrafanaDashboard,
+  exportGrafanaDashboards,
   listMetricProfiles,
   queryByDataSource,
   queryMetrics,
@@ -190,5 +191,15 @@ describe('metrics API', () => {
     const result = await exportGrafanaDashboard('rocketmq-overview');
     expect(result).toBeInstanceOf(Blob);
     await expect(result.text()).resolves.toContain('rocketmq-overview');
+  });
+
+  it('exports all Grafana dashboards as a blob', async () => {
+    const blob = new Blob(['zip-content'], { type: 'application/zip' });
+
+    mock.onGet('/metrics/grafana/dashboards/export').reply(200, blob);
+
+    const result = await exportGrafanaDashboards();
+    expect(result).toBeInstanceOf(Blob);
+    await expect(result.text()).resolves.toContain('zip-content');
   });
 });

@@ -84,4 +84,17 @@ class GrafanaDashboardControllerTest {
                         "attachment; filename=\"rocketmq-overview.json\""))
                 .andExpect(content().json("{\"uid\":\"rocketmq-overview\"}"));
     }
+
+    @Test
+    void exportDashboardsShouldReturnZipAttachment() throws Exception {
+        byte[] archive = "zip-content".getBytes();
+        when(grafanaDashboardService.getDashboardsArchive()).thenReturn(archive);
+
+        mockMvc.perform(get("/api/metrics/grafana/dashboards/export"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "application/zip"))
+                .andExpect(header().string("Content-Disposition",
+                        "attachment; filename=\"rocketmq-grafana-dashboards.zip\""))
+                .andExpect(content().bytes(archive));
+    }
 }

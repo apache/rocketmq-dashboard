@@ -114,6 +114,10 @@
 | 71 | GET | `/api/ai/tools` | 可用工具列表 |
 | 72 | POST | `/api/ai/tools/:name/execute` | 执行只读 AI 工具 |
 | 73 | POST | `/api/metrics/query` | 查询监控指标数据 |
+| 74 | GET | `/api/metrics/grafana/dashboards` | Grafana 看板列表 |
+| 75 | GET | `/api/metrics/grafana/dashboards/:uid` | Grafana 看板 JSON 模型 |
+| 76 | GET | `/api/metrics/grafana/dashboards/:uid/export` | 导出单个 Grafana 看板 JSON |
+| 77 | GET | `/api/metrics/grafana/dashboards/export` | 打包导出全部 Grafana 看板 |
 
 ## 通用响应格式
 
@@ -1906,6 +1910,108 @@ studio:
 | `502` | 无法连接 Prometheus，或 Prometheus 返回非法响应 |
 | `503` | Prometheus 未配置或暂时不可用 |
 | `504` | Prometheus 查询超时 |
+
+### 16.2 Grafana 看板列表
+
+```
+GET /api/metrics/grafana/dashboards
+```
+
+返回内置的 RocketMQ Grafana 看板资产元数据。服务端只返回可以解析为 JSON
+对象且包含有效 `uid` 的看板；无效资产会被跳过。
+
+**Response `data`:** `GrafanaDashboardInfo[]`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `uid` | `string` | Grafana 看板 UID，同时用于详情和导出接口 |
+| `title` | `string` | 看板标题 |
+| `description` | `string` | 看板说明 |
+| `tags` | `string[]` | 看板标签 |
+
+**Response 示例：**
+
+```json
+[
+  {
+    "uid": "rocketmq-overview",
+    "title": "RocketMQ Cluster Overview",
+    "description": "Overview dashboard for RocketMQ cluster metrics",
+    "tags": ["rocketmq"]
+  }
+]
+```
+
+### 16.3 获取 Grafana 看板 JSON 模型
+
+```
+GET /api/metrics/grafana/dashboards/:uid
+```
+
+**Path Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `uid` | `string` | 是 | Grafana 看板 UID |
+
+**Response `data`:** `Record<string, any>`
+
+响应体是完整 Grafana dashboard JSON 模型，前端可用于预览或复制配置。
+
+**错误响应：**
+
+| HTTP 状态 | 场景 |
+|-----------|------|
+| `404` | 指定 UID 的内置看板不存在 |
+| `500` | 看板 JSON 读取失败 |
+
+### 16.4 导出单个 Grafana 看板
+
+```
+GET /api/metrics/grafana/dashboards/:uid/export
+```
+
+**Path Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `uid` | `string` | 是 | Grafana 看板 UID |
+
+**Response:**
+
+- `Content-Type: application/json`
+- `Content-Disposition: attachment; filename="{uid}.json"`
+- Body 为原始 Grafana dashboard JSON 文件内容。
+
+**错误响应：**
+
+| HTTP 状态 | 场景 |
+|-----------|------|
+| `404` | 指定 UID 的内置看板不存在 |
+| `500` | 看板 JSON 读取失败 |
+
+### 16.5 打包导出全部 Grafana 看板
+
+```
+GET /api/metrics/grafana/dashboards/export
+```
+
+返回全部有效内置 Grafana 看板的 zip 压缩包。压缩包内每个条目按
+`{uid}.json` 命名，条目集合与 `GET /api/metrics/grafana/dashboards`
+返回的可见看板列表保持一致。
+
+**Response:**
+
+- `Content-Type: application/zip`
+- `Content-Disposition: attachment; filename="rocketmq-grafana-dashboards.zip"`
+- Body 为 zip 文件二进制内容。
+
+**错误响应：**
+
+| HTTP 状态 | 场景 |
+|-----------|------|
+| `404` | 没有可导出的有效内置看板 |
+| `500` | 看板 JSON 读取或 zip 打包失败 |
 
 ---
 

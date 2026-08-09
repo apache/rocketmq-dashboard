@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as grafanaApi from '../api/metrics';
 import {
   exportGrafanaDashboard,
+  exportGrafanaDashboards,
   getGrafanaDashboard,
   listGrafanaDashboards,
 } from './grafanaService';
@@ -44,6 +45,13 @@ describe('grafanaService', () => {
     await expect(blob.text()).resolves.toContain('rocketmq-overview');
   });
 
+  it('exports all dashboards as a blob in mock mode', async () => {
+    const blob = await exportGrafanaDashboards();
+    expect(blob).toBeInstanceOf(Blob);
+    expect(blob.type).toBe('application/zip');
+    await expect(blob.text()).resolves.toContain('rocketmq-overview.json');
+  });
+
   it('delegates to the api in real mode', async () => {
     isMockModeMock.isMockMode = () => false;
     const listSpy = vi
@@ -55,5 +63,16 @@ describe('grafanaService', () => {
     const result = await listGrafanaDashboards();
     expect(listSpy).toHaveBeenCalledTimes(1);
     expect(result[0].uid).toBe('rocketmq-overview');
+  });
+
+  it('delegates bulk export to the api in real mode', async () => {
+    isMockModeMock.isMockMode = () => false;
+    const exportSpy = vi
+      .spyOn(grafanaApi, 'exportGrafanaDashboards')
+      .mockResolvedValue(new Blob(['zip-content'], { type: 'application/zip' }));
+
+    const result = await exportGrafanaDashboards();
+    expect(exportSpy).toHaveBeenCalledTimes(1);
+    expect(result.type).toBe('application/zip');
   });
 });

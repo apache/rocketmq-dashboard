@@ -22,13 +22,16 @@ import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 
+import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.zip.ZipInputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -90,6 +93,33 @@ class GrafanaDashboardServiceTest {
     void getDashboardJsonShouldThrowWhenUidUnknown() {
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> service.getDashboardJson("no-such-dashboard"));
+        assertEquals(404, exception.getCode());
+    }
+
+    @Test
+    void getDashboardsArchiveShouldIncludeAllVisibleDashboards() throws Exception {
+        GrafanaDashboardService service = serviceWithResources(
+                resource("b.json", "{\"uid\":\"b\",\"title\":\"B\",\"tags\":[\"rocketmq\"]}"),
+                resource("invalid.json", "[]"),
+                resource("a.json", "{\"uid\":\"a\",\"title\":\"A\",\"tags\":[\"rocketmq\"]}"));
+
+        byte[] archive = service.getDashboardsArchive();
+
+        try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(archive), StandardCharsets.UTF_8)) {
+            assertEquals("a.json", zip.getNextEntry().getName());
+            assertTrue(new String(zip.readAllBytes(), StandardCharsets.UTF_8).contains("\"uid\":\"a\""));
+            assertEquals("b.json", zip.getNextEntry().getName());
+            assertTrue(new String(zip.readAllBytes(), StandardCharsets.UTF_8).contains("\"uid\":\"b\""));
+            assertNull(zip.getNextEntry());
+        }
+    }
+
+    @Test
+    void getDashboardsArchiveShouldRejectEmptyDashboardSet() {
+        GrafanaDashboardService service = serviceWithResources(resource("invalid.json", "[]"));
+
+        BusinessException exception = assertThrows(BusinessException.class, service::getDashboardsArchive);
+
         assertEquals(404, exception.getCode());
     }
 

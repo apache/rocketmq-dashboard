@@ -23,6 +23,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { LangProvider } from '../../i18n/LangContext';
 import {
   exportGrafanaDashboard,
+  exportGrafanaDashboards,
   getGrafanaDashboard,
   listGrafanaDashboards,
 } from '../../services/grafanaService';
@@ -32,6 +33,7 @@ vi.mock('../../services/grafanaService', () => ({
   listGrafanaDashboards: vi.fn(),
   getGrafanaDashboard: vi.fn(),
   exportGrafanaDashboard: vi.fn(),
+  exportGrafanaDashboards: vi.fn(),
 }));
 
 const dashboards = [
@@ -72,6 +74,9 @@ beforeEach(() => {
   vi.mocked(getGrafanaDashboard).mockResolvedValue(dashboardModel);
   vi.mocked(exportGrafanaDashboard).mockResolvedValue(
     new Blob([JSON.stringify(dashboardModel, null, 2)], { type: 'application/json' }),
+  );
+  vi.mocked(exportGrafanaDashboards).mockResolvedValue(
+    new Blob(['zip-content'], { type: 'application/zip' }),
   );
 });
 
@@ -189,9 +194,41 @@ describe('GrafanaDashboardList', () => {
 
     await screen.findByText('RocketMQ Cluster Overview');
     const exportButtons = screen.getAllByRole('button', { name: /Export|导出/ });
-    await user.click(exportButtons[0]);
+    await user.click(exportButtons[1]);
 
     await waitFor(() => expect(exportGrafanaDashboard).toHaveBeenCalledWith('rocketmq-overview'));
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    expect(clickSpy).toHaveBeenCalled();
+
+    clickSpy.mockRestore();
+  });
+
+  it('exports all dashboards and downloads the archive', async () => {
+    const user = userEvent.setup();
+    const createObjectURL = vi.fn().mockReturnValue('blob:grafana-all');
+    const revokeObjectURL = vi.fn();
+    let downloadedFilename = '';
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      downloadedFilename = this.download;
+    });
+    Object.defineProperty(URL, 'createObjectURL', { writable: true, value: createObjectURL });
+    Object.defineProperty(URL, 'revokeObjectURL', { writable: true, value: revokeObjectURL });
+
+    render(
+      <App>
+        <LangProvider>
+          <GrafanaDashboardList />
+        </LangProvider>
+      </App>,
+    );
+
+    await screen.findByText('RocketMQ Cluster Overview');
+    await user.click(screen.getByRole('button', { name: /Export all|导出全部/ }));
+
+    await waitFor(() => expect(exportGrafanaDashboards).toHaveBeenCalledTimes(1));
+    expect(downloadedFilename).toBe('rocketmq-grafana-dashboards.zip');
     expect(createObjectURL).toHaveBeenCalledTimes(1);
     expect(clickSpy).toHaveBeenCalled();
 
