@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.cluster.broker;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.junit.jupiter.api.Test;
@@ -32,6 +33,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -79,5 +81,24 @@ class RuntimeAdminClientResolverTest {
         String result = resolver.execute("instance-b", admin -> "unused");
         assertThat(result).isEqualTo("done");
         verify(adminFactory).execute(eq("namesrv-b:9876"), isNull(), any());
+    }
+
+    @Test
+    void rejectsCloudInstancesBeforeResolvingOrExecutingAdminClient() {
+        InstanceVO instance = InstanceVO.builder()
+                .vendor(InstanceVendor.ALIYUN)
+                .endpoint("cloud-endpoint:9876")
+                .build();
+        instance.setId("cloud-instance");
+        when(instanceRepository.findById("cloud-instance")).thenReturn(Optional.of(instance));
+        RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(instanceRepository, adminFactory);
+
+        assertThatThrownBy(() -> resolver.resolveEndpoint("cloud-instance"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Runtime AdminClient only supports Apache instances: cloud-instance");
+        assertThatThrownBy(() -> resolver.execute(instance, admin -> "unused"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Runtime AdminClient only supports Apache instances: cloud-instance");
+        verifyNoInteractions(adminFactory);
     }
 }
