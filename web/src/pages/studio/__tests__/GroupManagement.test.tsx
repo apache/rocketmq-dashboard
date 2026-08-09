@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
@@ -281,4 +281,17 @@ describe('GroupManagement Page', () => {
     });
   });
 
+  it('shows a stopped status in details when no consumer instance is online', async () => {
+    vi.mocked(consumerService.listConsumerGroups).mockResolvedValue([
+      makeGroup({ name: 'offline-group', onlineInstances: 0 }),
+    ]);
+    const user = userEvent.setup();
+    renderWithProviders(<GroupManagement />);
+    await screen.findByText('offline-group');
+    await user.click(screen.getByText('详情'));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('已停止')).toBeInTheDocument();
+    expect(within(dialog).queryByText('在线')).not.toBeInTheDocument();
+  });
 });

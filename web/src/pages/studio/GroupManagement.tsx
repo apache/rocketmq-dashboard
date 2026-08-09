@@ -340,8 +340,13 @@ const GroupManagementPage = () => {
                           </div>
                           <div style={{ fontSize: 24, fontWeight: 600 }}>
                             {selectedGroup.onlineInstances}{' '}
-                            <Tag color="success" style={{ marginLeft: 8 }}>
-                              {t('groupMgmt.online')}
+                            <Tag
+                              color={selectedGroup.onlineInstances > 0 ? 'success' : 'error'}
+                              style={{ marginLeft: 8 }}
+                            >
+                              {selectedGroup.onlineInstances > 0
+                                ? t('groupMgmt.online')
+                                : t('groupMgmt.stopped')}
                             </Tag>
                           </div>
                         </Card>
