@@ -176,6 +176,9 @@ const isConsistentSubscription = (subscription: SubscriptionEntry): boolean =>
 const isInconsistentSubscription = (subscription: SubscriptionEntry): boolean =>
   isInconsistentValue(subscription.consistency);
 
+const diagnosticCacheKey = (instanceId: string, groupName: string): string =>
+  JSON.stringify([instanceId, groupName]);
+
 /* ═══════════════════════════════════════════
    ConsumerPage
    ═══════════════════════════════════════════ */
@@ -247,20 +250,19 @@ const ConsumerPage = () => {
 
   const loadSubscriptions = useCallback(
     async (groupName: string, force = false) => {
-      if (!force && subscriptionsByGroup[groupName]) return;
-      setSubscriptionLoadingByGroup((prev) => ({ ...prev, [groupName]: true }));
-      setSubscriptionErrorByGroup((prev) => ({ ...prev, [groupName]: false }));
+      if (!selectedInstanceId) return;
+      const cacheKey = diagnosticCacheKey(selectedInstanceId, groupName);
+      if (!force && subscriptionsByGroup[cacheKey]) return;
+      setSubscriptionLoadingByGroup((prev) => ({ ...prev, [cacheKey]: true }));
+      setSubscriptionErrorByGroup((prev) => ({ ...prev, [cacheKey]: false }));
       try {
-        const subscriptions = await getConsumerSubscriptions(
-          groupName,
-          selectedInstanceId || undefined,
-        );
-        setSubscriptionsByGroup((prev) => ({ ...prev, [groupName]: subscriptions }));
+        const subscriptions = await getConsumerSubscriptions(groupName, selectedInstanceId);
+        setSubscriptionsByGroup((prev) => ({ ...prev, [cacheKey]: subscriptions }));
       } catch {
-        setSubscriptionErrorByGroup((prev) => ({ ...prev, [groupName]: true }));
+        setSubscriptionErrorByGroup((prev) => ({ ...prev, [cacheKey]: true }));
         message.error(t('consumer.fetchSubscriptionsFailed', { name: groupName }));
       } finally {
-        setSubscriptionLoadingByGroup((prev) => ({ ...prev, [groupName]: false }));
+        setSubscriptionLoadingByGroup((prev) => ({ ...prev, [cacheKey]: false }));
       }
     },
     [subscriptionsByGroup, t, selectedInstanceId],
@@ -268,10 +270,12 @@ const ConsumerPage = () => {
 
   const loadProgress = useCallback(
     async (groupName: string) => {
-      if (progressByGroup[groupName]) return;
+      if (!selectedInstanceId) return;
+      const cacheKey = diagnosticCacheKey(selectedInstanceId, groupName);
+      if (progressByGroup[cacheKey]) return;
       try {
-        const progress = await getConsumerProgress(groupName, selectedInstanceId || undefined);
-        setProgressByGroup((prev) => ({ ...prev, [groupName]: progress }));
+        const progress = await getConsumerProgress(groupName, selectedInstanceId);
+        setProgressByGroup((prev) => ({ ...prev, [cacheKey]: progress }));
       } catch {
         message.error(t('consumer.fetchProgressFailed', { name: groupName }));
       }
@@ -311,8 +315,11 @@ const ConsumerPage = () => {
     void loadProgress(group.name);
   };
 
+  const selectedGroupCacheKey = selectedGroup
+    ? diagnosticCacheKey(selectedInstanceId, selectedGroup.name)
+    : '';
   const selectedSubscriptions = selectedGroup
-    ? (subscriptionsByGroup[selectedGroup.name] ?? [])
+    ? (subscriptionsByGroup[selectedGroupCacheKey] ?? [])
     : [];
   const inconsistentSubscriptions = selectedSubscriptions.filter(isInconsistentSubscription);
   const unknownSubscriptions = selectedSubscriptions.filter(
@@ -322,7 +329,7 @@ const ConsumerPage = () => {
   const visibleSubscriptions = showOnlyInconsistent
     ? inconsistentSubscriptions
     : selectedSubscriptions;
-  const selectedProgress = selectedGroup ? (progressByGroup[selectedGroup.name] ?? []) : [];
+  const selectedProgress = selectedGroup ? (progressByGroup[selectedGroupCacheKey] ?? []) : [];
 
   const handleImportFile = async (file: File) => {
     if (!selectedInstanceId) {
@@ -891,18 +898,21 @@ const ConsumerPage = () => {
             onExpand: (expanded, record) => {
               if (expanded) void loadSubscriptions(record.name);
             },
-            expandedRowRender: (record) => (
-              <div style={{ padding: '8px 0' }}>
-                <Table
-                  columns={subscriptionSubColumns}
-                  dataSource={subscriptionsByGroup[record.name] ?? []}
-                  rowKey="topic"
-                  loading={subscriptionLoadingByGroup[record.name]}
-                  pagination={false}
-                  size="small"
-                />
-              </div>
-            ),
+            expandedRowRender: (record) => {
+              const cacheKey = diagnosticCacheKey(selectedInstanceId, record.name);
+              return (
+                <div style={{ padding: '8px 0' }}>
+                  <Table
+                    columns={subscriptionSubColumns}
+                    dataSource={subscriptionsByGroup[cacheKey] ?? []}
+                    rowKey="topic"
+                    loading={subscriptionLoadingByGroup[cacheKey]}
+                    pagination={false}
+                    size="small"
+                  />
+                </div>
+              );
+            },
           }}
         />
       </Card>
@@ -1073,7 +1083,7 @@ const ConsumerPage = () => {
                         <Button
                           size="small"
                           icon={<ArrowsClockwise size={14} />}
-                          loading={subscriptionLoadingByGroup[selectedGroup.name]}
+                          loading={subscriptionLoadingByGroup[selectedGroupCacheKey]}
                           onClick={() => {
                             setShowOnlyInconsistent(false);
                             void loadSubscriptions(selectedGroup.name, true);
@@ -1085,7 +1095,7 @@ const ConsumerPage = () => {
                       <Alert
                         showIcon
                         type={
-                          subscriptionErrorByGroup[selectedGroup.name]
+                          subscriptionErrorByGroup[selectedGroupCacheKey]
                             ? 'error'
                             : inconsistentSubscriptions.length > 0 ||
                                 unknownSubscriptions.length > 0
@@ -1095,9 +1105,9 @@ const ConsumerPage = () => {
                                 : 'info'
                         }
                         message={
-                          subscriptionErrorByGroup[selectedGroup.name]
+                          subscriptionErrorByGroup[selectedGroupCacheKey]
                             ? '订阅一致性检查失败，当前保留上次检查结果'
-                            : subscriptionLoadingByGroup[selectedGroup.name] &&
+                            : subscriptionLoadingByGroup[selectedGroupCacheKey] &&
                                 selectedSubscriptions.length === 0
                               ? '正在检查订阅一致性'
                               : inconsistentSubscriptions.length > 0
@@ -1123,7 +1133,7 @@ const ConsumerPage = () => {
                         columns={subscriptionSubColumns}
                         dataSource={visibleSubscriptions}
                         rowKey="topic"
-                        loading={subscriptionLoadingByGroup[selectedGroup.name]}
+                        loading={subscriptionLoadingByGroup[selectedGroupCacheKey]}
                         pagination={false}
                         size="small"
                       />

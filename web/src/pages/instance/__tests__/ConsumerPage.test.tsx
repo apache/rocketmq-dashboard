@@ -16,7 +16,7 @@
  */
 
 import { App } from 'antd';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { MemoryRouter } from 'react-router-dom';
@@ -260,6 +260,72 @@ describe('Consumer page', () => {
     await waitFor(() =>
       expect(consumerService.getConsumerProgress).toHaveBeenCalledWith('remote-cg', 'instance-a'),
     );
+  });
+
+  it('isolates same-named group diagnostics across instances', async () => {
+    vi.mocked(instanceService.listInstances).mockResolvedValue([
+      {
+        id: 'instance-a',
+        name: 'Instance A',
+        remark: '',
+        type: 'DIRECT',
+        endpoint: '127.0.0.1:9876',
+        topicCount: 0,
+        consumerGroupCount: 1,
+        createdAt: '2026-07-23T00:00:00Z',
+        updatedAt: '2026-07-23T00:00:00Z',
+      },
+      {
+        id: 'instance-b',
+        name: 'Instance B',
+        remark: '',
+        type: 'DIRECT',
+        endpoint: '127.0.0.2:9876',
+        topicCount: 0,
+        consumerGroupCount: 1,
+        createdAt: '2026-07-23T00:00:00Z',
+        updatedAt: '2026-07-23T00:00:00Z',
+      },
+    ]);
+    vi.mocked(consumerService.listConsumerGroups).mockImplementation(async (query) => [
+      { ...group, instanceId: query?.instanceId ?? '' },
+    ]);
+    vi.mocked(consumerService.getConsumerSubscriptions).mockImplementation(
+      async (_groupName, instanceId) => [
+        {
+          topic: `topic-${instanceId}`,
+          expression: '*',
+          type: 'NORMAL',
+          filterMode: '全量',
+          consistency: '一致',
+        },
+      ],
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+    expect(await screen.findByText('topic-instance-a')).toBeInTheDocument();
+    await user.click(document.querySelector('.ant-modal-close') as HTMLElement);
+
+    const instanceSelect = screen.getAllByRole('combobox')[0];
+    fireEvent.mouseDown(instanceSelect.parentElement!);
+    await user.click(
+      await screen.findByText('Instance B', { selector: '.ant-select-item-option-content' }),
+    );
+    await waitFor(() =>
+      expect(consumerService.listConsumerGroups).toHaveBeenCalledWith({
+        instanceId: 'instance-b',
+      }),
+    );
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+    expect(await screen.findByText('topic-instance-b')).toBeInTheDocument();
+    expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith(
+      'remote-cg',
+      'instance-b',
+    );
+    expect(consumerService.getConsumerProgress).toHaveBeenCalledWith('remote-cg', 'instance-b');
   });
 
   it('highlights inconsistent subscriptions and refreshes the check result', async () => {
