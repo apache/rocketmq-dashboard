@@ -224,6 +224,10 @@ const ConsumerPage = () => {
 
   useEffect(() => {
     if (!selectedInstanceId) {
+      groupRequestIdRef.current += 1;
+      setGroups([]);
+      setSelectedRowKeys([]);
+      setLoading(false);
       return;
     }
     const requestId = ++groupRequestIdRef.current;
