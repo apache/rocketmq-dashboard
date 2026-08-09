@@ -105,6 +105,7 @@ class AlertServiceTest {
                 .threshold(5000)
                 .duration("3m")
                 .description("Lag too high")
+                .enabled(true)
                 .build();
         when(alertRepository.findAllRules()).thenReturn(List.of(rule));
 
@@ -127,6 +128,7 @@ class AlertServiceTest {
                 .threshold(1000)
                 .duration("3m")
                 .description("First lag alert")
+                .enabled(true)
                 .build();
         AlertRuleVO second = AlertRuleVO.builder()
                 .name("Lag Alert B")
@@ -135,6 +137,7 @@ class AlertServiceTest {
                 .threshold(2000)
                 .duration("5m")
                 .description("Second lag alert")
+                .enabled(true)
                 .build();
         when(alertRepository.findAllRules()).thenReturn(List.of(first, second));
 
@@ -161,6 +164,7 @@ class AlertServiceTest {
                 .clusterName("DefaultCluster")
                 .severity("critical")
                 .description("Slave falls behind master")
+                .enabled(true)
                 .build();
         when(alertRepository.findAllRules()).thenReturn(List.of(rule));
 
@@ -183,6 +187,7 @@ class AlertServiceTest {
                 .brokerName("*")
                 .clusterName(" ")
                 .severity("fatal")
+                .enabled(true)
                 .build();
         when(alertRepository.findAllRules()).thenReturn(List.of(rule));
 
@@ -203,6 +208,7 @@ class AlertServiceTest {
                 .clusterName("prod\"east\\dc\nline")
                 .brokerName("broker\tone")
                 .description("Summary \"quoted\" \\ path\nnext - Details\twith\rline")
+                .enabled(true)
                 .build();
         when(alertRepository.findAllRules()).thenReturn(List.of(rule));
 
@@ -226,6 +232,7 @@ class AlertServiceTest {
                 .metric("rocketmq_consumer_lag_messages")
                 .operator(">")
                 .threshold(1)
+                .enabled(true)
                 .build();
         when(alertRepository.findAllRules()).thenReturn(List.of(rule));
 
@@ -234,6 +241,50 @@ class AlertServiceTest {
         JsonNode exportedRule = new ObjectMapper(new YAMLFactory()).readTree(result)
                 .path("groups").get(0).path("rules").get(0);
         assertThat(exportedRule.path("alert").asText()).isEqualTo("RocketMQAlert");
+    }
+
+    @Test
+    void exportPrometheusRulesYamlShouldExcludeDisabledRules() {
+        AlertRuleVO enabled = AlertRuleVO.builder()
+                .name("Enabled Lag Alert")
+                .metric("rocketmq_consumer_lag_messages")
+                .operator(">")
+                .threshold(1000)
+                .enabled(true)
+                .build();
+        AlertRuleVO disabled = AlertRuleVO.builder()
+                .name("Disabled Lag Alert")
+                .metric("rocketmq_consumer_lag_messages")
+                .operator(">")
+                .threshold(2000)
+                .enabled(false)
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(enabled, disabled));
+
+        String result = alertService.exportPrometheusRulesYaml();
+
+        assertThat(result)
+                .contains("EnabledLagAlert")
+                .doesNotContain("DisabledLagAlert")
+                .doesNotContain(" > 2000");
+    }
+
+    @Test
+    void exportPrometheusRulesYamlShouldUseDefaultRulesWhenAllConfiguredRulesAreDisabled() {
+        AlertRuleVO disabled = AlertRuleVO.builder()
+                .name("Disabled Lag Alert")
+                .metric("rocketmq_consumer_lag_messages")
+                .operator(">")
+                .threshold(2000)
+                .enabled(false)
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(disabled));
+
+        String result = alertService.exportPrometheusRulesYaml();
+
+        assertThat(result)
+                .contains("RocketMQBrokerDown")
+                .doesNotContain("DisabledLagAlert");
     }
 
     @Test
