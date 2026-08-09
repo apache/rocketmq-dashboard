@@ -36,9 +36,9 @@ interface TopicListResponse {
 
 // ─── API ────────────────────────────────────────────────────────
 
-/** Fetch all topic names */
-export async function fetchTopicList(): Promise<string[]> {
-  const res = await client.get<TopicListResponse>('/topics');
+/** Fetch topic names for a managed instance. */
+export async function fetchTopicList(instanceId: string): Promise<string[]> {
+  const res = await client.get<TopicListResponse>('/topics', { params: { instanceId } });
   const topics = res.data.data?.map((topic) => topic.name) ?? res.data.topicList ?? [];
   return topics.sort();
 }
