@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Alert, App, Button, Input, Popconfirm, Select, Space, Switch, Tooltip, Typography } from 'antd';
 import { FloppyDisk, Plus, Trash } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
@@ -42,6 +42,10 @@ const OpsPage: React.FC = () => {
   const [newNamesrvAddr, setNewNamesrvAddr] = useState('');
   const [useVIPChannel, setUseVIPChannel] = useState(false);
   const [useTLS, setUseTLS] = useState(false);
+  const [vipUpdating, setVipUpdating] = useState(false);
+  const [tlsUpdating, setTlsUpdating] = useState(false);
+  const vipUpdateInFlight = useRef(false);
+  const tlsUpdateInFlight = useRef(false);
   const [configurationAvailable, setConfigurationAvailable] = useState(false);
   const [unavailableReason, setUnavailableReason] = useState('');
   const writeOperationEnabled = configurationAvailable && (!token || admin === true);
@@ -121,6 +125,9 @@ const OpsPage: React.FC = () => {
   };
 
   const handleUpdateIsVIPChannel = async (checked: boolean) => {
+    if (vipUpdateInFlight.current) return;
+    vipUpdateInFlight.current = true;
+    setVipUpdating(true);
     setUseVIPChannel(checked);
     try {
       await updateIsVIPChannel(checked);
@@ -128,10 +135,16 @@ const OpsPage: React.FC = () => {
     } catch {
       message.error(t('common.failure'));
       setUseVIPChannel(!checked);
+    } finally {
+      vipUpdateInFlight.current = false;
+      setVipUpdating(false);
     }
   };
 
   const handleUpdateUseTLS = async (checked: boolean) => {
+    if (tlsUpdateInFlight.current) return;
+    tlsUpdateInFlight.current = true;
+    setTlsUpdating(true);
     setUseTLS(checked);
     try {
       await updateUseTLS(checked);
@@ -139,6 +152,9 @@ const OpsPage: React.FC = () => {
     } catch {
       message.error(t('common.failure'));
       setUseTLS(!checked);
+    } finally {
+      tlsUpdateInFlight.current = false;
+      setTlsUpdating(false);
     }
   };
 
@@ -215,13 +231,16 @@ const OpsPage: React.FC = () => {
           <Switch
             checked={useVIPChannel}
             onChange={handleUpdateIsVIPChannel}
-            disabled={!writeOperationEnabled}
+            disabled={!writeOperationEnabled || vipUpdating}
+            loading={vipUpdating}
           />
           {writeOperationEnabled && (
             <Button
               type="primary"
               icon={<FloppyDisk size={16} />}
               onClick={() => handleUpdateIsVIPChannel(useVIPChannel)}
+              loading={vipUpdating}
+              disabled={vipUpdating}
             >
               {t('common.update')}
             </Button>
@@ -236,13 +255,16 @@ const OpsPage: React.FC = () => {
           <Switch
             checked={useTLS}
             onChange={handleUpdateUseTLS}
-            disabled={!writeOperationEnabled}
+            disabled={!writeOperationEnabled || tlsUpdating}
+            loading={tlsUpdating}
           />
           {writeOperationEnabled && (
             <Button
               type="primary"
               icon={<FloppyDisk size={16} />}
               onClick={() => handleUpdateUseTLS(useTLS)}
+              loading={tlsUpdating}
+              disabled={tlsUpdating}
             >
               {t('common.update')}
             </Button>
