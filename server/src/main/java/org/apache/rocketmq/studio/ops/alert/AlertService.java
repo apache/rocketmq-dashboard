@@ -42,7 +42,9 @@ public class AlertService {
     }
 
     public String exportPrometheusRulesYaml() {
-        List<AlertRuleVO> rules = alertRepository.findAllRules();
+        List<AlertRuleVO> rules = alertRepository.findAllRules().stream()
+                .filter(AlertRuleVO::isEnabled)
+                .toList();
         List<PrometheusAlertRule> prometheusRules = rules.isEmpty()
                 ? defaultPrometheusRules()
                 : rules.stream().map(this::toPrometheusRule).toList();
