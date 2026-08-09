@@ -61,13 +61,16 @@ export async function getConsumerProgress(
   return metadataApi.getConsumerProgress(name, instanceId);
 }
 
-export async function getConsumerGroup(name: string): Promise<ConsumerGroupDetail> {
+export async function getConsumerGroup(
+  name: string,
+  instanceId?: string,
+): Promise<ConsumerGroupDetail> {
   if (isMockMode()) {
     const group = mockConsumerGroups.find((item) => item.name === name);
     if (!group) throw new Error(`Consumer group not found: ${name}`);
     return copyConsumerGroup(group as unknown as ConsumerGroupDetail) as ConsumerGroupDetail;
   }
-  return metadataApi.getConsumerGroup(name);
+  return metadataApi.getConsumerGroup(name, instanceId);
 }
 
 export async function getConsumerSubscriptions(
