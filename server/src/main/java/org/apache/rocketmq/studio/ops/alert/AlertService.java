@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -34,6 +35,7 @@ public class AlertService {
 
     private final AlertRepository alertRepository;
     private final AlertRuleAssetService alertRuleAssetService;
+    private final OperationAuditService operationAuditService;
 
 
     public List<AlertRuleVO> listRules() {
@@ -83,7 +85,9 @@ public class AlertService {
         }
         log.info("Creating alert rule: {}", rule.getName());
         rule.setId(UUID.randomUUID().toString());
-        return alertRepository.saveRule(rule);
+        AlertRuleVO saved = alertRepository.saveRule(rule);
+        auditRule("CREATE_ALERT_RULE", saved, null);
+        return saved;
     }
 
 
@@ -97,6 +101,7 @@ public class AlertService {
         if (!alertRepository.replaceRule(rule)) {
             throw ruleNotFound(id);
         }
+        auditRule("UPDATE_ALERT_RULE", rule, null);
         return rule;
     }
 
@@ -109,7 +114,9 @@ public class AlertService {
                 .findFirst()
                 .orElseThrow(() -> new org.apache.rocketmq.studio.common.exception.BusinessException(404, "Alert rule not found: " + id));
         rule.setEnabled(enabled);
-        return alertRepository.saveRule(rule);
+        AlertRuleVO saved = alertRepository.saveRule(rule);
+        auditRule("TOGGLE_ALERT_RULE", saved, "enabled=" + enabled);
+        return saved;
     }
 
 
@@ -118,6 +125,7 @@ public class AlertService {
         if (!alertRepository.deleteRule(id)) {
             throw ruleNotFound(id);
         }
+        operationAuditService.record("DELETE_ALERT_RULE", "ALERT_RULE", id, null, null, "SUCCESS", null);
     }
 
 
@@ -135,13 +143,19 @@ public class AlertService {
                 .findFirst()
                 .orElseThrow(() -> new org.apache.rocketmq.studio.common.exception.BusinessException(404, "System alert not found: " + id));
         alert.setAcknowledged(true);
-        return alertRepository.saveAlert(alert);
+        SystemAlertVO saved = alertRepository.saveAlert(alert);
+        operationAuditService.record("ACKNOWLEDGE_SYSTEM_ALERT", "SYSTEM_ALERT", saved.getId(), null,
+                "acknowledged=true", "SUCCESS", null);
+        return saved;
     }
 
 
     public int clearAcknowledged() {
         log.info("Clearing acknowledged system alerts");
-        return alertRepository.deleteAcknowledgedAlerts();
+        int deleted = alertRepository.deleteAcknowledgedAlerts();
+        operationAuditService.record("CLEAR_ACKNOWLEDGED_SYSTEM_ALERTS", "SYSTEM_ALERT", null, null,
+                "deleted=" + deleted, "SUCCESS", null);
+        return deleted;
     }
 
     private List<PrometheusAlertRule> defaultPrometheusRules() {
@@ -200,6 +214,12 @@ public class AlertService {
             selector.append(',');
         }
         selector.append(label).append("=\"").append(escapeDoubleQuotedValue(value.trim())).append('"');
+    }
+
+    private void auditRule(String operation, AlertRuleVO rule, String detail) {
+        String auditDetail = detail == null ? "name=" + rule.getName() : detail;
+        operationAuditService.record(operation, "ALERT_RULE", rule.getId(), null,
+                auditDetail, "SUCCESS", null);
     }
 
     private String severity(AlertRuleVO rule) {
