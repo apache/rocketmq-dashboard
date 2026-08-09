@@ -138,7 +138,12 @@ const SystemAlertsPage = () => {
         {loading && <Card loading />}
         {!loading &&
           filtered.map((alert) => {
-            const cfg = alertLevelConfig[alert.level];
+            const normalizedLevel = alert.level.toLowerCase();
+            const cfg = alertLevelConfig[normalizedLevel] ?? {
+              color: '#8c8c8c',
+              bg: '#fafafa',
+              label: alert.level || t('common.na'),
+            };
             return (
               <div
                 key={alert.id}
@@ -160,11 +165,13 @@ const SystemAlertsPage = () => {
                     </Text>
                     <Tag
                       color={
-                        alert.level === 'error'
+                        normalizedLevel === 'error'
                           ? 'error'
-                          : alert.level === 'warning'
+                          : normalizedLevel === 'warning'
                             ? 'warning'
-                            : 'processing'
+                            : normalizedLevel === 'info'
+                              ? 'processing'
+                              : 'default'
                       }
                       style={{ fontSize: 11, lineHeight: '18px', padding: '0 6px' }}
                     >
