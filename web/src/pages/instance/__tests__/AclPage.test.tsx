@@ -103,6 +103,24 @@ describe('ACL page', () => {
     expect(aclService.listAclUsers).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps rules available when loading users fails', async () => {
+    vi.mocked(aclService.listAclUsers).mockRejectedValue(new Error('users unavailable'));
+    renderWithProviders(<AclPage />);
+
+    expect(await screen.findByText('remote-user')).toBeInTheDocument();
+    expect(screen.getByText('remote-topic')).toBeInTheDocument();
+  });
+
+  it('keeps users available when loading rules fails', async () => {
+    const user = userEvent.setup();
+    vi.mocked(aclService.listAclRules).mockRejectedValue(new Error('rules unavailable'));
+    renderWithProviders(<AclPage />);
+
+    await user.click(await screen.findByText('用户管理'));
+    expect(await screen.findByText('remote-admin')).toBeInTheDocument();
+    expect(screen.getByText('cluster-a')).toBeInTheDocument();
+  });
+
   it('renders backend users on the user tab', async () => {
     const user = userEvent.setup();
     renderWithProviders(<AclPage />);
