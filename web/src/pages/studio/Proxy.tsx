@@ -121,43 +121,39 @@ const ProxyPage: React.FC = () => {
     setConfigModalOpen(true);
   };
 
-  const handleAddNode = () => {
-    form
-      .validateFields()
-      .then((values) => {
-        setLoading(true);
-        addProxyAddr(values.address)
-          .then(() => {
-            message.success(t('common.success'));
-            setAddNodeModalOpen(false);
-            form.resetFields();
-            loadProxyNodes();
-          })
-          .catch(() => {
-            message.error(t('proxy.addFailed'));
-          })
-          .finally(() => {
-            setLoading(false);
-          });
-      })
-      .catch(() => {
-        // validation failed
-      });
+  const handleAddNode = async () => {
+    let values: { address: string };
+    try {
+      values = await form.validateFields();
+    } catch {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await addProxyAddr(values.address);
+      message.success(t('common.success'));
+      setAddNodeModalOpen(false);
+      form.resetFields();
+      await loadProxyNodes();
+    } catch {
+      message.error(t('proxy.addFailed'));
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleRemoveNode = (node: ProxyNode) => {
+  const handleRemoveNode = async (node: ProxyNode) => {
     setLoading(true);
-    removeProxyAddr(node.address)
-      .then(() => {
-        message.success(t('common.success'));
-        loadProxyNodes();
-      })
-      .catch(() => {
-        message.error(t('proxy.removeFailed'));
-      })
-      .finally(() => {
-        setLoading(false);
-      });
+    try {
+      await removeProxyAddr(node.address);
+      message.success(t('common.success'));
+      await loadProxyNodes();
+    } catch {
+      message.error(t('proxy.removeFailed'));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleRefresh = async () => {
