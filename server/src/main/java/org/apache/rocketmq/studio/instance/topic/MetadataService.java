@@ -84,11 +84,12 @@ public class MetadataService {
     }
 
     public List<BrokerRouteVO> getTopicRoutes(String instanceId, String name) {
+        String topicName = requireName(name, "topic name");
         if (resolve(instanceId).vendor() != InstanceVendor.APACHE) {
             // broker routing does not apply to serverless cloud instances
             return List.of();
         }
-        return metadataProvider.getTopicRoutes(instanceId, name);
+        return metadataProvider.getTopicRoutes(instanceId, topicName);
     }
 
 
@@ -97,7 +98,8 @@ public class MetadataService {
     }
 
     public List<TopicConsumerVO> getTopicConsumers(String instanceId, String name) {
-        return resolve(instanceId).getTopicConsumers(instanceId, name);
+        String topicName = requireName(name, "topic name");
+        return resolve(instanceId).getTopicConsumers(instanceId, topicName);
     }
 
 
@@ -129,10 +131,11 @@ public class MetadataService {
     }
 
     public ConsumerGroupVO getConsumerGroup(String instanceId, String name) {
+        String groupName = requireName(name, "consumer group name");
         if (resolve(instanceId).vendor() != InstanceVendor.APACHE) {
             throw new BusinessException(501, "Consumer group detail is not supported for cloud instances");
         }
-        return adminClient.getConsumerGroup(instanceId, name);
+        return adminClient.getConsumerGroup(instanceId, groupName);
     }
 
 
@@ -141,7 +144,8 @@ public class MetadataService {
     }
 
     public List<QueueProgressVO> getGroupProgress(String instanceId, String name) {
-        return resolve(instanceId).getGroupProgress(instanceId, name);
+        String groupName = requireName(name, "consumer group name");
+        return resolve(instanceId).getGroupProgress(instanceId, groupName);
     }
 
 
@@ -150,7 +154,8 @@ public class MetadataService {
     }
 
     public List<SubscriptionEntryVO> getGroupSubscriptions(String instanceId, String name) {
-        return resolve(instanceId).getGroupSubscriptions(instanceId, name);
+        String groupName = requireName(name, "consumer group name");
+        return resolve(instanceId).getGroupSubscriptions(instanceId, groupName);
     }
 
 
@@ -205,5 +210,12 @@ public class MetadataService {
         if (request == null) {
             throw new BusinessException(400, "Topic send message request is required");
         }
+    }
+
+    private String requireName(String value, String fieldName) {
+        if (isBlank(value)) {
+            throw new BusinessException(400, fieldName + " is required");
+        }
+        return value.trim();
     }
 }
