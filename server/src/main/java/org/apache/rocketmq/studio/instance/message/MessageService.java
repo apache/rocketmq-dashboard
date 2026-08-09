@@ -58,6 +58,9 @@ public class MessageService {
         if (hasKey && !hasTopic) {
             throw new BusinessException(400, "topic is required when key is specified");
         }
+        if (hasMessageId && !hasTopic) {
+            throw new BusinessException(400, "topic is required when msgId is specified");
+        }
         if (!hasTopic && !hasMessageId) {
             throw new BusinessException(400, "topic or msgId is required");
         }

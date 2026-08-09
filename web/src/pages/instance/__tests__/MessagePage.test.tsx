@@ -79,6 +79,8 @@ const renderWithProviders = (ui: React.ReactElement) =>
     </App>,
   );
 
+const lastElement = <T,>(elements: T[]): T => elements[elements.length - 1]!;
+
 describe('Message page query history', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -96,11 +98,14 @@ describe('Message page query history', () => {
     expect(screen.getByRole('button', { name: /最近查询/ })).toBeDisabled();
 
     await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
     await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-001');
     await user.click(screen.getByRole('button', { name: /^search查询$/ }));
 
     await waitFor(() => {
       expect(messageServiceMocks.queryMessages).toHaveBeenCalledWith({
+        topic: 'order-create',
         msgId: 'MID-001',
         instanceId: '',
       });
@@ -112,11 +117,12 @@ describe('Message page query history', () => {
     renderWithProviders(<MessagePage />);
 
     await user.click(screen.getByRole('button', { name: /最近查询/ }));
-    await user.click(await screen.findByText('Message ID: MID-001'));
+    await user.click(await screen.findByText('Message ID: MID-001 · Topic: order-create'));
 
     expect(screen.getByPlaceholderText('输入 Message ID')).toHaveValue('MID-001');
     await waitFor(() => {
       expect(messageServiceMocks.queryMessages).toHaveBeenCalledWith({
+        topic: 'order-create',
         msgId: 'MID-001',
         instanceId: '',
       });
@@ -134,11 +140,14 @@ describe('Message page query history', () => {
     renderWithProviders(<MessagePage />);
 
     await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
     await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-FAILED');
     await user.click(screen.getByRole('button', { name: /^search查询$/ }));
 
     await waitFor(() => {
       expect(messageServiceMocks.queryMessages).toHaveBeenCalledWith({
+        topic: 'order-create',
         msgId: 'MID-FAILED',
         instanceId: '',
       });
@@ -151,6 +160,8 @@ describe('Message page query history', () => {
     const user = userEvent.setup();
     renderWithProviders(<MessagePage />);
     await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
     const messageIdInput = screen.getByPlaceholderText('输入 Message ID');
     const queryButton = screen.getByRole('button', { name: /^search查询$/ });
 
@@ -240,15 +251,16 @@ describe('Message page query history', () => {
       JSON.stringify([
         { mode: 'topic', params: { topic: ['invalid'] } },
         { mode: 'unknown', params: { topic: 'order-create' } },
-        { mode: 'msgid', params: { msgId: 'MID-VALID' } },
+        { mode: 'msgid', params: { msgId: 'MID-VALID', topic: 'order-create' } },
       ]),
     );
     renderWithProviders(<MessagePage />);
 
     await user.click(screen.getByRole('button', { name: /最近查询/ }));
-    expect(await screen.findByText('Message ID: MID-VALID')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Message ID: MID-VALID · Topic: order-create'),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/invalid/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/order-create/)).not.toBeInTheDocument();
   });
 
   it('does not report consume verification success without a backend API', async () => {
@@ -257,6 +269,8 @@ describe('Message page query history', () => {
     renderWithProviders(<MessagePage />);
 
     await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
     await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-CONSUME-VERIFY-001');
     await user.click(screen.getByRole('button', { name: /^search查询$/ }));
 
