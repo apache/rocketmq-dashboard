@@ -305,6 +305,14 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '访问控制规则与用户权限管理，共 {rules} 条规则、{users} 个用户',
     en: 'Access control rules and user permissions, {rules} rules, {users} users',
   },
+  'acl.localMetadataNotice': {
+    zh: '当前 ACL 规则和用户仅保存为 Studio 本地元数据',
+    en: 'Current ACL rules and users are stored as Studio-local metadata',
+  },
+  'acl.localMetadataDescription': {
+    zh: '它们尚不会下发到所选 RocketMQ 实例。实例级 ACL Provider 接入完成前，请在集群侧管理实际 ACL 策略。',
+    en: 'They are not applied to the selected RocketMQ instance. Manage the effective ACL policy on the cluster until instance-scoped provider support is available.',
+  },
   'acl.addRule': { zh: '添加规则', en: 'Add Rule' },
   'acl.addUser': { zh: '添加用户', en: 'Add User' },
   'acl.ruleTab': { zh: 'ACL 规则', en: 'ACL Rules' },
