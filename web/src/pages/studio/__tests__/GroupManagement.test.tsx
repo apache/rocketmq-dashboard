@@ -198,32 +198,24 @@ describe('GroupManagement Page', () => {
     expect(screen.queryByText('FIRST_GROUP_TOPIC')).not.toBeInTheDocument();
   });
 
-  it('keeps the latest group list when an earlier refresh resolves last', async () => {
+  it('queues one refresh instead of overlapping an active group request', async () => {
     const initialGroups = createDeferred<ConsumerGroup[]>();
     const refreshedGroups = createDeferred<ConsumerGroup[]>();
     vi.mocked(consumerService.listConsumerGroups)
       .mockReturnValueOnce(initialGroups.promise)
       .mockReturnValueOnce(refreshedGroups.promise);
-    vi.useFakeTimers();
     renderWithProviders(<GroupManagement />);
 
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
+    await waitFor(() => expect(consumerService.listConsumerGroups).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByText('重置'));
+    expect(consumerService.listConsumerGroups).toHaveBeenCalledTimes(1);
 
-    await act(async () => {
-      refreshedGroups.resolve([makeGroup({ name: 'fresh-group' })]);
-      await Promise.resolve();
-    });
-    expect(screen.getByText('fresh-group')).toBeInTheDocument();
+    initialGroups.resolve([makeGroup({ name: 'initial-group' })]);
+    await waitFor(() => expect(consumerService.listConsumerGroups).toHaveBeenCalledTimes(2));
 
-    await act(async () => {
-      initialGroups.resolve([makeGroup({ name: 'stale-group' })]);
-      await Promise.resolve();
-    });
-    expect(screen.getByText('fresh-group')).toBeInTheDocument();
-    expect(screen.queryByText('stale-group')).not.toBeInTheDocument();
+    refreshedGroups.resolve([makeGroup({ name: 'fresh-group' })]);
+    expect(await screen.findByText('fresh-group')).toBeInTheDocument();
+    expect(screen.queryByText('initial-group')).not.toBeInTheDocument();
   });
 
   it('polls only while auto refresh is enabled', async () => {
