@@ -260,4 +260,25 @@ describe('GroupManagement Page', () => {
     expect(screen.getByText('order-consumer-group')).toBeInTheDocument();
     expect(screen.queryByText('payment-consumer-group')).not.toBeInTheDocument();
   });
+  it('scopes global group detail diagnostics to the record instance', async () => {
+    vi.mocked(consumerService.listConsumerGroups).mockResolvedValue([
+      makeGroup({ name: 'shared-group', instanceId: 'instance-b' }),
+    ]);
+    const user = userEvent.setup();
+    renderWithProviders(<GroupManagement />);
+    await screen.findByText('shared-group');
+    await user.click(screen.getByText('详情'));
+
+    await waitFor(() => {
+      expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith(
+        'shared-group',
+        'instance-b',
+      );
+      expect(consumerService.getConsumerProgress).toHaveBeenCalledWith(
+        'shared-group',
+        'instance-b',
+      );
+    });
+  });
+
 });
