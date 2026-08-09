@@ -263,8 +263,11 @@ public class RocketMQMessageProvider implements MessageProvider {
                     parseTraceBody(traceMessage.getBody(), msgId, nodes, consumerStatus);
                 }
             }
+        } catch (BusinessException e) {
+            throw e;
         } catch (Exception e) {
             log.warn("Trace query for msgId={} failed: {}", msgId, e.getMessage());
+            throw new BusinessException(502, "Failed to query message trace: " + e.getMessage());
         }
 
         recordTraceQuery(instanceId, msgId, null, nodes.size(), consumerStatus.size());
