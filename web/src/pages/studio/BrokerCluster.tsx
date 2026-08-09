@@ -88,7 +88,16 @@ const normalizeStatus = (status: string): NodeStatus => {
   return 'running';
 };
 
-const hostOf = (addr: string): string => addr.split(':')[0] ?? addr;
+const hostOf = (addr: string): string => {
+  const value = addr.trim();
+  if (value.startsWith('[')) {
+    const closingBracket = value.indexOf(']');
+    return closingBracket >= 0 ? value.slice(0, closingBracket + 1) : value;
+  }
+  const firstColon = value.indexOf(':');
+  const lastColon = value.lastIndexOf(':');
+  return firstColon >= 0 && firstColon === lastColon ? value.slice(0, lastColon) : value;
+};
 
 function mapClusters(clusters: ClusterInfo[]): {
   brokers: BrokerRecord[];
