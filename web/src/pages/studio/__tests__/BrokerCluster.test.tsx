@@ -237,4 +237,16 @@ describe('BrokerCluster Page', () => {
     });
     expect(listClusters).toHaveBeenCalledTimes(2);
   });
+  it('renders unrecognized broker statuses as unavailable instead of running', async () => {
+    vi.mocked(listClusters).mockResolvedValue([{
+      ...clusterFixture[0],
+      brokers: [{ ...clusterFixture[0].brokers[0], status: 'mystery' }],
+    }]);
+    renderWithProviders(<BrokerCluster />);
+
+    await screen.findByText('broker-api-a');
+    expect(screen.getByText('N/A')).toBeInTheDocument();
+    expect(screen.queryByText('运行中')).not.toBeInTheDocument();
+  });
+
 });

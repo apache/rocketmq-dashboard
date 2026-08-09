@@ -42,7 +42,7 @@ import { listClusters, restartBroker } from '../../services/clusterService';
 import type { ClusterInfo } from '../../api/cluster';
 
 // ─── Types ──────────────────────────────────────────────────────
-type NodeStatus = 'running' | 'readonly' | 'maintenance';
+type NodeStatus = 'running' | 'readonly' | 'maintenance' | 'unknown';
 
 const REFRESH_INTERVAL_MS = 2000;
 
@@ -85,7 +85,8 @@ const normalizeStatus = (status: string): NodeStatus => {
   const value = (status || '').toLowerCase();
   if (value === 'readonly' || value === 'warning') return 'readonly';
   if (value === 'maintenance' || value === 'error' || value === 'offline') return 'maintenance';
-  return 'running';
+  if (value === 'running' || value === 'healthy') return 'running';
+  return 'unknown';
 };
 
 const hostOf = (addr: string): string => addr.split(':')[0] ?? addr;
@@ -222,6 +223,7 @@ const BrokerClusterPage = () => {
         color: 'error',
         label: t('brokerCluster.statusMaintenance'),
       },
+      unknown: { color: 'default', label: t('common.na') },
     };
     const { color, label } = config[status] || config.running;
     return <Tag color={color}>{label}</Tag>;
