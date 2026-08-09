@@ -20,6 +20,7 @@ import org.springframework.util.StringUtils;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.provider.alibaba.AliyunClientFactory;
 import org.springframework.stereotype.Service;
@@ -38,6 +39,7 @@ public class CloudCredentialService {
     private final CloudCredentialRepository credentialRepository;
     private final InstanceRepository instanceRepository;
     private final AliyunClientFactory aliyunClientFactory;
+    private final OperationAuditService operationAuditService;
 
     public List<CloudCredentialVO> listMasked() {
         log.info("Listing cloud credentials (masked)");
@@ -69,7 +71,10 @@ public class CloudCredentialService {
         credential.setId(UUID.randomUUID().toString());
         credential.setCreatedAt(LocalDateTime.now());
         credential.setUpdatedAt(LocalDateTime.now());
-        return maskAccessKey(credentialRepository.save(credential));
+        CloudCredentialVO saved = credentialRepository.save(credential);
+        operationAuditService.record("CREATE_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", saved.getId(), null,
+                credentialAuditDetail(saved), "SUCCESS", null);
+        return maskAccessKey(saved);
     }
 
     public CloudCredentialVO update(UpdateCloudCredentialDTO request) {
@@ -94,6 +99,8 @@ public class CloudCredentialService {
         existing.setUpdatedAt(LocalDateTime.now());
         CloudCredentialVO saved = credentialRepository.save(existing);
         invalidateAliyunClients(saved);
+        operationAuditService.record("UPDATE_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", saved.getId(), null,
+                credentialAuditDetail(saved), "SUCCESS", null);
         return maskAccessKey(saved);
     }
 
@@ -109,6 +116,8 @@ public class CloudCredentialService {
         }
         credentialRepository.deleteById(id);
         invalidateAliyunClients(existing);
+        operationAuditService.record("DELETE_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", id, null,
+                credentialAuditDetail(existing), "SUCCESS", null);
     }
 
     public CloudCredentialVO reveal(String id) {
@@ -131,6 +140,11 @@ public class CloudCredentialService {
         masked.setUpdatedAt(credential.getUpdatedAt());
         return masked;
     }
+
+    private String credentialAuditDetail(CloudCredentialVO credential) {
+        return "name=" + credential.getName() + ", vendor=" + credential.getVendor();
+    }
+
     private void invalidateAliyunClients(CloudCredentialVO credential) {
         if (credential.getVendor() == org.apache.rocketmq.studio.common.domain.enums.InstanceVendor.ALIYUN) {
             aliyunClientFactory.invalidateCredential(credential.getId());
