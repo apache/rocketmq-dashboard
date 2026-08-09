@@ -41,7 +41,7 @@ const SystemAlertsPage = () => {
   const [alerts, setAlerts] = useState<SystemAlert[]>([]);
   const [levelFilter, setLevelFilter] = useState<string>('all');
   const [loading, setLoading] = useState(true);
-  const [acknowledgingId, setAcknowledgingId] = useState<string | null>(null);
+  const [acknowledgingIds, setAcknowledgingIds] = useState<Set<string>>(() => new Set());
   const [clearing, setClearing] = useState(false);
 
   useEffect(() => {
@@ -68,7 +68,7 @@ const SystemAlertsPage = () => {
   const unackCount = alerts.filter((a) => !a.acknowledged).length;
 
   const handleAck = async (id: string) => {
-    setAcknowledgingId(id);
+    setAcknowledgingIds((current) => new Set(current).add(id));
     try {
       await acknowledgeAlert(id);
       setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, acknowledged: true } : a)));
@@ -76,7 +76,11 @@ const SystemAlertsPage = () => {
     } catch {
       message.error('确认告警失败，请稍后重试');
     } finally {
-      setAcknowledgingId(null);
+      setAcknowledgingIds((current) => {
+        const next = new Set(current);
+        next.delete(id);
+        return next;
+      });
     }
   };
 
@@ -192,7 +196,7 @@ const SystemAlertsPage = () => {
                       type="link"
                       icon={<CheckCircle size={14} />}
                       onClick={() => handleAck(alert.id)}
-                      loading={acknowledgingId === alert.id}
+                      loading={acknowledgingIds.has(alert.id)}
                     >
                       {t('sysAlerts.acknowledge')}
                     </Button>
