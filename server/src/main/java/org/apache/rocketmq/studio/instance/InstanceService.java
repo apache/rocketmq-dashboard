@@ -22,6 +22,7 @@ import org.springframework.util.StringUtils;
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialRepository;
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialVO;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -45,6 +46,7 @@ public class InstanceService {
     private final CloudCredentialRepository cloudCredentialRepository;
     private final InstanceProviderRegistry providerRegistry;
     private final MqAdminExtFactory adminFactory;
+    private final OperationAuditService operationAuditService;
 
     public List<InstanceVO> listInstances(InstanceType type, String search) {
         log.debug("Listing instances, type={}, search={}", type, search);
@@ -96,7 +98,10 @@ public class InstanceService {
         instance.setId(UUID.randomUUID().toString());
         instance.setCreatedAt(LocalDateTime.now());
         instance.setUpdatedAt(LocalDateTime.now());
-        return instanceRepository.save(instance);
+        InstanceVO saved = instanceRepository.save(instance);
+        operationAuditService.record("CREATE_INSTANCE", "INSTANCE", saved.getId(), null,
+                instanceAuditDetail(saved), "SUCCESS", null);
+        return saved;
     }
 
     private void createApacheInstance(InstanceVO instance) {
@@ -211,6 +216,8 @@ public class InstanceService {
 
         InstanceVO saved = instanceRepository.save(updated);
         releaseApacheEndpointIfUnused(existing, saved.getEndpoint());
+        operationAuditService.record("UPDATE_INSTANCE", "INSTANCE", saved.getId(), null,
+                instanceAuditDetail(saved), "SUCCESS", null);
         return saved;
     }
 
@@ -235,12 +242,19 @@ public class InstanceService {
         }
         instanceRepository.deleteById(id);
         releaseApacheEndpointIfUnused(existing, null);
+        operationAuditService.record("DELETE_INSTANCE", "INSTANCE", id, null,
+                instanceAuditDetail(existing), "SUCCESS", null);
     }
 
     private void requireInstance(InstanceVO instance) {
         if (instance == null) {
             throw new BusinessException(400, "Instance request is required");
         }
+    }
+
+    private String instanceAuditDetail(InstanceVO instance) {
+        InstanceVendor vendor = instance.getVendor() == null ? InstanceVendor.APACHE : instance.getVendor();
+        return "name=" + instance.getName() + ", vendor=" + vendor + ", type=" + instance.getType();
     }
 
     private InstanceVO copyOf(InstanceVO instance) {
