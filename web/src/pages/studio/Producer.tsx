@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   App,
@@ -63,6 +63,7 @@ const ProducerPage = () => {
   const { t } = useLang();
   const { message } = App.useApp();
   const fetchTopicFailedMessage = t('producer.fetchTopicFailed');
+  const queryRequestIdRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -85,10 +86,13 @@ const ProducerPage = () => {
   }, []);
 
   const handleInstanceChange = (instanceId: string) => {
+    queryRequestIdRef.current += 1;
     setSelectedInstanceId(instanceId);
     setTopicList([]);
     setProducerGroups([]);
     setConnectionList([]);
+    setConnectionSummary(null);
+    setLoading(false);
     form.setFieldsValue({ selectedTopic: undefined, producerGroup: undefined });
   };
 
@@ -111,6 +115,7 @@ const ProducerPage = () => {
       })
       .catch(() => {
         if (!cancelled) {
+          setTopicList([]);
           message.error(fetchTopicFailedMessage);
         }
       });
@@ -151,6 +156,7 @@ const ProducerPage = () => {
       message.error('Select an instance before querying producer connections.');
       return;
     }
+    const requestId = ++queryRequestIdRef.current;
     setLoading(true);
     try {
       const result = await queryProducerConnection(
@@ -158,6 +164,7 @@ const ProducerPage = () => {
         values.selectedTopic,
         values.producerGroup,
       );
+      if (requestId !== queryRequestIdRef.current) return;
       const connections = result.connectionSet;
       setConnectionList(connections);
       setConnectionSummary(result.summary);
@@ -165,9 +172,13 @@ const ProducerPage = () => {
         message.info(t('producer.noConnections'));
       }
     } catch {
-      message.error(t('producer.fetchConnectionFailed'));
+      if (requestId === queryRequestIdRef.current) {
+        message.error(t('producer.fetchConnectionFailed'));
+      }
     } finally {
-      setLoading(false);
+      if (requestId === queryRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   };
 
