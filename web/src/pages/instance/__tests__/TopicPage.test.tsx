@@ -391,6 +391,8 @@ describe('TopicPage', () => {
     renderWithProviders();
 
     expect(await screen.findByText('共 0 个 Topic')).toBeInTheDocument();
+    expect(topicServiceMocks.listTopics).not.toHaveBeenCalled();
+    expect(document.querySelector('.ant-spin-spinning')).toBeNull();
     expect(screen.getByRole('button', { name: /导入/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: /创建 Topic/ })).toBeDisabled();
   });

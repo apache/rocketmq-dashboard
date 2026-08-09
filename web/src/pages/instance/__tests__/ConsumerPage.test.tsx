@@ -472,6 +472,8 @@ describe('Consumer page', () => {
     renderWithProviders(<ConsumerPage />);
 
     expect(await screen.findByText('选择实例')).toBeInTheDocument();
+    expect(consumerService.listConsumerGroups).not.toHaveBeenCalled();
+    expect(document.querySelector('.ant-spin-spinning')).toBeNull();
     expect(screen.getByRole('button', { name: /导入/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: '创建 Group' })).toBeDisabled();
   });

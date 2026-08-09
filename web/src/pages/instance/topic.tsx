@@ -307,6 +307,10 @@ const TopicPage = () => {
 
   useEffect(() => {
     if (!selectedInstanceId) {
+      topicRequestIdRef.current += 1;
+      setTopics([]);
+      setSelectedRowKeys([]);
+      setLoading(false);
       return;
     }
     const requestId = ++topicRequestIdRef.current;
