@@ -260,4 +260,20 @@ describe('GroupManagement Page', () => {
     expect(screen.getByText('order-consumer-group')).toBeInTheDocument();
     expect(screen.queryByText('payment-consumer-group')).not.toBeInTheDocument();
   });
+  it('uses unique row keys for same-named groups from different instances', async () => {
+    vi.mocked(consumerService.listConsumerGroups).mockResolvedValue([
+      makeGroup({ name: 'shared-group', instanceId: 'instance-a' }),
+      makeGroup({ name: 'shared-group', instanceId: 'instance-b' }),
+    ]);
+    const { container } = renderWithProviders(<GroupManagement />);
+    await screen.findAllByText('shared-group');
+
+    const rowKeys = Array.from(container.querySelectorAll('tbody tr[data-row-key]')).map((row) =>
+      row.getAttribute('data-row-key'),
+    );
+    expect(rowKeys).toContain('instance-a\0shared-group');
+    expect(rowKeys).toContain('instance-b\0shared-group');
+    expect(new Set(rowKeys).size).toBe(rowKeys.length);
+  });
+
 });
