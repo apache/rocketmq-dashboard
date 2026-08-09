@@ -21,6 +21,7 @@ import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { MessageRecord } from '../../../api/message';
 import { LangProvider } from '../../../i18n/LangContext';
 
 const messageServiceMocks = vi.hoisted(() => ({
@@ -49,7 +50,7 @@ vi.mock('../../../services/topicService', () => ({
 
 import MessagePage from '../message';
 
-const createMessage = (msgId: string) => ({
+const createMessage = (msgId: string): MessageRecord => ({
   msgId,
   topic: `topic-${msgId}`,
   tag: 'tag',
@@ -289,5 +290,27 @@ describe('Message page query history', () => {
       await screen.findByText('消费验证接口尚未接入，无法确认该消息的真实消费状态'),
     ).toBeInTheDocument();
     expect(screen.queryByText(/消费验证成功/)).not.toBeInTheDocument();
+  });
+
+  it('sorts and renders messages without tags or keys', async () => {
+    const user = userEvent.setup();
+    messageServiceMocks.queryMessages.mockResolvedValue([
+      { ...createMessage('MID-NULL-FIELDS'), tag: null, key: null },
+      { ...createMessage('MID-FULL-FIELDS'), tag: 'vip', key: 'order-001' },
+    ]);
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID');
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+
+    expect(await screen.findByText('MID-NULL-FIELDS')).toBeInTheDocument();
+    expect(screen.getByText('MID-FULL-FIELDS')).toBeInTheDocument();
+    expect(screen.getAllByText('-')).toHaveLength(2);
+
+    await user.click(screen.getByRole('columnheader', { name: /Tag/ }));
+    expect(screen.getByText('MID-NULL-FIELDS')).toBeInTheDocument();
+    await user.click(screen.getByRole('columnheader', { name: /Key/ }));
+    expect(screen.getByText('MID-FULL-FIELDS')).toBeInTheDocument();
   });
 });

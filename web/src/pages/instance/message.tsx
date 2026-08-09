@@ -441,16 +441,18 @@ const MessagePage = () => {
       dataIndex: 'tag',
       key: 'tag',
       width: 80,
-      sorter: (a, b) => a.tag.localeCompare(b.tag),
-      render: (tag: string) => <Tag>{tag}</Tag>,
+      sorter: (a, b) => (a.tag ?? '').localeCompare(b.tag ?? ''),
+      render: (tag: string | null) => <Tag>{tag || '-'}</Tag>,
     },
     {
       title: 'Key',
       dataIndex: 'key',
       key: 'key',
       width: 120,
-      sorter: (a, b) => a.key.localeCompare(b.key),
-      render: (key: string) => <span style={{ fontFamily: 'monospace', fontSize: 13 }}>{key}</span>,
+      sorter: (a, b) => (a.key ?? '').localeCompare(b.key ?? ''),
+      render: (key: string | null) => (
+        <span style={{ fontFamily: 'monospace', fontSize: 13 }}>{key || '-'}</span>
+      ),
     },
     {
       title: 'Message ID',
