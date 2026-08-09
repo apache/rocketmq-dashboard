@@ -29,6 +29,8 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -153,6 +155,19 @@ class MybatisPlusInstanceRepositoryTest {
         repository.deleteById("instance-direct-1");
 
         verify(instanceMapper).deleteById("instance-direct-1");
+    }
+
+    @Test
+    void schemaShouldContainPersistedInstanceFields() throws IOException {
+        try (var input = getClass().getResourceAsStream("/db/schema.sql")) {
+            assertThat(input).isNotNull();
+            String schema = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+
+            assertThat(schema).contains("vendor VARCHAR(32)");
+            assertThat(schema).contains("cloud_instance_id VARCHAR(128)");
+            assertThat(schema).contains("credential_id VARCHAR(64)");
+            assertThat(schema).contains("region_id VARCHAR(64)");
+        }
     }
 
     private RmqInstance entity(String id, InstanceType type) {
