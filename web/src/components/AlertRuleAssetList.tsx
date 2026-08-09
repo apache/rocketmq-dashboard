@@ -43,7 +43,7 @@ export const AlertRuleAssetList: React.FC = () => {
   const [viewing, setViewing] = useState<AlertRuleAssetInfo | null>(null);
   const [viewContent, setViewContent] = useState('');
   const [viewLoading, setViewLoading] = useState(false);
-  const [exportingName, setExportingName] = useState<string | null>(null);
+  const [exportingNames, setExportingNames] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -87,7 +87,7 @@ export const AlertRuleAssetList: React.FC = () => {
   };
 
   const handleExport = async (info: AlertRuleAssetInfo) => {
-    setExportingName(info.name);
+    setExportingNames((current) => new Set(current).add(info.name));
     try {
       const blob = await exportAlertRuleAsset(info.name);
       triggerDownload(info.name, blob);
@@ -95,7 +95,11 @@ export const AlertRuleAssetList: React.FC = () => {
     } catch {
       message.error(t('alertAssets.exportFailed'));
     } finally {
-      setExportingName(null);
+      setExportingNames((current) => {
+        const next = new Set(current);
+        next.delete(info.name);
+        return next;
+      });
     }
   };
 
@@ -144,7 +148,7 @@ export const AlertRuleAssetList: React.FC = () => {
           <Button
             size="small"
             icon={<DownloadSimple size={16} />}
-            loading={exportingName === record.name}
+            loading={exportingNames.has(record.name)}
             onClick={() => handleExport(record)}
           >
             {t('common.export')}
