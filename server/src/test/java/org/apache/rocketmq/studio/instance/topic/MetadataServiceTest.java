@@ -172,6 +172,27 @@ class MetadataServiceTest {
     }
 
     @Test
+    void runtimeDiagnosticsShouldRejectBlankTopicAndGroupNamesBeforeProviderResolution() {
+        assertThatThrownBy(() -> metadataService.getTopicRoutes("instance-a", " "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("topic name is required");
+        assertThatThrownBy(() -> metadataService.getTopicConsumers("instance-a", " "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("topic name is required");
+        assertThatThrownBy(() -> metadataService.getConsumerGroup("instance-a", " "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("consumer group name is required");
+        assertThatThrownBy(() -> metadataService.getGroupProgress("instance-a", " "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("consumer group name is required");
+        assertThatThrownBy(() -> metadataService.getGroupSubscriptions("instance-a", " "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("consumer group name is required");
+
+        verifyNoInteractions(metadataProvider, adminClient, providerRegistry, apacheProvider);
+    }
+
+    @Test
     void sendMessageShouldReturnResult() {
         SendMessageDTO request = SendMessageDTO.builder()
                 .topic("test-topic")
