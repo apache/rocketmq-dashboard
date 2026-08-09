@@ -338,6 +338,15 @@ class InstanceServiceTest {
     }
 
     @Test
+    void createInstanceShouldTrimNameBeforeSaving() {
+        InstanceVO input = InstanceVO.builder().name("  production  ").type(InstanceType.PROXY)
+                .endpoint("namesrv:9876").build();
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertThat(instanceService.createInstance(input).getName()).isEqualTo("production");
+    }
+
+    @Test
     void updateInstanceShouldMergeFieldsOntoExisting() {
         LocalDateTime originalCreatedAt = LocalDateTime.of(2025, 1, 2, 3, 4, 5);
         LocalDateTime originalUpdatedAt = LocalDateTime.of(2025, 2, 3, 4, 5, 6);
@@ -379,6 +388,18 @@ class InstanceServiceTest {
         assertThat(existing.getUpdatedAt()).isEqualTo(originalUpdatedAt);
         verify(operationAuditService).record(eq("UPDATE_INSTANCE"), eq("INSTANCE"), eq("inst-1"), eq(null),
                 eq("name=new-name, vendor=APACHE, type=PROXY"), eq("SUCCESS"), eq(null));
+    }
+
+    @Test
+    void updateInstanceShouldTrimNameBeforeSaving() {
+        InstanceVO existing = InstanceVO.builder().name("old-name").endpoint("namesrv:9876").build();
+        existing.setId("inst-1");
+        InstanceVO update = InstanceVO.builder().name("  production  ").build();
+        update.setId("inst-1");
+        when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(existing));
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertThat(instanceService.updateInstance(update).getName()).isEqualTo("production");
     }
 
     @Test
