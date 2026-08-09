@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.provider.apache;
 import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.client.producer.SendResult;
+import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
@@ -335,6 +336,10 @@ public class RocketMQAdminClientImpl implements AdminClient {
             }
 
             SendResult sendResult = producer.send(msg);
+            if (sendResult == null || sendResult.getSendStatus() != SendStatus.SEND_OK) {
+                String status = sendResult == null ? "null" : String.valueOf(sendResult.getSendStatus());
+                throw new BusinessException(502, "Message send did not succeed: " + status);
+            }
 
             // The message is already delivered by now; an audit write failure must not turn a
             // successful send into an error, or callers would retry and duplicate the message.
@@ -346,6 +351,9 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     .sendTime(System.currentTimeMillis())
                     .offsetMsgId(sendResult.getOffsetMsgId())
                     .build();
+        } catch (BusinessException e) {
+            recordAudit("SEND_MESSAGE", request.getTopic(), e.getMessage(), "FAILED");
+            throw e;
         } catch (Exception e) {
             recordAudit("SEND_MESSAGE", request.getTopic(), e.getMessage(), "FAILED");
             throw new BusinessException(500, "Failed to send message: " + e.getMessage());
