@@ -18,6 +18,7 @@
 package org.apache.rocketmq.studio.instance.acl;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -37,6 +38,8 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -46,6 +49,9 @@ class AclServiceTest {
 
     @Mock
     private AclRepository aclRepository;
+
+    @Mock
+    private OperationAuditService operationAuditService;
 
     @InjectMocks
     private AclService aclService;
@@ -107,6 +113,8 @@ class AclServiceTest {
         assertThat(result.getPrincipal()).isEqualTo("user1");
         assertThat(result.getResource()).isEqualTo("topic-1");
         verify(aclRepository).saveRule(any(AclRuleVO.class));
+        verify(operationAuditService).record(eq("CREATE_ACL_RULE"), eq("ACL_RULE"), eq(result.getId()), eq(null),
+                eq("principal=user1"), eq("SUCCESS"), eq(null));
     }
 
     @Test
@@ -115,6 +123,8 @@ class AclServiceTest {
         aclService.deleteRule("rule-1");
 
         verify(aclRepository).deleteRule("rule-1");
+        verify(operationAuditService).record(eq("DELETE_ACL_RULE"), eq("ACL_RULE"), eq("rule-1"), eq(null),
+                eq(null), eq("SUCCESS"), eq(null));
     }
 
     @Test
@@ -148,6 +158,8 @@ class AclServiceTest {
         assertThat(result.getDecision()).isEqualTo("DENY");
         verify(aclRepository).replaceRule(input);
         verify(aclRepository, never()).saveRule(any(AclRuleVO.class));
+        verify(operationAuditService).record(eq("UPDATE_ACL_RULE"), eq("ACL_RULE"), eq("rule-1"), eq(null),
+                eq("principal=user1"), eq("SUCCESS"), eq(null));
     }
 
     @Test
@@ -307,6 +319,10 @@ class AclServiceTest {
         assertThat(result.getCreatedAt()).isNotNull();
         assertThat(result.getUsername()).isEqualTo("newuser");
         verify(aclRepository).saveUser(any(AclUserVO.class));
+        verify(operationAuditService).record(eq("CREATE_ACL_USER"), eq("ACL_USER"), eq(result.getId()), eq(null),
+                argThat(detail -> detail.equals("username=newuser, admin=false")
+                        && !detail.contains(result.getAccessKey()) && !detail.contains(result.getSecretKey())),
+                eq("SUCCESS"), eq(null));
     }
 
     @Test
@@ -315,6 +331,8 @@ class AclServiceTest {
         aclService.deleteUser("user-1");
 
         verify(aclRepository).deleteUser("user-1");
+        verify(operationAuditService).record(eq("DELETE_ACL_USER"), eq("ACL_USER"), eq("user-1"), eq(null),
+                eq(null), eq("SUCCESS"), eq(null));
     }
 
     @Test
@@ -365,6 +383,8 @@ class AclServiceTest {
         verify(aclRepository).saveUser(captor.capture());
         assertThat(captor.getValue().getAccessKey()).isEqualTo("access-key-123456");
         assertThat(captor.getValue().getSecretKey()).isEqualTo("secret-key-987654");
+        verify(operationAuditService).record(eq("UPDATE_ACL_USER"), eq("ACL_USER"), eq("user-1"), eq(null),
+                eq("username=newuser, admin=true"), eq("SUCCESS"), eq(null));
     }
 
     @Test
