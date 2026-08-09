@@ -117,6 +117,14 @@ const renderWithProviders = (ui: React.ReactElement) => {
   );
 };
 
+const createDeferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+};
+
 describe('BrokerCluster Page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -237,4 +245,31 @@ describe('BrokerCluster Page', () => {
     });
     expect(listClusters).toHaveBeenCalledTimes(4);
   });
+  it('keeps the latest cluster list when an older refresh resolves last', async () => {
+    const older = createDeferred<ClusterInfo[]>();
+    const latest = createDeferred<ClusterInfo[]>();
+    vi.mocked(listClusters)
+      .mockResolvedValueOnce(clusterFixture)
+      .mockReturnValueOnce(older.promise)
+      .mockReturnValueOnce(latest.promise);
+    const user = userEvent.setup();
+    renderWithProviders(<BrokerCluster />);
+    await screen.findByText('broker-api-a');
+
+    const refreshButton = screen.getByText('重置');
+    await user.click(refreshButton);
+    await user.click(refreshButton);
+
+    const latestFixture = [{
+      ...clusterFixture[0],
+      brokers: [{ ...clusterFixture[0].brokers[0], name: 'latest-broker' }],
+    }];
+    await act(async () => latest.resolve(latestFixture));
+    expect(await screen.findByText('latest-broker')).toBeInTheDocument();
+
+    await act(async () => older.resolve(clusterFixture));
+    expect(screen.getByText('latest-broker')).toBeInTheDocument();
+    expect(screen.queryByText('broker-api-a')).not.toBeInTheDocument();
+  });
+
 });
