@@ -127,12 +127,41 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
-    void resetOffsetShouldUseSelectedInstanceRuntimeClient() {
-        adminClient.resetOffset("instance-a", "cg-orders", 1784246400000L, "orders");
+    void resetOffsetShouldUseRequestedClusterOnSelectedInstance() throws Exception {
+        DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        when(selectedAdmin.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoClusters());
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
+                .thenAnswer(invocation -> invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1)
+                        .apply(selectedAdmin));
+
+        adminClient.resetOffset(
+                "instance-a", "cg-orders", 1784246400000L, "orders", "cluster-2");
 
         verify(runtimeAdminClientResolver).execute(org.mockito.ArgumentMatchers.eq("instance-a"), any());
+        verify(selectedAdmin).resetOffsetByTimestamp(
+                "cluster-2", "orders", "cg-orders", 1784246400000L, false);
         verify(auditService).record("RESET_OFFSET", "cg-orders",
                 "instanceId=instance-a, topic=orders, timestamp=1784246400000", "SUCCESS");
+    }
+
+    @Test
+    void mutationsRejectAmbiguousClusterInsteadOfChoosingFirstCluster() throws Exception {
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoClusters());
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+
+        assertThatThrownBy(() -> adminClient.createTopic(topic))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("clusterId is required");
+        assertThatThrownBy(() -> adminClient.resetOffset(
+                null, "cg-orders", 1784246400000L, "orders"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("clusterId is required");
+
+        verify(adminExt, never()).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+        verify(adminExt, never()).resetOffsetByTimestamp(
+                anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.anyBoolean());
     }
 
     @Test
@@ -235,6 +264,7 @@ class RocketMQAdminClientImplTest {
         when(topicMapper.selectOne(any())).thenReturn(null);
         TopicVO topic = new TopicVO();
         topic.setName("orders");
+        topic.setClusterId("cluster-1");
 
         assertThatThrownBy(() -> adminClient.createTopic(topic))
                 .isInstanceOf(BusinessException.class)
@@ -260,13 +290,14 @@ class RocketMQAdminClientImplTest {
                 .thenAnswer(invocation -> invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1)
                         .apply(selectedAdmin));
 
-        adminClient.deleteTopic("instance-a", "orders");
+        adminClient.deleteTopic("instance-a", "orders", "cluster-2");
 
         ArgumentCaptor<LambdaQueryWrapper<RmqTopic>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(topicMapper).delete(captor.capture());
         assertThat(captor.getValue().getSqlSegment()).contains("cluster_id", "name");
-        verify(selectedAdmin).deleteTopicInBroker(Set.of("10.0.0.1:10911"), "orders");
-        verify(selectedAdmin).deleteTopicInNameServer(Set.of("10.0.0.2:9876"), "cluster-1", "orders");
+        verify(selectedAdmin).deleteTopicInBroker(Set.of("10.0.0.2:10911"), "orders");
+        verify(selectedAdmin, never()).deleteTopicInBroker(Set.of("10.0.0.1:10911"), "orders");
+        verify(selectedAdmin).deleteTopicInNameServer(Set.of("10.0.0.2:9876"), "cluster-2", "orders");
     }
 
     @Test
@@ -278,7 +309,7 @@ class RocketMQAdminClientImplTest {
                 .thenAnswer(invocation -> invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1)
                         .apply(selectedAdmin));
 
-        assertThatThrownBy(() -> adminClient.deleteTopic("instance-a", "orders"))
+        assertThatThrownBy(() -> adminClient.deleteTopic("instance-a", "orders", "cluster-1"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("No broker available to delete topic");
 
@@ -308,6 +339,7 @@ class RocketMQAdminClientImplTest {
 
         ConsumerGroupVO group = new ConsumerGroupVO();
         group.setName("cg-orders");
+        group.setClusterId("cluster-1");
         group.setInstanceId("instance-a");
 
         adminClient.createConsumerGroup(group);
@@ -323,6 +355,7 @@ class RocketMQAdminClientImplTest {
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMissingTargetBroker());
         ConsumerGroupVO group = new ConsumerGroupVO();
         group.setName("cg-orders");
+        group.setClusterId("cluster-1");
 
         assertThatThrownBy(() -> adminClient.createConsumerGroup(group))
                 .isInstanceOf(BusinessException.class)
@@ -345,11 +378,11 @@ class RocketMQAdminClientImplTest {
                     return action.apply(selectedAdmin);
                 });
 
-        adminClient.deleteConsumerGroup("instance-a", "cg-orders");
+        adminClient.deleteConsumerGroup("instance-a", "cg-orders", "cluster-2");
 
         verify(runtimeAdminClientResolver).execute(org.mockito.ArgumentMatchers.eq("instance-a"), any());
-        verify(selectedAdmin).deleteSubscriptionGroup("10.0.0.1:10911", "cg-orders", true);
-        verify(selectedAdmin, never()).deleteSubscriptionGroup("10.0.0.2:10911", "cg-orders", true);
+        verify(selectedAdmin).deleteSubscriptionGroup("10.0.0.2:10911", "cg-orders", true);
+        verify(selectedAdmin, never()).deleteSubscriptionGroup("10.0.0.1:10911", "cg-orders", true);
         verify(adminExt, never()).deleteSubscriptionGroup(anyString(), anyString(), org.mockito.ArgumentMatchers.anyBoolean());
         ArgumentCaptor<LambdaQueryWrapper<RmqGroup>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(groupMapper).delete(captor.capture());
@@ -366,7 +399,8 @@ class RocketMQAdminClientImplTest {
                     return action.apply(selectedAdmin);
                 });
 
-        assertThatThrownBy(() -> adminClient.deleteConsumerGroup("instance-a", "cg-orders"))
+        assertThatThrownBy(() -> adminClient.deleteConsumerGroup(
+                "instance-a", "cg-orders", "cluster-1"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("No broker available to delete consumer group");
 

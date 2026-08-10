@@ -62,13 +62,17 @@ export async function updateTopic(data: Partial<Topic>): Promise<Topic> {
   return metadataApi.updateTopic(data);
 }
 
-export async function deleteTopic(name: string, instanceId?: string): Promise<void> {
+export async function deleteTopic(
+  name: string,
+  instanceId?: string,
+  clusterId?: string,
+): Promise<void> {
   if (isMockMode()) {
     const idx = mockTopics.findIndex((t) => t.name === name);
     if (idx >= 0) mockTopics.splice(idx, 1);
     return;
   }
-  return metadataApi.deleteTopic(name, instanceId);
+  return metadataApi.deleteTopic(name, instanceId, clusterId);
 }
 
 export interface BatchDeleteTopicsResult {
@@ -80,11 +84,12 @@ export interface BatchDeleteTopicsResult {
 export async function batchDeleteTopics(
   names: string[],
   instanceId?: string,
+  clusterIds: Record<string, string | undefined> = {},
 ): Promise<BatchDeleteTopicsResult> {
   const result: BatchDeleteTopicsResult = { deleted: [], failed: [] };
   for (const name of names) {
     try {
-      await deleteTopic(name, instanceId);
+      await deleteTopic(name, instanceId, clusterIds[name]);
       result.deleted.push(name);
     } catch {
       result.failed.push(name);

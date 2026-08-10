@@ -183,6 +183,7 @@ class ConsumerGroupControllerTest {
                 "instanceId", "instance-a",
                 "name", "cg-orders",
                 "topic", "orders",
+                "clusterId", "cluster-2",
                 "timestamp", 1784246400000L
         );
 
@@ -193,19 +194,22 @@ class ConsumerGroupControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.message").value("success"));
 
-        verify(metadataService).resetOffset(eq("instance-a"), eq("cg-orders"), eq(1784246400000L), eq("orders"));
+        verify(metadataService).resetOffset(
+                eq("instance-a"), eq("cg-orders"), eq(1784246400000L),
+                eq("orders"), eq("cluster-2"));
     }
 
     @Test
     void deleteConsumerGroupShouldReturnSuccess() throws Exception {
         mockMvc.perform(post("/api/groups/delete")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("name", "cg-orders"))))
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "name", "cg-orders", "clusterId", "cluster-2"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.message").value("success"));
 
-        verify(metadataService).deleteConsumerGroup(isNull(), eq("cg-orders"));
+        verify(metadataService).deleteConsumerGroup(isNull(), eq("cg-orders"), eq("cluster-2"));
     }
 
     @Test

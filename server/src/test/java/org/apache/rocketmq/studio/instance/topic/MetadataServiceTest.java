@@ -154,7 +154,7 @@ class MetadataServiceTest {
     void deleteTopicShouldDelegateToApacheProvider() {
         metadataService.deleteTopic("topic-to-delete");
 
-        verify(apacheProvider).deleteTopic(null, "topic-to-delete");
+        verify(apacheProvider).deleteTopic(null, "topic-to-delete", null);
     }
 
     @Test

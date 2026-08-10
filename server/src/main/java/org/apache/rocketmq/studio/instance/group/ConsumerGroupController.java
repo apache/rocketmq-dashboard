@@ -83,14 +83,15 @@ public class ConsumerGroupController {
 
     @PostMapping("/delete")
     public Result<Void> deleteConsumerGroup(@Valid @RequestBody DeleteConsumerGroupDTO request) {
-        metadataService.deleteConsumerGroup(request.getInstanceId(), request.getName());
+        metadataService.deleteConsumerGroup(
+                request.getInstanceId(), request.getName(), request.getClusterId());
         return Result.ok();
     }
 
     @PostMapping("/reset-offset")
     public Result<Void> resetOffset(@Valid @RequestBody ResetConsumerOffsetDTO request) {
         metadataService.resetOffset(request.getInstanceId(), request.getName(),
-                request.getTimestamp(), request.getTopic());
+                request.getTimestamp(), request.getTopic(), request.getClusterId());
         return Result.ok();
     }
 }

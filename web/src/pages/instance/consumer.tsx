@@ -606,7 +606,11 @@ const ConsumerPageContent = ({
                 okButtonProps: { danger: true },
                 cancelText: '取消',
                 onOk: async () => {
-                  await deleteConsumerGroup(record.name, selectedInstanceId || undefined);
+                  await deleteConsumerGroup(
+                    record.name,
+                    record.instanceId || selectedInstanceId || undefined,
+                    record.clusterId,
+                  );
                   setGroups((prev) => prev.filter((group) => group.name !== record.name));
                   setSelectedRowKeys((prev) => prev.filter((key) => key !== record.name));
                   message.success(`消费组 ${record.name} 已删除`);
@@ -880,9 +884,16 @@ const ConsumerPageContent = ({
                   cancelText: '取消',
                   onOk: async () => {
                     const names = selectedRowKeys.map(String);
+                    const selectedNames = new Set(names);
+                    const clusterIds = Object.fromEntries(
+                      groups
+                        .filter((group) => selectedNames.has(group.name))
+                        .map((group) => [group.name, group.clusterId]),
+                    );
                     const { deleted, failed } = await batchDeleteConsumerGroups(
                       names,
                       selectedInstanceId || undefined,
+                      clusterIds,
                     );
                     setGroups((prev) => prev.filter((g) => !deleted.includes(g.name)));
                     if (failed.length > 0) {
@@ -1601,6 +1612,7 @@ const ConsumerPageContent = ({
               instanceId: selectedInstanceId || undefined,
               topic: resetTopic,
               timestamp: resetTime.valueOf(),
+              clusterId: resetGroup.clusterId,
             });
             message.success(
               `${resetGroup.name} 在 ${resetTopic} 的消费位点已重置到 ${resetTime.format('YYYY-MM-DD HH:mm:ss')}`,

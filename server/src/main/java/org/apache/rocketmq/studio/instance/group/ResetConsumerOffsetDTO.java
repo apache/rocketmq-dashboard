@@ -41,4 +41,6 @@ public class ResetConsumerOffsetDTO {
 
     @NotBlank(message = "topic is required")
     private String topic;
+
+    private String clusterId;
 }

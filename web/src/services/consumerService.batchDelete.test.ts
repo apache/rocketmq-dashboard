@@ -18,7 +18,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const metadataApiMocks = vi.hoisted(() => ({
-  deleteTopic: vi.fn(),
+  deleteConsumerGroup: vi.fn(),
 }));
 
 vi.mock('../config', () => ({
@@ -28,33 +28,34 @@ vi.mock('../config', () => ({
 
 vi.mock('../api/metadata', () => metadataApiMocks);
 
-import { batchDeleteTopics } from './topicService';
+import { batchDeleteConsumerGroups } from './consumerService';
 
-describe('topic service batch deletion', () => {
+describe('consumer group service batch deletion', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('continues deleting after a failure and reports each outcome', async () => {
-    metadataApiMocks.deleteTopic.mockImplementation((name: string) =>
-      name === 'topic-02' ? Promise.reject(new Error('delete failed')) : Promise.resolve(),
+  it('forwards each target cluster and continues after a failure', async () => {
+    metadataApiMocks.deleteConsumerGroup.mockImplementation((name: string) =>
+      name === 'group-02' ? Promise.reject(new Error('delete failed')) : Promise.resolve(),
     );
 
     await expect(
-      batchDeleteTopics(['topic-01', 'topic-02', 'topic-03'], 'instance-a', {
-        'topic-01': 'cluster-1',
-        'topic-02': 'cluster-2',
-        'topic-03': 'cluster-3',
+      batchDeleteConsumerGroups(['group-01', 'group-02'], 'instance-a', {
+        'group-01': 'cluster-1',
+        'group-02': 'cluster-2',
       }),
-    ).resolves.toEqual({ deleted: ['topic-01', 'topic-03'], failed: ['topic-02'] });
-    expect(metadataApiMocks.deleteTopic.mock.calls.map(([name]) => name)).toEqual([
-      'topic-01',
-      'topic-02',
-      'topic-03',
-    ]);
-    expect(metadataApiMocks.deleteTopic).toHaveBeenNthCalledWith(
+    ).resolves.toEqual({ deleted: ['group-01'], failed: ['group-02'] });
+
+    expect(metadataApiMocks.deleteConsumerGroup).toHaveBeenNthCalledWith(
+      1,
+      'group-01',
+      'instance-a',
+      'cluster-1',
+    );
+    expect(metadataApiMocks.deleteConsumerGroup).toHaveBeenNthCalledWith(
       2,
-      'topic-02',
+      'group-02',
       'instance-a',
       'cluster-2',
     );

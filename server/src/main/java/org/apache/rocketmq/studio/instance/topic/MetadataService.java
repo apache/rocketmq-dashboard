@@ -76,7 +76,11 @@ public class MetadataService {
     }
 
     public void deleteTopic(String instanceId, String name) {
-        resolve(instanceId).deleteTopic(instanceId, name);
+        deleteTopic(instanceId, name, null);
+    }
+
+    public void deleteTopic(String instanceId, String name, String clusterId) {
+        resolve(instanceId).deleteTopic(instanceId, name, normalizeFilter(clusterId));
     }
 
 
@@ -182,7 +186,11 @@ public class MetadataService {
     }
 
     public void deleteConsumerGroup(String instanceId, String name) {
-        resolve(instanceId).deleteConsumerGroup(instanceId, name);
+        deleteConsumerGroup(instanceId, name, null);
+    }
+
+    public void deleteConsumerGroup(String instanceId, String name, String clusterId) {
+        resolve(instanceId).deleteConsumerGroup(instanceId, name, normalizeFilter(clusterId));
     }
 
 
@@ -191,7 +199,13 @@ public class MetadataService {
     }
 
     public void resetOffset(String instanceId, String name, long timestamp, String topic) {
-        resolve(instanceId).resetOffset(instanceId, name, timestamp, topic);
+        resetOffset(instanceId, name, timestamp, topic, null);
+    }
+
+    public void resetOffset(String instanceId, String name, long timestamp, String topic,
+                            String clusterId) {
+        resolve(instanceId).resetOffset(
+                instanceId, name, timestamp, topic, normalizeFilter(clusterId));
     }
 
 

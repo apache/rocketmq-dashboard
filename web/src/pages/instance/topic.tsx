@@ -402,6 +402,7 @@ const TopicPage = () => {
         writeQueues: topic.writeQueues,
         readQueues: topic.readQueues,
         instanceId,
+        clusterId: topic.clusterId,
       });
       const routes = await getTopicRoutes(topic.name, instanceId);
       setRoutesByTopic((previous) => ({ ...previous, [topic.name]: routes }));
@@ -437,7 +438,11 @@ const TopicPage = () => {
         cancelText: '取消',
         onOk: async () => {
           try {
-            await deleteTopic(topic.name, selectedInstanceId || undefined);
+            await deleteTopic(
+              topic.name,
+              topic.instanceId || selectedInstanceId || undefined,
+              topic.clusterId,
+            );
             setTopics((previous) => previous.filter((item) => item.name !== topic.name));
             message.success(`Topic「${topic.name}」已删除`);
           } catch {
@@ -957,9 +962,16 @@ const TopicPage = () => {
                   onOk: async () => {
                     try {
                       const names = selectedRowKeys.map(String);
+                      const selectedNames = new Set(names);
+                      const clusterIds = Object.fromEntries(
+                        topics
+                          .filter((topic) => selectedNames.has(topic.name))
+                          .map((topic) => [topic.name, topic.clusterId]),
+                      );
                       const { deleted, failed } = await batchDeleteTopics(
                         names,
                         selectedInstanceId || undefined,
+                        clusterIds,
                       );
                       if (deleted.length > 0) {
                         const deletedNames = new Set(deleted);

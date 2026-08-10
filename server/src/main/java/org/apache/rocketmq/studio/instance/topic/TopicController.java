@@ -61,7 +61,7 @@ public class TopicController {
     @PostMapping("/delete")
     public Result<Void> deleteTopic(@Valid @RequestBody(required = false) DeleteTopicDTO request) {
         requireDeleteTopicRequest(request);
-        metadataService.deleteTopic(request.getInstanceId(), request.getName());
+        metadataService.deleteTopic(request.getInstanceId(), request.getName(), request.getClusterId());
         return Result.ok();
     }
 

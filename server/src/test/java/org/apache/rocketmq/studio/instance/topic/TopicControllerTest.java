@@ -259,12 +259,13 @@ class TopicControllerTest {
     void deleteTopicShouldReturnSuccess() throws Exception {
         mockMvc.perform(post("/api/topics/delete")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("name", "test-topic"))))
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "name", "test-topic", "clusterId", "cluster-2"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.message").value("success"));
 
-        verify(metadataService).deleteTopic(isNull(), eq("test-topic"));
+        verify(metadataService).deleteTopic(isNull(), eq("test-topic"), eq("cluster-2"));
     }
 
     @Test

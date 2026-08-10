@@ -128,13 +128,17 @@ export async function createConsumerGroup(data: Partial<ConsumerGroup>): Promise
   return metadataApi.createConsumerGroup(data);
 }
 
-export async function deleteConsumerGroup(name: string, instanceId?: string): Promise<void> {
+export async function deleteConsumerGroup(
+  name: string,
+  instanceId?: string,
+  clusterId?: string,
+): Promise<void> {
   if (isMockMode()) {
     const idx = consumerGroupsState.findIndex((group) => group.name === name);
     if (idx >= 0) consumerGroupsState.splice(idx, 1);
     return;
   }
-  return metadataApi.deleteConsumerGroup(name, instanceId);
+  return metadataApi.deleteConsumerGroup(name, instanceId, clusterId);
 }
 
 export async function resetConsumerOffset(data: ResetConsumerOffsetRequest): Promise<void> {
@@ -152,11 +156,12 @@ export interface BatchDeleteConsumerGroupsResult {
 export async function batchDeleteConsumerGroups(
   names: string[],
   instanceId?: string,
+  clusterIds: Record<string, string | undefined> = {},
 ): Promise<BatchDeleteConsumerGroupsResult> {
   const result: BatchDeleteConsumerGroupsResult = { deleted: [], failed: [] };
   for (const name of names) {
     try {
-      await deleteConsumerGroup(name, instanceId);
+      await deleteConsumerGroup(name, instanceId, clusterIds[name]);
       result.deleted.push(name);
     } catch {
       result.failed.push(name);
