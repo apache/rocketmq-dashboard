@@ -249,6 +249,12 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     existing.setWriteQueueNums(writeQueues);
                     existing.setReadQueueNums(readQueues);
                     existing.setPerm(topicConfig.getPerm());
+                    if (topic.getType() != null) {
+                        existing.setTopicType(topic.getType().name());
+                    }
+                    if (StringUtils.hasText(topic.getRemark())) {
+                        existing.setRemark(topic.getRemark());
+                    }
                     existing.setUpdatedAt(LocalDateTime.now());
                     topicMapper.updateById(existing);
                 }
@@ -325,7 +331,6 @@ public class RocketMQAdminClientImpl implements AdminClient {
             String key = request.getKey() != null ? request.getKey() : "";
             String body = request.getBody() != null ? request.getBody() : "";
 
-            String fullTopic = tag.isEmpty() ? topic : topic + ":" + tag;
             Message msg = new Message(topic, tag, key, body.getBytes(StandardCharsets.UTF_8));
 
             // Add custom properties
