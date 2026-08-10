@@ -63,6 +63,7 @@ public class RocketMQDLQProvider implements DLQProvider {
 
     private static final long ONE_HOUR_MILLIS = 3600_000L;
     private static final int RESEND_HARD_CAP = 5000;
+    private static final int MAX_CONSECUTIVE_OFFSET_ILLEGAL = 3;
     private static final String ORIGIN_MESSAGE_ID_PROPERTY = "studio_dlq_origin_message_id";
     private static final String ORIGIN_TOPIC_PROPERTY = "studio_dlq_origin_topic";
 
@@ -192,6 +193,7 @@ public class RocketMQDLQProvider implements DLQProvider {
                 try {
                     long minOffset = consumer.searchOffset(queue, begin);
                     long maxOffset = consumer.searchOffset(queue, end);
+                    int consecutiveIllegalOffsets = 0;
                     for (long offset = minOffset; offset <= maxOffset; ) {
                         if (result.size() >= RESEND_HARD_CAP) {
                             break outer;
@@ -208,10 +210,28 @@ public class RocketMQDLQProvider implements DLQProvider {
                             break;
                         }
                         offset = nextOffset;
+                        if (pullResult.getPullStatus() == PullStatus.OFFSET_ILLEGAL) {
+                            // The broker returned a corrected offset in nextBeginOffset because
+                            // the requested offset is no longer valid (expired, compacted, or
+                            // before the queue's minimum offset). Retry from the corrected
+                            // position instead of abandoning the queue -- otherwise dead-letter
+                            // messages that still exist after the corrected offset are silently
+                            // dropped and never resent.
+                            if (++consecutiveIllegalOffsets > MAX_CONSECUTIVE_OFFSET_ILLEGAL) {
+                                log.warn("Stop DLQ scan for {} because queue {} returned OFFSET_ILLEGAL "
+                                        + "{} times consecutively, giving up at offset {}", dlqTopic, queue,
+                                        consecutiveIllegalOffsets, offset);
+                                break;
+                            }
+                            log.debug("Offset was illegal for queue {} in DLQ {}, retrying from {}",
+                                    queue, dlqTopic, offset);
+                            continue;
+                        }
                         if (pullResult.getPullStatus() != PullStatus.FOUND
                                 || pullResult.getMsgFoundList() == null) {
                             break;
                         }
+                        consecutiveIllegalOffsets = 0;
                         for (MessageExt messageExt : pullResult.getMsgFoundList()) {
                             if (messageExt.getStoreTimestamp() >= begin
                                     && messageExt.getStoreTimestamp() <= end) {

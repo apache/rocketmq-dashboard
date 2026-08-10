@@ -80,6 +80,7 @@ public class RocketMQMessageProvider implements MessageProvider {
     private static final int MAX_PROPERTY_VALUE_CHARS = 1024;
     private static final long ONE_HOUR_MILLIS = 3600_000L;
     private static final long ONE_DAY_MILLIS = 24 * ONE_HOUR_MILLIS;
+    private static final int MAX_CONSECUTIVE_OFFSET_ILLEGAL = 3;
 
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
     private final QueryHistoryService queryHistoryService;
@@ -198,6 +199,7 @@ public class RocketMQMessageProvider implements MessageProvider {
             for (MessageQueue queue : queues) {
                 long minOffset = consumer.searchOffset(queue, begin);
                 long maxOffset = consumer.searchOffset(queue, end);
+                int consecutiveIllegalOffsets = 0;
                 for (long offset = minOffset; offset <= maxOffset; ) {
                     if (result.size() >= Math.min(limit, TOPIC_QUERY_HARD_CAP)) {
                         break outer;
@@ -213,10 +215,27 @@ public class RocketMQMessageProvider implements MessageProvider {
                         break;
                     }
                     offset = nextOffset;
+                    if (pullResult.getPullStatus() == PullStatus.OFFSET_ILLEGAL) {
+                        // The broker returned a corrected offset in nextBeginOffset because
+                        // the requested offset is no longer valid (expired, compacted, or
+                        // before the queue's minimum offset). Retry from the corrected
+                        // position instead of abandoning the queue -- otherwise messages
+                        // that still exist after the corrected offset are silently dropped.
+                        if (++consecutiveIllegalOffsets > MAX_CONSECUTIVE_OFFSET_ILLEGAL) {
+                            log.warn("Stop topic query for {} because queue {} returned OFFSET_ILLEGAL "
+                                    + "{} times consecutively, giving up at offset {}", topic, queue,
+                                    consecutiveIllegalOffsets, offset);
+                            break;
+                        }
+                        log.debug("Offset was illegal for queue {} in topic {}, retrying from {}",
+                                queue, topic, offset);
+                        continue;
+                    }
                     if (pullResult.getPullStatus() != PullStatus.FOUND
                             || pullResult.getMsgFoundList() == null) {
                         break;
                     }
+                    consecutiveIllegalOffsets = 0;
                     for (MessageExt messageExt : pullResult.getMsgFoundList()) {
                         if (messageExt.getStoreTimestamp() < begin
                                 || messageExt.getStoreTimestamp() > end) {
