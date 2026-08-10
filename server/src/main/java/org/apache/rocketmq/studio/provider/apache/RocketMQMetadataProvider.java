@@ -469,16 +469,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     }
 
     private boolean isSystemTopic(String topicName, Set<String> brokerNames) {
-        if (SYSTEM_TOPICS.contains(topicName)) {
-            return true;
-        }
-        for (String prefix : SYSTEM_TOPIC_PREFIXES) {
-            if (topicName.startsWith(prefix)) {
-                return true;
-            }
-        }
-        // Skip topics that match broker names
-        return brokerNames.contains(topicName);
+        return SystemTopicFilter.isSystem(topicName, brokerNames);
     }
 
     private TopicPerm mapPerm(int perm) {

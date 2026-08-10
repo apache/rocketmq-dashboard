@@ -304,12 +304,7 @@ public class RocketMQDashboardProvider implements DashboardProvider {
     }
 
     private boolean isSystemTopic(String topic) {
-        for (String prefix : SYSTEM_TOPIC_PREFIXES) {
-            if (topic.startsWith(prefix) || topic.equals(prefix)) {
-                return true;
-            }
-        }
-        return false;
+        return SystemTopicFilter.isSystem(topic);
     }
 
     private boolean isSystemGroup(String group) {
