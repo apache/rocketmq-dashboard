@@ -92,14 +92,6 @@ const QUERY_OPTIONS = [
   { value: 'msgid' as const, label: '按 Message ID' },
 ];
 
-const TOPIC_OPTIONS = [
-  'order-create',
-  'payment-callback',
-  'user-activity-log',
-  'notification-push',
-  'inventory-sync',
-];
-
 const DELIVERY_STATUS_MAP: Record<string, { label: string; color: string }> = {
   success: { label: '成功', color: 'green' },
   failed: { label: '失败', color: 'red' },
@@ -212,22 +204,20 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
 const MessagePage = () => {
   const { t } = useLang();
   const { selectedInstanceId, selectInstance, instanceOptions } = useInstanceFilter();
-  const [topicOptions, setTopicOptions] = useState<string[]>(TOPIC_OPTIONS);
+  const [topicOptions, setTopicOptions] = useState<string[]>([]);
 
   useEffect(() => {
+    if (!selectedInstanceId) {
+      return;
+    }
     let cancelled = false;
-    void listTopics()
+    void listTopics({ instanceId: selectedInstanceId })
       .then((nextTopics) => {
         if (cancelled) return;
-        const scoped = selectedInstanceId
-          ? nextTopics.filter((topic) => topic.instanceId === selectedInstanceId)
-          : nextTopics;
-        // Always update so an instance with no topics empties the dropdown instead of showing
-        // topics from another instance or the static defaults.
-        setTopicOptions(scoped.map((topic) => topic.name));
+        setTopicOptions(nextTopics.map((topic) => topic.name));
       })
       .catch(() => {
-        // 加载失败保持静态选项可用
+        if (!cancelled) setTopicOptions([]);
       });
     return () => {
       cancelled = true;
@@ -260,6 +250,22 @@ const MessagePage = () => {
   );
 
   /* ─── Handlers ─── */
+  const handleInstanceChange = (instanceId: string) => {
+    queryGenerationRef.current += 1;
+    traceGenerationRef.current += 1;
+    setTopicOptions([]);
+    setSelectedTopic(undefined);
+    setMessages([]);
+    setQueryLoading(false);
+    setQueryError(null);
+    setSelectedMsg(null);
+    setModalOpen(false);
+    setTraceData(null);
+    setTraceLoading(false);
+    setTraceError(null);
+    selectInstance(instanceId);
+  };
+
   const handleReset = () => {
     queryGenerationRef.current += 1;
     setSelectedTopic(undefined);
@@ -289,6 +295,10 @@ const MessagePage = () => {
   };
 
   const executeQuery = async (mode: QueryMode, params: MessageQuery) => {
+    if (!selectedInstanceId) {
+      setQueryError('请先选择实例后再查询消息');
+      return;
+    }
     const requestGeneration = queryGenerationRef.current + 1;
     queryGenerationRef.current = requestGeneration;
     setQueryLoading(true);
@@ -690,7 +700,7 @@ const MessagePage = () => {
             <Select
               placeholder="选择实例"
               value={selectedInstanceId || undefined}
-              onChange={selectInstance}
+              onChange={handleInstanceChange}
               options={instanceOptions}
               style={{ width: 220 }}
               notFoundContent="暂无实例"
@@ -779,6 +789,8 @@ const MessagePage = () => {
             <Button
               type="primary"
               icon={<SearchOutlined />}
+              disabled={!selectedInstanceId}
+              title={selectedInstanceId ? undefined : '请先选择实例'}
               onClick={() => {
                 void handleQuery();
               }}
@@ -788,9 +800,12 @@ const MessagePage = () => {
             <Dropdown
               menu={{ items: recentQueryMenuItems, onClick: handleRecentQueryMenuClick }}
               trigger={['click']}
-              disabled={recentQueries.length === 0}
+              disabled={recentQueries.length === 0 || !selectedInstanceId}
             >
-              <Button icon={<HistoryOutlined />} disabled={recentQueries.length === 0}>
+              <Button
+                icon={<HistoryOutlined />}
+                disabled={recentQueries.length === 0 || !selectedInstanceId}
+              >
                 最近查询
               </Button>
             </Dropdown>
