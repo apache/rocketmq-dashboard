@@ -35,6 +35,8 @@ REMOTE="${REMOTE_USER:-root}@$REMOTE_HOST"
 REMOTE_PATH="${REMOTE_PATH:-/opt/rocketmq-studio}"
 NETWORK="${PODMAN_NETWORK:-rocketmq-studio}"
 TMP_DIR="/tmp/rocketmq-studio-deploy"
+MAVEN_IMAGE="${MAVEN_IMAGE:-maven:3.9.9-eclipse-temurin-21}"
+MAVEN_CACHE_DIR="${MAVEN_CACHE_DIR:-$HOME/.m2}"
 
 TARGET="${1:-all}"  # all | server | web
 
@@ -51,8 +53,30 @@ check_prereqs() {
 
 # ─── 构建镜像 ───
 build_server() {
+  info "在 Maven 容器中构建 server（复用宿主机缓存: $MAVEN_CACHE_DIR）..."
+  mkdir -p "$MAVEN_CACHE_DIR"
+
+  local maven_settings=()
+  if [[ -f "$MAVEN_CACHE_DIR/settings.xml" ]]; then
+    maven_settings=(-s /maven-cache/settings.xml)
+  fi
+
+  docker run --rm \
+    --user "$(id -u):$(id -g)" \
+    -e HOME=/tmp \
+    -v "$PROJECT_DIR/server:/app" \
+    -v "$MAVEN_CACHE_DIR:/maven-cache" \
+    -w /app \
+    "$MAVEN_IMAGE" \
+    mvn -B -ntp "${maven_settings[@]}" \
+      -Dmaven.repo.local=/maven-cache/repository \
+      package -DskipTests
+
   info "构建 rocketmq-server 镜像..."
-  docker build -t rocketmq-server:latest "$PROJECT_DIR/server"
+  docker build \
+    --target runtime-prebuilt \
+    -t rocketmq-server:latest \
+    "$PROJECT_DIR/server"
   log "rocketmq-server 镜像构建完成"
 }
 
