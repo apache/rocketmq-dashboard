@@ -21,6 +21,7 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
+import org.springframework.core.io.support.ResourcePatternResolver;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
@@ -34,6 +35,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class GrafanaDashboardServiceTest {
 
@@ -133,6 +136,18 @@ class GrafanaDashboardServiceTest {
         List<GrafanaDashboardInfo> dashboards = service.listDashboards();
 
         assertEquals(List.of(new GrafanaDashboardInfo("valid", "Valid", "", List.of("rocketmq"))), dashboards);
+    }
+
+    @Test
+    void listDashboardsShouldSurfaceResourceDiscoveryFailure() throws Exception {
+        ResourcePatternResolver resolver = mock(ResourcePatternResolver.class);
+        when(resolver.getResources("classpath*:grafana/*.json")).thenThrow(new java.io.IOException("broken jar"));
+        GrafanaDashboardService service = new GrafanaDashboardService(new ObjectMapper(), resolver);
+
+        BusinessException exception = assertThrows(BusinessException.class, service::listDashboards);
+
+        assertEquals(500, exception.getCode());
+        assertTrue(exception.getMessage().contains("resolve bundled Grafana dashboards"));
     }
 
     private static GrafanaDashboardService serviceWithResources(Resource... resources) {
