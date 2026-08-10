@@ -20,6 +20,7 @@ package org.apache.rocketmq.studio.instance;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.persistence.entity.RmqGroup;
 import org.apache.rocketmq.studio.persistence.entity.RmqInstance;
 import org.apache.rocketmq.studio.persistence.entity.RmqTopic;
@@ -135,9 +136,9 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
         InstanceVO vo = InstanceVO.builder()
                 .name(entity.getName())
                 .remark(entity.getRemark())
-                .type(parseType(entity.getType()))
+                .type(parseType(entity.getId(), entity.getType()))
                 .endpoint(entity.getEndpoint())
-                .vendor(parseVendor(entity.getVendor()))
+                .vendor(parseVendor(entity.getId(), entity.getVendor()))
                 .cloudInstanceId(entity.getCloudInstanceId())
                 .credentialId(entity.getCredentialId())
                 .regionId(entity.getRegionId())
@@ -148,20 +149,25 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
         return vo;
     }
 
-    private InstanceType parseType(String type) {
+    private InstanceType parseType(String instanceId, String type) {
         try {
             return InstanceType.valueOf(type);
         } catch (IllegalArgumentException | NullPointerException ex) {
-            return InstanceType.PROXY;
+            throw invalidPersistedValue(instanceId, "type", type);
         }
     }
 
-    private InstanceVendor parseVendor(String vendor) {
+    private InstanceVendor parseVendor(String instanceId, String vendor) {
         try {
             return InstanceVendor.valueOf(vendor);
         } catch (IllegalArgumentException | NullPointerException ex) {
-            return InstanceVendor.APACHE;
+            throw invalidPersistedValue(instanceId, "vendor", vendor);
         }
+    }
+
+    private BusinessException invalidPersistedValue(String instanceId, String field, String value) {
+        return new BusinessException(500, "Invalid persisted instance " + field
+                + " for instance " + instanceId + ": " + value);
     }
 
     private RmqInstance toEntity(InstanceVO vo) {

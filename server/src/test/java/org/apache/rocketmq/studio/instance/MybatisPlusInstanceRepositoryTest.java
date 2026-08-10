@@ -19,6 +19,8 @@ package org.apache.rocketmq.studio.instance;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.persistence.entity.RmqInstance;
 import org.apache.rocketmq.studio.persistence.mapper.RmqGroupMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqInstanceMapper;
@@ -34,6 +36,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -111,6 +114,30 @@ class MybatisPlusInstanceRepositoryTest {
     }
 
     @Test
+    void findByIdShouldRejectInvalidPersistedInstanceType() {
+        RmqInstance entity = entity("instance-invalid-type", InstanceType.DIRECT);
+        entity.setType("UNKNOWN_TYPE");
+        when(instanceMapper.selectById(entity.getId())).thenReturn(entity);
+
+        assertThatThrownBy(() -> repository.findById(entity.getId()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Invalid persisted instance type")
+                .hasMessageContaining(entity.getId());
+    }
+
+    @Test
+    void findByIdShouldRejectInvalidPersistedInstanceVendor() {
+        RmqInstance entity = entity("instance-invalid-vendor", InstanceType.DIRECT);
+        entity.setVendor("UNKNOWN_VENDOR");
+        when(instanceMapper.selectById(entity.getId())).thenReturn(entity);
+
+        assertThatThrownBy(() -> repository.findById(entity.getId()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("Invalid persisted instance vendor")
+                .hasMessageContaining(entity.getId());
+    }
+
+    @Test
     void countTopicsByInstanceShouldDelegateToTopicMapperTest() {
         when(topicMapper.selectCount(any(QueryWrapper.class))).thenReturn(5L);
 
@@ -161,6 +188,7 @@ class MybatisPlusInstanceRepositoryTest {
         entity.setName(id);
         entity.setType(type.name());
         entity.setEndpoint("10.0.0.1:9876");
+        entity.setVendor(InstanceVendor.APACHE.name());
         entity.setCreatedAt(LocalDateTime.of(2026, 8, 3, 0, 0));
         entity.setUpdatedAt(LocalDateTime.of(2026, 8, 3, 0, 0));
         return entity;
