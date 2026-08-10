@@ -149,7 +149,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 TopicPerm effectivePerm = topic.getPerm() != null
                         ? topic.getPerm()
                         : existing == null ? TopicPerm.RW : fromRocketMQPerm(existing.getPerm());
-                Set<String> brokerAddrs = getAllMasterBrokerAddrs(admin);
+                Set<String> brokerAddrs = getMasterBrokerAddrsForCluster(admin, clusterName);
                 if (brokerAddrs.isEmpty()) {
                     throw new BusinessException(500, "No broker available to create topic");
                 }
@@ -230,7 +230,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 TopicPerm effectivePerm = topic.getPerm() != null
                         ? topic.getPerm()
                         : existing == null ? TopicPerm.RW : fromRocketMQPerm(existing.getPerm());
-                Set<String> brokerAddrs = getAllMasterBrokerAddrs(admin);
+                Set<String> brokerAddrs = getMasterBrokerAddrsForCluster(admin, clusterName);
                 if (brokerAddrs.isEmpty()) {
                     throw new BusinessException(500, "No broker available to update topic");
                 }
@@ -390,7 +390,8 @@ public class RocketMQAdminClientImpl implements AdminClient {
         String groupName = group.getName();
 
         try {
-            Set<String> brokerAddrs = getAllMasterBrokerAddrs(admin);
+            String groupClusterName = getClusterName(admin);
+            Set<String> brokerAddrs = getMasterBrokerAddrsForCluster(admin, groupClusterName);
             if (brokerAddrs.isEmpty()) {
                 throw new BusinessException(500, "No broker available to create consumer group");
             }
@@ -408,7 +409,6 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
             // Persist to DB, upserting so re-creating an existing group does not violate the
             // unique (cluster_id, name) key.
-            String groupClusterName = getClusterName(admin);
             RmqGroup entity = groupMapper.selectOne(new LambdaQueryWrapper<RmqGroup>()
                     .eq(RmqGroup::getClusterId, groupClusterName)
                     .eq(RmqGroup::getName, groupName));
@@ -564,6 +564,41 @@ public class RocketMQAdminClientImpl implements AdminClient {
             }
         }
         return addrs;
+    }
+
+    /**
+     * Returns master broker addresses for the specified cluster only, using the
+     * clusterAddrTable to map cluster name to broker names. Falls back to all
+     * brokers when the cluster name is unknown or the cluster table is missing.
+     */
+    private Set<String> getMasterBrokerAddrsForCluster(MQAdminExt admin, String clusterName) throws Exception {
+        if (!StringUtils.hasText(clusterName)) {
+            return getAllMasterBrokerAddrs(admin);
+        }
+        ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
+        if (clusterInfo == null || clusterInfo.getClusterAddrTable() == null
+                || clusterInfo.getBrokerAddrTable() == null) {
+            return getAllMasterBrokerAddrs(admin);
+        }
+        Set<String> brokerNames = clusterInfo.getClusterAddrTable().get(clusterName);
+        if (brokerNames == null || brokerNames.isEmpty()) {
+            return getAllMasterBrokerAddrs(admin);
+        }
+        Set<String> addrs = new HashSet<>();
+        for (String brokerName : brokerNames) {
+            BrokerData brokerData = clusterInfo.getBrokerAddrTable().get(brokerName);
+            if (brokerData == null || brokerData.getBrokerAddrs() == null) {
+                continue;
+            }
+            String masterAddr = brokerData.getBrokerAddrs().get(0L);
+            if (masterAddr == null && !brokerData.getBrokerAddrs().isEmpty()) {
+                masterAddr = brokerData.getBrokerAddrs().values().iterator().next();
+            }
+            if (masterAddr != null) {
+                addrs.add(masterAddr);
+            }
+        }
+        return addrs.isEmpty() ? getAllMasterBrokerAddrs(admin) : addrs;
     }
 
     private String getClusterName(MQAdminExt admin) {
