@@ -24,6 +24,7 @@ export async function listTopics(params?: TopicQuery): Promise<Topic[]> {
     }
     if (params?.type) result = result.filter((t) => t.type === params.type);
     if (params?.clusterId) result = result.filter((t) => t.clusterId === params.clusterId);
+    if (params?.instanceId) result = result.filter((t) => t.instanceId === params.instanceId);
     return (result as unknown as Topic[]).map(cloneTopic);
   }
   return metadataApi.listTopics(params);

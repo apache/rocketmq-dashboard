@@ -69,6 +69,13 @@ describe('topic service mock data', () => {
     expect(blankSearchTopics).toHaveLength(allTopics.length);
   });
 
+  it('filters mock topics by instance ID', async () => {
+    const topics = await listTopics({ instanceId: 'instance-proxy-1' });
+
+    expect(topics).not.toHaveLength(0);
+    expect(topics.every((topic) => topic.instanceId === 'instance-proxy-1')).toBe(true);
+  });
+
   it('rejects duplicate topic creates in the same cluster', async () => {
     const existing = (await listTopics({ search: 'order-create' }))[0];
     const before = await listTopics({ clusterId: existing.clusterId });

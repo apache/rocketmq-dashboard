@@ -92,14 +92,6 @@ const QUERY_OPTIONS = [
   { value: 'msgid' as const, label: '按 Message ID' },
 ];
 
-const TOPIC_OPTIONS = [
-  'order-create',
-  'payment-callback',
-  'user-activity-log',
-  'notification-push',
-  'inventory-sync',
-];
-
 const DELIVERY_STATUS_MAP: Record<string, { label: string; color: string }> = {
   success: { label: '成功', color: 'green' },
   failed: { label: '失败', color: 'red' },
@@ -212,11 +204,17 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
 const MessagePage = () => {
   const { t } = useLang();
   const { selectedInstanceId, selectInstance, instanceOptions } = useInstanceFilter();
-  const [topicOptions, setTopicOptions] = useState<string[]>(TOPIC_OPTIONS);
+  const [topicOptions, setTopicOptions] = useState<string[]>([]);
+  const [selectedTopic, setSelectedTopic] = useState<string | undefined>();
 
   useEffect(() => {
     let cancelled = false;
-    void listTopics()
+    if (!selectedInstanceId) {
+      return () => {
+        cancelled = true;
+      };
+    }
+    void listTopics({ instanceId: selectedInstanceId })
       .then((nextTopics) => {
         if (cancelled) return;
         const scoped = selectedInstanceId
@@ -227,14 +225,18 @@ const MessagePage = () => {
         setTopicOptions(scoped.map((topic) => topic.name));
       })
       .catch(() => {
-        // 加载失败保持静态选项可用
+        if (!cancelled) setTopicOptions([]);
       });
     return () => {
       cancelled = true;
     };
   }, [selectedInstanceId]);
+  const handleInstanceChange = (id: string) => {
+    setTopicOptions([]);
+    setSelectedTopic(undefined);
+    selectInstance(id);
+  };
   const [queryMode, setQueryMode] = useState<QueryMode>('topic');
-  const [selectedTopic, setSelectedTopic] = useState<string | undefined>();
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>(getDefaultRange);
   const [keyInput, setKeyInput] = useState('');
   const [msgIdInput, setMsgIdInput] = useState('');
@@ -688,7 +690,7 @@ const MessagePage = () => {
             <Select
               placeholder="选择实例"
               value={selectedInstanceId || undefined}
-              onChange={selectInstance}
+              onChange={handleInstanceChange}
               options={instanceOptions}
               style={{ width: 220 }}
               notFoundContent="暂无实例"

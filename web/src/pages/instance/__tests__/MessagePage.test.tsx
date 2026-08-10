@@ -27,25 +27,22 @@ const messageServiceMocks = vi.hoisted(() => ({
   getMessageTrace: vi.fn(),
   queryMessages: vi.fn(),
 }));
+const topicServiceMocks = vi.hoisted(() => ({
+  listTopics: vi.fn(),
+}));
+const instanceFilterMocks = vi.hoisted(() => ({
+  useInstanceFilter: vi.fn(),
+}));
 
 const QUERY_HISTORY_STORAGE_KEY = 'rocketmq-studio-message-query-history';
 
 vi.mock('../../../services/messageService', () => messageServiceMocks);
+vi.mock('../../../hooks/useInstanceFilter', () => instanceFilterMocks);
 
 vi.mock('../../../services/instanceService', () => ({
   listInstances: vi.fn().mockResolvedValue([]),
 }));
-vi.mock('../../../services/topicService', () => ({
-  listTopics: vi
-    .fn()
-    .mockResolvedValue([
-      { name: 'order-create' },
-      { name: 'payment-callback' },
-      { name: 'user-activity-log' },
-      { name: 'notification-push' },
-      { name: 'inventory-sync' },
-    ]),
-}));
+vi.mock('../../../services/topicService', () => topicServiceMocks);
 
 import MessagePage from '../message';
 
@@ -94,6 +91,12 @@ describe('Message page query history', () => {
     localStorage.clear();
     messageServiceMocks.getMessageTrace.mockReset().mockResolvedValue(null);
     messageServiceMocks.queryMessages.mockReset().mockResolvedValue([]);
+    topicServiceMocks.listTopics.mockReset().mockResolvedValue([]);
+    instanceFilterMocks.useInstanceFilter.mockReturnValue({
+      selectedInstanceId: '',
+      selectInstance: vi.fn(),
+      instanceOptions: [],
+    });
   });
 
   afterEach(() => {
@@ -102,6 +105,14 @@ describe('Message page query history', () => {
 
   it('persists successful queries for replay and allows clearing the history', async () => {
     const user = userEvent.setup();
+    instanceFilterMocks.useInstanceFilter.mockReturnValue({
+      selectedInstanceId: 'instance-a',
+      selectInstance: vi.fn(),
+      instanceOptions: [{ value: 'instance-a', label: 'Instance A' }],
+    });
+    topicServiceMocks.listTopics.mockResolvedValue([
+      { name: 'order-create', instanceId: 'instance-a' },
+    ]);
     const firstView = renderWithProviders(<MessagePage />);
     expect(screen.getByRole('button', { name: /最近查询/ })).toBeDisabled();
 
@@ -115,7 +126,7 @@ describe('Message page query history', () => {
       expect(messageServiceMocks.queryMessages).toHaveBeenCalledWith({
         topic: 'order-create',
         msgId: 'MID-001',
-        instanceId: '',
+        instanceId: 'instance-a',
       });
       expect(screen.getByRole('button', { name: /最近查询/ })).toBeEnabled();
     });
@@ -132,7 +143,7 @@ describe('Message page query history', () => {
       expect(messageServiceMocks.queryMessages).toHaveBeenCalledWith({
         topic: 'order-create',
         msgId: 'MID-001',
-        instanceId: '',
+        instanceId: 'instance-a',
       });
     });
 
@@ -144,6 +155,14 @@ describe('Message page query history', () => {
 
   it('does not save failed queries', async () => {
     const user = userEvent.setup();
+    instanceFilterMocks.useInstanceFilter.mockReturnValue({
+      selectedInstanceId: 'instance-a',
+      selectInstance: vi.fn(),
+      instanceOptions: [{ value: 'instance-a', label: 'Instance A' }],
+    });
+    topicServiceMocks.listTopics.mockResolvedValue([
+      { name: 'order-create', instanceId: 'instance-a' },
+    ]);
     messageServiceMocks.queryMessages.mockRejectedValue(new Error('network error'));
     renderWithProviders(<MessagePage />);
 
@@ -157,7 +176,7 @@ describe('Message page query history', () => {
       expect(messageServiceMocks.queryMessages).toHaveBeenCalledWith({
         topic: 'order-create',
         msgId: 'MID-FAILED',
-        instanceId: '',
+        instanceId: 'instance-a',
       });
     });
     expect(screen.getByRole('button', { name: /最近查询/ })).toBeDisabled();
@@ -166,6 +185,14 @@ describe('Message page query history', () => {
 
   it('keeps five unique queries and moves a repeated query to the front', async () => {
     const user = userEvent.setup();
+    instanceFilterMocks.useInstanceFilter.mockReturnValue({
+      selectedInstanceId: 'instance-a',
+      selectInstance: vi.fn(),
+      instanceOptions: [{ value: 'instance-a', label: 'Instance A' }],
+    });
+    topicServiceMocks.listTopics.mockResolvedValue([
+      { name: 'order-create', instanceId: 'instance-a' },
+    ]);
     renderWithProviders(<MessagePage />);
     await user.click(screen.getByText('按 Message ID'));
     await user.click(lastElement(screen.getAllByRole('combobox')));
@@ -273,6 +300,14 @@ describe('Message page query history', () => {
 
   it('does not report consume verification success without a backend API', async () => {
     const user = userEvent.setup();
+    instanceFilterMocks.useInstanceFilter.mockReturnValue({
+      selectedInstanceId: 'instance-a',
+      selectInstance: vi.fn(),
+      instanceOptions: [{ value: 'instance-a', label: 'Instance A' }],
+    });
+    topicServiceMocks.listTopics.mockResolvedValue([
+      { name: 'order-create', instanceId: 'instance-a' },
+    ]);
     messageServiceMocks.queryMessages.mockResolvedValue([createMessage('MID-CONSUME-VERIFY-001')]);
     renderWithProviders(<MessagePage />);
 
@@ -289,5 +324,43 @@ describe('Message page query history', () => {
       await screen.findByText('消费验证接口尚未接入，无法确认该消息的真实消费状态'),
     ).toBeInTheDocument();
     expect(screen.queryByText(/消费验证成功/)).not.toBeInTheDocument();
+  });
+
+  it('loads topic options only for the selected instance', async () => {
+    instanceFilterMocks.useInstanceFilter.mockReturnValue({
+      selectedInstanceId: 'instance-a',
+      selectInstance: vi.fn(),
+      instanceOptions: [{ value: 'instance-a', label: 'Instance A' }],
+    });
+    topicServiceMocks.listTopics.mockResolvedValue([{ name: 'topic-on-instance-a' }]);
+    renderWithProviders(<MessagePage />);
+
+    await waitFor(() => {
+      expect(topicServiceMocks.listTopics).toHaveBeenCalledWith({ instanceId: 'instance-a' });
+    });
+  });
+
+  it('does not load static topic options without a selected instance', async () => {
+    renderWithProviders(<MessagePage />);
+
+    await waitFor(() => {
+      expect(topicServiceMocks.listTopics).not.toHaveBeenCalled();
+    });
+  });
+
+  it('clears topic options when loading the selected instance topics fails', async () => {
+    instanceFilterMocks.useInstanceFilter.mockReturnValue({
+      selectedInstanceId: 'instance-a',
+      selectInstance: vi.fn(),
+      instanceOptions: [{ value: 'instance-a', label: 'Instance A' }],
+    });
+    topicServiceMocks.listTopics.mockRejectedValue(new Error('topic lookup failed'));
+    const user = userEvent.setup();
+    renderWithProviders(<MessagePage />);
+
+    await waitFor(() => expect(topicServiceMocks.listTopics).toHaveBeenCalledTimes(1));
+    await user.click(screen.getAllByRole('combobox')[1]);
+
+    expect(screen.queryByText('order-create')).not.toBeInTheDocument();
   });
 });
