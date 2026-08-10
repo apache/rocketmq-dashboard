@@ -83,7 +83,7 @@ public class AuthInterceptor implements HandlerInterceptor {
             GeneralSettingsVO settings = settingsRepository.loadGeneralSettings();
             return settings != null && settings.isRequireLogin();
         } catch (Exception exception) {
-            return false;
+            return true;
         }
     }
 
