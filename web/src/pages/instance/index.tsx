@@ -141,7 +141,8 @@ const InstancePage = () => {
 
   useEffect(() => {
     if (!cloudVendor || !addModalOpen) {
-      return;
+      const timer = window.setTimeout(() => setCredentialsLoading(false), 0);
+      return () => window.clearTimeout(timer);
     }
     let active = true;
     const timer = window.setTimeout(() => {
@@ -171,7 +172,8 @@ const InstancePage = () => {
 
   useEffect(() => {
     if (!cloudVendor || !addCredentialId) {
-      return;
+      const timer = window.setTimeout(() => setRegionsLoading(false), 0);
+      return () => window.clearTimeout(timer);
     }
     let active = true;
     const timer = window.setTimeout(() => {
@@ -214,7 +216,8 @@ const InstancePage = () => {
 
   useEffect(() => {
     if (!cloudVendor || !addCredentialId || !addRegionId) {
-      return;
+      const timer = window.setTimeout(() => setCloudInstancesLoading(false), 0);
+      return () => window.clearTimeout(timer);
     }
     let active = true;
     const timer = window.setTimeout(() => {
@@ -251,6 +254,9 @@ const InstancePage = () => {
     setCredentials([]);
     setRegions([]);
     setCloudInstances([]);
+    setCredentialsLoading(false);
+    setRegionsLoading(false);
+    setCloudInstancesLoading(false);
     addForm.setFieldsValue({
       credentialId: undefined,
       regionId: undefined,
