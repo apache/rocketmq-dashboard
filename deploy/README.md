@@ -8,7 +8,8 @@
 ./deploy/deploy.sh web       # 仅部署前端
 ```
 
-脚本自动完成：本地构建 → 导出镜像 → SCP 传输 → 远程加载 → 重启容器 → 验证
+脚本自动完成：本地构建 → 导出镜像 → SCP 传输 → 远程加载 → 重启容器 → 验证。
+后端通过 Maven 容器构建，并默认挂载宿主机的 `~/.m2`，后续构建会复用已下载的依赖。
 
 ## 配置
 
@@ -19,7 +20,13 @@ REMOTE_HOST=your-server-ip
 REMOTE_USER=root
 REMOTE_PATH=/opt/rocketmq-studio
 PUBLIC_PORT=8080
+
+# 可选：自定义宿主机 Maven 缓存和构建镜像
+MAVEN_CACHE_DIR=/home/your-user/.m2
+MAVEN_IMAGE=maven:3.9.9-eclipse-temurin-21
 ```
+
+`MAVEN_CACHE_DIR` 默认为当前用户的 `~/.m2`。如果其中存在 `settings.xml`，构建容器也会自动使用该配置。
 
 ## 本地 Docker Compose
 
