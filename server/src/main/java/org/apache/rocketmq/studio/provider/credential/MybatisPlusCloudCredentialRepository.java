@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.provider.credential;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.persistence.entity.RmqCloudCredential;
 import org.apache.rocketmq.studio.persistence.mapper.RmqCloudCredentialMapper;
@@ -85,7 +86,7 @@ public class MybatisPlusCloudCredentialRepository implements CloudCredentialRepo
         CloudCredentialVO vo = new CloudCredentialVO();
         vo.setId(entity.getId());
         vo.setName(entity.getName());
-        vo.setVendor(parseVendor(entity.getVendor()));
+        vo.setVendor(parseVendor(entity.getId(), entity.getVendor()));
         vo.setAccessKey(entity.getAccessKey());
         vo.setSecretKey(CredentialUtils.decodeBase64(entity.getSecretKey()));
         vo.setRemark(entity.getRemark());
@@ -107,11 +108,12 @@ public class MybatisPlusCloudCredentialRepository implements CloudCredentialRepo
         return entity;
     }
 
-    private static InstanceVendor parseVendor(String vendor) {
+    private static InstanceVendor parseVendor(String credentialId, String vendor) {
         try {
             return InstanceVendor.valueOf(vendor);
         } catch (IllegalArgumentException | NullPointerException ex) {
-            return null;
+            throw new BusinessException(500, "Invalid persisted cloud credential vendor for credential "
+                    + credentialId + ": " + vendor);
         }
     }
 }
