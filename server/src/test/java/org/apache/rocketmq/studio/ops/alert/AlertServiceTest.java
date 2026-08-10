@@ -200,6 +200,26 @@ class AlertServiceTest {
     }
 
     @Test
+    void exportPrometheusRulesYamlShouldReplaceInvalidPrometheusFields() {
+        AlertRuleVO rule = AlertRuleVO.builder()
+                .name("Malformed rule")
+                .metric("up) or vector(1")
+                .operator("> 0 or")
+                .threshold(10)
+                .duration("5xyz")
+                .enabled(true)
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+
+        String result = alertService.exportPrometheusRulesYaml();
+
+        assertThat(result)
+                .contains("expr: rocketmq_consumer_lag_messages > 10")
+                .contains("for: 5m")
+                .doesNotContain("vector(1", "> 0 or", "5xyz");
+    }
+
+    @Test
     void exportPrometheusRulesYamlShouldNormalizeSeverityIndependentlyOfDefaultLocale() {
         AlertRuleVO rule = AlertRuleVO.builder()
                 .name("Informational Alert")

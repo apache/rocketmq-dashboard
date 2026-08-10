@@ -27,12 +27,19 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AlertService {
+
+    private static final String DEFAULT_METRIC = "rocketmq_consumer_lag_messages";
+    private static final Set<String> VALID_OPERATORS = Set.of(">", ">=", "<", "<=", "==", "!=");
+    private static final Pattern METRIC_NAME_PATTERN = Pattern.compile("^[A-Za-z_:][A-Za-z0-9_:]*$");
+    private static final Pattern DURATION_PATTERN = Pattern.compile("^\\d+(?:ms|s|m|h|d|w|y)$");
 
     private final AlertRepository alertRepository;
     private final AlertRuleAssetService alertRuleAssetService;
@@ -197,9 +204,18 @@ public class AlertService {
     }
 
     private String expression(AlertRuleVO rule) {
-        String metric = hasText(rule.getMetric()) ? rule.getMetric() : "rocketmq_consumer_lag_messages";
-        String operator = hasText(rule.getOperator()) ? rule.getOperator() : ">";
-        return metric + labelSelector(rule) + " " + operator + " " + formatThreshold(rule.getThreshold());
+        return metric(rule) + labelSelector(rule) + " " + operator(rule) + " "
+                + formatThreshold(rule.getThreshold());
+    }
+
+    private String metric(AlertRuleVO rule) {
+        String metric = hasText(rule.getMetric()) ? rule.getMetric().trim() : DEFAULT_METRIC;
+        return METRIC_NAME_PATTERN.matcher(metric).matches() ? metric : DEFAULT_METRIC;
+    }
+
+    private String operator(AlertRuleVO rule) {
+        String operator = hasText(rule.getOperator()) ? rule.getOperator().trim() : ">";
+        return VALID_OPERATORS.contains(operator) ? operator : ">";
     }
 
     private String labelSelector(AlertRuleVO rule) {
@@ -244,7 +260,8 @@ public class AlertService {
     }
 
     private String duration(AlertRuleVO rule) {
-        return hasText(rule.getDuration()) ? rule.getDuration() : "5m";
+        String duration = hasText(rule.getDuration()) ? rule.getDuration().trim() : "5m";
+        return DURATION_PATTERN.matcher(duration).matches() ? duration : "5m";
     }
 
     private String inferTeam(String metric) {
