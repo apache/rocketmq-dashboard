@@ -92,6 +92,7 @@ public class AliyunClientFactory {
         try {
             return future.get(callTimeoutSeconds, TimeUnit.SECONDS);
         } catch (TimeoutException ex) {
+            future.cancel(true);
             throw new BusinessException(504,
                     "Aliyun OpenAPI request timed out after " + callTimeoutSeconds + " seconds");
         } catch (InterruptedException ex) {
