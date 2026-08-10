@@ -79,7 +79,6 @@ public class RocketMQMessageProvider implements MessageProvider {
     private static final int MAX_PROPERTIES = 64;
     private static final int MAX_PROPERTY_VALUE_CHARS = 1024;
     private static final long ONE_HOUR_MILLIS = 3600_000L;
-    private static final long ONE_DAY_MILLIS = 24 * ONE_HOUR_MILLIS;
     private static final int MAX_CONSECUTIVE_OFFSET_ILLEGAL = 3;
 
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
@@ -272,23 +271,8 @@ public class RocketMQMessageProvider implements MessageProvider {
     private TraceRecordVO getMessageTrace(String instanceId, DefaultMQAdminExt adminExt, String msgId) {
 
         long now = System.currentTimeMillis();
-        long begin;
-        long end;
-        long messageStoreTimestamp = resolveMessageStoreTimestamp(adminExt, msgId);
-        if (messageStoreTimestamp > 0) {
-            // Derive the trace query window from the message's own store timestamp
-            // instead of a hardcoded 1-hour lookback. This ensures traces for messages
-            // older than 1 hour are still found as long as the trace data is retained
-            // on the broker (default fileReservedTime = 72 hours).
-            long traceBuffer = 5 * 60_000L;
-            begin = messageStoreTimestamp - traceBuffer;
-            end = Math.max(messageStoreTimestamp + ONE_DAY_MILLIS, now + 60_000L);
-        } else {
-            // Fallback: use the existing 1-hour window if the message can't be located
-            log.warn("Could not resolve store timestamp for msgId={}, falling back to 1h trace window", msgId);
-            begin = now - ONE_HOUR_MILLIS;
-            end = now + 60_000L;
-        }
+        long begin = now - ONE_HOUR_MILLIS;
+        long end = now + 60_000L;
 
         List<TraceNodeVO> nodes = new ArrayList<>();
         List<ConsumerStatusVO> consumerStatus = new ArrayList<>();
@@ -312,23 +296,6 @@ public class RocketMQMessageProvider implements MessageProvider {
                 .nodes(nodes)
                 .consumerStatus(consumerStatus)
                 .build();
-    }
-
-    /**
-     * Attempts to resolve the store timestamp of the original message so the trace
-     * query window can be derived from the message's own timeline rather than the
-     * current time. Returns 0 if the message cannot be located.
-     */
-    private long resolveMessageStoreTimestamp(DefaultMQAdminExt adminExt, String msgId) {
-        try {
-            MessageExt messageExt = adminExt.viewMessage(msgId);
-            if (messageExt != null) {
-                return messageExt.getStoreTimestamp();
-            }
-        } catch (Exception e) {
-            log.debug("Could not view message {} for trace timestamp: {}", msgId, e.getMessage());
-        }
-        return 0L;
     }
 
     /**
