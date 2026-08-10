@@ -27,6 +27,8 @@ import lombok.RequiredArgsConstructor;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /** MySQL-backed audit repository (rmq_operation_audit). */
@@ -38,6 +40,7 @@ public class MybatisPlusAuditRepository implements AuditRepository {
 
     @Override
     public PageResult<AuditRecordVO> findPage(String search, String operationType,
+                                              String resourceType, String clusterId,
                                               LocalDateTime startDate, LocalDateTime endDate,
                                               String result, int page, int pageSize) {
         QueryWrapper<RmqOperationAudit> query = new QueryWrapper<RmqOperationAudit>()
@@ -46,6 +49,8 @@ public class MybatisPlusAuditRepository implements AuditRepository {
                         .or().like("resource_name", search)
                         .or().like("detail", search))
                 .eq(StringUtils.hasText(operationType), "operation", operationType)
+                .eq(StringUtils.hasText(resourceType), "resource_type", resourceType)
+                .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId)
                 .ge(startDate != null, "operated_at", startDate)
                 .le(endDate != null, "operated_at", endDate)
                 .eq(StringUtils.hasText(result), "result", result)
@@ -56,6 +61,20 @@ public class MybatisPlusAuditRepository implements AuditRepository {
                 .map(MybatisPlusAuditRepository::toVO)
                 .collect(Collectors.toList());
         return PageResult.of(records, resultPage.getTotal(), page, pageSize);
+    }
+
+    @Override
+    public AuditFilterOptionsVO findFilterOptions() {
+        List<Map<String, Object>> values = auditMapper.selectMaps(
+                new QueryWrapper<RmqOperationAudit>()
+                        .select("operation", "resource_type", "cluster_id", "result")
+                        .groupBy("operation", "resource_type", "cluster_id", "result"));
+        return AuditFilterOptionsVO.builder()
+                .operationTypes(findDistinctValues(values, "operation"))
+                .resourceTypes(findDistinctValues(values, "resource_type"))
+                .clusterIds(findDistinctValues(values, "cluster_id"))
+                .results(findDistinctValues(values, "result"))
+                .build();
     }
 
     @Override
@@ -77,6 +96,17 @@ public class MybatisPlusAuditRepository implements AuditRepository {
     public int deleteBefore(LocalDateTime cutoff) {
         return Math.toIntExact(auditMapper.delete(
                 new QueryWrapper<RmqOperationAudit>().lt("operated_at", cutoff)));
+    }
+
+    private List<String> findDistinctValues(List<Map<String, Object>> rows, String column) {
+        return rows.stream()
+                .map(row -> row.get(column))
+                .filter(Objects::nonNull)
+                .map(Object::toString)
+                .filter(StringUtils::hasText)
+                .distinct()
+                .sorted()
+                .toList();
     }
 
     private static AuditRecordVO toVO(RmqOperationAudit entity) {

@@ -99,20 +99,21 @@
 | 56 | POST | `/api/system-alerts/acknowledge` | 确认告警 |
 | 57 | POST | `/api/system-alerts/clear-acknowledged` | 清除已确认告警 |
 | 58 | GET | `/api/audit-logs` | 审计日志列表 |
-| 59 | GET | `/api/audit-logs/export` | 导出审计日志 |
-| 60 | POST | `/api/audit-logs/cleanup` | 清理审计日志 |
-| 61 | GET | `/api/settings/general` | 获取通用设置 |
-| 62 | POST | `/api/settings/general/save` | 保存通用设置 |
-| 63 | GET | `/api/settings/datasources` | 数据源列表 |
-| 64 | POST | `/api/settings/datasources/create` | 创建数据源 |
-| 65 | POST | `/api/settings/datasources/update` | 更新数据源 |
-| 66 | POST | `/api/settings/datasources/delete` | 删除数据源 |
-| 67 | POST | `/api/settings/datasources/test` | 测试数据源连接 |
-| 68 | POST | `/api/ai/chat` | AI 对话（SSE） |
-| 69 | POST | `/api/ai/execute` | 执行 AI 指令 |
-| 70 | GET | `/api/ai/tools` | 可用工具列表 |
-| 71 | POST | `/api/ai/tools/:name/execute` | 执行只读 AI 工具 |
-| 72 | POST | `/api/metrics/query` | 查询监控指标数据 |
+| 59 | GET | `/api/audit-logs/filter-options` | 审计日志筛选项 |
+| 60 | GET | `/api/audit-logs/export` | 导出审计日志 |
+| 61 | POST | `/api/audit-logs/cleanup` | 清理审计日志 |
+| 62 | GET | `/api/settings/general` | 获取通用设置 |
+| 63 | POST | `/api/settings/general/save` | 保存通用设置 |
+| 64 | GET | `/api/settings/datasources` | 数据源列表 |
+| 65 | POST | `/api/settings/datasources/create` | 创建数据源 |
+| 66 | POST | `/api/settings/datasources/update` | 更新数据源 |
+| 67 | POST | `/api/settings/datasources/delete` | 删除数据源 |
+| 68 | POST | `/api/settings/datasources/test` | 测试数据源连接 |
+| 69 | POST | `/api/ai/chat` | AI 对话（SSE） |
+| 70 | POST | `/api/ai/execute` | 执行 AI 指令 |
+| 71 | GET | `/api/ai/tools` | 可用工具列表 |
+| 72 | POST | `/api/ai/tools/:name/execute` | 执行只读 AI 工具 |
+| 73 | POST | `/api/metrics/query` | 查询监控指标数据 |
 
 ## 通用响应格式
 
@@ -1439,7 +1440,7 @@ POST /api/system-alerts/clear-acknowledged
 ### 13.1 获取审计日志列表
 
 ```
-GET /api/audit-logs?page={page}&pageSize={pageSize}&search={search}&operationType={type}&startDate={start}&endDate={end}&result={result}
+GET /api/audit-logs?page={page}&pageSize={pageSize}&search={search}&operationType={type}&resourceType={resourceType}&clusterId={clusterId}&startDate={start}&endDate={end}&result={result}
 ```
 
 **Query Parameters:**
@@ -1450,9 +1451,11 @@ GET /api/audit-logs?page={page}&pageSize={pageSize}&search={search}&operationTyp
 | `pageSize` | `number` | 否 | 每页条数，默认 20 |
 | `search` | `string` | 否 | 搜索（匹配 operator / target） |
 | `operationType` | `string` | 否 | 操作类型过滤 |
+| `resourceType` | `string` | 否 | 资源类型过滤 |
+| `clusterId` | `string` | 否 | 集群 ID 过滤 |
 | `startDate` | `string` | 否 | 开始日期 (YYYY-MM-DD) |
 | `endDate` | `string` | 否 | 结束日期 (YYYY-MM-DD) |
-| `result` | `string` | 否 | 结果过滤: `success` / `failure` |
+| `result` | `string` | 否 | 结果过滤，传入筛选项接口返回的原始值 |
 
 `startDate` 或 `endDate` 格式错误，以及 `startDate` 晚于 `endDate` 时，接口返回 HTTP 400。
 
@@ -1460,8 +1463,10 @@ GET /api/audit-logs?page={page}&pageSize={pageSize}&search={search}&operationTyp
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `records` | `AuditRecord[]` | 记录列表 |
+| `items` | `AuditRecord[]` | 记录列表 |
 | `total` | `number` | 总条数 |
+| `page` | `number` | 当前页码 |
+| `size` | `number` | 每页条数 |
 
 #### AuditRecord
 
@@ -1470,16 +1475,35 @@ GET /api/audit-logs?page={page}&pageSize={pageSize}&search={search}&operationTyp
 | `id` | `string` | 记录 ID |
 | `timestamp` | `string` | 操作时间（`YYYY-MM-DD HH:mm:ss`） |
 | `operator` | `string` | 操作人（如 `admin`, `ops-zhang`, `system`） |
-| `operationType` | `string` | 操作类型: `创建Topic` / `删除Topic` / `修改配置` / `重置位点` / `ACL变更` / `重启Broker` / `删除消费组` |
+| `operationType` | `string` | 持久化的操作类型代码，如 `CREATE_TOPIC` / `RESET_OFFSET` |
+| `resourceType` | `string` | 资源类型代码，如 `TOPIC` / `GROUP` / `CLUSTER` |
 | `target` | `string` | 操作对象 |
+| `clusterId` | `string` | 所属集群 ID，无集群上下文时为 `null` |
 | `detail` | `string` | 详细描述 |
-| `ipAddress` | `string` | 操作 IP 地址 |
-| `result` | `string` | 结果: `success` / `failure` |
+| `result` | `string` | 持久化的结果代码，如 `SUCCESS` / `FAILED` / `FAILURE` / `PARTIAL` |
+| `errorMessage` | `string` | 失败或部分成功时的错误信息 |
 
-### 13.2 导出审计日志
+### 13.2 获取审计日志筛选项
 
 ```
-GET /api/audit-logs/export?search={search}&operationType={type}&startDate={start}&endDate={end}&result={result}
+GET /api/audit-logs/filter-options
+```
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `operationTypes` | `string[]` | 数据库中已存在的操作类型原始值 |
+| `resourceTypes` | `string[]` | 数据库中已存在的资源类型原始值 |
+| `clusterIds` | `string[]` | 数据库中已存在的非空集群 ID |
+| `results` | `string[]` | 数据库中已存在的结果原始值 |
+
+筛选项保留数据库中的原始值，请将选中值原样传入列表或导出接口。
+
+### 13.3 导出审计日志
+
+```
+GET /api/audit-logs/export?search={search}&operationType={type}&resourceType={resourceType}&clusterId={clusterId}&startDate={start}&endDate={end}&result={result}
 ```
 
 查询参数与列表接口相同，但不包含 `page` 和 `pageSize`。接口返回全部匹配记录，不受当前表格分页影响。
@@ -1488,7 +1512,7 @@ GET /api/audit-logs/export?search={search}&operationType={type}&startDate={start
 
 `startDate` 或 `endDate` 格式错误，以及 `startDate` 晚于 `endDate` 时，接口返回 HTTP 400。
 
-### 13.3 清理审计日志
+### 13.4 清理审计日志
 
 ```
 POST /api/audit-logs/cleanup

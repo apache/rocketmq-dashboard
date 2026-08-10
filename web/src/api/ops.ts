@@ -51,6 +51,8 @@ export interface AuditQuery {
   pageSize?: number;
   search?: string;
   operationType?: string;
+  resourceType?: string;
+  clusterId?: string;
   startDate?: string;
   endDate?: string;
   result?: string;

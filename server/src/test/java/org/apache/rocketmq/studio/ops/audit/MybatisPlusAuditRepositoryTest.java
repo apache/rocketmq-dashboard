@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.audit;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.apache.rocketmq.studio.common.domain.PageResult;
@@ -31,6 +32,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -64,10 +66,11 @@ class MybatisPlusAuditRepositoryTest {
         when(auditMapper.selectPage(any(IPage.class), any(Wrapper.class))).thenReturn(mapperPage);
 
         PageResult<AuditRecordVO> result = repository.findPage(
-                "orders", "DELETE_TOPIC", null, null, "FAILED", 2, 25);
+                "orders", "DELETE_TOPIC", "TOPIC", "prod-cn", null, null, "FAILED", 2, 25);
 
         ArgumentCaptor<IPage<RmqOperationAudit>> pageCaptor = ArgumentCaptor.forClass(IPage.class);
-        verify(auditMapper).selectPage(pageCaptor.capture(), any(Wrapper.class));
+        ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(auditMapper).selectPage(pageCaptor.capture(), queryCaptor.capture());
         assertThat(pageCaptor.getValue().getCurrent()).isEqualTo(2);
         assertThat(pageCaptor.getValue().getSize()).isEqualTo(25);
         assertThat(result.getTotal()).isEqualTo(126);
@@ -76,5 +79,32 @@ class MybatisPlusAuditRepositoryTest {
         assertThat(record.getResourceType()).isEqualTo("TOPIC");
         assertThat(record.getClusterId()).isEqualTo("prod-cn");
         assertThat(record.getErrorMessage()).isEqualTo("denied");
+        assertThat(queryCaptor.getValue().getSqlSegment())
+                .contains("operation", "resource_type", "cluster_id", "result");
     }
+
+    @Test
+    void findFilterOptionsPreservesPersistedValuesFromOneQuery() {
+        when(auditMapper.selectMaps(any(Wrapper.class))).thenReturn(List.of(
+                Map.of("operation", "DELETE_TOPIC", "resource_type", "TOPIC",
+                        "cluster_id", "prod-cn", "result", "SUCCESS"),
+                Map.of("operation", " CREATE_TOPIC ", "resource_type", "GROUP",
+                        "cluster_id", "prod-sh", "result", "FAILED"),
+                Map.of("operation", "DELETE_TOPIC", "resource_type", "TOPIC",
+                        "cluster_id", "", "result", "PARTIAL")));
+
+        AuditFilterOptionsVO options = repository.findFilterOptions();
+
+        assertThat(options.getOperationTypes()).containsExactly(" CREATE_TOPIC ", "DELETE_TOPIC");
+        assertThat(options.getResourceTypes()).containsExactly("GROUP", "TOPIC");
+        assertThat(options.getClusterIds()).containsExactly("prod-cn", "prod-sh");
+        assertThat(options.getResults()).containsExactly("FAILED", "PARTIAL", "SUCCESS");
+        ArgumentCaptor<Wrapper<RmqOperationAudit>> queryCaptor = ArgumentCaptor.forClass(Wrapper.class);
+        verify(auditMapper).selectMaps(queryCaptor.capture());
+        assertThat(((QueryWrapper<RmqOperationAudit>) queryCaptor.getValue()).getSqlSelect())
+                .contains("operation", "resource_type", "cluster_id", "result");
+        assertThat(queryCaptor.getValue().getSqlSegment())
+                .contains("GROUP BY operation,resource_type,cluster_id,result");
+    }
+
 }

@@ -20,6 +20,18 @@ import type { AuditQuery } from './ops';
 
 export type AuditFilter = Omit<AuditQuery, 'page' | 'pageSize'>;
 
+export interface AuditFilterOptions {
+  operationTypes: string[];
+  resourceTypes: string[];
+  clusterIds: string[];
+  results: string[];
+}
+
+export async function fetchAuditFilterOptions(): Promise<AuditFilterOptions> {
+  const res = await client.get<{ data: AuditFilterOptions }>('/audit-logs/filter-options');
+  return res.data.data;
+}
+
 export async function exportAuditLogs(params?: AuditFilter): Promise<string> {
   const res = await client.get<{ data: string }>('/audit-logs/export', { params });
   return res.data.data;
