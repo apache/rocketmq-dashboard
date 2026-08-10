@@ -90,9 +90,7 @@ public class ApacheInstanceProvider implements InstanceProvider {
 
     @Override
     public List<ConsumerGroupVO> listConsumerGroups(String instanceId, String search) {
-        return metadataProvider.listConsumerGroups(null, search).stream()
-                .filter(group -> matchesInstance(group.getInstanceId(), instanceId))
-                .toList();
+        return metadataProvider.listConsumerGroups(instanceId, null, search);
     }
 
     @Override

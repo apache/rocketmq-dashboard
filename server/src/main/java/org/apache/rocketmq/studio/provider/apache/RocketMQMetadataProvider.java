@@ -156,7 +156,13 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
     @Override
     public List<ConsumerGroupVO> listConsumerGroups(String clusterId, String search) {
+        return listConsumerGroups(null, clusterId, search);
+    }
+
+    @Override
+    public List<ConsumerGroupVO> listConsumerGroups(String instanceId, String clusterId, String search) {
         LambdaQueryWrapper<RmqGroup> query = new LambdaQueryWrapper<RmqGroup>()
+                .eq(StringUtils.hasText(instanceId), RmqGroup::getInstanceId, instanceId)
                 .eq(StringUtils.hasText(clusterId), RmqGroup::getClusterId, clusterId)
                 .like(StringUtils.hasText(search), RmqGroup::getName, search)
                 .orderByAsc(RmqGroup::getName);
@@ -175,8 +181,10 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             vo.setCreatedAt(entity.getCreatedAt());
             vo.setUpdatedAt(entity.getUpdatedAt());
 
-            if (hasAdmin()) {
-                enrichGroupWithConnectionInfo(vo, entity.getName());
+            if (StringUtils.hasText(instanceId)) {
+                enrichGroupWithConnectionInfo(vo, entity.getName(), instanceId);
+            } else if (hasAdmin()) {
+                enrichGroupWithConnectionInfo(vo, entity.getName(), null);
             }
             result.add(vo);
         }
@@ -321,7 +329,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             return consumers;
         } catch (Exception e) {
             log.warn("Failed to get consumers for topic {}: {}", name, e.getMessage());
-            return Collections.emptyList();
+            throw new BusinessException(502, "Failed to get consumers for topic " + name + ": " + e.getMessage());
         }
     }
 
@@ -412,15 +420,17 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             return subscriptions;
         } catch (Exception e) {
             log.warn("Failed to get subscriptions for group {}: {}", name, e.getMessage());
-            return Collections.emptyList();
+            throw new BusinessException(502,
+                    "Failed to get subscriptions for group " + name + ": " + e.getMessage());
         }
     }
 
     // ── Helper methods ──────────────────────────────────────────────────
 
-    private void enrichGroupWithConnectionInfo(ConsumerGroupVO vo, String groupName) {
+    private void enrichGroupWithConnectionInfo(ConsumerGroupVO vo, String groupName, String instanceId) {
         try {
-            ConsumerConnection conn = adminExecute(admin -> admin.examineConsumerConnectionInfo(groupName));
+            ConsumerConnection conn = executeForInstance(instanceId,
+                    admin -> admin.examineConsumerConnectionInfo(groupName));
             if (conn != null) {
                 if (conn.getConnectionSet() != null) {
                     vo.setOnlineInstances(conn.getConnectionSet().size());
@@ -435,7 +445,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
         // Try to get lag info
         try {
-            ConsumeStats stats = adminExecute(admin -> admin.examineConsumeStats(groupName));
+            ConsumeStats stats = executeForInstance(instanceId, admin -> admin.examineConsumeStats(groupName));
             if (stats != null && stats.getOffsetTable() != null) {
                 long totalLag = 0;
                 for (OffsetWrapper ow : stats.getOffsetTable().values()) {
@@ -446,6 +456,13 @@ public class RocketMQMetadataProvider implements MetadataProvider {
         } catch (Exception ignored) {
             // No stats available
         }
+    }
+
+    private <T> T executeForInstance(String instanceId, MqAdminExtFactory.AdminAction<T> action) {
+        if (StringUtils.hasText(instanceId)) {
+            return runtimeAdminClientResolver.execute(instanceId, action);
+        }
+        return adminExecute(action);
     }
 
     private String filterMode(String expressionType) {

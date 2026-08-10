@@ -26,6 +26,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -63,5 +64,14 @@ class ApacheInstanceProviderTest {
         when(instanceRepository.countGroupsByInstance("inst-1")).thenReturn(2L);
 
         assertThat(provider.countGroups("inst-1")).isEqualTo(2);
+    }
+
+    @Test
+    void listConsumerGroupsShouldPassTheSelectedInstanceToMetadataProvider() {
+        when(metadataProvider.listConsumerGroups("inst-1", null, "orders")).thenReturn(java.util.List.of());
+
+        assertThat(provider.listConsumerGroups("inst-1", "orders")).isEmpty();
+
+        verify(metadataProvider).listConsumerGroups("inst-1", null, "orders");
     }
 }
