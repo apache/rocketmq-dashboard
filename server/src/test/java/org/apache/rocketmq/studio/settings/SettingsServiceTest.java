@@ -36,6 +36,7 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -367,6 +368,35 @@ class SettingsServiceTest {
                 .build();
 
         DataSourceTestResultVO result = settingsService.testDataSource(request);
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(authorization.get()).isEqualTo("Basic "
+                + Base64.getEncoder().encodeToString("prom:secret".getBytes(StandardCharsets.UTF_8)));
+    }
+
+    @Test
+    void testConnectionShouldNormalizeIdentifiersIndependentlyOfDefaultLocale() {
+        AtomicReference<String> authorization = new AtomicReference<>();
+        prometheusServer.createContext("/api/v1/query", exchange -> {
+            authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            respond(exchange, 200, "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[]}}");
+        });
+        DataSourceTestDTO request = DataSourceTestDTO.builder()
+                .url(prometheusBaseUrl)
+                .type("MIMIR")
+                .auth("Basic Auth")
+                .username("prom")
+                .password("secret")
+                .build();
+        Locale originalLocale = Locale.getDefault();
+
+        DataSourceTestResultVO result;
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            result = settingsService.testDataSource(request);
+        } finally {
+            Locale.setDefault(originalLocale);
+        }
 
         assertThat(result.isSuccess()).isTrue();
         assertThat(authorization.get()).isEqualTo("Basic "
