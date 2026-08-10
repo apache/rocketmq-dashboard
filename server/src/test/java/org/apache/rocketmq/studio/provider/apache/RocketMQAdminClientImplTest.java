@@ -49,6 +49,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -229,10 +230,29 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
-    void topicDeleteUsesSelectedInstanceAndScopesMetadataToCluster() throws Exception {
+    void topicWritesFailClosedWhenTargetClusterHasNoResolvableBroker() throws Exception {
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMissingTargetBroker());
+        when(topicMapper.selectOne(any())).thenReturn(null);
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+
+        assertThatThrownBy(() -> adminClient.createTopic(topic))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("No broker available to create topic");
+        assertThatThrownBy(() -> adminClient.updateTopic(topic))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("No broker available to update topic");
+
+        verify(adminExt, never()).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+        verify(topicMapper, never()).insert(any(RmqTopic.class));
+        verify(topicMapper, never()).updateById(any(RmqTopic.class));
+    }
+
+    @Test
+    void topicDeleteUsesSelectedInstanceAndScopesBrokersAndMetadataToCluster() throws Exception {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
         DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
-        when(selectedAdmin.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        when(selectedAdmin.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoClusters());
         doNothing().when(selectedAdmin).deleteTopicInBroker(any(), anyString());
         doNothing().when(selectedAdmin).deleteTopicInNameServer(any(), anyString(), anyString());
         when(runtimeAdminClientResolver.resolveEndpoint("instance-a")).thenReturn("10.0.0.2:9876");
@@ -247,6 +267,24 @@ class RocketMQAdminClientImplTest {
         assertThat(captor.getValue().getSqlSegment()).contains("cluster_id", "name");
         verify(selectedAdmin).deleteTopicInBroker(Set.of("10.0.0.1:10911"), "orders");
         verify(selectedAdmin).deleteTopicInNameServer(Set.of("10.0.0.2:9876"), "cluster-1", "orders");
+    }
+
+    @Test
+    void topicDeleteFailsClosedWhenTargetClusterHasNoResolvableBroker() throws Exception {
+        DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        when(selectedAdmin.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMissingTargetBroker());
+        when(runtimeAdminClientResolver.resolveEndpoint("instance-a")).thenReturn("10.0.0.2:9876");
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
+                .thenAnswer(invocation -> invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1)
+                        .apply(selectedAdmin));
+
+        assertThatThrownBy(() -> adminClient.deleteTopic("instance-a", "orders"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("No broker available to delete topic");
+
+        verify(selectedAdmin, never()).deleteTopicInBroker(any(), anyString());
+        verify(selectedAdmin, never()).deleteTopicInNameServer(any(), anyString(), anyString());
+        verify(topicMapper, never()).delete(any());
     }
 
     @Test
@@ -281,15 +319,25 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
-    void deleteConsumerGroupUsesSelectedInstanceAdmin() throws Exception {
+    void createConsumerGroupFailsClosedWhenTargetClusterHasNoResolvableBroker() throws Exception {
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMissingTargetBroker());
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("cg-orders");
+
+        assertThatThrownBy(() -> adminClient.createConsumerGroup(group))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("No broker available to create consumer group");
+
+        verify(adminExt, never()).createAndUpdateSubscriptionGroupConfig(anyString(), any());
+        verify(groupMapper, never()).insert(any(RmqGroup.class));
+        verify(groupMapper, never()).updateById(any(RmqGroup.class));
+    }
+
+    @Test
+    void deleteConsumerGroupUsesSelectedInstanceAdminAndScopesBrokersToCluster() throws Exception {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
         DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
-        ClusterInfo clusterInfo = new ClusterInfo();
-        BrokerData brokerData = new BrokerData();
-        brokerData.setBrokerName("broker-1");
-        brokerData.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.1:10911")));
-        clusterInfo.setBrokerAddrTable(new HashMap<>(Map.of("broker-1", brokerData)));
-        when(selectedAdmin.examineBrokerClusterInfo()).thenReturn(clusterInfo);
+        when(selectedAdmin.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoClusters());
         doNothing().when(selectedAdmin).deleteSubscriptionGroup(anyString(), anyString(), org.mockito.ArgumentMatchers.anyBoolean());
         when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
                 .thenAnswer(invocation -> {
@@ -301,10 +349,30 @@ class RocketMQAdminClientImplTest {
 
         verify(runtimeAdminClientResolver).execute(org.mockito.ArgumentMatchers.eq("instance-a"), any());
         verify(selectedAdmin).deleteSubscriptionGroup("10.0.0.1:10911", "cg-orders", true);
+        verify(selectedAdmin, never()).deleteSubscriptionGroup("10.0.0.2:10911", "cg-orders", true);
         verify(adminExt, never()).deleteSubscriptionGroup(anyString(), anyString(), org.mockito.ArgumentMatchers.anyBoolean());
         ArgumentCaptor<LambdaQueryWrapper<RmqGroup>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(groupMapper).delete(captor.capture());
         assertThat(captor.getValue().getSqlSegment()).contains("cluster_id", "name");
+    }
+
+    @Test
+    void deleteConsumerGroupFailsClosedWhenTargetClusterHasNoResolvableBroker() throws Exception {
+        DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        when(selectedAdmin.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMissingTargetBroker());
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
+                .thenAnswer(invocation -> {
+                    MqAdminExtFactory.AdminAction<?> action = invocation.getArgument(1);
+                    return action.apply(selectedAdmin);
+                });
+
+        assertThatThrownBy(() -> adminClient.deleteConsumerGroup("instance-a", "cg-orders"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("No broker available to delete consumer group");
+
+        verify(selectedAdmin, never()).deleteSubscriptionGroup(anyString(), anyString(),
+                org.mockito.ArgumentMatchers.anyBoolean());
+        verify(groupMapper, never()).delete(any());
     }
 
     @Test
@@ -350,6 +418,39 @@ class RocketMQAdminClientImplTest {
         brokerData.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.1:10911")));
         brokerAddrTable.put("broker-1", brokerData);
         clusterInfo.setBrokerAddrTable(brokerAddrTable);
+        return clusterInfo;
+    }
+
+    private ClusterInfo clusterInfoWithTwoClusters() {
+        ClusterInfo clusterInfo = new ClusterInfo();
+        Map<String, Set<String>> clusterAddrTable = new LinkedHashMap<>();
+        clusterAddrTable.put("cluster-1", new HashSet<>(List.of("broker-1")));
+        clusterAddrTable.put("cluster-2", new HashSet<>(List.of("broker-2")));
+        clusterInfo.setClusterAddrTable(clusterAddrTable);
+
+        BrokerData firstBroker = new BrokerData();
+        firstBroker.setBrokerName("broker-1");
+        firstBroker.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.1:10911")));
+        BrokerData secondBroker = new BrokerData();
+        secondBroker.setBrokerName("broker-2");
+        secondBroker.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.2:10911")));
+        clusterInfo.setBrokerAddrTable(new HashMap<>(Map.of(
+                "broker-1", firstBroker,
+                "broker-2", secondBroker)));
+        return clusterInfo;
+    }
+
+    private ClusterInfo clusterInfoWithMissingTargetBroker() {
+        ClusterInfo clusterInfo = new ClusterInfo();
+        Map<String, Set<String>> clusterAddrTable = new LinkedHashMap<>();
+        clusterAddrTable.put("cluster-1", new HashSet<>(List.of("missing-broker")));
+        clusterAddrTable.put("cluster-2", new HashSet<>(List.of("broker-2")));
+        clusterInfo.setClusterAddrTable(clusterAddrTable);
+
+        BrokerData otherBroker = new BrokerData();
+        otherBroker.setBrokerName("broker-2");
+        otherBroker.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.2:10911")));
+        clusterInfo.setBrokerAddrTable(new HashMap<>(Map.of("broker-2", otherBroker)));
         return clusterInfo;
     }
 

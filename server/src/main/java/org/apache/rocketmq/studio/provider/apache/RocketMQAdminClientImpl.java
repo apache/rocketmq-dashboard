@@ -283,12 +283,14 @@ public class RocketMQAdminClientImpl implements AdminClient {
         String namesrvAddr = namesrvAddr(instanceId);
         executeForInstance(instanceId, admin -> {
             try {
-                Set<String> brokerAddrs = getAllMasterBrokerAddrs(admin);
+                String clusterName = getClusterName(admin);
+                Set<String> brokerAddrs = getMasterBrokerAddrsForCluster(admin, clusterName);
+                if (brokerAddrs.isEmpty()) {
+                    throw new BusinessException(500, "No broker available to delete topic");
+                }
 
                 // Delete from brokers
-                if (!brokerAddrs.isEmpty()) {
-                    admin.deleteTopicInBroker(brokerAddrs, name);
-                }
+                admin.deleteTopicInBroker(brokerAddrs, name);
 
                 // Delete from nameserver
                 Set<String> nsAddrs = new HashSet<>();
@@ -298,11 +300,11 @@ public class RocketMQAdminClientImpl implements AdminClient {
                         nsAddrs.add(trimmed);
                     }
                 }
-                admin.deleteTopicInNameServer(nsAddrs, getClusterName(admin), name);
+                admin.deleteTopicInNameServer(nsAddrs, clusterName, name);
 
                 // Topic names may be shared by several clusters managed by this Studio instance.
                 topicMapper.delete(new LambdaQueryWrapper<RmqTopic>()
-                        .eq(RmqTopic::getClusterId, getClusterName(admin))
+                        .eq(RmqTopic::getClusterId, clusterName)
                         .eq(RmqTopic::getName, name));
 
                 recordAudit("DELETE_TOPIC", name, "", "SUCCESS");
@@ -467,7 +469,11 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
     private void doDeleteConsumerGroup(MQAdminExt admin, String name) {
         try {
-            Set<String> brokerAddrs = getAllMasterBrokerAddrs(admin);
+            String clusterName = getClusterName(admin);
+            Set<String> brokerAddrs = getMasterBrokerAddrsForCluster(admin, clusterName);
+            if (brokerAddrs.isEmpty()) {
+                throw new BusinessException(500, "No broker available to delete consumer group");
+            }
 
             for (String addr : brokerAddrs) {
                 admin.deleteSubscriptionGroup(addr, name, true);
@@ -475,7 +481,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
             // Consumer group names may be shared by several clusters managed by this Studio instance.
             groupMapper.delete(new LambdaQueryWrapper<RmqGroup>()
-                    .eq(RmqGroup::getClusterId, getClusterName(admin))
+                    .eq(RmqGroup::getClusterId, clusterName)
                     .eq(RmqGroup::getName, name));
 
             recordAudit("DELETE_GROUP", name, "", "SUCCESS");
@@ -566,46 +572,24 @@ public class RocketMQAdminClientImpl implements AdminClient {
         return adminFactory.execute(namesrvAddr(), null, action);
     }
 
-    private Set<String> getAllMasterBrokerAddrs(MQAdminExt admin) throws Exception {
-        Set<String> addrs = new HashSet<>();
-        ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
-        if (clusterInfo == null || clusterInfo.getBrokerAddrTable() == null) {
-            return addrs;
-        }
-
-        for (BrokerData brokerData : clusterInfo.getBrokerAddrTable().values()) {
-            if (brokerData.getBrokerAddrs() == null) {
-                continue;
-            }
-            // Use master address (brokerId = 0) preferentially
-            String masterAddr = brokerData.getBrokerAddrs().get(0L);
-            if (masterAddr == null && !brokerData.getBrokerAddrs().isEmpty()) {
-                masterAddr = brokerData.getBrokerAddrs().values().iterator().next();
-            }
-            if (masterAddr != null) {
-                addrs.add(masterAddr);
-            }
-        }
-        return addrs;
-    }
-
     /**
      * Returns master broker addresses for the specified cluster only, using the
-     * clusterAddrTable to map cluster name to broker names. Falls back to all
-     * brokers when the cluster name is unknown or the cluster table is missing.
+     * clusterAddrTable to map cluster name to broker names. Returns an empty set
+     * when the cluster cannot be resolved so callers fail closed instead of
+     * accidentally targeting every broker in a multi-cluster instance.
      */
     private Set<String> getMasterBrokerAddrsForCluster(MQAdminExt admin, String clusterName) throws Exception {
         if (!StringUtils.hasText(clusterName)) {
-            return getAllMasterBrokerAddrs(admin);
+            return Set.of();
         }
         ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
         if (clusterInfo == null || clusterInfo.getClusterAddrTable() == null
                 || clusterInfo.getBrokerAddrTable() == null) {
-            return getAllMasterBrokerAddrs(admin);
+            return Set.of();
         }
         Set<String> brokerNames = clusterInfo.getClusterAddrTable().get(clusterName);
         if (brokerNames == null || brokerNames.isEmpty()) {
-            return getAllMasterBrokerAddrs(admin);
+            return Set.of();
         }
         Set<String> addrs = new HashSet<>();
         for (String brokerName : brokerNames) {
@@ -621,7 +605,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 addrs.add(masterAddr);
             }
         }
-        return addrs.isEmpty() ? getAllMasterBrokerAddrs(admin) : addrs;
+        return addrs;
     }
 
     private String getClusterName(MQAdminExt admin) {
