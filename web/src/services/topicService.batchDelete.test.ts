@@ -35,26 +35,33 @@ describe('topic service batch deletion', () => {
     vi.clearAllMocks();
   });
 
-  it('continues deleting after a failure and reports each outcome', async () => {
-    metadataApiMocks.deleteTopic.mockImplementation((name: string) =>
-      name === 'topic-02' ? Promise.reject(new Error('delete failed')) : Promise.resolve(),
+  it('keeps same-name targets distinct and reports each outcome by row key', async () => {
+    metadataApiMocks.deleteTopic.mockImplementation(
+      (_name: string, _instanceId: string, clusterId: string) =>
+        clusterId === 'cluster-2' ? Promise.reject(new Error('delete failed')) : Promise.resolve(),
     );
 
     await expect(
-      batchDeleteTopics(['topic-01', 'topic-02', 'topic-03'], 'instance-a', {
-        'topic-01': 'cluster-1',
-        'topic-02': 'cluster-2',
-        'topic-03': 'cluster-3',
-      }),
-    ).resolves.toEqual({ deleted: ['topic-01', 'topic-03'], failed: ['topic-02'] });
+      batchDeleteTopics(
+        [
+          { key: 'cluster-1/orders', name: 'orders', clusterId: 'cluster-1' },
+          { key: 'cluster-2/orders', name: 'orders', clusterId: 'cluster-2' },
+          { key: 'cluster-3/payments', name: 'payments', clusterId: 'cluster-3' },
+        ],
+        'instance-a',
+      ),
+    ).resolves.toEqual({
+      deleted: ['cluster-1/orders', 'cluster-3/payments'],
+      failed: ['cluster-2/orders'],
+    });
     expect(metadataApiMocks.deleteTopic.mock.calls.map(([name]) => name)).toEqual([
-      'topic-01',
-      'topic-02',
-      'topic-03',
+      'orders',
+      'orders',
+      'payments',
     ]);
     expect(metadataApiMocks.deleteTopic).toHaveBeenNthCalledWith(
       2,
-      'topic-02',
+      'orders',
       'instance-a',
       'cluster-2',
     );

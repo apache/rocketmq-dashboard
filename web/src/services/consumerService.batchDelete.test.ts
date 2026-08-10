@@ -36,26 +36,30 @@ describe('consumer group service batch deletion', () => {
   });
 
   it('forwards each target cluster and continues after a failure', async () => {
-    metadataApiMocks.deleteConsumerGroup.mockImplementation((name: string) =>
-      name === 'group-02' ? Promise.reject(new Error('delete failed')) : Promise.resolve(),
+    metadataApiMocks.deleteConsumerGroup.mockImplementation(
+      (_name: string, _instanceId: string, clusterId: string) =>
+        clusterId === 'cluster-2' ? Promise.reject(new Error('delete failed')) : Promise.resolve(),
     );
 
     await expect(
-      batchDeleteConsumerGroups(['group-01', 'group-02'], 'instance-a', {
-        'group-01': 'cluster-1',
-        'group-02': 'cluster-2',
-      }),
-    ).resolves.toEqual({ deleted: ['group-01'], failed: ['group-02'] });
+      batchDeleteConsumerGroups(
+        [
+          { key: 'cluster-1/orders', name: 'orders', clusterId: 'cluster-1' },
+          { key: 'cluster-2/orders', name: 'orders', clusterId: 'cluster-2' },
+        ],
+        'instance-a',
+      ),
+    ).resolves.toEqual({ deleted: ['cluster-1/orders'], failed: ['cluster-2/orders'] });
 
     expect(metadataApiMocks.deleteConsumerGroup).toHaveBeenNthCalledWith(
       1,
-      'group-01',
+      'orders',
       'instance-a',
       'cluster-1',
     );
     expect(metadataApiMocks.deleteConsumerGroup).toHaveBeenNthCalledWith(
       2,
-      'group-02',
+      'orders',
       'instance-a',
       'cluster-2',
     );

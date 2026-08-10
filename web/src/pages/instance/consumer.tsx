@@ -137,6 +137,9 @@ const GROUP_EXPORT_COLUMNS: Array<{ header: string; value: (group: ConsumerGroup
   { header: 'Updated At', value: (group) => group.updatedAt },
 ];
 
+const consumerGroupRowKey = (group: Pick<ConsumerGroup, 'clusterId' | 'name'>): string =>
+  JSON.stringify([group.clusterId, group.name]);
+
 const escapeCsvCell = (value: unknown) => {
   const text = value == null ? '' : String(value);
   const formulaSafeText = /^[=+\-@\t\r\n]/.test(text) ? `'${text}` : text;
@@ -611,8 +614,13 @@ const ConsumerPageContent = ({
                     record.instanceId || selectedInstanceId || undefined,
                     record.clusterId,
                   );
-                  setGroups((prev) => prev.filter((group) => group.name !== record.name));
-                  setSelectedRowKeys((prev) => prev.filter((key) => key !== record.name));
+                  setGroups((prev) =>
+                    prev.filter(
+                      (group) => group.name !== record.name || group.clusterId !== record.clusterId,
+                    ),
+                  );
+                  const deletedKey = consumerGroupRowKey(record);
+                  setSelectedRowKeys((prev) => prev.filter((key) => key !== deletedKey));
                   message.success(`消费组 ${record.name} 已删除`);
                 },
               });
@@ -883,25 +891,28 @@ const ConsumerPageContent = ({
                   okButtonProps: { danger: true },
                   cancelText: '取消',
                   onOk: async () => {
-                    const names = selectedRowKeys.map(String);
-                    const selectedNames = new Set(names);
-                    const clusterIds = Object.fromEntries(
-                      groups
-                        .filter((group) => selectedNames.has(group.name))
-                        .map((group) => [group.name, group.clusterId]),
-                    );
+                    const selectedKeys = new Set(selectedRowKeys.map(String));
+                    const targets = groups
+                      .filter((group) => selectedKeys.has(consumerGroupRowKey(group)))
+                      .map((group) => ({
+                        key: consumerGroupRowKey(group),
+                        name: group.name,
+                        clusterId: group.clusterId,
+                      }));
                     const { deleted, failed } = await batchDeleteConsumerGroups(
-                      names,
+                      targets,
                       selectedInstanceId || undefined,
-                      clusterIds,
                     );
-                    setGroups((prev) => prev.filter((g) => !deleted.includes(g.name)));
+                    const deletedKeys = new Set(deleted);
+                    setGroups((prev) =>
+                      prev.filter((group) => !deletedKeys.has(consumerGroupRowKey(group))),
+                    );
                     if (failed.length > 0) {
                       message.warning(
                         `已删除 ${deleted.length} 个，失败 ${failed.length} 个：${failed.join(', ')}`,
                       );
                       setSelectedRowKeys((prev) =>
-                        prev.filter((key) => !deleted.includes(String(key))),
+                        prev.filter((key) => !deletedKeys.has(String(key))),
                       );
                     } else {
                       message.success(`已删除 ${deleted.length} 个 Group`);
@@ -961,7 +972,7 @@ const ConsumerPageContent = ({
           columns={columns}
           dataSource={filtered}
           loading={loading}
-          rowKey="name"
+          rowKey={consumerGroupRowKey}
           rowSelection={{
             selectedRowKeys,
             onChange: (keys) => setSelectedRowKeys(keys),

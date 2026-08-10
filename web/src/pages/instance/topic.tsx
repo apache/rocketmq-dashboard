@@ -89,6 +89,9 @@ const TYPE_OPTIONS = [
   { label: 'LiteTopic', value: 'LITE' },
 ];
 
+const topicRowKey = (topic: Pick<Topic, 'clusterId' | 'name'>): string =>
+  JSON.stringify([topic.clusterId, topic.name]);
+
 // ─── Perm label ───────────────────────────────────────────────────
 const PERM_LABEL: Record<string, string> = { RW: '读写', RO: '只读', WO: '只写' };
 
@@ -443,7 +446,11 @@ const TopicPage = () => {
               topic.instanceId || selectedInstanceId || undefined,
               topic.clusterId,
             );
-            setTopics((previous) => previous.filter((item) => item.name !== topic.name));
+            setTopics((previous) =>
+              previous.filter(
+                (item) => item.name !== topic.name || item.clusterId !== topic.clusterId,
+              ),
+            );
             message.success(`Topic「${topic.name}」已删除`);
           } catch {
             message.error('删除 Topic 失败，请稍后重试');
@@ -961,22 +968,22 @@ const TopicPage = () => {
                   cancelText: '取消',
                   onOk: async () => {
                     try {
-                      const names = selectedRowKeys.map(String);
-                      const selectedNames = new Set(names);
-                      const clusterIds = Object.fromEntries(
-                        topics
-                          .filter((topic) => selectedNames.has(topic.name))
-                          .map((topic) => [topic.name, topic.clusterId]),
-                      );
+                      const selectedKeys = new Set(selectedRowKeys.map(String));
+                      const targets = topics
+                        .filter((topic) => selectedKeys.has(topicRowKey(topic)))
+                        .map((topic) => ({
+                          key: topicRowKey(topic),
+                          name: topic.name,
+                          clusterId: topic.clusterId,
+                        }));
                       const { deleted, failed } = await batchDeleteTopics(
-                        names,
+                        targets,
                         selectedInstanceId || undefined,
-                        clusterIds,
                       );
                       if (deleted.length > 0) {
-                        const deletedNames = new Set(deleted);
+                        const deletedKeys = new Set(deleted);
                         setTopics((previous) =>
-                          previous.filter((topic) => !deletedNames.has(topic.name)),
+                          previous.filter((topic) => !deletedKeys.has(topicRowKey(topic))),
                         );
                       }
                       setSelectedRowKeys(failed);
@@ -1048,7 +1055,7 @@ const TopicPage = () => {
             columns={columns}
             dataSource={filteredTopics}
             loading={loading}
-            rowKey="name"
+            rowKey={topicRowKey}
             rowSelection={{
               selectedRowKeys,
               onChange: (keys) => setSelectedRowKeys(keys),

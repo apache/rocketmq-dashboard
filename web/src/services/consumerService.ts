@@ -134,7 +134,9 @@ export async function deleteConsumerGroup(
   clusterId?: string,
 ): Promise<void> {
   if (isMockMode()) {
-    const idx = consumerGroupsState.findIndex((group) => group.name === name);
+    const idx = consumerGroupsState.findIndex(
+      (group) => group.name === name && (!clusterId || group.clusterId === clusterId),
+    );
     if (idx >= 0) consumerGroupsState.splice(idx, 1);
     return;
   }
@@ -151,20 +153,25 @@ export interface BatchDeleteConsumerGroupsResult {
   failed: string[];
 }
 
+export interface ConsumerGroupDeleteTarget {
+  key: string;
+  name: string;
+  clusterId?: string;
+}
+
 // Batch delete: attempt every selected group and report partial failures so a single
 // failing group cannot silently abort the whole batch.
 export async function batchDeleteConsumerGroups(
-  names: string[],
+  targets: ConsumerGroupDeleteTarget[],
   instanceId?: string,
-  clusterIds: Record<string, string | undefined> = {},
 ): Promise<BatchDeleteConsumerGroupsResult> {
   const result: BatchDeleteConsumerGroupsResult = { deleted: [], failed: [] };
-  for (const name of names) {
+  for (const target of targets) {
     try {
-      await deleteConsumerGroup(name, instanceId, clusterIds[name]);
-      result.deleted.push(name);
+      await deleteConsumerGroup(target.name, instanceId, target.clusterId);
+      result.deleted.push(target.key);
     } catch {
-      result.failed.push(name);
+      result.failed.push(target.key);
     }
   }
   return result;
