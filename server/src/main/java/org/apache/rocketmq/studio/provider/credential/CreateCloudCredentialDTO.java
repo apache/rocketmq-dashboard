@@ -20,6 +20,8 @@ import jakarta.validation.constraints.NotBlank;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import lombok.Data;
 
+import java.util.Locale;
+
 @Data
 public class CreateCloudCredentialDTO {
 
@@ -52,7 +54,7 @@ public class CreateCloudCredentialDTO {
             return null;
         }
         try {
-            return InstanceVendor.valueOf(vendor.trim().toUpperCase());
+            return InstanceVendor.valueOf(vendor.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException ex) {
             return null;
         }
