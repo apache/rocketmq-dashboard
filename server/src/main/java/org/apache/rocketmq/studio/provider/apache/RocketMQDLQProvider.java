@@ -167,13 +167,13 @@ public class RocketMQDLQProvider implements DLQProvider {
         String detail = String.format("instanceId=%s, group=%s, dlqTopic=%s, targetTopic=%s, matched=%d, resent=%d, failed=%d",
                 instanceId, groupName, dlqTopic, StringUtils.hasText(targetTopic) ? targetTopic : "<original>",
                 deadLetters.size(), resent, failed);
-        recordAudit(groupName, detail, failed == 0 ? "SUCCESS" : "PARTIAL");
+        recordAudit(groupName, detail, classifyOutcome(deadLetters.size(), resent, failed));
         log.info("DLQ resend completed: {}", detail);
         return DLQResendResultVO.builder()
                 .matched(deadLetters.size())
                 .resent(resent)
                 .failed(failed)
-                .outcome(failed == 0 ? "SUCCESS" : "PARTIAL")
+                .outcome(classifyOutcome(deadLetters.size(), resent, failed))
                 .build();
     }
 
@@ -268,6 +268,17 @@ public class RocketMQDLQProvider implements DLQProvider {
             if (StringUtils.hasText(deadLetter.getKeys())) {
                 message.setKeys(deadLetter.getKeys());
             }
+            // Copy user properties from the original message, skipping system-reserved
+            // keys to avoid conflicts with broker-internal properties.
+            Map<String, String> userProperties = deadLetter.getUserProperties();
+            if (userProperties != null) {
+                for (Map.Entry<String, String> entry : userProperties.entrySet()) {
+                    String key = entry.getKey();
+                    if (!MessageConst.STRING_HASH_SET.contains(key)) {
+                        message.putUserProperty(key, entry.getValue());
+                    }
+                }
+            }
             message.putUserProperty(ORIGIN_MESSAGE_ID_PROPERTY, deadLetter.getMsgId());
             message.putUserProperty(ORIGIN_TOPIC_PROPERTY, deadLetter.getTopic());
             SendResult sendResult = producer.send(message);
@@ -322,6 +333,19 @@ public class RocketMQDLQProvider implements DLQProvider {
 
     static String nextResendProducerGroup() {
         return ShortLivedClientName.next("studio-dlq-resend");
+    }
+
+    private String classifyOutcome(int matched, int resent, int failed) {
+        if (matched == 0) {
+            return "NO_MESSAGES";
+        }
+        if (resent == 0 && failed > 0) {
+            return "FAILED";
+        }
+        if (failed > 0) {
+            return "PARTIAL";
+        }
+        return "SUCCESS";
     }
 
     private void recordAudit(String groupName, String detail, String result) {
