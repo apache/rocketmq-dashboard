@@ -23,6 +23,7 @@ import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.provider.alibaba.AliyunClientFactory;
+import org.apache.rocketmq.studio.provider.tencent.TencentClientFactory;
 import org.springframework.stereotype.Service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -39,6 +40,7 @@ public class CloudCredentialService {
     private final CloudCredentialRepository credentialRepository;
     private final InstanceRepository instanceRepository;
     private final AliyunClientFactory aliyunClientFactory;
+    private final TencentClientFactory tencentClientFactory;
     private final OperationAuditService operationAuditService;
 
     public List<CloudCredentialVO> listMasked() {
@@ -98,7 +100,7 @@ public class CloudCredentialService {
         }
         existing.setUpdatedAt(LocalDateTime.now());
         CloudCredentialVO saved = credentialRepository.save(existing);
-        invalidateAliyunClients(saved);
+        invalidateCloudClients(saved);
         recordAudit("UPDATE_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", saved.getId(), null,
                 credentialAuditDetail(saved));
         return maskAccessKey(saved);
@@ -115,7 +117,7 @@ public class CloudCredentialService {
             throw new BusinessException(400, "Cloud credential is referenced by existing instances");
         }
         credentialRepository.deleteById(id);
-        invalidateAliyunClients(existing);
+        invalidateCloudClients(existing);
         recordAudit("DELETE_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", id, null,
                 credentialAuditDetail(existing));
     }
@@ -145,9 +147,11 @@ public class CloudCredentialService {
         return "name=" + credential.getName() + ", vendor=" + credential.getVendor();
     }
 
-    private void invalidateAliyunClients(CloudCredentialVO credential) {
+    private void invalidateCloudClients(CloudCredentialVO credential) {
         if (credential.getVendor() == org.apache.rocketmq.studio.common.domain.enums.InstanceVendor.ALIYUN) {
             aliyunClientFactory.invalidateCredential(credential.getId());
+        } else if (credential.getVendor() == org.apache.rocketmq.studio.common.domain.enums.InstanceVendor.TENCENT) {
+            tencentClientFactory.invalidateCredential(credential.getId());
         }
     }
 

@@ -22,6 +22,7 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.provider.alibaba.AliyunClientFactory;
+import org.apache.rocketmq.studio.provider.tencent.TencentClientFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -51,6 +52,9 @@ class CloudCredentialServiceTest {
 
     @Mock
     private AliyunClientFactory aliyunClientFactory;
+
+    @Mock
+    private TencentClientFactory tencentClientFactory;
 
     @Mock
     private OperationAuditService operationAuditService;

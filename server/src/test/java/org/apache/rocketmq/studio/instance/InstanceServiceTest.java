@@ -792,12 +792,34 @@ class InstanceServiceTest {
     }
 
     @Test
-    void createInstanceShouldRejectTencentVendorTest() {
-        InstanceVO instance = InstanceVO.builder().vendor(InstanceVendor.TENCENT).build();
+    void createInstanceShouldResolveTencentEndpointFromCatalogTest() {
+        InstanceVO instance = InstanceVO.builder()
+                .vendor(InstanceVendor.TENCENT)
+                .credentialId("cred-tencent")
+                .cloudInstanceId("rmq-abc")
+                .regionId("ap-chengdu")
+                .build();
+        CloudCredentialVO credential = new CloudCredentialVO();
+        credential.setId("cred-tencent");
+        credential.setVendor(InstanceVendor.TENCENT);
+        when(cloudCredentialRepository.findById("cred-tencent")).thenReturn(Optional.of(credential));
+        CloudCatalogProvider catalog = org.mockito.Mockito.mock(CloudCatalogProvider.class);
+        CloudInstanceDetailVO detail = new CloudInstanceDetailVO();
+        detail.setInstanceId("rmq-abc");
+        detail.setInstanceName("chengdu-prod");
+        detail.setEndpoints(List.of(
+                new CloudInstanceDetailVO.CloudEndpoint("TCP_INTERNET", "public.tencent:8080"),
+                new CloudInstanceDetailVO.CloudEndpoint("TCP_VPC", "vpc.tencent:8080")));
+        when(providerRegistry.catalogFor(InstanceVendor.TENCENT)).thenReturn(catalog);
+        when(catalog.getCloudInstance("cred-tencent", "ap-chengdu", "rmq-abc")).thenReturn(detail);
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        assertThatThrownBy(() -> instanceService.createInstance(instance))
-                .isInstanceOf(BusinessException.class)
-                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(501));
+        InstanceVO created = instanceService.createInstance(instance);
+
+        assertThat(created.getName()).isEqualTo("chengdu-prod");
+        assertThat(created.getEndpoint()).isEqualTo("vpc.tencent:8080");
+        assertThat(created.getType()).isEqualTo(InstanceType.PROXY);
+        assertThat(created.getVendor()).isEqualTo(InstanceVendor.TENCENT);
     }
 
     @Test

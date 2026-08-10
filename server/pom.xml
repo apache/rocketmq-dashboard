@@ -104,11 +104,17 @@
             <artifactId>alibabacloud-rocketmq20220801</artifactId>
             <version>5.0.8</version>
         </dependency>
-        <!-- Tencent Cloud TDMQ OpenAPI, reserved for provider/tencent (not implemented yet) -->
+        <!-- Tencent Cloud RocketMQ 5.x OpenAPI (Trocket v20230308), used by provider/tencent -->
         <dependency>
             <groupId>com.tencentcloudapi</groupId>
-            <artifactId>tencentcloud-sdk-java-tdmq</artifactId>
-            <version>3.1.1500</version>
+            <artifactId>tencentcloud-sdk-java-trocket</artifactId>
+            <version>3.1.1292</version>
+        </dependency>
+        <!-- rocketmq-common also brings Kotlin-based okio-jvm 3.x; keep its runtime available. -->
+        <dependency>
+            <groupId>org.jetbrains.kotlin</groupId>
+            <artifactId>kotlin-stdlib</artifactId>
+            <version>1.9.25</version>
         </dependency>
     </dependencies>
 
