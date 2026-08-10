@@ -259,6 +259,19 @@ const MessagePage = () => {
     [],
   );
 
+  useEffect(() => {
+    queryGenerationRef.current += 1;
+    traceGenerationRef.current += 1;
+    setMessages([]);
+    setQueryLoading(false);
+    setQueryError(null);
+    setSelectedMsg(null);
+    setModalOpen(false);
+    setTraceData(null);
+    setTraceLoading(false);
+    setTraceError(null);
+  }, [selectedInstanceId]);
+
   /* ─── Handlers ─── */
   const handleReset = () => {
     queryGenerationRef.current += 1;
