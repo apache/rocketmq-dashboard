@@ -39,6 +39,7 @@ import org.apache.rocketmq.studio.ops.dashboard.ClusterOverviewVO;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardDataVO;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardProvider;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardStatsVO;
+import org.apache.rocketmq.studio.common.util.SystemGroupFilter;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
@@ -303,22 +304,10 @@ public class RocketMQDashboardProvider implements DashboardProvider {
     }
 
     private boolean isSystemTopic(String topic) {
-        for (String prefix : SYSTEM_TOPIC_PREFIXES) {
-            if (topic.startsWith(prefix) || topic.equals(prefix)) {
-                return true;
-            }
-        }
-        return false;
+        return SystemTopicFilter.isSystem(topic);
     }
 
     private boolean isSystemGroup(String group) {
-        return group.startsWith("CID_RMQ_SYS_")
-                || group.startsWith("rmq_sys_")
-                || group.equals("TOOLS_CONSUMER")
-                || group.equals("FILTERSRV_CONSUMER")
-                || group.equals("CID_ONSAPI_OWNER")
-                || group.equals("CID_ONSAPI_PERMISSION")
-                || group.equals("CID_ONSAPI_PULL")
-                || group.startsWith("SELF_TEST_");
+        return SystemGroupFilter.isSystem(group);
     }
 }
