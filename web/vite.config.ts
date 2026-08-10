@@ -6,6 +6,20 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
   return {
     plugins: [react()],
+    build: {
+      // Ant Design is shared by the application shell and most route components. Keep it
+      // cacheable as one vendor chunk rather than splitting its cyclic internals.
+      chunkSizeWarningLimit: 1400,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            react: ['react', 'react-dom', 'react-router-dom'],
+            antd: ['antd', '@ant-design/icons'],
+            markdown: ['react-markdown', 'remark-gfm'],
+          },
+        },
+      },
+    },
     server: {
       port: 5173,
       proxy: {
