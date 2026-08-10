@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.ops.alert;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -34,6 +35,7 @@ public class AlertService {
 
     private final AlertRepository alertRepository;
     private final AlertRuleAssetService alertRuleAssetService;
+    private final OperationAuditService operationAuditService;
 
 
     public List<AlertRuleVO> listRules() {
@@ -42,7 +44,9 @@ public class AlertService {
     }
 
     public String exportPrometheusRulesYaml() {
-        List<AlertRuleVO> rules = alertRepository.findAllRules();
+        List<AlertRuleVO> rules = alertRepository.findAllRules().stream()
+                .filter(AlertRuleVO::isEnabled)
+                .toList();
         List<PrometheusAlertRule> prometheusRules = rules.isEmpty()
                 ? defaultPrometheusRules()
                 : rules.stream().map(this::toPrometheusRule).toList();
@@ -83,7 +87,9 @@ public class AlertService {
         }
         log.info("Creating alert rule: {}", rule.getName());
         rule.setId(UUID.randomUUID().toString());
-        return alertRepository.saveRule(rule);
+        AlertRuleVO saved = alertRepository.saveRule(rule);
+        auditRule("CREATE_ALERT_RULE", saved, null);
+        return saved;
     }
 
 
@@ -97,6 +103,7 @@ public class AlertService {
         if (!alertRepository.replaceRule(rule)) {
             throw ruleNotFound(id);
         }
+        auditRule("UPDATE_ALERT_RULE", rule, null);
         return rule;
     }
 
@@ -109,7 +116,9 @@ public class AlertService {
                 .findFirst()
                 .orElseThrow(() -> new org.apache.rocketmq.studio.common.exception.BusinessException(404, "Alert rule not found: " + id));
         rule.setEnabled(enabled);
-        return alertRepository.saveRule(rule);
+        AlertRuleVO saved = alertRepository.saveRule(rule);
+        auditRule("TOGGLE_ALERT_RULE", saved, "enabled=" + enabled);
+        return saved;
     }
 
 
@@ -118,6 +127,7 @@ public class AlertService {
         if (!alertRepository.deleteRule(id)) {
             throw ruleNotFound(id);
         }
+        recordAudit("DELETE_ALERT_RULE", "ALERT_RULE", id, null, null);
     }
 
 
@@ -135,13 +145,19 @@ public class AlertService {
                 .findFirst()
                 .orElseThrow(() -> new org.apache.rocketmq.studio.common.exception.BusinessException(404, "System alert not found: " + id));
         alert.setAcknowledged(true);
-        return alertRepository.saveAlert(alert);
+        SystemAlertVO saved = alertRepository.saveAlert(alert);
+        recordAudit("ACKNOWLEDGE_SYSTEM_ALERT", "SYSTEM_ALERT", saved.getId(), null,
+                "acknowledged=true");
+        return saved;
     }
 
 
     public int clearAcknowledged() {
         log.info("Clearing acknowledged system alerts");
-        return alertRepository.deleteAcknowledgedAlerts();
+        int deleted = alertRepository.deleteAcknowledgedAlerts();
+        recordAudit("CLEAR_ACKNOWLEDGED_SYSTEM_ALERTS", "SYSTEM_ALERT", null, null,
+                "deleted=" + deleted);
+        return deleted;
     }
 
     private List<PrometheusAlertRule> defaultPrometheusRules() {
@@ -200,6 +216,12 @@ public class AlertService {
             selector.append(',');
         }
         selector.append(label).append("=\"").append(escapeDoubleQuotedValue(value.trim())).append('"');
+    }
+
+    private void auditRule(String operation, AlertRuleVO rule, String detail) {
+        String auditDetail = detail == null ? "name=" + rule.getName() : detail;
+        recordAudit(operation, "ALERT_RULE", rule.getId(), null,
+                auditDetail);
     }
 
     private String severity(AlertRuleVO rule) {
@@ -296,4 +318,15 @@ public class AlertService {
     private BusinessException ruleNotFound(String id) {
         return new BusinessException(404, "Alert rule not found: " + id);
     }
+
+    private void recordAudit(String operation, String resourceType, String resourceName,
+                             String clusterId, String detail) {
+        try {
+            operationAuditService.record(operation, resourceType, resourceName, clusterId, detail, "SUCCESS", null);
+        } catch (Exception auditFailure) {
+            log.warn("Failed to record audit operation={} resource={}: {}", operation, resourceName,
+                    auditFailure.getMessage());
+        }
+    }
+
 }

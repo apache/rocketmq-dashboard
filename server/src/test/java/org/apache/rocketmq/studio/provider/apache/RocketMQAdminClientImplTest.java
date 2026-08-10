@@ -19,6 +19,7 @@ import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.client.producer.SendResult;
+import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
@@ -338,6 +339,7 @@ class RocketMQAdminClientImplTest {
                      mockConstruction(DefaultMQProducer.class, (producer, context) -> {
                          doNothing().when(producer).start();
                          SendResult sendResult = new SendResult();
+                         sendResult.setSendStatus(SendStatus.SEND_OK);
                          sendResult.setMsgId("msg-1");
                          sendResult.setOffsetMsgId("offset-1");
                          when(producer.send(any(Message.class))).thenReturn(sendResult);
@@ -359,6 +361,7 @@ class RocketMQAdminClientImplTest {
                      mockConstruction(DefaultMQProducer.class, (producer, context) -> {
                          doNothing().when(producer).start();
                          SendResult sendResult = new SendResult();
+                         sendResult.setSendStatus(SendStatus.SEND_OK);
                          sendResult.setMsgId("msg-1");
                          sendResult.setOffsetMsgId("offset-1");
                          when(producer.send(any(Message.class))).thenReturn(sendResult);
@@ -373,6 +376,52 @@ class RocketMQAdminClientImplTest {
 
             DefaultMQProducer producer = mockedProducers.constructed().getFirst();
             verify(producer).setNamesrvAddr("10.0.0.2:9876");
+        }
+    }
+
+    @Test
+    void sendMessageShouldRejectNonSuccessfulSendStatus() throws Exception {
+        when(properties.getNamesrvAddr()).thenReturn("10.0.0.1:9876");
+        try (MockedConstruction<DefaultMQProducer> mockedProducers =
+                     mockConstruction(DefaultMQProducer.class, (producer, context) -> {
+                         doNothing().when(producer).start();
+                         SendResult sendResult = new SendResult();
+                         sendResult.setSendStatus(SendStatus.FLUSH_DISK_TIMEOUT);
+                         when(producer.send(any(Message.class))).thenReturn(sendResult);
+                         doNothing().when(producer).shutdown();
+                     })) {
+            SendMessageDTO request = new SendMessageDTO();
+            request.setTopic("TopicA");
+            request.setBody("hello");
+
+            assertThatThrownBy(() -> adminClient.sendMessage(request))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("FLUSH_DISK_TIMEOUT");
+
+            verify(auditService).record("SEND_MESSAGE", "TopicA",
+                    "Message send did not succeed: FLUSH_DISK_TIMEOUT", "FAILED");
+        }
+    }
+
+    @Test
+    void sendMessageShouldRejectNullSendResult() throws Exception {
+        when(properties.getNamesrvAddr()).thenReturn("10.0.0.1:9876");
+        try (MockedConstruction<DefaultMQProducer> mockedProducers =
+                     mockConstruction(DefaultMQProducer.class, (producer, context) -> {
+                         doNothing().when(producer).start();
+                         when(producer.send(any(Message.class))).thenReturn(null);
+                         doNothing().when(producer).shutdown();
+                     })) {
+            SendMessageDTO request = new SendMessageDTO();
+            request.setTopic("TopicA");
+            request.setBody("hello");
+
+            assertThatThrownBy(() -> adminClient.sendMessage(request))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("null");
+
+            verify(auditService).record("SEND_MESSAGE", "TopicA",
+                    "Message send did not succeed: null", "FAILED");
         }
     }
 }

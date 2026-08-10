@@ -22,6 +22,7 @@ import org.springframework.util.StringUtils;
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialRepository;
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialVO;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -45,6 +46,7 @@ public class InstanceService {
     private final CloudCredentialRepository cloudCredentialRepository;
     private final InstanceProviderRegistry providerRegistry;
     private final MqAdminExtFactory adminFactory;
+    private final OperationAuditService operationAuditService;
 
     public List<InstanceVO> listInstances(InstanceType type, String search) {
         log.debug("Listing instances, type={}, search={}", type, search);
@@ -96,14 +98,15 @@ public class InstanceService {
         instance.setId(UUID.randomUUID().toString());
         instance.setCreatedAt(LocalDateTime.now());
         instance.setUpdatedAt(LocalDateTime.now());
-        return instanceRepository.save(instance);
+        InstanceVO saved = instanceRepository.save(instance);
+        recordAudit("CREATE_INSTANCE", "INSTANCE", saved.getId(), null,
+                instanceAuditDetail(saved));
+        return saved;
     }
 
     private void createApacheInstance(InstanceVO instance) {
         instance.setVendor(InstanceVendor.APACHE);
-        if (instance.getName() == null || instance.getName().isBlank()) {
-            throw new BusinessException(400, "InstanceVO name is required");
-        }
+        instance.setName(requireInstanceName(instance.getName()));
         instance.setEndpoint(requireValidEndpoint(instance.getEndpoint()));
         if (instance.getType() == null) {
             throw new BusinessException(400, "InstanceVO type is required");
@@ -131,10 +134,11 @@ public class InstanceService {
         }
         CloudInstanceDetailVO detail = providerRegistry.catalogFor(InstanceVendor.ALIYUN)
                 .getCloudInstance(instance.getCredentialId(), instance.getRegionId(), instance.getCloudInstanceId());
-        if (instance.getName() == null || instance.getName().isBlank()) {
+        if (!StringUtils.hasText(instance.getName())) {
             instance.setName(detail.getInstanceName() != null && !detail.getInstanceName().isBlank()
                     ? detail.getInstanceName() : detail.getInstanceId());
         }
+        instance.setName(requireInstanceName(instance.getName()));
         instance.setType(InstanceType.PROXY);
         instance.setEndpoint(resolveEndpoint(detail));
     }
@@ -176,6 +180,13 @@ public class InstanceService {
         return normalized;
     }
 
+    private String requireInstanceName(String name) {
+        if (!StringUtils.hasText(name)) {
+            throw new BusinessException(400, "InstanceVO name is required");
+        }
+        return name.trim();
+    }
+
     public InstanceVO updateInstance(InstanceVO instance) {
         requireInstance(instance);
         log.info("Updating instance: {}", instance.getId());
@@ -194,7 +205,7 @@ public class InstanceService {
         InstanceVO updated = copyOf(existing);
         boolean cloudInstance = existing.getVendor() != null && existing.getVendor() != InstanceVendor.APACHE;
         if (instance.getName() != null) {
-            updated.setName(instance.getName());
+            updated.setName(requireInstanceName(instance.getName()));
         }
         if (!cloudInstance) {
             if (instance.getType() != null) {
@@ -211,6 +222,8 @@ public class InstanceService {
 
         InstanceVO saved = instanceRepository.save(updated);
         releaseApacheEndpointIfUnused(existing, saved.getEndpoint());
+        recordAudit("UPDATE_INSTANCE", "INSTANCE", saved.getId(), null,
+                instanceAuditDetail(saved));
         return saved;
     }
 
@@ -235,12 +248,19 @@ public class InstanceService {
         }
         instanceRepository.deleteById(id);
         releaseApacheEndpointIfUnused(existing, null);
+        recordAudit("DELETE_INSTANCE", "INSTANCE", id, null,
+                instanceAuditDetail(existing));
     }
 
     private void requireInstance(InstanceVO instance) {
         if (instance == null) {
             throw new BusinessException(400, "Instance request is required");
         }
+    }
+
+    private String instanceAuditDetail(InstanceVO instance) {
+        InstanceVendor vendor = instance.getVendor() == null ? InstanceVendor.APACHE : instance.getVendor();
+        return "name=" + instance.getName() + ", vendor=" + vendor + ", type=" + instance.getType();
     }
 
     private InstanceVO copyOf(InstanceVO instance) {
@@ -290,4 +310,15 @@ public class InstanceService {
         String normalizedEndpoint = MqAdminExtFactory.normalizeNamesrvAddr(endpoint);
         return normalizedEndpoint.isEmpty() ? null : normalizedEndpoint;
     }
+
+    private void recordAudit(String operation, String resourceType, String resourceName,
+                             String clusterId, String detail) {
+        try {
+            operationAuditService.record(operation, resourceType, resourceName, clusterId, detail, "SUCCESS", null);
+        } catch (Exception auditFailure) {
+            log.warn("Failed to record audit operation={} resource={}: {}", operation, resourceName,
+                    auditFailure.getMessage());
+        }
+    }
+
 }

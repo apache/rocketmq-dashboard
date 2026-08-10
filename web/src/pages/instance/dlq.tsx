@@ -125,12 +125,22 @@ const DLQPage = () => {
   useEffect(() => {
     let cancelled = false;
 
+    // The retry dialog owns a group name that is meaningful only for the
+    // currently selected instance. Clear all instance-scoped state before
+    // starting the next request so an old group cannot be retried on a new
+    // instance while that request is in flight.
+    setGroups([]);
+    setSelectedGroupNames([]);
+    setDetailGroup(null);
+    setRetryModalOpen(false);
+    setRetryGroup(null);
+    setRetryTargetTopic('');
+    setRetryError(null);
+    setLoadError(null);
+
     if (!selectedInstanceId) {
       void Promise.resolve().then(() => {
         if (cancelled) return;
-        setGroups([]);
-        setSelectedGroupNames([]);
-        setLoadError(null);
         setLoading(false);
       });
       return () => {
@@ -138,6 +148,7 @@ const DLQPage = () => {
       };
     }
 
+    setLoading(true);
     void listDLQGroups(selectedInstanceId)
       .then((nextGroups) => {
         if (!cancelled) {

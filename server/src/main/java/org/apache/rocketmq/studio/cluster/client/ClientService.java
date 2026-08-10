@@ -18,7 +18,9 @@ package org.apache.rocketmq.studio.cluster.client;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 
@@ -31,7 +33,14 @@ public class ClientService {
 
     public List<ClientConnectionVO> listConnections(String instanceId, String clusterId, String type) {
         log.info("Listing client connections, instanceId={}, clusterId={}, type={}", instanceId, clusterId, type);
-        return clientProvider.findConnections(normalizeFilter(instanceId), normalizeFilter(clusterId), normalizeFilter(type));
+        return clientProvider.findConnections(requireInstanceId(instanceId), normalizeFilter(clusterId), normalizeFilter(type));
+    }
+
+    private String requireInstanceId(String instanceId) {
+        if (!StringUtils.hasText(instanceId)) {
+            throw new BusinessException(400, "instanceId is required");
+        }
+        return instanceId.trim();
     }
 
     private String normalizeFilter(String value) {

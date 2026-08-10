@@ -14,13 +14,9 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.junit.jupiter.api.Test;
 
-import java.util.Collections;
-
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
 
 class MessageServiceTest {
 
@@ -38,16 +34,29 @@ class MessageServiceTest {
     }
 
     @Test
-    void keepsMessageIdQueryWithoutTopicValid() {
+    void rejectsMessageIdQueryWithoutTopicBeforeCallingProvider() {
         MessageProvider provider = mock(MessageProvider.class);
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
-        when(provider.queryMessages(null, null, "msg-001", null, null, null, null))
-                .thenReturn(Collections.emptyList());
         MessageService service = new MessageService(provider, registry);
 
-        service.queryMessages(null, null, "msg-001", null, null, null, null);
+        assertThatThrownBy(() -> service.queryMessages(null, null, "msg-001", null, null, null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("topic is required when msgId is specified");
 
-        verify(provider).queryMessages(null, null, "msg-001", null, null, null, null);
+        verifyNoInteractions(provider, registry);
+    }
+
+    @Test
+    void rejectsBlankMessageTraceIdBeforeCallingProvider() {
+        MessageProvider provider = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(provider, registry);
+
+        assertThatThrownBy(() -> service.getMessageTrace("instance-a", "  "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("msgId is required");
+
+        verifyNoInteractions(provider, registry);
     }
 
     @Test

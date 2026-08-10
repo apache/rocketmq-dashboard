@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.cluster.k8s;
 import org.apache.rocketmq.studio.common.domain.enums.CertStatus;
 import org.apache.rocketmq.studio.common.domain.enums.CertType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -38,15 +39,17 @@ public class K8sCertService {
     private static final int EXPIRING_THRESHOLD_DAYS = 30;
 
     private final K8sCertRepository k8sCertRepository;
+    private final OperationAuditService operationAuditService;
     private final Clock clock;
 
     @Autowired
-    public K8sCertService(K8sCertRepository k8sCertRepository) {
-        this(k8sCertRepository, Clock.systemDefaultZone());
+    public K8sCertService(K8sCertRepository k8sCertRepository, OperationAuditService operationAuditService) {
+        this(k8sCertRepository, operationAuditService, Clock.systemDefaultZone());
     }
 
-    K8sCertService(K8sCertRepository k8sCertRepository, Clock clock) {
+    K8sCertService(K8sCertRepository k8sCertRepository, OperationAuditService operationAuditService, Clock clock) {
         this.k8sCertRepository = k8sCertRepository;
+        this.operationAuditService = operationAuditService;
         this.clock = clock;
     }
 
@@ -82,6 +85,7 @@ public class K8sCertService {
         cert.setUpdatedAt(now);
 
         K8sCertVO saved = k8sCertRepository.save(cert);
+        auditCertificate("CREATE_K8S_CERTIFICATE", saved);
         log.info("K8s certificate created: {} (id={})", saved.getName(), saved.getId());
         return saved;
     }
@@ -115,6 +119,7 @@ public class K8sCertService {
         updated.setUpdatedAt(now);
 
         K8sCertVO saved = k8sCertRepository.save(refreshExpirationState(updated, now));
+        auditCertificate("UPDATE_K8S_CERTIFICATE", saved);
         log.info("K8s certificate updated: {} (id={})", saved.getName(), saved.getId());
         return saved;
     }
@@ -136,6 +141,7 @@ public class K8sCertService {
         renewed.setUpdatedAt(now);
 
         K8sCertVO saved = k8sCertRepository.save(renewed);
+        auditCertificate("RENEW_K8S_CERTIFICATE", saved);
         log.info("K8s certificate renewed: {} (id={}), new expiry: {}", saved.getName(), saved.getId(), notAfter);
         return saved;
     }
@@ -146,6 +152,8 @@ public class K8sCertService {
         k8sCertRepository.findById(command.getId())
                 .orElseThrow(() -> new BusinessException(404, "Certificate not found: " + command.getId()));
         k8sCertRepository.deleteById(command.getId());
+        recordAudit("DELETE_K8S_CERTIFICATE", "K8S_CERTIFICATE", command.getId(), null,
+                null);
         log.info("K8s certificate deleted: {}", command.getId());
     }
 
@@ -192,4 +200,21 @@ public class K8sCertService {
         copy.setUpdatedAt(cert.getUpdatedAt());
         return copy;
     }
+
+    private void auditCertificate(String operation, K8sCertVO certificate) {
+        recordAudit(operation, "K8S_CERTIFICATE", certificate.getId(), null,
+                "name=" + certificate.getName() + ", namespace=" + certificate.getNamespace()
+                        + ", cluster=" + certificate.getCluster());
+    }
+
+    private void recordAudit(String operation, String resourceType, String resourceName,
+                             String clusterId, String detail) {
+        try {
+            operationAuditService.record(operation, resourceType, resourceName, clusterId, detail, "SUCCESS", null);
+        } catch (Exception auditFailure) {
+            log.warn("Failed to record audit operation={} resource={}: {}", operation, resourceName,
+                    auditFailure.getMessage());
+        }
+    }
+
 }

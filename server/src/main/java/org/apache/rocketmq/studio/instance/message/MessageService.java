@@ -45,6 +45,9 @@ public class MessageService {
     }
 
     public TraceRecordVO getMessageTrace(String instanceId, String msgId) {
+        if (!StringUtils.hasText(msgId)) {
+            throw new BusinessException(400, "msgId is required");
+        }
         log.info("Getting message trace: msgId={}", msgId);
         return providerRegistry.byInstanceId(instanceId)
                 .map(provider -> provider.getMessageTrace(instanceId, msgId))
@@ -57,6 +60,9 @@ public class MessageService {
         boolean hasKey = StringUtils.hasText(key);
         if (hasKey && !hasTopic) {
             throw new BusinessException(400, "topic is required when key is specified");
+        }
+        if (hasMessageId && !hasTopic) {
+            throw new BusinessException(400, "topic is required when msgId is specified");
         }
         if (!hasTopic && !hasMessageId) {
             throw new BusinessException(400, "topic or msgId is required");

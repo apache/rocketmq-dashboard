@@ -28,6 +28,7 @@ import {
   Space,
   Typography,
   Card,
+  Alert,
   message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -355,6 +356,14 @@ const K8sCertsPage = () => {
             添加证书
           </Button>
         }
+      />
+      <Alert
+        data-testid="k8s-cert-local-metadata-notice"
+        type="warning"
+        showIcon
+        message="当前证书记录仅保存为 Studio 本地元数据"
+        description="创建、续期和删除操作尚不会应用到 Kubernetes 集群或 cert-manager。请在集群侧管理实际证书，直到 Kubernetes Provider 接入完成。"
+        style={{ marginBottom: 16 }}
       />
       <Flex justify="space-between" style={{ marginBottom: 16 }}>
         <Space>

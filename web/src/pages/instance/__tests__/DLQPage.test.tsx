@@ -43,6 +43,17 @@ vi.mock('../../../services/instanceService', () => ({
       createdAt: '',
       updatedAt: '',
     },
+    {
+      id: 'instance-2',
+      name: 'Instance 2',
+      endpoint: 'namesrv-2:9876',
+      type: 'DIRECT',
+      remark: '',
+      topicCount: 0,
+      consumerGroupCount: 0,
+      createdAt: '',
+      updatedAt: '',
+    },
   ]),
 }));
 
@@ -252,5 +263,40 @@ describe('DLQ page', () => {
     await user.click(screen.getByRole('button', { name: '确认重投' }));
 
     expect(await screen.findByText('DLQ provider is not configured')).toBeInTheDocument();
+  });
+
+  it('clears retry state before loading groups for a newly selected instance', async () => {
+    let resolveSecondInstance!: (groups: DLQGroup[]) => void;
+    vi.mocked(messageService.listDLQGroups)
+      .mockResolvedValueOnce([dlqGroup])
+      .mockImplementationOnce(
+        () =>
+          new Promise<DLQGroup[]>((resolve) => {
+            resolveSecondInstance = resolve;
+          }),
+      );
+    const user = userEvent.setup();
+    renderWithProviders(<DLQPage />);
+
+    const orderRow = (await screen.findByText('cg-order')).closest('tr');
+    if (!orderRow) throw new Error('DLQ group row not found');
+
+    await user.click(within(orderRow).getByRole('button', { name: '重投消息' }));
+    expect(await screen.findByText('重投死信消息')).toBeInTheDocument();
+
+    await user.click(screen.getAllByRole('combobox')[0]);
+    await user.click(
+      await screen.findByText('Instance 2', { selector: '.ant-select-item-option-content' }),
+    );
+
+    await waitFor(() => {
+      expect(messageService.listDLQGroups).toHaveBeenLastCalledWith('instance-2');
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole('row', { name: /cg-order/ })).not.toBeInTheDocument();
+    });
+
+    resolveSecondInstance([secondDlqGroup]);
+    expect(await screen.findByText('-cg-"payment"')).toBeInTheDocument();
   });
 });

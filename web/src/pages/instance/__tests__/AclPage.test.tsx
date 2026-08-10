@@ -121,6 +121,14 @@ describe('ACL page', () => {
     expect(screen.getByText('cluster-a')).toBeInTheDocument();
   });
 
+  it('explains that ACL records are Studio-local metadata', async () => {
+    renderWithProviders(<AclPage />);
+
+    expect(await screen.findByTestId('acl-local-metadata-notice')).toHaveTextContent(
+      '当前 ACL 规则和用户仅保存为 Studio 本地元数据',
+    );
+  });
+
   it('renders backend users on the user tab', async () => {
     const user = userEvent.setup();
     renderWithProviders(<AclPage />);

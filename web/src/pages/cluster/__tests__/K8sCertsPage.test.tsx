@@ -101,6 +101,14 @@ describe('K8sCertsPage', () => {
     expect(screen.getByText('-')).toBeInTheDocument();
   });
 
+  it('explains that certificate records are Studio-local metadata', async () => {
+    renderPage();
+
+    expect(await screen.findByTestId('k8s-cert-local-metadata-notice')).toHaveTextContent(
+      '当前证书记录仅保存为 Studio 本地元数据',
+    );
+  });
+
   it.each([
     ['platform', 'rocketmq-staging-tls', 'rocketmq-prod-tls'],
     ['broker.prod.example.com', 'rocketmq-prod-tls', 'rocketmq-staging-tls'],
