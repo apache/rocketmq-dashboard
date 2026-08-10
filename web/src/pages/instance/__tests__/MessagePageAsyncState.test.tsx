@@ -94,18 +94,19 @@ const createTrace = (title: string): TraceRecord => ({
   consumerStatus: [],
 });
 
-const renderPage = () =>
-  render(
-    <ConfigProvider theme={{ token: { motion: false } }}>
-      <App>
-        <LangProvider>
-          <MemoryRouter>
-            <MessagePage />
-          </MemoryRouter>
-        </LangProvider>
-      </App>
-    </ConfigProvider>,
-  );
+const MessagePageWithProviders = () => (
+  <ConfigProvider theme={{ token: { motion: false } }}>
+    <App>
+      <LangProvider>
+        <MemoryRouter>
+          <MessagePage />
+        </MemoryRouter>
+      </LangProvider>
+    </App>
+  </ConfigProvider>
+);
+
+const renderPage = () => render(<MessagePageWithProviders />);
 
 describe('MessagePage async request ownership', () => {
   beforeEach(() => {
@@ -138,6 +139,29 @@ describe('MessagePage async request ownership', () => {
     });
 
     expect(screen.queryByText('late-after-reset')).not.toBeInTheDocument();
+  });
+
+  it('clears query results and message details when the selected instance changes', async () => {
+    serviceMocks.queryMessages.mockResolvedValue([createMessage('message-from-instance-a')]);
+    const user = userEvent.setup();
+    const page = renderPage();
+
+    await user.click(screen.getByRole('button', { name: /^search查询$/ }));
+    const row = await screen.findByRole('row', { name: /message-from-instance-a/ });
+    await user.click(within(row).getByRole('button', { name: /详情/ }));
+    expect(await screen.findByRole('dialog', { name: '消息详情' })).toBeInTheDocument();
+
+    instanceFilterMocks.useInstanceFilter.mockReturnValue({
+      selectedInstanceId: 'instance-b',
+      selectInstance: vi.fn(),
+      instanceOptions: [{ value: 'instance-b', label: 'Instance B' }],
+    });
+    page.rerender(<MessagePageWithProviders />);
+
+    await waitFor(() => {
+      expect(screen.queryByText('message-from-instance-a')).not.toBeInTheDocument();
+      expect(screen.queryByRole('dialog', { name: '消息详情' })).not.toBeInTheDocument();
+    });
   });
   it('surfaces unavailable message provider errors from query requests', async () => {
     serviceMocks.queryMessages.mockRejectedValue(
