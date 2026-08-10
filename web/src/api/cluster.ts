@@ -202,9 +202,9 @@ export async function updateNameServer(data: {
   await client.post('/nameservers/update', data);
 }
 
-export async function getNameServerConfigDiff(clusterId: string) {
+export async function getNameServerConfigDiff(clusterId: string, instanceId?: string) {
   const res = await client.get<{ data: NameServerConfigDiffResult }>('/nameservers/config-diff', {
-    params: { clusterId },
+    params: { clusterId, ...(instanceId ? { instanceId } : {}) },
   });
   return res.data.data;
 }

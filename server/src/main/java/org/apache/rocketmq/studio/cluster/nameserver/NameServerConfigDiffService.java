@@ -73,7 +73,16 @@ public class NameServerConfigDiffService {
 
     public NameServerConfigDiffVO compare(String clusterId) {
         String normalizedClusterId = requireClusterId(clusterId);
-        ClusterVO cluster = clusterService.getCluster(normalizedClusterId);
+        return compare(normalizedClusterId, clusterService.getCluster(normalizedClusterId));
+    }
+
+    public NameServerConfigDiffVO compare(String clusterId, String instanceId) {
+        String normalizedClusterId = requireClusterId(clusterId);
+        return compare(normalizedClusterId,
+                clusterService.getCluster(normalizedClusterId, normalizeInstanceId(instanceId)));
+    }
+
+    private NameServerConfigDiffVO compare(String normalizedClusterId, ClusterVO cluster) {
         List<String> addresses = collectNameServerAddresses(cluster);
         if (addresses.isEmpty()) {
             throw new BusinessException(409,
@@ -201,5 +210,9 @@ public class NameServerConfigDiffService {
             throw new BusinessException(400, "cluster is required");
         }
         return clusterId.trim();
+    }
+
+    private String normalizeInstanceId(String instanceId) {
+        return instanceId == null || instanceId.isBlank() ? null : instanceId.trim();
     }
 }

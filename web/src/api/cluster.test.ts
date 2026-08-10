@@ -195,12 +195,14 @@ describe('K8s certificate API', () => {
         },
       ],
     };
-    mock.onGet('/nameservers/config-diff', { params: { clusterId: 'cluster-1' } }).reply(200, {
+    mock.onGet('/nameservers/config-diff', {
+      params: { clusterId: 'cluster-1', instanceId: 'instance-1' },
+    }).reply(200, {
       code: 200,
       data: result,
     });
 
-    await expect(getNameServerConfigDiff('cluster-1')).resolves.toEqual(result);
+    await expect(getNameServerConfigDiff('cluster-1', 'instance-1')).resolves.toEqual(result);
   });
 
   it('sends the proxy restart target', async () => {

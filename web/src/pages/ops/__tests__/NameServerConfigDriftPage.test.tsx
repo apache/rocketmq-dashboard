@@ -21,13 +21,19 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { type ClusterInfo, type NameServerConfigDiffResult } from '../../../api/cluster';
+import type { Instance } from '../../../api/instance';
 import { LangProvider } from '../../../i18n/LangContext';
 import { getNameServerConfigDiff, listClusters } from '../../../services/clusterService';
+import { listInstances } from '../../../services/instanceService';
 import NameServerConfigDriftPage from '../nameServerConfigDrift';
 
 vi.mock('../../../services/clusterService', () => ({
   getNameServerConfigDiff: vi.fn(),
   listClusters: vi.fn(),
+}));
+
+vi.mock('../../../services/instanceService', () => ({
+  listInstances: vi.fn(),
 }));
 
 const createObjectURL = vi.fn(() => 'blob:nameserver-config-drift');
@@ -57,6 +63,12 @@ const cluster = {
   id: 'cluster-a',
   name: 'Production',
 } as ClusterInfo;
+
+const instance = {
+  id: 'instance-a',
+  name: 'Production instance',
+  vendor: 'APACHE',
+} as Instance;
 
 const driftResult: NameServerConfigDiffResult = {
   cluster: 'cluster-a',
@@ -90,6 +102,7 @@ const renderWithProviders = (ui: ReactElement) =>
 describe('NameServerConfigDriftPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(listInstances).mockResolvedValue([instance]);
     vi.mocked(listClusters).mockResolvedValue([cluster]);
     vi.mocked(getNameServerConfigDiff).mockResolvedValue(driftResult);
   });
@@ -98,7 +111,8 @@ describe('NameServerConfigDriftPage', () => {
     renderWithProviders(<NameServerConfigDriftPage />);
 
     await waitFor(() => {
-      expect(getNameServerConfigDiff).toHaveBeenCalledWith('cluster-a');
+      expect(listClusters).toHaveBeenCalledWith('instance-a');
+      expect(getNameServerConfigDiff).toHaveBeenCalledWith('cluster-a', 'instance-a');
     });
     expect(await screen.findByText('检测到配置漂移')).toBeInTheDocument();
     expect(screen.getByText('listenPort')).toBeInTheDocument();
