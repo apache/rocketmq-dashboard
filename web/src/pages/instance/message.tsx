@@ -289,6 +289,10 @@ const MessagePage = () => {
   };
 
   const executeQuery = async (mode: QueryMode, params: MessageQuery) => {
+    if (!selectedInstanceId) {
+      setQueryError('请先选择实例后再查询消息');
+      return;
+    }
     const requestGeneration = queryGenerationRef.current + 1;
     queryGenerationRef.current = requestGeneration;
     setQueryLoading(true);
@@ -777,6 +781,8 @@ const MessagePage = () => {
             <Button
               type="primary"
               icon={<SearchOutlined />}
+              disabled={!selectedInstanceId}
+              title={selectedInstanceId ? undefined : '请先选择实例'}
               onClick={() => {
                 void handleQuery();
               }}
@@ -786,9 +792,12 @@ const MessagePage = () => {
             <Dropdown
               menu={{ items: recentQueryMenuItems, onClick: handleRecentQueryMenuClick }}
               trigger={['click']}
-              disabled={recentQueries.length === 0}
+              disabled={recentQueries.length === 0 || !selectedInstanceId}
             >
-              <Button icon={<HistoryOutlined />} disabled={recentQueries.length === 0}>
+              <Button
+                icon={<HistoryOutlined />}
+                disabled={recentQueries.length === 0 || !selectedInstanceId}
+              >
                 最近查询
               </Button>
             </Dropdown>

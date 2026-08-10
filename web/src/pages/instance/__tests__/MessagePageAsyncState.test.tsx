@@ -28,8 +28,12 @@ const serviceMocks = vi.hoisted(() => ({
   getMessageTrace: vi.fn(),
   queryMessages: vi.fn(),
 }));
+const instanceFilterMocks = vi.hoisted(() => ({
+  useInstanceFilter: vi.fn(),
+}));
 
 vi.mock('../../../services/messageService', () => serviceMocks);
+vi.mock('../../../hooks/useInstanceFilter', () => instanceFilterMocks);
 
 vi.mock('../../../services/instanceService', () => ({
   listInstances: vi.fn().mockResolvedValue([]),
@@ -107,6 +111,11 @@ describe('MessagePage async request ownership', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     serviceMocks.getMessageTrace.mockResolvedValue(null);
+    instanceFilterMocks.useInstanceFilter.mockReturnValue({
+      selectedInstanceId: 'instance-a',
+      selectInstance: vi.fn(),
+      instanceOptions: [{ value: 'instance-a', label: 'Instance A' }],
+    });
     vi.spyOn(message, 'success').mockImplementation(vi.fn());
   });
 
