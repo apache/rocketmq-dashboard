@@ -264,6 +264,9 @@ public class AlertService {
     }
 
     private String formatThreshold(double threshold) {
+        if (!Double.isFinite(threshold)) {
+            return "0";
+        }
         if (threshold == Math.rint(threshold)) {
             return Long.toString((long) threshold);
         }
