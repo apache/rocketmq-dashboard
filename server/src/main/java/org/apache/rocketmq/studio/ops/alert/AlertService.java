@@ -25,6 +25,7 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -227,7 +228,7 @@ public class AlertService {
     private String severity(AlertRuleVO rule) {
         String severity = rule.getSeverity();
         if (hasText(severity)) {
-            String normalized = severity.trim().toLowerCase();
+            String normalized = severity.trim().toLowerCase(Locale.ROOT);
             if ("critical".equals(normalized) || "warning".equals(normalized) || "info".equals(normalized)) {
                 return normalized;
             }
