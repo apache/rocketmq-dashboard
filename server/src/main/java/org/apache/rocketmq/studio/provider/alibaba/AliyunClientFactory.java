@@ -96,6 +96,7 @@ public class AliyunClientFactory {
             throw new BusinessException(504,
                     "Aliyun OpenAPI request timed out after " + callTimeoutSeconds + " seconds");
         } catch (InterruptedException ex) {
+            future.cancel(true);
             Thread.currentThread().interrupt();
             throw new BusinessException(502, "Aliyun OpenAPI request was interrupted");
         } catch (ExecutionException ex) {
