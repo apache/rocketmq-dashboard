@@ -31,6 +31,7 @@ import {
   Checkbox,
   Flex,
   message,
+  Popconfirm,
   theme,
 } from 'antd';
 import type { ColumnsType, TableRowSelection } from 'antd/es/table/interface';
@@ -274,17 +275,23 @@ const AlertsPage = () => {
           >
             {t('common.edit')}
           </Button>
-          <Button
-            size="small"
-            icon={<Trash size={14} />}
-            danger
-            loading={actionId === `delete-${record.id}`}
-            disabled={isActionRunning}
-            style={{ borderColor: '#ff4d4f', color: '#ff4d4f' }}
-            onClick={() => void handleDelete(record)}
+          <Popconfirm
+            title={t('common.areYouSureToDelete')}
+            onConfirm={() => void handleDelete(record)}
+            okText={t('common.confirm')}
+            cancelText={t('common.cancel')}
           >
-            {t('common.delete')}
-          </Button>
+            <Button
+              size="small"
+              icon={<Trash size={14} />}
+              danger
+              loading={actionId === `delete-${record.id}`}
+              disabled={isActionRunning}
+              style={{ borderColor: '#ff4d4f', color: '#ff4d4f' }}
+            >
+              {t('common.delete')}
+            </Button>
+          </Popconfirm>
         </Flex>
       ),
     },

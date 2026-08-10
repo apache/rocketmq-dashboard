@@ -89,6 +89,7 @@ const AuditPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
   const [searchText, setSearchText] = useState('');
+  const [debouncedSearchText, setDebouncedSearchText] = useState('');
   const [selectedType, setSelectedType] = useState<string | undefined>(undefined);
   const [selectedResourceType, setSelectedResourceType] = useState<string | undefined>(undefined);
   const [selectedClusterId, setSelectedClusterId] = useState<string | undefined>(undefined);
@@ -115,6 +116,13 @@ const AuditPage: React.FC = () => {
     };
   }, [refreshKey]);
 
+  // Debounce free-text search so the record list is not re-fetched on every
+  // keystroke; typing pauses for 300ms before the query hits the server.
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearchText(searchText), 300);
+    return () => window.clearTimeout(timer);
+  }, [searchText]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -122,7 +130,7 @@ const AuditPage: React.FC = () => {
       page,
       pageSize,
       ...buildAuditFilter(
-        searchText,
+        debouncedSearchText,
         selectedType,
         selectedResourceType,
         selectedClusterId,
@@ -148,7 +156,7 @@ const AuditPage: React.FC = () => {
   }, [
     page,
     pageSize,
-    searchText,
+    debouncedSearchText,
     selectedType,
     selectedResourceType,
     selectedClusterId,
