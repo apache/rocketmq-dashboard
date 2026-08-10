@@ -89,6 +89,7 @@ class ClusterServiceTest {
                 .version("5.1.0")
                 .brokers(List.of(BrokerVO.builder()
                         .name("broker-0")
+                        .addr("10.0.0.1:10911")
                         .build()))
                 .proxies(List.of(ProxyVO.builder()
                         .addr("10.0.0.10:8081")
@@ -229,6 +230,32 @@ class ClusterServiceTest {
 
         assertThat(result.getStatus()).isEqualTo(ClusterConfigUpdateResultVO.Status.SUCCESS);
         verify(clusterRepository).updateConfig(eq("cluster-1"), any(ClusterConfigVO.class));
+    }
+
+    @Test
+    void updateConfigShouldFailWhenNoBrokerAddressIsAvailable() {
+        sampleCluster.setBrokers(List.of());
+        when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
+
+        ClusterConfigUpdateResultVO result = clusterService.updateClusterConfig(UpdateConfigDTO.builder()
+                .id("cluster-1")
+                .flushDiskType("SYNC_FLUSH")
+                .build());
+
+        assertThat(result.getStatus()).isEqualTo(ClusterConfigUpdateResultVO.Status.FAILED);
+        assertThat(result.getSuccessfulBrokers()).isEmpty();
+        assertThat(result.getFailedBrokers()).singleElement().satisfies(failure -> {
+            assertThat(failure.getAddress()).isEqualTo("N/A");
+            assertThat(failure.getMessage()).contains("No broker address");
+        });
+        verify(clusterRepository, never()).updateConfig(eq("cluster-1"), any());
+        verifyNoInteractions(brokerConfigService);
+        verify(auditService).record(
+                eq("UPDATE_CLUSTER_CONFIG"),
+                eq("CLUSTER:cluster-1"),
+                eq("cluster-1"),
+                org.mockito.ArgumentMatchers.contains("No broker address"),
+                eq("FAILED"));
     }
 
     @Test
@@ -373,6 +400,7 @@ class ClusterServiceTest {
         ClusterVO clusterWithNullConfig = ClusterVO.builder()
                 .name("null-config-cluster")
                 .status(ClusterStatus.healthy)
+                .brokers(List.of(BrokerVO.builder().addr("10.0.0.1:10911").build()))
                 .config(null)
                 .build();
         clusterWithNullConfig.setId("cluster-nc");
@@ -416,6 +444,7 @@ class ClusterServiceTest {
         ClusterVO clusterWithNullConfig = ClusterVO.builder()
                 .name("null-config-cluster")
                 .status(ClusterStatus.healthy)
+                .brokers(List.of(BrokerVO.builder().addr("10.0.0.1:10911").build()))
                 .config(null)
                 .build();
         clusterWithNullConfig.setId("cluster-nc");

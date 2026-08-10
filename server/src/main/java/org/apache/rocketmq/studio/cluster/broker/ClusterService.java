@@ -151,6 +151,12 @@ public class ClusterService {
                 }
             }
         }
+        if (successfulBrokers.isEmpty() && failedBrokers.isEmpty()) {
+            failedBrokers.add(BrokerConfigUpdateFailureVO.builder()
+                    .address("N/A")
+                    .message("No broker address is available for configuration update")
+                    .build());
+        }
 
         ClusterConfigUpdateResultVO.Status status = updateStatus(successfulBrokers, failedBrokers);
         if (failedBrokers.isEmpty()) {
