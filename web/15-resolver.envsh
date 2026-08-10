@@ -1,11 +1,18 @@
 #!/bin/sh
 # Sourced by docker-entrypoint.sh (*.envsh), so RESOLVER is visible to the
-# later 20-envsubst-on-templates.sh step. Uses the podman network gateway
-# (the container DNS server) only — the host resolv.conf may leak public DNS
-# servers that cannot resolve container names and cause random 502s.
-RESOLVER="$(ip route | awk '/default/ {print $3; exit}')"
-if [ -z "$RESOLVER" ]; then
-    RESOLVER="127.0.0.11"
+# later 20-envsubst-on-templates.sh step.
+#
+# Prefer Docker's embedded DNS (127.0.0.11): it resolves container names and
+# is the correct choice on Docker Engine. Fall back to the default gateway
+# (podman's container DNS server) only when 127.0.0.11 is unreachable.
+# The host resolv.conf may leak public DNS servers that cannot resolve
+# container names and cause random 502s, so never use it directly.
+RESOLVER="127.0.0.11"
+if ! nc -z -w2 127.0.0.11 53 >/dev/null 2>&1; then
+    GW="$(ip route | awk '/default/ {print $3; exit}')"
+    if [ -n "$GW" ]; then
+        RESOLVER="$GW"
+    fi
 fi
 export RESOLVER
 echo "15-resolver.envsh: resolver=$RESOLVER"
