@@ -181,11 +181,9 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             vo.setCreatedAt(entity.getCreatedAt());
             vo.setUpdatedAt(entity.getUpdatedAt());
 
-            if (StringUtils.hasText(instanceId)) {
-                enrichGroupWithConnectionInfo(vo, entity.getName(), instanceId);
-            } else if (hasAdmin()) {
-                enrichGroupWithConnectionInfo(vo, entity.getName(), null);
-            }
+            // Live connection info (online instances, lag) is intentionally NOT fetched
+            // during list operations to avoid N+1 admin API calls. It is loaded on
+            // demand when viewing a single group's detail page.
             result.add(vo);
         }
         return result;
