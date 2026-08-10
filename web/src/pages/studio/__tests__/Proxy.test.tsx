@@ -16,7 +16,7 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { queryProxyHomePage } from '../../../api/proxy';
@@ -59,6 +59,14 @@ function renderPage() {
     </App>,
   );
 }
+
+const createDeferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+};
 
 describe('ProxyPage', () => {
   beforeEach(() => {
@@ -119,4 +127,29 @@ describe('ProxyPage', () => {
     expect(screen.queryByText('5.3.0')).not.toBeInTheDocument();
     expect(screen.getAllByText('N/A').length).toBeGreaterThanOrEqual(5);
   });
+  it('keeps the latest Proxy list when an older refresh resolves last', async () => {
+    const older = createDeferred<typeof proxyHome>();
+    const latest = createDeferred<typeof proxyHome>();
+    vi.mocked(queryProxyHomePage)
+      .mockResolvedValueOnce(proxyHome)
+      .mockReturnValueOnce(older.promise)
+      .mockReturnValueOnce(latest.promise);
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('127.0.0.1:8081');
+
+    const refresh = screen.getByRole('button', { name: '刷新' });
+    await user.click(refresh);
+    await user.click(refresh);
+    await act(async () => latest.resolve({
+      proxyAddrList: ['127.0.0.2:8081'],
+      currentProxyAddr: '127.0.0.2:8081',
+    }));
+    expect(await screen.findByText('127.0.0.2:8081')).toBeInTheDocument();
+
+    await act(async () => older.resolve(proxyHome));
+    expect(screen.getByText('127.0.0.2:8081')).toBeInTheDocument();
+    expect(screen.queryByText('127.0.0.1:8081')).not.toBeInTheDocument();
+  });
+
 });

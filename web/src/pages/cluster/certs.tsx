@@ -57,7 +57,7 @@ const K8sCertsPage = () => {
   const [certs, setCerts] = useState<K8sCertInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [renewingId, setRenewingId] = useState<string | null>(null);
+  const [renewingIds, setRenewingIds] = useState<Set<string>>(() => new Set());
   const [certSearch, setCertSearch] = useState('');
   const [certTypeFilter, setCertTypeFilter] = useState<string>('');
   const [certNamespaceFilter, setCertNamespaceFilter] = useState<string>('');
@@ -146,7 +146,7 @@ const K8sCertsPage = () => {
   });
 
   const renewCert = async (cert: K8sCertInfo) => {
-    setRenewingId(cert.id);
+    setRenewingIds((current) => new Set(current).add(cert.id));
     try {
       const renewed = await renewK8sCert(cert.id);
       setCerts((prev) => prev.map((item) => (item.id === renewed.id ? renewed : item)));
@@ -155,7 +155,11 @@ const K8sCertsPage = () => {
       message.error(getErrorMessage(error));
       throw error;
     } finally {
-      setRenewingId(null);
+      setRenewingIds((current) => {
+        const next = new Set(current);
+        next.delete(cert.id);
+        return next;
+      });
     }
   };
 
@@ -297,7 +301,7 @@ const K8sCertsPage = () => {
           <Button
             size="small"
             icon={<SyncOutlined />}
-            loading={renewingId === record.id}
+            loading={renewingIds.has(record.id)}
             onClick={() => {
               Modal.confirm({
                 title: '确认续期',

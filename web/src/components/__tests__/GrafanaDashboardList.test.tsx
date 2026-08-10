@@ -16,7 +16,7 @@
  */
 
 import { App } from 'antd';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -110,6 +110,65 @@ describe('GrafanaDashboardList', () => {
     const dialog = await screen.findByRole('dialog');
     await waitFor(() => expect(getGrafanaDashboard).toHaveBeenCalledWith('rocketmq-overview'));
     expect(within(dialog).getByText(/"uid": "rocketmq-overview"/)).toBeInTheDocument();
+  });
+
+  it('keeps the latest preview when an earlier request resolves last', async () => {
+    let resolveOverview!: (value: typeof dashboardModel) => void;
+    let resolveBroker!: (value: typeof dashboardModel) => void;
+    vi.mocked(getGrafanaDashboard).mockImplementation(
+      (uid) =>
+        new Promise((resolve) => {
+          if (uid === 'rocketmq-overview') resolveOverview = resolve;
+          else resolveBroker = resolve;
+        }),
+    );
+    render(
+      <App>
+        <LangProvider>
+          <GrafanaDashboardList />
+        </LangProvider>
+      </App>,
+    );
+
+    await screen.findByText('RocketMQ Cluster Overview');
+    const viewButtons = screen.getAllByRole('button', { name: /View|查看/ });
+    await userEvent.click(viewButtons[0]);
+    await userEvent.click(viewButtons[1]);
+
+    await act(async () => {
+      resolveBroker({ ...dashboardModel, uid: 'rocketmq-broker', title: 'RocketMQ Broker' });
+    });
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(/"uid": "rocketmq-broker"/)).toBeInTheDocument();
+
+    await act(async () => {
+      resolveOverview(dashboardModel);
+    });
+    expect(within(dialog).getByText(/"uid": "rocketmq-broker"/)).toBeInTheDocument();
+    expect(within(dialog).queryByText(/"uid": "rocketmq-overview"/)).not.toBeInTheDocument();
+  });
+
+  it('tracks simultaneous dashboard exports independently', async () => {
+    vi.mocked(exportGrafanaDashboard).mockImplementation(() => new Promise(() => {}));
+    const user = userEvent.setup();
+    render(
+      <App>
+        <LangProvider>
+          <GrafanaDashboardList />
+        </LangProvider>
+      </App>,
+    );
+
+    await screen.findByText('RocketMQ Cluster Overview');
+    const exportButtons = screen.getAllByRole('button', { name: /Export|导出/ });
+    await user.click(exportButtons[0]);
+    await user.click(exportButtons[1]);
+
+    await waitFor(() => {
+      expect(exportGrafanaDashboard).toHaveBeenCalledTimes(2);
+      expect(exportButtons[0]).toHaveClass('ant-btn-loading');
+      expect(exportButtons[1]).toHaveClass('ant-btn-loading');
+    });
   });
 
   it('exports a dashboard and triggers a download', async () => {

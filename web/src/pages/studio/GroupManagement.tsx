@@ -67,31 +67,54 @@ const GroupManagementPage = () => {
   const [progress, setProgress] = useState<QueueProgress[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const listRequestId = useRef(0);
+  const listInFlight = useRef<Promise<void> | null>(null);
+  const listRefreshQueued = useRef(false);
+  const mountedRef = useRef(true);
   const detailRequestId = useRef(0);
   const { t } = useLang();
 
-  const loadGroups = useCallback(async () => {
-    const requestId = ++listRequestId.current;
+  const loadGroups = useCallback((): Promise<void> => {
+    if (listInFlight.current) {
+      listRefreshQueued.current = true;
+      return listInFlight.current;
+    }
+
     setLoading(true);
-    try {
-      const data = await listConsumerGroups();
-      if (requestId !== listRequestId.current) return;
-      setGroups(data);
-    } catch {
-      if (requestId !== listRequestId.current) return;
-      message.error(t('consumer.fetchListFailed'));
-    } finally {
-      if (requestId === listRequestId.current) {
+    const run = async () => {
+      do {
+        listRefreshQueued.current = false;
+        const requestId = ++listRequestId.current;
+        try {
+          const data = await listConsumerGroups();
+          if (!mountedRef.current || requestId !== listRequestId.current) return;
+          setGroups(data);
+        } catch {
+          if (!mountedRef.current || requestId !== listRequestId.current) return;
+          message.error(t('consumer.fetchListFailed'));
+        }
+      } while (mountedRef.current && listRefreshQueued.current);
+    };
+
+    const cycle = run().finally(() => {
+      listInFlight.current = null;
+      if (mountedRef.current) {
         setLoading(false);
       }
-    }
+    });
+    listInFlight.current = cycle;
+    return cycle;
   }, [t]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       void loadGroups();
     });
-    return () => window.clearTimeout(timeoutId);
+    return () => {
+      window.clearTimeout(timeoutId);
+      mountedRef.current = false;
+      listRefreshQueued.current = false;
+      ++listRequestId.current;
+    };
   }, [loadGroups]);
 
   useEffect(() => {
@@ -117,8 +140,8 @@ const GroupManagementPage = () => {
       setDetailLoading(true);
       try {
         const [subs, prog] = await Promise.all([
-          getConsumerSubscriptions(group.name),
-          getConsumerProgress(group.name),
+          getConsumerSubscriptions(group.name, group.instanceId),
+          getConsumerProgress(group.name, group.instanceId),
         ]);
         if (requestId !== detailRequestId.current) return;
         setSubscriptions(subs);
@@ -286,7 +309,7 @@ const GroupManagementPage = () => {
             size="small"
           />
           <Button icon={<ArrowClockwise size={14} />} size="small" onClick={handleRefresh}>
-            {t('common.reset')}
+            {t('common.refresh')}
           </Button>
         </Space>
       </div>
@@ -295,7 +318,9 @@ const GroupManagementPage = () => {
         <Table
           columns={columns}
           dataSource={filteredGroupData}
-          rowKey="name"
+          rowKey={(record) =>
+            `${record.instanceId || record.clusterId || 'unscoped'}\0${record.name}`
+          }
           loading={loading}
           pagination={{
             pageSize: 10,
@@ -340,8 +365,13 @@ const GroupManagementPage = () => {
                           </div>
                           <div style={{ fontSize: 24, fontWeight: 600 }}>
                             {selectedGroup.onlineInstances}{' '}
-                            <Tag color="success" style={{ marginLeft: 8 }}>
-                              {t('groupMgmt.online')}
+                            <Tag
+                              color={selectedGroup.onlineInstances > 0 ? 'success' : 'error'}
+                              style={{ marginLeft: 8 }}
+                            >
+                              {selectedGroup.onlineInstances > 0
+                                ? t('groupMgmt.online')
+                                : t('groupMgmt.stopped')}
                             </Tag>
                           </div>
                         </Card>

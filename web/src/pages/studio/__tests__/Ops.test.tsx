@@ -22,7 +22,7 @@ import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
 import OpsPage from '../Ops';
-import { deleteNameSvrAddr, queryOpsHomePage } from '../../../api/ops';
+import { deleteNameSvrAddr, queryOpsHomePage, updateIsVIPChannel } from '../../../api/ops';
 import useAuthStore from '../../../stores/authStore';
 
 vi.mock('../../../api/ops', () => ({
@@ -83,6 +83,28 @@ describe('OpsPage', () => {
     expect(await screen.findByText('127.0.0.1:9876')).toBeInTheDocument();
     expect(screen.getAllByRole('switch')[0]).toBeChecked();
     expect(screen.getAllByRole('switch')[1]).not.toBeChecked();
+  });
+
+  it('prevents overlapping VIP channel updates', async () => {
+    let resolveUpdate!: () => void;
+    vi.mocked(updateIsVIPChannel).mockReturnValue(
+      new Promise<void>((resolve) => {
+        resolveUpdate = resolve;
+      }),
+    );
+    renderWithProviders(<OpsPage />);
+
+    const vipSwitch = (await screen.findAllByRole('switch'))[0];
+    await waitFor(() => expect(vipSwitch).toBeChecked());
+    fireEvent.click(vipSwitch);
+    await waitFor(() => expect(updateIsVIPChannel).toHaveBeenCalledTimes(1));
+    expect(vipSwitch).toBeDisabled();
+
+    fireEvent.click(vipSwitch);
+    expect(updateIsVIPChannel).toHaveBeenCalledTimes(1);
+
+    resolveUpdate();
+    await waitFor(() => expect(vipSwitch).toBeEnabled());
   });
 
   it('hides write controls for read-only users', async () => {

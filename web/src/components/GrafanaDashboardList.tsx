@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { App, Button, Modal, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DownloadSimple, Eye } from '@phosphor-icons/react';
@@ -37,7 +37,8 @@ export const GrafanaDashboardList: React.FC = () => {
   const [viewing, setViewing] = useState<GrafanaDashboardInfo | null>(null);
   const [viewContent, setViewContent] = useState('');
   const [viewLoading, setViewLoading] = useState(false);
-  const [exportingUid, setExportingUid] = useState<string | null>(null);
+  const viewRequestId = useRef(0);
+  const [exportingUids, setExportingUids] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -54,20 +55,36 @@ export const GrafanaDashboardList: React.FC = () => {
     void load();
     return () => {
       cancelled = true;
+      viewRequestId.current += 1;
     };
   }, [t, message]);
 
   const handleView = async (info: GrafanaDashboardInfo) => {
+    const requestId = ++viewRequestId.current;
     setViewing(info);
+    setViewContent('');
     setViewLoading(true);
     try {
       const model = await getGrafanaDashboard(info.uid);
-      setViewContent(JSON.stringify(model, null, 2));
+      if (requestId === viewRequestId.current) {
+        setViewContent(JSON.stringify(model, null, 2));
+      }
     } catch {
-      message.error(t('grafana.loadFailed'));
+      if (requestId === viewRequestId.current) {
+        message.error(t('grafana.loadFailed'));
+      }
     } finally {
-      setViewLoading(false);
+      if (requestId === viewRequestId.current) {
+        setViewLoading(false);
+      }
     }
+  };
+
+  const closeView = () => {
+    viewRequestId.current += 1;
+    setViewing(null);
+    setViewContent('');
+    setViewLoading(false);
   };
 
   const triggerDownload = (uid: string, content: Blob | string) => {
@@ -82,7 +99,7 @@ export const GrafanaDashboardList: React.FC = () => {
   };
 
   const handleExport = async (info: GrafanaDashboardInfo) => {
-    setExportingUid(info.uid);
+    setExportingUids((current) => new Set(current).add(info.uid));
     try {
       const blob = await exportGrafanaDashboard(info.uid);
       triggerDownload(info.uid, blob);
@@ -90,7 +107,11 @@ export const GrafanaDashboardList: React.FC = () => {
     } catch {
       message.error(t('grafana.exportFailed'));
     } finally {
-      setExportingUid(null);
+      setExportingUids((current) => {
+        const next = new Set(current);
+        next.delete(info.uid);
+        return next;
+      });
     }
   };
 
@@ -133,7 +154,7 @@ export const GrafanaDashboardList: React.FC = () => {
           <Button
             size="small"
             icon={<DownloadSimple size={16} />}
-            loading={exportingUid === record.uid}
+            loading={exportingUids.has(record.uid)}
             onClick={() => handleExport(record)}
           >
             {t('common.export')}
@@ -157,8 +178,8 @@ export const GrafanaDashboardList: React.FC = () => {
       <Modal
         title={viewing ? viewing.title : t('grafana.title')}
         open={viewing !== null}
-        footer={<Button onClick={() => setViewing(null)}>{t('common.close')}</Button>}
-        onCancel={() => setViewing(null)}
+        footer={<Button onClick={closeView}>{t('common.close')}</Button>}
+        onCancel={closeView}
         width={760}
         destroyOnHidden
       >
