@@ -154,6 +154,31 @@ class AlertServiceTest {
     }
 
     @Test
+    void exportPrometheusRulesYamlShouldDisambiguateDuplicateAlertNames() {
+        AlertRuleVO first = AlertRuleVO.builder()
+                .name("High Lag")
+                .metric("rocketmq_consumer_lag_messages")
+                .operator(">")
+                .threshold(1000)
+                .enabled(true)
+                .build();
+        AlertRuleVO second = AlertRuleVO.builder()
+                .name("High-Lag")
+                .metric("rocketmq_consumer_lag_messages")
+                .operator(">")
+                .threshold(2000)
+                .enabled(true)
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(first, second));
+
+        String result = alertService.exportPrometheusRulesYaml();
+
+        assertThat(result)
+                .contains("- alert: HighLag\n")
+                .contains("- alert: HighLag_2\n");
+    }
+
+    @Test
     void exportPrometheusRulesYamlShouldRenderReplicationLagRuleWithScopeAndSeverity() {
         AlertRuleVO rule = AlertRuleVO.builder()
                 .name("Replication Lag High")

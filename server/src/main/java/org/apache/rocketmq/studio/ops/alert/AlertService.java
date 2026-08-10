@@ -23,10 +23,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 @Slf4j
@@ -64,9 +66,11 @@ public class AlertService {
         for (Map.Entry<String, List<PrometheusAlertRule>> group : rulesByGroup.entrySet()) {
             yaml.append("  - name: ").append(group.getKey()).append('\n');
             yaml.append("    rules:\n");
+            Set<String> alertNames = new HashSet<>();
             for (PrometheusAlertRule rule : group.getValue()) {
-                yaml.append("      # Rule ").append(index++).append(": ").append(rule.alert()).append('\n');
-                yaml.append("      - alert: ").append(rule.alert()).append('\n');
+                String alertName = uniqueAlertName(rule.alert(), alertNames);
+                yaml.append("      # Rule ").append(index++).append(": ").append(alertName).append('\n');
+                yaml.append("      - alert: ").append(alertName).append('\n');
                 yaml.append("        expr: ").append(rule.expr()).append('\n');
                 yaml.append("        for: ").append(rule.duration()).append('\n');
                 yaml.append("        labels:\n");
@@ -79,6 +83,18 @@ public class AlertService {
             }
         }
         return yaml.toString();
+    }
+
+    private String uniqueAlertName(String baseName, Set<String> usedNames) {
+        if (usedNames.add(baseName)) {
+            return baseName;
+        }
+        int suffix = 2;
+        String candidate;
+        do {
+            candidate = baseName + "_" + suffix++;
+        } while (!usedNames.add(candidate));
+        return candidate;
     }
 
 
