@@ -58,3 +58,19 @@ STUDIO_AUTH_ADMIN_PASSWORD=change-me
 - 本地安装 Docker
 - 远程机器可通过 SSH 免密登录
 - 远程机器已安装 Podman（Alibaba Cloud Linux 3 默认提供）
+
+
+## PostgreSQL 持久化
+
+Studio 默认仍使用 MySQL。需要 PostgreSQL 时，创建空数据库并通过以下环境变量启动后端：
+
+```env
+SPRING_PROFILES_ACTIVE=postgresql
+SPRING_DATASOURCE_URL=jdbc:postgresql://postgres.example:5432/rocketmq
+SPRING_DATASOURCE_USERNAME=rocketmq
+SPRING_DATASOURCE_PASSWORD=change-me
+```
+
+`postgresql` profile 会通过 Flyway 自动执行
+`classpath:db/migration/postgresql` 中的版本化 schema。它只保存 Studio 自有的配置、
+审计和运维记录，不会复制 RocketMQ 消息、消费位点或 Broker 运行时数据。

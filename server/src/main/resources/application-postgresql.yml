@@ -1,0 +1,23 @@
+# Opt-in PostgreSQL persistence profile
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/rocketmq}
+    username: ${SPRING_DATASOURCE_USERNAME:rocketmq}
+    password: ${SPRING_DATASOURCE_PASSWORD:rocketmq}
+    driver-class-name: org.postgresql.Driver
+  sql:
+    init:
+      mode: never
+  flyway:
+    enabled: true
+    locations: classpath:db/migration/postgresql
+    baseline-on-migrate: true
+    baseline-version: 0
+    validate-on-migrate: true
+
+mybatis-plus:
+  configuration:
+    database-id: postgresql
+  global-config:
+    db-config:
+      id-type: auto
