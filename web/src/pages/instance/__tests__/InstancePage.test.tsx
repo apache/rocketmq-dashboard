@@ -48,10 +48,15 @@ beforeAll(() => {
   });
 });
 
-const instance = (id: string, name: string, type: Instance['type'] = 'PROXY'): Instance => ({
+const instance = (
+  id: string,
+  name: string,
+  type: Instance['type'] = 'PROXY',
+  remark: Instance['remark'] = '',
+): Instance => ({
   id,
   name,
-  remark: '',
+  remark,
   type,
   endpoint: `${name}:8080`,
   topicCount: 1,
@@ -204,5 +209,21 @@ describe('InstancePage', () => {
 
     await user.click(within(dialog).getByRole('tab', { name: /Aliyun 版/ }));
     expect(within(dialog).getByText(/云凭据与云上实例完成接入/)).toBeInTheDocument();
+  });
+
+  it('sorts and renders instances without remarks', async () => {
+    const user = userEvent.setup();
+    vi.mocked(instanceService.listInstances).mockResolvedValue([
+      instance('no-remark', 'instance-without-remark', 'PROXY', null),
+      instance('with-remark', 'instance-with-remark', 'PROXY', 'production'),
+    ]);
+    renderPage();
+
+    const name = await screen.findByText('instance-without-remark');
+    expect(within(name.closest('tr')!).getByText('-')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('columnheader', { name: /备注/ }));
+    expect(screen.getByText('instance-without-remark')).toBeInTheDocument();
+    expect(screen.getByText('instance-with-remark')).toBeInTheDocument();
   });
 });
