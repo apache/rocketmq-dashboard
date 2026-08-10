@@ -20,6 +20,7 @@ import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.provider.alibaba.AliyunClientFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -33,6 +34,8 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -48,6 +51,9 @@ class CloudCredentialServiceTest {
 
     @Mock
     private AliyunClientFactory aliyunClientFactory;
+
+    @Mock
+    private OperationAuditService operationAuditService;
 
     @InjectMocks
     private CloudCredentialService service;
@@ -124,6 +130,10 @@ class CloudCredentialServiceTest {
         assertThat(created.getId()).isNotBlank();
         assertThat(created.getAccessKey()).isEqualTo("LTAI****0001");
         assertThat(created.getSecretKey()).isNull();
+        verify(operationAuditService).record(eq("CREATE_CLOUD_CREDENTIAL"), eq("CLOUD_CREDENTIAL"),
+                eq(created.getId()), eq(null), argThat(detail -> detail.equals("name=ok, vendor=ALIYUN")
+                        && !detail.contains("LTAI5tGoodKey00000000001") && !detail.contains("sk-value")),
+                eq("SUCCESS"), eq(null));
     }
 
     @Test
@@ -157,6 +167,8 @@ class CloudCredentialServiceTest {
         service.update(request);
 
         verify(aliyunClientFactory).invalidateCredential("cred-1");
+        verify(operationAuditService).record(eq("UPDATE_CLOUD_CREDENTIAL"), eq("CLOUD_CREDENTIAL"),
+                eq("cred-1"), eq(null), eq("name=null, vendor=ALIYUN"), eq("SUCCESS"), eq(null));
     }
 
     @Test
@@ -171,6 +183,8 @@ class CloudCredentialServiceTest {
 
         verify(credentialRepository).deleteById("cred-1");
         verify(aliyunClientFactory).invalidateCredential("cred-1");
+        verify(operationAuditService).record(eq("DELETE_CLOUD_CREDENTIAL"), eq("CLOUD_CREDENTIAL"),
+                eq("cred-1"), eq(null), eq("name=null, vendor=ALIYUN"), eq("SUCCESS"), eq(null));
     }
 
     @Test

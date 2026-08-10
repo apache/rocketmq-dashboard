@@ -256,4 +256,17 @@ class RocketMQMessageProviderTest {
         assertThat(transaction.getDescription()).contains("tx-group").contains("COMMIT_MESSAGE");
         assertThat(record.getConsumerStatus()).isEmpty();
     }
+
+    @Test
+    void getMessageTraceSurfacesAdminFailure() throws Exception {
+        when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
+                .thenThrow(new IllegalStateException("broker unavailable"));
+
+        assertThatThrownBy(() -> provider.getMessageTrace("instance-a", "msg-123"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Failed to query message trace: broker unavailable")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+
+        verify(queryHistoryService, never()).recordTraceQuery(anyString(), anyString(), any(), anyInt(), anyInt());
+    }
 }

@@ -20,6 +20,7 @@ package org.apache.rocketmq.studio.instance;
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialRepository;
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialVO;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -40,6 +41,8 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -62,6 +65,9 @@ class InstanceServiceTest {
 
     @Mock
     private MqAdminExtFactory adminFactory;
+
+    @Mock
+    private OperationAuditService operationAuditService;
 
     @InjectMocks
     private InstanceService instanceService;
@@ -259,6 +265,10 @@ class InstanceServiceTest {
         assertThat(result.getUpdatedAt()).isNotNull();
         assertThat(result.getName()).isEqualTo("new-instance");
         verify(instanceRepository).save(any(InstanceVO.class));
+        verify(operationAuditService).record(eq("CREATE_INSTANCE"), eq("INSTANCE"), eq(result.getId()), eq(null),
+                argThat(detail -> detail.equals("name=new-instance, vendor=APACHE, type=PROXY")
+                        && !detail.contains("10.0.1.1:8080")),
+                eq("SUCCESS"), eq(null));
     }
 
     @Test
@@ -328,6 +338,15 @@ class InstanceServiceTest {
     }
 
     @Test
+    void createInstanceShouldTrimNameBeforeSaving() {
+        InstanceVO input = InstanceVO.builder().name("  production  ").type(InstanceType.PROXY)
+                .endpoint("namesrv:9876").build();
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertThat(instanceService.createInstance(input).getName()).isEqualTo("production");
+    }
+
+    @Test
     void updateInstanceShouldMergeFieldsOntoExisting() {
         LocalDateTime originalCreatedAt = LocalDateTime.of(2025, 1, 2, 3, 4, 5);
         LocalDateTime originalUpdatedAt = LocalDateTime.of(2025, 2, 3, 4, 5, 6);
@@ -367,6 +386,20 @@ class InstanceServiceTest {
         assertThat(existing.getName()).isEqualTo("old-name");
         assertThat(existing.getRemark()).isEqualTo("old remark");
         assertThat(existing.getUpdatedAt()).isEqualTo(originalUpdatedAt);
+        verify(operationAuditService).record(eq("UPDATE_INSTANCE"), eq("INSTANCE"), eq("inst-1"), eq(null),
+                eq("name=new-name, vendor=APACHE, type=PROXY"), eq("SUCCESS"), eq(null));
+    }
+
+    @Test
+    void updateInstanceShouldTrimNameBeforeSaving() {
+        InstanceVO existing = InstanceVO.builder().name("old-name").endpoint("namesrv:9876").build();
+        existing.setId("inst-1");
+        InstanceVO update = InstanceVO.builder().name("  production  ").build();
+        update.setId("inst-1");
+        when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(existing));
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertThat(instanceService.updateInstance(update).getName()).isEqualTo("production");
     }
 
     @Test
@@ -592,6 +625,8 @@ class InstanceServiceTest {
         instanceService.deleteInstance("inst-1");
 
         verify(instanceRepository).deleteById("inst-1");
+        verify(operationAuditService).record(eq("DELETE_INSTANCE"), eq("INSTANCE"), eq("inst-1"), eq(null),
+                eq("name=to-delete, vendor=APACHE, type=null"), eq("SUCCESS"), eq(null));
     }
 
     @Test

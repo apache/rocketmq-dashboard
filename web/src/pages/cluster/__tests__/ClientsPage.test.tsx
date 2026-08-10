@@ -23,6 +23,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import type { ClientConnection } from '../../../api/connections';
 import { LangProvider } from '../../../i18n/LangContext';
 import * as connectionsService from '../../../services/connectionsService';
+import * as instanceService from '../../../services/instanceService';
 import ClientsPage from '../clients';
 
 vi.mock('../../../services/connectionsService', () => ({
@@ -219,6 +220,33 @@ describe('Clients page', () => {
       await screen.findByText('Client connection provider is not configured'),
     ).toBeInTheDocument();
     expect(within(screen.getByTestId('connection-total')).getByText('0')).toBeInTheDocument();
+  });
+
+  it('surfaces instance discovery failures and allows retrying', async () => {
+    vi.mocked(instanceService.listInstances)
+      .mockRejectedValueOnce(new Error('Unable to load managed instances'))
+      .mockResolvedValueOnce([
+        {
+          id: 'instance-1',
+          name: 'Instance 1',
+          endpoint: 'namesrv-1:9876',
+          type: 'DIRECT',
+          remark: '',
+          topicCount: 0,
+          consumerGroupCount: 0,
+          createdAt: '',
+          updatedAt: '',
+        },
+      ]);
+    const user = userEvent.setup();
+    renderWithProviders(<ClientsPage />);
+
+    expect(await screen.findByText('Unable to load managed instances')).toBeInTheDocument();
+    expect(connectionsService.listConnections).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: /重\s*试/ }));
+    await screen.findByText('order-svc-0@10.0.1.12:49152');
+    expect(connectionsService.listConnections).toHaveBeenCalledWith({ instanceId: 'instance-1' });
   });
 
   it('opens a client detail dialog from the connection table', async () => {

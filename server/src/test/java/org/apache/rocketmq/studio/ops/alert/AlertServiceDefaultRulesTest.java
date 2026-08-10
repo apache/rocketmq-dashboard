@@ -16,7 +16,9 @@
  */
 package org.apache.rocketmq.studio.ops.alert;
 
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 import java.util.Collections;
 import java.util.List;
@@ -36,7 +38,8 @@ class AlertServiceDefaultRulesTest {
         AlertRepository repository = mock(AlertRepository.class);
         when(repository.findAllRules()).thenReturn(Collections.emptyList());
 
-        AlertService service = new AlertService(repository, new AlertRuleAssetService());
+        AlertService service = new AlertService(repository, new AlertRuleAssetService(),
+                Mockito.mock(OperationAuditService.class));
         String yaml = service.exportPrometheusRulesYaml();
 
         int ruleCount = countRules(yaml);
@@ -48,7 +51,8 @@ class AlertServiceDefaultRulesTest {
         AlertRepository repository = mock(AlertRepository.class);
         when(repository.findAllRules()).thenReturn(List.of());
 
-        AlertService service = new AlertService(repository, new AlertRuleAssetService());
+        AlertService service = new AlertService(repository, new AlertRuleAssetService(),
+                Mockito.mock(OperationAuditService.class));
         String yaml = service.exportPrometheusRulesYaml();
 
         assertTrue(yaml.contains("rocketmq-broker.rules"));

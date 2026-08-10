@@ -18,13 +18,20 @@ package org.apache.rocketmq.studio;
 
 import org.apache.rocketmq.studio.ops.ai.tool.ToolCatalog;
 import org.apache.rocketmq.studio.ops.ai.tool.ToolGatewayService;
+import org.apache.rocketmq.studio.persistence.mapper.RmqInstanceMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.test.web.servlet.MockMvc;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
+@AutoConfigureMockMvc
 class StudioApplicationTest {
 
     @Autowired
@@ -33,9 +40,20 @@ class StudioApplicationTest {
     @Autowired
     private ToolGatewayService toolGatewayService;
 
+    @Autowired
+    private RmqInstanceMapper instanceMapper;
+
+    @Autowired
+    private MockMvc mockMvc;
+
     @Test
-    void applicationContextLoadsWithToolGateway() {
+    void applicationContextLoadsWithInitializedDevSchema() throws Exception {
         assertThat(toolCatalog.getVersion()).isEqualTo("1.0.0");
         assertThat(toolGatewayService.discover(null)).isNotEmpty();
+        assertThat(instanceMapper.selectList(null)).isEmpty();
+
+        mockMvc.perform(get("/api/instances"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isEmpty());
     }
 }

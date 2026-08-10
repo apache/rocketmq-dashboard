@@ -21,6 +21,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import org.apache.rocketmq.studio.common.domain.enums.AlertLevel;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -33,6 +34,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -43,11 +45,14 @@ class AlertServiceTest {
     @Mock
     private AlertRepository alertRepository;
 
+    @Mock
+    private OperationAuditService operationAuditService;
+
     private AlertService alertService;
 
     @org.junit.jupiter.api.BeforeEach
     void setUp() {
-        alertService = new AlertService(alertRepository, new AlertRuleAssetService());
+        alertService = new AlertService(alertRepository, new AlertRuleAssetService(), operationAuditService);
     }
 
     @Test
@@ -100,6 +105,7 @@ class AlertServiceTest {
                 .threshold(5000)
                 .duration("3m")
                 .description("Lag too high")
+                .enabled(true)
                 .build();
         when(alertRepository.findAllRules()).thenReturn(List.of(rule));
 
@@ -122,6 +128,7 @@ class AlertServiceTest {
                 .threshold(1000)
                 .duration("3m")
                 .description("First lag alert")
+                .enabled(true)
                 .build();
         AlertRuleVO second = AlertRuleVO.builder()
                 .name("Lag Alert B")
@@ -130,6 +137,7 @@ class AlertServiceTest {
                 .threshold(2000)
                 .duration("5m")
                 .description("Second lag alert")
+                .enabled(true)
                 .build();
         when(alertRepository.findAllRules()).thenReturn(List.of(first, second));
 
@@ -156,6 +164,7 @@ class AlertServiceTest {
                 .clusterName("DefaultCluster")
                 .severity("critical")
                 .description("Slave falls behind master")
+                .enabled(true)
                 .build();
         when(alertRepository.findAllRules()).thenReturn(List.of(rule));
 
@@ -178,6 +187,7 @@ class AlertServiceTest {
                 .brokerName("*")
                 .clusterName(" ")
                 .severity("fatal")
+                .enabled(true)
                 .build();
         when(alertRepository.findAllRules()).thenReturn(List.of(rule));
 
@@ -198,6 +208,7 @@ class AlertServiceTest {
                 .clusterName("prod\"east\\dc\nline")
                 .brokerName("broker\tone")
                 .description("Summary \"quoted\" \\ path\nnext - Details\twith\rline")
+                .enabled(true)
                 .build();
         when(alertRepository.findAllRules()).thenReturn(List.of(rule));
 
@@ -221,6 +232,7 @@ class AlertServiceTest {
                 .metric("rocketmq_consumer_lag_messages")
                 .operator(">")
                 .threshold(1)
+                .enabled(true)
                 .build();
         when(alertRepository.findAllRules()).thenReturn(List.of(rule));
 
@@ -229,6 +241,50 @@ class AlertServiceTest {
         JsonNode exportedRule = new ObjectMapper(new YAMLFactory()).readTree(result)
                 .path("groups").get(0).path("rules").get(0);
         assertThat(exportedRule.path("alert").asText()).isEqualTo("RocketMQAlert");
+    }
+
+    @Test
+    void exportPrometheusRulesYamlShouldExcludeDisabledRules() {
+        AlertRuleVO enabled = AlertRuleVO.builder()
+                .name("Enabled Lag Alert")
+                .metric("rocketmq_consumer_lag_messages")
+                .operator(">")
+                .threshold(1000)
+                .enabled(true)
+                .build();
+        AlertRuleVO disabled = AlertRuleVO.builder()
+                .name("Disabled Lag Alert")
+                .metric("rocketmq_consumer_lag_messages")
+                .operator(">")
+                .threshold(2000)
+                .enabled(false)
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(enabled, disabled));
+
+        String result = alertService.exportPrometheusRulesYaml();
+
+        assertThat(result)
+                .contains("EnabledLagAlert")
+                .doesNotContain("DisabledLagAlert")
+                .doesNotContain(" > 2000");
+    }
+
+    @Test
+    void exportPrometheusRulesYamlShouldUseDefaultRulesWhenAllConfiguredRulesAreDisabled() {
+        AlertRuleVO disabled = AlertRuleVO.builder()
+                .name("Disabled Lag Alert")
+                .metric("rocketmq_consumer_lag_messages")
+                .operator(">")
+                .threshold(2000)
+                .enabled(false)
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(disabled));
+
+        String result = alertService.exportPrometheusRulesYaml();
+
+        assertThat(result)
+                .contains("RocketMQBrokerDown")
+                .doesNotContain("DisabledLagAlert");
     }
 
     @Test
@@ -252,6 +308,8 @@ class AlertServiceTest {
         assertThat(result.getClusterName()).isEqualTo("DefaultCluster");
         assertThat(result.getSeverity()).isEqualTo("critical");
         verify(alertRepository).saveRule(result);
+        verify(operationAuditService).record(eq("CREATE_ALERT_RULE"), eq("ALERT_RULE"), eq(result.getId()),
+                eq(null), eq("name=Replication Lag High"), eq("SUCCESS"), eq(null));
     }
 
     @Test
@@ -300,6 +358,8 @@ class AlertServiceTest {
         assertThat(result.getId()).isEqualTo("rule-1");
         assertThat(result.getThreshold()).isEqualTo(90.0);
         verify(alertRepository).replaceRule(update);
+        verify(operationAuditService).record(eq("UPDATE_ALERT_RULE"), eq("ALERT_RULE"), eq("rule-1"),
+                eq(null), eq("name=CPU Alert"), eq("SUCCESS"), eq(null));
     }
 
     @Test
@@ -357,6 +417,8 @@ class AlertServiceTest {
 
         assertThat(result.isEnabled()).isTrue();
         verify(alertRepository).saveRule(result);
+        verify(operationAuditService).record(eq("TOGGLE_ALERT_RULE"), eq("ALERT_RULE"), eq("rule-1"),
+                eq(null), eq("enabled=true"), eq("SUCCESS"), eq(null));
     }
 
     @Test
@@ -386,6 +448,8 @@ class AlertServiceTest {
         alertService.deleteRule("rule-1");
 
         verify(alertRepository).deleteRule("rule-1");
+        verify(operationAuditService).record(eq("DELETE_ALERT_RULE"), eq("ALERT_RULE"), eq("rule-1"),
+                eq(null), eq(null), eq("SUCCESS"), eq(null));
     }
 
     @Test
@@ -437,6 +501,8 @@ class AlertServiceTest {
 
         assertThat(result.isAcknowledged()).isTrue();
         verify(alertRepository).saveAlert(result);
+        verify(operationAuditService).record(eq("ACKNOWLEDGE_SYSTEM_ALERT"), eq("SYSTEM_ALERT"), eq("a1"),
+                eq(null), eq("acknowledged=true"), eq("SUCCESS"), eq(null));
     }
 
     @Test
@@ -456,6 +522,8 @@ class AlertServiceTest {
 
         assertThat(result).isEqualTo(3);
         verify(alertRepository).deleteAcknowledgedAlerts();
+        verify(operationAuditService).record(eq("CLEAR_ACKNOWLEDGED_SYSTEM_ALERTS"), eq("SYSTEM_ALERT"),
+                eq(null), eq(null), eq("deleted=3"), eq("SUCCESS"), eq(null));
     }
 
     @Test

@@ -161,21 +161,23 @@ const isMessageQuery = (value: unknown): value is MessageQuery => {
   );
 };
 
+const isRecentQuery = (value: unknown): value is RecentQuery => {
+  if (typeof value !== 'object' || value === null) return false;
+  const query = value as RecentQuery;
+  return (
+    isQueryMode(query.mode) &&
+    isMessageQuery(query.params) &&
+    (query.mode !== 'msgid' || Boolean(query.params.topic?.trim()))
+  );
+};
+
 const loadRecentQueries = (): RecentQuery[] => {
   try {
     const stored = localStorage.getItem(QUERY_HISTORY_STORAGE_KEY);
     if (!stored) return [];
     const parsed: unknown = JSON.parse(stored);
     if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter(
-        (item): item is RecentQuery =>
-          typeof item === 'object' &&
-          item !== null &&
-          isQueryMode((item as RecentQuery).mode) &&
-          isMessageQuery((item as RecentQuery).params),
-      )
-      .slice(0, MAX_QUERY_HISTORY);
+    return parsed.filter(isRecentQuery).slice(0, MAX_QUERY_HISTORY);
   } catch {
     return [];
   }
@@ -184,7 +186,8 @@ const loadRecentQueries = (): RecentQuery[] => {
 const querySignature = (query: RecentQuery): string => JSON.stringify(query);
 
 const queryLabel = ({ mode, params }: RecentQuery): string => {
-  if (mode === 'msgid') return `Message ID: ${params.msgId || '全部'}`;
+  if (mode === 'msgid')
+    return `Message ID: ${params.msgId || '全部'} · Topic: ${params.topic || '全部'}`;
   if (mode === 'key') {
     return `Key: ${params.key || '全部'}${params.topic ? ` · Topic: ${params.topic}` : ''}`;
   }
@@ -318,7 +321,7 @@ const MessagePage = () => {
           }
         : queryMode === 'key'
           ? { topic: selectedTopic, key: keyInput || undefined }
-          : { msgId: msgIdInput || undefined };
+          : { topic: selectedTopic, msgId: msgIdInput || undefined };
 
     await executeQuery(queryMode, params);
   };
@@ -749,12 +752,26 @@ const MessagePage = () => {
             )}
 
             {queryMode === 'msgid' && (
-              <Input
-                placeholder="输入 Message ID"
-                style={{ width: 400 }}
-                value={msgIdInput}
-                onChange={(e) => setMsgIdInput(e.target.value)}
-              />
+              <>
+                <Select
+                  placeholder="选择 Topic"
+                  style={{ width: 360 }}
+                  value={selectedTopic}
+                  onChange={setSelectedTopic}
+                  allowClear
+                  showSearch
+                  options={topicOptions.map((t) => ({
+                    value: t,
+                    label: t,
+                  }))}
+                />
+                <Input
+                  placeholder="输入 Message ID"
+                  style={{ width: 400 }}
+                  value={msgIdInput}
+                  onChange={(e) => setMsgIdInput(e.target.value)}
+                />
+              </>
             )}
 
             <Button

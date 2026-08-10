@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Alert,
@@ -37,16 +37,25 @@ const DashboardPage = () => {
   const [selectedInstanceId, setSelectedInstanceId] = useState<string>();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const dashboardRequestIdRef = useRef(0);
 
   const loadDashboard = useCallback(async () => {
+    const requestId = ++dashboardRequestIdRef.current;
     setLoading(true);
     setLoadError(false);
     try {
-      setDashboard(await getDashboard(selectedInstanceId));
+      const nextDashboard = await getDashboard(selectedInstanceId);
+      if (requestId === dashboardRequestIdRef.current) {
+        setDashboard(nextDashboard);
+      }
     } catch {
-      setLoadError(true);
+      if (requestId === dashboardRequestIdRef.current) {
+        setLoadError(true);
+      }
     } finally {
-      setLoading(false);
+      if (requestId === dashboardRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, [selectedInstanceId]);
 

@@ -20,6 +20,7 @@ import org.springframework.util.StringUtils;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
+import org.apache.rocketmq.studio.audit.OperationAuditService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -34,6 +35,7 @@ import java.util.UUID;
 public class AclService {
 
     private final AclRepository aclRepository;
+    private final OperationAuditService operationAuditService;
 
 
     public List<AclRuleVO> listRules(String clusterId, String principal) {
@@ -52,7 +54,9 @@ public class AclService {
         }
         rule.setId(UUID.randomUUID().toString());
         rule.setCreatedAt(LocalDateTime.now());
-        return aclRepository.saveRule(rule);
+        AclRuleVO saved = aclRepository.saveRule(rule);
+        auditRule("CREATE_ACL_RULE", saved);
+        return saved;
     }
 
     public AclRuleVO updateRule(AclRuleVO rule) {
@@ -60,8 +64,10 @@ public class AclService {
             throw new BusinessException(400, "ACL rule id is required");
         }
         log.info("Updating ACL rule id={}, principal={}", rule.getId(), rule.getPrincipal());
-        return aclRepository.replaceRule(rule)
+        AclRuleVO saved = aclRepository.replaceRule(rule)
                 .orElseThrow(() -> new BusinessException(404, "ACL rule not found: " + rule.getId()));
+        auditRule("UPDATE_ACL_RULE", saved);
+        return saved;
     }
 
     public void deleteRule(String id) {
@@ -69,6 +75,7 @@ public class AclService {
         if (!aclRepository.deleteRule(id)) {
             throw new BusinessException(404, "ACL rule not found: " + id);
         }
+        recordAudit("DELETE_ACL_RULE", "ACL_RULE", id, null, null);
     }
 
 
@@ -89,7 +96,9 @@ public class AclService {
         user.setAccessKey(UUID.randomUUID().toString().replace("-", ""));
         user.setSecretKey(UUID.randomUUID().toString().replace("-", ""));
         user.setCreatedAt(LocalDateTime.now());
-        return aclRepository.saveUser(user);
+        AclUserVO saved = aclRepository.saveUser(user);
+        auditUser("CREATE_ACL_USER", saved);
+        return saved;
     }
 
     public AclUserVO updateUser(UpdateAclUserDTO user) {
@@ -108,7 +117,9 @@ public class AclService {
                 .clusters(user.getClusters() == null ? existing.getClusters() : user.getClusters())
                 .createdAt(existing.getCreatedAt())
                 .build();
-        return maskCredentials(aclRepository.saveUser(merged));
+        AclUserVO saved = aclRepository.saveUser(merged);
+        auditUser("UPDATE_ACL_USER", saved);
+        return maskCredentials(saved);
     }
 
     public void deleteUser(String id) {
@@ -116,6 +127,7 @@ public class AclService {
         if (!aclRepository.deleteUser(id)) {
             throw new BusinessException(404, "ACL user not found: " + id);
         }
+        recordAudit("DELETE_ACL_USER", "ACL_USER", id, null, null);
     }
 
     /**
@@ -141,6 +153,27 @@ public class AclService {
                 .clusters(user.getClusters() == null ? null : List.copyOf(user.getClusters()))
                 .createdAt(user.getCreatedAt())
                 .build();
+    }
+
+    private void auditRule(String operation, AclRuleVO rule) {
+        recordAudit(operation, "ACL_RULE", rule.getId(), null,
+                "principal=" + rule.getPrincipal());
+    }
+
+    private void auditUser(String operation, AclUserVO user) {
+        recordAudit(operation, "ACL_USER", user.getId(), null,
+                "username=" + user.getUsername() + ", admin=" + user.isAdmin());
+    }
+
+
+    private void recordAudit(String operation, String resourceType, String resourceName,
+                             String clusterId, String detail) {
+        try {
+            operationAuditService.record(operation, resourceType, resourceName, clusterId, detail, "SUCCESS", null);
+        } catch (Exception auditFailure) {
+            log.warn("Failed to record audit operation={} resource={}: {}", operation, resourceName,
+                    auditFailure.getMessage());
+        }
     }
 
 }
