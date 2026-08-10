@@ -37,6 +37,9 @@ public class DataSourceDTO {
     @NotBlank(message = "url is required")
     private String url;
 
+    @Pattern(
+            regexp = "(?i)\\s*(?:none|basic auth|bearer token)?\\s*",
+            message = "Unsupported metrics data source authentication")
     private String auth;
 
     public DataSourceVO toDataSourceVO() {
@@ -45,7 +48,7 @@ public class DataSourceDTO {
                 .name(name)
                 .type(type.trim())
                 .url(url)
-                .auth(auth)
+                .auth(auth == null ? null : auth.trim())
                 .build();
     }
 }
