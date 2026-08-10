@@ -4,8 +4,8 @@ import client from './client';
 export interface MessageRecord {
   msgId: string;
   topic: string;
-  tag: string;
-  key: string;
+  tag: string | null;
+  key: string | null;
   body: string;
   storeTime: number | string;
   bornHost: string;
