@@ -26,6 +26,7 @@ import {
   Input,
   InputNumber,
   Modal,
+  Popconfirm,
   Radio,
   Select,
   Space,
@@ -447,15 +448,16 @@ export const DataSourceTab = () => {
           >
             编辑
           </Button>
-          <Button
-            type="link"
-            size="small"
-            danger
-            icon={<DeleteOutlined />}
-            onClick={() => void handleDelete(record)}
+          <Popconfirm
+            title="确定要删除该数据源吗？"
+            onConfirm={() => void handleDelete(record)}
+            okText="确定"
+            cancelText="取消"
           >
-            删除
-          </Button>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+              删除
+            </Button>
+          </Popconfirm>
         </Space>
       ),
     },

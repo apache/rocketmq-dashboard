@@ -106,6 +106,9 @@ const GroupManagementPage = () => {
   }, [t]);
 
   useEffect(() => {
+    // Reset on (re)mount: under StrictMode the previous cleanup has already
+    // cleared the flag, and without this the remounted load never applies.
+    mountedRef.current = true;
     const timeoutId = window.setTimeout(() => {
       void loadGroups();
     });
