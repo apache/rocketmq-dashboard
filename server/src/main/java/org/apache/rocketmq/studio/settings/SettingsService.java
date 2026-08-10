@@ -266,7 +266,9 @@ public class SettingsService {
         }
         try {
             InetAddress address = InetAddress.getByName(normalized);
-            return !address.isAnyLocalAddress() && !address.isLinkLocalAddress();
+            return !address.isAnyLocalAddress()
+                    && !address.isLinkLocalAddress()
+                    && !address.isLoopbackAddress();
         } catch (UnknownHostException exception) {
             // Unresolvable host: let the connection attempt surface the real connectivity error.
             return true;
