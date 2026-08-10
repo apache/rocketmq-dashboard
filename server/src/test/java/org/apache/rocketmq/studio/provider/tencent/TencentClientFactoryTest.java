@@ -26,6 +26,16 @@ class TencentClientFactoryTest {
     void endpointForShouldUseNearbyAccessForNonFinancialRegionsTest() {
         assertThat(TencentClientFactory.endpointFor("ap-seoul"))
                 .isEqualTo(TencentClientFactory.ENDPOINT);
+        assertThat(TencentClientFactory.endpointFor("ap-shanghai-adc"))
+                .isEqualTo(TencentClientFactory.ENDPOINT);
+    }
+
+    @Test
+    void endpointForShouldUseNearbyAccessWhenRegionIsMissingTest() {
+        assertThat(TencentClientFactory.endpointFor(null))
+                .isEqualTo(TencentClientFactory.ENDPOINT);
+        assertThat(TencentClientFactory.endpointFor(""))
+                .isEqualTo(TencentClientFactory.ENDPOINT);
     }
 
     @Test
