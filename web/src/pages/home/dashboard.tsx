@@ -38,6 +38,9 @@ const DashboardPage = () => {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const dashboardRequestIdRef = useRef(0);
+  const clusterPagePath = selectedInstanceId
+    ? `/cluster?instanceId=${encodeURIComponent(selectedInstanceId)}`
+    : '/cluster';
 
   const loadDashboard = useCallback(async () => {
     const requestId = ++dashboardRequestIdRef.current;
@@ -289,7 +292,7 @@ const DashboardPage = () => {
 
       <Card
         title={t('dashboard.clusterHealth')}
-        extra={<a onClick={() => navigate('/cluster')}>{t('common.viewAll')}</a>}
+        extra={<a onClick={() => navigate(clusterPagePath)}>{t('common.viewAll')}</a>}
         styles={{ body: { padding: '0 20px 16px' } }}
       >
         <Table
@@ -300,7 +303,7 @@ const DashboardPage = () => {
           pagination={false}
           onRow={() => ({
             style: { cursor: 'pointer' },
-            onClick: () => navigate('/cluster'),
+            onClick: () => navigate(clusterPagePath),
           })}
         />
       </Card>
