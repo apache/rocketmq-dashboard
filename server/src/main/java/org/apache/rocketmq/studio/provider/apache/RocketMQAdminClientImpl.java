@@ -65,6 +65,7 @@ import java.util.Set;
 public class RocketMQAdminClientImpl implements AdminClient {
 
     private static final String MESSAGE_SENDER_GROUP_PREFIX = "studio-msg-sender";
+    private static final int MAX_MESSAGE_SIZE = 4 * 1024 * 1024; // 4 MB default broker limit
 
     private final MqAdminExtFactory adminFactory;
     private final RocketMQProperties properties;
@@ -324,9 +325,13 @@ public class RocketMQAdminClientImpl implements AdminClient {
             String tag = request.getTag() != null ? request.getTag() : "";
             String key = request.getKey() != null ? request.getKey() : "";
             String body = request.getBody() != null ? request.getBody() : "";
+            byte[] bodyBytes = body.getBytes(StandardCharsets.UTF_8);
+            if (bodyBytes.length > MAX_MESSAGE_SIZE) {
+                throw new BusinessException(400, "Message body size " + bodyBytes.length
+                        + " exceeds the maximum of " + MAX_MESSAGE_SIZE + " bytes");
+            }
 
-            String fullTopic = tag.isEmpty() ? topic : topic + ":" + tag;
-            Message msg = new Message(topic, tag, key, body.getBytes(StandardCharsets.UTF_8));
+            Message msg = new Message(topic, tag, key, bodyBytes);
 
             // Add custom properties
             if (request.getProperties() != null) {
