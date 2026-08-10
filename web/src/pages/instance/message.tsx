@@ -153,13 +153,47 @@ const isMessageQuery = (value: unknown): value is MessageQuery => {
   );
 };
 
+const getQueryValidationError = (mode: QueryMode, params: MessageQuery): string | null => {
+  if (!params.topic?.trim()) return '请选择 Topic';
+  if (mode === 'key' && !params.key?.trim()) return '请输入 Message Key';
+  if (mode === 'msgid' && !params.msgId?.trim()) return '请输入 Message ID';
+  return null;
+};
+
+const normalizedText = (value: string | undefined): string | undefined =>
+  value?.trim() || undefined;
+
+const normalizeMessageQuery = (mode: QueryMode, params: MessageQuery): MessageQuery => {
+  const topic = normalizedText(params.topic);
+  if (mode === 'msgid') {
+    const msgId = normalizedText(params.msgId);
+    return {
+      ...(topic ? { topic } : {}),
+      ...(msgId ? { msgId } : {}),
+    };
+  }
+
+  const tag = normalizedText(params.tag);
+  const commonParams = {
+    ...(topic ? { topic } : {}),
+    ...(tag ? { tag } : {}),
+    ...(params.startTime !== undefined ? { startTime: params.startTime } : {}),
+    ...(params.endTime !== undefined ? { endTime: params.endTime } : {}),
+  };
+  if (mode === 'key') {
+    const key = normalizedText(params.key);
+    return { ...commonParams, ...(key ? { key } : {}) };
+  }
+  return commonParams;
+};
+
 const isRecentQuery = (value: unknown): value is RecentQuery => {
   if (typeof value !== 'object' || value === null) return false;
   const query = value as RecentQuery;
   return (
     isQueryMode(query.mode) &&
     isMessageQuery(query.params) &&
-    (query.mode !== 'msgid' || Boolean(query.params.topic?.trim()))
+    getQueryValidationError(query.mode, normalizeMessageQuery(query.mode, query.params)) === null
   );
 };
 
@@ -169,7 +203,10 @@ const loadRecentQueries = (): RecentQuery[] => {
     if (!stored) return [];
     const parsed: unknown = JSON.parse(stored);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isRecentQuery).slice(0, MAX_QUERY_HISTORY);
+    return parsed
+      .filter(isRecentQuery)
+      .map(({ mode, params }) => ({ mode, params: normalizeMessageQuery(mode, params) }))
+      .slice(0, MAX_QUERY_HISTORY);
   } catch {
     return [];
   }
@@ -249,6 +286,15 @@ const MessagePage = () => {
     [],
   );
 
+  const currentQueryParams: MessageQuery =
+    queryMode === 'topic'
+      ? { topic: selectedTopic, startTime: dateRange[0].valueOf(), endTime: dateRange[1].valueOf() }
+      : queryMode === 'key'
+        ? { topic: selectedTopic, key: keyInput || undefined }
+        : { topic: selectedTopic, msgId: msgIdInput || undefined };
+  const queryValidationError = getQueryValidationError(queryMode, currentQueryParams);
+  const queryDisabledReason = !selectedInstanceId ? '请先选择实例' : queryValidationError;
+
   /* ─── Handlers ─── */
   const handleInstanceChange = (instanceId: string) => {
     queryGenerationRef.current += 1;
@@ -295,20 +341,28 @@ const MessagePage = () => {
   };
 
   const executeQuery = async (mode: QueryMode, params: MessageQuery) => {
-    if (!selectedInstanceId) {
-      setQueryError('请先选择实例后再查询消息');
-      return;
-    }
     const requestGeneration = queryGenerationRef.current + 1;
     queryGenerationRef.current = requestGeneration;
+    if (!selectedInstanceId) {
+      setQueryError('请先选择实例后再查询消息');
+      setQueryLoading(false);
+      return;
+    }
+    const normalizedParams = normalizeMessageQuery(mode, params);
+    const validationError = getQueryValidationError(mode, normalizedParams);
+    if (validationError) {
+      setQueryError(validationError);
+      setQueryLoading(false);
+      return;
+    }
     setQueryLoading(true);
     setQueryError(null);
     try {
-      const result = await queryMessages({ ...params, instanceId: selectedInstanceId });
+      const result = await queryMessages({ ...normalizedParams, instanceId: selectedInstanceId });
       if (queryGenerationRef.current !== requestGeneration) return;
       setMessages(result);
       setQueryError(null);
-      saveRecentQuery(mode, params);
+      saveRecentQuery(mode, normalizedParams);
       message.success(`查询完成，共 ${result.length} 条`);
     } catch (error) {
       if (queryGenerationRef.current === requestGeneration) {
@@ -322,18 +376,7 @@ const MessagePage = () => {
   };
 
   const handleQuery = async () => {
-    const params: MessageQuery =
-      queryMode === 'topic'
-        ? {
-            topic: selectedTopic,
-            startTime: dateRange[0].valueOf(),
-            endTime: dateRange[1].valueOf(),
-          }
-        : queryMode === 'key'
-          ? { topic: selectedTopic, key: keyInput || undefined }
-          : { topic: selectedTopic, msgId: msgIdInput || undefined };
-
-    await executeQuery(queryMode, params);
+    await executeQuery(queryMode, currentQueryParams);
   };
 
   const replayRecentQuery = (recentQuery: RecentQuery) => {
@@ -789,8 +832,8 @@ const MessagePage = () => {
             <Button
               type="primary"
               icon={<SearchOutlined />}
-              disabled={!selectedInstanceId}
-              title={selectedInstanceId ? undefined : '请先选择实例'}
+              disabled={Boolean(queryDisabledReason)}
+              title={queryDisabledReason || undefined}
               onClick={() => {
                 void handleQuery();
               }}
