@@ -112,6 +112,28 @@ export interface K8sCertInfo {
   san: string[];
 }
 
+export interface NameServerConfigValue {
+  address: string;
+  configured: boolean;
+  value: string | null;
+}
+
+export interface NameServerConfigDifference {
+  key: string;
+  values: NameServerConfigValue[];
+}
+
+export interface NameServerConfigDiffResult {
+  cluster: string;
+  complete: boolean;
+  driftDetected: boolean;
+  nodeCount: number;
+  reachableNodeCount: number;
+  comparedKeys: string[];
+  nodes: Array<{ address: string; reachable: boolean }>;
+  differences: NameServerConfigDifference[];
+}
+
 // ─── Cluster ────────────────────────────────────────────────────
 export async function listClusters() {
   const res = await client.get<{ data: ClusterInfo[] }>('/clusters');
@@ -172,6 +194,13 @@ export async function updateNameServer(data: {
   newAddr?: string;
 }) {
   await client.post('/nameservers/update', data);
+}
+
+export async function getNameServerConfigDiff(clusterId: string) {
+  const res = await client.get<{ data: NameServerConfigDiffResult }>('/nameservers/config-diff', {
+    params: { clusterId },
+  });
+  return res.data.data;
 }
 
 // ─── Proxy ──────────────────────────────────────────────────────

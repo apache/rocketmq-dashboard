@@ -23,6 +23,7 @@ import {
   createNameServer,
   deleteK8sCert,
   deleteNameServer,
+  getNameServerConfigDiff,
   getCluster,
   listK8sCerts,
   renewK8sCert,
@@ -170,6 +171,36 @@ describe('K8s certificate API', () => {
       updateNameServer({ ...target, newAddr: '127.0.0.2:9876' }),
     ).resolves.toBeUndefined();
     await expect(deleteNameServer(target)).resolves.toBeUndefined();
+  });
+
+  it('loads NameServer configuration drift for the selected cluster', async () => {
+    const result = {
+      cluster: 'cluster-1',
+      complete: true,
+      driftDetected: true,
+      nodeCount: 2,
+      reachableNodeCount: 2,
+      comparedKeys: ['listenPort'],
+      nodes: [
+        { address: 'ns-a:9876', reachable: true },
+        { address: 'ns-b:9876', reachable: true },
+      ],
+      differences: [
+        {
+          key: 'listenPort',
+          values: [
+            { address: 'ns-a:9876', configured: true, value: '9876' },
+            { address: 'ns-b:9876', configured: true, value: '19876' },
+          ],
+        },
+      ],
+    };
+    mock.onGet('/nameservers/config-diff', { params: { clusterId: 'cluster-1' } }).reply(200, {
+      code: 200,
+      data: result,
+    });
+
+    await expect(getNameServerConfigDiff('cluster-1')).resolves.toEqual(result);
   });
 
   it('sends the proxy restart target', async () => {

@@ -37,6 +37,7 @@ const translations: Record<string, Record<Lang, string>> = {
   'nav.alertRuleAssets': { zh: '告警规则模板', en: 'Alert Rule Templates' },
   'nav.audit': { zh: '审计日志', en: 'Audit Log' },
   'nav.grafanaDashboards': { zh: 'Grafana 看板', en: 'Grafana Dashboards' },
+  'nav.nameServerConfigDrift': { zh: 'NameServer 配置漂移', en: 'NameServer Config Drift' },
   'nav.ai': { zh: 'AI 交互', en: 'AI Chat' },
   'nav.settings': { zh: '设置', en: 'Settings' },
 
@@ -724,6 +725,40 @@ const translations: Record<string, Record<Lang, string>> = {
     en: 'Please input a new NameServer address',
   },
   'ops.fetchFailed': { zh: '获取运维数据失败', en: 'Failed to fetch ops data' },
+
+  // ─── NameServer Config Drift ───
+  'nameServerDrift.title': { zh: 'NameServer 配置漂移', en: 'NameServer Configuration Drift' },
+  'nameServerDrift.cluster': { zh: '集群', en: 'Cluster' },
+  'nameServerDrift.selectCluster': { zh: '请选择集群', en: 'Select a cluster' },
+  'nameServerDrift.refresh': { zh: '重新检查', en: 'Check again' },
+  'nameServerDrift.export': { zh: '导出结果', en: 'Export result' },
+  'nameServerDrift.loadClustersFailed': {
+    zh: '集群列表加载失败',
+    en: 'Failed to load clusters',
+  },
+  'nameServerDrift.checkFailed': { zh: '配置漂移检查失败', en: 'Configuration check failed' },
+  'nameServerDrift.consistent': { zh: '配置一致', en: 'Configuration is consistent' },
+  'nameServerDrift.consistentDescription': {
+    zh: '已比较 {keys} 个安全配置项，所有可达节点配置一致。',
+    en: '{keys} safe configuration keys were compared and all reachable nodes are consistent.',
+  },
+  'nameServerDrift.driftDetected': { zh: '检测到配置漂移', en: 'Configuration drift detected' },
+  'nameServerDrift.driftDescription': {
+    zh: '发现 {count} 个配置项在 NameServer 节点间不一致。',
+    en: '{count} configuration keys differ across NameServer nodes.',
+  },
+  'nameServerDrift.incomplete': { zh: '检查结果不完整', en: 'Check result is incomplete' },
+  'nameServerDrift.incompleteDescription': {
+    zh: '仅成功读取 {reachable}/{total} 个 NameServer 节点。',
+    en: 'Only {reachable} of {total} NameServer nodes could be read.',
+  },
+  'nameServerDrift.nodes': { zh: 'NameServer 节点', en: 'NameServer Nodes' },
+  'nameServerDrift.reachable': { zh: '可达', en: 'Reachable' },
+  'nameServerDrift.unreachable': { zh: '不可达', en: 'Unreachable' },
+  'nameServerDrift.differences': { zh: '配置差异', en: 'Configuration Differences' },
+  'nameServerDrift.configKey': { zh: '配置项', en: 'Configuration Key' },
+  'nameServerDrift.notConfigured': { zh: '未配置', en: 'Not configured' },
+  'nameServerDrift.noClusters': { zh: '暂无可检查的集群', en: 'No clusters available' },
 
   // ─── Alert Management ───
   'alertMgmt.title': { zh: '告警规则管理', en: 'Alert Management' },

@@ -39,6 +39,7 @@ import {
   BellRinging,
   Notebook,
   Warning,
+  GitDiff,
 } from '@phosphor-icons/react';
 import { useLang } from '../i18n/LangContext';
 import { useTheme } from '../theme/useTheme';
@@ -135,6 +136,11 @@ const MainLayout = () => {
         { key: '/ops/system-alerts', icon: <BellRinging size={16} />, label: t('nav.alertEvents') },
         { key: '/ops/audit', icon: <Notebook size={16} />, label: t('nav.audit') },
         {
+          key: '/ops/nameserver-config-drift',
+          icon: <GitDiff size={16} />,
+          label: t('nav.nameServerConfigDrift'),
+        },
+        {
           key: '/ops/alert-rule-templates',
           icon: <Warning size={16} />,
           label: t('nav.alertRuleAssets'),
@@ -166,6 +172,7 @@ const MainLayout = () => {
     '/ops/system-alerts': t('nav.alertEvents'),
     '/ops/alerts': t('nav.alertRules'),
     '/ops/audit': t('nav.audit'),
+    '/ops/nameserver-config-drift': t('nav.nameServerConfigDrift'),
     '/ops/alert-rule-templates': t('nav.alertRuleAssets'),
     '/ai': t('nav.ai'),
     '/settings': t('nav.settings'),
