@@ -124,7 +124,7 @@ describe('AlertManagementPage', () => {
     const brokerRow = brokerRule.closest('tr');
     expect(brokerRow).not.toBeNull();
     await user.click(within(brokerRow!).getByRole('checkbox'));
-    await user.click(screen.getByRole('button', { name: '导出 YAML (1)' }));
+    await user.click(screen.getByRole('button', { name: '导出 YAML' }));
 
     await waitFor(() => {
       expect(queryAlertRules).toHaveBeenCalledTimes(2);
@@ -159,7 +159,7 @@ describe('AlertManagementPage', () => {
     expect(brokerRow).not.toBeNull();
 
     await user.click(within(brokerRow!).getByRole('checkbox'));
-    expect(screen.getByRole('button', { name: '导出 YAML (1)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '导出 YAML' })).toBeInTheDocument();
 
     await user.click(within(brokerRow!).getByRole('switch'));
 
@@ -184,7 +184,7 @@ describe('AlertManagementPage', () => {
 
     expect(screen.queryByText('BrokerDown')).not.toBeInTheDocument();
     expect(screen.getByText('ConsumerLagHigh')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: '导出 YAML (1)' }));
+    await user.click(screen.getByRole('button', { name: '导出 YAML' }));
 
     const blob = createObjectURL.mock.calls[0][0] as Blob;
     const yaml = await blob.text();

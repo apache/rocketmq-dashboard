@@ -469,7 +469,6 @@ const AlertManagementPage: React.FC = () => {
             </Button>
             <Button icon={<DownloadSimple size={16} />} onClick={handleExportYaml} size="small">
               {t('alertMgmt.exportYaml')}
-              {selectedRules.length > 0 ? ` (${selectedRules.length})` : ''}
             </Button>
           </Space>
         }
