@@ -101,7 +101,7 @@ const MainLayout = () => {
   }, []);
 
   const instanceScopedMatch = location.pathname.match(
-    /^\/instance\/[^/]+\/(topic|consumer|message|acl|dlq)$/,
+    /^\/instance\/[^/]+\/(topic|consumer|message|acl|dlq|resource-plan)$/,
   );
   const selectedMenuKey = instanceScopedMatch
     ? `/instance/${instanceScopedMatch[1]}`
@@ -120,6 +120,11 @@ const MainLayout = () => {
         { key: '/instance/acl', icon: <Key size={16} />, label: t('nav.acl') },
         { key: '/instance/message', icon: <MagnifyingGlass size={16} />, label: t('nav.message') },
         { key: '/instance/dlq', icon: <TrashSimple size={16} />, label: t('nav.dlq') },
+        {
+          key: '/instance/resource-plan',
+          icon: <Notebook size={16} />,
+          label: t('nav.resourcePlan'),
+        },
       ],
     },
     {
@@ -164,6 +169,7 @@ const MainLayout = () => {
     '/instance/message': t('nav.message'),
     '/instance/acl': t('nav.acl'),
     '/instance/dlq': t('nav.dlq'),
+    '/instance/resource-plan': t('nav.resourcePlan'),
     '/cluster': t('nav.rocketmqCluster'),
     '/cluster/certs': t('nav.certs'),
     '/cluster/clients': t('nav.clients'),

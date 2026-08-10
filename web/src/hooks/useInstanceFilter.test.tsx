@@ -60,4 +60,32 @@ describe('useInstanceFilter', () => {
       expect(screen.getByText('/instance/instance-a/topic|instance-a')).toBeInTheDocument();
     });
   });
+
+  it('keeps the resource-plan section when normalizing instance scoped routes', async () => {
+    instanceServiceMocks.listInstances.mockResolvedValue([
+      {
+        id: 'instance-a',
+        name: 'Instance A',
+        remark: '',
+        type: 'PROXY',
+        endpoint: '127.0.0.1:8080',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      },
+    ]);
+
+    render(
+      <MemoryRouter initialEntries={['/instance/missing/resource-plan']}>
+        <Routes>
+          <Route path="/instance/:instanceId/resource-plan" element={<InstanceRouteProbe />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('/instance/instance-a/resource-plan|instance-a')).toBeInTheDocument();
+    });
+  });
 });
