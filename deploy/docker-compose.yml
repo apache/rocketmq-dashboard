@@ -16,8 +16,6 @@ services:
     ports:
       - "3306:3306"
     volumes:
-      - ./mysql/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
-      - ../server/src/main/resources/db/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
       - mysql-data:/var/lib/mysql
     networks:
       - studio-net

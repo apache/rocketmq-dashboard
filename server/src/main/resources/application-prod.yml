@@ -1,4 +1,15 @@
 # Production profile
+spring:
+  sql:
+    init:
+      mode: never
+  flyway:
+    enabled: ${STUDIO_DB_MIGRATION_ENABLED:true}
+    locations: classpath:db/migration/mysql
+    baseline-on-migrate: true
+    baseline-version: 0
+    validate-on-migrate: true
+
 logging:
   level:
     org.apache.rocketmq.studio: INFO

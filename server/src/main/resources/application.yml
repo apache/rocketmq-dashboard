@@ -6,6 +6,8 @@ spring:
     name: rocketmq-studio
   profiles:
     active: dev
+  flyway:
+    enabled: false
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/rocketmq?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
     username: ${SPRING_DATASOURCE_USERNAME:root}

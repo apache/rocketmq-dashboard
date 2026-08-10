@@ -48,6 +48,14 @@ cd deploy && docker compose up -d --build
 RocketMQ、Prometheus 和云 API 故障由 Studio 的运行态诊断页面展示，不纳入 liveness，避免下游
 故障触发 Studio 容器反复重启。
 
+后端启动时使用 Flyway 自动执行 `server/src/main/resources/db/migration/mysql` 中的版本化迁移。
+新 MySQL 数据库会创建完整 schema；升级已有 `mysql-data` 卷时会自动补齐缺失表、列与索引，
+无需再依赖只在首次初始化时运行的 `/docker-entrypoint-initdb.d`。
+历史遗留的 `deploy/mysql/upgrade-*.sql` schema 升级脚本已由 Flyway 迁移取代，仅保留用于历史排查；
+新部署和已有数据卷升级都不应再手动执行这些 schema 脚本。
+自动升级支持 #2317 及之后的统一数字主键 schema。更早的 VARCHAR/UUID 主键数据卷应先备份并执行专门的
+数据转换；迁移检测到该旧布局时会直接失败，不会继续进行部分表结构修改。
+
 默认 schema 只创建 Studio 所需的表，不会写入实例、Topic、消费组或 ACL 示例数据。需要演示数据时，
 请先初始化当前 `server/src/main/resources/db/schema.sql`，再在开发环境中按顺序导入：
 

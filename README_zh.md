@@ -19,6 +19,11 @@ cd .. && docker compose up -d --build
 
 启动后访问 **http://127.0.0.1:6789** 即可使用。
 
+生产环境的 schema 变更由 Flyway 自动执行。历史遗留的 `deploy/mysql/upgrade-*.sql` schema 升级脚本
+已被版本化迁移取代，新部署或已有数据卷升级时不应再手动执行。
+已有数据卷的自动升级边界是 #2317 引入的统一数字主键 schema。更早的 VARCHAR/UUID 主键数据库需要先备份并
+制定显式数据转换方案；Flyway 会中止不受支持的旧布局，避免只迁移一部分表。
+
 **Studio 服务端口：** 前端 6789（Nginx）、后端 8888（Spring Boot）
 
 **RocketMQ 服务端端口：** NameServer 9876、Broker 10911、Proxy Remoting 8080、Proxy gRPC 8081

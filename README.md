@@ -23,6 +23,12 @@ records. Development-only sample data can be imported explicitly from `deploy/my
 default deployment. Import `upgrade-demo-instance.sql` first and then `upgrade-demo-acl.sql`; both scripts
 target the current numeric-ID schema and are idempotent. They are sample-data loaders, not upgrade migrations,
 and should never be imported into a production database.
+Production schema changes are applied automatically by Flyway. The legacy
+`deploy/mysql/upgrade-*.sql` schema upgrade scripts are superseded and must not be run for new deployments or
+existing-volume upgrades.
+Automatic existing-volume upgrades start from the standardized numeric-ID schema introduced by #2317.
+Back up and convert older VARCHAR/UUID-ID databases before enabling Flyway; the migration aborts rather than
+partially rewriting an unsupported layout.
 
 **Studio ports:** Frontend 6789 (Nginx), Backend 8888 (Spring Boot)
 
