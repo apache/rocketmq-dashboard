@@ -209,12 +209,12 @@ public class RocketMQClusterProvider implements ClusterProvider {
             // Parse TPS from runtime stats
             String putTps = table.get("putTps");
             if (putTps != null && !putTps.isEmpty()) {
-                builder.tpsIn(parseFirstTpsValue(putTps));
+                builder.tpsIn(parseTpsValue(putTps));
             }
 
             String getTransferredTps = table.get("getTransferredTps");
             if (getTransferredTps != null && !getTransferredTps.isEmpty()) {
-                builder.tpsOut(parseFirstTpsValue(getTransferredTps));
+                builder.tpsOut(parseTpsValue(getTransferredTps));
             }
 
             // Disk usage
@@ -241,7 +241,7 @@ public class RocketMQClusterProvider implements ClusterProvider {
      * TPS properties are space-separated values representing 10s/1min/10min averages.
      * Parse the first value (10s average).
      */
-    private int parseFirstTpsValue(String tpsStr) {
+    private int parseTpsValue(String tpsStr) {
         try {
             String[] parts = tpsStr.trim().split("\\s+");
             if (parts.length > 0) {
