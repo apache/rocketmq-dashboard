@@ -166,13 +166,13 @@ public class RocketMQDLQProvider implements DLQProvider {
         String detail = String.format("instanceId=%s, group=%s, dlqTopic=%s, targetTopic=%s, matched=%d, resent=%d, failed=%d",
                 instanceId, groupName, dlqTopic, StringUtils.hasText(targetTopic) ? targetTopic : "<original>",
                 deadLetters.size(), resent, failed);
-        recordAudit(groupName, detail, failed == 0 ? "SUCCESS" : "PARTIAL");
+        recordAudit(groupName, detail, classifyOutcome(deadLetters.size(), resent, failed));
         log.info("DLQ resend completed: {}", detail);
         return DLQResendResultVO.builder()
                 .matched(deadLetters.size())
                 .resent(resent)
                 .failed(failed)
-                .outcome(failed == 0 ? "SUCCESS" : "PARTIAL")
+                .outcome(classifyOutcome(deadLetters.size(), resent, failed))
                 .build();
     }
 
@@ -313,6 +313,19 @@ public class RocketMQDLQProvider implements DLQProvider {
 
     static String nextResendProducerGroup() {
         return ShortLivedClientName.next("studio-dlq-resend");
+    }
+
+    private String classifyOutcome(int matched, int resent, int failed) {
+        if (matched == 0) {
+            return "NO_MESSAGES";
+        }
+        if (resent == 0 && failed > 0) {
+            return "FAILED";
+        }
+        if (failed > 0) {
+            return "PARTIAL";
+        }
+        return "SUCCESS";
     }
 
     private void recordAudit(String groupName, String detail, String result) {
