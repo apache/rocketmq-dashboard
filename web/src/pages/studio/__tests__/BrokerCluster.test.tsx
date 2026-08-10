@@ -117,6 +117,14 @@ const renderWithProviders = (ui: React.ReactElement) => {
   );
 };
 
+const createDeferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+};
+
 describe('BrokerCluster Page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -227,14 +235,75 @@ describe('BrokerCluster Page', () => {
     const liveRefreshSwitch = screen.getByRole('switch');
     fireEvent.click(liveRefreshSwitch);
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(2000);
+      await vi.advanceTimersByTimeAsync(6000);
     });
-    expect(listClusters).toHaveBeenCalledTimes(2);
+    expect(listClusters).toHaveBeenCalledTimes(4);
 
     fireEvent.click(liveRefreshSwitch);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(4000);
     });
-    expect(listClusters).toHaveBeenCalledTimes(2);
+    expect(listClusters).toHaveBeenCalledTimes(4);
   });
+  it('keeps the latest cluster list when an older refresh resolves last', async () => {
+    const older = createDeferred<ClusterInfo[]>();
+    const latest = createDeferred<ClusterInfo[]>();
+    vi.mocked(listClusters)
+      .mockResolvedValueOnce(clusterFixture)
+      .mockReturnValueOnce(older.promise)
+      .mockReturnValueOnce(latest.promise);
+    const user = userEvent.setup();
+    renderWithProviders(<BrokerCluster />);
+    await screen.findByText('broker-api-a');
+
+    const refreshButton = screen.getByText('重置');
+    await user.click(refreshButton);
+    await user.click(refreshButton);
+
+    const latestFixture = [
+      {
+        ...clusterFixture[0],
+        brokers: [{ ...clusterFixture[0].brokers[0], name: 'latest-broker' }],
+      },
+    ];
+    await act(async () => latest.resolve(latestFixture));
+    expect(await screen.findByText('latest-broker')).toBeInTheDocument();
+
+    await act(async () => older.resolve(clusterFixture));
+    expect(screen.getByText('latest-broker')).toBeInTheDocument();
+    expect(screen.queryByText('broker-api-a')).not.toBeInTheDocument();
+  });
+
+  it('formats bracketed IPv6 proxy gRPC endpoints without truncating the host', async () => {
+    vi.mocked(listClusters).mockResolvedValue([
+      {
+        ...clusterFixture[0],
+        proxies: [
+          {
+            ...clusterFixture[0].proxies[0],
+            addr: '[2001:db8::10]:8080',
+            grpcPort: 8081,
+          },
+        ],
+      },
+    ]);
+    const user = userEvent.setup();
+    renderWithProviders(<BrokerCluster />);
+    await screen.findByText('broker-api-a');
+    await user.click(screen.getByText('Proxy 管理'));
+
+    expect(screen.getByText('[2001:db8::10]:8081')).toBeInTheDocument();
+  });
+  it('renders unrecognized broker statuses as unavailable instead of running', async () => {
+    vi.mocked(listClusters).mockResolvedValue([{
+      ...clusterFixture[0],
+      brokers: [{ ...clusterFixture[0].brokers[0], status: 'mystery' }],
+    }]);
+    renderWithProviders(<BrokerCluster />);
+
+    await screen.findByText('broker-api-a');
+    expect(screen.getByText('N/A')).toBeInTheDocument();
+    expect(screen.queryByText('运行中')).not.toBeInTheDocument();
+  });
+
 });

@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
@@ -124,9 +124,9 @@ describe('GroupManagement Page', () => {
     expect(screen.queryByText('查看分布')).not.toBeInTheDocument();
   });
 
-  it('should render reset button', () => {
+  it('should render refresh button', () => {
     renderWithProviders(<GroupManagement />);
-    expect(screen.getByText('重置')).toBeInTheDocument();
+    expect(screen.getByText('刷新')).toBeInTheDocument();
   });
 
   it('should display consumer group data from the service in table', async () => {
@@ -198,32 +198,24 @@ describe('GroupManagement Page', () => {
     expect(screen.queryByText('FIRST_GROUP_TOPIC')).not.toBeInTheDocument();
   });
 
-  it('keeps the latest group list when an earlier refresh resolves last', async () => {
+  it('queues one refresh instead of overlapping an active group request', async () => {
     const initialGroups = createDeferred<ConsumerGroup[]>();
     const refreshedGroups = createDeferred<ConsumerGroup[]>();
     vi.mocked(consumerService.listConsumerGroups)
       .mockReturnValueOnce(initialGroups.promise)
       .mockReturnValueOnce(refreshedGroups.promise);
-    vi.useFakeTimers();
     renderWithProviders(<GroupManagement />);
 
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
-    fireEvent.click(screen.getByText('重置'));
+    await waitFor(() => expect(consumerService.listConsumerGroups).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByText('刷新'));
+    expect(consumerService.listConsumerGroups).toHaveBeenCalledTimes(1);
 
-    await act(async () => {
-      refreshedGroups.resolve([makeGroup({ name: 'fresh-group' })]);
-      await Promise.resolve();
-    });
-    expect(screen.getByText('fresh-group')).toBeInTheDocument();
+    initialGroups.resolve([makeGroup({ name: 'initial-group' })]);
+    await waitFor(() => expect(consumerService.listConsumerGroups).toHaveBeenCalledTimes(2));
 
-    await act(async () => {
-      initialGroups.resolve([makeGroup({ name: 'stale-group' })]);
-      await Promise.resolve();
-    });
-    expect(screen.getByText('fresh-group')).toBeInTheDocument();
-    expect(screen.queryByText('stale-group')).not.toBeInTheDocument();
+    refreshedGroups.resolve([makeGroup({ name: 'fresh-group' })]);
+    expect(await screen.findByText('fresh-group')).toBeInTheDocument();
+    expect(screen.queryByText('initial-group')).not.toBeInTheDocument();
   });
 
   it('polls only while auto refresh is enabled', async () => {
@@ -259,5 +251,55 @@ describe('GroupManagement Page', () => {
     await user.type(searchInput, 'ORDER');
     expect(screen.getByText('order-consumer-group')).toBeInTheDocument();
     expect(screen.queryByText('payment-consumer-group')).not.toBeInTheDocument();
+  });
+  it('scopes global group detail diagnostics to the record instance', async () => {
+    vi.mocked(consumerService.listConsumerGroups).mockResolvedValue([
+      makeGroup({ name: 'shared-group', instanceId: 'instance-b' }),
+    ]);
+    const user = userEvent.setup();
+    renderWithProviders(<GroupManagement />);
+    await screen.findByText('shared-group');
+    await user.click(screen.getByText('详情'));
+
+    await waitFor(() => {
+      expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith(
+        'shared-group',
+        'instance-b',
+      );
+      expect(consumerService.getConsumerProgress).toHaveBeenCalledWith(
+        'shared-group',
+        'instance-b',
+      );
+    });
+  });
+
+  it('shows a stopped status in details when no consumer instance is online', async () => {
+    vi.mocked(consumerService.listConsumerGroups).mockResolvedValue([
+      makeGroup({ name: 'offline-group', onlineInstances: 0 }),
+    ]);
+    const user = userEvent.setup();
+    renderWithProviders(<GroupManagement />);
+    await screen.findByText('offline-group');
+    await user.click(screen.getByText('详情'));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('已停止')).toBeInTheDocument();
+    expect(within(dialog).queryByText('在线')).not.toBeInTheDocument();
+  });
+
+  it('uses unique row keys for same-named groups from different instances', async () => {
+    vi.mocked(consumerService.listConsumerGroups).mockResolvedValue([
+      makeGroup({ name: 'shared-group', instanceId: 'instance-a' }),
+      makeGroup({ name: 'shared-group', instanceId: 'instance-b' }),
+    ]);
+    const { container } = renderWithProviders(<GroupManagement />);
+    await screen.findAllByText('shared-group');
+
+    const rowKeys = Array.from(container.querySelectorAll('tbody tr[data-row-key]')).map((row) =>
+      row.getAttribute('data-row-key'),
+    );
+    expect(rowKeys).toContain('instance-a\0shared-group');
+    expect(rowKeys).toContain('instance-b\0shared-group');
+    expect(new Set(rowKeys).size).toBe(rowKeys.length);
   });
 });

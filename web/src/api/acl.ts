@@ -11,7 +11,7 @@ export interface AclRule {
   decision: string;
   scope: string;
   aclVersion: number | string;
-  createdAt: string;
+  createdAt?: string | null;
 }
 
 export interface AclRuleQuery {
@@ -26,7 +26,7 @@ export interface AclUser {
   secretKey: string;
   admin: boolean;
   clusters: string[];
-  createdAt: string;
+  createdAt?: string | null;
 }
 
 export async function listAclRules(params?: AclRuleQuery) {

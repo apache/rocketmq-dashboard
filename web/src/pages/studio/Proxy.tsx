@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Card,
   Table,
@@ -63,6 +63,7 @@ const ProxyPage: React.FC = () => {
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [addNodeModalOpen, setAddNodeModalOpen] = useState(false);
   const [form] = Form.useForm();
+  const loadRequestId = useRef(0);
 
   const [clusterStats, setClusterStats] = useState({
     totalNodes: 0,
@@ -72,9 +73,11 @@ const ProxyPage: React.FC = () => {
   });
 
   const loadProxyNodes = useCallback(async () => {
+    const requestId = ++loadRequestId.current;
     setLoading(true);
     try {
       const { proxyAddrList, currentProxyAddr } = await queryProxyHomePage();
+      if (requestId !== loadRequestId.current) return false;
       const nodes: ProxyNode[] = (proxyAddrList || []).map((addr) => ({
         key: addr,
         address: addr,
@@ -103,10 +106,13 @@ const ProxyPage: React.FC = () => {
       }
       return true;
     } catch {
+      if (requestId !== loadRequestId.current) return false;
       message.error(t('proxy.fetchListFailed'));
       return false;
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestId.current) {
+        setLoading(false);
+      }
     }
   }, [message, t]);
 
@@ -114,6 +120,9 @@ const ProxyPage: React.FC = () => {
     // The state updates are performed by the asynchronous Proxy API request, not by this effect itself.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadProxyNodes();
+    return () => {
+      ++loadRequestId.current;
+    };
   }, [loadProxyNodes]);
 
   const handleViewConfig = (node: ProxyNode) => {
@@ -121,43 +130,39 @@ const ProxyPage: React.FC = () => {
     setConfigModalOpen(true);
   };
 
-  const handleAddNode = () => {
-    form
-      .validateFields()
-      .then((values) => {
-        setLoading(true);
-        addProxyAddr(values.address)
-          .then(() => {
-            message.success(t('common.success'));
-            setAddNodeModalOpen(false);
-            form.resetFields();
-            loadProxyNodes();
-          })
-          .catch(() => {
-            message.error(t('proxy.addFailed'));
-          })
-          .finally(() => {
-            setLoading(false);
-          });
-      })
-      .catch(() => {
-        // validation failed
-      });
+  const handleAddNode = async () => {
+    let values: { address: string };
+    try {
+      values = await form.validateFields();
+    } catch {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await addProxyAddr(values.address);
+      message.success(t('common.success'));
+      setAddNodeModalOpen(false);
+      form.resetFields();
+      await loadProxyNodes();
+    } catch {
+      message.error(t('proxy.addFailed'));
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleRemoveNode = (node: ProxyNode) => {
+  const handleRemoveNode = async (node: ProxyNode) => {
     setLoading(true);
-    removeProxyAddr(node.address)
-      .then(() => {
-        message.success(t('common.success'));
-        loadProxyNodes();
-      })
-      .catch(() => {
-        message.error(t('proxy.removeFailed'));
-      })
-      .finally(() => {
-        setLoading(false);
-      });
+    try {
+      await removeProxyAddr(node.address);
+      message.success(t('common.success'));
+      await loadProxyNodes();
+    } catch {
+      message.error(t('proxy.removeFailed'));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleRefresh = async () => {

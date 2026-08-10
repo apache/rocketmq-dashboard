@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Table,
   Button,
@@ -42,7 +42,7 @@ import { listClusters, restartBroker } from '../../services/clusterService';
 import type { ClusterInfo } from '../../api/cluster';
 
 // ─── Types ──────────────────────────────────────────────────────
-type NodeStatus = 'running' | 'readonly' | 'maintenance';
+type NodeStatus = 'running' | 'readonly' | 'maintenance' | 'unknown';
 
 const REFRESH_INTERVAL_MS = 2000;
 
@@ -85,10 +85,20 @@ const normalizeStatus = (status: string): NodeStatus => {
   const value = (status || '').toLowerCase();
   if (value === 'readonly' || value === 'warning') return 'readonly';
   if (value === 'maintenance' || value === 'error' || value === 'offline') return 'maintenance';
-  return 'running';
+  if (value === 'running' || value === 'healthy') return 'running';
+  return 'unknown';
 };
 
-const hostOf = (addr: string): string => addr.split(':')[0] ?? addr;
+const hostOf = (addr: string): string => {
+  const value = addr.trim();
+  if (value.startsWith('[')) {
+    const closingBracket = value.indexOf(']');
+    return closingBracket >= 0 ? value.slice(0, closingBracket + 1) : value;
+  }
+  const firstColon = value.indexOf(':');
+  const lastColon = value.lastIndexOf(':');
+  return firstColon >= 0 && firstColon === lastColon ? value.slice(0, lastColon) : value;
+};
 
 function mapClusters(clusters: ClusterInfo[]): {
   brokers: BrokerRecord[];
@@ -155,32 +165,29 @@ const BrokerClusterPage = () => {
   const [brokerData, setBrokerData] = useState<BrokerRecord[]>([]);
   const [nameServerData, setNameServerData] = useState<NameServerRecord[]>([]);
   const [proxyData, setProxyData] = useState<ProxyRecord[]>([]);
+  const loadRequestId = useRef(0);
   const { t } = useLang();
   const { message } = App.useApp();
 
   const loadData = useCallback(async () => {
+    const requestId = ++loadRequestId.current;
     setLoading(true);
     try {
       const clusters = await listClusters();
+      if (requestId !== loadRequestId.current) return;
       const mapped = mapClusters(clusters);
       setBrokerData(mapped.brokers);
       setNameServerData(mapped.nameServers);
       setProxyData(mapped.proxies);
     } catch {
+      if (requestId !== loadRequestId.current) return;
       message.error(t('common.refreshFailed'));
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestId.current) {
+        setLoading(false);
+      }
     }
   }, [message, t]);
-
-  // Live refresh: poll while the auto-refresh switch is on.
-  useEffect(() => {
-    if (!autoRefresh) return;
-    const timer = setInterval(() => {
-      void loadData();
-    }, 5000);
-    return () => clearInterval(timer);
-  }, [autoRefresh, loadData]);
 
   const handleRestartBroker = async (broker: BrokerRecord) => {
     try {
@@ -202,7 +209,10 @@ const BrokerClusterPage = () => {
     const timeoutId = window.setTimeout(() => {
       void loadData();
     });
-    return () => window.clearTimeout(timeoutId);
+    return () => {
+      window.clearTimeout(timeoutId);
+      ++loadRequestId.current;
+    };
   }, [loadData]);
 
   useEffect(() => {
@@ -222,6 +232,7 @@ const BrokerClusterPage = () => {
         color: 'error',
         label: t('brokerCluster.statusMaintenance'),
       },
+      unknown: { color: 'default', label: t('common.na') },
     };
     const { color, label } = config[status] || config.running;
     return <Tag color={color}>{label}</Tag>;
