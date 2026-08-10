@@ -186,7 +186,8 @@ public class SettingsService {
 
     private boolean isPrometheusCompatible(String type) {
         return StringUtils.hasText(type)
-                && PROMETHEUS_COMPATIBLE_TYPES.contains(type.replaceAll("\\s+", "").toLowerCase());
+                && PROMETHEUS_COMPATIBLE_TYPES.contains(
+                        type.replaceAll("\\s+", "").toLowerCase(Locale.ROOT));
     }
 
     private String normalizeDataSourceKey(String key) {
@@ -222,7 +223,7 @@ public class SettingsService {
         if (!StringUtils.hasText(auth)) {
             return AUTH_NONE;
         }
-        return auth.trim().replaceAll("\\s+", " ").toLowerCase();
+        return auth.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
     private URI prometheusQueryUri(String baseUrl) throws URISyntaxException {
