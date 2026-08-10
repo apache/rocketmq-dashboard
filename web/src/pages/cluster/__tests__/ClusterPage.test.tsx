@@ -32,7 +32,12 @@ const clusterServiceMocks = vi.hoisted(() => ({
   updateNameServer: vi.fn(),
 }));
 
+const instanceServiceMocks = vi.hoisted(() => ({
+  listInstances: vi.fn(),
+}));
+
 vi.mock('../../../services/clusterService', () => clusterServiceMocks);
+vi.mock('../../../services/instanceService', () => instanceServiceMocks);
 
 import ClusterPage from '../index';
 
@@ -132,6 +137,20 @@ const flushPromises = async () => {
 
 describe('Cluster page', () => {
   beforeEach(() => {
+    instanceServiceMocks.listInstances.mockReset().mockResolvedValue([
+      {
+        id: 'instance-1',
+        name: 'Instance 1',
+        endpoint: 'namesrv-1:9876',
+        type: 'DIRECT',
+        vendor: 'APACHE',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        createdAt: '',
+        updatedAt: '',
+      },
+    ]);
     clusterServiceMocks.createNameServer.mockReset().mockResolvedValue(undefined);
     clusterServiceMocks.listClusters.mockReset().mockResolvedValue([buildCluster()]);
     clusterServiceMocks.restartProxy.mockReset().mockResolvedValue(undefined);
@@ -152,6 +171,34 @@ describe('Cluster page', () => {
     Modal.destroyAll();
     vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  it('surfaces instance bootstrap failures and retries without querying a default cluster', async () => {
+    instanceServiceMocks.listInstances
+      .mockRejectedValueOnce(new Error('managed instances unavailable'))
+      .mockResolvedValueOnce([
+        {
+          id: 'instance-1',
+          name: 'Instance 1',
+          endpoint: 'namesrv-1:9876',
+          type: 'DIRECT',
+          vendor: 'APACHE',
+          remark: '',
+          topicCount: 0,
+          consumerGroupCount: 0,
+          createdAt: '',
+          updatedAt: '',
+        },
+      ]);
+    const user = userEvent.setup();
+    renderWithProviders(<ClusterPage />);
+
+    const alert = await screen.findByRole('alert');
+    expect(clusterServiceMocks.listClusters).not.toHaveBeenCalled();
+
+    await user.click(within(alert).getByRole('button', { name: /重\s*试/ }));
+    expect(await screen.findByText('rocketmq-prod-0')).toBeInTheDocument();
+    expect(clusterServiceMocks.listClusters).toHaveBeenCalledWith('instance-1');
   });
 
   it('opens proxy detail dialog from the proxy table', async () => {
@@ -331,6 +378,7 @@ describe('Cluster page', () => {
       .mockResolvedValueOnce([buildCluster({ tpsIn: 202 })]);
 
     renderWithProviders(<ClusterPage />);
+    await flushPromises();
     fireEvent.click(screen.getByRole('button', { name: '刷新' }));
     fireEvent.click(screen.getByRole('button', { name: '刷新' }));
 
@@ -474,6 +522,8 @@ describe('Cluster page', () => {
     const initialRequest = deferred<ClusterInfo[]>();
     clusterServiceMocks.listClusters.mockReturnValue(initialRequest.promise);
     const view = renderWithProviders(<ClusterPage />);
+
+    await flushPromises();
 
     view.unmount();
     await act(async () => {
