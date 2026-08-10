@@ -34,6 +34,7 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.ClientLanguage;
 import org.apache.rocketmq.studio.common.domain.enums.ClientType;
 import org.apache.rocketmq.studio.common.domain.enums.Protocol;
+import org.apache.rocketmq.studio.common.util.SystemGroupFilter;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -333,17 +334,7 @@ public class RocketMQClientProvider implements ClientProvider {
     }
 
     private boolean isSystemGroup(String group) {
-        if (group == null) {
-            return true;
-        }
-        return group.startsWith("CID_RMQ_SYS_")
-                || group.startsWith("CID_ONSAPI_")
-                || group.startsWith("TOOLS_CONSUMER")
-                || group.startsWith("FILTERSRV_CONSUMER")
-                || group.startsWith("CID_SYS_")
-                || group.startsWith("%RETRY%")
-                || group.startsWith("SELF_TEST_")
-                || group.startsWith("CID_HOUSEKEEPING");
+        return SystemGroupFilter.isSystem(group);
     }
 
     private String rootMessage(Throwable error) {

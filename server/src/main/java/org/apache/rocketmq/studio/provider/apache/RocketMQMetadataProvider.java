@@ -33,6 +33,7 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
+import org.apache.rocketmq.studio.common.util.SystemGroupFilter;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
@@ -334,15 +335,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     }
 
     private boolean isSystemConsumerGroup(String group) {
-        if (group == null || group.isEmpty()) {
-            return true;
-        }
-        return group.startsWith("%RETRY%")
-                || group.startsWith("%DLQ%")
-                || group.startsWith("CID_RMQ_SYS_")
-                || group.startsWith("CID_ONS_")
-                || group.startsWith("TOOLS_CONSUMER")
-                || group.startsWith("FILTERSRV_CONSUMER");
+        return SystemGroupFilter.isSystem(group);
     }
 
     @Override
