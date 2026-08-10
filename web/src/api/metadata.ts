@@ -75,6 +75,23 @@ export interface ConsumerInstance {
   topicLag: Record<string, number>;
 }
 
+export interface ConsumerThreadStack {
+  threadName: string;
+  threadId: number;
+  state: string;
+  blockedTime: number;
+  waitedTime: number;
+  stackTrace: string[];
+}
+
+export interface ConsumerStackTrace {
+  groupName: string;
+  clientId: string;
+  capturedAt: string;
+  threadCount: number;
+  threads: ConsumerThreadStack[];
+}
+
 export interface ConsumerGroupDetail extends ConsumerGroup {
   instances: ConsumerInstance[];
 }
@@ -188,6 +205,14 @@ export async function getConsumerProgress(name: string, instanceId?: string) {
 export async function getConsumerSubscriptions(name: string, instanceId?: string) {
   const res = await client.get<{ data: SubscriptionEntry[] }>(
     `/groups/${encodeURIComponent(name)}/subscriptions`,
+    { params: instanceId ? { instanceId } : {} },
+  );
+  return res.data.data;
+}
+
+export async function getConsumerStack(name: string, clientId: string, instanceId?: string) {
+  const res = await client.get<{ data: ConsumerStackTrace }>(
+    `/groups/${encodeURIComponent(name)}/instances/${encodeURIComponent(clientId)}/stack`,
     { params: instanceId ? { instanceId } : {} },
   );
   return res.data.data;

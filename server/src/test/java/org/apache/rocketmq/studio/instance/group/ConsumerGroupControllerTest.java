@@ -145,9 +145,11 @@ class ConsumerGroupControllerTest {
                 .threads(List.of(thread))
                 .build();
 
-        when(consumerDiagnosticsService.getConsumerStack("cg-orders", "client-1")).thenReturn(stackTrace);
+        when(consumerDiagnosticsService.getConsumerStack("instance-a", "cg-orders", "client-1"))
+                .thenReturn(stackTrace);
 
-        mockMvc.perform(get("/api/groups/cg-orders/instances/client-1/stack"))
+        mockMvc.perform(get("/api/groups/cg-orders/instances/client-1/stack")
+                        .param("instanceId", "instance-a"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.groupName").value("cg-orders"))
@@ -156,6 +158,7 @@ class ConsumerGroupControllerTest {
                 .andExpect(jsonPath("$.data.threads[0].threadName").value("ConsumeMessageThread_1"))
                 .andExpect(jsonPath("$.data.threads[0].stackTrace[0]")
                         .value("org.apache.rocketmq.client.impl.consumer.ConsumeMessageConcurrentlyService.run"));
+        verify(consumerDiagnosticsService).getConsumerStack("instance-a", "cg-orders", "client-1");
     }
 
     @Test
