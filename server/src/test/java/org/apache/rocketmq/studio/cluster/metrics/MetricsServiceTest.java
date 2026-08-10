@@ -309,6 +309,18 @@ class MetricsServiceTest {
                 .build();
     }
 
+    private MetricsDataSourceQueryRequest dataSourceRequest(String instanceId) {
+        MetricsDataSourceQueryRequest request = new MetricsDataSourceQueryRequest();
+        request.setInstanceId(instanceId);
+        request.setQuery(MetricQueryDTO.builder()
+                .metric("cpu")
+                .start(1700000000L)
+                .end(1700003600L)
+                .step("1m")
+                .build());
+        return request;
+    }
+
     private void assertBadRequest(MetricQueryDTO query, String message) {
         assertThatExceptionOfType(PrometheusException.class)
                 .isThrownBy(() -> metricsService.query(query))
@@ -347,6 +359,66 @@ class MetricsServiceTest {
         verify(settingsService).getDataSource("ds-1");
         verify(metricsSourceFactory).create(any(MetricsDataSourceConfig.class));
         verify(metricsSource).query(any(MetricQueryDTO.class));
+    }
+
+    @Test
+    void queryByDataSourceShouldAllowMatchingInstanceBinding() {
+        MetricsDataSourceQueryRequest request = dataSourceRequest("instance-a");
+        DataSourceVO dataSource = DataSourceVO.builder()
+                .key("ds-1")
+                .name("prometheus-a")
+                .type("prometheus")
+                .url("http://prometheus:9090")
+                .auth("none")
+                .instanceIds(List.of("instance-a", "instance-b"))
+                .build();
+        when(settingsService.getDataSource("ds-1")).thenReturn(dataSource);
+        when(metricsSourceFactory.create(any(MetricsDataSourceConfig.class))).thenReturn(metricsSource);
+        when(metricsSource.query(any(MetricQueryDTO.class))).thenReturn(emptyMetricData());
+
+        metricsService.queryByDataSource("ds-1", request);
+
+        verify(metricsSource).query(any(MetricQueryDTO.class));
+    }
+
+    @Test
+    void queryByDataSourceShouldRejectDifferentInstanceBinding() {
+        MetricsDataSourceQueryRequest request = dataSourceRequest("instance-b");
+        DataSourceVO dataSource = DataSourceVO.builder()
+                .key("ds-1")
+                .name("prometheus-a")
+                .type("prometheus")
+                .url("http://prometheus:9090")
+                .instanceIds(List.of("instance-a"))
+                .build();
+        when(settingsService.getDataSource("ds-1")).thenReturn(dataSource);
+
+        assertThatExceptionOfType(PrometheusException.class)
+                .isThrownBy(() -> metricsService.queryByDataSource("ds-1", request))
+                .satisfies(exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(400);
+                    assertThat(exception.getMessage())
+                            .isEqualTo("Data source ds-1 is not available for instance instance-b");
+                });
+        verifyNoInteractions(metricsSourceFactory, metricsSource);
+    }
+
+    @Test
+    void queryByDataSourceShouldRejectMissingInstanceForBoundSource() {
+        MetricsDataSourceQueryRequest request = dataSourceRequest(null);
+        DataSourceVO dataSource = DataSourceVO.builder()
+                .key("ds-1")
+                .name("prometheus-a")
+                .type("prometheus")
+                .url("http://prometheus:9090")
+                .instanceIds(List.of("instance-a"))
+                .build();
+        when(settingsService.getDataSource("ds-1")).thenReturn(dataSource);
+
+        assertThatExceptionOfType(PrometheusException.class)
+                .isThrownBy(() -> metricsService.queryByDataSource("ds-1", request))
+                .satisfies(exception -> assertThat(exception.getStatusCode()).isEqualTo(400));
+        verifyNoInteractions(metricsSourceFactory, metricsSource);
     }
 
     @Test

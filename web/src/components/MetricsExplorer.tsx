@@ -294,7 +294,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
       setQueryError(false);
       try {
         const result = dataSourceKeyRef.current
-          ? await queryByDataSource({ key: dataSourceKeyRef.current, query })
+          ? await queryByDataSource({ key: dataSourceKeyRef.current, query, instanceId })
           : await queryMetrics(query);
         if (currentRequest === requestId.current) setData(result);
       } catch {
@@ -306,7 +306,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         if (currentRequest === requestId.current) setQueryLoading(false);
       }
     },
-    [],
+    [instanceId],
   );
 
   useEffect(() => {

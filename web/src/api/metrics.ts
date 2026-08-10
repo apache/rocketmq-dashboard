@@ -108,6 +108,7 @@ export async function queryMetrics(query: MetricQuery) {
 export interface DataSourceQuery {
   key: string;
   query: MetricQuery;
+  instanceId?: string;
   username?: string;
   password?: string;
   bearerToken?: string;
@@ -116,10 +117,10 @@ export interface DataSourceQuery {
 // Runs a PromQL range query against a configured data source (key identifies the
 // persisted source; credentials are optional and fall back to the stored config).
 export async function queryByDataSource(params: DataSourceQuery) {
-  const { key, query, username, password, bearerToken } = params;
+  const { key, query, instanceId, username, password, bearerToken } = params;
   const res = await client.post<{ data: MetricData }>(
     '/metrics/query/datasource',
-    { query, username, password, bearerToken },
+    { query, instanceId, username, password, bearerToken },
     { params: { key } },
   );
   return res.data.data;

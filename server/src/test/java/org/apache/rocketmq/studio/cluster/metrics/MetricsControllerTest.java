@@ -154,6 +154,30 @@ class MetricsControllerTest {
     }
 
     @Test
+    void dataSourceQueryShouldForwardSelectedInstance() throws Exception {
+        when(metricsService.queryByDataSource(any(), any())).thenReturn(MetricDataVO.builder()
+                .resultType("matrix")
+                .series(List.of())
+                .warnings(List.of())
+                .build());
+
+        mockMvc.perform(post("/api/metrics/query/datasource")
+                        .param("key", "ds-prom-1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"instanceId":"instance-a",
+                                 "query":{"metric":"up","start":1784107658,
+                                          "end":1784108558,"step":"30s"}}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(metricsService).queryByDataSource(
+                org.mockito.ArgumentMatchers.eq("ds-prom-1"),
+                argThat(request -> "instance-a".equals(request.getInstanceId())));
+    }
+
+    @Test
     void queryShouldReturnBadRequestWhenFieldTypeIsInvalid() throws Exception {
         mockMvc.perform(post("/api/metrics/query")
                         .contentType(MediaType.APPLICATION_JSON)
