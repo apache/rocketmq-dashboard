@@ -23,6 +23,7 @@ import { useLang } from '../i18n/LangContext';
 import {
   getGrafanaDashboard,
   exportGrafanaDashboard,
+  exportGrafanaDashboards,
   listGrafanaDashboards,
 } from '../services/grafanaService';
 import type { GrafanaDashboardInfo } from '../api/metrics';
@@ -39,6 +40,7 @@ export const GrafanaDashboardList: React.FC = () => {
   const [viewLoading, setViewLoading] = useState(false);
   const viewRequestId = useRef(0);
   const [exportingUids, setExportingUids] = useState<Set<string>>(() => new Set());
+  const [exportingAll, setExportingAll] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -87,13 +89,13 @@ export const GrafanaDashboardList: React.FC = () => {
     setViewLoading(false);
   };
 
-  const triggerDownload = (uid: string, content: Blob | string) => {
+  const triggerDownload = (filename: string, content: Blob | string) => {
     const blob =
       typeof content === 'string' ? new Blob([content], { type: 'application/json' }) : content;
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${uid}.json`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -102,7 +104,7 @@ export const GrafanaDashboardList: React.FC = () => {
     setExportingUids((current) => new Set(current).add(info.uid));
     try {
       const blob = await exportGrafanaDashboard(info.uid);
-      triggerDownload(info.uid, blob);
+      triggerDownload(`${info.uid}.json`, blob);
       message.success(t('grafana.exported'));
     } catch {
       message.error(t('grafana.exportFailed'));
@@ -112,6 +114,19 @@ export const GrafanaDashboardList: React.FC = () => {
         next.delete(info.uid);
         return next;
       });
+    }
+  };
+
+  const handleExportAll = async () => {
+    setExportingAll(true);
+    try {
+      const blob = await exportGrafanaDashboards();
+      triggerDownload('rocketmq-grafana-dashboards.zip', blob);
+      message.success(t('grafana.exportAllDone'));
+    } catch {
+      message.error(t('grafana.exportAllFailed'));
+    } finally {
+      setExportingAll(false);
     }
   };
 
@@ -166,6 +181,17 @@ export const GrafanaDashboardList: React.FC = () => {
 
   return (
     <div>
+      <Space style={{ marginBottom: 12 }}>
+        <Button
+          icon={<DownloadSimple size={16} />}
+          loading={exportingAll}
+          disabled={loading || dashboards.length === 0}
+          onClick={handleExportAll}
+        >
+          {t('grafana.exportAll')}
+        </Button>
+      </Space>
+
       <Table
         columns={columns}
         dataSource={dashboards}

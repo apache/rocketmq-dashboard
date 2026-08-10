@@ -157,3 +157,10 @@ export async function exportGrafanaDashboard(uid: string): Promise<Blob> {
   );
   return res.data;
 }
+
+export async function exportGrafanaDashboards(): Promise<Blob> {
+  const res = await client.get<Blob>('/metrics/grafana/dashboards/export', {
+    responseType: 'blob',
+  });
+  return res.data;
+}

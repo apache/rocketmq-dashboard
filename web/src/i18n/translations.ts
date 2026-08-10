@@ -815,6 +815,9 @@ const translations: Record<string, Record<Lang, string>> = {
   'grafana.loadFailed': { zh: '加载看板失败', en: 'Failed to load dashboards' },
   'grafana.exported': { zh: '看板已导出', en: 'Dashboard exported' },
   'grafana.exportFailed': { zh: '导出看板失败', en: 'Failed to export dashboard' },
+  'grafana.exportAll': { zh: '导出全部', en: 'Export all' },
+  'grafana.exportAllDone': { zh: '全部看板已导出', en: 'All dashboards exported' },
+  'grafana.exportAllFailed': { zh: '导出全部看板失败', en: 'Failed to export dashboards' },
   // ─── Alert rule templates ───
   'alertAssets.title': { zh: '告警规则模板', en: 'Alert Rule Templates' },
   'alertAssets.name': { zh: '名称', en: 'Name' },

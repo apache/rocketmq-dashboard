@@ -26,12 +26,15 @@ import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.core.io.support.ResourcePatternResolver;
 import org.springframework.stereotype.Service;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 /**
  * Loads the Grafana dashboard JSON assets bundled under {@code classpath*:grafana/*.json}
@@ -108,6 +111,30 @@ public class GrafanaDashboardService {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new BusinessException(500, "Failed to read Grafana dashboard: " + uid);
+        }
+    }
+
+    /**
+     * Returns all valid bundled dashboards as a zip archive. Invalid dashboard assets are skipped
+     * the same way as {@link #listDashboards()} so the archive matches the visible dashboard list.
+     */
+    public byte[] getDashboardsArchive() {
+        List<GrafanaDashboardInfo> dashboards = listDashboards();
+        if (dashboards.isEmpty()) {
+            throw new BusinessException(404, "No Grafana dashboards are available");
+        }
+        try (ByteArrayOutputStream output = new ByteArrayOutputStream();
+             ZipOutputStream zip = new ZipOutputStream(output, StandardCharsets.UTF_8)) {
+            for (GrafanaDashboardInfo dashboard : dashboards) {
+                ZipEntry entry = new ZipEntry(dashboard.uid() + ".json");
+                zip.putNextEntry(entry);
+                zip.write(getDashboardJson(dashboard.uid()).getBytes(StandardCharsets.UTF_8));
+                zip.closeEntry();
+            }
+            zip.finish();
+            return output.toByteArray();
+        } catch (IOException e) {
+            throw new BusinessException(500, "Failed to export Grafana dashboards");
         }
     }
 

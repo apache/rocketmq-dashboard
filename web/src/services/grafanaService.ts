@@ -37,3 +37,14 @@ export async function exportGrafanaDashboard(uid: string): Promise<Blob> {
   }
   return metricsApi.exportGrafanaDashboard(uid);
 }
+
+export async function exportGrafanaDashboards(): Promise<Blob> {
+  if (isMockMode()) {
+    const bundle = mockGrafanaDashboards.map(({ uid, model }) => ({
+      filename: `${uid}.json`,
+      model,
+    }));
+    return new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/zip' });
+  }
+  return metricsApi.exportGrafanaDashboards();
+}
