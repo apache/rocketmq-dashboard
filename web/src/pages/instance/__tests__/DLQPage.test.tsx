@@ -228,6 +228,25 @@ describe('DLQ page', () => {
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:dlq');
   });
 
+  it('neutralizes formulas hidden behind a leading line feed in CSV exports', async () => {
+    vi.mocked(messageService.listDLQGroups).mockResolvedValue([
+      {
+        ...dlqGroup,
+        groupName: '\n=1+1',
+        dlqTopic: '%DLQ%formula',
+      },
+    ]);
+    const user = userEvent.setup();
+    renderWithProviders(<DLQPage />);
+
+    const row = (await screen.findByText('%DLQ%formula')).closest('tr');
+    if (!row) throw new Error('DLQ group row not found');
+    await user.click(within(row).getByRole('button', { name: '导出' }));
+
+    const blob = createObjectURL.mock.calls[0][0] as Blob;
+    await expect(blob.text()).resolves.toContain('"\'\n=1+1","%DLQ%formula"');
+  });
+
   it('clears a selected group when refreshed data shows no dead-letter messages', async () => {
     vi.mocked(messageService.listDLQGroups)
       .mockResolvedValueOnce([dlqGroup])

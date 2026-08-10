@@ -78,7 +78,7 @@ const formatDateTime = (iso?: string | null): string => {
 };
 
 const escapeCSVValue = (value: string) => {
-  const safeValue = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+  const safeValue = /^[=+\-@\t\r\n]/.test(value) ? `'${value}` : value;
   return `"${safeValue.replace(/"/g, '""')}"`;
 };
 
