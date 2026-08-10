@@ -81,7 +81,7 @@ class GrafanaDashboardControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Type", "application/json"))
                 .andExpect(header().string("Content-Disposition",
-                        "form-data; name=\"attachment\"; filename=\"rocketmq-overview.json\""))
+                        "attachment; filename=\"rocketmq-overview.json\""))
                 .andExpect(content().json("{\"uid\":\"rocketmq-overview\"}"));
     }
 }

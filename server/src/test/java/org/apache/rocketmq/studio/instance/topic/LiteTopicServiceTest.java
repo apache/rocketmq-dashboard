@@ -57,11 +57,13 @@ class LiteTopicServiceTest {
     @Test
     void extendTTLShouldRejectInvalidInput() {
         assertThatThrownBy(() -> liteTopicService.extendTTL("", 1L))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("topicPattern is required");
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("topicPattern is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
         assertThatThrownBy(() -> liteTopicService.extendTTL("chat/{sessionId}", 0L))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("newTTL must be positive");
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("newTTL must be positive")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
     }
 
     @Test
