@@ -117,12 +117,14 @@ class AliyunClientFactoryTest {
         factory.setCallTimeoutSeconds(1L);
         AliyunClientFactory spy = Mockito.spy(factory);
         doReturn(asyncClient).when(spy).client(anyString(), anyString());
+        CompletableFuture<Object> future = new CompletableFuture<>();
 
         assertThatThrownBy(() -> spy.call(CREDENTIAL_ID, REGION,
-                client -> new CompletableFuture<>()))
+                client -> future))
                 .isInstanceOf(BusinessException.class)
                 .extracting("code")
                 .isEqualTo(504);
+        assertThat(future).isCancelled();
     }
 
     @Test
