@@ -23,10 +23,12 @@ interface DataModeState {
   toggle: () => void;
 }
 
+const DEFAULT_USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true';
+
 export const useDataModeStore = create<DataModeState>()(
   persist(
     (set) => ({
-      useMock: false,
+      useMock: DEFAULT_USE_MOCK,
       toggle: () => set((state) => ({ useMock: !state.useMock })),
     }),
     {

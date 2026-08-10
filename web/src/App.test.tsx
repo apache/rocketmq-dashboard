@@ -28,8 +28,10 @@ vi.mock('./api/auth', async (importOriginal) => {
   return { ...actual, getAuthStatus: vi.fn() };
 });
 
+const dataModeMocks = vi.hoisted(() => ({ isMockMode: vi.fn(() => false) }));
+
 vi.mock('./config', () => ({ API_BASE_URL: '/api', USE_MOCK: false }));
-vi.mock('./services/dataMode', () => ({ isMockMode: () => false }));
+vi.mock('./services/dataMode', () => dataModeMocks);
 
 const mockedGetAuthStatus = vi.mocked(getAuthStatus);
 
@@ -85,6 +87,7 @@ function renderGate() {
 describe('AuthGate', () => {
   beforeEach(() => {
     mockedGetAuthStatus.mockReset();
+    dataModeMocks.isMockMode.mockReturnValue(false);
     localStorage.setItem('token', 'stale-token');
     localStorage.setItem('rocketmq-studio-user', 'admin');
   });
@@ -92,6 +95,15 @@ describe('AuthGate', () => {
   afterEach(() => {
     cleanup();
     localStorage.clear();
+  });
+
+  it('skips the authentication status request in mock mode', async () => {
+    dataModeMocks.isMockMode.mockReturnValue(true);
+
+    renderGate();
+
+    expect(await screen.findByText('protected content')).toBeInTheDocument();
+    expect(mockedGetAuthStatus).not.toHaveBeenCalled();
   });
 
   it('allows protected routes when login protection is disabled', async () => {
