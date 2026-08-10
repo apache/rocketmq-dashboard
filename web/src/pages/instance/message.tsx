@@ -207,14 +207,10 @@ const MessagePage = () => {
   const [topicOptions, setTopicOptions] = useState<string[]>([]);
 
   useEffect(() => {
-    let cancelled = false;
-    setTopicOptions([]);
-    setSelectedTopic(undefined);
     if (!selectedInstanceId) {
-      return () => {
-        cancelled = true;
-      };
+      return;
     }
+    let cancelled = false;
     void listTopics({ instanceId: selectedInstanceId })
       .then((nextTopics) => {
         if (cancelled) return;
@@ -253,9 +249,12 @@ const MessagePage = () => {
     [],
   );
 
-  useEffect(() => {
+  /* ─── Handlers ─── */
+  const handleInstanceChange = (instanceId: string) => {
     queryGenerationRef.current += 1;
     traceGenerationRef.current += 1;
+    setTopicOptions([]);
+    setSelectedTopic(undefined);
     setMessages([]);
     setQueryLoading(false);
     setQueryError(null);
@@ -264,9 +263,9 @@ const MessagePage = () => {
     setTraceData(null);
     setTraceLoading(false);
     setTraceError(null);
-  }, [selectedInstanceId]);
+    selectInstance(instanceId);
+  };
 
-  /* ─── Handlers ─── */
   const handleReset = () => {
     queryGenerationRef.current += 1;
     setSelectedTopic(undefined);
@@ -701,7 +700,7 @@ const MessagePage = () => {
             <Select
               placeholder="选择实例"
               value={selectedInstanceId || undefined}
-              onChange={selectInstance}
+              onChange={handleInstanceChange}
               options={instanceOptions}
               style={{ width: 220 }}
               notFoundContent="暂无实例"

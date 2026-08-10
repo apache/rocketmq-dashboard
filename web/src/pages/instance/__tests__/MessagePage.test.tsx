@@ -323,6 +323,7 @@ describe('Message page query history', () => {
     expect(screen.getByText('MID-NULL-FIELDS')).toBeInTheDocument();
     await user.click(screen.getByRole('columnheader', { name: /Key/ }));
     expect(screen.getByText('MID-FULL-FIELDS')).toBeInTheDocument();
+  });
 
   it('requires an instance before allowing a message query', async () => {
     instanceFilterMocks.useInstanceFilter.mockReturnValue({
