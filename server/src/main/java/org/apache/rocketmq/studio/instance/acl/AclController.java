@@ -37,6 +37,15 @@ import java.util.List;
 public class AclController {
 
     private final AclService aclService;
+    private final ApacheAclReadService apacheAclReadService;
+
+    @GetMapping("/remote/rules")
+    public Result<RemoteAclReadResult> listRemoteRules(
+            @RequestParam String instanceId,
+            @RequestParam(required = false) String subject,
+            @RequestParam(required = false) String resource) {
+        return Result.ok(apacheAclReadService.listRules(instanceId, subject, resource));
+    }
 
     @GetMapping("/rules")
     public Result<List<AclRuleVO>> listRules(
