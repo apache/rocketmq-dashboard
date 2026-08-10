@@ -29,6 +29,7 @@ export interface Instance {
   vendor?: InstanceVendor;
   cloudInstanceId?: string;
   credentialId?: string;
+  adminCredentialRef?: string;
   regionId?: string;
   topicCount: number;
   consumerGroupCount: number;
@@ -45,6 +46,7 @@ export interface CreateInstanceRequest {
   vendor?: InstanceVendor;
   cloudInstanceId?: string;
   credentialId?: string;
+  adminCredentialRef?: string;
   regionId?: string;
 }
 
@@ -54,6 +56,7 @@ export interface UpdateInstanceRequest {
   type?: 'PROXY' | 'DIRECT';
   endpoint?: string;
   remark?: string;
+  adminCredentialRef?: string;
 }
 
 export interface InstanceQuery {

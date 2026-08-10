@@ -34,12 +34,15 @@ public class UpdateInstanceDTO {
 
     private String remark;
 
+    private String adminCredentialRef;
+
     public InstanceVO toInstanceVO() {
         InstanceVO vo = InstanceVO.builder()
                 .name(name)
                 .type(type)
                 .endpoint(endpoint)
                 .remark(remark)
+                .adminCredentialRef(adminCredentialRef)
                 .build();
         vo.setId(id);
         return vo;
