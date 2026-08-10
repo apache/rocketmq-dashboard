@@ -541,7 +541,36 @@ POST /api/nameservers/delete
 
 **Response `data`:** `{ success: boolean }`
 
-### 4.10 重启 Proxy
+### 4.10 检查 NameServer 配置漂移
+
+```
+GET /api/nameservers/config-diff?clusterId={clusterId}
+```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `clusterId` | `string` | 是 | 要检查的集群 ID |
+
+该接口逐个读取集群内的 NameServer 配置，只比较服务端白名单中的非敏感运行参数。完整配置、路径、密码和凭据不会返回；单个节点读取失败时仍返回其他节点的结果，并将 `complete` 标记为 `false`。
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `cluster` | `string` | 集群 ID |
+| `complete` | `boolean` | 是否成功读取全部 NameServer 节点 |
+| `driftDetected` | `boolean` | 可达节点间是否存在配置差异 |
+| `nodeCount` | `number` | NameServer 节点总数 |
+| `reachableNodeCount` | `number` | 成功读取的节点数 |
+| `comparedKeys` | `string[]` | 本次比较的安全配置项 |
+| `nodes` | `NodeStatus[]` | 节点地址和可达状态 |
+| `differences` | `ConfigDifference[]` | 配置不一致的键及各节点值 |
+
+`differences[].values[].configured` 用于区分未配置和已配置为空值；`value` 仅包含白名单配置项的值。
+
+### 4.11 重启 Proxy
 
 ```
 POST /api/proxies/restart
@@ -555,7 +584,7 @@ POST /api/proxies/restart
 
 **Response `data`:** `{ success: boolean }`
 
-### 4.11 获取 K8s 证书列表
+### 4.12 获取 K8s 证书列表
 
 ```
 GET /api/k8s-certs
@@ -577,7 +606,7 @@ GET /api/k8s-certs
 | `daysRemaining` | `number` | 剩余天数 |
 | `san` | `string[]` | Subject Alternative Name 列表 |
 
-### 4.12 添加 K8s 证书
+### 4.13 添加 K8s 证书
 
 ```
 POST /api/k8s-certs/create
@@ -595,7 +624,7 @@ POST /api/k8s-certs/create
 
 **Response `data`:** `K8sCertInfo`
 
-### 4.13 更新 K8s 证书
+### 4.14 更新 K8s 证书
 
 ```
 POST /api/k8s-certs/update
@@ -614,7 +643,7 @@ POST /api/k8s-certs/update
 
 **Response `data`:** `K8sCertInfo`
 
-### 4.14 续期 K8s 证书
+### 4.15 续期 K8s 证书
 
 ```
 POST /api/k8s-certs/renew
@@ -628,7 +657,7 @@ POST /api/k8s-certs/renew
 
 **Response `data`:** `K8sCertInfo`
 
-### 4.15 删除 K8s 证书
+### 4.16 删除 K8s 证书
 
 ```
 POST /api/k8s-certs/delete

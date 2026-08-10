@@ -22,9 +22,11 @@ import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -33,6 +35,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class NameServerController {
 
     private final ClusterService clusterService;
+    private final NameServerConfigDiffService configDiffService;
+
+    @GetMapping("/config-diff")
+    public Result<NameServerConfigDiffVO> compareConfiguration(
+            @RequestParam(required = false) String clusterId) {
+        return Result.ok(configDiffService.compare(clusterId));
+    }
 
     @PostMapping("/create")
     public Result<NameServerVO> createNameServer(@Valid @RequestBody(required = false) CreateNameServerDTO command) {

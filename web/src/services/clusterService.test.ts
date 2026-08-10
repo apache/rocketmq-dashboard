@@ -26,6 +26,7 @@ import {
   createK8sCert,
   deleteK8sCert,
   getCluster,
+  getNameServerConfigDiff,
   listClusters,
   listK8sCerts,
   updateClusterConfig,
@@ -69,6 +70,23 @@ describe('clusterService mock clusters', () => {
     expect(detail.nameServers).not.toBe(listed.nameServers);
     expect(detail.config).not.toBe(listed.config);
     expect(detail.tpsHistory).not.toBe(listed.tpsHistory);
+  });
+
+  it('returns a complete mock NameServer drift result for the selected cluster', async () => {
+    const result = await getNameServerConfigDiff('cluster-prod');
+
+    expect(result.cluster).toBe('cluster-prod');
+    expect(result.nodeCount).toBeGreaterThan(1);
+    expect(result.reachableNodeCount).toBe(result.nodeCount);
+    expect(result.driftDetected).toBe(true);
+    expect(result.differences).toEqual([
+      expect.objectContaining({
+        key: 'serverWorkerThreads',
+        values: expect.arrayContaining([
+          expect.objectContaining({ address: expect.any(String), configured: true }),
+        ]),
+      }),
+    ]);
   });
 
   it('persists partial mock config updates without copying id into config', async () => {

@@ -31,6 +31,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -47,6 +48,47 @@ class NameServerControllerTest {
 
     @MockBean
     private ClusterService clusterService;
+
+    @MockBean
+    private NameServerConfigDiffService configDiffService;
+
+    @Test
+    void compareConfigurationShouldReturnDriftResult() throws Exception {
+        NameServerConfigDiffVO result = NameServerConfigDiffVO.builder()
+                .cluster("cluster-1")
+                .complete(true)
+                .driftDetected(true)
+                .nodeCount(2)
+                .reachableNodeCount(2)
+                .comparedKeys(java.util.List.of("listenPort"))
+                .nodes(java.util.List.of())
+                .differences(java.util.List.of())
+                .build();
+        when(configDiffService.compare("cluster-1")).thenReturn(result);
+
+        mockMvc.perform(get("/api/nameservers/config-diff")
+                        .param("clusterId", "cluster-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.cluster").value("cluster-1"))
+                .andExpect(jsonPath("$.data.driftDetected").value(true));
+
+        verify(configDiffService).compare("cluster-1");
+    }
+
+    @Test
+    void compareConfigurationShouldRejectMissingClusterId() throws Exception {
+        when(configDiffService.compare(null)).thenThrow(
+                new org.apache.rocketmq.studio.common.exception.BusinessException(
+                        400, "cluster is required"));
+
+        mockMvc.perform(get("/api/nameservers/config-diff"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("cluster is required"));
+
+        verify(configDiffService).compare(null);
+    }
 
     @Test
     void createNameServerShouldPassValidatedRequest() throws Exception {

@@ -6,6 +6,7 @@ import type {
   ClusterInfo,
   ClusterProbeResult,
   K8sCertInfo,
+  NameServerConfigDiffResult,
 } from '../api/cluster';
 import clusters, { mockK8sCerts } from '../mock/clusters';
 
@@ -65,6 +66,42 @@ export async function getCluster(id: string): Promise<ClusterInfo> {
     return copyCluster(cluster);
   }
   return clusterApi.getCluster(id);
+}
+
+export async function getNameServerConfigDiff(
+  clusterId: string,
+): Promise<NameServerConfigDiffResult> {
+  if (!isMockMode()) return clusterApi.getNameServerConfigDiff(clusterId);
+
+  const cluster = getMockCluster(clusterId);
+  const nodes = cluster.nameServers.map((nameServer) => ({
+    address: nameServer.addr,
+    reachable: nameServer.status !== 'offline',
+  }));
+  const reachableAddresses = nodes.filter((node) => node.reachable).map((node) => node.address);
+  const driftDetected = cluster.id === 'cluster-prod' && reachableAddresses.length > 1;
+
+  return {
+    cluster: cluster.id,
+    complete: reachableAddresses.length === nodes.length,
+    driftDetected,
+    nodeCount: nodes.length,
+    reachableNodeCount: reachableAddresses.length,
+    comparedKeys: ['listenPort', 'serverWorkerThreads', 'clientRequestThreadPoolNums'],
+    nodes,
+    differences: driftDetected
+      ? [
+          {
+            key: 'serverWorkerThreads',
+            values: reachableAddresses.map((address, index) => ({
+              address,
+              configured: true,
+              value: index === 0 ? '8' : '12',
+            })),
+          },
+        ]
+      : [],
+  };
 }
 
 export async function listK8sCerts(): Promise<K8sCertInfo[]> {

@@ -39,6 +39,7 @@ const DashboardOpsPage = lazy(() => import('./pages/home/dashboard'));
 const AlertsPage = lazy(() => import('./pages/ops/alerts'));
 const SystemAlertsPage = lazy(() => import('./pages/ops/systemAlerts'));
 const AuditPage = lazy(() => import('./pages/ops/audit'));
+const NameServerConfigDriftPage = lazy(() => import('./pages/ops/nameServerConfigDrift'));
 const AiPage = lazy(() => import('./pages/ai'));
 const SettingsPage = lazy(() => import('./pages/settings'));
 const LlmSettingsPage = lazy(() => import('./pages/studio/LlmSettings'));
@@ -164,6 +165,7 @@ function App() {
             <Route path="ops/alerts" element={<AlertsPage />} />
             <Route path="ops/system-alerts" element={<SystemAlertsPage />} />
             <Route path="ops/audit" element={<AuditPage />} />
+            <Route path="ops/nameserver-config-drift" element={<NameServerConfigDriftPage />} />
             <Route path="ai" element={<AiPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="studio/llm-settings" element={<LlmSettingsPage />} />
