@@ -22,6 +22,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.domain.enums.CertStatus;
 import org.apache.rocketmq.studio.common.domain.enums.CertType;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.persistence.entity.RmqK8sCertificate;
 import org.apache.rocketmq.studio.persistence.mapper.RmqK8sCertificateMapper;
 import org.springframework.stereotype.Repository;
@@ -81,13 +82,13 @@ public class MybatisPlusK8sCertRepository implements K8sCertRepository {
         vo.setName(entity.getName());
         vo.setNamespace(entity.getNamespace());
         vo.setCluster(entity.getCluster());
-        vo.setType(parseCertType(entity.getCertType()));
+        vo.setType(parseCertType(entity.getId(), entity.getCertType()));
         vo.setIssuer(entity.getIssuer());
         vo.setNotBefore(entity.getNotBefore());
         vo.setNotAfter(entity.getNotAfter());
-        vo.setStatus(parseCertStatus(entity.getStatus()));
+        vo.setStatus(parseCertStatus(entity.getId(), entity.getStatus()));
         vo.setDaysRemaining(entity.getDaysRemaining() == null ? 0 : entity.getDaysRemaining());
-        vo.setSan(parseSan(entity.getSan()));
+        vo.setSan(parseSan(entity.getId(), entity.getSan()));
         vo.setCreatedAt(entity.getCreatedAt());
         vo.setUpdatedAt(entity.getUpdatedAt());
         return vo;
@@ -111,29 +112,29 @@ public class MybatisPlusK8sCertRepository implements K8sCertRepository {
         return entity;
     }
 
-    private CertType parseCertType(String value) {
+    private CertType parseCertType(String certificateId, String value) {
         if (!StringUtils.hasText(value)) {
             return null;
         }
         try {
             return CertType.valueOf(value);
         } catch (IllegalArgumentException exception) {
-            throw new IllegalStateException("Invalid persisted certificate type: " + value, exception);
+            throw invalidPersistedValue(certificateId, "type", value);
         }
     }
 
-    private CertStatus parseCertStatus(String value) {
+    private CertStatus parseCertStatus(String certificateId, String value) {
         if (!StringUtils.hasText(value)) {
             return null;
         }
         try {
             return CertStatus.valueOf(value);
         } catch (IllegalArgumentException exception) {
-            throw new IllegalStateException("Invalid persisted certificate status: " + value, exception);
+            throw invalidPersistedValue(certificateId, "status", value);
         }
     }
 
-    private List<String> parseSan(String json) {
+    private List<String> parseSan(String certificateId, String json) {
         if (!StringUtils.hasText(json)) {
             return List.of();
         }
@@ -141,8 +142,13 @@ public class MybatisPlusK8sCertRepository implements K8sCertRepository {
             return objectMapper.readValue(json, new TypeReference<List<String>>() {
             });
         } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("Invalid persisted certificate SAN JSON", exception);
+            throw invalidPersistedValue(certificateId, "SAN JSON", json);
         }
+    }
+
+    private BusinessException invalidPersistedValue(String certificateId, String field, String value) {
+        return new BusinessException(500, "Invalid persisted certificate " + field
+                + " for certificate " + certificateId + ": " + value);
     }
 
     private String writeSan(List<String> san) {
