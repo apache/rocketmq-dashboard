@@ -34,11 +34,11 @@ function copyCluster(cluster: ClusterInfo): ClusterInfo {
   };
 }
 
-export async function listClusters(): Promise<ClusterInfo[]> {
+export async function listClusters(instanceId?: string): Promise<ClusterInfo[]> {
   if (isMockMode()) {
     return clusters.map(copyCluster);
   }
-  return clusterApi.listClusters();
+  return clusterApi.listClusters(instanceId);
 }
 
 export async function testClusterConnection(namesrvAddr: string): Promise<ClusterProbeResult> {
@@ -59,13 +59,13 @@ export async function testClusterConnection(namesrvAddr: string): Promise<Cluste
   return clusterApi.testClusterConnection(namesrvAddr);
 }
 
-export async function getCluster(id: string): Promise<ClusterInfo> {
+export async function getCluster(id: string, instanceId?: string): Promise<ClusterInfo> {
   if (isMockMode()) {
     const cluster = clusters.find((item) => item.id === id);
     if (!cluster) throw new Error('Cluster not found');
     return copyCluster(cluster);
   }
-  return clusterApi.getCluster(id);
+  return clusterApi.getCluster(id, instanceId);
 }
 
 export async function getNameServerConfigDiff(
@@ -171,7 +171,9 @@ export async function deleteK8sCert(id: string): Promise<void> {
   return clusterApi.deleteK8sCert(id);
 }
 
-export async function updateClusterConfig(data: { id: string } & Partial<ClusterConfig>) {
+export async function updateClusterConfig(
+  data: { id: string; instanceId?: string } & Partial<ClusterConfig>,
+) {
   if (isMockMode()) {
     const { id, ...config } = data;
     const cluster = getMockCluster(id);

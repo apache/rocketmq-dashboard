@@ -23,6 +23,7 @@ import org.apache.rocketmq.studio.cluster.broker.BrokerVO;
 import org.apache.rocketmq.studio.cluster.broker.ClusterProvider;
 import org.apache.rocketmq.studio.cluster.broker.ClusterVO;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.cluster.nameserver.NameServerVO;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.BrokerStatus;
@@ -52,10 +53,16 @@ public class RocketMQClusterProvider implements ClusterProvider {
 
     private final MqAdminExtFactory adminFactory;
     private final RocketMQProperties properties;
+    private final RuntimeAdminClientResolver runtimeAdminClientResolver;
 
     @Override
     public List<ClusterVO> discoverClusters() {
-        String namesrvAddr = properties.getNamesrvAddr();
+        return discoverClusters(null);
+    }
+
+    @Override
+    public List<ClusterVO> discoverClusters(String instanceId) {
+        String namesrvAddr = resolveNamesrvAddr(instanceId);
         if (!StringUtils.hasText(namesrvAddr)) {
             log.debug("NameServer address not configured, returning empty cluster list");
             return Collections.emptyList();
@@ -77,7 +84,7 @@ public class RocketMQClusterProvider implements ClusterProvider {
                     Set<String> brokerNames = entry.getValue();
 
                     List<BrokerVO> brokers = buildBrokerList(admin, brokerNames, brokerAddrTable);
-                    List<NameServerVO> nameServers = buildNameServerList();
+                    List<NameServerVO> nameServers = buildNameServerList(namesrvAddr);
 
                     ClusterVO cluster = buildClusterVO(clusterName, brokers, nameServers);
                     clusters.add(cluster);
@@ -93,7 +100,12 @@ public class RocketMQClusterProvider implements ClusterProvider {
 
     @Override
     public ClusterVO refreshClusterDetail(String clusterId) {
-        String namesrvAddr = properties.getNamesrvAddr();
+        return refreshClusterDetail(clusterId, null);
+    }
+
+    @Override
+    public ClusterVO refreshClusterDetail(String clusterId, String instanceId) {
+        String namesrvAddr = resolveNamesrvAddr(instanceId);
         if (!StringUtils.hasText(namesrvAddr)) {
             log.debug("NameServer address not configured, cannot refresh cluster detail");
             return null;
@@ -115,7 +127,7 @@ public class RocketMQClusterProvider implements ClusterProvider {
                 }
 
                 List<BrokerVO> brokers = buildBrokerList(admin, brokerNames, brokerAddrTable);
-                List<NameServerVO> nameServers = buildNameServerList();
+                List<NameServerVO> nameServers = buildNameServerList(namesrvAddr);
 
                 return buildClusterVO(clusterId, brokers, nameServers);
             });
@@ -253,9 +265,15 @@ public class RocketMQClusterProvider implements ClusterProvider {
         return 0;
     }
 
-    private List<NameServerVO> buildNameServerList() {
+    private String resolveNamesrvAddr(String instanceId) {
+        if (StringUtils.hasText(instanceId)) {
+            return runtimeAdminClientResolver.resolveEndpoint(instanceId);
+        }
+        return properties.getNamesrvAddr();
+    }
+
+    private List<NameServerVO> buildNameServerList(String namesrvAddr) {
         List<NameServerVO> nameServers = new ArrayList<>();
-        String namesrvAddr = properties.getNamesrvAddr();
         if (namesrvAddr == null || namesrvAddr.isEmpty()) {
             return nameServers;
         }

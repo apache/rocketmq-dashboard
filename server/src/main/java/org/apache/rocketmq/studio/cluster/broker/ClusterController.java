@@ -28,6 +28,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -42,8 +43,8 @@ public class ClusterController {
     private final ClusterConnectionService clusterConnectionService;
 
     @GetMapping
-    public Result<List<ClusterVO>> listClusters() {
-        return Result.ok(clusterService.listClusters());
+    public Result<List<ClusterVO>> listClusters(@RequestParam(required = false) String instanceId) {
+        return Result.ok(clusterService.listClusters(instanceId));
     }
 
     @PostMapping("/test-connection")
@@ -52,8 +53,9 @@ public class ClusterController {
     }
 
     @GetMapping("/{id}")
-    public Result<ClusterVO> getCluster(@PathVariable String id) {
-        return Result.ok(clusterService.getCluster(id));
+    public Result<ClusterVO> getCluster(@PathVariable String id,
+                                        @RequestParam(required = false) String instanceId) {
+        return Result.ok(clusterService.getCluster(id, instanceId));
     }
 
     @PostMapping("/config/update")

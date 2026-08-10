@@ -41,6 +41,7 @@ import java.util.Collections;
 import java.util.stream.Stream;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -111,7 +112,7 @@ class ClusterControllerTest {
     void listClustersShouldReturnAllClusters() throws Exception {
         ClusterVO cluster1 = buildCluster("cluster-1", "production-cluster", ClusterStatus.healthy);
         ClusterVO cluster2 = buildCluster("cluster-2", "staging-cluster", ClusterStatus.warning);
-        when(clusterService.listClusters()).thenReturn(Arrays.asList(cluster1, cluster2));
+        when(clusterService.listClusters(isNull())).thenReturn(Arrays.asList(cluster1, cluster2));
 
         mockMvc.perform(get("/api/clusters"))
                 .andExpect(status().isOk())
@@ -128,7 +129,7 @@ class ClusterControllerTest {
 
     @Test
     void listClustersShouldReturnEmptyArrayWhenNoClusters() throws Exception {
-        when(clusterService.listClusters()).thenReturn(Collections.emptyList());
+        when(clusterService.listClusters(isNull())).thenReturn(Collections.emptyList());
 
         mockMvc.perform(get("/api/clusters"))
                 .andExpect(status().isOk())
@@ -147,7 +148,7 @@ class ClusterControllerTest {
                 .maxMessageSize(4194304)
                 .autoCreateTopicEnable(true)
                 .build());
-        when(clusterService.getCluster("cluster-1")).thenReturn(cluster);
+        when(clusterService.getCluster("cluster-1", null)).thenReturn(cluster);
 
         mockMvc.perform(get("/api/clusters/cluster-1"))
                 .andExpect(status().isOk())

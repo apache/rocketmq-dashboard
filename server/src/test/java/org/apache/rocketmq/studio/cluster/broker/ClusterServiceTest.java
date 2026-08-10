@@ -133,6 +133,17 @@ class ClusterServiceTest {
     }
 
     @Test
+    void listClustersShouldUseSelectedInstance() {
+        when(clusterProvider.discoverClusters("instance-1")).thenReturn(List.of(sampleCluster));
+
+        List<ClusterVO> result = clusterService.listClusters("instance-1");
+
+        assertThat(result).containsExactly(sampleCluster);
+        verify(clusterProvider).discoverClusters("instance-1");
+        verify(clusterProvider, never()).discoverClusters();
+    }
+
+    @Test
     void updateClusterConfigShouldRejectDifferentDefaultReadAndWriteQueueNums() {
         UpdateConfigDTO command = UpdateConfigDTO.builder()
                 .id("cluster-1")
@@ -170,6 +181,17 @@ class ClusterServiceTest {
     }
 
     @Test
+    void getClusterShouldUseSelectedInstance() {
+        when(clusterProvider.refreshClusterDetail("cluster-1", "instance-1")).thenReturn(sampleCluster);
+
+        ClusterVO result = clusterService.getCluster("cluster-1", "instance-1");
+
+        assertThat(result).isSameAs(sampleCluster);
+        verify(clusterProvider).refreshClusterDetail("cluster-1", "instance-1");
+        verify(clusterProvider, never()).refreshClusterDetail("cluster-1");
+    }
+
+    @Test
     void getClusterShouldThrowWhenNotFound() {
         when(clusterProvider.refreshClusterDetail("nonexistent")).thenReturn(null);
 
@@ -198,7 +220,7 @@ class ClusterServiceTest {
     void updateConfigShouldSucceedWhenAuditRecordingFails() {
         when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
         doThrow(new IllegalStateException("audit storage unavailable")).when(auditService)
-                .record(any(), any(), any(), any());
+                .record(any(), any(), any(), any(), any());
 
         ClusterConfigUpdateResultVO result = clusterService.updateClusterConfig(UpdateConfigDTO.builder()
                 .id("cluster-1")
@@ -294,8 +316,26 @@ class ClusterServiceTest {
         verify(auditService).record(
                 eq("UPDATE_CLUSTER_CONFIG"),
                 eq("CLUSTER:cluster-1"),
+                eq("cluster-1"),
                 org.mockito.ArgumentMatchers.contains("10.0.0.2:10911"),
                 eq("PARTIAL"));
+    }
+
+    @Test
+    void updateConfigShouldUseSelectedInstanceForBrokerUpdates() {
+        sampleCluster.setBrokers(List.of(BrokerVO.builder().name("broker-0").addr("10.0.0.1:10911").build()));
+        when(clusterProvider.refreshClusterDetail("cluster-1", "instance-1")).thenReturn(sampleCluster);
+
+        ClusterConfigUpdateResultVO result = clusterService.updateClusterConfig(UpdateConfigDTO.builder()
+                .id("cluster-1")
+                .instanceId("instance-1")
+                .writeQueueNums(16)
+                .build());
+
+        assertThat(result.getStatus()).isEqualTo(ClusterConfigUpdateResultVO.Status.SUCCESS);
+        verify(clusterProvider).refreshClusterDetail("cluster-1", "instance-1");
+        verify(brokerConfigService).updateBrokerConfig(
+                eq("10.0.0.1:10911"), eq("cluster-1"), eq("instance-1"), any());
     }
 
     @Test

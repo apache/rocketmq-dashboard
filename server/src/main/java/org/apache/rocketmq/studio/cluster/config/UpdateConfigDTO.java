@@ -32,6 +32,8 @@ public class UpdateConfigDTO {
     @NotBlank(message = "id is required")
     private String id;
 
+    private String instanceId;
+
     private String flushDiskType;
     private Boolean autoCreateTopicEnable;
     private Boolean autoCreateSubscriptionGroup;
