@@ -30,6 +30,7 @@ import lombok.RequiredArgsConstructor;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.stream.Collectors;
 
 /**
@@ -78,7 +79,7 @@ public class MybatisPlusAlertRepository implements AlertRepository {
     @Override
     public List<SystemAlertVO> findAlerts(String level) {
         QueryWrapper<RmqSystemAlert> query = new QueryWrapper<RmqSystemAlert>()
-                .eq(StringUtils.hasText(level), "level", level == null ? null : level.toLowerCase())
+                .eq(StringUtils.hasText(level), "level", level == null ? null : level.toLowerCase(Locale.ROOT))
                 .orderByDesc("time");
         return alertMapper.selectList(query).stream()
                 .map(MybatisPlusAlertRepository::toAlertVO)
