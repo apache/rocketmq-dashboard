@@ -318,6 +318,18 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
     @Override
     public SendMessageVO sendMessage(SendMessageDTO request) {
+        String topic = request.getTopic();
+        String tag = request.getTag() != null ? request.getTag() : "";
+        String key = request.getKey() != null ? request.getKey() : "";
+        String body = request.getBody() != null ? request.getBody() : "";
+        byte[] bodyBytes = body.getBytes(StandardCharsets.UTF_8);
+        if (bodyBytes.length > MAX_MESSAGE_SIZE) {
+            String message = "Message body size " + bodyBytes.length
+                    + " exceeds the maximum of " + MAX_MESSAGE_SIZE + " bytes";
+            recordAudit("SEND_MESSAGE", topic, message, "FAILED");
+            throw new BusinessException(400, message);
+        }
+
         String namesrvAddr = namesrvAddr(request.getInstanceId());
 
         DefaultMQProducer producer = new DefaultMQProducer(nextMessageSenderGroup());
@@ -326,16 +338,6 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
         try {
             producer.start();
-
-            String topic = request.getTopic();
-            String tag = request.getTag() != null ? request.getTag() : "";
-            String key = request.getKey() != null ? request.getKey() : "";
-            String body = request.getBody() != null ? request.getBody() : "";
-            byte[] bodyBytes = body.getBytes(StandardCharsets.UTF_8);
-            if (bodyBytes.length > MAX_MESSAGE_SIZE) {
-                throw new BusinessException(400, "Message body size " + bodyBytes.length
-                        + " exceeds the maximum of " + MAX_MESSAGE_SIZE + " bytes");
-            }
 
             Message msg = new Message(topic, tag, key, bodyBytes);
 
