@@ -28,6 +28,7 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -119,7 +120,7 @@ public class MetricsService {
         if (!StringUtils.hasText(auth)) {
             return "none";
         }
-        return switch (auth.trim().toLowerCase()) {
+        return switch (auth.trim().toLowerCase(Locale.ROOT)) {
             case "basic auth", "basic" -> "basic";
             case "bearer token", "bearer" -> "bearer";
             default -> "none";
