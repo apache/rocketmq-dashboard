@@ -470,6 +470,19 @@ class SettingsServiceTest {
     }
 
     @Test
+    void testConnectionShouldRejectAlibabaCloudMetadataAddress() {
+        DataSourceTestDTO request = DataSourceTestDTO.builder()
+                .url("http://100.100.100.200/latest/meta-data/")
+                .type("Prometheus")
+                .build();
+
+        DataSourceTestResultVO result = settingsService.testDataSource(request);
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getMessage()).contains("local or private address");
+    }
+
+    @Test
     void testConnectionShouldRejectIncompleteBasicAuthentication() {
         DataSourceTestResultVO result = settingsService.testDataSource(DataSourceTestDTO.builder()
                 .url(prometheusBaseUrl)

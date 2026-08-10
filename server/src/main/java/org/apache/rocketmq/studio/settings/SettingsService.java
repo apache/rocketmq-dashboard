@@ -49,12 +49,14 @@ import java.util.UUID;
 @Service
 public class SettingsService {
 
-    private static final byte[] AWS_IMDS_IPV6_ADDRESS = {
-        (byte) 0xfd, 0x00, 0x0e, (byte) 0xc2,
-        0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x02, 0x54
-    };
+    private static final List<byte[]> CLOUD_METADATA_ADDRESSES = List.of(
+            new byte[] {
+                (byte) 0xfd, 0x00, 0x0e, (byte) 0xc2,
+                0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x02, 0x54
+            }, // AWS IMDS IPv6: fd00:ec2::254
+            new byte[] {100, 100, 100, (byte) 200}); // Alibaba Cloud ECS metadata
     private static final Set<String> PROMETHEUS_COMPATIBLE_TYPES = Set.of(
             "prometheus", "victoriametrics", "thanos", "mimir", "cortex", "arms");
     private static final String PROMETHEUS_TEST_QUERY = "up";
@@ -259,10 +261,10 @@ public class SettingsService {
     /**
      * SSRF guard: the test endpoint performs a server-side HTTP request to an attacker-supplied
      * URL. The hostname {@code localhost} and link-local addresses (169.254.x.x, fe80:: — the
-     * cloud metadata range) and the AWS IMDS IPv6 endpoint are never legitimate Prometheus
-     * endpoints and are rejected. Loopback IPs and private site-local ranges stay allowed because
-     * on-premise Prometheus servers live on the internal network and the endpoint itself requires
-     * admin rights.
+     * cloud metadata range) and known metadata endpoints not covered by Java's address categories
+     * are never legitimate Prometheus endpoints and are rejected. Loopback IPs and private
+     * site-local ranges stay allowed because on-premise Prometheus servers live on the internal
+     * network and the endpoint itself requires admin rights.
      */
     private boolean isAllowedDataSourceHost(String host) {
         if (!StringUtils.hasText(host)) {
@@ -277,11 +279,16 @@ public class SettingsService {
             return !address.isAnyLocalAddress()
                     && !address.isLinkLocalAddress()
                     && !address.isLoopbackAddress()
-                    && !Arrays.equals(address.getAddress(), AWS_IMDS_IPV6_ADDRESS);
+                    && !isKnownCloudMetadataAddress(address);
         } catch (UnknownHostException exception) {
             // Unresolvable host: let the connection attempt surface the real connectivity error.
             return true;
         }
+    }
+
+    private boolean isKnownCloudMetadataAddress(InetAddress address) {
+        return CLOUD_METADATA_ADDRESSES.stream()
+                .anyMatch(metadataAddress -> Arrays.equals(address.getAddress(), metadataAddress));
     }
 
     private DataSourceTestResultVO prometheusSuccess(JsonNode response) {
