@@ -25,8 +25,10 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 @Slf4j
@@ -64,9 +66,11 @@ public class AlertService {
         for (Map.Entry<String, List<PrometheusAlertRule>> group : rulesByGroup.entrySet()) {
             yaml.append("  - name: ").append(group.getKey()).append('\n');
             yaml.append("    rules:\n");
+            Set<String> usedAlertNames = new HashSet<>();
             for (PrometheusAlertRule rule : group.getValue()) {
-                yaml.append("      # Rule ").append(index++).append(": ").append(rule.alert()).append('\n');
-                yaml.append("      - alert: ").append(rule.alert()).append('\n');
+                String uniqueAlertName = ensureUniqueAlertName(rule.alert(), usedAlertNames);
+                yaml.append("      # Rule ").append(index++).append(": ").append(uniqueAlertName).append('\n');
+                yaml.append("      - alert: ").append(uniqueAlertName).append('\n');
                 yaml.append("        expr: ").append(rule.expr()).append('\n');
                 yaml.append("        for: ").append(rule.duration()).append('\n');
                 yaml.append("        labels:\n");
@@ -189,6 +193,15 @@ public class AlertService {
             return "rocketmq-topic.rules";
         }
         return "rocketmq-broker.rules";
+    }
+
+    private String ensureUniqueAlertName(String baseName, Set<String> usedAlertNames) {
+        String uniqueName = baseName;
+        int suffix = 2;
+        while (!usedAlertNames.add(uniqueName)) {
+            uniqueName = baseName + "_" + suffix++;
+        }
+        return uniqueName;
     }
 
     private String alertName(AlertRuleVO rule) {
