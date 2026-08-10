@@ -28,10 +28,14 @@ const messageServiceMocks = vi.hoisted(() => ({
   getMessageTrace: vi.fn(),
   queryMessages: vi.fn(),
 }));
+const instanceFilterMocks = vi.hoisted(() => ({
+  useInstanceFilter: vi.fn(),
+}));
 
 const QUERY_HISTORY_STORAGE_KEY = 'rocketmq-studio-message-query-history';
 
 vi.mock('../../../services/messageService', () => messageServiceMocks);
+vi.mock('../../../hooks/useInstanceFilter', () => instanceFilterMocks);
 
 vi.mock('../../../services/instanceService', () => ({
   listInstances: vi.fn().mockResolvedValue([]),
@@ -95,6 +99,11 @@ describe('Message page query history', () => {
     localStorage.clear();
     messageServiceMocks.getMessageTrace.mockReset().mockResolvedValue(null);
     messageServiceMocks.queryMessages.mockReset().mockResolvedValue([]);
+    instanceFilterMocks.useInstanceFilter.mockReturnValue({
+      selectedInstanceId: 'instance-a',
+      selectInstance: vi.fn(),
+      instanceOptions: [{ value: 'instance-a', label: 'Instance A' }],
+    });
   });
 
   afterEach(() => {
@@ -116,7 +125,7 @@ describe('Message page query history', () => {
       expect(messageServiceMocks.queryMessages).toHaveBeenCalledWith({
         topic: 'order-create',
         msgId: 'MID-001',
-        instanceId: '',
+        instanceId: 'instance-a',
       });
       expect(screen.getByRole('button', { name: /最近查询/ })).toBeEnabled();
     });
@@ -133,7 +142,7 @@ describe('Message page query history', () => {
       expect(messageServiceMocks.queryMessages).toHaveBeenCalledWith({
         topic: 'order-create',
         msgId: 'MID-001',
-        instanceId: '',
+        instanceId: 'instance-a',
       });
     });
 
@@ -158,7 +167,7 @@ describe('Message page query history', () => {
       expect(messageServiceMocks.queryMessages).toHaveBeenCalledWith({
         topic: 'order-create',
         msgId: 'MID-FAILED',
-        instanceId: '',
+        instanceId: 'instance-a',
       });
     });
     expect(screen.getByRole('button', { name: /最近查询/ })).toBeDisabled();
@@ -238,7 +247,7 @@ describe('Message page query history', () => {
     await waitFor(() => {
       expect(messageServiceMocks.queryMessages).toHaveBeenLastCalledWith({
         ...topicParams,
-        instanceId: '',
+        instanceId: 'instance-a',
       });
     });
 
@@ -247,7 +256,7 @@ describe('Message page query history', () => {
     await waitFor(() => {
       expect(messageServiceMocks.queryMessages).toHaveBeenLastCalledWith({
         ...keyParams,
-        instanceId: '',
+        instanceId: 'instance-a',
       });
       expect(screen.getByPlaceholderText('输入 Message Key')).toHaveValue('ORDER-001');
     });
@@ -312,5 +321,21 @@ describe('Message page query history', () => {
     expect(screen.getByText('MID-NULL-FIELDS')).toBeInTheDocument();
     await user.click(screen.getByRole('columnheader', { name: /Key/ }));
     expect(screen.getByText('MID-FULL-FIELDS')).toBeInTheDocument();
+
+  it('requires an instance before allowing a message query', async () => {
+    instanceFilterMocks.useInstanceFilter.mockReturnValue({
+      selectedInstanceId: '',
+      selectInstance: vi.fn(),
+      instanceOptions: [],
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<MessagePage />);
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-NO-INSTANCE');
+
+    expect(screen.getByRole('button', { name: /^search查询$/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /最近查询/ })).toBeDisabled();
+    expect(messageServiceMocks.queryMessages).not.toHaveBeenCalled();
   });
 });
