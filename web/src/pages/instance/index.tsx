@@ -45,6 +45,7 @@ import {
   type CloudInstanceOption,
   type CloudRegion,
 } from '../../api/aliyunCatalog';
+import { listTencentInstances, listTencentRegions } from '../../api/tencentCatalog';
 import { formatDateTime } from '../../utils/format';
 import {
   createInstance,
@@ -56,7 +57,10 @@ import { DEFAULT_VENDOR, VENDOR_OPTIONS, type InstanceVendor } from './vendorOpt
 
 const { Text } = Typography;
 
-const DEFAULT_ALIYUN_REGION_ID = 'cn-hangzhou';
+const DEFAULT_CLOUD_REGION_IDS: Partial<Record<InstanceVendor, string>> = {
+  ALIYUN: 'cn-hangzhou',
+  TENCENT: 'ap-chengdu',
+};
 
 /* ─── Helpers ─── */
 const typeLabel: Record<string, { text: string; color: string }> = {
@@ -133,31 +137,39 @@ const InstancePage = () => {
     };
   }, [loadInstances]);
 
+  const cloudVendor = vendor === 'ALIYUN' || vendor === 'TENCENT';
+
   useEffect(() => {
-    if (vendor !== 'ALIYUN' || !addModalOpen) {
+    if (!cloudVendor || !addModalOpen) {
       return;
     }
     const timer = window.setTimeout(() => {
       setCredentialsLoading(true);
       listCloudCredentials()
-        .then((items) => setCredentials(items.filter((item) => item.vendor === 'ALIYUN')))
+        .then((items) => setCredentials(items.filter((item) => item.vendor === vendor)))
         .catch(() => message.error('云凭据列表加载失败'))
         .finally(() => setCredentialsLoading(false));
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [vendor, addModalOpen]);
+  }, [vendor, cloudVendor, addModalOpen]);
 
   useEffect(() => {
-    if (vendor !== 'ALIYUN' || !addCredentialId) {
+    if (!cloudVendor || !addCredentialId) {
       return;
     }
     const timer = window.setTimeout(() => {
       setRegionsLoading(true);
-      listAliyunRegions(addCredentialId)
+      const request =
+        vendor === 'ALIYUN'
+          ? listAliyunRegions(addCredentialId)
+          : listTencentRegions(addCredentialId);
+      request
         .then((items) => {
           setRegions(items);
           if (!addForm.getFieldValue('regionId')) {
-            const preferred = items.find((region) => region.regionId === DEFAULT_ALIYUN_REGION_ID);
+            const preferred = items.find(
+              (region) => region.regionId === DEFAULT_CLOUD_REGION_IDS[vendor],
+            );
             if (preferred) {
               addForm.setFieldsValue({ regionId: preferred.regionId });
             }
@@ -167,21 +179,25 @@ const InstancePage = () => {
         .finally(() => setRegionsLoading(false));
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [vendor, addCredentialId, addForm]);
+  }, [vendor, cloudVendor, addCredentialId, addForm]);
 
   useEffect(() => {
-    if (vendor !== 'ALIYUN' || !addCredentialId || !addRegionId) {
+    if (!cloudVendor || !addCredentialId || !addRegionId) {
       return;
     }
     const timer = window.setTimeout(() => {
       setCloudInstancesLoading(true);
-      listAliyunInstances(addCredentialId, addRegionId)
+      const request =
+        vendor === 'ALIYUN'
+          ? listAliyunInstances(addCredentialId, addRegionId)
+          : listTencentInstances(addCredentialId, addRegionId);
+      request
         .then(setCloudInstances)
         .catch(() => message.error('云实例列表加载失败'))
         .finally(() => setCloudInstancesLoading(false));
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [vendor, addCredentialId, addRegionId]);
+  }, [vendor, cloudVendor, addCredentialId, addRegionId]);
 
   const handleCredentialChange = () => {
     setRegions([]);
@@ -198,17 +214,16 @@ const InstancePage = () => {
     try {
       const values = await addForm.validateFields();
       setSubmitting(true);
-      const payload =
-        vendor === 'ALIYUN'
-          ? {
-              name: values.name,
-              vendor: 'ALIYUN' as const,
-              credentialId: values.credentialId,
-              cloudInstanceId: values.cloudInstanceId,
-              regionId: values.regionId,
-              remark: values.remark,
-            }
-          : values;
+      const payload = cloudVendor
+        ? {
+            name: values.name,
+            vendor,
+            credentialId: values.credentialId,
+            cloudInstanceId: values.cloudInstanceId,
+            regionId: values.regionId,
+            remark: values.remark,
+          }
+        : values;
       const created = await createInstance(payload);
       await loadInstances();
       message.success(`实例「${created.name}」添加成功`);
@@ -470,7 +485,6 @@ const InstancePage = () => {
         }}
         onOk={() => void handleCreate()}
         confirmLoading={submitting}
-        okButtonProps={{ disabled: vendor === 'TENCENT' }}
         okText="连接"
         cancelText="取消"
         width={520}
@@ -493,13 +507,13 @@ const InstancePage = () => {
         <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 12 }}>
           {VENDOR_OPTIONS.find((option) => option.key === vendor)?.description}
         </Text>
-        {vendor === 'ALIYUN' ? (
+        {cloudVendor ? (
           <Form form={addForm} layout="vertical">
             <Form.Item
               label="云凭据"
               name="credentialId"
               rules={[{ required: true, message: '请选择云凭据' }]}
-              extra="凭据为阿里云账号的 AK/SK，在云凭据管理中录入"
+              extra={`凭据为${vendor === 'ALIYUN' ? '阿里云' : '腾讯云'}账号的 AK/SK，由后端录入`}
             >
               <Select
                 placeholder="选择已录入的 AK/SK 凭据"
@@ -562,13 +576,6 @@ const InstancePage = () => {
               <Input.TextArea rows={2} placeholder="可选，描述实例用途" />
             </Form.Item>
           </Form>
-        ) : vendor === 'TENCENT' ? (
-          <Alert
-            type="info"
-            showIcon
-            message="Tencent 版接入开发中"
-            description="腾讯云 TDMQ RocketMQ 版接入正在开发中，敬请期待。"
-          />
         ) : (
           <Form form={addForm} layout="vertical">
             <Form.Item

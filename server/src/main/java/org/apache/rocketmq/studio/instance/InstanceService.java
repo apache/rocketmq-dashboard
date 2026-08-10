@@ -91,8 +91,7 @@ public class InstanceService {
 
         switch (vendor) {
             case APACHE -> createApacheInstance(instance);
-            case ALIYUN -> createAliyunInstance(instance);
-            case TENCENT -> throw new BusinessException(501, "Tencent Cloud instance is not supported yet");
+            case ALIYUN, TENCENT -> createCloudInstance(instance, vendor);
         }
 
         instance.setId(UUID.randomUUID().toString());
@@ -118,21 +117,22 @@ public class InstanceService {
      * one of the cloud instances returned by the vendor catalog; endpoint is resolved from the
      * cloud instance detail (VPC endpoint preferred).
      */
-    private void createAliyunInstance(InstanceVO instance) {
-        instance.setVendor(InstanceVendor.ALIYUN);
+    private void createCloudInstance(InstanceVO instance, InstanceVendor vendor) {
+        instance.setVendor(vendor);
         if (instance.getEndpoint() != null && !instance.getEndpoint().isBlank()) {
             throw new BusinessException(400, "Commercial instances must be selected from the cloud catalog, endpoint cannot be set manually");
         }
         if (!StringUtils.hasText(instance.getCredentialId()) || !StringUtils.hasText(instance.getCloudInstanceId())
                 || !StringUtils.hasText(instance.getRegionId())) {
-            throw new BusinessException(400, "credentialId, cloudInstanceId and regionId are required for Aliyun instances");
+            throw new BusinessException(400,
+                    "credentialId, cloudInstanceId and regionId are required for " + vendor + " instances");
         }
         CloudCredentialVO credential = cloudCredentialRepository.findById(instance.getCredentialId())
                 .orElseThrow(() -> new BusinessException(404, "Cloud credential not found: " + instance.getCredentialId()));
-        if (credential.getVendor() != InstanceVendor.ALIYUN) {
-            throw new BusinessException(400, "Cloud credential vendor does not match ALIYUN");
+        if (credential.getVendor() != vendor) {
+            throw new BusinessException(400, "Cloud credential vendor does not match " + vendor);
         }
-        CloudInstanceDetailVO detail = providerRegistry.catalogFor(InstanceVendor.ALIYUN)
+        CloudInstanceDetailVO detail = providerRegistry.catalogFor(vendor)
                 .getCloudInstance(instance.getCredentialId(), instance.getRegionId(), instance.getCloudInstanceId());
         if (!StringUtils.hasText(instance.getName())) {
             instance.setName(detail.getInstanceName() != null && !detail.getInstanceName().isBlank()
