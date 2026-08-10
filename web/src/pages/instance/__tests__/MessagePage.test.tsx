@@ -28,6 +28,9 @@ const messageServiceMocks = vi.hoisted(() => ({
   getMessageTrace: vi.fn(),
   queryMessages: vi.fn(),
 }));
+const topicServiceMocks = vi.hoisted(() => ({
+  listTopics: vi.fn(),
+}));
 const instanceFilterMocks = vi.hoisted(() => ({
   useInstanceFilter: vi.fn(),
 }));
@@ -40,17 +43,7 @@ vi.mock('../../../hooks/useInstanceFilter', () => instanceFilterMocks);
 vi.mock('../../../services/instanceService', () => ({
   listInstances: vi.fn().mockResolvedValue([]),
 }));
-vi.mock('../../../services/topicService', () => ({
-  listTopics: vi
-    .fn()
-    .mockResolvedValue([
-      { name: 'order-create' },
-      { name: 'payment-callback' },
-      { name: 'user-activity-log' },
-      { name: 'notification-push' },
-      { name: 'inventory-sync' },
-    ]),
-}));
+vi.mock('../../../services/topicService', () => topicServiceMocks);
 
 import MessagePage from '../message';
 
@@ -99,6 +92,13 @@ describe('Message page query history', () => {
     localStorage.clear();
     messageServiceMocks.getMessageTrace.mockReset().mockResolvedValue(null);
     messageServiceMocks.queryMessages.mockReset().mockResolvedValue([]);
+    topicServiceMocks.listTopics.mockReset().mockResolvedValue([
+      { name: 'order-create' },
+      { name: 'payment-callback' },
+      { name: 'user-activity-log' },
+      { name: 'notification-push' },
+      { name: 'inventory-sync' },
+    ]);
     instanceFilterMocks.useInstanceFilter.mockReturnValue({
       selectedInstanceId: 'instance-a',
       selectInstance: vi.fn(),
@@ -337,5 +337,43 @@ describe('Message page query history', () => {
     expect(screen.getByRole('button', { name: /^search查询$/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: /最近查询/ })).toBeDisabled();
     expect(messageServiceMocks.queryMessages).not.toHaveBeenCalled();
+  });
+
+  it('loads topic options only for the selected instance', async () => {
+    instanceFilterMocks.useInstanceFilter.mockReturnValue({
+      selectedInstanceId: 'instance-a',
+      selectInstance: vi.fn(),
+      instanceOptions: [{ value: 'instance-a', label: 'Instance A' }],
+    });
+    topicServiceMocks.listTopics.mockResolvedValue([{ name: 'topic-on-instance-a' }]);
+    renderWithProviders(<MessagePage />);
+
+    await waitFor(() => {
+      expect(topicServiceMocks.listTopics).toHaveBeenCalledWith({ instanceId: 'instance-a' });
+    });
+  });
+
+  it('does not load static topic options without a selected instance', async () => {
+    renderWithProviders(<MessagePage />);
+
+    await waitFor(() => {
+      expect(topicServiceMocks.listTopics).not.toHaveBeenCalled();
+    });
+  });
+
+  it('clears topic options when loading the selected instance topics fails', async () => {
+    instanceFilterMocks.useInstanceFilter.mockReturnValue({
+      selectedInstanceId: 'instance-a',
+      selectInstance: vi.fn(),
+      instanceOptions: [{ value: 'instance-a', label: 'Instance A' }],
+    });
+    topicServiceMocks.listTopics.mockRejectedValue(new Error('topic lookup failed'));
+    const user = userEvent.setup();
+    renderWithProviders(<MessagePage />);
+
+    await waitFor(() => expect(topicServiceMocks.listTopics).toHaveBeenCalledTimes(1));
+    await user.click(screen.getAllByRole('combobox')[1]);
+
+    expect(screen.queryByText('order-create')).not.toBeInTheDocument();
   });
 });

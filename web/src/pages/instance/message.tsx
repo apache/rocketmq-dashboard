@@ -92,14 +92,6 @@ const QUERY_OPTIONS = [
   { value: 'msgid' as const, label: '按 Message ID' },
 ];
 
-const TOPIC_OPTIONS = [
-  'order-create',
-  'payment-callback',
-  'user-activity-log',
-  'notification-push',
-  'inventory-sync',
-];
-
 const DELIVERY_STATUS_MAP: Record<string, { label: string; color: string }> = {
   success: { label: '成功', color: 'green' },
   failed: { label: '失败', color: 'red' },
@@ -212,22 +204,24 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
 const MessagePage = () => {
   const { t } = useLang();
   const { selectedInstanceId, selectInstance, instanceOptions } = useInstanceFilter();
-  const [topicOptions, setTopicOptions] = useState<string[]>(TOPIC_OPTIONS);
+  const [topicOptions, setTopicOptions] = useState<string[]>([]);
 
   useEffect(() => {
     let cancelled = false;
-    void listTopics()
+    setTopicOptions([]);
+    setSelectedTopic(undefined);
+    if (!selectedInstanceId) {
+      return () => {
+        cancelled = true;
+      };
+    }
+    void listTopics({ instanceId: selectedInstanceId })
       .then((nextTopics) => {
         if (cancelled) return;
-        const scoped = selectedInstanceId
-          ? nextTopics.filter((topic) => topic.instanceId === selectedInstanceId)
-          : nextTopics;
-        // Always update so an instance with no topics empties the dropdown instead of showing
-        // topics from another instance or the static defaults.
-        setTopicOptions(scoped.map((topic) => topic.name));
+        setTopicOptions(nextTopics.map((topic) => topic.name));
       })
       .catch(() => {
-        // 加载失败保持静态选项可用
+        if (!cancelled) setTopicOptions([]);
       });
     return () => {
       cancelled = true;
