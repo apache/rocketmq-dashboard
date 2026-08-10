@@ -27,6 +27,7 @@ import org.apache.rocketmq.studio.persistence.mapper.RmqInstanceMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqTopicMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -75,6 +76,7 @@ class MybatisPlusInstanceRepositoryTest {
         assertThat(direct.getConsumerGroupCount()).isZero();
         assertThat(proxy.getTopicCount()).isZero();
         assertThat(proxy.getConsumerGroupCount()).isZero();
+        assertThat(direct.getAdminCredentialRef()).isEqualTo("admin-instance-direct-1");
         verifyNoInteractions(topicMapper, groupMapper);
     }
 
@@ -160,7 +162,9 @@ class MybatisPlusInstanceRepositoryTest {
 
         repository.save(vo);
 
-        verify(instanceMapper).insert(any(RmqInstance.class));
+        ArgumentCaptor<RmqInstance> entity = ArgumentCaptor.forClass(RmqInstance.class);
+        verify(instanceMapper).insert(entity.capture());
+        assertThat(entity.getValue().getAdminCredentialRef()).isEqualTo("admin-instance-proxy-2");
         verify(instanceMapper, never()).updateById(any(RmqInstance.class));
     }
 
@@ -189,6 +193,7 @@ class MybatisPlusInstanceRepositoryTest {
         entity.setType(type.name());
         entity.setEndpoint("10.0.0.1:9876");
         entity.setVendor(InstanceVendor.APACHE.name());
+        entity.setAdminCredentialRef("admin-" + id);
         entity.setCreatedAt(LocalDateTime.of(2026, 8, 3, 0, 0));
         entity.setUpdatedAt(LocalDateTime.of(2026, 8, 3, 0, 0));
         return entity;
@@ -201,6 +206,7 @@ class MybatisPlusInstanceRepositoryTest {
                 .endpoint("10.0.0.1:9876")
                 .build();
         vo.setId(id);
+        vo.setAdminCredentialRef("admin-" + id);
         return vo;
     }
 }

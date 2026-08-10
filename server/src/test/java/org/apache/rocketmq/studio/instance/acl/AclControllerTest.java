@@ -61,18 +61,18 @@ class AclControllerTest {
     private ObjectMapper objectMapper;
 
     @Test
-    void capabilitiesShouldReturnInstanceScopedLocalState() throws Exception {
+    void capabilitiesShouldReturnApacheRemoteReadState() throws Exception {
         when(aclService.capabilities("instance-1"))
                 .thenReturn(new AclCapabilitiesVO("instance-1",
                         org.apache.rocketmq.studio.common.domain.enums.InstanceVendor.APACHE,
                         org.apache.rocketmq.studio.common.domain.enums.InstanceType.DIRECT,
-                        "STUDIO_LOCAL", false, false));
+                        "APACHE_ACL2", true, false));
 
         mockMvc.perform(get("/api/acl/capabilities").param("instanceId", "instance-1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.instanceId").value("instance-1"))
-                .andExpect(jsonPath("$.data.stateSource").value("STUDIO_LOCAL"))
-                .andExpect(jsonPath("$.data.remoteReadSupported").value(false))
+                .andExpect(jsonPath("$.data.stateSource").value("APACHE_ACL2"))
+                .andExpect(jsonPath("$.data.remoteReadSupported").value(true))
                 .andExpect(jsonPath("$.data.remoteWriteSupported").value(false));
     }
 

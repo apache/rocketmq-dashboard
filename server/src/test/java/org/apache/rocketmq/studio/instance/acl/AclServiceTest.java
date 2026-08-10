@@ -94,7 +94,7 @@ class AclServiceTest {
     }
 
     @Test
-    void capabilitiesShouldDescribeSelectedInstanceAsLocalUntilProviderIsConnected() {
+    void capabilitiesShouldDescribeApacheRemoteReadSupport() {
         InstanceVO instance = InstanceVO.builder()
                 .name("instance-1")
                 .vendor(InstanceVendor.APACHE)
@@ -108,8 +108,8 @@ class AclServiceTest {
         assertThat(capabilities.instanceId()).isEqualTo("instance-1");
         assertThat(capabilities.vendor()).isEqualTo(InstanceVendor.APACHE);
         assertThat(capabilities.instanceType()).isEqualTo(InstanceType.DIRECT);
-        assertThat(capabilities.stateSource()).isEqualTo("STUDIO_LOCAL");
-        assertThat(capabilities.remoteReadSupported()).isFalse();
+        assertThat(capabilities.stateSource()).isEqualTo("APACHE_ACL2");
+        assertThat(capabilities.remoteReadSupported()).isTrue();
         assertThat(capabilities.remoteWriteSupported()).isFalse();
     }
 

@@ -141,6 +141,7 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
                 .vendor(parseVendor(entity.getId(), entity.getVendor()))
                 .cloudInstanceId(entity.getCloudInstanceId())
                 .credentialId(entity.getCredentialId())
+                .adminCredentialRef(entity.getAdminCredentialRef())
                 .regionId(entity.getRegionId())
                 .build();
         vo.setId(entity.getId());
@@ -180,6 +181,7 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
         entity.setVendor(vo.getVendor() == null ? InstanceVendor.APACHE.name() : vo.getVendor().name());
         entity.setCloudInstanceId(vo.getCloudInstanceId());
         entity.setCredentialId(vo.getCredentialId());
+        entity.setAdminCredentialRef(vo.getAdminCredentialRef());
         entity.setRegionId(vo.getRegionId());
         entity.setCreatedAt(vo.getCreatedAt());
         entity.setUpdatedAt(vo.getUpdatedAt());

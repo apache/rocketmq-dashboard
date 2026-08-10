@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.instance.acl;
 import org.springframework.util.StringUtils;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.model.Acl2PolicyContext;
@@ -47,8 +48,9 @@ public class AclService {
         }
         InstanceVO instance = instanceRepository.findById(instanceId)
                 .orElseThrow(() -> new BusinessException(404, "Instance not found: " + instanceId));
+        boolean apacheInstance = instance.getVendor() == null || instance.getVendor() == InstanceVendor.APACHE;
         return new AclCapabilitiesVO(instance.getId(), instance.getVendor(), instance.getType(),
-                "STUDIO_LOCAL", false, false);
+                apacheInstance ? "APACHE_ACL2" : "STUDIO_LOCAL", apacheInstance, false);
     }
 
 

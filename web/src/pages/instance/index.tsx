@@ -677,7 +677,7 @@ const InstancePage = () => {
           <Form.Item label="接入地址">
             <Input value={editingInstance?.endpoint} disabled />
           </Form.Item>
-          {editingInstance?.vendor !== 'ALIYUN' && (
+          {editingInstance?.vendor === 'APACHE' && (
             <Form.Item
               label="管理凭据引用"
               name="adminCredentialRef"
