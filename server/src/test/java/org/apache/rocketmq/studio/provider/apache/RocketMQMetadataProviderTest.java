@@ -44,6 +44,7 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -103,6 +104,21 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void listConsumerGroupsShouldUseSelectedInstanceForRuntimeEnrichment() {
+        RmqGroup entity = new RmqGroup();
+        entity.setName("group-a");
+        entity.setInstanceId("instance-a");
+        entity.setClusterId("cluster-a");
+        when(groupMapper.selectList(any())).thenReturn(List.of(entity));
+        when(runtimeAdminClientResolver.execute(eq("instance-a"), any())).thenReturn(null);
+
+        List<ConsumerGroupVO> groups = newProvider().listConsumerGroups("instance-a", null, null);
+
+        assertThat(groups).singleElement().extracting(ConsumerGroupVO::getName).isEqualTo("group-a");
+        verify(runtimeAdminClientResolver, times(2)).execute(eq("instance-a"), any());
+    }
+
+    @Test
     void getTopicRoutesShouldUseSelectedInstanceRuntimeClient() {
         List<BrokerRouteVO> routes = List.of(BrokerRouteVO.builder().brokerName("broker-a").build());
         when(runtimeAdminClientResolver.execute(eq("instance-a"), any())).thenReturn(routes);
@@ -148,6 +164,17 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void getTopicConsumersSurfacesAdminFailure() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        when(admin.queryTopicConsumeByWho("TopicA")).thenThrow(new IllegalStateException("broker unavailable"));
+
+        assertThatThrownBy(() -> newLiveProvider(admin).getTopicConsumers(null, "TopicA"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Failed to get consumers for topic TopicA: broker unavailable")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
     void getGroupProgressSurfacesAdminFailure() throws Exception {
         DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
         when(admin.examineConsumeStats("group-a")).thenThrow(new IllegalStateException("broker unavailable"));
@@ -155,6 +182,18 @@ class RocketMQMetadataProviderTest {
         assertThatThrownBy(() -> newLiveProvider(admin).getGroupProgress(null, "group-a"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Failed to get progress for group group-a: broker unavailable")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void getGroupSubscriptionsSurfacesAdminFailure() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        when(admin.examineConsumerConnectionInfo("group-a"))
+                .thenThrow(new IllegalStateException("broker unavailable"));
+
+        assertThatThrownBy(() -> newLiveProvider(admin).getGroupSubscriptions(null, "group-a"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Failed to get subscriptions for group group-a: broker unavailable")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
     }
 
