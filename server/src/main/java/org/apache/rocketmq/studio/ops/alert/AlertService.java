@@ -210,7 +210,14 @@ public class AlertService {
 
     private String alertName(AlertRuleVO rule) {
         String alertName = hasText(rule.getName()) ? rule.getName().replaceAll("[^A-Za-z0-9_]", "") : "";
-        return alertName.isEmpty() ? "RocketMQAlert" : alertName;
+        if (alertName.isEmpty()) {
+            return "RocketMQAlert";
+        }
+        // Prometheus alert names must start with [a-zA-Z_], not a digit
+        if (Character.isDigit(alertName.charAt(0))) {
+            alertName = "A_" + alertName;
+        }
+        return alertName;
     }
 
     private String expression(AlertRuleVO rule) {
