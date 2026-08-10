@@ -1,5 +1,5 @@
-import { exportAuditLogs as exportAuditLogsApi } from '../api/audit';
-import type { AuditFilter } from '../api/audit';
+import { exportAuditLogs as exportAuditLogsApi, fetchAuditFilterOptions } from '../api/audit';
+import type { AuditFilter, AuditFilterOptions } from '../api/audit';
 import { isMockMode } from './dataMode';
 import * as opsApi from '../api/ops';
 import type { AlertRule, SystemAlert, AuditQuery, AuditRecord, PageResult } from '../api/ops';
@@ -29,6 +29,19 @@ function includesIgnoreCase(value: string | null | undefined, search: string): b
   return (value ?? '').toLowerCase().includes(search);
 }
 
+function distinctSorted(values: Array<string | null | undefined>): string[] {
+  return [...new Set(values.filter((value) => value?.trim()) as string[])].sort();
+}
+
+function getMockAuditFilterOptions(): AuditFilterOptions {
+  return {
+    operationTypes: distinctSorted(auditRecordsState.map((record) => record.operationType)),
+    resourceTypes: distinctSorted(auditRecordsState.map((record) => record.resourceType)),
+    clusterIds: distinctSorted(auditRecordsState.map((record) => record.clusterId)),
+    results: distinctSorted(auditRecordsState.map((record) => record.result)),
+  };
+}
+
 function filterAuditRecords(params: AuditFilter): AuditRecord[] {
   return auditRecordsState.filter((record) => {
     const search = params.search?.trim().toLowerCase();
@@ -41,6 +54,8 @@ function filterAuditRecords(params: AuditFilter): AuditRecord[] {
       return false;
     }
     if (params.operationType && record.operationType !== params.operationType) return false;
+    if (params.resourceType && record.resourceType !== params.resourceType) return false;
+    if (params.clusterId && record.clusterId !== params.clusterId) return false;
     if (params.startDate && record.timestamp < params.startDate) return false;
     if (params.endDate && record.timestamp > `${params.endDate} 23:59:59`) return false;
     return !params.result || record.result.toUpperCase() === params.result.toUpperCase();
@@ -169,6 +184,11 @@ export async function listAuditRecords(params: AuditQuery = {}): Promise<PageRes
     page,
     size: pageSize,
   };
+}
+
+export async function getAuditFilterOptions(): Promise<AuditFilterOptions> {
+  if (!isMockMode()) return fetchAuditFilterOptions();
+  return getMockAuditFilterOptions();
 }
 
 export async function exportAuditLogs(params: AuditFilter = {}): Promise<string> {

@@ -21,6 +21,7 @@ import { mockAuditRecords } from '../mock/audit';
 import {
   createAlertRule,
   exportAuditLogs,
+  getAuditFilterOptions,
   listAlertRules,
   listAuditRecords,
   listSystemAlerts,
@@ -119,6 +120,17 @@ describe('ops service mock data', () => {
     expect(second.items[0]).not.toBe(first.items[0]);
   });
 
+  it('derives complete filter options from the default audit records', async () => {
+    const options = await getAuditFilterOptions();
+
+    expect(options.operationTypes).toEqual(
+      expect.arrayContaining(['CREATE_TOPIC', 'DELETE_GROUP', 'RESET_OFFSET']),
+    );
+    expect(options.resourceTypes).toEqual(expect.arrayContaining(['CLUSTER', 'GROUP', 'TOPIC']));
+    expect(options.clusterIds).toEqual(expect.arrayContaining(['prod-cn', 'prod-sh']));
+    expect(options.results).toEqual(expect.arrayContaining(['FAILED', 'SUCCESS']));
+  });
+
   it('searches records safely when optional text fields are missing', async () => {
     const record = {
       id: 'audit-null-safe',
@@ -138,6 +150,41 @@ describe('ops service mock data', () => {
     const result = await listAuditRecords({ search: 'grpc client', pageSize: 100 });
 
     expect(result.items.map((item) => item.id)).toContain('audit-null-safe');
+  });
+
+  it('derives filter options and applies resource and cluster filters', async () => {
+    const matching = {
+      id: 'audit-filter-match',
+      timestamp: '2026-08-01 10:00:00',
+      operator: 'admin',
+      operationType: 'RESET_OFFSET',
+      resourceType: 'CONSUMER_GROUP',
+      target: 'consumer-a',
+      clusterId: 'prod-filter',
+      detail: 'reset offset',
+      result: 'PARTIAL',
+      errorMessage: '',
+    } as AuditRecord;
+    const otherCluster = {
+      ...matching,
+      id: 'audit-filter-other-cluster',
+      clusterId: 'prod-other',
+    };
+    insertedRecords.push(matching, otherCluster);
+    auditRecords.push(matching, otherCluster);
+
+    const options = await getAuditFilterOptions();
+    const result = await listAuditRecords({
+      resourceType: 'CONSUMER_GROUP',
+      clusterId: 'prod-filter',
+      pageSize: 100,
+    });
+
+    expect(options.operationTypes).toContain('RESET_OFFSET');
+    expect(options.resourceTypes).toContain('CONSUMER_GROUP');
+    expect(options.clusterIds).toEqual(expect.arrayContaining(['prod-filter', 'prod-other']));
+    expect(options.results).toContain('PARTIAL');
+    expect(result.items.map((record) => record.id)).toEqual(['audit-filter-match']);
   });
 
   it('exports filtered audit records as escaped CSV', async () => {

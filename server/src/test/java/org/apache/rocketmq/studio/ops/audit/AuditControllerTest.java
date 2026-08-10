@@ -61,7 +61,7 @@ class AuditControllerTest {
                 .result("SUCCESS")
                 .build();
         when(auditService.queryLogs(eq(2), eq(10), eq("topic"), eq("DELETE"),
-                eq("2026-07-01"), eq("2026-07-24"), eq("SUCCESS")))
+                eq("TOPIC"), eq("prod-cn"), eq("2026-07-01"), eq("2026-07-24"), eq("SUCCESS")))
                 .thenReturn(PageResult.of(List.of(record), 1, 2, 10));
 
         mockMvc.perform(get("/api/audit-logs")
@@ -69,6 +69,8 @@ class AuditControllerTest {
                         .param("pageSize", "10")
                         .param("search", "topic")
                         .param("operationType", "DELETE")
+                        .param("resourceType", "TOPIC")
+                        .param("clusterId", "prod-cn")
                         .param("startDate", "2026-07-01")
                         .param("endDate", "2026-07-24")
                         .param("result", "SUCCESS"))
@@ -79,7 +81,7 @@ class AuditControllerTest {
                 .andExpect(jsonPath("$.data.total").value(1));
 
         verify(auditService).queryLogs(eq(2), eq(10), eq("topic"), eq("DELETE"),
-                eq("2026-07-01"), eq("2026-07-24"), eq("SUCCESS"));
+                eq("TOPIC"), eq("prod-cn"), eq("2026-07-01"), eq("2026-07-24"), eq("SUCCESS"));
     }
 
     @Test
@@ -146,7 +148,8 @@ class AuditControllerTest {
 
     @Test
     void queryLogsShouldUseDefaultPagination() throws Exception {
-        when(auditService.queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), isNull(), isNull()))
+        when(auditService.queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), isNull(),
+                isNull(), isNull(), isNull()))
                 .thenReturn(PageResult.of(List.of(), 0, 1, 20));
 
         mockMvc.perform(get("/api/audit-logs"))
@@ -155,18 +158,21 @@ class AuditControllerTest {
                 .andExpect(jsonPath("$.data.page").value(1))
                 .andExpect(jsonPath("$.data.size").value(20));
 
-        verify(auditService).queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), isNull(), isNull());
+        verify(auditService).queryLogs(eq(1), eq(20), isNull(), isNull(), isNull(), isNull(),
+                isNull(), isNull(), isNull());
     }
 
     @Test
     void exportLogsShouldForwardFilters() throws Exception {
         String csv = "\uFEFFtimestamp,operator\r\n\"2026-08-01T09:30\",\"admin\"\r\n";
-        when(auditService.exportLogs(eq("topic"), eq("DELETE"), eq("2026-08-01"),
-                eq("2026-08-02"), eq("SUCCESS"))).thenReturn(csv);
+        when(auditService.exportLogs(eq("topic"), eq("DELETE"), eq("TOPIC"), eq("prod-cn"),
+                eq("2026-08-01"), eq("2026-08-02"), eq("SUCCESS"))).thenReturn(csv);
 
         mockMvc.perform(get("/api/audit-logs/export")
                         .param("search", "topic")
                         .param("operationType", "DELETE")
+                        .param("resourceType", "TOPIC")
+                        .param("clusterId", "prod-cn")
                         .param("startDate", "2026-08-01")
                         .param("endDate", "2026-08-02")
                         .param("result", "SUCCESS"))
@@ -174,7 +180,27 @@ class AuditControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data").value(csv));
 
-        verify(auditService).exportLogs(eq("topic"), eq("DELETE"), eq("2026-08-01"),
-                eq("2026-08-02"), eq("SUCCESS"));
+        verify(auditService).exportLogs(eq("topic"), eq("DELETE"), eq("TOPIC"), eq("prod-cn"),
+                eq("2026-08-01"), eq("2026-08-02"), eq("SUCCESS"));
+    }
+
+    @Test
+    void getFilterOptionsShouldReturnPersistedFacets() throws Exception {
+        AuditFilterOptionsVO options = AuditFilterOptionsVO.builder()
+                .operationTypes(List.of("CREATE_TOPIC", "DELETE_TOPIC"))
+                .resourceTypes(List.of("TOPIC"))
+                .clusterIds(List.of("prod-cn"))
+                .results(List.of("FAILED", "SUCCESS"))
+                .build();
+        when(auditService.getFilterOptions()).thenReturn(options);
+
+        mockMvc.perform(get("/api/audit-logs/filter-options"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.operationTypes[0]").value("CREATE_TOPIC"))
+                .andExpect(jsonPath("$.data.resourceTypes[0]").value("TOPIC"))
+                .andExpect(jsonPath("$.data.clusterIds[0]").value("prod-cn"))
+                .andExpect(jsonPath("$.data.results[0]").value("FAILED"));
+
+        verify(auditService).getFilterOptions();
     }
 }

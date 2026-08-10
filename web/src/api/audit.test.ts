@@ -17,7 +17,7 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import MockAdapter from 'axios-mock-adapter';
-import { exportAuditLogs } from './audit';
+import { exportAuditLogs, fetchAuditFilterOptions } from './audit';
 import client from './client';
 import { cleanupAuditLogs, listAuditRecords } from './ops';
 
@@ -28,6 +28,18 @@ afterEach(() => {
 });
 
 describe('audit log API', () => {
+  it('returns persisted values for audit filter options', async () => {
+    const options = {
+      operationTypes: ['CREATE_TOPIC', 'DELETE_TOPIC'],
+      resourceTypes: ['TOPIC'],
+      clusterIds: ['prod-cn'],
+      results: ['FAILED', 'SUCCESS'],
+    };
+    mock.onGet('/audit-logs/filter-options').reply(200, { code: 200, data: options });
+
+    await expect(fetchAuditFilterOptions()).resolves.toEqual(options);
+  });
+
   it('uses the backend PageResult contract for filtered audit queries', async () => {
     mock.onGet('/audit-logs').reply((config) => {
       expect(config.params).toEqual({ page: 2, pageSize: 10, result: 'SUCCESS' });

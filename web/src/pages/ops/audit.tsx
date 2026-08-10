@@ -37,39 +37,44 @@ import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
-import type { AuditFilter } from '../../api/audit';
+import type { AuditFilter, AuditFilterOptions } from '../../api/audit';
 import type { AuditRecord } from '../../api/ops';
-import { cleanupAuditLogs, exportAuditLogs, listAuditRecords } from '../../services/opsService';
+import {
+  cleanupAuditLogs,
+  exportAuditLogs,
+  getAuditFilterOptions,
+  listAuditRecords,
+} from '../../services/opsService';
 import { downloadBlob } from '../../utils/download';
 
-const operationTypeColors: Record<string, string> = {
-  创建Topic: 'blue',
-  删除Topic: 'red',
-  修改配置: 'orange',
-  重置位点: 'purple',
-  ACL变更: 'cyan',
-  重启Broker: 'gold',
-  删除消费组: 'red',
+const emptyFilterOptions: AuditFilterOptions = {
+  operationTypes: [],
+  resourceTypes: [],
+  clusterIds: [],
+  results: [],
 };
 
-const operationTypeOptions = [
-  '创建Topic',
-  '删除Topic',
-  '修改配置',
-  '重置位点',
-  'ACL变更',
-  '重启Broker',
-  '删除消费组',
-];
+const formatFilterLabel = (value: string) => value.trim().replace(/_/g, ' ');
+
+const resultColor = (result: string) => {
+  const normalized = result.toUpperCase();
+  if (normalized === 'SUCCESS') return 'green';
+  if (normalized === 'PARTIAL') return 'orange';
+  return 'red';
+};
 
 const buildAuditFilter = (
   searchText: string,
   selectedType: string | undefined,
+  selectedResourceType: string | undefined,
+  selectedClusterId: string | undefined,
   dateRange: [Dayjs | null, Dayjs | null] | null,
   resultFilter: string,
 ): AuditFilter => ({
   search: searchText || undefined,
   operationType: selectedType,
+  resourceType: selectedResourceType,
+  clusterId: selectedClusterId,
   startDate: dateRange?.[0]?.format('YYYY-MM-DD'),
   endDate: dateRange?.[1]?.format('YYYY-MM-DD'),
   result: resultFilter === 'all' ? undefined : resultFilter,
@@ -85,8 +90,11 @@ const AuditPage: React.FC = () => {
   const [refreshKey, setRefreshKey] = useState(0);
   const [searchText, setSearchText] = useState('');
   const [selectedType, setSelectedType] = useState<string | undefined>(undefined);
+  const [selectedResourceType, setSelectedResourceType] = useState<string | undefined>(undefined);
+  const [selectedClusterId, setSelectedClusterId] = useState<string | undefined>(undefined);
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [resultFilter, setResultFilter] = useState('all');
+  const [filterOptions, setFilterOptions] = useState<AuditFilterOptions>(emptyFilterOptions);
   const [cleanupModalOpen, setCleanupModalOpen] = useState(false);
   const [cleanupDays, setCleanupDays] = useState(30);
   const [exporting, setExporting] = useState(false);
@@ -94,10 +102,33 @@ const AuditPage: React.FC = () => {
   useEffect(() => {
     let cancelled = false;
 
+    void getAuditFilterOptions()
+      .then((options) => {
+        if (!cancelled) setFilterOptions(options);
+      })
+      .catch(() => {
+        if (!cancelled) setFilterOptions(emptyFilterOptions);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+
     void listAuditRecords({
       page,
       pageSize,
-      ...buildAuditFilter(searchText, selectedType, dateRange, resultFilter),
+      ...buildAuditFilter(
+        searchText,
+        selectedType,
+        selectedResourceType,
+        selectedClusterId,
+        dateRange,
+        resultFilter,
+      ),
     })
       .then((result) => {
         if (cancelled) return;
@@ -114,7 +145,17 @@ const AuditPage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [page, pageSize, searchText, selectedType, dateRange, resultFilter, refreshKey]);
+  }, [
+    page,
+    pageSize,
+    searchText,
+    selectedType,
+    selectedResourceType,
+    selectedClusterId,
+    dateRange,
+    resultFilter,
+    refreshKey,
+  ]);
 
   const { Text } = Typography;
 
@@ -134,7 +175,14 @@ const AuditPage: React.FC = () => {
     setExporting(true);
     try {
       const csv = await exportAuditLogs(
-        buildAuditFilter(searchText, selectedType, dateRange, resultFilter),
+        buildAuditFilter(
+          searchText,
+          selectedType,
+          selectedResourceType,
+          selectedClusterId,
+          dateRange,
+          resultFilter,
+        ),
       );
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
       downloadBlob(blob, `rocketmq-audit-logs-${dayjs().format('YYYY-MM-DD')}.csv`);
@@ -159,8 +207,8 @@ const AuditPage: React.FC = () => {
     {
       title: t('audit.opType'),
       dataIndex: 'operationType',
-      width: 120,
-      render: (type: string) => <Tag color={operationTypeColors[type] || 'default'}>{type}</Tag>,
+      width: 190,
+      render: (type: string) => <Tag>{formatFilterLabel(type)}</Tag>,
     },
     {
       title: t('audit.resourceType'),
@@ -189,12 +237,9 @@ const AuditPage: React.FC = () => {
       title: t('audit.result'),
       dataIndex: 'result',
       width: 80,
-      render: (result: string) =>
-        result.toUpperCase() === 'SUCCESS' ? (
-          <Tag color="green">{t('common.success')}</Tag>
-        ) : (
-          <Tag color="red">{t('common.failure')}</Tag>
-        ),
+      render: (result: string) => (
+        <Tag color={resultColor(result)}>{formatFilterLabel(result)}</Tag>
+      ),
     },
     {
       title: t('audit.error'),
@@ -209,8 +254,8 @@ const AuditPage: React.FC = () => {
       <PageHeader title={t('audit.title')} subtitle={t('audit.subtitle')} />
 
       {/* ─── Filter Bar ─── */}
-      <Flex justify="space-between" align="center" style={{ marginBottom: 16 }}>
-        <Flex gap={16} align="center">
+      <Flex justify="space-between" align="center" gap={12} wrap style={{ marginBottom: 16 }}>
+        <Flex gap={12} align="center" wrap>
           <Input.Search
             placeholder={t('audit.searchPlaceholder')}
             value={searchText}
@@ -222,6 +267,7 @@ const AuditPage: React.FC = () => {
             allowClear
           />
           <Select
+            aria-label={t('audit.opType')}
             placeholder={t('audit.opType')}
             allowClear
             style={{ width: 180 }}
@@ -230,7 +276,37 @@ const AuditPage: React.FC = () => {
               setPage(1);
               setSelectedType(value);
             }}
-            options={operationTypeOptions.map((opt) => ({ label: opt, value: opt }))}
+            options={filterOptions.operationTypes.map((value) => ({
+              label: formatFilterLabel(value),
+              value,
+            }))}
+          />
+          <Select
+            aria-label={t('audit.resourceType')}
+            placeholder={t('audit.resourceType')}
+            allowClear
+            style={{ width: 150 }}
+            value={selectedResourceType}
+            onChange={(value) => {
+              setPage(1);
+              setSelectedResourceType(value);
+            }}
+            options={filterOptions.resourceTypes.map((value) => ({
+              label: formatFilterLabel(value),
+              value,
+            }))}
+          />
+          <Select
+            aria-label={t('audit.cluster')}
+            placeholder={t('audit.cluster')}
+            allowClear
+            style={{ width: 150 }}
+            value={selectedClusterId}
+            onChange={(value) => {
+              setPage(1);
+              setSelectedClusterId(value);
+            }}
+            options={filterOptions.clusterIds.map((value) => ({ label: value, value }))}
           />
           <DatePicker.RangePicker
             value={dateRange as [Dayjs | null, Dayjs | null] | null}
@@ -240,6 +316,7 @@ const AuditPage: React.FC = () => {
             }}
           />
           <Select
+            aria-label={t('audit.result')}
             value={resultFilter}
             onChange={(value) => {
               setPage(1);
@@ -248,8 +325,10 @@ const AuditPage: React.FC = () => {
             style={{ width: 120 }}
             options={[
               { label: t('common.all'), value: 'all' },
-              { label: t('common.success'), value: 'SUCCESS' },
-              { label: t('common.failure'), value: 'FAILURE' },
+              ...filterOptions.results.map((value) => ({
+                label: formatFilterLabel(value),
+                value,
+              })),
             ]}
           />
         </Flex>
@@ -268,13 +347,14 @@ const AuditPage: React.FC = () => {
       </Flex>
 
       {/* ─── Table ─── */}
-      <Card bodyStyle={{ padding: 0 }}>
+      <Card styles={{ body: { padding: 0 } }}>
         <Table
           size="small"
           columns={columns}
           dataSource={records}
           rowKey="id"
           loading={loading}
+          scroll={{ x: 1470 }}
           pagination={{
             current: page,
             pageSize,

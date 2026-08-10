@@ -43,19 +43,26 @@ public class AuditService {
 
 
     public PageResult<AuditRecordVO> queryLogs(int page, int pageSize, String search,
-                                             String operationType, String startDate,
+                                             String operationType, String resourceType,
+                                             String clusterId, String startDate,
                                              String endDate, String result) {
         validatePagination(page, pageSize);
         log.info("Querying audit logs, page={}, pageSize={}, search={}, operationType={}, result={}",
                 page, pageSize, search, operationType, result);
 
-        return findPage(search, operationType, startDate, endDate, result, page, pageSize);
+        return findPage(search, operationType, resourceType, clusterId,
+                startDate, endDate, result, page, pageSize);
     }
 
-    public String exportLogs(String search, String operationType, String startDate,
-                             String endDate, String result) {
+    public AuditFilterOptionsVO getFilterOptions() {
+        return auditRepository.findFilterOptions();
+    }
+
+    public String exportLogs(String search, String operationType, String resourceType,
+                             String clusterId, String startDate, String endDate, String result) {
         PageResult<AuditRecordVO> page = findPage(
-                search, operationType, startDate, endDate, result, 1, MAX_EXPORT_RECORDS);
+                search, operationType, resourceType, clusterId,
+                startDate, endDate, result, 1, MAX_EXPORT_RECORDS);
         if (page.getTotal() > MAX_EXPORT_RECORDS) {
             throw new BusinessException(400,
                     "Audit log export exceeds the maximum of " + MAX_EXPORT_RECORDS + " records; narrow the filters");
@@ -108,14 +115,17 @@ public class AuditService {
         }
     }
 
-    private PageResult<AuditRecordVO> findPage(String search, String operationType, String startDate,
-                                               String endDate, String result, int page, int pageSize) {
+    private PageResult<AuditRecordVO> findPage(String search, String operationType,
+                                               String resourceType, String clusterId,
+                                               String startDate, String endDate,
+                                               String result, int page, int pageSize) {
         LocalDateTime start = parseDate(startDate, true, "startDate");
         LocalDateTime end = parseDate(endDate, false, "endDate");
         if (start != null && end != null && start.isAfter(end)) {
             throw new BusinessException(400, "startDate must not be after endDate");
         }
-        return auditRepository.findPage(search, operationType, start, end, result, page, pageSize);
+        return auditRepository.findPage(search, operationType, resourceType, clusterId,
+                start, end, result, page, pageSize);
     }
 
     private void appendCsvRow(StringBuilder csv, Object... values) {

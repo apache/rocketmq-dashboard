@@ -27,6 +27,7 @@ import AuditPage from '../audit';
 vi.mock('../../../services/opsService', () => ({
   cleanupAuditLogs: vi.fn(),
   exportAuditLogs: vi.fn(),
+  getAuditFilterOptions: vi.fn(),
   listAuditRecords: vi.fn(),
 }));
 
@@ -59,13 +60,19 @@ describe('Audit page', () => {
   });
 
   beforeEach(() => {
+    vi.mocked(opsService.getAuditFilterOptions).mockResolvedValue({
+      operationTypes: ['CREATE_TOPIC', 'RESET_OFFSET'],
+      resourceTypes: ['CONSUMER_GROUP', 'TOPIC'],
+      clusterIds: ['prod-cn', 'prod-sh'],
+      results: ['FAILED', 'PARTIAL', 'SUCCESS'],
+    });
     vi.mocked(opsService.listAuditRecords).mockResolvedValue({
       items: [
         {
           id: 'audit-1',
           timestamp: '2026-08-01 10:00:00',
           operator: 'admin',
-          operationType: '删除Topic',
+          operationType: 'DELETE_TOPIC',
           resourceType: 'TOPIC',
           target: 'topic-a',
           clusterId: 'prod-cn',
@@ -111,6 +118,8 @@ describe('Audit page', () => {
       expect(opsService.exportAuditLogs).toHaveBeenCalledWith({
         search: 'topic-a',
         operationType: undefined,
+        resourceType: undefined,
+        clusterId: undefined,
         startDate: undefined,
         endDate: undefined,
         result: undefined,
@@ -121,5 +130,64 @@ describe('Audit page', () => {
     await expect(blob.text()).resolves.toContain('"2026-08-01 10:00:00","admin"');
     expect(clickSpy).toHaveBeenCalledTimes(1);
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:audit');
+  });
+
+  it('loads persisted filter values and forwards their original codes', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<AuditPage />);
+
+    expect(await screen.findByText('topic-a')).toBeInTheDocument();
+    await user.click(screen.getByRole('combobox', { name: '操作类型' }));
+    await user.click(
+      await screen.findByText('CREATE TOPIC', { selector: '.ant-select-item-option-content' }),
+    );
+    expect(screen.getByText('SUCCESS')).toBeInTheDocument();
+    await user.click(screen.getByRole('combobox', { name: '资源类型' }));
+    await user.click(
+      await screen.findByText('CONSUMER GROUP', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+    await user.click(screen.getByRole('combobox', { name: '集群' }));
+    await user.click(
+      await screen.findByText('prod-sh', { selector: '.ant-select-item-option-content' }),
+    );
+
+    await waitFor(() =>
+      expect(opsService.listAuditRecords).toHaveBeenLastCalledWith({
+        page: 1,
+        pageSize: 20,
+        search: undefined,
+        operationType: 'CREATE_TOPIC',
+        resourceType: 'CONSUMER_GROUP',
+        clusterId: 'prod-sh',
+        startDate: undefined,
+        endDate: undefined,
+        result: undefined,
+      }),
+    );
+  });
+
+  it('still loads audit records when filter options cannot be loaded', async () => {
+    vi.mocked(opsService.getAuditFilterOptions).mockRejectedValueOnce(new Error('unavailable'));
+
+    renderWithProviders(<AuditPage />);
+
+    expect(await screen.findByText('topic-a')).toBeInTheDocument();
+    expect(opsService.listAuditRecords).toHaveBeenCalled();
+  });
+
+  it('refreshes filter options after audit logs are cleaned up', async () => {
+    const user = userEvent.setup();
+    vi.mocked(opsService.cleanupAuditLogs).mockResolvedValue(3);
+
+    renderWithProviders(<AuditPage />);
+
+    expect(await screen.findByText('topic-a')).toBeInTheDocument();
+    expect(opsService.getAuditFilterOptions).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole('button', { name: '清理日志' }));
+    await user.click(await screen.findByRole('button', { name: '确认清理' }));
+
+    await waitFor(() => expect(opsService.getAuditFilterOptions).toHaveBeenCalledTimes(2));
   });
 });
