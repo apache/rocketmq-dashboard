@@ -36,6 +36,10 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AlertService {
 
+    private static final Set<String> VALID_OPERATORS = Set.of(">", ">=", "<", "<=", "==", "!=");
+    private static final Pattern METRIC_NAME_PATTERN = Pattern.compile("^[a-zA-Z_:][a-zA-Z0-9_:]*$");
+    private static final Pattern DURATION_PATTERN = Pattern.compile("^\\d+(ms|s|m|h|d|w|y)$");
+
     private final AlertRepository alertRepository;
     private final AlertRuleAssetService alertRuleAssetService;
     private final OperationAuditService operationAuditService;
@@ -210,9 +214,19 @@ public class AlertService {
     }
 
     private String expression(AlertRuleVO rule) {
-        String metric = hasText(rule.getMetric()) ? rule.getMetric() : "rocketmq_consumer_lag_messages";
-        String operator = hasText(rule.getOperator()) ? rule.getOperator() : ">";
+        String metric = validateMetric(rule.getMetric());
+        String operator = validateOperator(rule.getOperator());
         return metric + labelSelector(rule) + " " + operator + " " + formatThreshold(rule.getThreshold());
+    }
+
+    private String validateMetric(String metric) {
+        String normalized = hasText(metric) ? metric.trim() : "rocketmq_consumer_lag_messages";
+        return METRIC_NAME_PATTERN.matcher(normalized).matches() ? normalized : "rocketmq_consumer_lag_messages";
+    }
+
+    private String validateOperator(String operator) {
+        String normalized = hasText(operator) ? operator.trim() : ">";
+        return VALID_OPERATORS.contains(normalized) ? normalized : ">";
     }
 
     private String labelSelector(AlertRuleVO rule) {
@@ -257,7 +271,8 @@ public class AlertService {
     }
 
     private String duration(AlertRuleVO rule) {
-        return hasText(rule.getDuration()) ? rule.getDuration() : "5m";
+        String dur = hasText(rule.getDuration()) ? rule.getDuration().trim() : "5m";
+        return DURATION_PATTERN.matcher(dur).matches() ? dur : "5m";
     }
 
     private String inferTeam(String metric) {
