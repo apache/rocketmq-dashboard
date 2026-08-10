@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.cluster.k8s;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.persistence.entity.RmqK8sCertificate;
 import org.apache.rocketmq.studio.persistence.mapper.RmqK8sCertificateMapper;
 import org.junit.jupiter.api.Test;
@@ -35,7 +36,7 @@ class MybatisPlusK8sCertRepositoryTest {
         when(mapper.selectById("cert-1")).thenReturn(entity);
 
         assertThatThrownBy(() -> repository(mapper).findById("cert-1"))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("certificate type");
     }
 
@@ -47,8 +48,20 @@ class MybatisPlusK8sCertRepositoryTest {
         when(mapper.selectById("cert-1")).thenReturn(entity);
 
         assertThatThrownBy(() -> repository(mapper).findById("cert-1"))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("SAN JSON");
+    }
+
+    @Test
+    void findByIdSurfacesInvalidPersistedCertificateStatus() {
+        RmqK8sCertificateMapper mapper = mock(RmqK8sCertificateMapper.class);
+        RmqK8sCertificate entity = certificate();
+        entity.setStatus("unknown");
+        when(mapper.selectById("cert-1")).thenReturn(entity);
+
+        assertThatThrownBy(() -> repository(mapper).findById("cert-1"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("certificate status");
     }
 
     private MybatisPlusK8sCertRepository repository(RmqK8sCertificateMapper mapper) {
