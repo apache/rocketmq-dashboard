@@ -222,9 +222,9 @@ const MessagePage = () => {
         const scoped = selectedInstanceId
           ? nextTopics.filter((topic) => topic.instanceId === selectedInstanceId)
           : nextTopics;
-        if (scoped.length > 0) {
-          setTopicOptions(scoped.map((topic) => topic.name));
-        }
+        // Always update so an instance with no topics empties the dropdown instead of showing
+        // topics from another instance or the static defaults.
+        setTopicOptions(scoped.map((topic) => topic.name));
       })
       .catch(() => {
         // 加载失败保持静态选项可用

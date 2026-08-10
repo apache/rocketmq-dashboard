@@ -36,7 +36,15 @@ vi.mock('../../../services/instanceService', () => ({
   listInstances: vi.fn().mockResolvedValue([]),
 }));
 vi.mock('../../../services/topicService', () => ({
-  listTopics: vi.fn().mockResolvedValue([]),
+  listTopics: vi
+    .fn()
+    .mockResolvedValue([
+      { name: 'order-create' },
+      { name: 'payment-callback' },
+      { name: 'user-activity-log' },
+      { name: 'notification-push' },
+      { name: 'inventory-sync' },
+    ]),
 }));
 
 import MessagePage from '../message';
