@@ -38,6 +38,11 @@ public class AclController {
 
     private final AclService aclService;
 
+    @GetMapping("/capabilities")
+    public Result<AclCapabilitiesVO> capabilities(@RequestParam String instanceId) {
+        return Result.ok(aclService.capabilities(instanceId));
+    }
+
     @GetMapping("/rules")
     public Result<List<AclRuleVO>> listRules(
             @RequestParam(required = false) String clusterId,
