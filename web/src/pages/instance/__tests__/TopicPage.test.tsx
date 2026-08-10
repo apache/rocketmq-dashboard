@@ -239,6 +239,35 @@ describe('TopicPage', () => {
     expect(within(getTableBody()).queryByText('topic-01')).not.toBeInTheDocument();
   });
 
+  it('rebuilds a topic and refreshes its route through the selected instance', async () => {
+    const user = userEvent.setup();
+    instanceServiceMocks.listInstances.mockResolvedValue([selectedInstance]);
+    topicServiceMocks.listTopics.mockResolvedValue([
+      { ...buildTopics(1)[0], name: 'orders-topic', instanceId: selectedInstance.id },
+    ]);
+    renderWithProviders('/instance/instance-proxy-1/topic');
+
+    expect(await screen.findByText('orders-topic')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /详情/ }));
+    expect(await screen.findByRole('button', { name: '在 Broker 上重建' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '在 Broker 上重建' }));
+
+    await waitFor(() =>
+      expect(topicServiceMocks.createTopic).toHaveBeenCalledWith({
+        name: 'orders-topic',
+        type: 'NORMAL',
+        writeQueues: 8,
+        readQueues: 8,
+        instanceId: 'instance-proxy-1',
+      }),
+    );
+    expect(topicServiceMocks.getTopicRoutes).toHaveBeenLastCalledWith(
+      'orders-topic',
+      'instance-proxy-1',
+    );
+  });
+
   it('keeps failed topics selected after a partially successful batch deletion', async () => {
     const user = userEvent.setup();
     topicServiceMocks.listTopics.mockResolvedValue(buildTopics(3));

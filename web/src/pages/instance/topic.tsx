@@ -376,6 +376,10 @@ const TopicPage = () => {
 
   // Metadata lives in the database, so a record can exist without a broker route.
   const rebuildTopic = async (topic: Topic) => {
+    if (!selectedInstanceId) {
+      message.warning('请先选择实例后再重建 Topic');
+      return;
+    }
     setRebuilding(true);
     try {
       await createTopic({
@@ -383,8 +387,9 @@ const TopicPage = () => {
         type: topic.type,
         writeQueues: topic.writeQueues,
         readQueues: topic.readQueues,
+        instanceId: selectedInstanceId,
       });
-      const routes = await getTopicRoutes(topic.name);
+      const routes = await getTopicRoutes(topic.name, selectedInstanceId);
       setRoutesByTopic((previous) => ({ ...previous, [topic.name]: routes }));
       message.success(`Topic「${topic.name}」已在 Broker 上重建`);
     } catch {
