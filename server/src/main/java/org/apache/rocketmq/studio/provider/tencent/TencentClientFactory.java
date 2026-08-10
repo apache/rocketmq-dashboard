@@ -78,12 +78,19 @@ public class TencentClientFactory {
                 .orElseThrow(() -> new BusinessException(404, "Cloud credential not found: " + credentialId));
         Credential sdkCredential = new Credential(credential.getAccessKey(), credential.getSecretKey());
         HttpProfile httpProfile = new HttpProfile();
-        httpProfile.setEndpoint(ENDPOINT);
+        httpProfile.setEndpoint(endpointFor(region));
         httpProfile.setConnTimeout(CONNECT_TIMEOUT_SECONDS);
         httpProfile.setReadTimeout(READ_TIMEOUT_SECONDS);
         ClientProfile clientProfile = new ClientProfile();
         clientProfile.setHttpProfile(httpProfile);
         return new TrocketClient(sdkCredential, region, clientProfile);
+    }
+
+    static String endpointFor(String region) {
+        if (region != null && region.endsWith("-fsi")) {
+            return "trocket." + region + ".tencentcloudapi.com";
+        }
+        return ENDPOINT;
     }
 
     static BusinessException mapToBusinessException(TencentCloudSDKException ex) {

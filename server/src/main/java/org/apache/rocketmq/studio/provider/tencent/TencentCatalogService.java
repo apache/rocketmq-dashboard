@@ -45,16 +45,25 @@ public class TencentCatalogService implements CloudCatalogProvider {
     static final int PAGE_SIZE = 100;
     static final int MAX_PAGES = 100;
     static final List<CloudRegionVO> SUPPORTED_REGIONS = List.of(
+            region("ap-guangzhou", "Guangzhou"),
+            region("ap-shenzhen-fsi", "Shenzhen Finance"),
+            region("ap-nanjing", "Nanjing"),
+            region("ap-shanghai", "Shanghai"),
+            region("ap-shanghai-fsi", "Shanghai Finance"),
+            region("ap-shanghai-adc", "Shanghai Autonomous Driving Cloud"),
+            region("ap-hongkong", "Hong Kong"),
             region("ap-beijing", "Beijing"),
             region("ap-chengdu", "Chengdu"),
             region("ap-chongqing", "Chongqing"),
-            region("ap-guangzhou", "Guangzhou"),
-            region("ap-hongkong", "Hong Kong"),
-            region("ap-nanjing", "Nanjing"),
-            region("ap-shanghai", "Shanghai"),
             region("ap-singapore", "Singapore"),
+            region("ap-bangkok", "Bangkok"),
+            region("ap-jakarta", "Jakarta"),
+            region("ap-seoul", "Seoul"),
             region("ap-tokyo", "Tokyo"),
-            region("na-siliconvalley", "Silicon Valley"));
+            region("na-siliconvalley", "Silicon Valley"),
+            region("na-ashburn", "Virginia"),
+            region("eu-frankfurt", "Frankfurt"),
+            region("sa-saopaulo", "Sao Paulo"));
 
     private final TencentClientFactory clientFactory;
 
