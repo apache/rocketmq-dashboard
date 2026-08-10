@@ -38,14 +38,14 @@ public class LiteTopicQuota {
     private Double maxCreationRate;
 
     public double getUsageRate() {
-        if (maxTopicCount == null || maxTopicCount == 0) {
+        if (maxTopicCount == null || maxTopicCount == 0 || currentTopicCount == null) {
             return 0.0;
         }
         return (double) currentTopicCount / maxTopicCount;
     }
 
     public double getSessionUsageRate() {
-        if (maxSessionCount == null || maxSessionCount == 0) {
+        if (maxSessionCount == null || maxSessionCount == 0 || currentSessionCount == null) {
             return 0.0;
         }
         return (double) currentSessionCount / maxSessionCount;
@@ -65,6 +65,6 @@ public class LiteTopicQuota {
         if (maxTopicCount == null) {
             return 0;
         }
-        return Math.max(0, maxTopicCount - currentTopicCount);
+        return Math.max(0, maxTopicCount - (currentTopicCount == null ? 0 : currentTopicCount));
     }
 }
