@@ -69,6 +69,16 @@ class AlertRuleControllerTest {
     }
 
     @Test
+    void exportRulesShouldReturnGeneratedYaml() throws Exception {
+        when(alertService.exportPrometheusRulesYaml()).thenReturn("groups:\n");
+
+        mockMvc.perform(get("/api/alert-rules/export"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.rules").value("groups:\n"));
+    }
+
+    @Test
     void createRuleShouldReturnCreatedRule() throws Exception {
         AlertRuleVO request = AlertRuleVO.builder()
                 .name("High Lag")

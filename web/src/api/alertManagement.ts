@@ -21,7 +21,54 @@ export interface AlertRuleData {
   rules: string;
 }
 
-export async function queryAlertRules(): Promise<AlertRuleData> {
-  const res = await client.get<{ data: AlertRuleData }>('/alert/rules');
+export interface AlertRule {
+  id?: string;
+  name: string;
+  metric?: string;
+  operator?: string;
+  threshold?: number;
+  thresholdUnit?: string;
+  duration?: string;
+  channels?: string[];
+  enabled: boolean;
+  description?: string;
+  brokerName?: string;
+  clusterName?: string;
+  severity?: string;
+  lastTriggered?: string | null;
+}
+
+export type AlertRuleRequest = Omit<AlertRule, 'lastTriggered'>;
+
+export async function listAlertRules(): Promise<AlertRule[]> {
+  const res = await client.get<{ data: AlertRule[] }>('/alert-rules');
   return res.data.data;
+}
+
+export async function exportAlertRulesYaml(): Promise<AlertRuleData> {
+  const res = await client.get<{ data: AlertRuleData }>('/alert-rules/export');
+  return res.data.data;
+}
+
+export async function queryAlertRules(): Promise<AlertRuleData> {
+  return exportAlertRulesYaml();
+}
+
+export async function createAlertRule(data: AlertRuleRequest): Promise<AlertRule> {
+  const res = await client.post<{ data: AlertRule }>('/alert-rules/create', data);
+  return res.data.data;
+}
+
+export async function updateAlertRule(data: AlertRuleRequest): Promise<AlertRule> {
+  const res = await client.post<{ data: AlertRule }>('/alert-rules/update', data);
+  return res.data.data;
+}
+
+export async function toggleAlertRule(id: string, enabled: boolean): Promise<AlertRule> {
+  const res = await client.post<{ data: AlertRule }>('/alert-rules/toggle', { id, enabled });
+  return res.data.data;
+}
+
+export async function deleteAlertRule(id: string): Promise<void> {
+  await client.post('/alert-rules/delete', { id });
 }

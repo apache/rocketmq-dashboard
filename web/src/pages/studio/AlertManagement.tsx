@@ -46,7 +46,15 @@ import {
   Warning,
 } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
-import { queryAlertRules } from '../../api/alertManagement';
+import {
+  createAlertRule,
+  deleteAlertRule,
+  exportAlertRulesYaml,
+  listAlertRules,
+  toggleAlertRule,
+  updateAlertRule,
+} from '../../api/alertManagement';
+import type { AlertRule as PersistedAlertRule, AlertRuleRequest } from '../../api/alertManagement';
 import { downloadBlob } from '../../utils/download';
 
 const { TextArea } = Input;
@@ -54,6 +62,7 @@ const { TextArea } = Input;
 // ─── Types ────────────────────────────────────────────────────────
 interface AlertRule {
   key: string;
+  id?: string;
   index: number;
   alert: string;
   group: string;
@@ -64,6 +73,16 @@ interface AlertRule {
   summary: string;
   description: string;
   enabled: boolean;
+}
+
+interface AlertRuleFormValues {
+  alert: string;
+  expr: string;
+  for: string;
+  severity: string;
+  summary: string;
+  description?: string;
+  enabled?: boolean;
 }
 
 // ─── Constants ────────────────────────────────────────────────────
@@ -83,62 +102,174 @@ const TEAM_COLORS: Record<string, string> = {
   reliability: 'gold',
 };
 
-const GROUP_OPTIONS = [
-  'rocketmq-broker.rules',
-  'rocketmq-topic.rules',
-  'rocketmq-consumer.rules',
-  'rocketmq-client.rules',
-  'rocketmq-proxy.rules',
-  'rocketmq-errors.rules',
-  'rocketmq-broker-extended.rules',
-];
+// ─── Mapping helpers ──────────────────────────────────────────────
+const DESCRIPTION_SEPARATOR = ' - ';
+const EXPRESSION_PATTERN = /^\s*(.+?)\s*(>=|<=|==|!=|>|<)\s*(-?\d+(?:\.\d+)?)\s*$/;
 
-const TEAM_OPTIONS = ['broker', 'topic', 'consumer', 'client', 'proxy', 'security', 'reliability'];
+function inferTeam(metric?: string): string {
+  const value = metric || '';
+  if (value.includes('replication') || value.includes('fall_behind') || value.includes('slave')) {
+    return 'broker';
+  }
+  if (value.includes('consumer') || value.includes('lag')) return 'consumer';
+  if (value.includes('producer') || value.includes('client')) return 'client';
+  if (value.includes('topic') || value.includes('messages_in') || value.includes('messages_out')) {
+    return 'topic';
+  }
+  return 'broker';
+}
 
-// ─── YAML Parser ──────────────────────────────────────────────────
-function parseYamlRules(yamlStr: string, disabledRules: Record<string, boolean>): AlertRule[] {
+function groupName(team: string): string {
+  if (team === 'client') return 'rocketmq-client.rules';
+  if (team === 'consumer') return 'rocketmq-consumer.rules';
+  if (team === 'topic') return 'rocketmq-topic.rules';
+  if (team === 'proxy') return 'rocketmq-proxy.rules';
+  return 'rocketmq-broker.rules';
+}
+
+function parseYamlRules(yamlStr: string): AlertRule[] {
   const rules: AlertRule[] = [];
   if (!yamlStr) return rules;
 
   const groupBlocks = yamlStr.split(/\n(?=\s*- name:)/);
   let ruleIndex = 0;
-
   for (const block of groupBlocks) {
     const groupNameMatch = block.match(/- name:\s*(.+)/);
     if (!groupNameMatch) continue;
-    const groupName = groupNameMatch[1].trim();
-
+    const parsedGroupName = groupNameMatch[1].trim();
     const ruleBlocks = block.split(/\n\s*#\s*Rule\s+\d+:/);
-    for (let i = 1; i < ruleBlocks.length; i++) {
-      const ruleBlock = ruleBlocks[i];
+    for (let index = 1; index < ruleBlocks.length; index += 1) {
+      const ruleBlock = ruleBlocks[index];
       const alertMatch = ruleBlock.match(/alert:\s*(.+)/);
+      if (!alertMatch) continue;
+      const alertName = alertMatch[1].trim();
       const exprMatch = ruleBlock.match(/expr:\s*(.+)/);
       const forMatch = ruleBlock.match(/for:\s*(.+)/);
       const severityMatch = ruleBlock.match(/severity:\s*(.+)/);
       const teamMatch = ruleBlock.match(/team:\s*(.+)/);
       const summaryMatch = ruleBlock.match(/summary:\s*"(.+)"/);
       const descMatch = ruleBlock.match(/description:\s*"(.+)"/);
-
-      if (alertMatch) {
-        ruleIndex++;
-        const alertName = alertMatch[1].trim();
-        rules.push({
-          key: alertName,
-          index: ruleIndex,
-          alert: alertName,
-          group: groupName,
-          expr: exprMatch ? exprMatch[1].trim() : '',
-          for: forMatch ? forMatch[1].trim() : '',
-          severity: severityMatch ? severityMatch[1].trim() : 'warning',
-          team: teamMatch ? teamMatch[1].trim() : '',
-          summary: summaryMatch ? summaryMatch[1].trim() : '',
-          description: descMatch ? descMatch[1].trim() : '',
-          enabled: !disabledRules[alertName],
-        });
-      }
+      ruleIndex += 1;
+      rules.push({
+        key: alertName,
+        index: ruleIndex,
+        alert: alertName,
+        group: parsedGroupName,
+        expr: exprMatch ? exprMatch[1].trim() : '',
+        for: forMatch ? forMatch[1].trim() : '',
+        severity: severityMatch ? severityMatch[1].trim() : 'warning',
+        team: teamMatch ? teamMatch[1].trim() : inferTeam(exprMatch?.[1]),
+        summary: summaryMatch ? summaryMatch[1].trim() : alertName,
+        description: descMatch ? descMatch[1].trim() : '',
+        enabled: true,
+      });
     }
   }
   return rules;
+}
+
+function buildExpression(rule: PersistedAlertRule): string {
+  const metric = scopedMetric(rule);
+  const operator = rule.operator || '>';
+  const threshold = rule.threshold ?? 0;
+  return `${metric} ${operator} ${threshold}`;
+}
+
+function scopedMetric(rule: PersistedAlertRule): string {
+  const metric = rule.metric || 'rocketmq_consumer_lag_messages';
+  if (metric.includes('{')) return metric;
+
+  const labels = [
+    ['cluster', rule.clusterName],
+    ['broker', rule.brokerName],
+  ]
+    .filter(([, value]) => hasRuleScope(value))
+    .map(([name, value]) => `${name}="${escapeLabelValue(value || '')}"`);
+  return labels.length > 0 ? `${metric}{${labels.join(',')}}` : metric;
+}
+
+function hasRuleScope(value?: string): boolean {
+  return Boolean(value && value.trim() && value.trim() !== '*');
+}
+
+function escapeLabelValue(value: string): string {
+  return value.trim().replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+function splitDescription(description?: string): { summary: string; detail: string } {
+  if (!description) return { summary: '', detail: '' };
+  const separatorIndex = description.indexOf(DESCRIPTION_SEPARATOR);
+  if (separatorIndex < 0) return { summary: description, detail: '' };
+  return {
+    summary: description.slice(0, separatorIndex),
+    detail: description.slice(separatorIndex + DESCRIPTION_SEPARATOR.length),
+  };
+}
+
+function combineDescription(summary: string, detail?: string): string {
+  const trimmedSummary = summary.trim();
+  const trimmedDetail = detail?.trim();
+  return trimmedDetail
+    ? `${trimmedSummary}${DESCRIPTION_SEPARATOR}${trimmedDetail}`
+    : trimmedSummary;
+}
+
+function toUiRule(rule: PersistedAlertRule, index: number): AlertRule {
+  const team = inferTeam(rule.metric);
+  const description = splitDescription(rule.description);
+  return {
+    key: rule.id || rule.name,
+    id: rule.id,
+    index: index + 1,
+    alert: rule.name,
+    group: groupName(team),
+    expr: buildExpression(rule),
+    for: rule.duration || '5m',
+    severity: (rule.severity || 'warning').toLowerCase(),
+    team,
+    summary: description.summary || rule.name,
+    description: description.detail,
+    enabled: rule.enabled,
+  };
+}
+
+function parseExpression(
+  expr: string,
+): Pick<AlertRuleRequest, 'metric' | 'operator' | 'threshold'> {
+  const match = expr.match(EXPRESSION_PATTERN);
+  if (!match) {
+    throw new Error('Expression must look like: metric{labels} > 100');
+  }
+  return {
+    metric: match[1].trim(),
+    operator: match[2],
+    threshold: Number(match[3]),
+  };
+}
+
+function toAlertRuleRequest(
+  values: AlertRuleFormValues,
+  editingRule: AlertRule | null,
+): AlertRuleRequest {
+  const expression = parseExpression(values.expr);
+  return {
+    id: editingRule?.id,
+    name: values.alert.trim(),
+    ...expression,
+    duration: values.for,
+    enabled: values.enabled ?? true,
+    description: combineDescription(values.summary, values.description),
+    severity: values.severity,
+  };
+}
+
+async function loadAlertRuleRows(): Promise<AlertRule[]> {
+  const persistedRules = await listAlertRules();
+  if (persistedRules.length > 0) {
+    return persistedRules.map(toUiRule);
+  }
+  const exported = await exportAlertRulesYaml();
+  return parseYamlRules(exported.rules || '');
 }
 
 // ─── Component ────────────────────────────────────────────────────
@@ -157,7 +288,6 @@ const AlertManagementPage: React.FC = () => {
   const [filterSeverity, setFilterSeverity] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [selectedRuleKeys, setSelectedRuleKeys] = useState<React.Key[]>([]);
-  const disabledRules: Record<string, boolean> = {};
 
   useEffect(() => {
     let cancelled = false;
@@ -167,10 +297,8 @@ const AlertManagementPage: React.FC = () => {
         setLoading(true);
       }
       try {
-        const data = await queryAlertRules();
-        const yamlStr = data.rules || '';
+        const loadedRules = await loadAlertRuleRows();
         if (!cancelled) {
-          const loadedRules = parseYamlRules(yamlStr, disabledRules);
           const enabledRuleKeys = new Set<React.Key>(
             loadedRules.filter((rule) => rule.enabled).map((rule) => rule.key),
           );
@@ -200,9 +328,7 @@ const AlertManagementPage: React.FC = () => {
   const fetchAlertRules = async () => {
     setLoading(true);
     try {
-      const data = await queryAlertRules();
-      const yamlStr = data.rules || '';
-      const loadedRules = parseYamlRules(yamlStr, disabledRules);
+      const loadedRules = await loadAlertRuleRows();
       const enabledRuleKeys = new Set<React.Key>(
         loadedRules.filter((rule) => rule.enabled).map((rule) => rule.key),
       );
@@ -215,17 +341,30 @@ const AlertManagementPage: React.FC = () => {
     }
   };
 
-  const handleToggleRule = (ruleKey: string) => {
-    void ruleKey;
-    message.warning(
-      'Alert rule changes are unavailable until a persisted rule editor is available.',
-    );
+  const handleToggleRule = async (rule: AlertRule, enabled: boolean) => {
+    if (!rule.id) {
+      message.error(t('alertMgmt.updateFailed'));
+      return;
+    }
+    try {
+      const updated = await toggleAlertRule(rule.id, enabled);
+      const nextRule = toUiRule(updated, rule.index - 1);
+      setAlertRules((rules) => rules.map((item) => (item.key === rule.key ? nextRule : item)));
+      setSelectedRuleKeys((keys) => (enabled ? keys : keys.filter((key) => key !== rule.key)));
+      message.success(t('alertMgmt.updateSuccess'));
+    } catch {
+      message.error(t('alertMgmt.updateFailed'));
+    }
   };
 
   const handleAddRule = () => {
     setEditingRule(null);
     form.resetFields();
-    form.setFieldsValue({ severity: 'warning', for: '5m', team: 'broker', enabled: true });
+    form.setFieldsValue({
+      severity: 'warning',
+      for: '5m',
+      enabled: true,
+    });
     setModalVisible(true);
   };
 
@@ -233,11 +372,9 @@ const AlertManagementPage: React.FC = () => {
     setEditingRule(rule);
     form.setFieldsValue({
       alert: rule.alert,
-      group: rule.group,
       expr: rule.expr,
       for: rule.for,
       severity: rule.severity,
-      team: rule.team,
       summary: rule.summary,
       description: rule.description,
       enabled: rule.enabled,
@@ -245,23 +382,57 @@ const AlertManagementPage: React.FC = () => {
     setModalVisible(true);
   };
 
-  const handleDeleteRule = (ruleKey: string) => {
-    void ruleKey;
-    message.warning(
-      'Alert rule changes are unavailable until a persisted rule editor is available.',
-    );
+  const handleDeleteRule = async (rule: AlertRule) => {
+    if (!rule.id) {
+      message.error(t('alertMgmt.deleteFailed'));
+      return;
+    }
+    try {
+      await deleteAlertRule(rule.id);
+      setAlertRules((rules) =>
+        rules
+          .filter((item) => item.key !== rule.key)
+          .map((item, index) => ({ ...item, index: index + 1 })),
+      );
+      setSelectedRuleKeys((keys) => keys.filter((key) => key !== rule.key));
+      message.success(t('alertMgmt.deleteSuccess'));
+    } catch {
+      message.error(t('alertMgmt.deleteFailed'));
+    }
   };
 
   const handleModalOk = async () => {
     try {
-      await form.validateFields();
-      message.warning(
-        'Alert rule changes are unavailable until a persisted rule editor is available.',
-      );
+      const values = await form.validateFields();
+      const request = toAlertRuleRequest(values, editingRule);
+      if (editingRule) {
+        if (!request.id) {
+          message.error(t('alertMgmt.updateFailed'));
+          return;
+        }
+        const updated = await updateAlertRule(request);
+        const nextRule = toUiRule(updated, editingRule.index - 1);
+        setAlertRules((rules) =>
+          rules.map((rule) => (rule.key === editingRule.key ? nextRule : rule)),
+        );
+        message.success(t('alertMgmt.updateSuccess'));
+      } else {
+        const created = await createAlertRule(request);
+        setAlertRules((rules) =>
+          [toUiRule(created, 0), ...rules].map((rule, index) => ({ ...rule, index: index + 1 })),
+        );
+        message.success(t('alertMgmt.createSuccess'));
+      }
       setModalVisible(false);
       form.resetFields();
-    } catch {
-      // validation failed
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('Expression must')) {
+        message.error(error.message);
+        return;
+      }
+      if (error && typeof error === 'object' && 'errorFields' in error) return;
+      message.error(editingRule ? t('alertMgmt.updateFailed') : t('alertMgmt.createFailed'));
+      // Ant Design validation errors are already rendered near the fields.
     }
   };
 
@@ -272,7 +443,7 @@ const AlertManagementPage: React.FC = () => {
 
   const handleExportYaml = async () => {
     try {
-      const data = await queryAlertRules();
+      const data = await exportAlertRulesYaml();
       downloadBlob(new Blob([data.rules], { type: 'text/yaml' }), 'rocketmq-alert-rules.yaml');
       message.success(t('alertMgmt.exportSuccess'));
     } catch {
@@ -377,7 +548,14 @@ const AlertManagementPage: React.FC = () => {
       dataIndex: 'enabled',
       width: 80,
       render: (enabled: boolean, record: AlertRule) => (
-        <Switch size="small" checked={enabled} onChange={() => handleToggleRule(record.key)} />
+        <Switch
+          size="small"
+          checked={enabled}
+          disabled={!record.id}
+          onChange={(checked) => {
+            void handleToggleRule(record, checked);
+          }}
+        />
       ),
     },
     {
@@ -385,22 +563,32 @@ const AlertManagementPage: React.FC = () => {
       width: 120,
       render: (_: unknown, record: AlertRule) => (
         <Space size="small">
-          <Tooltip title={t('common.edit')}>
+          <Tooltip title={record.id ? t('common.edit') : t('alertMgmt.defaultRuleReadonly')}>
             <Button
               type="text"
               size="small"
+              disabled={!record.id}
               icon={<Pencil size={16} />}
               onClick={() => handleEditRule(record)}
             />
           </Tooltip>
           <Popconfirm
+            disabled={!record.id}
             title={t('common.areYouSureToDelete')}
-            onConfirm={() => handleDeleteRule(record.key)}
+            onConfirm={() => {
+              void handleDeleteRule(record);
+            }}
             okText={t('common.confirm')}
             cancelText={t('common.cancel')}
           >
-            <Tooltip title={t('common.delete')}>
-              <Button type="text" size="small" danger icon={<Trash size={16} />} />
+            <Tooltip title={record.id ? t('common.delete') : t('alertMgmt.defaultRuleReadonly')}>
+              <Button
+                type="text"
+                size="small"
+                danger
+                disabled={!record.id}
+                icon={<Trash size={16} />}
+              />
             </Tooltip>
           </Popconfirm>
         </Space>
@@ -553,46 +741,13 @@ const AlertManagementPage: React.FC = () => {
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Row gutter={16}>
-            <Col span={12}>
+            <Col span={16}>
               <Form.Item
                 name="alert"
                 label={t('alertMgmt.alertName')}
                 rules={[{ required: true, message: t('alertMgmt.alertNameRequired') }]}
               >
                 <Input placeholder="e.g. RocketMQ_Broker_Down" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
-                name="group"
-                label={t('alertMgmt.group')}
-                rules={[{ required: true, message: t('alertMgmt.groupRequired') }]}
-              >
-                <Select
-                  placeholder={t('common.pleaseSelect')}
-                  options={GROUP_OPTIONS.map((g) => ({
-                    value: g,
-                    label: g.replace('rocketmq-', '').replace('.rules', ''),
-                  }))}
-                />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Form.Item
-            name="expr"
-            label={t('alertMgmt.expression')}
-            rules={[{ required: true, message: t('alertMgmt.expressionRequired') }]}
-          >
-            <TextArea rows={2} placeholder={'e.g. up{job=~"rocketmq.*broker.*"} == 0'} />
-          </Form.Item>
-          <Row gutter={16}>
-            <Col span={8}>
-              <Form.Item
-                name="for"
-                label={t('alertMgmt.forDuration')}
-                rules={[{ required: true, message: t('alertMgmt.forDurationRequired') }]}
-              >
-                <Input placeholder="e.g. 5m" />
               </Form.Item>
             </Col>
             <Col span={8}>
@@ -609,9 +764,30 @@ const AlertManagementPage: React.FC = () => {
                 />
               </Form.Item>
             </Col>
-            <Col span={8}>
-              <Form.Item name="team" label={t('alertMgmt.team')} rules={[{ required: true }]}>
-                <Select options={TEAM_OPTIONS.map((t) => ({ value: t, label: t }))} />
+          </Row>
+          <Form.Item
+            name="expr"
+            label={t('alertMgmt.expression')}
+            rules={[
+              { required: true, message: t('alertMgmt.expressionRequired') },
+              {
+                validator: (_, value: string) =>
+                  !value || EXPRESSION_PATTERN.test(value)
+                    ? Promise.resolve()
+                    : Promise.reject(new Error(t('alertMgmt.expressionInvalid'))),
+              },
+            ]}
+          >
+            <TextArea rows={2} placeholder={'e.g. up{job=~"rocketmq.*broker.*"} == 0'} />
+          </Form.Item>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="for"
+                label={t('alertMgmt.forDuration')}
+                rules={[{ required: true, message: t('alertMgmt.forDurationRequired') }]}
+              >
+                <Input placeholder="e.g. 5m" />
               </Form.Item>
             </Col>
           </Row>
@@ -624,6 +800,12 @@ const AlertManagementPage: React.FC = () => {
           </Form.Item>
           <Form.Item name="description" label={t('alertMgmt.description')}>
             <TextArea rows={2} placeholder="Detailed description (optional)" />
+          </Form.Item>
+          <Form.Item name="enabled" valuePropName="checked">
+            <Switch
+              checkedChildren={t('common.enabled')}
+              unCheckedChildren={t('common.disabled')}
+            />
           </Form.Item>
         </Form>
       </Modal>

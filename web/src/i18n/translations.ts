@@ -790,10 +790,21 @@ const translations: Record<string, Record<Lang, string>> = {
   'alertMgmt.deleteSuccess': { zh: '告警规则已删除', en: 'Alert rule deleted' },
   'alertMgmt.updateSuccess': { zh: '告警规则已更新', en: 'Alert rule updated' },
   'alertMgmt.createSuccess': { zh: '告警规则已创建', en: 'Alert rule created' },
+  'alertMgmt.deleteFailed': { zh: '删除告警规则失败', en: 'Failed to delete alert rule' },
+  'alertMgmt.updateFailed': { zh: '更新告警规则失败', en: 'Failed to update alert rule' },
+  'alertMgmt.createFailed': { zh: '创建告警规则失败', en: 'Failed to create alert rule' },
   'alertMgmt.exportSuccess': { zh: '告警规则已导出', en: 'Alert rules exported' },
   'alertMgmt.alertNameRequired': { zh: '告警名称为必填项', en: 'Alert name is required' },
   'alertMgmt.groupRequired': { zh: '规则组为必填项', en: 'Group is required' },
   'alertMgmt.expressionRequired': { zh: '表达式为必填项', en: 'Expression is required' },
+  'alertMgmt.expressionInvalid': {
+    zh: '表达式需包含指标、比较符和数值阈值，例如 rocketmq_consumer_lag_messages > 1000',
+    en: 'Expression must include a metric, comparison operator, and numeric threshold, e.g. rocketmq_consumer_lag_messages > 1000',
+  },
+  'alertMgmt.defaultRuleReadonly': {
+    zh: '默认规则需先添加为自定义规则后才能修改',
+    en: 'Default rules must be added as custom rules before they can be modified',
+  },
   'alertMgmt.forDurationRequired': { zh: '持续时间为必填项', en: 'Duration is required' },
   'alertMgmt.summaryRequired': { zh: '摘要为必填项', en: 'Summary is required' },
 
