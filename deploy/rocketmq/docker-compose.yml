@@ -120,6 +120,10 @@ services:
 networks:
   default:
     name: rocketmq_default
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.89.2.0/24
 
 volumes:
   broker-0-store:
