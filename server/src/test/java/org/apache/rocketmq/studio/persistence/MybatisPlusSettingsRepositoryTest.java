@@ -8,6 +8,7 @@ package org.apache.rocketmq.studio.persistence;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.persistence.entity.RmqDataSource;
 import org.apache.rocketmq.studio.persistence.entity.RmqSettings;
 import org.apache.rocketmq.studio.persistence.mapper.RmqDataSourceMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqSettingsMapper;
@@ -23,12 +24,14 @@ import static org.mockito.Mockito.when;
 class MybatisPlusSettingsRepositoryTest {
 
     private RmqSettingsMapper settingsMapper;
+    private RmqDataSourceMapper dataSourceMapper;
     private MybatisPlusSettingsRepository repository;
 
     @BeforeEach
     void setUp() {
         settingsMapper = mock(RmqSettingsMapper.class);
-        repository = new MybatisPlusSettingsRepository(settingsMapper, mock(RmqDataSourceMapper.class),
+        dataSourceMapper = mock(RmqDataSourceMapper.class);
+        repository = new MybatisPlusSettingsRepository(settingsMapper, dataSourceMapper,
                 new ObjectMapper());
     }
 
@@ -65,5 +68,19 @@ class MybatisPlusSettingsRepositoryTest {
 
         assertThat(loaded.getTheme()).isEqualTo("dark");
         assertThat(loaded.isRequireLogin()).isTrue();
+    }
+
+    @Test
+    void shouldRejectCorruptPersistedDataSource() {
+        RmqDataSource dataSource = new RmqDataSource();
+        dataSource.setDsKey("metrics-prod");
+        dataSource.setJson("{not-json");
+        when(dataSourceMapper.selectById("metrics-prod")).thenReturn(dataSource);
+
+        assertThatThrownBy(() -> repository.findDataSourceByKey("metrics-prod"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Persisted data source is invalid: metrics-prod")
+                .extracting("code")
+                .isEqualTo(500);
     }
 }

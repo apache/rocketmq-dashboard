@@ -152,7 +152,7 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
             return vo;
         } catch (JsonProcessingException e) {
             log.error("Failed to deserialize data source: {}", entity.getDsKey(), e);
-            return DataSourceVO.builder().key(entity.getDsKey()).build();
+            throw new BusinessException(500, "Persisted data source is invalid: " + entity.getDsKey());
         }
     }
 
