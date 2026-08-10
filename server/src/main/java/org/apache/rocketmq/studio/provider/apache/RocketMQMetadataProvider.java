@@ -425,44 +425,6 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
     // ── Helper methods ──────────────────────────────────────────────────
 
-    private void enrichGroupWithConnectionInfo(ConsumerGroupVO vo, String groupName, String instanceId) {
-        try {
-            ConsumerConnection conn = executeForInstance(instanceId,
-                    admin -> admin.examineConsumerConnectionInfo(groupName));
-            if (conn != null) {
-                if (conn.getConnectionSet() != null) {
-                    vo.setOnlineInstances(conn.getConnectionSet().size());
-                }
-                if (conn.getSubscriptionTable() != null) {
-                    vo.setSubscribedTopics(new ArrayList<>(conn.getSubscriptionTable().keySet()));
-                }
-            }
-        } catch (Exception ignored) {
-            // Group may be offline, that's fine
-        }
-
-        // Try to get lag info
-        try {
-            ConsumeStats stats = executeForInstance(instanceId, admin -> admin.examineConsumeStats(groupName));
-            if (stats != null && stats.getOffsetTable() != null) {
-                long totalLag = 0;
-                for (OffsetWrapper ow : stats.getOffsetTable().values()) {
-                    totalLag += Math.max(0, ow.getBrokerOffset() - ow.getConsumerOffset());
-                }
-                vo.setTotalLag(totalLag);
-            }
-        } catch (Exception ignored) {
-            // No stats available
-        }
-    }
-
-    private <T> T executeForInstance(String instanceId, MqAdminExtFactory.AdminAction<T> action) {
-        if (StringUtils.hasText(instanceId)) {
-            return runtimeAdminClientResolver.execute(instanceId, action);
-        }
-        return adminExecute(action);
-    }
-
     private String filterMode(String expressionType) {
         if ("SQL92".equals(expressionType)) {
             return "SQL";
