@@ -39,6 +39,7 @@ public class InstanceVO extends BaseEntity {
     private InstanceVendor vendor;
     private String cloudInstanceId;
     private String credentialId;
+    private String adminCredentialRef;
     private String regionId;
     private int topicCount;
     private int consumerGroupCount;

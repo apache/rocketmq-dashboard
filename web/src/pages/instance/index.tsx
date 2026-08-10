@@ -245,7 +245,11 @@ const InstancePage = () => {
     try {
       const values = await editForm.validateFields();
       setSubmitting(true);
-      const updated = await updateInstance({ id: editingInstance.id, remark: values.remark || '' });
+      const updated = await updateInstance({
+        id: editingInstance.id,
+        remark: values.remark || '',
+        adminCredentialRef: values.adminCredentialRef,
+      });
       await loadInstances();
       message.success(`实例「${updated.name}」备注已更新`);
       setEditModalOpen(false);
@@ -382,7 +386,10 @@ const InstancePage = () => {
             style={{ borderColor: '#1677ff', color: '#1677ff' }}
             onClick={() => {
               setEditingInstance(record);
-              editForm.setFieldsValue({ remark: record.remark });
+              editForm.setFieldsValue({
+                remark: record.remark,
+                adminCredentialRef: record.adminCredentialRef,
+              });
               setEditModalOpen(true);
             }}
           >
@@ -625,6 +632,13 @@ const InstancePage = () => {
               message="接入地址为客户端访问入口"
               description="接入地址会展示在 Topic 等页面供客户端配置使用。若客户端环境无法解析该地址（如 K8s 内部 Service 域名），可自行配置 DNS 解析或在客户端 hosts 中映射。"
             />
+            <Form.Item
+              label="管理凭据引用"
+              name="adminCredentialRef"
+              extra="可选。仅保存服务端配置中的凭据引用，不会保存或传输 AK/SK。"
+            >
+              <Input placeholder="例：production-admin" />
+            </Form.Item>
             <Form.Item label="备注" name="remark">
               <Input.TextArea rows={2} placeholder="可选，描述实例用途" />
             </Form.Item>
@@ -663,6 +677,15 @@ const InstancePage = () => {
           <Form.Item label="接入地址">
             <Input value={editingInstance?.endpoint} disabled />
           </Form.Item>
+          {editingInstance?.vendor !== 'ALIYUN' && (
+            <Form.Item
+              label="管理凭据引用"
+              name="adminCredentialRef"
+              extra="仅保存服务端配置中的引用，不会保存或传输 AK/SK。"
+            >
+              <Input placeholder="例：production-admin" />
+            </Form.Item>
+          )}
           <Form.Item label="备注" name="remark">
             <Input.TextArea rows={3} placeholder="描述实例用途" />
           </Form.Item>

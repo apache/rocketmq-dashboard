@@ -7,6 +7,9 @@
 package org.apache.rocketmq.studio.cluster.broker;
 
 import lombok.RequiredArgsConstructor;
+import org.apache.rocketmq.acl.common.AclClientRPCHook;
+import org.apache.rocketmq.acl.common.SessionCredentials;
+import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
@@ -20,6 +23,7 @@ public class RuntimeAdminClientResolver {
 
     private final InstanceRepository instanceRepository;
     private final MqAdminExtFactory adminFactory;
+    private final MqAdminProperties adminProperties;
 
     public InstanceVO resolveInstance(String instanceId) {
         if (!StringUtils.hasText(instanceId)) {
@@ -46,7 +50,24 @@ public class RuntimeAdminClientResolver {
         if (instance == null || !StringUtils.hasText(instance.getEndpoint())) {
             throw new BusinessException(400, "Instance endpoint is required");
         }
-        return adminFactory.execute(instance.getEndpoint().trim(), null, action);
+        String credentialRef = StringUtils.hasText(instance.getAdminCredentialRef())
+                ? instance.getAdminCredentialRef().trim() : null;
+        return adminFactory.execute(instance.getEndpoint().trim(), resolveCredential(credentialRef),
+                credentialRef, action);
+    }
+
+    private RPCHook resolveCredential(String credentialRef) {
+        if (!StringUtils.hasText(credentialRef)) {
+            return null;
+        }
+        MqAdminProperties.Credential credential = adminProperties.getCredentials().get(credentialRef);
+        if (credential == null || !StringUtils.hasText(credential.getAccessKey())
+                || !StringUtils.hasText(credential.getSecretKey())) {
+            throw new BusinessException(422,
+                    "Admin credential reference is not configured: " + credentialRef);
+        }
+        return new AclClientRPCHook(new SessionCredentials(
+                credential.getAccessKey().trim(), credential.getSecretKey()));
     }
 
     private InstanceVO requireApacheInstance(InstanceVO instance) {

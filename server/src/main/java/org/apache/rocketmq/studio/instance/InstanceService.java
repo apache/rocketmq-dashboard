@@ -36,6 +36,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.UUID;
 
 @Slf4j
@@ -108,6 +109,7 @@ public class InstanceService {
         instance.setVendor(InstanceVendor.APACHE);
         instance.setName(requireInstanceName(instance.getName()));
         instance.setEndpoint(requireValidEndpoint(instance.getEndpoint()));
+        instance.setAdminCredentialRef(normalizeCredentialRef(instance.getAdminCredentialRef()));
         if (instance.getType() == null) {
             throw new BusinessException(400, "InstanceVO type is required");
         }
@@ -188,6 +190,10 @@ public class InstanceService {
         return name.trim();
     }
 
+    private String normalizeCredentialRef(String credentialRef) {
+        return StringUtils.hasText(credentialRef) ? credentialRef.trim() : null;
+    }
+
     public InstanceVO updateInstance(InstanceVO instance) {
         requireInstance(instance);
         log.info("Updating instance: {}", instance.getId());
@@ -219,10 +225,13 @@ public class InstanceService {
         if (instance.getRemark() != null) {
             updated.setRemark(instance.getRemark());
         }
+        if (!cloudInstance && instance.getAdminCredentialRef() != null) {
+            updated.setAdminCredentialRef(normalizeCredentialRef(instance.getAdminCredentialRef()));
+        }
         updated.setUpdatedAt(LocalDateTime.now());
 
         InstanceVO saved = instanceRepository.save(updated);
-        releaseApacheEndpointIfUnused(existing, saved.getEndpoint());
+        releaseApacheClientIfChanged(existing, saved);
         recordAudit("UPDATE_INSTANCE", "INSTANCE", saved.getId(), null,
                 instanceAuditDetail(saved));
         return saved;
@@ -273,6 +282,7 @@ public class InstanceService {
                 .vendor(instance.getVendor() == null ? InstanceVendor.APACHE : instance.getVendor())
                 .cloudInstanceId(instance.getCloudInstanceId())
                 .credentialId(instance.getCredentialId())
+                .adminCredentialRef(instance.getAdminCredentialRef())
                 .regionId(instance.getRegionId())
                 .topicCount(instance.getTopicCount())
                 .consumerGroupCount(instance.getConsumerGroupCount())
@@ -289,6 +299,20 @@ public class InstanceService {
             return;
         }
         releaseEndpointIfUnused(existing.getEndpoint(), currentEndpoint, existing.getId());
+    }
+
+    private void releaseApacheClientIfChanged(InstanceVO existing, InstanceVO saved) {
+        InstanceVendor vendor = existing.getVendor() == null ? InstanceVendor.APACHE : existing.getVendor();
+        if (vendor != InstanceVendor.APACHE) {
+            return;
+        }
+        if (!Objects.equals(normalizeCredentialRef(existing.getAdminCredentialRef()),
+                normalizeCredentialRef(saved.getAdminCredentialRef()))
+                && Objects.equals(normalizeEndpoint(existing.getEndpoint()), normalizeEndpoint(saved.getEndpoint()))) {
+            adminFactory.release(existing.getEndpoint());
+            return;
+        }
+        releaseEndpointIfUnused(existing.getEndpoint(), saved.getEndpoint(), existing.getId());
     }
 
     private void releaseEndpointIfUnused(String previousEndpoint, String currentEndpoint, String excludedInstanceId) {

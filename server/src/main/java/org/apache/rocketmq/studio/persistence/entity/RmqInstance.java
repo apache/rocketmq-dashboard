@@ -44,6 +44,8 @@ public class RmqInstance {
 
     private String credentialId;
 
+    private String adminCredentialRef;
+
     private String regionId;
 
     private LocalDateTime createdAt;

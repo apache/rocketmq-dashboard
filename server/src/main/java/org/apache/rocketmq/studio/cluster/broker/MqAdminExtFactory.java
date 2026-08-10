@@ -27,6 +27,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
@@ -35,12 +36,12 @@ import java.util.stream.Collectors;
  * Central lifecycle owner for real {@link DefaultMQAdminExt} connections.
  *
  * <p>This is the single real-network entry point shared by every live cluster/metadata provider.
- * Admin clients are created lazily, started once and cached per NameServer address so subsequent
- * calls reuse the established connection. All cached clients are shut down on context destruction.
+ * Admin clients are created lazily, started once and cached per NameServer address and credential
+ * reference so subsequent calls reuse the established connection without crossing identities. All
+ * cached clients are shut down on context destruction.
  *
- * <p>The {@link RPCHook} parameter is reserved for the ACL / authentication work (AUTH-01); it is
- * currently always {@code null} but is threaded through so credentials can be injected later
- * without changing this contract.
+ * <p>The {@link RPCHook} parameter carries Remoting authentication when a selected instance has
+ * an externally configured admin credential.
  */
 @Slf4j
 @Component
@@ -49,7 +50,7 @@ public class MqAdminExtFactory {
     /** Default admin RPC timeout in milliseconds. */
     private static final long DEFAULT_TIMEOUT_MILLIS = 5000L;
 
-    private final Map<String, DefaultMQAdminExt> cache = new ConcurrentHashMap<>();
+    private final Map<AdminClientCacheKey, DefaultMQAdminExt> cache = new ConcurrentHashMap<>();
     private final AtomicInteger instanceCounter = new AtomicInteger();
     private volatile boolean closed = false;
 
@@ -64,6 +65,19 @@ public class MqAdminExtFactory {
      * @throws BusinessException if the connection cannot be established or the action fails
      */
     public <T> T execute(String namesrvAddr, RPCHook rpcHook, AdminAction<T> action) {
+        String authenticationIdentity = rpcHook == null ? "anonymous"
+                : "custom-hook-" + Integer.toUnsignedString(System.identityHashCode(rpcHook));
+        return execute(namesrvAddr, rpcHook, authenticationIdentity, action);
+    }
+
+    /**
+     * Runs an action with a cache entry isolated by a non-secret authentication identity.
+     *
+     * <p>The identity must be a stable reference, never an access key or secret key. Callers that
+     * do not use a configured credential should use the three-argument overload.
+     */
+    public <T> T execute(String namesrvAddr, RPCHook rpcHook, String authenticationIdentity,
+                         AdminAction<T> action) {
         if (namesrvAddr == null || namesrvAddr.isBlank()) {
             throw new BusinessException(400, "NameServer address is required");
         }
@@ -74,8 +88,10 @@ public class MqAdminExtFactory {
         if (normalizedNamesrvAddr.isEmpty()) {
             throw new BusinessException(400, "NameServer address is required");
         }
-        DefaultMQAdminExt admin = cache.computeIfAbsent(normalizedNamesrvAddr,
-                addr -> createAndStart(addr, rpcHook));
+        AdminClientCacheKey cacheKey = new AdminClientCacheKey(normalizedNamesrvAddr,
+                normalizeAuthenticationIdentity(authenticationIdentity));
+        DefaultMQAdminExt admin = cache.computeIfAbsent(cacheKey,
+                key -> createAndStart(key.namesrvAddr(), rpcHook));
         try {
             return action.apply(admin);
         } catch (BusinessException ex) {
@@ -99,11 +115,14 @@ public class MqAdminExtFactory {
         if (normalizedNamesrvAddr.isEmpty()) {
             return;
         }
-        DefaultMQAdminExt admin = cache.remove(normalizedNamesrvAddr);
-        if (admin != null) {
-            safeShutdown(admin);
-            log.info("Released RocketMQ admin client for namesrv {}", normalizedNamesrvAddr);
-        }
+        cache.entrySet().removeIf(entry -> {
+            if (!entry.getKey().namesrvAddr().equals(normalizedNamesrvAddr)) {
+                return false;
+            }
+            safeShutdown(entry.getValue());
+            return true;
+        });
+        log.info("Released RocketMQ admin clients for namesrv {}", normalizedNamesrvAddr);
     }
 
     private DefaultMQAdminExt createAndStart(String namesrvAddr, RPCHook rpcHook) {
@@ -143,6 +162,11 @@ public class MqAdminExtFactory {
                 .collect(Collectors.joining(";"));
     }
 
+    private String normalizeAuthenticationIdentity(String authenticationIdentity) {
+        return authenticationIdentity == null || authenticationIdentity.isBlank()
+                ? "anonymous" : authenticationIdentity.trim();
+    }
+
     private void safeShutdown(MQAdminExt admin) {
         try {
             admin.shutdown();
@@ -172,5 +196,12 @@ public class MqAdminExtFactory {
     @FunctionalInterface
     public interface AdminAction<T> {
         T apply(MQAdminExt admin) throws Exception;
+    }
+
+    private record AdminClientCacheKey(String namesrvAddr, String authenticationIdentity) {
+        private AdminClientCacheKey {
+            Objects.requireNonNull(namesrvAddr, "namesrvAddr");
+            Objects.requireNonNull(authenticationIdentity, "authenticationIdentity");
+        }
     }
 }

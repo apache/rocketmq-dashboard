@@ -348,6 +348,33 @@ class InstanceServiceTest {
     }
 
     @Test
+    void createApacheInstanceShouldTrimAndPersistOnlyAdminCredentialReference() {
+        InstanceVO input = InstanceVO.builder().name("production").type(InstanceType.PROXY)
+                .endpoint("namesrv:9876").adminCredentialRef(" production-admin ").build();
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        InstanceVO saved = instanceService.createInstance(input);
+
+        assertThat(saved.getAdminCredentialRef()).isEqualTo("production-admin");
+    }
+
+    @Test
+    void updateApacheInstanceShouldReleaseCachedClientWhenCredentialReferenceChanges() {
+        InstanceVO existing = InstanceVO.builder().name("production").type(InstanceType.PROXY)
+                .endpoint("namesrv:9876").adminCredentialRef("credential-a").build();
+        existing.setId("inst-1");
+        InstanceVO update = InstanceVO.builder().adminCredentialRef("credential-b").build();
+        update.setId("inst-1");
+        when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(existing));
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        InstanceVO saved = instanceService.updateInstance(update);
+
+        assertThat(saved.getAdminCredentialRef()).isEqualTo("credential-b");
+        verify(adminFactory).release("namesrv:9876");
+    }
+
+    @Test
     void updateInstanceShouldMergeFieldsOntoExisting() {
         LocalDateTime originalCreatedAt = LocalDateTime.of(2025, 1, 2, 3, 4, 5);
         LocalDateTime originalUpdatedAt = LocalDateTime.of(2025, 2, 3, 4, 5, 6);
