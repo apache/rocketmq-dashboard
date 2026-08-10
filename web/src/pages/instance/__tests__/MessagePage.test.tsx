@@ -92,13 +92,15 @@ describe('Message page query history', () => {
     localStorage.clear();
     messageServiceMocks.getMessageTrace.mockReset().mockResolvedValue(null);
     messageServiceMocks.queryMessages.mockReset().mockResolvedValue([]);
-    topicServiceMocks.listTopics.mockReset().mockResolvedValue([
-      { name: 'order-create' },
-      { name: 'payment-callback' },
-      { name: 'user-activity-log' },
-      { name: 'notification-push' },
-      { name: 'inventory-sync' },
-    ]);
+    topicServiceMocks.listTopics
+      .mockReset()
+      .mockResolvedValue([
+        { name: 'order-create' },
+        { name: 'payment-callback' },
+        { name: 'user-activity-log' },
+        { name: 'notification-push' },
+        { name: 'inventory-sync' },
+      ]);
     instanceFilterMocks.useInstanceFilter.mockReturnValue({
       selectedInstanceId: 'instance-a',
       selectInstance: vi.fn(),
@@ -354,6 +356,11 @@ describe('Message page query history', () => {
   });
 
   it('does not load static topic options without a selected instance', async () => {
+    instanceFilterMocks.useInstanceFilter.mockReturnValue({
+      selectedInstanceId: '',
+      selectInstance: vi.fn(),
+      instanceOptions: [],
+    });
     renderWithProviders(<MessagePage />);
 
     await waitFor(() => {
