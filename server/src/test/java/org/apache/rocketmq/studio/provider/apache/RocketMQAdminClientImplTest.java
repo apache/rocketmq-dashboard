@@ -27,6 +27,7 @@ import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
@@ -203,6 +204,27 @@ class RocketMQAdminClientImplTest {
         verify(selectedAdmin, times(2)).createAndUpdateTopicConfig(
                 org.mockito.ArgumentMatchers.eq("10.0.0.1:10911"), any(TopicConfig.class));
         verify(adminExt, never()).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+    }
+
+    @Test
+    void updateTopicPersistsTypeAndRemark() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        RmqTopic existing = new RmqTopic();
+        existing.setTopicType(TopicType.NORMAL.name());
+        existing.setRemark("old remark");
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        when(topicMapper.selectOne(any())).thenReturn(existing);
+
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+        topic.setType(TopicType.FIFO);
+        topic.setRemark("updated remark");
+
+        adminClient.updateTopic(topic);
+
+        assertThat(existing.getTopicType()).isEqualTo(TopicType.FIFO.name());
+        assertThat(existing.getRemark()).isEqualTo("updated remark");
+        verify(topicMapper).updateById(existing);
     }
 
     @Test

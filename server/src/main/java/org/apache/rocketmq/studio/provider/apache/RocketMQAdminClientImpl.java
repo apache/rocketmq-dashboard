@@ -249,6 +249,12 @@ public class RocketMQAdminClientImpl implements AdminClient {
                     existing.setWriteQueueNums(writeQueues);
                     existing.setReadQueueNums(readQueues);
                     existing.setPerm(topicConfig.getPerm());
+                    if (topic.getType() != null) {
+                        existing.setTopicType(topic.getType().name());
+                    }
+                    if (StringUtils.hasText(topic.getRemark())) {
+                        existing.setRemark(topic.getRemark());
+                    }
                     existing.setUpdatedAt(LocalDateTime.now());
                     topicMapper.updateById(existing);
                 }
