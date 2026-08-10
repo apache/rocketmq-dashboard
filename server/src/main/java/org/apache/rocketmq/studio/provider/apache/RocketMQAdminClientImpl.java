@@ -476,6 +476,9 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
     @Override
     public void resetOffset(String instanceId, String name, long timestamp, String topic) {
+        if (!StringUtils.hasText(topic)) {
+            throw new BusinessException(400, "topic is required for offset reset");
+        }
         try {
             if (StringUtils.hasText(instanceId)) {
                 runtimeAdminClientResolver.execute(instanceId, admin -> {
