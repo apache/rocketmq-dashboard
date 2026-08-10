@@ -293,7 +293,7 @@ class SettingsControllerTest {
                         .content("""
                                 {
                                   "key": "ds-1",
-                                  "type": "rocketmq",
+                                  "type": "Prometheus",
                                   "url": "updated:9876"
                                 }
                                 """))
