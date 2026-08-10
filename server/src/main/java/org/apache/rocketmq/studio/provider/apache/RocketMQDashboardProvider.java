@@ -28,6 +28,8 @@ import org.apache.rocketmq.remoting.protocol.body.KVTable;
 import org.apache.rocketmq.remoting.protocol.body.SubscriptionGroupWrapper;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
+import org.apache.rocketmq.remoting.protocol.route.QueueData;
+import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
@@ -126,7 +128,27 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                 log.warn("No master broker addresses discovered for dashboard overview");
             }
 
-            // Count topics
+            // Build brokerName -> clusterName and brokerAddr -> clusterName maps
+            // for per-cluster topic and group counting.
+            Map<String, String> brokerAddrToCluster = new HashMap<>();
+            for (Map.Entry<String, Set<String>> clusterEntry : clusterAddrTable.entrySet()) {
+                String clusterName = clusterEntry.getKey();
+                if (clusterEntry.getValue() == null) {
+                    continue;
+                }
+                for (String brokerName : clusterEntry.getValue()) {
+                    BrokerData brokerData = brokerAddrTable.get(brokerName);
+                    if (brokerData != null && brokerData.getBrokerAddrs() != null) {
+                        String masterAddr = brokerData.getBrokerAddrs().get(0L);
+                        if (masterAddr != null) {
+                            brokerAddrToCluster.put(masterAddr, clusterName);
+                        }
+                    }
+                }
+            }
+
+            // Count topics globally and per-cluster
+            Map<String, Integer> topicsByCluster = new HashMap<>();
             try {
                 TopicList topicList = admin.fetchAllTopicList();
                 Set<String> topics = topicList == null || topicList.getTopicList() == null
@@ -134,13 +156,39 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                 totalTopics = (int) topics.stream()
                         .filter(t -> !isSystemTopic(t))
                         .count();
+                // For each non-system topic, determine its cluster via route data
+                for (String topicName : topics) {
+                    if (isSystemTopic(topicName)) {
+                        continue;
+                    }
+                    try {
+                        TopicRouteData route = admin.examineTopicRouteInfo(topicName);
+                        if (route != null && route.getQueueDatas() != null) {
+                            for (QueueData qd : route.getQueueDatas()) {
+                                BrokerData bd = brokerAddrTable.get(qd.getBrokerName());
+                                if (bd != null && bd.getBrokerAddrs() != null) {
+                                    String addr = bd.getBrokerAddrs().get(0L);
+                                    String cluster = brokerAddrToCluster.get(addr);
+                                    if (cluster != null) {
+                                        topicsByCluster.merge(cluster, 1, Integer::sum);
+                                    }
+                                    break; // one queue is enough to determine the cluster
+                                }
+                            }
+                        }
+                    } catch (Exception ignored) {
+                        // Skip topics whose route data is unavailable
+                    }
+                }
             } catch (Exception e) {
                 log.warn("Failed to fetch topic list: {}", e.getMessage());
             }
 
-            // Count subscription groups and collect TPS from each master broker
+            // Count subscription groups globally and per-cluster, and collect TPS from each master broker
             Set<String> allGroups = new HashSet<>();
+            Map<String, Integer> groupsByCluster = new HashMap<>();
             for (String brokerAddr : masterAddrs) {
+                String clusterName = brokerAddrToCluster.get(brokerAddr);
                 try {
                     SubscriptionGroupWrapper subscriptionGroupWrapper = admin.getAllSubscriptionGroup(brokerAddr, 5000);
                     if (subscriptionGroupWrapper != null && subscriptionGroupWrapper.getSubscriptionGroupTable() != null) {
@@ -149,6 +197,9 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                             String groupName = entry.getKey();
                             if (!isSystemGroup(groupName)) {
                                 allGroups.add(groupName);
+                                if (clusterName != null) {
+                                    groupsByCluster.merge(clusterName, 1, Integer::sum);
+                                }
                             }
                         }
                     }
@@ -220,8 +271,8 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                         .status(runtimeMetricsUnavailable ? ClusterStatus.warning : ClusterStatus.healthy)
                         .brokers(clusterBrokers)
                         .proxies(0)
-                        .topics(0)
-                        .groups(0)
+                        .topics(topicsByCluster.getOrDefault(clusterName, 0))
+                        .groups(groupsByCluster.getOrDefault(clusterName, 0))
                         .tpsIn(clusterTpsIn)
                         .tpsOut(clusterTpsOut)
                         .version(version)
