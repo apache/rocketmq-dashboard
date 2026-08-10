@@ -54,6 +54,9 @@ class AclControllerTest {
     @MockBean
     private AclService aclService;
 
+    @MockBean
+    private ApacheAclReadService apacheAclReadService;
+
     @Autowired
     private ObjectMapper objectMapper;
 
@@ -71,6 +74,19 @@ class AclControllerTest {
                 .andExpect(jsonPath("$.data.stateSource").value("STUDIO_LOCAL"))
                 .andExpect(jsonPath("$.data.remoteReadSupported").value(false))
                 .andExpect(jsonPath("$.data.remoteWriteSupported").value(false));
+    }
+
+    @Test
+    void listRemoteRulesShouldRequireInstanceAndDelegateToApacheProvider() throws Exception {
+        RemoteAclReadResult result = RemoteAclReadResult.builder()
+                .source("APACHE_ACL2").policiesByBroker(Map.of()).failuresByBroker(Map.of()).build();
+        when(apacheAclReadService.listRules("instance-1", null, null)).thenReturn(result);
+
+        mockMvc.perform(get("/api/acl/remote/rules").param("instanceId", "instance-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.source").value("APACHE_ACL2"));
+
+        verify(apacheAclReadService).listRules("instance-1", null, null);
     }
 
     @Test
