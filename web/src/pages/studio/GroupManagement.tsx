@@ -309,7 +309,7 @@ const GroupManagementPage = () => {
             size="small"
           />
           <Button icon={<ArrowClockwise size={14} />} size="small" onClick={handleRefresh}>
-            {t('common.reset')}
+            {t('common.refresh')}
           </Button>
         </Space>
       </div>

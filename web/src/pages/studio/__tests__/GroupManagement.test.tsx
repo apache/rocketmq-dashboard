@@ -124,9 +124,9 @@ describe('GroupManagement Page', () => {
     expect(screen.queryByText('查看分布')).not.toBeInTheDocument();
   });
 
-  it('should render reset button', () => {
+  it('should render refresh button', () => {
     renderWithProviders(<GroupManagement />);
-    expect(screen.getByText('重置')).toBeInTheDocument();
+    expect(screen.getByText('刷新')).toBeInTheDocument();
   });
 
   it('should display consumer group data from the service in table', async () => {
@@ -207,7 +207,7 @@ describe('GroupManagement Page', () => {
     renderWithProviders(<GroupManagement />);
 
     await waitFor(() => expect(consumerService.listConsumerGroups).toHaveBeenCalledTimes(1));
-    fireEvent.click(screen.getByText('重置'));
+    fireEvent.click(screen.getByText('刷新'));
     expect(consumerService.listConsumerGroups).toHaveBeenCalledTimes(1);
 
     initialGroups.resolve([makeGroup({ name: 'initial-group' })]);
