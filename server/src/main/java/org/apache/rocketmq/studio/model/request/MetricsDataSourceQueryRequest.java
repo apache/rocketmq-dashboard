@@ -16,6 +16,8 @@
  */
 package org.apache.rocketmq.studio.model.request;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import org.apache.rocketmq.studio.cluster.metrics.MetricQueryDTO;
 import lombok.Data;
 
@@ -30,6 +32,8 @@ import lombok.Data;
 @Data
 public class MetricsDataSourceQueryRequest {
 
+    @Valid
+    @NotNull(message = "query is required")
     private MetricQueryDTO query;
 
     private String username;
