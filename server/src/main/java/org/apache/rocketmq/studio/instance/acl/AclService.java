@@ -75,7 +75,7 @@ public class AclService {
         if (!aclRepository.deleteRule(id)) {
             throw new BusinessException(404, "ACL rule not found: " + id);
         }
-        operationAuditService.record("DELETE_ACL_RULE", "ACL_RULE", id, null, null, "SUCCESS", null);
+        recordAudit("DELETE_ACL_RULE", "ACL_RULE", id, null, null);
     }
 
 
@@ -127,7 +127,7 @@ public class AclService {
         if (!aclRepository.deleteUser(id)) {
             throw new BusinessException(404, "ACL user not found: " + id);
         }
-        operationAuditService.record("DELETE_ACL_USER", "ACL_USER", id, null, null, "SUCCESS", null);
+        recordAudit("DELETE_ACL_USER", "ACL_USER", id, null, null);
     }
 
     /**
@@ -156,13 +156,24 @@ public class AclService {
     }
 
     private void auditRule(String operation, AclRuleVO rule) {
-        operationAuditService.record(operation, "ACL_RULE", rule.getId(), null,
-                "principal=" + rule.getPrincipal(), "SUCCESS", null);
+        recordAudit(operation, "ACL_RULE", rule.getId(), null,
+                "principal=" + rule.getPrincipal());
     }
 
     private void auditUser(String operation, AclUserVO user) {
-        operationAuditService.record(operation, "ACL_USER", user.getId(), null,
-                "username=" + user.getUsername() + ", admin=" + user.isAdmin(), "SUCCESS", null);
+        recordAudit(operation, "ACL_USER", user.getId(), null,
+                "username=" + user.getUsername() + ", admin=" + user.isAdmin());
+    }
+
+
+    private void recordAudit(String operation, String resourceType, String resourceName,
+                             String clusterId, String detail) {
+        try {
+            operationAuditService.record(operation, resourceType, resourceName, clusterId, detail, "SUCCESS", null);
+        } catch (Exception auditFailure) {
+            log.warn("Failed to record audit operation={} resource={}: {}", operation, resourceName,
+                    auditFailure.getMessage());
+        }
     }
 
 }

@@ -60,19 +60,24 @@ const ProducerPage = () => {
     };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-
+  const handleInstanceChange = (instanceId: string) => {
+    setSelectedInstanceId(instanceId);
     setTopicList([]);
     setProducerGroups([]);
     setConnectionList([]);
-    form.resetFields(['selectedTopic', 'producerGroup']);
+    form.setFieldsValue({ selectedTopic: undefined, producerGroup: undefined });
+  };
+
+  useEffect(() => {
+    let cancelled = false;
 
     if (!selectedInstanceId) {
       return () => {
         cancelled = true;
       };
     }
+
+    form.setFieldsValue({ selectedTopic: undefined, producerGroup: undefined });
 
     void fetchTopicList(selectedInstanceId)
       .then((topics) => {
@@ -181,7 +186,7 @@ const ProducerPage = () => {
             <Select
               aria-label="Instance"
               value={selectedInstanceId || undefined}
-              onChange={setSelectedInstanceId}
+              onChange={handleInstanceChange}
               placeholder="Select instance"
               style={{ width: 220 }}
               options={instances.map((instance) => ({ value: instance.id, label: instance.name }))}

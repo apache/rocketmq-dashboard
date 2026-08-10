@@ -72,8 +72,8 @@ public class CloudCredentialService {
         credential.setCreatedAt(LocalDateTime.now());
         credential.setUpdatedAt(LocalDateTime.now());
         CloudCredentialVO saved = credentialRepository.save(credential);
-        operationAuditService.record("CREATE_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", saved.getId(), null,
-                credentialAuditDetail(saved), "SUCCESS", null);
+        recordAudit("CREATE_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", saved.getId(), null,
+                credentialAuditDetail(saved));
         return maskAccessKey(saved);
     }
 
@@ -99,8 +99,8 @@ public class CloudCredentialService {
         existing.setUpdatedAt(LocalDateTime.now());
         CloudCredentialVO saved = credentialRepository.save(existing);
         invalidateAliyunClients(saved);
-        operationAuditService.record("UPDATE_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", saved.getId(), null,
-                credentialAuditDetail(saved), "SUCCESS", null);
+        recordAudit("UPDATE_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", saved.getId(), null,
+                credentialAuditDetail(saved));
         return maskAccessKey(saved);
     }
 
@@ -116,8 +116,8 @@ public class CloudCredentialService {
         }
         credentialRepository.deleteById(id);
         invalidateAliyunClients(existing);
-        operationAuditService.record("DELETE_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", id, null,
-                credentialAuditDetail(existing), "SUCCESS", null);
+        recordAudit("DELETE_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", id, null,
+                credentialAuditDetail(existing));
     }
 
     public CloudCredentialVO reveal(String id) {
@@ -150,4 +150,15 @@ public class CloudCredentialService {
             aliyunClientFactory.invalidateCredential(credential.getId());
         }
     }
+
+    private void recordAudit(String operation, String resourceType, String resourceName,
+                             String clusterId, String detail) {
+        try {
+            operationAuditService.record(operation, resourceType, resourceName, clusterId, detail, "SUCCESS", null);
+        } catch (Exception auditFailure) {
+            log.warn("Failed to record audit operation={} resource={}: {}", operation, resourceName,
+                    auditFailure.getMessage());
+        }
+    }
+
 }

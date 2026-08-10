@@ -20,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 
@@ -36,7 +37,7 @@ public class ClientService {
     }
 
     private String requireInstanceId(String instanceId) {
-        if (instanceId == null || instanceId.isBlank()) {
+        if (!StringUtils.hasText(instanceId)) {
             throw new BusinessException(400, "instanceId is required");
         }
         return instanceId.trim();

@@ -99,8 +99,8 @@ public class InstanceService {
         instance.setCreatedAt(LocalDateTime.now());
         instance.setUpdatedAt(LocalDateTime.now());
         InstanceVO saved = instanceRepository.save(instance);
-        operationAuditService.record("CREATE_INSTANCE", "INSTANCE", saved.getId(), null,
-                instanceAuditDetail(saved), "SUCCESS", null);
+        recordAudit("CREATE_INSTANCE", "INSTANCE", saved.getId(), null,
+                instanceAuditDetail(saved));
         return saved;
     }
 
@@ -222,8 +222,8 @@ public class InstanceService {
 
         InstanceVO saved = instanceRepository.save(updated);
         releaseApacheEndpointIfUnused(existing, saved.getEndpoint());
-        operationAuditService.record("UPDATE_INSTANCE", "INSTANCE", saved.getId(), null,
-                instanceAuditDetail(saved), "SUCCESS", null);
+        recordAudit("UPDATE_INSTANCE", "INSTANCE", saved.getId(), null,
+                instanceAuditDetail(saved));
         return saved;
     }
 
@@ -248,8 +248,8 @@ public class InstanceService {
         }
         instanceRepository.deleteById(id);
         releaseApacheEndpointIfUnused(existing, null);
-        operationAuditService.record("DELETE_INSTANCE", "INSTANCE", id, null,
-                instanceAuditDetail(existing), "SUCCESS", null);
+        recordAudit("DELETE_INSTANCE", "INSTANCE", id, null,
+                instanceAuditDetail(existing));
     }
 
     private void requireInstance(InstanceVO instance) {
@@ -310,4 +310,15 @@ public class InstanceService {
         String normalizedEndpoint = MqAdminExtFactory.normalizeNamesrvAddr(endpoint);
         return normalizedEndpoint.isEmpty() ? null : normalizedEndpoint;
     }
+
+    private void recordAudit(String operation, String resourceType, String resourceName,
+                             String clusterId, String detail) {
+        try {
+            operationAuditService.record(operation, resourceType, resourceName, clusterId, detail, "SUCCESS", null);
+        } catch (Exception auditFailure) {
+            log.warn("Failed to record audit operation={} resource={}: {}", operation, resourceName,
+                    auditFailure.getMessage());
+        }
+    }
+
 }

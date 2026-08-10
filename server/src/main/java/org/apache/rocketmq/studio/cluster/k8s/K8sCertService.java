@@ -152,8 +152,8 @@ public class K8sCertService {
         k8sCertRepository.findById(command.getId())
                 .orElseThrow(() -> new BusinessException(404, "Certificate not found: " + command.getId()));
         k8sCertRepository.deleteById(command.getId());
-        operationAuditService.record("DELETE_K8S_CERTIFICATE", "K8S_CERTIFICATE", command.getId(), null,
-                null, "SUCCESS", null);
+        recordAudit("DELETE_K8S_CERTIFICATE", "K8S_CERTIFICATE", command.getId(), null,
+                null);
         log.info("K8s certificate deleted: {}", command.getId());
     }
 
@@ -202,9 +202,19 @@ public class K8sCertService {
     }
 
     private void auditCertificate(String operation, K8sCertVO certificate) {
-        operationAuditService.record(operation, "K8S_CERTIFICATE", certificate.getId(), null,
+        recordAudit(operation, "K8S_CERTIFICATE", certificate.getId(), null,
                 "name=" + certificate.getName() + ", namespace=" + certificate.getNamespace()
-                        + ", cluster=" + certificate.getCluster(),
-                "SUCCESS", null);
+                        + ", cluster=" + certificate.getCluster());
     }
+
+    private void recordAudit(String operation, String resourceType, String resourceName,
+                             String clusterId, String detail) {
+        try {
+            operationAuditService.record(operation, resourceType, resourceName, clusterId, detail, "SUCCESS", null);
+        } catch (Exception auditFailure) {
+            log.warn("Failed to record audit operation={} resource={}: {}", operation, resourceName,
+                    auditFailure.getMessage());
+        }
+    }
+
 }

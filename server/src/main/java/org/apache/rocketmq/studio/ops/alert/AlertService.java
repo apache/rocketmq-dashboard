@@ -127,7 +127,7 @@ public class AlertService {
         if (!alertRepository.deleteRule(id)) {
             throw ruleNotFound(id);
         }
-        operationAuditService.record("DELETE_ALERT_RULE", "ALERT_RULE", id, null, null, "SUCCESS", null);
+        recordAudit("DELETE_ALERT_RULE", "ALERT_RULE", id, null, null);
     }
 
 
@@ -146,8 +146,8 @@ public class AlertService {
                 .orElseThrow(() -> new org.apache.rocketmq.studio.common.exception.BusinessException(404, "System alert not found: " + id));
         alert.setAcknowledged(true);
         SystemAlertVO saved = alertRepository.saveAlert(alert);
-        operationAuditService.record("ACKNOWLEDGE_SYSTEM_ALERT", "SYSTEM_ALERT", saved.getId(), null,
-                "acknowledged=true", "SUCCESS", null);
+        recordAudit("ACKNOWLEDGE_SYSTEM_ALERT", "SYSTEM_ALERT", saved.getId(), null,
+                "acknowledged=true");
         return saved;
     }
 
@@ -155,8 +155,8 @@ public class AlertService {
     public int clearAcknowledged() {
         log.info("Clearing acknowledged system alerts");
         int deleted = alertRepository.deleteAcknowledgedAlerts();
-        operationAuditService.record("CLEAR_ACKNOWLEDGED_SYSTEM_ALERTS", "SYSTEM_ALERT", null, null,
-                "deleted=" + deleted, "SUCCESS", null);
+        recordAudit("CLEAR_ACKNOWLEDGED_SYSTEM_ALERTS", "SYSTEM_ALERT", null, null,
+                "deleted=" + deleted);
         return deleted;
     }
 
@@ -220,8 +220,8 @@ public class AlertService {
 
     private void auditRule(String operation, AlertRuleVO rule, String detail) {
         String auditDetail = detail == null ? "name=" + rule.getName() : detail;
-        operationAuditService.record(operation, "ALERT_RULE", rule.getId(), null,
-                auditDetail, "SUCCESS", null);
+        recordAudit(operation, "ALERT_RULE", rule.getId(), null,
+                auditDetail);
     }
 
     private String severity(AlertRuleVO rule) {
@@ -318,4 +318,15 @@ public class AlertService {
     private BusinessException ruleNotFound(String id) {
         return new BusinessException(404, "Alert rule not found: " + id);
     }
+
+    private void recordAudit(String operation, String resourceType, String resourceName,
+                             String clusterId, String detail) {
+        try {
+            operationAuditService.record(operation, resourceType, resourceName, clusterId, detail, "SUCCESS", null);
+        } catch (Exception auditFailure) {
+            log.warn("Failed to record audit operation={} resource={}: {}", operation, resourceName,
+                    auditFailure.getMessage());
+        }
+    }
+
 }

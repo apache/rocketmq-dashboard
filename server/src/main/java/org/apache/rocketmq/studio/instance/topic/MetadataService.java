@@ -20,6 +20,7 @@ import org.apache.rocketmq.studio.provider.apache.AdminClient;
 import org.apache.rocketmq.studio.provider.apache.MetadataProvider;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.springframework.util.StringUtils;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
@@ -49,7 +50,7 @@ public class MetadataService {
     }
 
     public List<TopicVO> listTopics(String instanceId, String clusterId, String type, String search) {
-        if (isBlank(instanceId) && !isBlank(clusterId)) {
+        if (!StringUtils.hasText(instanceId) && StringUtils.hasText(clusterId)) {
             // legacy cluster-scoped read kept for AI tool handlers
             return metadataProvider.listTopics(
                     normalizeFilter(clusterId), normalizeFilter(type), normalizeFilter(search));
@@ -119,7 +120,7 @@ public class MetadataService {
     }
 
     public List<ConsumerGroupVO> listConsumerGroups(String instanceId, String clusterId, String search) {
-        if (isBlank(instanceId) && !isBlank(clusterId)) {
+        if (!StringUtils.hasText(instanceId) && StringUtils.hasText(clusterId)) {
             return metadataProvider.listConsumerGroups(normalizeFilter(clusterId), normalizeFilter(search));
         }
         return resolve(instanceId).listConsumerGroups(instanceId, normalizeFilter(search));
@@ -192,12 +193,8 @@ public class MetadataService {
                 .orElseGet(() -> providerRegistry.forVendor(InstanceVendor.APACHE));
     }
 
-    private static boolean isBlank(String value) {
-        return value == null || value.isBlank();
-    }
-
     private String normalizeFilter(String value) {
-        return value == null || value.isBlank() ? null : value.trim();
+        return !StringUtils.hasText(value) ? null : value.trim();
     }
 
     private void requireTopic(TopicVO topic) {
@@ -213,7 +210,7 @@ public class MetadataService {
     }
 
     private String requireName(String value, String fieldName) {
-        if (isBlank(value)) {
+        if (!StringUtils.hasText(value)) {
             throw new BusinessException(400, fieldName + " is required");
         }
         return value.trim();

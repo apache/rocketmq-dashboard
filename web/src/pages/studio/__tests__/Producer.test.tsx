@@ -16,7 +16,7 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
@@ -214,24 +214,36 @@ describe('ProducerPage', () => {
     ]);
     vi.mocked(fetchTopicList).mockResolvedValueOnce(['order-events']).mockResolvedValueOnce([]);
     vi.mocked(queryProducerConnection).mockResolvedValue([
-      { clientId: 'producer-1', clientAddr: '192.168.1.10', language: 'JAVA', versionDesc: '5.1.0' },
+      {
+        clientId: 'producer-1',
+        clientAddr: '192.168.1.10',
+        language: 'JAVA',
+        versionDesc: '5.1.0',
+      },
     ]);
     const user = userEvent.setup();
-    renderWithProviders(<ProducerPage />);
+    const { container } = renderWithProviders(<ProducerPage />);
 
     await waitFor(() => expect(fetchTopicList).toHaveBeenCalledWith('instance-1'));
     const [instanceSelect, topicSelect, groupInput] = screen.getAllByRole('combobox');
     fireEvent.mouseDown(topicSelect.parentElement!);
-    await user.click(await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }));
+    await user.click(
+      await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
+    );
     await user.type(groupInput, 'order-producer');
     await user.click(screen.getByRole('button', { name: /搜索/ }));
     expect(await screen.findByText('producer-1')).toBeInTheDocument();
 
     fireEvent.mouseDown(instanceSelect.parentElement!);
-    await user.click(await screen.findByText('Secondary instance', { selector: '.ant-select-item-option-content' }));
+    await user.click(
+      await screen.findByText('Secondary instance', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
 
     await waitFor(() => expect(fetchTopicList).toHaveBeenLastCalledWith('instance-2'));
-    expect(screen.queryByText('producer-1')).not.toBeInTheDocument();
-    expect(screen.queryByText('order-events')).not.toBeInTheDocument();
+    // scope to the page container: antd keeps closed dropdown portals in document.body
+    expect(within(container).queryByText('producer-1')).not.toBeInTheDocument();
+    expect(within(container).queryByText('order-events')).not.toBeInTheDocument();
   });
 });
