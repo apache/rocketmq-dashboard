@@ -90,8 +90,16 @@ public class SettingsService {
         }
         settings.setClearApiKey(false);
         settingsRepository.saveGeneralSettings(settings);
-        operationAuditService.record("UPDATE_SETTINGS", "SETTINGS", "general",
-                null, "General settings updated", "SUCCESS", null);
+        recordSettingsAudit();
+    }
+
+    private void recordSettingsAudit() {
+        try {
+            operationAuditService.record("UPDATE_SETTINGS", "SETTINGS", "general",
+                    null, "General settings updated", "SUCCESS", null);
+        } catch (Exception auditFailure) {
+            log.warn("Failed to record general settings audit: {}", auditFailure.getMessage());
+        }
     }
 
 

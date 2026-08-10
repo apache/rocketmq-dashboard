@@ -39,8 +39,10 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -161,6 +163,24 @@ class SettingsServiceTest {
         assertThat(update.getApiKey()).isEmpty();
         assertThat(update.isClearApiKey()).isFalse();
         verify(settingsRepository).saveGeneralSettings(update);
+    }
+
+    @Test
+    void saveGeneralSettingsShouldSucceedWhenAuditRecordingFails() {
+        GeneralSettingsVO update = GeneralSettingsVO.builder()
+                .theme("dark")
+                .build();
+        doThrow(new IllegalStateException("audit unavailable"))
+                .when(operationAuditService)
+                .record("UPDATE_SETTINGS", "SETTINGS", "general",
+                        null, "General settings updated", "SUCCESS", null);
+
+        assertThatCode(() -> settingsService.saveGeneralSettings(update))
+                .doesNotThrowAnyException();
+
+        verify(settingsRepository).saveGeneralSettings(update);
+        verify(operationAuditService).record("UPDATE_SETTINGS", "SETTINGS", "general",
+                null, "General settings updated", "SUCCESS", null);
     }
 
     @Test
