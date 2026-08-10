@@ -18,7 +18,6 @@ package org.apache.rocketmq.studio.cluster.metrics.grafana;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.springframework.core.io.Resource;
@@ -42,13 +41,21 @@ import java.util.zip.ZipOutputStream;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class GrafanaDashboardService {
 
     private static final String LOCATION_PATTERN = "classpath*:grafana/*.json";
 
     private final ObjectMapper objectMapper;
-    private final ResourcePatternResolver resourceResolver = new PathMatchingResourcePatternResolver();
+    private final ResourcePatternResolver resourceResolver;
+
+    public GrafanaDashboardService(ObjectMapper objectMapper) {
+        this(objectMapper, new PathMatchingResourcePatternResolver());
+    }
+
+    GrafanaDashboardService(ObjectMapper objectMapper, ResourcePatternResolver resourceResolver) {
+        this.objectMapper = objectMapper;
+        this.resourceResolver = resourceResolver;
+    }
 
     /**
      * Lists metadata for every bundled Grafana dashboard.
@@ -152,7 +159,7 @@ public class GrafanaDashboardService {
             return resourceResolver.getResources(LOCATION_PATTERN);
         } catch (IOException e) {
             log.warn("Unable to resolve Grafana dashboard resources: {}", e.getMessage());
-            return new Resource[0];
+            throw new BusinessException(500, "Failed to resolve bundled Grafana dashboards");
         }
     }
 
