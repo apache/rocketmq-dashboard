@@ -30,6 +30,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -196,6 +197,30 @@ class AlertServiceTest {
         assertThat(result)
                 .contains("expr: rocketmq_broker_replication_lag_bytes > 1024")
                 .contains("severity: warning");
+    }
+
+    @Test
+    void exportPrometheusRulesYamlShouldNormalizeSeverityIndependentlyOfDefaultLocale() {
+        AlertRuleVO rule = AlertRuleVO.builder()
+                .name("Informational Alert")
+                .metric("rocketmq_consumer_lag_messages")
+                .operator(">")
+                .threshold(1)
+                .severity("INFO")
+                .enabled(true)
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+        Locale originalLocale = Locale.getDefault();
+
+        String result;
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            result = alertService.exportPrometheusRulesYaml();
+        } finally {
+            Locale.setDefault(originalLocale);
+        }
+
+        assertThat(result).contains("severity: info");
     }
 
     @Test
