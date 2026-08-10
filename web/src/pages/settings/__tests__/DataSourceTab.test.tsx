@@ -101,6 +101,53 @@ describe('DataSourceTab', () => {
     resolveTest({ success: true, message: 'ok' });
   });
 
+  it('keeps each row loading until its own connection test finishes', async () => {
+    vi.mocked(listDataSources).mockResolvedValue(
+      sources.map((source) => ({ ...source, auth: 'None' })),
+    );
+    let resolveFirst: (value: { success: boolean; message: string }) => void = () => undefined;
+    let resolveSecond: (value: { success: boolean; message: string }) => void = () => undefined;
+    vi.mocked(testDataSource)
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveFirst = resolve;
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveSecond = resolve;
+        }),
+      );
+
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <App>
+        <DataSourceTab />
+      </App>,
+    );
+
+    await screen.findByText('Prometheus prod');
+    const buttons = screen.getAllByRole('button', { name: /测试连接/ });
+    await user.click(buttons[0]);
+    await user.click(buttons[1]);
+
+    await waitFor(() => {
+      expect(buttons[0]).toHaveClass('ant-btn-loading');
+      expect(buttons[1]).toHaveClass('ant-btn-loading');
+    });
+
+    resolveFirst({ success: true, message: 'ok' });
+    await waitFor(() => {
+      expect(buttons[0]).not.toHaveClass('ant-btn-loading');
+      expect(buttons[1]).toHaveClass('ant-btn-loading');
+    });
+
+    resolveSecond({ success: true, message: 'ok' });
+    await waitFor(() => {
+      expect(buttons[1]).not.toHaveClass('ant-btn-loading');
+    });
+  });
+
   it('submits basic auth credentials when testing from the modal', async () => {
     vi.mocked(testDataSource).mockResolvedValue({ success: true, message: 'ok' });
 

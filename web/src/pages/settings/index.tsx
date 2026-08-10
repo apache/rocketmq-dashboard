@@ -288,7 +288,7 @@ export const DataSourceTab = () => {
   const [editingDataSource, setEditingDataSource] = useState<DataSource | null>(null);
   const [dsForm] = Form.useForm();
   const authValue = Form.useWatch('auth', dsForm);
-  const [testingKey, setTestingKey] = useState<string | null>(null);
+  const [testingKeys, setTestingKeys] = useState<Set<string>>(() => new Set());
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -331,7 +331,7 @@ export const DataSourceTab = () => {
       message.warning('认证数据源请编辑后输入凭据再测试连接');
       return;
     }
-    setTestingKey(key);
+    setTestingKeys((previous) => new Set(previous).add(key));
     try {
       const result = await testDataSource(data);
       if (result.success) message.success(result.message);
@@ -339,7 +339,11 @@ export const DataSourceTab = () => {
     } catch {
       message.error('连接测试失败，请稍后重试');
     } finally {
-      setTestingKey(null);
+      setTestingKeys((previous) => {
+        const next = new Set(previous);
+        next.delete(key);
+        return next;
+      });
     }
   };
 
@@ -431,7 +435,7 @@ export const DataSourceTab = () => {
             type="link"
             size="small"
             icon={<ApiOutlined />}
-            loading={testingKey === record.key}
+            loading={testingKeys.has(record.key)}
             disabled={authNeedsSecret(record.auth)}
             title={
               authNeedsSecret(record.auth) ? '认证数据源请编辑后输入凭据再测试连接' : undefined
@@ -575,7 +579,7 @@ export const DataSourceTab = () => {
 
           <Button
             icon={<ApiOutlined />}
-            loading={testingKey === 'modal'}
+            loading={testingKeys.has('modal')}
             onClick={() => {
               void dsForm
                 .validateFields(testFieldNames(authValue))
