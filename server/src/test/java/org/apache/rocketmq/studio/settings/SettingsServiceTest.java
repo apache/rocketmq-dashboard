@@ -450,6 +450,26 @@ class SettingsServiceTest {
     }
 
     @Test
+    void testConnectionShouldRejectAwsImdsIpv6Address() {
+        DataSourceTestDTO compressedRequest = DataSourceTestDTO.builder()
+                .url("http://[fd00:ec2::254]/latest/meta-data/")
+                .type("Prometheus")
+                .build();
+        DataSourceTestDTO expandedRequest = DataSourceTestDTO.builder()
+                .url("http://[fd00:0ec2:0000:0000:0000:0000:0000:0254]/latest/meta-data/")
+                .type("Prometheus")
+                .build();
+
+        DataSourceTestResultVO compressedResult = settingsService.testDataSource(compressedRequest);
+        DataSourceTestResultVO expandedResult = settingsService.testDataSource(expandedRequest);
+
+        assertThat(compressedResult.isSuccess()).isFalse();
+        assertThat(compressedResult.getMessage()).contains("local or private address");
+        assertThat(expandedResult.isSuccess()).isFalse();
+        assertThat(expandedResult.getMessage()).contains("local or private address");
+    }
+
+    @Test
     void testConnectionShouldRejectIncompleteBasicAuthentication() {
         DataSourceTestResultVO result = settingsService.testDataSource(DataSourceTestDTO.builder()
                 .url(prometheusBaseUrl)
