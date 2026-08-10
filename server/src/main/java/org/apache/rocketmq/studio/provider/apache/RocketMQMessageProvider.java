@@ -99,6 +99,9 @@ public class RocketMQMessageProvider implements MessageProvider {
 
         long end = endTime != null ? endTime : System.currentTimeMillis();
         long begin = startTime != null ? startTime : end - ONE_HOUR_MILLIS;
+        if (begin >= end) {
+            throw new BusinessException(400, "Message query start time must be before end time");
+        }
 
         List<MessageRecordVO> result;
         String queryType;
