@@ -239,6 +239,36 @@ describe('TopicPage', () => {
     expect(within(getTableBody()).queryByText('topic-01')).not.toBeInTheDocument();
   });
 
+  it('keeps the selected instance when rebuilding a topic without a broker route', async () => {
+    const user = userEvent.setup();
+    const topic = { ...buildTopics(1)[0], instanceId: 'instance-a' };
+    instanceServiceMocks.listInstances.mockResolvedValue([
+      {
+        ...selectedInstance,
+        id: 'instance-a',
+        name: 'Instance A',
+        type: 'DIRECT',
+      },
+    ]);
+    topicServiceMocks.listTopics.mockResolvedValue([topic]);
+    renderWithProviders('/instance/instance-a/topic');
+
+    expect(await screen.findByText('topic-01')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /详情/ }));
+    await user.click(await screen.findByRole('button', { name: '在 Broker 上重建' }));
+
+    await waitFor(() =>
+      expect(topicServiceMocks.createTopic).toHaveBeenCalledWith({
+        name: 'topic-01',
+        type: 'NORMAL',
+        writeQueues: 8,
+        readQueues: 8,
+        instanceId: 'instance-a',
+      }),
+    );
+    expect(topicServiceMocks.getTopicRoutes).toHaveBeenLastCalledWith('topic-01', 'instance-a');
+  });
+
   it('keeps failed topics selected after a partially successful batch deletion', async () => {
     const user = userEvent.setup();
     topicServiceMocks.listTopics.mockResolvedValue(buildTopics(3));
