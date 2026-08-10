@@ -17,6 +17,7 @@
 
 import { useEffect, useState } from 'react';
 import {
+  Alert,
   Button,
   Checkbox,
   Descriptions,
@@ -61,6 +62,17 @@ import {
   updateDataSource,
 } from '../../api/settings';
 import type { DataSource } from '../../api/settings';
+import {
+  createCloudCredential,
+  deleteCloudCredential,
+  listCloudCredentials,
+  updateCloudCredential,
+} from '../../services/cloudCredentialService';
+import type {
+  CloudCredential,
+  CreateCloudCredentialRequest,
+  UpdateCloudCredentialRequest,
+} from '../../api/cloudCredential';
 import { STATUS_MAP } from '../../constants/theme';
 import { listInstances } from '../../services/instanceService';
 import type { Instance } from '../../api/instance';
@@ -87,7 +99,18 @@ const DATA_SOURCE_TYPE_OPTIONS = [
   { value: 'ARMS', label: 'ARMS' },
 ];
 
+const CLOUD_CREDENTIAL_VENDOR_OPTIONS: Array<{
+  value: CreateCloudCredentialRequest['vendor'];
+  label: string;
+}> = [
+  { value: 'ALIYUN', label: 'Alibaba Cloud RocketMQ' },
+  { value: 'TENCENT', label: 'Tencent Cloud TDMQ' },
+];
+
 type DataSourceFormValues = Partial<DataSource>;
+type CloudCredentialFormValues = Partial<
+  CreateCloudCredentialRequest & UpdateCloudCredentialRequest
+>;
 
 const secretFieldNames = ['username', 'password', 'bearerToken'] as const;
 const authNeedsSecret = (auth?: string) => auth === 'Basic Auth' || auth === 'Bearer Token';
@@ -596,6 +619,265 @@ export const DataSourceTab = () => {
   );
 };
 
+// ─── Cloud Credential Tab ───────────────────────────────────────────────────
+
+export const CloudCredentialTab = () => {
+  const [credentials, setCredentials] = useState<CloudCredential[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingCredential, setEditingCredential] = useState<CloudCredential | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [credentialForm] = Form.useForm<CloudCredentialFormValues>();
+
+  useEffect(() => {
+    let cancelled = false;
+    void listCloudCredentials()
+      .then((items) => {
+        if (!cancelled) setCredentials(items);
+      })
+      .catch(() => {
+        if (!cancelled) message.error('云凭据加载失败，请稍后重试');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const openCreateModal = () => {
+    setEditingCredential(null);
+    credentialForm.resetFields();
+    credentialForm.setFieldValue('vendor', 'ALIYUN');
+    setModalOpen(true);
+  };
+
+  const openEditModal = (credential: CloudCredential) => {
+    setEditingCredential(credential);
+    credentialForm.setFieldsValue({
+      name: credential.name,
+      vendor: credential.vendor === 'APACHE' ? 'ALIYUN' : credential.vendor,
+      remark: credential.remark,
+      secretKey: undefined,
+    });
+    setModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setModalOpen(false);
+    setEditingCredential(null);
+    credentialForm.resetFields();
+  };
+
+  const handleSubmit = async () => {
+    try {
+      const values = await credentialForm.validateFields();
+      setSubmitting(true);
+      if (editingCredential) {
+        const payload: UpdateCloudCredentialRequest = {
+          id: editingCredential.id,
+          name: values.name,
+          remark: values.remark ?? '',
+        };
+        if (values.secretKey?.trim()) {
+          payload.secretKey = values.secretKey.trim();
+        }
+        const saved = await updateCloudCredential(payload);
+        setCredentials((previous) =>
+          previous.map((credential) => (credential.id === saved.id ? saved : credential)),
+        );
+        message.success('云凭据已更新');
+      } else {
+        const saved = await createCloudCredential({
+          name: values.name!,
+          vendor: values.vendor as CreateCloudCredentialRequest['vendor'],
+          accessKey: values.accessKey!,
+          secretKey: values.secretKey!,
+          remark: values.remark,
+        });
+        setCredentials((previous) => [...previous, saved]);
+        message.success('云凭据已添加');
+      }
+      closeModal();
+    } catch {
+      message.error(
+        editingCredential ? '更新云凭据失败，请稍后重试' : '添加云凭据失败，请稍后重试',
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDelete = (credential: CloudCredential) => {
+    Modal.confirm({
+      title: '删除云凭据',
+      content: `确认删除云凭据「${credential.name}」？已被实例引用的凭据会由服务端拒绝删除。`,
+      okText: '删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          await deleteCloudCredential(credential.id);
+          setCredentials((previous) => previous.filter((item) => item.id !== credential.id));
+          message.success('云凭据已删除');
+        } catch {
+          message.error('删除云凭据失败，请稍后重试');
+        }
+      },
+    });
+  };
+
+  const columns: ColumnsType<CloudCredential> = [
+    { title: '名称', dataIndex: 'name', key: 'name' },
+    {
+      title: '云厂商',
+      dataIndex: 'vendor',
+      key: 'vendor',
+      render: (vendor: CloudCredential['vendor']) => {
+        const label =
+          CLOUD_CREDENTIAL_VENDOR_OPTIONS.find((option) => option.value === vendor)?.label ??
+          vendor;
+        return <Tag color={vendor === 'ALIYUN' ? 'orange' : 'blue'}>{label}</Tag>;
+      },
+    },
+    {
+      title: 'AccessKey',
+      dataIndex: 'accessKey',
+      key: 'accessKey',
+      render: (accessKey: string) => (
+        <Text copyable style={{ fontFamily: 'monospace' }}>
+          {accessKey}
+        </Text>
+      ),
+    },
+    {
+      title: '备注',
+      dataIndex: 'remark',
+      key: 'remark',
+      render: (remark?: string) => remark || '-',
+    },
+    {
+      title: '更新时间',
+      dataIndex: 'updatedAt',
+      key: 'updatedAt',
+      render: (_: unknown, record) => record.updatedAt || record.createdAt || '-',
+    },
+    {
+      title: '操作',
+      key: 'action',
+      render: (_: unknown, record) => (
+        <Space size="small">
+          <Button
+            type="link"
+            size="small"
+            icon={<EditOutlined />}
+            onClick={() => openEditModal(record)}
+          >
+            编辑
+          </Button>
+          <Button
+            type="link"
+            size="small"
+            danger
+            icon={<DeleteOutlined />}
+            onClick={() => handleDelete(record)}
+          >
+            删除
+          </Button>
+        </Space>
+      ),
+    },
+  ];
+
+  return (
+    <>
+      <Alert
+        type="info"
+        showIcon
+        style={{ marginBottom: 16 }}
+        message="云凭据用于接入云上 RocketMQ 实例"
+        description="列表只展示脱敏 AccessKey；Secret Key 仅在创建或编辑时提交给服务端，编辑时留空会保留现有密钥。"
+      />
+
+      <Flex justify="flex-end" style={{ marginBottom: 16 }}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
+          添加云凭据
+        </Button>
+      </Flex>
+
+      <Table<CloudCredential>
+        columns={columns}
+        dataSource={credentials}
+        rowKey="id"
+        loading={loading}
+        pagination={false}
+        size="middle"
+      />
+
+      <Modal
+        title={editingCredential ? '编辑云凭据' : '添加云凭据'}
+        open={modalOpen}
+        onCancel={closeModal}
+        onOk={() => void handleSubmit()}
+        confirmLoading={submitting}
+        destroyOnHidden
+      >
+        <Form form={credentialForm} layout="vertical" preserve={false}>
+          <Form.Item
+            label="名称"
+            name="name"
+            rules={[{ required: true, message: '请输入云凭据名称' }]}
+          >
+            <Input placeholder="例如：阿里云生产账号" />
+          </Form.Item>
+
+          <Form.Item
+            label="云厂商"
+            name="vendor"
+            rules={[{ required: true, message: '请选择云厂商' }]}
+          >
+            <Select
+              placeholder="请选择云厂商"
+              disabled={Boolean(editingCredential)}
+              virtual={false}
+              options={CLOUD_CREDENTIAL_VENDOR_OPTIONS}
+            />
+          </Form.Item>
+
+          {editingCredential ? (
+            <Form.Item label="AccessKey">
+              <Input value={editingCredential.accessKey} disabled />
+            </Form.Item>
+          ) : (
+            <Form.Item
+              label="AccessKey"
+              name="accessKey"
+              rules={[{ required: true, message: '请输入 AccessKey' }]}
+            >
+              <Input autoComplete="off" placeholder="请输入云账号 AccessKey" />
+            </Form.Item>
+          )}
+
+          <Form.Item
+            label="Secret Key"
+            name="secretKey"
+            rules={editingCredential ? [] : [{ required: true, message: '请输入 Secret Key' }]}
+            extra={editingCredential ? '留空将保留现有 Secret Key' : undefined}
+          >
+            <Input.Password autoComplete="new-password" placeholder="请输入云账号 Secret Key" />
+          </Form.Item>
+
+          <Form.Item label="备注" name="remark">
+            <Input.TextArea rows={3} placeholder="可填写账号用途、环境或负责人" />
+          </Form.Item>
+        </Form>
+      </Modal>
+    </>
+  );
+};
+
 // ─── About Tab ──────────────────────────────────────────────────────────────
 
 const AboutTab = () => (
@@ -639,13 +921,14 @@ const SettingsPage = () => {
 
   return (
     <div style={{ padding: 24 }}>
-      <PageHeader title={t('settings.title')} subtitle="管理应用配置与数据源" />
+      <PageHeader title={t('settings.title')} subtitle="管理应用配置、数据源与云凭据" />
 
       <Tabs
         defaultActiveKey="general"
         items={[
           { key: 'general', label: '通用设置', children: <GeneralSettingsTab /> },
           { key: 'datasource', label: '数据源管理', children: <DataSourceTab /> },
+          { key: 'cloudCredential', label: '云凭据管理', children: <CloudCredentialTab /> },
           { key: 'about', label: '关于', children: <AboutTab /> },
         ]}
       />

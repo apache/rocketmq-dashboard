@@ -38,7 +38,7 @@ import { Plus, MagnifyingGlass } from '@phosphor-icons/react';
 import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { Instance, InstanceQuery } from '../../api/instance';
-import { listCloudCredentials, type CloudCredential } from '../../api/cloudCredential';
+import type { CloudCredential } from '../../api/cloudCredential';
 import {
   listAliyunInstances,
   listAliyunRegions,
@@ -53,6 +53,7 @@ import {
   listInstances,
   updateInstance,
 } from '../../services/instanceService';
+import { listCloudCredentials } from '../../services/cloudCredentialService';
 import { DEFAULT_VENDOR, VENDOR_OPTIONS, type InstanceVendor } from './vendorOptions';
 
 const { Text } = Typography;
