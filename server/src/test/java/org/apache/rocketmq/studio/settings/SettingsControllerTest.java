@@ -223,6 +223,25 @@ class SettingsControllerTest {
     }
 
     @Test
+    void createDataSourceShouldRejectUnsupportedAuthentication() throws Exception {
+        mockMvc.perform(post("/api/settings/datasources/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "New DS",
+                                  "type": "Prometheus",
+                                  "url": "http://metrics.example.test",
+                                  "auth": "API Key"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is(400)))
+                .andExpect(jsonPath("$.message", is("Unsupported metrics data source authentication")));
+
+        verifyNoInteractions(settingsService);
+    }
+
+    @Test
     void createDataSourceShouldRejectNullRequestBody() throws Exception {
         mockMvc.perform(post("/api/settings/datasources/create")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -263,6 +282,26 @@ class SettingsControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code", is(400)))
                 .andExpect(jsonPath("$.message", is("name is required")));
+
+        verifyNoInteractions(settingsService);
+    }
+
+    @Test
+    void updateDataSourceShouldRejectUnsupportedAuthentication() throws Exception {
+        mockMvc.perform(post("/api/settings/datasources/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "key": "ds-1",
+                                  "name": "Updated DS",
+                                  "type": "Prometheus",
+                                  "url": "http://metrics.example.test",
+                                  "auth": "API Key"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is(400)))
+                .andExpect(jsonPath("$.message", is("Unsupported metrics data source authentication")));
 
         verifyNoInteractions(settingsService);
     }
