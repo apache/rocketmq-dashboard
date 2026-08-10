@@ -20,6 +20,10 @@ package org.apache.rocketmq.studio.instance.acl;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.model.Acl2PolicyContext;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.instance.InstanceRepository;
+import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -54,6 +58,9 @@ class AclServiceTest {
     @Mock
     private OperationAuditService operationAuditService;
 
+    @Mock
+    private InstanceRepository instanceRepository;
+
     @InjectMocks
     private AclService aclService;
 
@@ -84,6 +91,35 @@ class AclServiceTest {
         assertThat(result).hasSize(2);
         assertThat(result.get(0).getPrincipal()).isEqualTo("user1");
         verify(aclRepository).findRules("cluster-1", "user1");
+    }
+
+    @Test
+    void capabilitiesShouldDescribeSelectedInstanceAsLocalUntilProviderIsConnected() {
+        InstanceVO instance = InstanceVO.builder()
+                .name("instance-1")
+                .vendor(InstanceVendor.APACHE)
+                .type(InstanceType.DIRECT)
+                .build();
+        instance.setId("instance-1");
+        when(instanceRepository.findById("instance-1")).thenReturn(Optional.of(instance));
+
+        AclCapabilitiesVO capabilities = aclService.capabilities("instance-1");
+
+        assertThat(capabilities.instanceId()).isEqualTo("instance-1");
+        assertThat(capabilities.vendor()).isEqualTo(InstanceVendor.APACHE);
+        assertThat(capabilities.instanceType()).isEqualTo(InstanceType.DIRECT);
+        assertThat(capabilities.stateSource()).isEqualTo("STUDIO_LOCAL");
+        assertThat(capabilities.remoteReadSupported()).isFalse();
+        assertThat(capabilities.remoteWriteSupported()).isFalse();
+    }
+
+    @Test
+    void capabilitiesShouldRejectUnknownInstance() {
+        when(instanceRepository.findById("missing")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> aclService.capabilities("missing"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Instance not found: missing");
     }
 
     @Test
