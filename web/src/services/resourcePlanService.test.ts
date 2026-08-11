@@ -115,4 +115,35 @@ describe('resource plan service', () => {
       { field: 'writeQueues', currentValue: '16', desiredValue: '32' },
     ]);
   });
+
+  it('rejects numeric fields that are not non-negative integers at runtime', async () => {
+    topicServiceMocks.listTopics.mockResolvedValue([]);
+    consumerServiceMocks.listConsumerGroups.mockResolvedValue([]);
+    const bundle = parseResourceBundle(`{
+      "topics": [
+        { "name": "string-queues", "writeQueues": "8" },
+        { "name": "fractional-queues", "readQueues": 1.5 }
+      ],
+      "consumerGroups": [
+        { "name": "negative-retries", "retryMaxTimes": -1 },
+        { "name": "null-delay", "delaySeconds": null }
+      ]
+    }`);
+
+    const plan = await previewResourcePlan({ instanceId: 'instance-proxy-1', ...bundle });
+
+    expect(plan.summary).toMatchObject({
+      total: 4,
+      invalids: 4,
+      applicable: 0,
+    });
+    expect(plan.entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'string-queues', action: 'INVALID' }),
+        expect.objectContaining({ name: 'fractional-queues', action: 'INVALID' }),
+        expect.objectContaining({ name: 'negative-retries', action: 'INVALID' }),
+        expect.objectContaining({ name: 'null-delay', action: 'INVALID' }),
+      ]),
+    );
+  });
 });

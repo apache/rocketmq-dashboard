@@ -188,11 +188,11 @@ function planTopicEntries(
     if (seen.has(name))
       return invalidEntry('TOPIC', name, index, 'Duplicate topic in resource plan');
     seen.add(name);
-    if (topic.writeQueues !== undefined && topic.writeQueues < 0) {
-      return invalidEntry('TOPIC', name, index, 'Topic writeQueues must be zero or positive');
+    if (topic.writeQueues !== undefined && !isNonNegativeInteger(topic.writeQueues)) {
+      return invalidEntry('TOPIC', name, index, 'Topic writeQueues must be a non-negative integer');
     }
-    if (topic.readQueues !== undefined && topic.readQueues < 0) {
-      return invalidEntry('TOPIC', name, index, 'Topic readQueues must be zero or positive');
+    if (topic.readQueues !== undefined && !isNonNegativeInteger(topic.readQueues)) {
+      return invalidEntry('TOPIC', name, index, 'Topic readQueues must be a non-negative integer');
     }
 
     const existing = existingTopics.get(name);
@@ -255,20 +255,20 @@ function planConsumerGroupEntries(
       );
     }
     seen.add(name);
-    if (group.retryMaxTimes !== undefined && group.retryMaxTimes < 0) {
+    if (group.retryMaxTimes !== undefined && !isNonNegativeInteger(group.retryMaxTimes)) {
       return invalidEntry(
         'CONSUMER_GROUP',
         name,
         index,
-        'Consumer group retryMaxTimes must be zero or positive',
+        'Consumer group retryMaxTimes must be a non-negative integer',
       );
     }
-    if (group.delaySeconds !== undefined && group.delaySeconds < 0) {
+    if (group.delaySeconds !== undefined && !isNonNegativeInteger(group.delaySeconds)) {
       return invalidEntry(
         'CONSUMER_GROUP',
         name,
         index,
-        'Consumer group delaySeconds must be zero or positive',
+        'Consumer group delaySeconds must be a non-negative integer',
       );
     }
 
@@ -380,6 +380,10 @@ function entry(
 
 function normalizeName(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
 }
 
 function comparable(value: unknown): string | null {
