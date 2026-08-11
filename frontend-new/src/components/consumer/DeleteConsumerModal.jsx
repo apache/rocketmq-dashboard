@@ -25,6 +25,10 @@ const DeleteConsumerModal = ({visible, group, onCancel, onSuccess, t}) => {
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
+        // 切换消费者组或重新打开弹窗时，不复用上一次的 Broker 选择。
+        setSelectedBrokers([]);
+        setBrokerList([]);
+
         const fetchBrokers = async () => {
             if (!visible) return;
 
