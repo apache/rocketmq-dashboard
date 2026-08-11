@@ -224,6 +224,16 @@ describe('MetricsExplorer', () => {
     expect(screen.getByRole('button', { name: '刷新指标' })).toBeInTheDocument();
   });
 
+  it('shows the actionable message returned by the metrics API', async () => {
+    vi.mocked(queryMetrics).mockRejectedValue({
+      response: { data: { message: 'Prometheus base URL is not configured' } },
+    });
+
+    renderWithProviders(<MetricsExplorer />);
+
+    expect(await screen.findByText('Prometheus base URL is not configured')).toBeInTheDocument();
+  });
+
   it('shows an empty state when Prometheus returns no scalar samples', async () => {
     vi.mocked(queryMetrics).mockResolvedValue({ ...metricData, series: [] });
 

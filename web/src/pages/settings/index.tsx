@@ -211,12 +211,13 @@ export const GeneralSettingsTab = () => {
         </Title>
       </Divider>
 
-      <Form.Item
-        label="会话超时"
-        name="sessionTimeout"
-        extra="应用于新创建的会话，已登录用户保持原到期时间"
-      >
-        <InputNumber min={5} max={1440} addonAfter="分钟" />
+      <Form.Item label="会话超时" extra="应用于新创建的会话，已登录用户保持原到期时间">
+        <Space.Compact>
+          <Form.Item name="sessionTimeout" noStyle>
+            <InputNumber min={5} max={1440} style={{ width: 120 }} />
+          </Form.Item>
+          <Input aria-label="会话超时单位" readOnly value="分钟" style={{ width: 64 }} />
+        </Space.Compact>
       </Form.Item>
 
       <Form.Item name="requireLogin" hidden>
