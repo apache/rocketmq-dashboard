@@ -83,6 +83,8 @@ public class AclServiceImpl extends AbstractCommonService implements AclService 
                 }
             } else {
                 logger.warn("No users found for broker: {}", address);
+                commonUsers.clear();
+                firstIteration[0] = false;
             }
         });
 
