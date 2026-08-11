@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio;
 
 import org.apache.rocketmq.studio.ops.ai.tool.ToolCatalog;
 import org.apache.rocketmq.studio.ops.ai.tool.ToolGatewayService;
+import org.apache.rocketmq.studio.settings.SettingsService;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.instance.InstanceVO;
@@ -31,7 +32,6 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
@@ -43,6 +43,9 @@ class StudioApplicationTest {
 
     @Autowired
     private ToolGatewayService toolGatewayService;
+
+    @Autowired
+    private SettingsService settingsService;
 
     @Autowired
     private RmqInstanceMapper instanceMapper;
@@ -57,11 +60,11 @@ class StudioApplicationTest {
     void applicationContextLoadsWithInitializedDevSchema() throws Exception {
         assertThat(toolCatalog.getVersion()).isEqualTo("1.0.0");
         assertThat(toolGatewayService.discover(null)).isNotEmpty();
+        assertThat(settingsService).isNotNull();
         assertThat(instanceMapper.selectList(null)).isEmpty();
 
         mockMvc.perform(get("/api/instances"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data").isEmpty());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

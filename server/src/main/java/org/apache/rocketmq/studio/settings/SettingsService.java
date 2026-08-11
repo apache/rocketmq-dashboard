@@ -22,9 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.UrlHostGuard;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
-
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -37,9 +35,11 @@ import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.UnknownHostException;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
@@ -73,6 +73,7 @@ public class SettingsService {
     private final ObjectMapper objectMapper;
     private final OperationAuditService operationAuditService;
 
+    @Autowired
     public SettingsService(SettingsRepository settingsRepository, RestClient.Builder restClientBuilder,
                            ObjectMapper objectMapper, OperationAuditService operationAuditService) {
         this(settingsRepository, buildDataSourceRestClient(restClientBuilder), objectMapper, operationAuditService);
