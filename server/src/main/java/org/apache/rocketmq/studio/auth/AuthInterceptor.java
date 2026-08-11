@@ -97,12 +97,33 @@ public class AuthInterceptor implements HandlerInterceptor {
     }
 
     private boolean isAdminOnlyGetPath(String path) {
-        return isCredentialRevealPath(path, "/api/acl/users/")
-                || isCredentialRevealPath(path, "/api/cloud-credentials/");
+        String pathWithoutParameters = stripPathParameters(path);
+        return isCredentialRevealPath(pathWithoutParameters, "/api/acl/users/")
+                || isCredentialRevealPath(pathWithoutParameters, "/api/cloud-credentials/");
     }
 
     private boolean isCredentialRevealPath(String path, String prefix) {
-        return path.startsWith(prefix) && path.endsWith("/credentials");
+        return path != null && path.startsWith(prefix) && path.endsWith("/credentials");
+    }
+
+    private String stripPathParameters(String path) {
+        if (path == null || path.indexOf(';') < 0) {
+            return path;
+        }
+        StringBuilder stripped = new StringBuilder(path.length());
+        boolean insideParameters = false;
+        for (int index = 0; index < path.length(); index++) {
+            char character = path.charAt(index);
+            if (character == ';') {
+                insideParameters = true;
+            } else if (character == '/') {
+                insideParameters = false;
+                stripped.append(character);
+            } else if (!insideParameters) {
+                stripped.append(character);
+            }
+        }
+        return stripped.toString();
     }
 
     private void writeError(HttpServletResponse response, HttpStatus status, String message)
