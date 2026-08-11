@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Layout, Menu, Breadcrumb, Avatar, Dropdown, Empty, Input, Modal, message } from 'antd';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
@@ -100,112 +100,133 @@ const MainLayout = () => {
     return () => window.removeEventListener('keydown', openSearchWithShortcut);
   }, []);
 
-  const instanceScopedMatch = location.pathname.match(
-    /^\/instance\/[^/]+\/(topic|consumer|message|acl|dlq|resource-plan)$/,
+  const instanceScopedMatch = useMemo(
+    () =>
+      location.pathname.match(
+        /^\/instance\/[^/]+\/(topic|consumer|message|acl|dlq|resource-plan)$/,
+      ),
+    [location.pathname],
   );
   const selectedMenuKey = instanceScopedMatch
     ? `/instance/${instanceScopedMatch[1]}`
     : location.pathname;
 
-  const menuItems = [
-    { key: '/', icon: <House size={iconSize} weight="duotone" />, label: t('nav.home') },
-    {
-      key: 'instance-group',
-      icon: <Database size={iconSize} weight="duotone" />,
-      label: t('nav.instance'),
-      children: [
-        { key: '/instance', icon: <Database size={16} />, label: t('nav.instanceList') },
-        { key: '/instance/topic', icon: <ListDashes size={16} />, label: t('nav.topic') },
-        { key: '/instance/consumer', icon: <ChatCircleText size={16} />, label: t('nav.group') },
-        { key: '/instance/acl', icon: <Key size={16} />, label: t('nav.acl') },
-        { key: '/instance/message', icon: <MagnifyingGlass size={16} />, label: t('nav.message') },
-        { key: '/instance/dlq', icon: <TrashSimple size={16} />, label: t('nav.dlq') },
-        {
-          key: '/instance/resource-plan',
-          icon: <Notebook size={16} />,
-          label: t('nav.resourcePlan'),
-        },
-      ],
-    },
-    {
-      key: 'cluster-ops-group',
-      icon: <Monitor size={iconSize} weight="duotone" />,
-      label: t('nav.clusterOps'),
-      children: [
-        { key: '/ops/dashboard', icon: <ChartBar size={16} />, label: t('nav.dashboard') },
-        { key: '/ops/grafana', icon: <ChartLine size={16} />, label: t('nav.grafanaDashboards') },
-        { key: '/cluster/certs', icon: <ShieldCheck size={16} />, label: t('nav.certs') },
-        { key: '/cluster', icon: <Database size={16} />, label: t('nav.rocketmqCluster') },
-        { key: '/cluster/clients', icon: <PlugsConnected size={16} />, label: t('nav.clients') },
-        { key: '/ops/alerts', icon: <BellRinging size={16} />, label: t('nav.alertRules') },
-        { key: '/ops/system-alerts', icon: <BellRinging size={16} />, label: t('nav.alertEvents') },
-        { key: '/ops/audit', icon: <Notebook size={16} />, label: t('nav.audit') },
-        {
-          key: '/ops/nameserver-config-drift',
-          icon: <GitDiff size={16} />,
-          label: t('nav.nameServerConfigDrift'),
-        },
-        {
-          key: '/ops/alert-rule-templates',
-          icon: <Warning size={16} />,
-          label: t('nav.alertRuleAssets'),
-        },
-      ],
-    },
-    { key: '/ai', icon: <Sparkle size={iconSize} weight="duotone" />, label: t('nav.ai') },
-    {
-      key: '/settings',
-      icon: <GearSix size={iconSize} weight="duotone" />,
-      label: t('nav.settings'),
-    },
-  ];
+  const menuItems = useMemo(
+    () => [
+      { key: '/', icon: <House size={iconSize} weight="duotone" />, label: t('nav.home') },
+      {
+        key: 'instance-group',
+        icon: <Database size={iconSize} weight="duotone" />,
+        label: t('nav.instance'),
+        children: [
+          { key: '/instance', icon: <Database size={16} />, label: t('nav.instanceList') },
+          { key: '/instance/topic', icon: <ListDashes size={16} />, label: t('nav.topic') },
+          { key: '/instance/consumer', icon: <ChatCircleText size={16} />, label: t('nav.group') },
+          { key: '/instance/acl', icon: <Key size={16} />, label: t('nav.acl') },
+          {
+            key: '/instance/message',
+            icon: <MagnifyingGlass size={16} />,
+            label: t('nav.message'),
+          },
+          { key: '/instance/dlq', icon: <TrashSimple size={16} />, label: t('nav.dlq') },
+          {
+            key: '/instance/resource-plan',
+            icon: <Notebook size={16} />,
+            label: t('nav.resourcePlan'),
+          },
+        ],
+      },
+      {
+        key: 'cluster-ops-group',
+        icon: <Monitor size={iconSize} weight="duotone" />,
+        label: t('nav.clusterOps'),
+        children: [
+          { key: '/ops/dashboard', icon: <ChartBar size={16} />, label: t('nav.dashboard') },
+          { key: '/ops/grafana', icon: <ChartLine size={16} />, label: t('nav.grafanaDashboards') },
+          { key: '/cluster/certs', icon: <ShieldCheck size={16} />, label: t('nav.certs') },
+          { key: '/cluster', icon: <Database size={16} />, label: t('nav.rocketmqCluster') },
+          { key: '/cluster/clients', icon: <PlugsConnected size={16} />, label: t('nav.clients') },
+          { key: '/ops/alerts', icon: <BellRinging size={16} />, label: t('nav.alertRules') },
+          {
+            key: '/ops/system-alerts',
+            icon: <BellRinging size={16} />,
+            label: t('nav.alertEvents'),
+          },
+          { key: '/ops/audit', icon: <Notebook size={16} />, label: t('nav.audit') },
+          {
+            key: '/ops/nameserver-config-drift',
+            icon: <GitDiff size={16} />,
+            label: t('nav.nameServerConfigDrift'),
+          },
+          {
+            key: '/ops/alert-rule-templates',
+            icon: <Warning size={16} />,
+            label: t('nav.alertRuleAssets'),
+          },
+        ],
+      },
+      { key: '/ai', icon: <Sparkle size={iconSize} weight="duotone" />, label: t('nav.ai') },
+      {
+        key: '/settings',
+        icon: <GearSix size={iconSize} weight="duotone" />,
+        label: t('nav.settings'),
+      },
+    ],
+    [t],
+  );
 
-  const breadcrumbMap: Record<string, string> = {
-    '/': t('nav.home'),
-    '/ops': t('nav.clusterOps'),
-    '/instance': t('nav.instanceList'),
-    '/instance/topic': t('nav.topic'),
-    '/instance/consumer': t('nav.group'),
-    '/instance/message': t('nav.message'),
-    '/instance/acl': t('nav.acl'),
-    '/instance/dlq': t('nav.dlq'),
-    '/instance/resource-plan': t('nav.resourcePlan'),
-    '/cluster': t('nav.rocketmqCluster'),
-    '/cluster/certs': t('nav.certs'),
-    '/cluster/clients': t('nav.clients'),
-    '/ops/dashboard': t('nav.dashboard'),
-    '/ops/grafana': t('nav.grafanaDashboards'),
-    '/ops/system-alerts': t('nav.alertEvents'),
-    '/ops/alerts': t('nav.alertRules'),
-    '/ops/audit': t('nav.audit'),
-    '/ops/nameserver-config-drift': t('nav.nameServerConfigDrift'),
-    '/ops/alert-rule-templates': t('nav.alertRuleAssets'),
-    '/ai': t('nav.ai'),
-    '/settings': t('nav.settings'),
-  };
+  const breadcrumbMap: Record<string, string> = useMemo(
+    () => ({
+      '/': t('nav.home'),
+      '/ops': t('nav.clusterOps'),
+      '/instance': t('nav.instanceList'),
+      '/instance/topic': t('nav.topic'),
+      '/instance/consumer': t('nav.group'),
+      '/instance/message': t('nav.message'),
+      '/instance/acl': t('nav.acl'),
+      '/instance/dlq': t('nav.dlq'),
+      '/instance/resource-plan': t('nav.resourcePlan'),
+      '/cluster': t('nav.rocketmqCluster'),
+      '/cluster/certs': t('nav.certs'),
+      '/cluster/clients': t('nav.clients'),
+      '/ops/dashboard': t('nav.dashboard'),
+      '/ops/grafana': t('nav.grafanaDashboards'),
+      '/ops/system-alerts': t('nav.alertEvents'),
+      '/ops/alerts': t('nav.alertRules'),
+      '/ops/audit': t('nav.audit'),
+      '/ops/nameserver-config-drift': t('nav.nameServerConfigDrift'),
+      '/ops/alert-rule-templates': t('nav.alertRuleAssets'),
+      '/ai': t('nav.ai'),
+      '/settings': t('nav.settings'),
+    }),
+    [t],
+  );
 
   const pathSnippets = location.pathname.split('/').filter((i) => i);
-  const breadcrumbItems = [
-    {
-      title: (
-        <span onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>
-          🏠
-        </span>
-      ),
-      key: 'home',
-    },
-    ...pathSnippets.map((_, index) => {
-      const path = '/' + pathSnippets.slice(0, index + 1).join('/');
-      const isSectionLeaf = instanceScopedMatch && index === pathSnippets.length - 1;
-      const leafTitle = isSectionLeaf
-        ? breadcrumbMap[`/instance/${instanceScopedMatch[1]}`]
-        : undefined;
-      return {
-        title: breadcrumbMap[path] || leafTitle || path,
-        key: path,
-      };
-    }),
-  ];
+  const breadcrumbItems = useMemo(
+    () => [
+      {
+        title: (
+          <span onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>
+            🏠
+          </span>
+        ),
+        key: 'home',
+      },
+      ...pathSnippets.map((_, index) => {
+        const path = '/' + pathSnippets.slice(0, index + 1).join('/');
+        const isSectionLeaf = instanceScopedMatch && index === pathSnippets.length - 1;
+        const leafTitle = isSectionLeaf
+          ? breadcrumbMap[`/instance/${instanceScopedMatch[1]}`]
+          : undefined;
+        return {
+          title: breadcrumbMap[path] || leafTitle || path,
+          key: path,
+        };
+      }),
+    ],
+    [location.pathname, navigate, breadcrumbMap, instanceScopedMatch],
+  );
 
   const userMenu = {
     onClick: handleUserMenuClick,
@@ -220,9 +241,13 @@ const MainLayout = () => {
   const siderBg = darkMode ? '#2a2a2e' : '#ffffff';
   const topBarBg = darkMode ? 'rgba(42,42,46,0.85)' : 'rgba(255,255,255,0.7)';
   const logoColor = darkMode ? '#e5e5e5' : '#1b1b1a';
-  const navigationEntries: NavigationSearchEntry[] = menuItems
-    .flatMap((item) => ('children' in item && item.children ? item.children : [item]))
-    .map((item) => ({ key: String(item.key), label: String(item.label), icon: item.icon }));
+  const navigationEntries: NavigationSearchEntry[] = useMemo(
+    () =>
+      menuItems
+        .flatMap((item) => ('children' in item && item.children ? item.children : [item]))
+        .map((item) => ({ key: String(item.key), label: String(item.label), icon: item.icon })),
+    [menuItems],
+  );
   const searchResults = filterNavigationEntries(navigationEntries, searchText);
   const isAiRoute = location.pathname === '/ai';
 

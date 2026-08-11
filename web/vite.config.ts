@@ -9,13 +9,17 @@ export default defineConfig(({ mode }) => {
     build: {
       // Ant Design is shared by the application shell and most route components. Keep it
       // cacheable as one vendor chunk rather than splitting its cyclic internals.
+      // The 1.3MB (gzip ~420KB) size is inherent to the dashboard UI surface; combined with
+      // immutable asset caching in nginx.conf, repeat visits download it only once.
       chunkSizeWarningLimit: 1400,
       rollupOptions: {
         output: {
           manualChunks: {
             react: ['react', 'react-dom', 'react-router-dom'],
             antd: ['antd', '@ant-design/icons'],
-            markdown: ['react-markdown', 'remark-gfm'],
+            // react-markdown / remark-gfm are only used by the lazily-loaded /ai page;
+            // pinning them here would force the entry to preload them on first paint.
+            // markdown: ['react-markdown', 'remark-gfm'],
           },
         },
       },
