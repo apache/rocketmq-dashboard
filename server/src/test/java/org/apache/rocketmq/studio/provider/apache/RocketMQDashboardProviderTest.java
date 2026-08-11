@@ -91,6 +91,26 @@ class RocketMQDashboardProviderTest {
     }
 
     @Test
+    void dashboardShouldDeduplicateTopicsReportedByMultipleClusterBrokers() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());
+        when(adminExt.getAllTopicConfig("10.0.0.11:10911", 5000))
+                .thenReturn(topicConfig("orders", "payments"));
+        when(adminExt.getAllTopicConfig("10.0.0.12:10911", 5000))
+                .thenReturn(topicConfig("orders", "inventory"));
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.12:10911")).thenReturn(runtimeStats());
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getStats().getTotalTopics()).isEqualTo(3);
+        assertThat(dashboard.getClusters()).singleElement()
+                .extracting(cluster -> cluster.getTopics())
+                .isEqualTo(3);
+        verify(adminExt, never()).examineTopicRouteInfo(anyString());
+    }
+
+    @Test
     void dashboardShouldMarkClusterWarningWhenTopicCountsAreUnavailable() throws Exception {
         DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
@@ -296,6 +316,25 @@ class RocketMQDashboardProviderTest {
         clusterAddrTable.put("DefaultCluster", Set.of("broker-a"));
         info.setClusterAddrTable(clusterAddrTable);
         return info;
+    }
+
+    private ClusterInfo clusterInfoWithTwoMasters() {
+        ClusterInfo info = new ClusterInfo();
+        HashMap<String, BrokerData> brokerAddrTable = new HashMap<>();
+        brokerAddrTable.put("broker-a", brokerData("broker-a", "10.0.0.11:10911"));
+        brokerAddrTable.put("broker-b", brokerData("broker-b", "10.0.0.12:10911"));
+        info.setBrokerAddrTable(brokerAddrTable);
+
+        HashMap<String, Set<String>> clusterAddrTable = new HashMap<>();
+        clusterAddrTable.put("DefaultCluster", Set.of("broker-a", "broker-b"));
+        info.setClusterAddrTable(clusterAddrTable);
+        return info;
+    }
+
+    private BrokerData brokerData(String name, String address) {
+        HashMap<Long, String> addresses = new HashMap<>();
+        addresses.put(0L, address);
+        return new BrokerData("DefaultCluster", name, addresses);
     }
 
     private TopicList topicList() {
