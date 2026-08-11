@@ -859,7 +859,10 @@ public class TencentInstanceProvider implements InstanceProvider {
     }
 
     private static int toInt(Long value) {
-        return value == null ? 0 : Math.toIntExact(value);
+        if (value == null || value <= 0L) {
+            return 0;
+        }
+        return value > Integer.MAX_VALUE ? Integer.MAX_VALUE : value.intValue();
     }
 
     private static ConsumeType toConsumeType(Boolean consumeMessageOrderly) {

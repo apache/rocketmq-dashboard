@@ -294,6 +294,20 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void listConsumerGroupsShouldClampOversizedRetryCounts() throws Exception {
+        ConsumeGroupItem item = new ConsumeGroupItem();
+        item.setConsumerGroup("GID_test");
+        item.setMaxRetryTimes(Long.MAX_VALUE);
+        DescribeConsumerGroupListResponse response = new DescribeConsumerGroupListResponse();
+        response.setData(new ConsumeGroupItem[]{item});
+        when(client.DescribeConsumerGroupList(any())).thenReturn(response);
+
+        assertThat(provider.listConsumerGroups(STUDIO_INSTANCE_ID, null))
+                .singleElement()
+                .satisfies(group -> assertThat(group.getRetryMaxTimes()).isEqualTo(Integer.MAX_VALUE));
+    }
+
+    @Test
     void listConsumerGroupsShouldMapAndFilterTest() throws Exception {
         ConsumeGroupItem one = new ConsumeGroupItem();
         one.setConsumerGroup("GID_test");
