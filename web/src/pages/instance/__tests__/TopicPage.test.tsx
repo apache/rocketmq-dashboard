@@ -167,7 +167,7 @@ describe('TopicPage', () => {
         ...buildTopics(1)[0],
         name: 'orders-topic',
         namespace: 'trade',
-        remark: 'orders, "critical"',
+        remark: '\t=orders, "critical"',
       },
       {
         ...buildTopics(1)[0],
@@ -192,7 +192,7 @@ describe('TopicPage', () => {
     expect(exportedBlob).toBeDefined();
     const csv = await exportedBlob!.text();
     expect(csv).toContain('"orders-topic"');
-    expect(csv).toContain('"orders, ""critical"""');
+    expect(csv).toContain('"\'\t=orders, ""critical"""');
     expect(csv).not.toContain('users-topic');
     clickSpy.mockRestore();
   });

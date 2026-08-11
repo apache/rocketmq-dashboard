@@ -110,7 +110,7 @@ const TOPIC_EXPORT_COLUMNS: Array<{ header: string; value: (topic: Topic) => unk
 
 const escapeCsvCell = (value: unknown) => {
   const text = value == null ? '' : String(value);
-  const formulaSafeText = /^[=+\-@]/.test(text) ? `'${text}` : text;
+  const formulaSafeText = /^[=+\-@\t\r\n]/.test(text) ? `'${text}` : text;
   return `"${formulaSafeText.replace(/"/g, '""')}"`;
 };
 
