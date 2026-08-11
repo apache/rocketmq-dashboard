@@ -132,8 +132,12 @@ public class RocketMQClusterProvider implements ClusterProvider {
                 return buildClusterVO(clusterId, brokers, nameServers);
             });
         } catch (Exception e) {
+            if (e instanceof BusinessException businessException) {
+                throw businessException;
+            }
             log.warn("Failed to refresh cluster detail for {}: {}", clusterId, e.getMessage());
-            return null;
+            throw new BusinessException(502,
+                    "Failed to refresh cluster detail for " + clusterId + ": " + rootMessage(e));
         }
     }
 

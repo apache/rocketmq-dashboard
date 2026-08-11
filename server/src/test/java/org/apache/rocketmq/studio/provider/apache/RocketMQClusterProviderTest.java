@@ -93,6 +93,19 @@ class RocketMQClusterProviderTest {
     }
 
     @Test
+    void refreshClusterDetailShouldSurfaceNameServerFailuresInsteadOfReturningNull() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RocketMQClusterProvider provider = newProvider(adminExt);
+        when(adminExt.examineBrokerClusterInfo()).thenThrow(new IllegalStateException("NameServer unavailable"));
+
+        assertThatThrownBy(() -> provider.refreshClusterDetail("DefaultCluster"))
+                .isInstanceOfSatisfying(BusinessException.class, error -> {
+                    assertThat(error.getCode()).isEqualTo(502);
+                    assertThat(error.getMessage()).contains("NameServer unavailable");
+                });
+    }
+
+    @Test
     void discoverClustersMarksWarningWhenBrokerRuntimeStatsAreUnavailable() throws Exception {
         DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
         RocketMQClusterProvider provider = newProvider(adminExt);
