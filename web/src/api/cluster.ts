@@ -229,12 +229,3 @@ export async function updateK8sCert(data: Partial<K8sCertInfo>) {
   const res = await client.post<{ data: K8sCertInfo }>('/k8s-certs/update', data);
   return res.data.data;
 }
-
-export async function renewK8sCert(id: string) {
-  const res = await client.post<{ data: K8sCertInfo }>('/k8s-certs/renew', { id });
-  return res.data.data;
-}
-
-export async function deleteK8sCert(id: string) {
-  await client.post('/k8s-certs/delete', { id });
-}

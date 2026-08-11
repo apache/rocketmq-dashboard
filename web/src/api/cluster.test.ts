@@ -21,12 +21,10 @@ import client from './client';
 import {
   createK8sCert,
   createNameServer,
-  deleteK8sCert,
   deleteNameServer,
   getNameServerConfigDiff,
   getCluster,
   listK8sCerts,
-  renewK8sCert,
   restartBroker,
   restartNameServer,
   restartProxy,
@@ -86,25 +84,6 @@ describe('K8s certificate API', () => {
     });
 
     await expect(updateK8sCert({ id: cert.id, issuer: 'vault' })).resolves.toEqual(updated);
-  });
-
-  it('renews a certificate using its id', async () => {
-    const renewed = { ...cert, daysRemaining: 365, status: 'valid' };
-    mock.onPost('/k8s-certs/renew').reply((config) => {
-      expect(JSON.parse(config.data)).toEqual({ id: cert.id });
-      return [200, { code: 200, message: 'success', data: renewed }];
-    });
-
-    await expect(renewK8sCert(cert.id)).resolves.toEqual(renewed);
-  });
-
-  it('sends the certificate id when deleting', async () => {
-    mock.onPost('/k8s-certs/delete').reply((config) => {
-      expect(JSON.parse(config.data)).toEqual({ id: cert.id });
-      return [200, { code: 200, message: 'success', data: null }];
-    });
-
-    await expect(deleteK8sCert(cert.id)).resolves.toBeUndefined();
   });
 
   it('encodes cluster path parameters', async () => {
@@ -195,12 +174,14 @@ describe('K8s certificate API', () => {
         },
       ],
     };
-    mock.onGet('/nameservers/config-diff', {
-      params: { clusterId: 'cluster-1', instanceId: 'instance-1' },
-    }).reply(200, {
-      code: 200,
-      data: result,
-    });
+    mock
+      .onGet('/nameservers/config-diff', {
+        params: { clusterId: 'cluster-1', instanceId: 'instance-1' },
+      })
+      .reply(200, {
+        code: 200,
+        data: result,
+      });
 
     await expect(getNameServerConfigDiff('cluster-1', 'instance-1')).resolves.toEqual(result);
   });

@@ -50,10 +50,23 @@ const certs: K8sCertInfo[] = [
     issuer: 'kubernetes-ca',
     notBefore: '2026-01-01T00:00:00Z',
     notAfter: '2027-01-01T00:00:00Z',
-    status: 'valid',
-    daysRemaining: 365,
+    status: 'expiring',
+    daysRemaining: 10,
     // The backend returns null when SAN is omitted.
     san: null as unknown as string[],
+  },
+  {
+    id: 'cert-expired',
+    name: 'rocketmq-expired-tls',
+    namespace: 'kube-system',
+    cluster: 'legacy-cluster',
+    type: 'mTLS',
+    issuer: 'vault',
+    notBefore: '2025-01-01T00:00:00Z',
+    notAfter: '2026-01-01T00:00:00Z',
+    status: 'expired',
+    daysRemaining: -30,
+    san: ['legacy.example.com'],
   },
 ];
 
@@ -165,5 +178,41 @@ describe('K8sCertsPage', () => {
 
     expect(screen.getByText('rocketmq-prod-tls')).toBeInTheDocument();
     expect(screen.queryByText('rocketmq-staging-tls')).not.toBeInTheDocument();
+  });
+
+  it('filters certificates by expiry status and upcoming window', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('rocketmq-prod-tls');
+    const statusFilter = screen.getByRole('combobox', { name: '按证书状态筛选' });
+    fireEvent.mouseDown(
+      statusFilter.closest('.ant-select')!.querySelector('.ant-select-selector')!,
+    );
+    await user.click(
+      await screen.findByText('即将过期', { selector: '.ant-select-item-option-content' }),
+    );
+
+    expect(screen.getByText('rocketmq-staging-tls')).toBeInTheDocument();
+    expect(screen.queryByText('rocketmq-prod-tls')).not.toBeInTheDocument();
+    expect(screen.queryByText('rocketmq-expired-tls')).not.toBeInTheDocument();
+
+    fireEvent.mouseDown(
+      statusFilter.closest('.ant-select')!.querySelector('.ant-select-selector')!,
+    );
+    await user.click(
+      await screen.findByText('全部状态', { selector: '.ant-select-item-option-content' }),
+    );
+    const expiryFilter = screen.getByRole('combobox', { name: '按到期窗口筛选' });
+    fireEvent.mouseDown(
+      expiryFilter.closest('.ant-select')!.querySelector('.ant-select-selector')!,
+    );
+    await user.click(
+      await screen.findByText('30 天内到期', { selector: '.ant-select-item-option-content' }),
+    );
+
+    expect(screen.getByText('rocketmq-staging-tls')).toBeInTheDocument();
+    expect(screen.queryByText('rocketmq-prod-tls')).not.toBeInTheDocument();
+    expect(screen.queryByText('rocketmq-expired-tls')).not.toBeInTheDocument();
   });
 });

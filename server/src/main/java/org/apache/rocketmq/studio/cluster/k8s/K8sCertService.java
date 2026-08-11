@@ -124,39 +124,6 @@ public class K8sCertService {
         return saved;
     }
 
-    public K8sCertVO renewCert(RenewCertDTO command) {
-        requireCommand(command);
-        log.info("Renewing K8s certificate: {}", command.getId());
-        K8sCertVO existing = k8sCertRepository.findById(command.getId())
-                .orElseThrow(() -> new BusinessException(404, "Certificate not found: " + command.getId()));
-
-        LocalDateTime now = LocalDateTime.now(clock);
-        LocalDateTime notAfter = now.plusYears(1);
-
-        K8sCertVO renewed = copyOf(existing);
-        renewed.setNotBefore(now);
-        renewed.setNotAfter(notAfter);
-        renewed.setStatus(CertStatus.valid);
-        renewed.setDaysRemaining((int) ChronoUnit.DAYS.between(now, notAfter));
-        renewed.setUpdatedAt(now);
-
-        K8sCertVO saved = k8sCertRepository.save(renewed);
-        auditCertificate("RENEW_K8S_CERTIFICATE", saved);
-        log.info("K8s certificate renewed: {} (id={}), new expiry: {}", saved.getName(), saved.getId(), notAfter);
-        return saved;
-    }
-
-    public void deleteCert(DeleteCertDTO command) {
-        requireCommand(command);
-        log.info("Deleting K8s certificate: {}", command.getId());
-        k8sCertRepository.findById(command.getId())
-                .orElseThrow(() -> new BusinessException(404, "Certificate not found: " + command.getId()));
-        k8sCertRepository.deleteById(command.getId());
-        recordAudit("DELETE_K8S_CERTIFICATE", "K8S_CERTIFICATE", command.getId(), null,
-                null);
-        log.info("K8s certificate deleted: {}", command.getId());
-    }
-
     private void requireCommand(Object command) {
         if (command == null) {
             throw new BusinessException(400, "K8s certificate request is required");

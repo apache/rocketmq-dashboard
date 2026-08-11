@@ -17,8 +17,10 @@
 package org.apache.rocketmq.studio.cluster.k8s;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.auth.AuthService;
 import org.apache.rocketmq.studio.common.domain.enums.CertStatus;
 import org.apache.rocketmq.studio.common.domain.enums.CertType;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -52,6 +54,15 @@ class K8sCertControllerTest {
 
     @MockBean
     private K8sCertService k8sCertService;
+
+    @MockBean
+    private AuthService authService;
+
+    @BeforeEach
+    void setUpAuth() {
+        when(authService.isAuthenticated(any())).thenReturn(true);
+        when(authService.isAdmin(any())).thenReturn(true);
+    }
 
     @Test
     void listCertsShouldReturnAllCerts() throws Exception {
@@ -143,9 +154,7 @@ class K8sCertControllerTest {
     void certWriteEndpointsShouldRejectNullRequestBody() throws Exception {
         String[] paths = {
             "/api/k8s-certs/create",
-            "/api/k8s-certs/update",
-            "/api/k8s-certs/renew",
-            "/api/k8s-certs/delete"
+            "/api/k8s-certs/update"
         };
 
         for (String path : paths) {
@@ -208,34 +217,6 @@ class K8sCertControllerTest {
                                     "name": "updated-cert"
                                 }
                                 """))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value(400))
-                .andExpect(jsonPath("$.message").value("id is required"));
-
-        verifyNoInteractions(k8sCertService);
-    }
-
-    @Test
-    void renewCertShouldRejectBlankId() throws Exception {
-        mockMvc.perform(post("/api/k8s-certs/renew")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                    "id": " "
-                                }
-                                """))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value(400))
-                .andExpect(jsonPath("$.message").value("id is required"));
-
-        verifyNoInteractions(k8sCertService);
-    }
-
-    @Test
-    void deleteCertShouldRejectMissingId() throws Exception {
-        mockMvc.perform(post("/api/k8s-certs/delete")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.message").value("id is required"));

@@ -24,7 +24,6 @@ vi.mock('../config', () => ({
 
 import {
   createK8sCert,
-  deleteK8sCert,
   getCluster,
   getNameServerConfigDiff,
   listClusters,
@@ -152,23 +151,19 @@ describe('clusterService mock clusters', () => {
       san,
     });
 
-    try {
-      san.push('mutated-create.example.com');
+    san.push('mutated-create.example.com');
 
-      let stored = (await listK8sCerts()).find((cert) => cert.id === created.id);
-      expect(stored?.san).toEqual(['proxy.example.com']);
+    let stored = (await listK8sCerts()).find((cert) => cert.id === created.id);
+    expect(stored?.san).toEqual(['proxy.example.com']);
 
-      const nextSan = ['proxy-next.example.com'];
-      await updateK8sCert({
-        id: created.id,
-        san: nextSan,
-      });
-      nextSan.push('mutated-update.example.com');
+    const nextSan = ['proxy-next.example.com'];
+    await updateK8sCert({
+      id: created.id,
+      san: nextSan,
+    });
+    nextSan.push('mutated-update.example.com');
 
-      stored = (await listK8sCerts()).find((cert) => cert.id === created.id);
-      expect(stored?.san).toEqual(['proxy-next.example.com']);
-    } finally {
-      await deleteK8sCert(created.id);
-    }
+    stored = (await listK8sCerts()).find((cert) => cert.id === created.id);
+    expect(stored?.san).toEqual(['proxy-next.example.com']);
   });
 });

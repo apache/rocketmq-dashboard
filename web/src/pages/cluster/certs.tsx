@@ -16,18 +16,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import {
-  Table,
-  Tag,
-  Input,
-  Select,
-  Flex,
-  Space,
-  Typography,
-  Card,
-  Alert,
-  message,
-} from 'antd';
+import { Table, Tag, Input, Select, Flex, Space, Typography, Card, Alert, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import PageHeader from '../../components/PageHeader';
 import type { K8sCertInfo } from '../../api/cluster';
@@ -50,6 +39,8 @@ const K8sCertsPage = () => {
   const [certSearch, setCertSearch] = useState('');
   const [certTypeFilter, setCertTypeFilter] = useState<string>('');
   const [certNamespaceFilter, setCertNamespaceFilter] = useState<string>('');
+  const [certStatusFilter, setCertStatusFilter] = useState<string>('');
+  const [expiryWindowFilter, setExpiryWindowFilter] = useState<string>('');
 
   useEffect(() => {
     let active = true;
@@ -80,7 +71,12 @@ const K8sCertsPage = () => {
       );
     const matchType = !certTypeFilter || cert.type === certTypeFilter;
     const matchNamespace = !certNamespaceFilter || cert.namespace === certNamespaceFilter;
-    return matchSearch && matchType && matchNamespace;
+    const matchStatus = !certStatusFilter || cert.status === certStatusFilter;
+    const expiryWindowDays = expiryWindowFilter ? Number(expiryWindowFilter) : null;
+    const matchExpiryWindow =
+      expiryWindowDays === null ||
+      (cert.daysRemaining > 0 && cert.daysRemaining <= expiryWindowDays);
+    return matchSearch && matchType && matchNamespace && matchStatus && matchExpiryWindow;
   });
 
   const certColumns: ColumnsType<K8sCertInfo> = [
@@ -197,20 +193,17 @@ const K8sCertsPage = () => {
 
   return (
     <div style={{ padding: 24 }}>
-      <PageHeader
-        title="K8s 证书管理"
-        subtitle={`共 ${filteredCerts.length} 个证书`}
-      />
+      <PageHeader title="K8s 证书管理" subtitle={`共 ${filteredCerts.length} 个证书`} />
       <Alert
         data-testid="k8s-cert-local-metadata-notice"
         type="warning"
         showIcon
         message="当前证书记录仅保存为 Studio 本地元数据"
-        description="创建、续期和删除操作尚不会应用到 Kubernetes 集群或 cert-manager。请在集群侧管理实际证书，直到 Kubernetes Provider 接入完成。"
+        description="创建和更新操作尚不会应用到 Kubernetes 集群或 cert-manager。请在集群侧管理实际证书，直到 Kubernetes Provider 接入完成。"
         style={{ marginBottom: 16 }}
       />
-      <Flex justify="space-between" style={{ marginBottom: 16 }}>
-        <Space>
+      <Flex justify="space-between" wrap gap={12} style={{ marginBottom: 16 }}>
+        <Space wrap>
           <Input.Search
             placeholder="搜索证书名称、集群、命名空间或 SAN"
             allowClear
@@ -226,6 +219,7 @@ const K8sCertsPage = () => {
             options={[{ value: '', label: '全部命名空间' }, ...namespaceOptions]}
           />
           <Select
+            aria-label="按证书类型筛选"
             value={certTypeFilter}
             onChange={setCertTypeFilter}
             style={{ width: 160 }}
@@ -234,6 +228,30 @@ const K8sCertsPage = () => {
               { value: 'TLS', label: 'TLS' },
               { value: 'mTLS', label: 'mTLS' },
               { value: 'ServiceAccount', label: 'ServiceAccount' },
+            ]}
+          />
+          <Select
+            aria-label="按证书状态筛选"
+            value={certStatusFilter}
+            onChange={setCertStatusFilter}
+            style={{ width: 150 }}
+            options={[
+              { value: '', label: '全部状态' },
+              { value: 'valid', label: '有效' },
+              { value: 'expiring', label: '即将过期' },
+              { value: 'expired', label: '已过期' },
+            ]}
+          />
+          <Select
+            aria-label="按到期窗口筛选"
+            value={expiryWindowFilter}
+            onChange={setExpiryWindowFilter}
+            style={{ width: 160 }}
+            options={[
+              { value: '', label: '全部到期时间' },
+              { value: '7', label: '7 天内到期' },
+              { value: '30', label: '30 天内到期' },
+              { value: '90', label: '90 天内到期' },
             ]}
           />
         </Space>
@@ -246,10 +264,9 @@ const K8sCertsPage = () => {
           loading={loading}
           pagination={{ pageSize: 20 }}
           size="small"
-          scroll={{ x: 1750 }}
+          scroll={{ x: 1600 }}
         />
       </Card>
-
     </div>
   );
 };
