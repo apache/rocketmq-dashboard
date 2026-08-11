@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { filterNavigationEntries, isNavigationSearchShortcut } from './navigationSearch';
 
 describe('navigation search helpers', () => {
@@ -33,6 +33,22 @@ describe('navigation search helpers', () => {
   it('filters by route keys case-insensitively', () => {
     expect(filterNavigationEntries(entries, 'CLUSTER')).toEqual([entries[0]]);
     expect(filterNavigationEntries(entries, '/settings')).toEqual([entries[1]]);
+  });
+
+  it('does not depend on the browser locale for ASCII route matching', () => {
+    const localeLower = vi
+      .spyOn(String.prototype, 'toLocaleLowerCase')
+      .mockImplementation(function (this: string) {
+        return this.replace(/I/g, 'ı').toLowerCase();
+      });
+
+    try {
+      const instance = { key: '/INSTANCE', label: 'INSTANCE MANAGEMENT' };
+      expect(filterNavigationEntries([instance], 'instance')).toEqual([instance]);
+      expect(localeLower).not.toHaveBeenCalled();
+    } finally {
+      localeLower.mockRestore();
+    }
   });
 
   it('matches multiple terms across labels and normalized route segments', () => {
