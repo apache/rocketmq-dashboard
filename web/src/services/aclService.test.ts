@@ -20,6 +20,7 @@ import {
   createAclRule,
   createAclUser,
   createAndUpdatePlainAccessConfig,
+  deleteAclRule,
   examineBrokerClusterAclConfig,
   listAclRules,
   listAclUsers,
@@ -66,6 +67,22 @@ describe('ACL service mock data', () => {
 
     const afterUpdate = await listAclRules({ principal: 'user-created-copy-test' });
     expect(afterUpdate[0].actions).toEqual(['SUB']);
+  });
+
+  it('assigns unique ACL rule IDs within the same millisecond', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000);
+    const first = await createAclRule({ principal: 'same-clock-rule-a' });
+    const second = await createAclRule({ principal: 'same-clock-rule-b' });
+
+    try {
+      expect(first.id).not.toBe(second.id);
+      expect(first.id).toContain('1800000000000');
+      expect(second.id).toContain('1800000000000');
+    } finally {
+      now.mockRestore();
+      await deleteAclRule(first.id);
+      await deleteAclRule(second.id);
+    }
   });
 
   it('returns copied ACL user rows', async () => {

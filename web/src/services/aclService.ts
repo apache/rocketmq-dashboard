@@ -11,6 +11,12 @@ import { aclRules as mockRules, aclUsers as mockUsers } from '../mock/acl';
 
 const aclRulesState = mockRules as unknown as AclRule[];
 const aclUsersState = mockUsers as unknown as AclUser[];
+let mockAclRuleIdSequence = 0;
+
+function nextMockAclRuleId(): string {
+  mockAclRuleIdSequence += 1;
+  return `acl-${Date.now()}-${mockAclRuleIdSequence}`;
+}
 const aclPlainAccessState = (mockUsers as unknown as AclUser[]).map((u): PlainAccessConfig => ({
   accessKey: u.username,
   secretKey: u.secretKey,
@@ -73,7 +79,7 @@ export async function getAclUserCredentials(id: string): Promise<AclUser> {
 export async function createAclRule(data: Partial<AclRule>): Promise<AclRule> {
   if (isMockMode()) {
     const rule: AclRule = {
-      id: `acl-${Date.now()}`,
+      id: nextMockAclRuleId(),
       principal: '',
       resource: '',
       resourceType: '',
