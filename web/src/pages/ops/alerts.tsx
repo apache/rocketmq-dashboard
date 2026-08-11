@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useState, type Key } from 'react';
+import { useEffect, useRef, useState, type Key } from 'react';
 import { Plus, Pencil, Trash } from '@phosphor-icons/react';
 import {
   Button,
@@ -71,6 +71,7 @@ const AlertsPage = () => {
   const [selectedRuleIds, setSelectedRuleIds] = useState<Key[]>([]);
   const [bulkAction, setBulkAction] = useState<'enable' | 'disable' | null>(null);
   const [form] = Form.useForm();
+  const submitInFlightRef = useRef(false);
 
   const channelLabels: Record<string, string> = {
     dingtalk: 'DingTalk',
@@ -298,10 +299,12 @@ const AlertsPage = () => {
   ];
 
   const handleSubmit = async () => {
+    if (submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
+    setSubmitting(true);
     try {
       const values = await form.validateFields();
       const payload = attachThresholdUnit(values);
-      setSubmitting(true);
       if (editingRule) {
         const updated = await updateAlertRule({ ...editingRule, ...payload });
         setRules((previous) =>
@@ -321,6 +324,7 @@ const AlertsPage = () => {
       }
       message.error('保存告警规则失败，请稍后重试');
     } finally {
+      submitInFlightRef.current = false;
       setSubmitting(false);
     }
   };
@@ -412,10 +416,15 @@ const AlertsPage = () => {
         onOk={handleSubmit}
         confirmLoading={submitting}
         onCancel={() => {
+          if (submitInFlightRef.current) return;
           setModalVisible(false);
           setEditingRule(null);
           form.resetFields();
         }}
+        closable={!submitting}
+        keyboard={!submitting}
+        maskClosable={!submitting}
+        cancelButtonProps={{ disabled: submitting }}
         okText={editingRule ? t('common.edit') : t('common.create')}
         cancelText={t('common.cancel')}
       >

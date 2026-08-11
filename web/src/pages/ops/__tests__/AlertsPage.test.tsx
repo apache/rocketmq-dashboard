@@ -22,7 +22,7 @@ import { App } from 'antd';
 import type { AlertRule } from '../../../api/ops';
 import { LangProvider } from '../../../i18n/LangContext';
 import AlertsPage from '../alerts';
-import { listAlertRules, toggleAlertRule } from '../../../services/opsService';
+import { listAlertRules, toggleAlertRule, updateAlertRule } from '../../../services/opsService';
 
 vi.mock('../../../services/opsService', () => ({
   createAlertRule: vi.fn(),
@@ -229,5 +229,28 @@ describe('AlertsPage', () => {
 
     resolveToggle?.({ ...cloneRule(alertRules[0]), enabled: true });
     expect(await screen.findByText('已启用 1 条告警规则')).toBeInTheDocument();
+  });
+
+  it('submits an alert rule edit only once while the request is pending', async () => {
+    let resolveUpdate: ((rule: AlertRule) => void) | undefined;
+    vi.mocked(updateAlertRule).mockReturnValue(
+      new Promise<AlertRule>((resolve) => {
+        resolveUpdate = resolve;
+      }),
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('Broker disk usage');
+    await user.click(within(getRuleRow('Broker disk usage')).getByRole('button', { name: '编辑' }));
+    const dialog = await screen.findByRole('dialog');
+    const confirmButton = within(dialog).getByRole('button', { name: /编\s*辑/ });
+    await user.dblClick(confirmButton);
+
+    expect(updateAlertRule).toHaveBeenCalledTimes(1);
+    expect(confirmButton).toHaveClass('ant-btn-loading');
+
+    resolveUpdate?.(cloneRule(alertRules[0]));
+    expect(await screen.findByText('告警规则已更新')).toBeInTheDocument();
   });
 });
