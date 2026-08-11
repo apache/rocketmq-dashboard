@@ -139,7 +139,7 @@ const GROUP_EXPORT_COLUMNS: Array<{ header: string; value: (group: ConsumerGroup
 
 const escapeCsvCell = (value: unknown) => {
   const text = value == null ? '' : String(value);
-  const formulaSafeText = /^[=+\-@]/.test(text) ? `'${text}` : text;
+  const formulaSafeText = /^[=+\-@\t\r\n]/.test(text) ? `'${text}` : text;
   return `"${formulaSafeText.replace(/"/g, '""')}"`;
 };
 
@@ -232,6 +232,7 @@ const ConsumerPage = () => {
   const groupRequestIdRef = useRef(0);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clear state owned by the previous instance
     setSelectedGroup(null);
     setModalOpen(false);
     setResetGroup(null);
@@ -241,6 +242,7 @@ const ConsumerPage = () => {
   useEffect(() => {
     if (!selectedInstanceId) {
       groupRequestIdRef.current += 1;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clear state when the instance scope is removed
       setGroups([]);
       setSelectedRowKeys([]);
       setLoading(false);

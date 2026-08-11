@@ -195,7 +195,7 @@ describe('Consumer page', () => {
       {
         ...group,
         name: 'orders-cg',
-        namespace: 'trade',
+        namespace: '\r=formula-risk',
         subscribedTopics: ['orders-topic', 'payments,topic'],
       },
       {
@@ -222,6 +222,7 @@ describe('Consumer page', () => {
     expect(exportedBlob).toBeDefined();
     const csv = await exportedBlob!.text();
     expect(csv).toContain('"orders-cg"');
+    expect(csv).toContain('"\'\r=formula-risk"');
     expect(csv).toContain('"orders-topic;payments,topic"');
     expect(csv).not.toContain('users-cg');
     clickSpy.mockRestore();
