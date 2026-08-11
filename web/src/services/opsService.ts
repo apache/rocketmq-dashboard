@@ -9,6 +9,12 @@ import { systemAlerts as mockSystemAlerts } from '../mock/dashboard';
 
 let auditRecordsState = mockAuditRecords as unknown as AuditRecord[];
 const alertRulesState = mockAlertRules as unknown as AlertRule[];
+let mockAlertRuleIdSequence = 0;
+
+function nextMockAlertRuleId(): string {
+  mockAlertRuleIdSequence += 1;
+  return `alert-${Date.now()}-${mockAlertRuleIdSequence}`;
+}
 
 function copyAlertRule(rule: AlertRule): AlertRule {
   return {
@@ -97,7 +103,7 @@ export async function listAlertRules(): Promise<AlertRule[]> {
 export async function createAlertRule(data: Partial<AlertRule>): Promise<AlertRule> {
   if (isMockMode()) {
     const rule: AlertRule = {
-      id: `alert-${Date.now()}`,
+      id: nextMockAlertRuleId(),
       name: '',
       metric: '',
       operator: '>',

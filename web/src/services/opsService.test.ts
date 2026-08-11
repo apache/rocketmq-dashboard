@@ -20,6 +20,7 @@ import type { AuditRecord } from '../api/ops';
 import { mockAuditRecords } from '../mock/audit';
 import {
   createAlertRule,
+  deleteAlertRule,
   exportAuditLogs,
   getAuditFilterOptions,
   listAlertRules,
@@ -81,6 +82,22 @@ describe('ops service mock data', () => {
     const afterUpdate = (await listAlertRules()).find((rule) => rule.id === created.id);
     expect(afterUpdate?.enabled).toBe(false);
     expect(afterUpdate?.channels).toEqual(['webhook']);
+  });
+
+  it('assigns unique alert rule IDs within the same millisecond', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000);
+    const first = await createAlertRule({ name: 'same-clock-alert-a' });
+    const second = await createAlertRule({ name: 'same-clock-alert-b' });
+
+    try {
+      expect(first.id).not.toBe(second.id);
+      expect(first.id).toContain('1800000000000');
+      expect(second.id).toContain('1800000000000');
+    } finally {
+      now.mockRestore();
+      await deleteAlertRule(first.id);
+      await deleteAlertRule(second.id);
+    }
   });
 
   it('rejects updates for unknown alert rule IDs', async () => {
