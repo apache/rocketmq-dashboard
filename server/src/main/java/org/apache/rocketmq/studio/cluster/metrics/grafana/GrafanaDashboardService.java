@@ -20,6 +20,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.core.io.support.ResourcePatternResolver;
@@ -48,6 +49,7 @@ public class GrafanaDashboardService {
     private final ObjectMapper objectMapper;
     private final ResourcePatternResolver resourceResolver;
 
+    @Autowired
     public GrafanaDashboardService(ObjectMapper objectMapper) {
         this(objectMapper, new PathMatchingResourcePatternResolver());
     }

@@ -260,13 +260,14 @@ public class SettingsService {
 
     /**
      * SSRF guard: the test endpoint performs a server-side HTTP request to an attacker-supplied
-     * URL. The hostname {@code localhost} and link-local addresses (169.254.x.x, fe80:: — the
-     * cloud metadata range) and known metadata endpoints not covered by Java's address categories
-     * are never legitimate Prometheus endpoints and are rejected. Loopback IPs and private
-     * site-local ranges stay allowed because on-premise Prometheus servers live on the internal
-     * network and the endpoint itself requires admin rights.
+     * URL. The hostname {@code localhost}, loopback IPs (127.x.x.x, ::1), link-local addresses
+     * (169.254.x.x, fe80:: — the cloud metadata range), and known metadata endpoints not covered
+     * by Java's address categories are never legitimate Prometheus endpoints and are rejected.
+     * Private site-local ranges stay allowed because on-premise Prometheus servers live on the
+     * internal network and the endpoint itself requires admin rights. Package-private so tests
+     * can admit the loopback-bound embedded test server.
      */
-    private boolean isAllowedDataSourceHost(String host) {
+    boolean isAllowedDataSourceHost(String host) {
         if (!StringUtils.hasText(host)) {
             return false;
         }

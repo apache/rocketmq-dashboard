@@ -155,14 +155,18 @@ const ClusterPage = () => {
   const selectedInstanceIdRef = useRef('');
 
   useEffect(() => {
-    void listInstances().then((nextInstances) => {
-      const apacheInstances = nextInstances.filter((instance) => instance.vendor === 'APACHE');
-      setInstances(apacheInstances);
-      const initialInstanceId = apacheInstances[0]?.id ?? '';
-      selectedInstanceIdRef.current = initialInstanceId;
-      setSelectedInstanceId(initialInstanceId);
-      void requestRefreshRef.current('manual');
-    });
+    void listInstances()
+      .then((nextInstances) => {
+        const apacheInstances = nextInstances.filter((instance) => instance.vendor === 'APACHE');
+        setInstances(apacheInstances);
+        const initialInstanceId = apacheInstances[0]?.id ?? '';
+        selectedInstanceIdRef.current = initialInstanceId;
+        setSelectedInstanceId(initialInstanceId);
+        void requestRefreshRef.current('manual');
+      })
+      .catch(() => {
+        // Keep the page usable without instance filtering when the instance list is unavailable.
+      });
   }, []);
 
   const clearRefreshTimer = useCallback(() => {
