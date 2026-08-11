@@ -269,6 +269,27 @@ class AlertServiceTest {
     }
 
     @Test
+    void exportPrometheusRulesYamlShouldNotEmitABlankSummary() throws Exception {
+        AlertRuleVO rule = AlertRuleVO.builder()
+                .name("Lag alert")
+                .metric("rocketmq_consumer_lag_messages")
+                .operator(">")
+                .threshold(1)
+                .description(" - consumer is behind")
+                .enabled(true)
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+
+        JsonNode exportedRule = new ObjectMapper(new YAMLFactory())
+                .readTree(alertService.exportPrometheusRulesYaml())
+                .path("groups").get(0).path("rules").get(0);
+
+        assertThat(exportedRule.path("annotations").path("summary").asText()).isEqualTo("Lag alert");
+        assertThat(exportedRule.path("annotations").path("description").asText())
+                .isEqualTo("consumer is behind");
+    }
+
+    @Test
     void exportPrometheusRulesYamlShouldEscapeSpecialCharacters() throws Exception {
         AlertRuleVO rule = AlertRuleVO.builder()
                 .name("Scoped rule")

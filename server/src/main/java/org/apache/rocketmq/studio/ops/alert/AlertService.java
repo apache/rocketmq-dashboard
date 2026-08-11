@@ -308,7 +308,10 @@ public class AlertService {
     private String summary(AlertRuleVO rule) {
         String description = rule.getDescription();
         if (hasText(description) && description.contains(" - ")) {
-            return description.substring(0, description.indexOf(" - "));
+            String candidate = description.substring(0, description.indexOf(" - "));
+            if (hasText(candidate)) {
+                return candidate;
+            }
         }
         return hasText(rule.getName()) ? rule.getName() : "RocketMQ alert";
     }
