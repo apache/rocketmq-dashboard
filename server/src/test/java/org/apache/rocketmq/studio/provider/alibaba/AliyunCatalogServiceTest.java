@@ -33,6 +33,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -57,6 +58,25 @@ class AliyunCatalogServiceTest {
     @BeforeEach
     void setUp() {
         service = new AliyunCatalogService(clientFactory);
+    }
+
+    @Test
+    void listRegionsShouldSkipNullSdkRecords() {
+        ListRegionsResponse response = ListRegionsResponse.create().toBuilder()
+                .statusCode(200)
+                .body(ListRegionsResponseBody.builder()
+                        .data(Arrays.asList(null, ListRegionsResponseBody.Data.builder()
+                                .regionId("cn-hangzhou")
+                                .supportRocketmqV5(true)
+                                .build()))
+                        .build())
+                .build();
+        when(clientFactory.call(eq(CREDENTIAL_ID), eq(AliyunCatalogService.DEFAULT_REGION), any()))
+                .thenReturn(response);
+
+        assertThat(service.listRegions(CREDENTIAL_ID))
+                .extracting(CloudRegionVO::getRegionId)
+                .containsExactly("cn-hangzhou");
     }
 
     @Test

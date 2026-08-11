@@ -70,7 +70,7 @@ public class AliyunCatalogService implements CloudCatalogProvider {
             return regions;
         }
         for (ListRegionsResponseBody.Data item : data) {
-            if (Boolean.TRUE.equals(item.getSupportRocketmqV5())) {
+            if (item != null && Boolean.TRUE.equals(item.getSupportRocketmqV5())) {
                 regions.add(AliyunConverters.toRegionVO(item));
             }
         }
