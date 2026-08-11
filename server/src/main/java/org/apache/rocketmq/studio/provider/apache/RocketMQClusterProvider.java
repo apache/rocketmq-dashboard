@@ -251,13 +251,16 @@ public class RocketMQClusterProvider implements ClusterProvider {
 
     /**
      * TPS properties are space-separated values representing 10s/1min/10min averages.
-     * Parse the first value (10s average).
+     * Use the 1-minute average to match the Dashboard overview.
      */
-    private int parseTpsValue(String tpsStr) {
+    private long parseTpsValue(String tpsStr) {
         try {
             String[] parts = tpsStr.trim().split("\\s+");
-            if (parts.length > 0) {
-                return (int) Double.parseDouble(parts[0]);
+            if (parts.length >= 2) {
+                return (long) Double.parseDouble(parts[1]);
+            }
+            if (parts.length == 1) {
+                return (long) Double.parseDouble(parts[0]);
             }
         } catch (NumberFormatException ignored) {
             // fall through

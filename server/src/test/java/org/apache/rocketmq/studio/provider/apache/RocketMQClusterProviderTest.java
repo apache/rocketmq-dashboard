@@ -52,8 +52,8 @@ class RocketMQClusterProviderTest {
 
         assertThat(clusters).hasSize(1);
         assertThat(clusters.get(0).getBrokers()).hasSize(1);
-        assertThat(clusters.get(0).getBrokers().get(0).getTpsIn()).isEqualTo(12);
-        assertThat(clusters.get(0).getBrokers().get(0).getTpsOut()).isEqualTo(34);
+        assertThat(clusters.get(0).getBrokers().get(0).getTpsIn()).isEqualTo(10);
+        assertThat(clusters.get(0).getBrokers().get(0).getTpsOut()).isEqualTo(30);
         assertThat(clusters.get(0).getBrokers().get(0).isRuntimeStatsAvailable()).isTrue();
         assertThat(clusters.get(0).getStatus()).isEqualTo(ClusterStatus.healthy);
     }
@@ -108,6 +108,24 @@ class RocketMQClusterProviderTest {
                 .isEqualTo(false);
     }
 
+    @Test
+    void discoverClustersShouldKeepOneMinuteTpsAboveIntegerRange() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RocketMQClusterProvider provider = newProvider(adminExt);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911"))
+                .thenReturn(runtimeStats("1.0 3000000000.0 3.0", "4.0 4000000000.0 6.0"));
+
+        List<ClusterVO> clusters = provider.discoverClusters();
+
+        assertThat(clusters).singleElement().satisfies(cluster -> {
+            assertThat(cluster.getBrokers()).singleElement().satisfies(broker -> {
+                assertThat(broker.getTpsIn()).isEqualTo(3_000_000_000L);
+                assertThat(broker.getTpsOut()).isEqualTo(4_000_000_000L);
+            });
+        });
+    }
+
     private RocketMQClusterProvider newProvider(DefaultMQAdminExt adminExt) {
         MqAdminExtFactory adminFactory = mock(MqAdminExtFactory.class);
         when(adminFactory.execute(anyString(), any(), any())).thenAnswer(invocation ->
@@ -146,10 +164,14 @@ class RocketMQClusterProviderTest {
     }
 
     private KVTable runtimeStats() {
+        return runtimeStats("  12.7   10.0  9.0", "\\t34.2  30.0  29.0");
+    }
+
+    private KVTable runtimeStats(String putTps, String getTransferredTps) {
         KVTable table = new KVTable();
         HashMap<String, String> stats = new HashMap<>();
-        stats.put("putTps", "  12.7   10.0  9.0");
-        stats.put("getTransferredTps", "\t34.2  30.0  29.0");
+        stats.put("putTps", putTps);
+        stats.put("getTransferredTps", getTransferredTps);
         table.setTable(stats);
         return table;
     }
