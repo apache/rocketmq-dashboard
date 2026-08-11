@@ -336,6 +336,15 @@ final class AliyunConverters {
     }
 
     private static Integer toInteger(Long value) {
-        return value == null ? null : value.intValue();
+        if (value == null) {
+            return null;
+        }
+        if (value > Integer.MAX_VALUE) {
+            return Integer.MAX_VALUE;
+        }
+        if (value < 0) {
+            return 0;
+        }
+        return value.intValue();
     }
 }
