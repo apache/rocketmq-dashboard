@@ -498,7 +498,7 @@ export const DataSourceTab = () => {
         }}
         onOk={() => void handleSubmit()}
         confirmLoading={submitting}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={dsForm} layout="vertical" preserve={false}>
           <Form.Item
