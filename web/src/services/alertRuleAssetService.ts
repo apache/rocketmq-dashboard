@@ -6,6 +6,14 @@ import * as alertRuleAssetsApi from '../api/alertRuleAssets';
 import type { AlertRuleAssetInfo } from '../api/alertRuleAssets';
 import { mockAlertRuleAssets } from '../mock/alertRuleAssets';
 
+function getMockAlertRuleAsset(name: string) {
+  const found = mockAlertRuleAssets.find((asset) => asset.name === name);
+  if (!found) {
+    throw new Error(`Alert rule asset not found: ${name}`);
+  }
+  return found;
+}
+
 export async function listAlertRuleAssets(): Promise<AlertRuleAssetInfo[]> {
   if (isMockMode()) {
     return mockAlertRuleAssets.map(({ name, group, ruleCount, severities }) => ({
@@ -20,20 +28,14 @@ export async function listAlertRuleAssets(): Promise<AlertRuleAssetInfo[]> {
 
 export async function getAlertRuleAsset(name: string): Promise<string> {
   if (isMockMode()) {
-    const found = mockAlertRuleAssets.find((asset) => asset.name === name);
-    if (!found) {
-      throw new Error(`Alert rule asset not found: ${name}`);
-    }
-    return found.yaml;
+    return getMockAlertRuleAsset(name).yaml;
   }
   return alertRuleAssetsApi.getAlertRuleAsset(name);
 }
 
 export async function exportAlertRuleAsset(name: string): Promise<Blob> {
   if (isMockMode()) {
-    const found = mockAlertRuleAssets.find((asset) => asset.name === name);
-    const yaml = found ? found.yaml : '';
-    return new Blob([yaml], { type: 'text/yaml' });
+    return new Blob([getMockAlertRuleAsset(name).yaml], { type: 'text/yaml' });
   }
   return alertRuleAssetsApi.exportAlertRuleAsset(name);
 }

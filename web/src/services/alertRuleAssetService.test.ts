@@ -65,6 +65,14 @@ describe('alertRuleAssetService (mock mode)', () => {
     expect(blob).toBeInstanceOf(Blob);
     expect(blob.type).toBe('text/yaml');
   });
+
+  it('rejects an export for an unknown asset', async () => {
+    mode.mock = true;
+
+    await expect(exportAlertRuleAsset('does-not-exist')).rejects.toThrow(
+      'Alert rule asset not found: does-not-exist',
+    );
+  });
 });
 
 describe('alertRuleAssetService (real mode)', () => {
