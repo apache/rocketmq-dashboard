@@ -22,11 +22,29 @@ import org.apache.rocketmq.studio.persistence.entity.RmqK8sCertificate;
 import org.apache.rocketmq.studio.persistence.mapper.RmqK8sCertificateMapper;
 import org.junit.jupiter.api.Test;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class MybatisPlusK8sCertRepositoryTest {
+
+    @Test
+    void findByIdNormalizesPersistedCertificateEnums() {
+        RmqK8sCertificateMapper mapper = mock(RmqK8sCertificateMapper.class);
+        RmqK8sCertificate entity = certificate();
+        entity.setCertType(" mtls ");
+        entity.setStatus(" EXPIRING ");
+        when(mapper.selectById("cert-1")).thenReturn(entity);
+
+        assertThat(repository(mapper).findById("cert-1")).get()
+                .satisfies(cert -> {
+                    assertThat(cert.getType()).isEqualTo(
+                            org.apache.rocketmq.studio.common.domain.enums.CertType.mTLS);
+                    assertThat(cert.getStatus()).isEqualTo(
+                            org.apache.rocketmq.studio.common.domain.enums.CertStatus.expiring);
+                });
+    }
 
     @Test
     void findByIdSurfacesInvalidPersistedCertificateType() {
