@@ -46,6 +46,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import org.apache.rocketmq.studio.common.util.ParallelOps;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -80,17 +81,16 @@ public class RocketMQDLQProvider implements DLQProvider {
         TopicList topicList = adminExt.fetchAllTopicList();
         topics = topicList == null ? Collections.emptySet() : topicList.getTopicList();
 
-        List<DLQGroupVO> groups = new ArrayList<>();
-        for (String topic : topics) {
-            if (topic == null || !topic.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX)) {
-                continue;
-            }
+        // N+1: each DLQ topic used to trigger a serial examineTopicStats call; fan them
+        // out with a bounded executor (buildDLQGroup tolerates per-topic failures).
+        List<String> dlqTopics = topics.stream()
+                .filter(topic -> topic != null && topic.startsWith(MixAll.DLQ_GROUP_TOPIC_PREFIX))
+                .filter(topic -> StringUtils.hasText(topic.substring(MixAll.DLQ_GROUP_TOPIC_PREFIX.length())))
+                .toList();
+        List<DLQGroupVO> groups = ParallelOps.map(dlqTopics, topic -> {
             String groupName = topic.substring(MixAll.DLQ_GROUP_TOPIC_PREFIX.length());
-            if (!StringUtils.hasText(groupName)) {
-                continue;
-            }
-            groups.add(buildDLQGroup(adminExt, groupName, topic));
-        }
+            return buildDLQGroup(adminExt, groupName, topic);
+        });
         return groups;
     }
 

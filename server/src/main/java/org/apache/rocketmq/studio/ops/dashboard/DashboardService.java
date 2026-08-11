@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.ops.dashboard;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.studio.common.util.TtlCache;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -27,18 +28,27 @@ import org.springframework.util.StringUtils;
 @RequiredArgsConstructor
 public class DashboardService {
 
+    /**
+     * Dashboard aggregates fan out across every topic/broker/group on each read; the
+     * frontend polls this endpoint, so cache short-lived results per instance to avoid
+     * recomputing the whole graph on every poll.
+     */
+    private static final long DASHBOARD_CACHE_TTL_MILLIS = 10_000L;
+
     private final DashboardProvider dashboardProvider;
+    private final TtlCache<String, DashboardDataVO> dashboardCache =
+            new TtlCache<>(DASHBOARD_CACHE_TTL_MILLIS);
 
     public DashboardDataVO getDashboard() {
-        log.debug("Fetching dashboard data");
-        return dashboardProvider.getDashboardData();
+        return getDashboard(null);
     }
 
     public DashboardDataVO getDashboard(String instanceId) {
-        if (!StringUtils.hasText(instanceId)) {
-            return getDashboard();
-        }
-        log.debug("Fetching dashboard data for instance={}", instanceId);
-        return dashboardProvider.getDashboardData(instanceId.trim());
+        String key = StringUtils.hasText(instanceId) ? instanceId.trim() : "";
+        log.debug("Fetching dashboard data for instance={}", key.isEmpty() ? "all" : key);
+        return dashboardCache.get(key,
+                () -> key.isEmpty()
+                        ? dashboardProvider.getDashboardData()
+                        : dashboardProvider.getDashboardData(key));
     }
 }

@@ -34,6 +34,7 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.ClientLanguage;
 import org.apache.rocketmq.studio.common.domain.enums.ClientType;
 import org.apache.rocketmq.studio.common.domain.enums.Protocol;
+import org.apache.rocketmq.studio.common.util.ParallelOps;
 import org.apache.rocketmq.studio.common.util.SystemGroupFilter;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import lombok.RequiredArgsConstructor;
@@ -49,6 +50,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Live {@link ClientProvider} backed by the RocketMQ admin API. It discovers producer
@@ -206,30 +208,33 @@ public class RocketMQClientProvider implements ClientProvider {
     }
 
     private List<ClientConnectionVO> findConsumerConnections(MQAdminExt adminExt, String clusterId) {
-        List<ClientConnectionVO> result = new ArrayList<>();
         Set<String> groups = collectSubscriptionGroups(adminExt);
-        int successfulGroupQueries = 0;
-        for (String group : groups) {
-            if (isSystemGroup(group)) {
-                continue;
-            }
+        List<String> consumerGroups = groups.stream().filter(group -> !isSystemGroup(group)).toList();
+        AtomicInteger successfulGroupQueries = new AtomicInteger();
+        // N+1: each group used to trigger a serial examineConsumerConnectionInfo call; fan them
+        // out with a bounded executor. Per-group failures are tolerated and counted.
+        List<List<ClientConnectionVO>> perGroup = ParallelOps.map(consumerGroups, group -> {
+            List<ClientConnectionVO> conns = new ArrayList<>();
             try {
                 ConsumerConnection consumerConnection = adminExt.examineConsumerConnectionInfo(group);
-                successfulGroupQueries++;
+                successfulGroupQueries.incrementAndGet();
                 if (consumerConnection == null || consumerConnection.getConnectionSet() == null) {
-                    continue;
+                    return conns;
                 }
                 for (Connection connection : consumerConnection.getConnectionSet()) {
                     if (connection == null) {
                         continue;
                     }
-                    result.add(toConnectionVO(connection, ClientType.Consumer, group, null, clusterId));
+                    conns.add(toConnectionVO(connection, ClientType.Consumer, group, null, clusterId));
                 }
             } catch (Exception e) {
                 log.warn("Failed to examine consumer connection for group={}, skipping", group, e);
             }
-        }
-        if (!groups.isEmpty() && successfulGroupQueries == 0) {
+            return conns;
+        });
+        List<ClientConnectionVO> result = new ArrayList<>();
+        perGroup.forEach(result::addAll);
+        if (!groups.isEmpty() && successfulGroupQueries.get() == 0) {
             throw new BusinessException(502, "Failed to query consumer connections from all groups");
         }
         return result;

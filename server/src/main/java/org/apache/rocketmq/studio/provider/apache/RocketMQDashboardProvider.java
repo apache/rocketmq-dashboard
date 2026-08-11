@@ -21,6 +21,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
@@ -28,8 +29,8 @@ import org.apache.rocketmq.remoting.protocol.body.KVTable;
 import org.apache.rocketmq.remoting.protocol.body.SubscriptionGroupWrapper;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
+import org.apache.rocketmq.studio.common.util.ParallelOps;
 import org.apache.rocketmq.remoting.protocol.route.QueueData;
-import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
@@ -158,30 +159,36 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                 totalTopics = (int) topics.stream()
                         .filter(t -> !isSystemTopic(t))
                         .count();
-                // For each non-system topic, determine its cluster via route data
-                for (String topicName : topics) {
-                    if (isSystemTopic(topicName)) {
-                        continue;
-                    }
+                // For each non-system topic, determine its cluster via route data.
+                // N+1: the per-topic route calls used to run serially; fan them out with a
+                // bounded executor and tolerate per-topic failures.
+                List<String> nonSystemTopics = topics.stream()
+                        .filter(topic -> !isSystemTopic(topic))
+                        .toList();
+                ParallelOps.map(nonSystemTopics, topic -> {
                     try {
-                        TopicRouteData route = admin.examineTopicRouteInfo(topicName);
-                        if (route != null && route.getQueueDatas() != null) {
-                            for (QueueData qd : route.getQueueDatas()) {
-                                BrokerData bd = brokerAddrTable.get(qd.getBrokerName());
-                                if (bd != null && bd.getBrokerAddrs() != null) {
-                                    String addr = bd.getBrokerAddrs().get(0L);
-                                    String cluster = brokerAddrToCluster.get(addr);
-                                    if (cluster != null) {
-                                        topicsByCluster.merge(cluster, 1, Integer::sum);
+                        return admin.examineTopicRouteInfo(topic);
+                    } catch (Exception ignored) {
+                        return null; // Skip topics whose route data is unavailable
+                    }
+                })
+                        .stream()
+                        .filter(Objects::nonNull)
+                        .forEach(route -> {
+                            if (route.getQueueDatas() != null) {
+                                for (QueueData qd : route.getQueueDatas()) {
+                                    BrokerData bd = brokerAddrTable.get(qd.getBrokerName());
+                                    if (bd != null && bd.getBrokerAddrs() != null) {
+                                        String addr = bd.getBrokerAddrs().get(0L);
+                                        String cluster = brokerAddrToCluster.get(addr);
+                                        if (cluster != null) {
+                                            topicsByCluster.merge(cluster, 1, Integer::sum);
+                                        }
+                                        break; // one queue is enough to determine the cluster
                                     }
-                                    break; // one queue is enough to determine the cluster
                                 }
                             }
-                        }
-                    } catch (Exception ignored) {
-                        // Skip topics whose route data is unavailable
-                    }
-                }
+                        });
             } catch (Exception e) {
                 log.warn("Failed to fetch topic list: {}", e.getMessage());
             }

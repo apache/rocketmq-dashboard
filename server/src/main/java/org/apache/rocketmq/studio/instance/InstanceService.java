@@ -26,6 +26,7 @@ import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.ParallelOps;
 import org.apache.rocketmq.studio.provider.CloudInstanceDetailVO;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
@@ -62,7 +63,12 @@ public class InstanceService {
         } else {
             instances = instanceRepository.findAll();
         }
-        instances.forEach(this::fillCounts);
+        // N+1: per-instance vendor count calls used to run serially; fan them out with a
+        // bounded executor (fillCounts tolerates per-instance failures).
+        ParallelOps.map(instances, instance -> {
+            fillCounts(instance);
+            return instance;
+        });
         return instances;
     }
 

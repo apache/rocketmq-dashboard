@@ -34,6 +34,7 @@ import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.util.SystemGroupFilter;
+import org.apache.rocketmq.studio.common.util.ParallelOps;
 import org.apache.rocketmq.studio.common.util.SystemTopicFilter;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
@@ -288,50 +289,53 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 }
             }
 
-            List<TopicConsumerVO> consumers = new ArrayList<>();
-            for (String group : subscribingGroups) {
-                try {
-                    ConsumeStats stats = admin.examineConsumeStats(group, name);
-                    long diffTotal = 0;
-                    double consumeTps = 0;
-                    if (stats != null && stats.getOffsetTable() != null) {
-                        for (Map.Entry<MessageQueue, OffsetWrapper> entry : stats.getOffsetTable().entrySet()) {
-                            OffsetWrapper ow = entry.getValue();
-                            diffTotal += resolveDiff(ow.getBrokerOffset(), ow.getConsumerOffset());
-                        }
-                        consumeTps = stats.getConsumeTps();
-                    }
+            // N+1: each group used to trigger two serial admin calls (stats + connection);
+            // fan them out with a bounded executor, keeping the per-group fallback VO.
+            List<TopicConsumerVO> consumers = ParallelOps.map(
+                    new ArrayList<>(subscribingGroups),
+                    group -> {
+                        try {
+                            ConsumeStats stats = admin.examineConsumeStats(group, name);
+                            long diffTotal = 0;
+                            double consumeTps = 0;
+                            if (stats != null && stats.getOffsetTable() != null) {
+                                for (Map.Entry<MessageQueue, OffsetWrapper> entry : stats.getOffsetTable().entrySet()) {
+                                    OffsetWrapper ow = entry.getValue();
+                                    diffTotal += resolveDiff(ow.getBrokerOffset(), ow.getConsumerOffset());
+                                }
+                                consumeTps = stats.getConsumeTps();
+                            }
 
-                    ConsumeType consumeType = ConsumeType.CLUSTERING;
-                    String messageModel = "CLUSTERING";
-                    try {
-                        ConsumerConnection conn = admin.examineConsumerConnectionInfo(group);
-                        if (conn != null && conn.getMessageModel() != null) {
-                            messageModel = conn.getMessageModel().name();
-                            consumeType = parseConsumeType(messageModel);
-                        }
-                    } catch (Exception ignored) {
-                        // group may be offline
-                    }
+                            ConsumeType consumeType = ConsumeType.CLUSTERING;
+                            String messageModel = "CLUSTERING";
+                            try {
+                                ConsumerConnection conn = admin.examineConsumerConnectionInfo(group);
+                                if (conn != null && conn.getMessageModel() != null) {
+                                    messageModel = conn.getMessageModel().name();
+                                    consumeType = parseConsumeType(messageModel);
+                                }
+                            } catch (Exception ignored) {
+                                // group may be offline
+                            }
 
-                    consumers.add(TopicConsumerVO.builder()
-                            .group(group)
-                            .consumeType(consumeType)
-                            .messageModel(messageModel)
-                            .consumeTps(consumeTps)
-                            .diffTotal(diffTotal)
-                            .build());
-                } catch (Exception ignored) {
-                    // stats unavailable for this group, still list it below without numbers
-                    consumers.add(TopicConsumerVO.builder()
-                            .group(group)
-                            .consumeType(ConsumeType.CLUSTERING)
-                            .messageModel("CLUSTERING")
-                            .consumeTps(0)
-                            .diffTotal(0)
-                            .build());
-                }
-            }
+                            return TopicConsumerVO.builder()
+                                    .group(group)
+                                    .consumeType(consumeType)
+                                    .messageModel(messageModel)
+                                    .consumeTps(consumeTps)
+                                    .diffTotal(diffTotal)
+                                    .build();
+                        } catch (Exception ignored) {
+                            // stats unavailable for this group, still list it below without numbers
+                            return TopicConsumerVO.builder()
+                                    .group(group)
+                                    .consumeType(ConsumeType.CLUSTERING)
+                                    .messageModel("CLUSTERING")
+                                    .consumeTps(0)
+                                    .diffTotal(0)
+                                    .build();
+                        }
+                    });
             consumers.sort((a, b) -> a.getGroup().compareToIgnoreCase(b.getGroup()));
             return consumers;
         } catch (Exception e) {

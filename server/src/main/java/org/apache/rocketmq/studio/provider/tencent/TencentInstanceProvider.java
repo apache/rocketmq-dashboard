@@ -41,6 +41,7 @@ import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.springframework.stereotype.Component;
+import org.apache.rocketmq.studio.common.util.ParallelOps;
 import org.springframework.util.StringUtils;
 import lombok.RequiredArgsConstructor;
 
@@ -111,15 +112,24 @@ public class TencentInstanceProvider implements InstanceProvider {
                 }
                 TopicVO topic = toTopic(item, instanceId);
                 if (matchesType(type, topic) && matchesSearch(search, topic)) {
-                    if (enrichTimes) {
-                        enrichTopicTimes(context, topic);
-                    }
                     topics.add(topic);
                 }
             }
             if (data.length < PAGE_SIZE) {
                 break;
             }
+        }
+        // N+1: the per-topic DescribeTopic calls used to run serially; fan them out with a
+        // bounded executor. enrichTopicTimes tolerates per-topic failures.
+        if (enrichTimes && !topics.isEmpty()) {
+            ParallelOps.map(topics, topic -> {
+                try {
+                    enrichTopicTimes(context, topic);
+                } catch (Exception ignored) {
+                    // keep the topic without timestamps
+                }
+                return topic;
+            });
         }
         return topics;
     }
