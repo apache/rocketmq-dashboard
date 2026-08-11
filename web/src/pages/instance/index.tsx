@@ -436,8 +436,7 @@ const InstancePage = () => {
       key: 'consumerGroupCount',
       width: 80,
       align: 'center' as const,
-      sorter: (a, b, sortOrder) =>
-        compareResourceCounts(a, b, 'consumerGroupCount', sortOrder),
+      sorter: (a, b, sortOrder) => compareResourceCounts(a, b, 'consumerGroupCount', sortOrder),
       render: (count: number, record: Instance) =>
         record.resourceCountsAvailable === false ? '不可用' : count,
     },
@@ -555,7 +554,7 @@ const InstancePage = () => {
       </Flex>
 
       {/* Table */}
-      <Card bodyStyle={{ padding: 0 }}>
+      <Card styles={{ body: { padding: 0 } }}>
         <Table
           columns={columns}
           dataSource={sortedInstances}
