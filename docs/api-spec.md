@@ -114,10 +114,13 @@
 | 71 | GET | `/api/ai/tools` | 可用工具列表 |
 | 72 | POST | `/api/ai/tools/:name/execute` | 执行只读 AI 工具 |
 | 73 | POST | `/api/metrics/query` | 查询监控指标数据 |
-| 74 | GET | `/api/metrics/grafana/dashboards` | Grafana 看板列表 |
-| 75 | GET | `/api/metrics/grafana/dashboards/:uid` | Grafana 看板 JSON 模型 |
-| 76 | GET | `/api/metrics/grafana/dashboards/:uid/export` | 导出单个 Grafana 看板 JSON |
-| 77 | GET | `/api/metrics/grafana/dashboards/export` | 打包导出全部 Grafana 看板 |
+| 74 | GET | `/api/acl/cluster-config` | 集群 ACL 配置概要（存储级） |
+| 75 | POST | `/api/acl/plain-access-config` | 创建/更新 Plain Access 账号 |
+| 76 | GET | `/api/acl/users/:id/credentials` | 查看单个用户明文凭证 |
+| 77 | GET | `/api/metrics/grafana/dashboards` | Grafana 看板列表 |
+| 78 | GET | `/api/metrics/grafana/dashboards/:uid` | Grafana 看板 JSON 模型 |
+| 79 | GET | `/api/metrics/grafana/dashboards/:uid/export` | 导出单个 Grafana 看板 JSON |
+| 80 | GET | `/api/metrics/grafana/dashboards/export` | 打包导出全部 Grafana 看板 |
 
 ## 通用响应格式
 
@@ -1149,6 +1152,69 @@ POST /api/acl/users/delete
 | `id` | `string` | 是 | 用户 ID |
 
 **Response `data`:** `null`
+
+### 7.8 获取集群 ACL 配置概要
+
+```
+GET /api/acl/cluster-config?clusterId={clusterId}
+```
+
+**该接口返回 Dashboard 存储（`rmq_acl_user` / `rmq_acl_rule`）的存储级概要，不是对 Broker 运行时状态的实时查询。** `clusterId` 用于圈定概要范围：账号的集群绑定为空视为全局生效，否则仅当其集群列表包含 `clusterId` 时纳入。因此：
+
+- `aclVersion` 表示存储所管理的账号模型（当前固定为 `ACL 2.0`），不反映 Broker 实际开启的 ACL 版本；
+- `aclEnabled` 表示该集群是否存在已配置的账号，不等于 Broker 端鉴权开关；
+- `globalWhiteRemoteAddresses` 当前存储未建模，固定返回空数组；
+- `accounts` 中每个账号的 `secretKey` 均为脱敏值，明文仅通过 7.10 的显式凭证接口获取。
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `clusterId` | `string` | 是 | 集群 ID，用于圈定账号范围 |
+
+**Response `data`:** `AclClusterConfig`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `clusterId` | `string` | 请求的集群 ID（回显） |
+| `aclEnabled` | `boolean` | 存储中该集群是否存在已配置账号 |
+| `aclVersion` | `string` | 存储管理的账号模型版本 |
+| `globalWhiteRemoteAddresses` | `string[]` | 全局 IP 白名单（当前固定为空） |
+| `accounts` | `PlainAccessConfig[]` | 账号列表，`secretKey` 为脱敏值 |
+| `accountCount` | `number` | 账号数量 |
+
+### 7.9 创建/更新 Plain Access 账号
+
+```
+POST /api/acl/plain-access-config
+```
+
+以 `accessKey` 为账号标识执行 upsert：账号身份写入 `rmq_acl_user`，资源权限以先删后插方式整体替换写入 `rmq_acl_rule`（每条资源权限生成唯一规则 ID `plain-{accessKey}-t-{index}` / `plain-{accessKey}-g-{index}`），两步在同一事务内完成，中途失败会整体回滚。
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `accessKey` | `string` | 是 | 账号 AccessKey（更新时不可变更） |
+| `secretKey` | `string` | 条件 | 新建账号必填；更新时留空表示保留原密钥 |
+| `whiteRemoteAddress` | `string` | 否 | IP 白名单，持久化存储，空表示不限制 |
+| `admin` | `boolean` | 否 | 是否管理员 |
+| `defaultTopicPerm` | `string` | 否 | 默认 Topic 权限 |
+| `defaultGroupPerm` | `string` | 否 | 默认 Group 权限 |
+| `topicPerms` | `string[]` | 否 | 逐 Topic 权限，格式 `resource=action` |
+| `groupPerms` | `string[]` | 否 | 逐 Group 权限，格式 `resource=action` |
+
+**Response `data`:** `PlainAccessConfig`。`secretKey` 仅在本次显式提交时回显，保留原密钥时返回 `null`。
+
+### 7.10 查看单个用户明文凭证
+
+```
+GET /api/acl/users/:id/credentials
+```
+
+返回单个用户的明文 AccessKey / SecretKey（存储为 base64，读取时解码）。明文凭证只通过该显式端点提供；用户列表与集群 ACL 概要均只返回脱敏值。
+
+**Response `data`:** `AclUser`（`accessKey` / `secretKey` 为明文）
 
 ---
 

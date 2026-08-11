@@ -17,15 +17,19 @@
 package org.apache.rocketmq.studio.instance.acl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.persistence.entity.RmqAclRule;
 import org.apache.rocketmq.studio.persistence.entity.RmqAclUser;
 import org.apache.rocketmq.studio.persistence.mapper.RmqAclRuleMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqAclUserMapper;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import lombok.RequiredArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -111,6 +115,196 @@ public class MybatisPlusAclRepository implements AclRepository {
         return userMapper.deleteById(id) > 0;
     }
 
+    /**
+     * Summarizes the ACL accounts provisioned in the dashboard store for a cluster. This is a
+     * store-level view, not a live broker query: accounts are read from {@code rmq_acl_user} /
+     * {@code rmq_acl_rule} and scoped to the cluster — an account belongs to the cluster when its
+     * cluster binding is empty (globally provisioned) or explicitly lists the cluster id.
+     */
+    @Override
+    public AclClusterConfigVO examineBrokerClusterAclConfig(String clusterId) {
+        List<PlainAccessConfigVO> accounts = findUsers().stream()
+                .filter(user -> appliesToCluster(user.getClusters(), clusterId))
+                .map(this::toPlainAccessConfig)
+                .collect(Collectors.toList());
+        return AclClusterConfigVO.builder()
+                .clusterId(clusterId)
+                .aclEnabled(!accounts.isEmpty())
+                .aclVersion("ACL 2.0")
+                .globalWhiteRemoteAddresses(List.of())
+                .accounts(accounts)
+                .accountCount(accounts.size())
+                .build();
+    }
+
+    private static boolean appliesToCluster(List<String> clusters, String clusterId) {
+        return clusters == null || clusters.isEmpty() || clusters.contains(clusterId);
+    }
+
+    /**
+     * Upserts the account identity and replaces its per-resource permissions atomically, so a
+     * failure midway cannot leave the account with a partially replaced rule set.
+     */
+    @Override
+    @Transactional
+    public PlainAccessConfigVO createAndUpdatePlainAccessConfig(PlainAccessConfigVO config) {
+        RmqAclUser existing = userMapper.selectOne(
+                new QueryWrapper<RmqAclUser>().eq("access_key", config.getAccessKey()));
+        boolean secretProvided = StringUtils.hasText(config.getSecretKey());
+        if (!secretProvided && existing == null) {
+            throw new BusinessException(400, "secretKey is required for a new plain access account");
+        }
+        RmqAclUser entity = new RmqAclUser();
+        if (existing != null) {
+            entity.setId(existing.getId());
+            entity.setCreatedAt(existing.getCreatedAt());
+        } else {
+            entity.setId("plain-" + config.getAccessKey());
+            entity.setCreatedAt(LocalDateTime.now());
+        }
+        entity.setUsername(config.getAccessKey());
+        entity.setAccessKey(config.getAccessKey());
+        if (secretProvided) {
+            entity.setSecretKey(CredentialUtils.encodeBase64(config.getSecretKey()));
+        } else {
+            // Blank secret on an existing account keeps the stored secret unchanged.
+            entity.setSecretKey(existing.getSecretKey());
+        }
+        entity.setAdmin(config.isAdmin());
+        entity.setClusters(null);
+        entity.setWhiteRemoteAddress(normalizeWhiteRemoteAddress(config.getWhiteRemoteAddress()));
+        entity.setUpdatedAt(LocalDateTime.now());
+        if (existing != null) {
+            userMapper.updateById(entity);
+        } else {
+            userMapper.insert(entity);
+        }
+
+        upsertPlainAccessRules(config);
+
+        return PlainAccessConfigVO.builder()
+                .accessKey(config.getAccessKey())
+                // The secret is echoed only when it was just provided; otherwise it stays
+                // hidden (read-back views always mask it).
+                .secretKey(secretProvided ? config.getSecretKey() : null)
+                .whiteRemoteAddress(entity.getWhiteRemoteAddress())
+                .admin(config.isAdmin())
+                .defaultTopicPerm(config.getDefaultTopicPerm())
+                .defaultGroupPerm(config.getDefaultGroupPerm())
+                .topicPerms(config.getTopicPerms() == null ? null : new ArrayList<>(config.getTopicPerms()))
+                .groupPerms(config.getGroupPerms() == null ? null : new ArrayList<>(config.getGroupPerms()))
+                .createdAt(entity.getCreatedAt())
+                .build();
+    }
+
+    private static String normalizeWhiteRemoteAddress(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private void upsertPlainAccessRules(PlainAccessConfigVO config) {
+        ruleMapper.delete(new QueryWrapper<RmqAclRule>()
+                .eq("principal", config.getAccessKey())
+                .eq("acl_version", "2.0")
+                .likeRight("id", "plain-" + config.getAccessKey() + "-"));
+        List<RmqAclRule> rules = new ArrayList<>();
+        if (config.getDefaultTopicPerm() != null) {
+            rules.add(plainRule(config.getAccessKey(), "*", "Cluster", config.getDefaultTopicPerm(), "dt"));
+        }
+        if (config.getDefaultGroupPerm() != null) {
+            rules.add(plainRule(config.getAccessKey(), "*", "Cluster", config.getDefaultGroupPerm(), "dg"));
+        }
+        if (config.getTopicPerms() != null) {
+            int index = 0;
+            for (String entry : config.getTopicPerms()) {
+                String[] parts = splitPerm(entry);
+                if (parts != null) {
+                    rules.add(plainRule(config.getAccessKey(), parts[0], "Topic", parts[1], "t-" + index));
+                    index++;
+                }
+            }
+        }
+        if (config.getGroupPerms() != null) {
+            int index = 0;
+            for (String entry : config.getGroupPerms()) {
+                String[] parts = splitPerm(entry);
+                if (parts != null) {
+                    rules.add(plainRule(config.getAccessKey(), parts[0], "Group", parts[1], "g-" + index));
+                    index++;
+                }
+            }
+        }
+        for (RmqAclRule rule : rules) {
+            ruleMapper.insert(rule);
+        }
+    }
+
+    private RmqAclRule plainRule(String principal, String resource, String resourceType,
+                                 String actions, String idSuffix) {
+        RmqAclRule rule = new RmqAclRule();
+        rule.setId("plain-" + principal + "-" + idSuffix);
+        rule.setPrincipal(principal);
+        rule.setResource(resource);
+        rule.setResourceType(resourceType);
+        rule.setResourcePattern("LITERAL");
+        rule.setActions(actions);
+        rule.setDecision("ALLOW");
+        rule.setScope("*");
+        rule.setAclVersion("2.0");
+        rule.setCreatedAt(LocalDateTime.now());
+        rule.setUpdatedAt(LocalDateTime.now());
+        return rule;
+    }
+
+    private PlainAccessConfigVO toPlainAccessConfig(AclUserVO user) {
+        List<AclRuleVO> userRules = findRules(null, user.getAccessKey());
+        List<String> topicPerms = new ArrayList<>();
+        List<String> groupPerms = new ArrayList<>();
+        String defaultTopicPerm = null;
+        String defaultGroupPerm = null;
+        for (AclRuleVO rule : userRules) {
+            String actions = rule.getActions() == null ? "" : String.join(",", rule.getActions());
+            if ("Topic".equals(rule.getResourceType())) {
+                topicPerms.add(rule.getResource() + "=" + actions);
+            } else if ("Group".equals(rule.getResourceType())) {
+                groupPerms.add(rule.getResource() + "=" + actions);
+            } else if ("Cluster".equals(rule.getResourceType()) && "*".equals(rule.getResource())) {
+                if (rule.getId() != null && rule.getId().endsWith("-dt")) {
+                    defaultTopicPerm = actions;
+                } else if (rule.getId() != null && rule.getId().endsWith("-dg")) {
+                    defaultGroupPerm = actions;
+                }
+            }
+        }
+        return PlainAccessConfigVO.builder()
+                .accessKey(user.getAccessKey())
+                // Read-back views never expose the plaintext secret; only the explicit
+                // per-user credentials endpoint does.
+                .secretKey(CredentialUtils.mask(user.getSecretKey()))
+                .whiteRemoteAddress(user.getWhiteRemoteAddress())
+                .admin(user.isAdmin())
+                .defaultTopicPerm(defaultTopicPerm)
+                .defaultGroupPerm(defaultGroupPerm)
+                .topicPerms(topicPerms)
+                .groupPerms(groupPerms)
+                .createdAt(user.getCreatedAt())
+                .build();
+    }
+
+    private static String[] splitPerm(String entry) {
+        if (entry == null) {
+            return null;
+        }
+        int idx = entry.lastIndexOf('=');
+        if (idx <= 0) {
+            return null;
+        }
+        return new String[]{entry.substring(0, idx).trim(), entry.substring(idx + 1).trim()};
+    }
+
     // ── Mapping ────────────────────────────────────────────────────
 
     private static AclRuleVO toRuleVO(RmqAclRule entity) {
@@ -152,6 +346,7 @@ public class MybatisPlusAclRepository implements AclRepository {
                 .secretKey(CredentialUtils.decodeBase64(entity.getSecretKey()))
                 .admin(Boolean.TRUE.equals(entity.getAdmin()))
                 .clusters(splitCsv(entity.getClusters()))
+                .whiteRemoteAddress(entity.getWhiteRemoteAddress())
                 .createdAt(entity.getCreatedAt())
                 .build();
     }

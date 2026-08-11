@@ -36,7 +36,15 @@ import {
   Alert,
   message,
 } from 'antd';
-import { Plus, MagnifyingGlass, ShieldCheck, User, Eye, EyeSlash } from '@phosphor-icons/react';
+import {
+  Plus,
+  MagnifyingGlass,
+  ShieldCheck,
+  User,
+  Eye,
+  EyeSlash,
+  Key,
+} from '@phosphor-icons/react';
 import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import PageHeader from '../../components/PageHeader';
@@ -44,15 +52,17 @@ import { useLang } from '../../i18n/LangContext';
 import {
   createAclRule,
   createAclUser,
+  createAndUpdatePlainAccessConfig,
   deleteAclRule,
   deleteAclUser,
   getAclUserCredentials,
+  examineBrokerClusterAclConfig,
   listAclRules,
   listAclUsers,
   updateAclRule,
   updateAclUser,
 } from '../../services/aclService';
-import type { AclRule, AclUser } from '../../api/acl';
+import type { AclRule, AclUser, AclClusterConfig, PlainAccessConfig } from '../../api/acl';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 
 type AclRuleFormValues = Pick<
@@ -125,6 +135,17 @@ const AclPage = () => {
   const [credentialsByUser, setCredentialsByUser] = useState<
     Record<string, { accessKey: string; secretKey: string }>
   >({});
+
+  // Cluster ACL config (examineBrokerClusterAclConfig)
+  const [clusterConfig, setClusterConfig] = useState<AclClusterConfig | null>(null);
+  const [configLoading, setConfigLoading] = useState(false);
+  const [clusterIdInput, setClusterIdInput] = useState('DefaultCluster');
+
+  // Plain access config modal
+  const [plainModalOpen, setPlainModalOpen] = useState(false);
+  const [editingPlain, setEditingPlain] = useState<PlainAccessConfig | null>(null);
+  const [plainSubmitting, setPlainSubmitting] = useState(false);
+  const [plainForm] = Form.useForm();
 
   useEffect(() => {
     let mounted = true;
@@ -350,6 +371,87 @@ const AclPage = () => {
       message.success(checked ? t('acl.adminSet') : t('acl.adminRemoved'));
     } catch {
       message.error(t('common.operationFailed'));
+    }
+  };
+
+  /* ─── Cluster ACL config helpers ─── */
+  const handleExamine = async () => {
+    const clusterId = clusterIdInput.trim();
+    if (!clusterId) {
+      message.warning(t('acl.inputRequired', { field: t('acl.examineCluster') }));
+      return;
+    }
+    try {
+      setConfigLoading(true);
+      const config = await examineBrokerClusterAclConfig(clusterId);
+      setClusterConfig(config);
+      message.success(t('acl.configExamined'));
+    } catch {
+      message.error(t('common.operationFailed'));
+    } finally {
+      setConfigLoading(false);
+    }
+  };
+
+  const openAddPlainModal = () => {
+    setEditingPlain(null);
+    plainForm.resetFields();
+    plainForm.setFieldsValue({
+      admin: false,
+      defaultTopicPerm: 'DENY',
+      defaultGroupPerm: 'DENY',
+      topicPerms: [],
+      groupPerms: [],
+    });
+    setPlainModalOpen(true);
+  };
+
+  const openEditPlainModal = (account: PlainAccessConfig) => {
+    setEditingPlain(account);
+    plainForm.setFieldsValue({
+      accessKey: account.accessKey,
+      // Read-back views only carry a masked secret; leave the field blank so the
+      // stored secret is kept unless the user explicitly types a new one.
+      secretKey: '',
+      whiteRemoteAddress: account.whiteRemoteAddress ?? '',
+      admin: account.admin,
+      defaultTopicPerm: account.defaultTopicPerm ?? 'DENY',
+      defaultGroupPerm: account.defaultGroupPerm ?? 'DENY',
+      topicPerms: [...(account.topicPerms ?? [])],
+      groupPerms: [...(account.groupPerms ?? [])],
+    });
+    setPlainModalOpen(true);
+  };
+
+  const handlePlainSubmit = async () => {
+    try {
+      const values = (await plainForm.validateFields()) as Partial<PlainAccessConfig>;
+      setPlainSubmitting(true);
+      const saved = await createAndUpdatePlainAccessConfig({
+        ...values,
+        accessKey: (values.accessKey ?? '').trim(),
+      });
+      const normalized: PlainAccessConfig = {
+        ...saved,
+        accessKey: saved.accessKey,
+        topicPerms: saved.topicPerms ?? [],
+        groupPerms: saved.groupPerms ?? [],
+      };
+      setClusterConfig((prev) => {
+        if (!prev) return prev;
+        const exists = prev.accounts.some((a) => a.accessKey === normalized.accessKey);
+        const accounts = exists
+          ? prev.accounts.map((a) => (a.accessKey === normalized.accessKey ? normalized : a))
+          : [normalized, ...prev.accounts];
+        return { ...prev, accounts, accountCount: accounts.length };
+      });
+      message.success(t('acl.plainAccessSaved'));
+      setPlainModalOpen(false);
+    } catch (error) {
+      if (isFormValidationError(error)) return;
+      message.error(t('common.operationFailed'));
+    } finally {
+      setPlainSubmitting(false);
     }
   };
 
@@ -639,6 +741,99 @@ const AclPage = () => {
     },
   ];
 
+  const permTagColor: Record<string, string> = {
+    ALL: 'purple',
+    PUB: 'blue',
+    SUB: 'green',
+    DENY: 'red',
+  };
+
+  const plainColumns: ColumnsType<PlainAccessConfig> = [
+    {
+      title: t('acl.accessKey'),
+      dataIndex: 'accessKey',
+      key: 'accessKey',
+      width: 220,
+      render: (text: string) => (
+        <Space size={6}>
+          <Key size={14} color="#8c8c8c" weight="fill" />
+          <span style={{ fontFamily: 'monospace', fontWeight: 500 }}>{text}</span>
+        </Space>
+      ),
+    },
+    {
+      title: t('acl.admin'),
+      dataIndex: 'admin',
+      key: 'admin',
+      width: 90,
+      render: (val: boolean) =>
+        val ? (
+          <Tag color="purple">{t('acl.adminBadge')}</Tag>
+        ) : (
+          <span style={{ color: '#8c8c8c' }}>-</span>
+        ),
+    },
+    {
+      title: t('acl.defaultTopicPerm'),
+      dataIndex: 'defaultTopicPerm',
+      key: 'defaultTopicPerm',
+      width: 140,
+      render: (val: string) => <Tag color={permTagColor[val] ?? 'default'}>{val}</Tag>,
+    },
+    {
+      title: t('acl.defaultGroupPerm'),
+      dataIndex: 'defaultGroupPerm',
+      key: 'defaultGroupPerm',
+      width: 140,
+      render: (val: string) => <Tag color={permTagColor[val] ?? 'default'}>{val}</Tag>,
+    },
+    {
+      title: t('acl.topicPerms'),
+      dataIndex: 'topicPerms',
+      key: 'topicPerms',
+      width: 220,
+      render: (perms: string[]) => (
+        <Space size={4} wrap>
+          {(perms ?? []).map((p) => (
+            <Tag key={p} color="blue" style={{ fontSize: 11 }}>
+              {p}
+            </Tag>
+          ))}
+        </Space>
+      ),
+    },
+    {
+      title: t('acl.groupPerms'),
+      dataIndex: 'groupPerms',
+      key: 'groupPerms',
+      width: 200,
+      render: (perms: string[]) => (
+        <Space size={4} wrap>
+          {(perms ?? []).map((p) => (
+            <Tag key={p} color="green" style={{ fontSize: 11 }}>
+              {p}
+            </Tag>
+          ))}
+        </Space>
+      ),
+    },
+    {
+      title: t('common.actions'),
+      key: 'plainActions',
+      width: 100,
+      render: (_: unknown, record: PlainAccessConfig) => (
+        <Button
+          size="small"
+          icon={<EditOutlined />}
+          style={{ borderColor: '#1677ff', color: '#1677ff' }}
+          onClick={() => openEditPlainModal(record)}
+        >
+          {t('common.edit')}
+        </Button>
+      ),
+    },
+  ];
+
   /* ═══════════════════════════════════════════
      Render
      ═══════════════════════════════════════════ */
@@ -784,6 +979,101 @@ const AclPage = () => {
                 </div>
               ),
             },
+            {
+              key: 'clusterConfig',
+              label: (
+                <Space size={6}>
+                  <ShieldCheck size={15} />
+                  <span>{t('acl.clusterConfigTab')}</span>
+                </Space>
+              ),
+              children: (
+                <div>
+                  {/* Examine cluster ACL config */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      gap: 12,
+                      padding: '16px 0',
+                      flexWrap: 'wrap',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Input
+                      placeholder={t('acl.examineClusterPlaceholder')}
+                      prefix={<ShieldCheck size={14} color="#9CA3AF" />}
+                      value={clusterIdInput}
+                      onChange={(e) => setClusterIdInput(e.target.value)}
+                      onPressEnter={handleExamine}
+                      style={{ width: 260 }}
+                    />
+                    <Button
+                      type="primary"
+                      icon={<ShieldCheck size={14} weight="bold" />}
+                      loading={configLoading}
+                      onClick={handleExamine}
+                    >
+                      {t('acl.examine')}
+                    </Button>
+                    <Button icon={<Plus size={14} weight="bold" />} onClick={openAddPlainModal}>
+                      {t('acl.addPlainAccess')}
+                    </Button>
+                  </div>
+
+                  {clusterConfig && (
+                    <div style={{ paddingBottom: 16 }}>
+                      {/* Summary cards */}
+                      <div
+                        style={{
+                          display: 'flex',
+                          gap: 12,
+                          flexWrap: 'wrap',
+                          marginBottom: 16,
+                        }}
+                      >
+                        <Tag
+                          color={clusterConfig.aclEnabled ? 'green' : 'default'}
+                          style={{ fontSize: 13, padding: '4px 10px' }}
+                        >
+                          {clusterConfig.aclEnabled ? t('acl.aclEnabled') : t('acl.aclDisabled')}
+                        </Tag>
+                        <Tag color="geekblue" style={{ fontSize: 13, padding: '4px 10px' }}>
+                          {clusterConfig.aclVersion}
+                        </Tag>
+                        <Tag style={{ fontSize: 13, padding: '4px 10px' }}>
+                          {t('acl.accountCount')}: {clusterConfig.accountCount}
+                        </Tag>
+                      </div>
+
+                      <div style={{ marginBottom: 12, color: '#8c8c8c', fontSize: 13 }}>
+                        {t('acl.globalWhitelist')}:{' '}
+                        {clusterConfig.globalWhiteRemoteAddresses.length === 0 ? (
+                          <span>-</span>
+                        ) : (
+                          clusterConfig.globalWhiteRemoteAddresses.map((ip) => (
+                            <Tag key={ip} color="cyan" style={{ fontSize: 11 }}>
+                              {ip}
+                            </Tag>
+                          ))
+                        )}
+                      </div>
+
+                      {/* Accounts table */}
+                      <Table<PlainAccessConfig>
+                        columns={plainColumns}
+                        dataSource={clusterConfig.accounts}
+                        rowKey="accessKey"
+                        pagination={false}
+                        size="small"
+                        locale={{
+                          emptyText: t('acl.noAccounts'),
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              ),
+            },
           ]}
         />
       </Card>
@@ -920,6 +1210,97 @@ const AclPage = () => {
 
           <Form.Item name="clusters" label={t('acl.associatedClusters')}>
             <Select mode="tags" tokenSeparators={[',']} allowClear />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* ─── Add/Edit Plain Access Config Modal ─── */}
+      <Modal
+        title={editingPlain ? t('acl.editPlainAccess') : t('acl.addPlainAccess')}
+        open={plainModalOpen}
+        onCancel={() => setPlainModalOpen(false)}
+        onOk={handlePlainSubmit}
+        okText={editingPlain ? t('acl.save') : t('acl.add')}
+        cancelText={t('common.cancel')}
+        confirmLoading={plainSubmitting}
+        width={560}
+        destroyOnClose
+      >
+        <Form form={plainForm} layout="vertical" style={{ marginTop: 16 }}>
+          <Form.Item
+            name="accessKey"
+            label={t('acl.accessKey')}
+            rules={[
+              { required: true, message: t('acl.inputRequired', { field: t('acl.accessKey') }) },
+            ]}
+          >
+            <Input
+              placeholder="e.g. user-order-service"
+              disabled={!!editingPlain}
+              prefix={<Key size={14} color="#9CA3AF" />}
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="secretKey"
+            label={t('acl.secretKey')}
+            rules={[
+              {
+                required: !editingPlain,
+                message: t('acl.inputRequired', { field: t('acl.secretKey') }),
+              },
+            ]}
+          >
+            <Input.Password
+              placeholder={editingPlain ? t('acl.secretKeepUnchanged') : t('acl.secretCreateHint')}
+              prefix={<Key size={14} color="#9CA3AF" />}
+            />
+          </Form.Item>
+
+          <Form.Item name="whiteRemoteAddress" label={t('acl.whiteRemoteAddress')}>
+            <Input placeholder="e.g. 10.0.1.0/24" />
+          </Form.Item>
+
+          <Form.Item name="admin" label={t('acl.admin')} valuePropName="checked">
+            <Switch checkedChildren={t('common.yes')} unCheckedChildren={t('common.no')} />
+          </Form.Item>
+
+          <Form.Item name="defaultTopicPerm" label={t('acl.defaultTopicPerm')}>
+            <Select
+              options={[
+                { value: 'DENY', label: 'DENY' },
+                { value: 'PUB', label: 'PUB' },
+                { value: 'SUB', label: 'SUB' },
+                { value: 'ALL', label: 'ALL' },
+              ]}
+            />
+          </Form.Item>
+
+          <Form.Item name="defaultGroupPerm" label={t('acl.defaultGroupPerm')}>
+            <Select
+              options={[
+                { value: 'DENY', label: 'DENY' },
+                { value: 'PUB', label: 'PUB' },
+                { value: 'SUB', label: 'SUB' },
+                { value: 'ALL', label: 'ALL' },
+              ]}
+            />
+          </Form.Item>
+
+          <Form.Item name="topicPerms" label={t('acl.topicPerms')}>
+            <Select
+              mode="tags"
+              tokenSeparators={[',']}
+              placeholder={t('acl.topicPermsPlaceholder')}
+            />
+          </Form.Item>
+
+          <Form.Item name="groupPerms" label={t('acl.groupPerms')}>
+            <Select
+              mode="tags"
+              tokenSeparators={[',']}
+              placeholder={t('acl.groupPermsPlaceholder')}
+            />
           </Form.Item>
         </Form>
       </Modal>

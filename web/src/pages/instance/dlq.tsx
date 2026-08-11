@@ -122,13 +122,16 @@ const DLQPage = () => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [retryError, setRetryError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    // The retry dialog owns a group name that is meaningful only for the
-    // currently selected instance. Clear all instance-scoped state before
-    // starting the next request so an old group cannot be retried on a new
-    // instance while that request is in flight.
+  // The retry dialog owns a group name that is meaningful only for the
+  // currently selected instance. Clear all instance-scoped state before
+  // starting the next request so an old group cannot be retried on a new
+  // instance while that request is in flight. Done as render-time state
+  // adjustment (rather than inside the load effect) so state is reset
+  // before the next fetch without cascading effect renders.
+  const scopeKey = `${selectedInstanceId}:${refreshKey}`;
+  const [prevScopeKey, setPrevScopeKey] = useState(scopeKey);
+  if (prevScopeKey !== scopeKey) {
+    setPrevScopeKey(scopeKey);
     setGroups([]);
     setSelectedGroupNames([]);
     setDetailGroup(null);
@@ -137,6 +140,11 @@ const DLQPage = () => {
     setRetryTargetTopic('');
     setRetryError(null);
     setLoadError(null);
+    setLoading(true);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
 
     if (!selectedInstanceId) {
       void Promise.resolve().then(() => {
@@ -148,7 +156,6 @@ const DLQPage = () => {
       };
     }
 
-    setLoading(true);
     void listDLQGroups(selectedInstanceId)
       .then((nextGroups) => {
         if (!cancelled) {

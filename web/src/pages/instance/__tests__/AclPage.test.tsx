@@ -28,8 +28,10 @@ import AclPage from '../acl';
 vi.mock('../../../services/aclService', () => ({
   createAclRule: vi.fn(),
   createAclUser: vi.fn(),
+  createAndUpdatePlainAccessConfig: vi.fn(),
   deleteAclRule: vi.fn(),
   deleteAclUser: vi.fn(),
+  examineBrokerClusterAclConfig: vi.fn(),
   listAclRules: vi.fn(),
   listAclUsers: vi.fn(),
   updateAclRule: vi.fn(),
@@ -304,5 +306,73 @@ describe('ACL page', () => {
       admin: true,
       clusters: ['cluster-b'],
     });
+  });
+
+  it('examines the broker cluster ACL config', async () => {
+    const user = userEvent.setup();
+    vi.mocked(aclService.examineBrokerClusterAclConfig).mockResolvedValue({
+      clusterId: 'DefaultCluster',
+      aclEnabled: true,
+      aclVersion: 'ACL 2.0',
+      globalWhiteRemoteAddresses: ['10.0.0.0/8'],
+      accounts: [
+        {
+          accessKey: 'rocketmq-admin',
+          admin: true,
+          defaultTopicPerm: 'ALL',
+          defaultGroupPerm: 'ALL',
+          topicPerms: ['*=ALL'],
+          groupPerms: ['*=ALL'],
+        },
+        {
+          accessKey: 'user-order-service',
+          admin: false,
+          defaultTopicPerm: 'PUB',
+          defaultGroupPerm: 'SUB',
+          topicPerms: ['order-*=PUB'],
+          groupPerms: ['cg-order-*=SUB'],
+        },
+      ],
+      accountCount: 2,
+    });
+    renderWithProviders(<AclPage />);
+
+    await user.click(await screen.findByText('集群 ACL 配置'));
+    const clusterInput = screen.getByPlaceholderText('请输入集群 ID');
+    await user.type(clusterInput, 'DefaultCluster');
+    await user.click(await screen.findByRole('button', { name: /检\s*查\s*配\s*置/ }));
+
+    expect(await screen.findByText('rocketmq-admin')).toBeInTheDocument();
+    expect(screen.getByText('ACL 2.0')).toBeInTheDocument();
+    expect(aclService.examineBrokerClusterAclConfig).toHaveBeenCalledTimes(1);
+  });
+
+  it('creates a plain access account', async () => {
+    const user = userEvent.setup();
+    vi.mocked(aclService.createAndUpdatePlainAccessConfig).mockResolvedValue({
+      accessKey: 'new-svc',
+      admin: false,
+      defaultTopicPerm: 'DENY',
+      defaultGroupPerm: 'DENY',
+      topicPerms: [],
+      groupPerms: [],
+      createdAt: '2026-08-01T00:00:00Z',
+    });
+    renderWithProviders(<AclPage />);
+
+    await user.click(await screen.findByText('集群 ACL 配置'));
+    await user.click(screen.getByRole('button', { name: /新增/ }));
+    const dialog = await screen.findByRole('dialog');
+
+    await user.type(within(dialog).getByPlaceholderText('e.g. user-order-service'), 'new-svc');
+    await user.type(within(dialog).getByPlaceholderText('请输入密钥'), 'new-secret');
+    await user.click(within(dialog).getByRole('button', { name: /添\s*加/ }));
+
+    await waitFor(() =>
+      expect(aclService.createAndUpdatePlainAccessConfig).toHaveBeenCalledTimes(1),
+    );
+    expect(aclService.createAndUpdatePlainAccessConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ accessKey: 'new-svc' }),
+    );
   });
 });

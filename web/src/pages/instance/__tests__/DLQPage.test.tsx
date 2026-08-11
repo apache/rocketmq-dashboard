@@ -263,7 +263,14 @@ describe('DLQ page', () => {
     await user.click(screen.getByRole('button', { name: '确认重投' }));
 
     await waitFor(() => expect(messageService.listDLQGroups).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(within(orderRow).getByRole('checkbox')).toBeDisabled());
+    await waitFor(() => {
+      // The refresh clears the group list before repopulating it, remounting
+      // the row; look the row up freshly instead of reusing the pre-refresh
+      // reference, which may point at a detached node.
+      const refreshedRow = screen.getAllByText('cg-order')[0]?.closest('tr');
+      if (!refreshedRow) throw new Error('DLQ group row not found after refresh');
+      expect(within(refreshedRow).getByRole('checkbox')).toBeDisabled();
+    });
     expect(screen.getByRole('button', { name: /批量导出/ })).toBeDisabled();
   });
 

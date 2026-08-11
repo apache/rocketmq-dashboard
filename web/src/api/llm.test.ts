@@ -128,13 +128,11 @@ describe('LLM API', () => {
       { id: 'gpt-4o', name: 'GPT-4o' },
       { id: 'gpt-4-turbo', name: 'GPT-4 Turbo' },
     ];
-    mock
-      .onGet('/llm/models')
-      .reply(200, {
-        code: 200,
-        message: 'success',
-        data: { status: 0, data: models, source: 'provider' },
-      });
+    mock.onGet('/llm/models').reply(200, {
+      code: 200,
+      message: 'success',
+      data: { status: 0, data: models, source: 'provider' },
+    });
 
     const result = await getLlmModels();
     expect(result.status).toBe(0);

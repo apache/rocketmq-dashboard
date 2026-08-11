@@ -40,4 +40,19 @@ public interface AclRepository {
     AclUserVO saveUser(AclUserVO user);
 
     boolean deleteUser(String id);
+
+    /**
+     * Examines the effective ACL configuration of a broker cluster: the enabled
+     * flag, ACL version, the global IP whitelist and the list of plain access
+     * accounts provisioned for the cluster. Reads from the MySQL-backed
+     * {@code rmq_acl_user} / {@code rmq_acl_rule} tables.
+     */
+    AclClusterConfigVO examineBrokerClusterAclConfig(String clusterId);
+
+    /**
+     * Creates a new plain access account or updates an existing one (keyed by
+     * access key). Persists the account identity to {@code rmq_acl_user} and the
+     * per-resource permissions to {@code rmq_acl_rule}.
+     */
+    PlainAccessConfigVO createAndUpdatePlainAccessConfig(PlainAccessConfigVO config);
 }

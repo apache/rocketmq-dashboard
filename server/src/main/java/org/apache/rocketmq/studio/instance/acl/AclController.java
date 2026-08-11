@@ -87,6 +87,24 @@ public class AclController {
         return Result.ok();
     }
 
+    /**
+     * Returns a store-level summary of the ACL accounts provisioned for the given cluster. The
+     * {@code clusterId} scopes which stored accounts are included; this endpoint does not query
+     * live broker state, so {@code aclVersion} / {@code aclEnabled} describe the dashboard store,
+     * not broker runtime configuration.
+     */
+    @GetMapping("/cluster-config")
+    public Result<AclClusterConfigVO> examineBrokerClusterAclConfig(
+            @RequestParam(required = false) String clusterId) {
+        return Result.ok(aclService.examineBrokerClusterAclConfig(clusterId));
+    }
+
+    @PostMapping("/plain-access-config")
+    public Result<PlainAccessConfigVO> createAndUpdatePlainAccessConfig(
+            @Valid @RequestBody UpsertPlainAccessConfigDTO request) {
+        return Result.ok(aclService.createAndUpdatePlainAccessConfig(request.toPlainAccessConfigVO()));
+    }
+
     private <T> T requireRequest(T request, String message) {
         if (request == null) {
             throw new BusinessException(400, message);

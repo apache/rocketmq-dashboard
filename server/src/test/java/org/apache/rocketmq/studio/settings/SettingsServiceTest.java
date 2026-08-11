@@ -80,6 +80,7 @@ class SettingsServiceTest {
         };
     }
 
+
     @AfterEach
     void tearDown() {
         prometheusServer.stop(0);

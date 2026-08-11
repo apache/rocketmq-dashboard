@@ -16,7 +16,18 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, App, Button, Input, Popconfirm, Select, Space, Switch, Tooltip, Typography } from 'antd';
+import {
+  Alert,
+  App,
+  Button,
+  Input,
+  Popconfirm,
+  Select,
+  Space,
+  Switch,
+  Tooltip,
+  Typography,
+} from 'antd';
 import { FloppyDisk, Plus, Trash } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
 import useAuthStore from '../../stores/authStore';

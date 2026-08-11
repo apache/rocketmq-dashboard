@@ -173,6 +173,7 @@ CREATE TABLE IF NOT EXISTS rmq_acl_user (
   secret_key VARCHAR(512) NOT NULL COMMENT 'base64 编码的密码',
   admin TINYINT(1) DEFAULT 0,
   clusters VARCHAR(1024) COMMENT '逗号分隔的集群/实例 id',
+  white_remote_address VARCHAR(255) COMMENT 'plain access 账号 IP 白名单，空表示不限制',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uk_username (username)

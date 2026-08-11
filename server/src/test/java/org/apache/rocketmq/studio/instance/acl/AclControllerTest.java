@@ -344,4 +344,85 @@ class AclControllerTest {
 
         verifyNoInteractions(aclService);
     }
+
+    // ── Plain access / cluster config inspection (PR-7) ──────────────
+
+    @Test
+    void examineClusterConfigShouldRequireClusterId() throws Exception {
+        when(aclService.examineBrokerClusterAclConfig(any()))
+                .thenThrow(new BusinessException(400, "clusterId is required"));
+
+        mockMvc.perform(get("/api/acl/cluster-config"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("clusterId is required"));
+    }
+
+    @Test
+    void examineClusterConfigShouldReturnConfig() throws Exception {
+        AclClusterConfigVO config = AclClusterConfigVO.builder()
+                .clusterId("cluster-a")
+                .aclEnabled(true)
+                .aclVersion("ACL 2.0")
+                .globalWhiteRemoteAddresses(List.of("10.0.0.0/8"))
+                .accounts(List.of(PlainAccessConfigVO.builder()
+                        .accessKey("rocketmq-admin")
+                        .admin(true)
+                        .build()))
+                .accountCount(1)
+                .build();
+        when(aclService.examineBrokerClusterAclConfig("cluster-a")).thenReturn(config);
+
+        mockMvc.perform(get("/api/acl/cluster-config").param("clusterId", "cluster-a"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.clusterId").value("cluster-a"))
+                .andExpect(jsonPath("$.data.aclEnabled").value(true))
+                .andExpect(jsonPath("$.data.aclVersion").value("ACL 2.0"))
+                .andExpect(jsonPath("$.data.accountCount").value(1))
+                .andExpect(jsonPath("$.data.accounts[0].accessKey").value("rocketmq-admin"));
+
+        verify(aclService).examineBrokerClusterAclConfig("cluster-a");
+    }
+
+    @Test
+    void createUpdatePlainAccessConfigShouldRequireAccessKey() throws Exception {
+        mockMvc.perform(post("/api/acl/plain-access-config")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("admin", false))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("accessKey is required"));
+
+        verifyNoInteractions(aclService);
+    }
+
+    @Test
+    void createUpdatePlainAccessConfigShouldReturnSavedConfig() throws Exception {
+        PlainAccessConfigVO saved = PlainAccessConfigVO.builder()
+                .accessKey("svc-x")
+                .admin(false)
+                .defaultTopicPerm("PUB")
+                .topicPerms(List.of("order-*=PUB"))
+                .build();
+        when(aclService.createAndUpdatePlainAccessConfig(any(PlainAccessConfigVO.class))).thenReturn(saved);
+
+        mockMvc.perform(post("/api/acl/plain-access-config")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "accessKey", "svc-x", "admin", false,
+                                "defaultTopicPerm", "PUB", "topicPerms", List.of("order-*=PUB")))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.accessKey").value("svc-x"))
+                .andExpect(jsonPath("$.data.admin").value(false))
+                .andExpect(jsonPath("$.data.topicPerms[0]").value("order-*=PUB"));
+
+        ArgumentCaptor<PlainAccessConfigVO> captor = ArgumentCaptor.forClass(PlainAccessConfigVO.class);
+        verify(aclService).createAndUpdatePlainAccessConfig(captor.capture());
+        PlainAccessConfigVO request = captor.getValue();
+        assertThat(request.getAccessKey()).isEqualTo("svc-x");
+        assertThat(request.getDefaultTopicPerm()).isEqualTo("PUB");
+        assertThat(request.getTopicPerms()).containsExactly("order-*=PUB");
+    }
 }

@@ -34,10 +34,27 @@ CREATE TABLE IF NOT EXISTS rmq_acl_user (
   secret_key VARCHAR(512) NOT NULL COMMENT 'base64 编码的密码',
   admin TINYINT(1) DEFAULT 0,
   clusters VARCHAR(1024) COMMENT '逗号分隔的集群/实例 id',
+  white_remote_address VARCHAR(255) COMMENT 'plain access 账号 IP 白名单，空表示不限制',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uk_username (username)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 2.1 已建表的数据卷补列（幂等）：rmq_acl_user.white_remote_address
+SET @schema_name := DATABASE();
+SET @white_remote_address_column_exists := (
+    SELECT COUNT(*)
+    FROM information_schema.columns
+    WHERE table_schema = @schema_name
+      AND table_name = 'rmq_acl_user'
+      AND column_name = 'white_remote_address'
+);
+SET @white_remote_address_sql := IF(@white_remote_address_column_exists = 0,
+    "ALTER TABLE rmq_acl_user ADD COLUMN white_remote_address VARCHAR(255) COMMENT 'plain access 账号 IP 白名单，空表示不限制' AFTER clusters",
+    'SELECT 1');
+PREPARE white_remote_address_statement FROM @white_remote_address_sql;
+EXECUTE white_remote_address_statement;
+DEALLOCATE PREPARE white_remote_address_statement;
 
 -- 3. 规则种子（与 schema.sql 一致）
 INSERT IGNORE INTO rmq_acl_rule

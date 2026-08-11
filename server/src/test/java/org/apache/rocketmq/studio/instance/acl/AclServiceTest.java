@@ -508,6 +508,57 @@ class AclServiceTest {
         assertThat(storedUser.isAdmin()).isTrue();
     }
 
+    // ── Plain access / cluster config inspection (PR-7) ──────────────
+
+    @Test
+    void examineBrokerClusterAclConfigShouldRequireClusterId() {
+        assertThatThrownBy(() -> aclService.examineBrokerClusterAclConfig(null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        verify(aclRepository, never()).examineBrokerClusterAclConfig(any());
+    }
+
+    @Test
+    void examineBrokerClusterAclConfigShouldDelegateToRepository() {
+        AclClusterConfigVO expected = AclClusterConfigVO.builder()
+                .clusterId("c1")
+                .aclEnabled(true)
+                .aclVersion("ACL 2.0")
+                .accounts(List.of())
+                .accountCount(0)
+                .build();
+        when(aclRepository.examineBrokerClusterAclConfig("c1")).thenReturn(expected);
+
+        AclClusterConfigVO result = aclService.examineBrokerClusterAclConfig("c1");
+
+        assertThat(result).isSameAs(expected);
+        verify(aclRepository).examineBrokerClusterAclConfig("c1");
+    }
+
+    @Test
+    void createAndUpdatePlainAccessConfigShouldRequireAccessKey() {
+        PlainAccessConfigVO blank = PlainAccessConfigVO.builder().accessKey(" ").build();
+        assertThatThrownBy(() -> aclService.createAndUpdatePlainAccessConfig(blank))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        verify(aclRepository, never()).createAndUpdatePlainAccessConfig(any());
+    }
+
+    @Test
+    void createAndUpdatePlainAccessConfigShouldDelegateToRepository() {
+        PlainAccessConfigVO config = PlainAccessConfigVO.builder()
+                .accessKey("ak-1")
+                .secretKey("sk-1")
+                .admin(false)
+                .build();
+        when(aclRepository.createAndUpdatePlainAccessConfig(config)).thenReturn(config);
+
+        PlainAccessConfigVO result = aclService.createAndUpdatePlainAccessConfig(config);
+
+        assertThat(result).isSameAs(config);
+        verify(aclRepository).createAndUpdatePlainAccessConfig(config);
+    }
+
     private String mask(String credential) {
         return credential.substring(0, 4) + "****" + credential.substring(credential.length() - 4);
     }

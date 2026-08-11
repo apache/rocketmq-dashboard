@@ -119,7 +119,6 @@ const ClientsPage = () => {
   useEffect(() => {
     let cancelled = false;
 
-    setLoading(true);
     void listInstances()
       .then((nextInstances) => {
         if (cancelled) return;
@@ -377,7 +376,13 @@ const ClientsPage = () => {
           message={loadError}
           style={{ marginBottom: 16 }}
           action={
-            <Button size="small" onClick={() => setInstanceLoadKey((key) => key + 1)}>
+            <Button
+              size="small"
+              onClick={() => {
+                setLoading(true);
+                setInstanceLoadKey((key) => key + 1);
+              }}
+            >
               重试
             </Button>
           }

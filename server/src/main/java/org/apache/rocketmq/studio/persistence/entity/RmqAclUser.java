@@ -40,6 +40,8 @@ public class RmqAclUser {
 
     private String clusters;
 
+    private String whiteRemoteAddress;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
