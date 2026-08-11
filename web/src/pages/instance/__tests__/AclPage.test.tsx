@@ -16,7 +16,7 @@
  */
 
 import { App } from 'antd';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { MemoryRouter } from 'react-router-dom';
@@ -211,6 +211,21 @@ describe('ACL page', () => {
     });
     expect(payload).not.toHaveProperty('accessKey');
     expect(payload).not.toHaveProperty('secretKey');
+  });
+
+  it('ignores duplicate admin toggles while an update is pending', async () => {
+    vi.mocked(aclService.updateAclUser).mockImplementation(() => new Promise(() => {}));
+    const user = userEvent.setup();
+    renderWithProviders(<AclPage />);
+
+    await user.click(await screen.findByText('用户管理'));
+    expect(await screen.findByText('remote-admin')).toBeInTheDocument();
+    const adminSwitch = screen.getByRole('switch');
+    fireEvent.click(adminSwitch);
+    fireEvent.click(adminSwitch);
+
+    await waitFor(() => expect(aclService.updateAclUser).toHaveBeenCalledTimes(1));
+    expect(adminSwitch).toBeDisabled();
   });
 
   it('does not submit masked credentials when toggling admin', async () => {

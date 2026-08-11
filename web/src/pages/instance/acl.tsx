@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Table,
   Card,
@@ -132,6 +132,8 @@ const AclPage = () => {
 
   // Secret key reveal
   const [revealedKeys, setRevealedKeys] = useState<Set<string>>(new Set());
+  const [adminUpdatingIds, setAdminUpdatingIds] = useState<Set<string>>(() => new Set());
+  const adminUpdateInFlightRef = useRef<Set<string>>(new Set());
   const [credentialsByUser, setCredentialsByUser] = useState<
     Record<string, { accessKey: string; secretKey: string }>
   >({});
@@ -359,6 +361,9 @@ const AclPage = () => {
   };
 
   const handleToggleAdmin = async (user: AclUser, checked: boolean) => {
+    if (adminUpdateInFlightRef.current.has(user.id)) return;
+    adminUpdateInFlightRef.current.add(user.id);
+    setAdminUpdatingIds((current) => new Set(current).add(user.id));
     try {
       const updated = await updateAclUser({
         id: user.id,
@@ -371,6 +376,13 @@ const AclPage = () => {
       message.success(checked ? t('acl.adminSet') : t('acl.adminRemoved'));
     } catch {
       message.error(t('common.operationFailed'));
+    } finally {
+      adminUpdateInFlightRef.current.delete(user.id);
+      setAdminUpdatingIds((current) => {
+        const next = new Set(current);
+        next.delete(user.id);
+        return next;
+      });
     }
   };
 
@@ -676,6 +688,8 @@ const AclPage = () => {
         <Switch
           checked={val}
           size="small"
+          loading={adminUpdatingIds.has(record.id)}
+          disabled={adminUpdatingIds.has(record.id)}
           onChange={(checked) => handleToggleAdmin(record, checked)}
         />
       ),
