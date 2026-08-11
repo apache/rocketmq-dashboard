@@ -30,6 +30,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -313,6 +314,30 @@ class LlmConfigServiceTest {
         ArgumentCaptor<LlmConfigVO> captor = ArgumentCaptor.forClass(LlmConfigVO.class);
         verify(llmClient).listModels(captor.capture());
         assertThat(captor.getValue().getApiKey()).isEqualTo("sk-test");
+    }
+
+    @Test
+    void testConfigShouldPreferEnvironmentTokenOverStoredApiKey() {
+        LlmProperties properties = new LlmProperties();
+        properties.setToken("env-token");
+        LlmConfigService service = new LlmConfigService(settingsService, llmClient, properties);
+        when(llmClient.supports(org.mockito.ArgumentMatchers.any())).thenReturn(true);
+        when(llmClient.listModels(org.mockito.ArgumentMatchers.any())).thenReturn(List.of(
+                new LlmModelItemVO("gpt-4o", "GPT-4o")));
+
+        LlmOperationResultVO result = service.testConfig(LlmConfigVO.builder()
+                .provider("openai")
+                .apiBase("https://api.openai.com/v1")
+                .model("gpt-4o")
+                .maxTokens(2048)
+                .temperature(1.0)
+                .build());
+
+        assertThat(result.getStatus()).isZero();
+        ArgumentCaptor<LlmConfigVO> captor = ArgumentCaptor.forClass(LlmConfigVO.class);
+        verify(llmClient).listModels(captor.capture());
+        assertThat(captor.getValue().getApiKey()).isEqualTo("env-token");
+        verify(settingsService, never()).getGeneralSettings();
     }
 
     @Test

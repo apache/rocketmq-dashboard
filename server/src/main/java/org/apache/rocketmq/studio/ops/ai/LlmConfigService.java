@@ -257,13 +257,13 @@ public class LlmConfigService {
             return normalized;
         }
         if (!StringUtils.hasText(normalized.getApiKey())) {
-            // Fall back to the key stored in settings only; the env-injected token
-            // must never be persisted into the settings table.
-            String storedKey = settingsService.getGeneralSettings().getApiKey();
-            if (!!StringUtils.hasText(envToken())) {
-                storedKey = defaultString(storedKey, envToken());
+            // The env-injected token is authoritative at runtime but must never be persisted;
+            // otherwise fall back to the key stored in settings.
+            String effectiveKey = envToken();
+            if (!StringUtils.hasText(effectiveKey)) {
+                effectiveKey = settingsService.getGeneralSettings().getApiKey();
             }
-            normalized.setApiKey(defaultString(storedKey, ""));
+            normalized.setApiKey(defaultString(effectiveKey, ""));
         }
         return normalized;
     }
