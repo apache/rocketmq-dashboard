@@ -76,9 +76,10 @@ beforeEach(() => {
   vi.mocked(exportGrafanaDashboard).mockResolvedValue(
     new Blob([JSON.stringify(dashboardModel, null, 2)], { type: 'application/json' }),
   );
-  vi.mocked(exportGrafanaDashboards).mockResolvedValue(
-    new Blob(['zip-content'], { type: 'application/zip' }),
-  );
+  vi.mocked(exportGrafanaDashboards).mockResolvedValue({
+    blob: new Blob(['zip-content'], { type: 'application/zip' }),
+    filename: 'rocketmq-grafana-dashboards.zip',
+  });
 });
 
 afterEach(() => {
@@ -205,8 +206,12 @@ describe('GrafanaDashboardList', () => {
     clickSpy.mockRestore();
   });
 
-  it('exports all dashboards and downloads the archive', async () => {
+  it('exports all dashboards with the filename supplied by the service', async () => {
     const user = userEvent.setup();
+    vi.mocked(exportGrafanaDashboards).mockResolvedValueOnce({
+      blob: new Blob(['json-content'], { type: 'application/json' }),
+      filename: 'rocketmq-grafana-dashboards.json',
+    });
     const createObjectURL = vi.fn().mockReturnValue('blob:grafana-all');
     const revokeObjectURL = vi.fn();
     let downloadedFilename = '';
@@ -230,7 +235,7 @@ describe('GrafanaDashboardList', () => {
     await user.click(screen.getByRole('button', { name: /Export all|导出全部/ }));
 
     await waitFor(() => expect(exportGrafanaDashboards).toHaveBeenCalledTimes(1));
-    expect(downloadedFilename).toBe('rocketmq-grafana-dashboards.zip');
+    expect(downloadedFilename).toBe('rocketmq-grafana-dashboards.json');
     expect(createObjectURL).toHaveBeenCalledTimes(1);
     expect(clickSpy).toHaveBeenCalled();
 
