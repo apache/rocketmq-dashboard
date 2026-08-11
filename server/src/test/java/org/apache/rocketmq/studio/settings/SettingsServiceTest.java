@@ -475,11 +475,18 @@ class SettingsServiceTest {
                 .url("http://100.100.100.200/latest/meta-data/")
                 .type("Prometheus")
                 .build();
+        DataSourceTestDTO ipv4MappedRequest = DataSourceTestDTO.builder()
+                .url("http://[::ffff:100.100.100.200]/latest/meta-data/")
+                .type("Prometheus")
+                .build();
 
         DataSourceTestResultVO result = settingsService.testDataSource(request);
+        DataSourceTestResultVO ipv4MappedResult = settingsService.testDataSource(ipv4MappedRequest);
 
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.getMessage()).contains("local or private address");
+        assertThat(ipv4MappedResult.isSuccess()).isFalse();
+        assertThat(ipv4MappedResult.getMessage()).contains("local or private address");
     }
 
     @Test
