@@ -364,6 +364,7 @@ describe('Consumer page', () => {
     await waitFor(() =>
       expect(consumerService.listConsumerGroups).toHaveBeenCalledWith({ instanceId: 'instance-b' }),
     );
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     await user.click(await screen.findByRole('button', { name: /详情/ }));
 
     await waitFor(() =>
