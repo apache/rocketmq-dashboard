@@ -383,7 +383,7 @@ const ProxyPage: React.FC = () => {
         {/* Node Table */}
         <Card
           title={t('proxy.nodes')}
-          bordered={false}
+          variant="borderless"
           style={{ borderRadius: 8, marginBottom: 24 }}
         >
           <Table columns={columns} dataSource={proxyNodes} pagination={false} size="middle" />
