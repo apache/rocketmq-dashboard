@@ -32,4 +32,15 @@ class LiteTopicQuotaTest {
 
         assertThat(quota.isQuotaExceeded()).isTrue();
     }
+
+    @Test
+    void quotaCalculationsShouldHandleUnsetCurrentCounts() {
+        LiteTopicQuota quota = new LiteTopicQuota();
+        quota.setMaxTopicCount(10);
+        quota.setMaxSessionCount(5);
+
+        assertThat(quota.getUsageRate()).isZero();
+        assertThat(quota.getSessionUsageRate()).isZero();
+        assertThat(quota.getRemainingQuota()).isEqualTo(10);
+    }
 }
