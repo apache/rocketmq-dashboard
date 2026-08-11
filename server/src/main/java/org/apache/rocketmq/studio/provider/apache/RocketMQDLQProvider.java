@@ -142,6 +142,9 @@ public class RocketMQDLQProvider implements DLQProvider {
 
         long end = endTime != null ? endTime : System.currentTimeMillis();
         long begin = startTime != null ? startTime : end - ONE_HOUR_MILLIS;
+        if (begin >= end) {
+            throw new BusinessException(400, "DLQ resend start time must be before end time");
+        }
 
         DeadLetterScanResult scanResult;
         try {
