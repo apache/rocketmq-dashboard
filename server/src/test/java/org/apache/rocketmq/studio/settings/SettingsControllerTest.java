@@ -27,6 +27,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
@@ -190,9 +191,10 @@ class SettingsControllerTest {
     @Test
     void createDataSourceShouldReturnCreatedSource() throws Exception {
         DataSourceVO input = DataSourceVO.builder().name("New DS").type("Prometheus")
-                .url("new-host:9876").build();
+                .url("new-host:9876").instanceIds(List.of("instance-a", "instance-b")).build();
         DataSourceVO created = DataSourceVO.builder().key("ds-new").name("New DS").type("Prometheus")
-                .url("new-host:9876").status("connected").build();
+                .url("new-host:9876").status("connected")
+                .instanceIds(List.of("instance-a", "instance-b")).build();
         when(settingsService.createDataSource(any(DataSourceVO.class))).thenReturn(created);
 
         mockMvc.perform(post("/api/settings/datasources/create")
@@ -203,6 +205,9 @@ class SettingsControllerTest {
                 .andExpect(jsonPath("$.data.key", is("ds-new")))
                 .andExpect(jsonPath("$.data.name", is("New DS")))
                 .andExpect(jsonPath("$.data.status", is("connected")));
+
+        verify(settingsService).createDataSource(argThat(dataSource ->
+                List.of("instance-a", "instance-b").equals(dataSource.getInstanceIds())));
     }
 
     @Test
@@ -274,7 +279,7 @@ class SettingsControllerTest {
     @Test
     void updateDataSourceShouldReturnUpdatedSource() throws Exception {
         DataSourceVO input = DataSourceVO.builder().key("ds-1").name("Updated DS").type("Prometheus")
-                .url("updated:9876").build();
+                .url("updated:9876").instanceIds(List.of("instance-b")).build();
         when(settingsService.updateDataSource(any(DataSourceVO.class))).thenReturn(input);
 
         mockMvc.perform(post("/api/settings/datasources/update")
@@ -284,6 +289,9 @@ class SettingsControllerTest {
                 .andExpect(jsonPath("$.code", is(200)))
                 .andExpect(jsonPath("$.data.key", is("ds-1")))
                 .andExpect(jsonPath("$.data.name", is("Updated DS")));
+
+        verify(settingsService).updateDataSource(argThat(dataSource ->
+                List.of("instance-b").equals(dataSource.getInstanceIds())));
     }
 
     @Test

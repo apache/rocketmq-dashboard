@@ -20,6 +20,8 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import lombok.Data;
 
+import java.util.List;
+
 @Data
 public class DataSourceDTO {
 
@@ -42,6 +44,8 @@ public class DataSourceDTO {
             message = "Unsupported metrics data source authentication")
     private String auth;
 
+    private List<String> instanceIds;
+
     public DataSourceVO toDataSourceVO() {
         return DataSourceVO.builder()
                 .key(key)
@@ -49,6 +53,7 @@ public class DataSourceDTO {
                 .type(type.trim())
                 .url(url)
                 .auth(auth == null ? null : auth.trim())
+                .instanceIds(instanceIds)
                 .build();
     }
 }
