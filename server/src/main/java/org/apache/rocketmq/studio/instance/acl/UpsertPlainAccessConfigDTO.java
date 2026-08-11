@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.instance.acl;
 
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
+import lombok.ToString;
 
 import java.util.List;
 
@@ -30,8 +31,10 @@ import java.util.List;
 public class UpsertPlainAccessConfigDTO {
 
     @NotBlank(message = "accessKey is required")
+    @ToString.Exclude
     private String accessKey;
 
+    @ToString.Exclude
     private String secretKey;
 
     private String whiteRemoteAddress;
