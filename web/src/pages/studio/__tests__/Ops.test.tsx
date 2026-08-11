@@ -17,12 +17,17 @@
 
 import type { ReactElement } from 'react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
 import OpsPage from '../Ops';
-import { deleteNameSvrAddr, queryOpsHomePage, updateIsVIPChannel } from '../../../api/ops';
+import {
+  addNameSvrAddr,
+  deleteNameSvrAddr,
+  queryOpsHomePage,
+  updateIsVIPChannel,
+} from '../../../api/ops';
 import useAuthStore from '../../../stores/authStore';
 
 vi.mock('../../../api/ops', () => ({
@@ -56,6 +61,14 @@ const renderWithProviders = (ui: ReactElement) => {
       <LangProvider>{ui}</LangProvider>
     </App>,
   );
+};
+
+const createDeferred = () => {
+  let resolve!: () => void;
+  const promise = new Promise<void>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
 };
 
 describe('OpsPage', () => {
@@ -131,6 +144,44 @@ describe('OpsPage', () => {
 
     expect(await screen.findByPlaceholderText('NamesrvAddr')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /新增|添加/ })).toBeInTheDocument();
+  });
+
+  it('preserves every successful concurrent NameServer addition and newer input', async () => {
+    const firstAdd = createDeferred();
+    const secondAdd = createDeferred();
+    vi.mocked(addNameSvrAddr)
+      .mockReturnValueOnce(firstAdd.promise)
+      .mockReturnValueOnce(secondAdd.promise);
+    const user = userEvent.setup();
+    const { container } = renderWithProviders(<OpsPage />);
+
+    const input = await screen.findByPlaceholderText('NamesrvAddr');
+    const addButton = screen.getByRole('button', { name: /新增|添加/ });
+    await user.type(input, '127.0.0.3:9876');
+    await user.click(addButton);
+    await user.clear(input);
+    await user.type(input, '127.0.0.4:9876');
+    await user.click(addButton);
+    await user.clear(input);
+    await user.type(input, '127.0.0.5:9876');
+
+    await waitFor(() => expect(addNameSvrAddr).toHaveBeenCalledTimes(2));
+    await act(async () => secondAdd.resolve());
+    expect(input).toHaveValue('127.0.0.5:9876');
+    await act(async () => firstAdd.resolve());
+    expect(input).toHaveValue('127.0.0.5:9876');
+
+    fireEvent.mouseDown(container.querySelector('.ant-select-selector') as Element);
+    expect(
+      await screen.findByText('127.0.0.3:9876', {
+        selector: '.ant-select-item-option-content',
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('127.0.0.4:9876', {
+        selector: '.ant-select-item-option-content',
+      }),
+    ).toBeInTheDocument();
   });
 
   it('deletes a non-current NameServer and restores the current selection', async () => {

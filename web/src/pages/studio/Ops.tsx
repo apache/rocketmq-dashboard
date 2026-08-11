@@ -125,10 +125,10 @@ const OpsPage: React.FC = () => {
     }
     try {
       await addNameSvrAddr(addr);
-      if (!namesrvAddrList.includes(addr)) {
-        setNamesrvAddrList([...namesrvAddrList, addr]);
-      }
-      setNewNamesrvAddr('');
+      setNamesrvAddrList((addresses) =>
+        addresses.includes(addr) ? addresses : [...addresses, addr],
+      );
+      setNewNamesrvAddr((current) => (current.trim() === addr ? '' : current));
       message.success(t('common.success'));
     } catch {
       message.error(t('common.failure'));
