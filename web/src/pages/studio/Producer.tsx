@@ -237,7 +237,10 @@ const ProducerPage = () => {
         <h2 style={{ fontSize: 20, fontWeight: 600, margin: 0 }}>{t('producer.title')}</h2>
       </div>
 
-      <Card bordered={false} style={{ borderRadius: 8, boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}>
+      <Card
+        variant="borderless"
+        style={{ borderRadius: 8, boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}
+      >
         <Form form={form} layout="inline" onFinish={onFinish} style={{ marginBottom: 20 }}>
           <Form.Item label="INSTANCE">
             <Select
