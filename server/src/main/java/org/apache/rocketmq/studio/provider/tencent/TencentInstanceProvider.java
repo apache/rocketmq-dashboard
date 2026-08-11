@@ -500,7 +500,10 @@ public class TencentInstanceProvider implements InstanceProvider {
             // been collected. Like the Aliyun provider, the short-page check is the primary signal
             // so we do not rely on TotalCount, which may not be populated for every query.
             int returned = data == null ? 0 : data.length;
-            if (returned == 0 || returned < MESSAGE_LIMIT || total > 0 && result.size() >= total) {
+            // Stop on the last page (returned fewer rows than requested) or once all results have
+            // been collected. Like the Aliyun provider, the short-page check is the primary signal
+            // so we do not rely on TotalCount, which may not be populated for every query.
+            if (isLastPage(returned, total, result.size())) {
                 break;
             }
         }
@@ -675,6 +678,14 @@ public class TencentInstanceProvider implements InstanceProvider {
         } catch (Exception e) {
             return Collections.emptyMap();
         }
+    }
+
+    private static boolean isLastPage(int returned, long total, int collected) {
+        // The last page is one that returned no rows or fewer rows than requested. When the API
+        // reports a TotalCount, also stop once all expected results have been collected.
+        boolean shortPage = returned == 0 || returned < MESSAGE_LIMIT;
+        boolean allCollected = total > 0 && collected >= total;
+        return shortPage || allCollected;
     }
 
     private static long parseTraceTime(String value) {
