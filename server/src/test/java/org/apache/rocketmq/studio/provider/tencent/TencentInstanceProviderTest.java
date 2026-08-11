@@ -44,7 +44,6 @@ import java.util.stream.IntStream;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -186,7 +185,7 @@ class TencentInstanceProviderTest {
         assertThat(consumers.get(0).getGroup()).isEqualTo("GID_0");
         assertThat(consumers.get(100).getGroup()).isEqualTo("GID_100");
         ArgumentCaptor<DescribeTopicRequest> captor = ArgumentCaptor.forClass(DescribeTopicRequest.class);
-        verify(client, times(2)).DescribeTopic(captor.capture());
+        verify(client, org.mockito.Mockito.times(2)).DescribeTopic(captor.capture());
         assertThat(captor.getAllValues())
                 .extracting(DescribeTopicRequest::getOffset)
                 .containsExactly(0L, 100L);
