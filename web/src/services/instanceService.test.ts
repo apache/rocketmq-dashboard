@@ -92,4 +92,32 @@ describe('instanceService mock instances', () => {
 
     await expect(listInstances()).resolves.toEqual(before);
   });
+
+  it('assigns unique IDs when multiple instances are created in the same millisecond', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000);
+    const created = [];
+
+    try {
+      created.push(
+        await createInstance({
+          name: 'same-timestamp-a',
+          type: 'PROXY',
+          endpoint: 'proxy-a:8080',
+        }),
+        await createInstance({
+          name: 'same-timestamp-b',
+          type: 'PROXY',
+          endpoint: 'proxy-b:8080',
+        }),
+      );
+
+      expect(created[0].id).not.toBe(created[1].id);
+      expect(new Set((await listInstances()).map((instance) => instance.id)).size).toBe(
+        (await listInstances()).length,
+      );
+    } finally {
+      now.mockRestore();
+      await Promise.all(created.map((instance) => deleteInstance(instance.id)));
+    }
+  });
 });
