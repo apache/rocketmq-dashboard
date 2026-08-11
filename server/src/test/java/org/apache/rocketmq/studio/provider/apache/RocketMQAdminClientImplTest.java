@@ -64,6 +64,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -373,6 +374,55 @@ class RocketMQAdminClientImplTest {
             SendMessageVO result = adminClient.sendMessage(request);
             // The message was already delivered; an audit failure must not turn this into an error.
             assertThat(result.getMsgId()).isEqualTo("msg-1");
+        }
+    }
+
+    @Test
+    void sendMessageShouldRejectOversizedUtf8BodyBeforeResolvingEndpointOrCreatingProducer() {
+        SendMessageDTO request = new SendMessageDTO();
+        request.setInstanceId("instance-a");
+        request.setTopic("TopicA");
+        request.setBody("\u754c".repeat((4 * 1024 * 1024 / 3) + 1));
+
+        try (MockedConstruction<DefaultMQProducer> mockedProducers =
+                     mockConstruction(DefaultMQProducer.class)) {
+            assertThatThrownBy(() -> adminClient.sendMessage(request))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("exceeds the maximum")
+                    .satisfies(exception -> assertThat(((BusinessException) exception).getCode()).isEqualTo(400));
+
+            assertThat(mockedProducers.constructed()).isEmpty();
+        }
+        verifyNoInteractions(runtimeAdminClientResolver);
+        verify(properties, never()).getNamesrvAddr();
+        verify(auditService).record("SEND_MESSAGE", "TopicA",
+                "Message body size 4194306 exceeds the maximum of 4194304 bytes", "FAILED");
+    }
+
+    @Test
+    void sendMessageShouldAllowBodyAtMaximumSize() throws Exception {
+        when(properties.getNamesrvAddr()).thenReturn("10.0.0.1:9876");
+        try (MockedConstruction<DefaultMQProducer> mockedProducers =
+                     mockConstruction(DefaultMQProducer.class, (producer, context) -> {
+                         doNothing().when(producer).start();
+                         SendResult sendResult = new SendResult();
+                         sendResult.setSendStatus(SendStatus.SEND_OK);
+                         sendResult.setMsgId("msg-1");
+                         sendResult.setOffsetMsgId("offset-1");
+                         when(producer.send(any(Message.class))).thenReturn(sendResult);
+                         doNothing().when(producer).shutdown();
+                     })) {
+            SendMessageDTO request = new SendMessageDTO();
+            request.setTopic("TopicA");
+            request.setBody("x".repeat(4 * 1024 * 1024));
+
+            SendMessageVO result = adminClient.sendMessage(request);
+
+            assertThat(result.getMsgId()).isEqualTo("msg-1");
+            DefaultMQProducer producer = mockedProducers.constructed().getFirst();
+            ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
+            verify(producer).send(messageCaptor.capture());
+            assertThat(messageCaptor.getValue().getBody()).hasSize(4 * 1024 * 1024);
         }
     }
 
