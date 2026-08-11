@@ -16,6 +16,7 @@
  */
 
 import client from './client';
+import { readAuthSession } from '../stores/authStorage';
 
 // ─── Types ──────────────────────────────────────────────────────
 export interface McpTool {
@@ -158,11 +159,12 @@ export async function chatStream(
   signal?: AbortSignal,
   onEnhance?: (prompt: string) => void,
 ) {
+  const token = readAuthSession().token;
   const response = await fetch('/api/ai/chat', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify(data),
     signal,
