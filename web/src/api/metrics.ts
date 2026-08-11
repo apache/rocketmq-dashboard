@@ -115,7 +115,7 @@ export interface DataSourceQuery {
 }
 
 // Runs a PromQL range query against a configured data source (key identifies the
-// persisted source; credentials are optional and fall back to the stored config).
+// persisted source; credentials are supplied per request and are never persisted).
 export async function queryByDataSource(params: DataSourceQuery) {
   const { key, query, instanceId, username, password, bearerToken } = params;
   const res = await client.post<{ data: MetricData }>(

@@ -21,6 +21,9 @@ import {
   Button,
   Empty,
   Flex,
+  Form,
+  Input,
+  Modal,
   Segmented,
   Select,
   Skeleton,
@@ -215,6 +218,25 @@ interface MetricsExplorerProps {
   instanceId?: string;
 }
 
+type DataSourceAuthMode = 'none' | 'basic' | 'bearer';
+
+interface AuthFormValues {
+  username?: string;
+  password?: string;
+  bearerToken?: string;
+}
+
+interface DataSourceCredentials extends AuthFormValues {
+  key: string;
+}
+
+const getDataSourceAuthMode = (auth: string): DataSourceAuthMode => {
+  const normalized = auth.trim().toLowerCase();
+  if (normalized === 'basic' || normalized === 'basic auth') return 'basic';
+  if (normalized === 'bearer' || normalized === 'bearer token') return 'bearer';
+  return 'none';
+};
+
 const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
   const { lang } = useLang();
   const copy =
@@ -230,6 +252,14 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
           noProfiles: '暂无指标模板',
           noSamples: '暂无标量数据',
           defaultDataSource: '默认数据源',
+          authTitle: '数据源认证',
+          authDescription: '凭据仅用于当前数据源，离开该数据源后会被清除。',
+          username: '用户名',
+          password: '密码',
+          token: '令牌',
+          connect: '连接',
+          cancel: '取消',
+          required: '此项为必填项',
         }
       : {
           title: 'Prometheus Metrics',
@@ -242,7 +272,17 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
           noProfiles: 'No metric profiles',
           noSamples: 'No scalar samples',
           defaultDataSource: 'Default source',
+          authTitle: 'Data source authentication',
+          authDescription:
+            'Credentials are used only for this source and cleared when you leave it.',
+          username: 'Username',
+          password: 'Password',
+          token: 'Token',
+          connect: 'Connect',
+          cancel: 'Cancel',
+          required: 'This field is required',
         };
+  const [authForm] = Form.useForm<AuthFormValues>();
   const [profiles, setProfiles] = useState<MetricProfile[]>([]);
   const [profileId, setProfileId] = useState('');
   const [metricId, setMetricId] = useState('');
@@ -255,10 +295,12 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
   const [dataSourceKey, setDataSourceKey] = useState('');
   const [dataSourcesLoading, setDataSourcesLoading] = useState(true);
+  const [pendingDataSource, setPendingDataSource] = useState<DataSource | null>(null);
   const requestId = useRef(0);
   // Keeps the latest data source readable from the stable loadMetrics callback so switching
   // the source uses the new key instead of a stale closure value.
   const dataSourceKeyRef = useRef(dataSourceKey);
+  const dataSourceCredentialsRef = useRef<DataSourceCredentials | null>(null);
 
   const selectedProfile = useMemo(
     () => profiles.find((profile) => profile.id === profileId),
@@ -293,8 +335,22 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
       setQueryLoading(true);
       setQueryError(false);
       try {
-        const result = dataSourceKeyRef.current
-          ? await queryByDataSource({ key: dataSourceKeyRef.current, query, instanceId })
+        const currentDataSourceKey = dataSourceKeyRef.current;
+        const credentials =
+          dataSourceCredentialsRef.current?.key === currentDataSourceKey
+            ? dataSourceCredentialsRef.current
+            : null;
+        const result = currentDataSourceKey
+          ? await queryByDataSource({
+              key: currentDataSourceKey,
+              query,
+              instanceId,
+              ...(credentials?.username !== undefined ? { username: credentials.username } : {}),
+              ...(credentials?.password !== undefined ? { password: credentials.password } : {}),
+              ...(credentials?.bearerToken !== undefined
+                ? { bearerToken: credentials.bearerToken }
+                : {}),
+            })
           : await queryMetrics(query);
         if (currentRequest === requestId.current) setData(result);
       } catch {
@@ -358,11 +414,39 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
     void loadMetrics(selectedMetric, nextRange);
   };
 
-  const handleDataSourceChange = (nextKey: string) => {
+  const activateDataSource = (nextKey: string, credentials?: AuthFormValues) => {
+    dataSourceCredentialsRef.current = credentials ? { key: nextKey, ...credentials } : null;
     dataSourceKeyRef.current = nextKey;
     setDataSourceKey(nextKey);
     setData(null);
     void loadMetrics(selectedMetric, selectedRange);
+  };
+
+  const handleDataSourceChange = (nextKey: string) => {
+    const nextSource = availableDataSources.find((source) => source.key === nextKey);
+    if (nextSource && getDataSourceAuthMode(nextSource.auth) !== 'none') {
+      authForm.resetFields();
+      setPendingDataSource(nextSource);
+      return;
+    }
+    activateDataSource(nextKey);
+  };
+
+  const handleAuthSubmit = (values: AuthFormValues) => {
+    if (!pendingDataSource) return;
+    const authMode = getDataSourceAuthMode(pendingDataSource.auth);
+    const credentials =
+      authMode === 'basic'
+        ? { username: values.username, password: values.password }
+        : { bearerToken: values.bearerToken };
+    activateDataSource(pendingDataSource.key, credentials);
+    setPendingDataSource(null);
+    authForm.resetFields();
+  };
+
+  const handleAuthCancel = () => {
+    setPendingDataSource(null);
+    authForm.resetFields();
   };
 
   useEffect(() => {
@@ -379,6 +463,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
       });
     return () => {
       cancelled = true;
+      dataSourceCredentialsRef.current = null;
     };
   }, []);
 
@@ -390,6 +475,10 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
       }, 0);
     }
   }, [availableDataSources, dataSourceKey]);
+
+  const pendingAuthMode = pendingDataSource
+    ? getDataSourceAuthMode(pendingDataSource.auth)
+    : 'none';
 
   return (
     <section aria-labelledby="metrics-explorer-title" style={{ marginTop: 24 }}>
@@ -410,7 +499,7 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
         <Flex gap={8} wrap="wrap" align="center" style={{ maxWidth: '100%' }}>
           <Select
             aria-label="数据源"
-            value={dataSourceKey || undefined}
+            value={dataSourceKey}
             loading={dataSourcesLoading}
             onChange={handleDataSourceChange}
             options={[
@@ -496,6 +585,50 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
           />
         </>
       ) : null}
+      <Modal
+        title={copy.authTitle}
+        open={pendingDataSource !== null}
+        okText={copy.connect}
+        cancelText={copy.cancel}
+        onOk={() => authForm.submit()}
+        onCancel={handleAuthCancel}
+        afterClose={() => authForm.resetFields()}
+      >
+        <Text type="secondary">{copy.authDescription}</Text>
+        <Form<AuthFormValues>
+          form={authForm}
+          layout="vertical"
+          onFinish={handleAuthSubmit}
+          style={{ marginTop: 16 }}
+        >
+          {pendingAuthMode === 'basic' ? (
+            <>
+              <Form.Item
+                name="username"
+                label={copy.username}
+                rules={[{ required: true, whitespace: true, message: copy.required }]}
+              >
+                <Input autoComplete="username" />
+              </Form.Item>
+              <Form.Item
+                name="password"
+                label={copy.password}
+                rules={[{ required: true, whitespace: true, message: copy.required }]}
+              >
+                <Input.Password autoComplete="current-password" />
+              </Form.Item>
+            </>
+          ) : pendingAuthMode === 'bearer' ? (
+            <Form.Item
+              name="bearerToken"
+              label={copy.token}
+              rules={[{ required: true, whitespace: true, message: copy.required }]}
+            >
+              <Input.Password autoComplete="off" />
+            </Form.Item>
+          ) : null}
+        </Form>
+      </Modal>
     </section>
   );
 };
