@@ -96,6 +96,9 @@ final class AliyunConverters {
         List<CloudInstanceDetailVO.CloudEndpoint> endpoints = new ArrayList<>();
         if (data.getNetworkInfo() != null && data.getNetworkInfo().getEndpoints() != null) {
             for (GetInstanceResponseBody.Endpoints endpoint : data.getNetworkInfo().getEndpoints()) {
+                if (endpoint == null) {
+                    continue;
+                }
                 endpoints.add(new CloudInstanceDetailVO.CloudEndpoint(
                         endpoint.getEndpointType(), endpoint.getEndpointUrl()));
             }
