@@ -211,7 +211,7 @@ final class AliyunConverters {
                 .msgId(data.getMessageId())
                 .topic(data.getTopicName())
                 .tag(data.getMessageTag())
-                .key(data.getMessageKeys() == null ? null : String.join(" ", data.getMessageKeys()))
+                .key(joinMessageKeys(data.getMessageKeys()))
                 .bornHost(data.getBornHost())
                 .storeHost(data.getStoreHost())
                 .storeTime(parseTimeMillis(data.getStoreTime()))
@@ -319,6 +319,10 @@ final class AliyunConverters {
         } catch (CharacterCodingException ignored) {
             return null;
         }
+    }
+
+    private static String joinMessageKeys(List<String> keys) {
+        return keys == null ? null : joinParts(" ", keys.toArray(String[]::new));
     }
 
     private static String joinParts(String separator, String... parts) {
