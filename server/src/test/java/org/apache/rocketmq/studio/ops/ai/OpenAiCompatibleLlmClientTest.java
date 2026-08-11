@@ -153,6 +153,43 @@ class OpenAiCompatibleLlmClientTest {
     }
 
     @Test
+    void streamShouldEnforceTimeoutWhileReadingResponseBody() {
+        OpenAiCompatibleLlmClient timeoutClient = new OpenAiCompatibleLlmClient(
+                objectMapper,
+                HttpClient.newBuilder().connectTimeout(Duration.ofMillis(300)).build(),
+                Duration.ofMillis(300));
+        server.createContext("/v1/chat/completions", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
+            exchange.sendResponseHeaders(200, 0);
+            try {
+                exchange.getResponseBody().write("""
+                        data: {"choices":[{"delta":{"content":"first"}}]}
+
+                        """.getBytes(StandardCharsets.UTF_8));
+                exchange.getResponseBody().flush();
+                Thread.sleep(1_500);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+            } finally {
+                exchange.close();
+            }
+        });
+        List<String> tokens = new ArrayList<>();
+
+        assertThatThrownBy(() -> timeoutClient.stream(
+                config("openai", "sk-test"), "hello", null, tokens::add))
+                .isInstanceOf(LlmGatewayException.class)
+                .hasMessage("LLM provider stream timed out")
+                .satisfies(exception -> {
+                    LlmGatewayException gatewayException = (LlmGatewayException) exception;
+                    assertThat(gatewayException.getStatusCode()).isEqualTo(504);
+                    assertThat(gatewayException.getCode()).isEqualTo("llm.provider.timeout");
+                });
+        assertThat(tokens).containsExactly("first");
+    }
+
+    @Test
     void ollamaShouldAllowMissingApiKeyAndOmitAuthorizationHeader() {
         AtomicReference<String> authorization = new AtomicReference<>();
         server.createContext("/v1/chat/completions", exchange -> {
