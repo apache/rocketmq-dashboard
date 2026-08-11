@@ -73,6 +73,7 @@ const renderPage = () =>
 describe('AiPage tool runner', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     vi.mocked(getLlmConfig).mockResolvedValue({
       provider: 'openai',
       apiBase: 'https://api.openai.com/v1',
@@ -136,14 +137,72 @@ describe('AiPage tool runner', () => {
     expect(within(dialog).getByTestId('tool-result')).toHaveTextContent('"GRPC"');
   });
 
+  it('records successful tool executions in recent history', async () => {
+    const user = userEvent.setup();
+    vi.mocked(executeTool).mockResolvedValue({
+      cluster: 'cluster-a',
+      status: 'READY',
+    });
+    renderPage();
+
+    await user.click(screen.getByRole('button', { name: '工具' }));
+    const dialog = await screen.findByRole('dialog', { name: 'AI 工具' });
+    await waitFor(() => expect(listTools).toHaveBeenCalledWith('cluster-a'));
+    await user.click(within(dialog).getByRole('button', { name: /执\s*行/ }));
+
+    expect(await within(dialog).findByText('最近执行')).toBeInTheDocument();
+    expect(within(dialog).getByText('成功')).toBeInTheDocument();
+
+    const stored = JSON.parse(
+      localStorage.getItem('rocketmq-studio-ai-tool-execution-history') || '[]',
+    ) as Array<{ toolName: string; status: string; inputKeys: string[] }>;
+    expect(stored[0]).toMatchObject({
+      toolName: 'rmq.capabilities',
+      status: 'SUCCESS',
+      inputKeys: ['cluster'],
+    });
+  });
+
+  it('records failed tool executions in recent history', async () => {
+    const user = userEvent.setup();
+    vi.mocked(executeTool).mockRejectedValue(new Error('broker rejected request'));
+    renderPage();
+
+    await user.click(screen.getByRole('button', { name: '工具' }));
+    const dialog = await screen.findByRole('dialog', { name: 'AI 工具' });
+    await waitFor(() => expect(listTools).toHaveBeenCalledWith('cluster-a'));
+    await user.click(within(dialog).getByRole('button', { name: /执\s*行/ }));
+
+    expect(await within(dialog).findByText('最近执行')).toBeInTheDocument();
+    expect(within(dialog).getByText('失败')).toBeInTheDocument();
+
+    const stored = JSON.parse(
+      localStorage.getItem('rocketmq-studio-ai-tool-execution-history') || '[]',
+    ) as Array<{ toolName: string; status: string; inputKeys: string[]; errorMessage?: string }>;
+    expect(stored[0]).toMatchObject({
+      toolName: 'rmq.capabilities',
+      status: 'FAILED',
+      inputKeys: ['cluster'],
+      errorMessage: 'broker rejected request',
+    });
+  });
+
   it('ignores an older tool catalog after the cluster changes', async () => {
     const oldTools = [{ name: 'rmq.old', description: 'old', parameters: {} }];
     const latestTools = [{ name: 'rmq.latest', description: 'latest', parameters: {} }];
     let resolveOld!: (value: typeof oldTools) => void;
     let resolveLatest!: (value: typeof latestTools) => void;
     vi.mocked(listTools)
-      .mockReturnValueOnce(new Promise((resolve) => { resolveOld = resolve; }))
-      .mockReturnValueOnce(new Promise((resolve) => { resolveLatest = resolve; }));
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveOld = resolve;
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveLatest = resolve;
+        }),
+      );
     const user = userEvent.setup();
     renderPage();
 

@@ -46,6 +46,9 @@ class AiServiceTest {
     @Mock
     private McpServerRegistry mcpServerRegistry;
 
+    @Mock
+    private AiToolAuditService aiToolAuditService;
+
     @InjectMocks
     private AiService aiService;
 
@@ -205,6 +208,19 @@ class AiServiceTest {
 
         assertThat(result).isSameAs(output);
         verify(mcpServerRegistry).execute("rmq.capabilities", input);
+        verify(aiToolAuditService).recordSuccess("rmq.capabilities", input);
+    }
+
+    @Test
+    void executeToolAuditsAndRethrowsFailures() {
+        Map<String, Object> input = Map.of("cluster", "cluster-001");
+        RuntimeException error = new RuntimeException("tool failed");
+        when(mcpServerRegistry.execute("rmq.capabilities", input)).thenThrow(error);
+
+        assertThatThrownBy(() -> aiService.executeTool("rmq.capabilities", input))
+                .isSameAs(error);
+
+        verify(aiToolAuditService).recordFailure("rmq.capabilities", input, error);
     }
 
     @Test

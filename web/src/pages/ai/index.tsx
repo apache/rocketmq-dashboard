@@ -91,6 +91,17 @@ interface Message {
   actions?: { label: string; type?: 'primary' | 'default' }[];
 }
 
+interface ToolExecutionHistoryItem {
+  id: string;
+  toolName: string;
+  clusterLabel: string;
+  status: 'SUCCESS' | 'FAILED';
+  timestamp: string;
+  inputKeys: string[];
+  resultPreview?: string;
+  errorMessage?: string;
+}
+
 /* ─── Mock Data ─── */
 
 const initialMessages: Message[] = [];
@@ -107,6 +118,8 @@ const quickActions = [
 ];
 
 const GLOBAL_TOOL_SCOPE = '__global__';
+const TOOL_EXECUTION_HISTORY_KEY = 'rocketmq-studio-ai-tool-execution-history';
+const MAX_TOOL_EXECUTION_HISTORY = 8;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -146,6 +159,52 @@ const buildToolInputTemplate = (tool: McpTool, cluster?: string): string => {
 
 const formatToolResult = (result: unknown): string =>
   typeof result === 'string' ? result : (JSON.stringify(result, null, 2) ?? 'null');
+
+const isToolExecutionStatus = (value: unknown): value is ToolExecutionHistoryItem['status'] =>
+  value === 'SUCCESS' || value === 'FAILED';
+
+const isToolExecutionHistoryItem = (value: unknown): value is ToolExecutionHistoryItem => {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.id === 'string' &&
+    typeof value.toolName === 'string' &&
+    typeof value.clusterLabel === 'string' &&
+    typeof value.timestamp === 'string' &&
+    isToolExecutionStatus(value.status) &&
+    Array.isArray(value.inputKeys) &&
+    value.inputKeys.every((item) => typeof item === 'string') &&
+    (value.resultPreview === undefined || typeof value.resultPreview === 'string') &&
+    (value.errorMessage === undefined || typeof value.errorMessage === 'string')
+  );
+};
+
+const loadToolExecutionHistory = (): ToolExecutionHistoryItem[] => {
+  try {
+    const stored = localStorage.getItem(TOOL_EXECUTION_HISTORY_KEY);
+    if (!stored) return [];
+    const parsed: unknown = JSON.parse(stored);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(isToolExecutionHistoryItem).slice(0, MAX_TOOL_EXECUTION_HISTORY);
+  } catch {
+    return [];
+  }
+};
+
+const persistToolExecutionHistory = (items: ToolExecutionHistoryItem[]) => {
+  try {
+    localStorage.setItem(TOOL_EXECUTION_HISTORY_KEY, JSON.stringify(items));
+  } catch {
+    // Best-effort UI history should never block tool execution.
+  }
+};
+
+const inputKeys = (input: Record<string, unknown>): string[] =>
+  Object.keys(input)
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
+
+const previewText = (value: string, limit = 160): string =>
+  value.length <= limit ? value : `${value.slice(0, limit)}…`;
 
 /* ─── Sub-components ─── */
 
@@ -398,6 +457,8 @@ const AiPage = () => {
   const [toolInput, setToolInput] = useState('{}');
   const [toolResult, setToolResult] = useState<unknown>(undefined);
   const [toolExecuting, setToolExecuting] = useState(false);
+  const [toolExecutionHistory, setToolExecutionHistory] =
+    useState<ToolExecutionHistoryItem[]>(loadToolExecutionHistory);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -673,6 +734,29 @@ const AiPage = () => {
     [loadTools],
   );
 
+  const rememberToolExecution = useCallback(
+    (execution: Omit<ToolExecutionHistoryItem, 'id' | 'timestamp'>) => {
+      setToolExecutionHistory((current) => {
+        const next = [
+          {
+            id: `tool-${Date.now()}`,
+            timestamp: new Date().toISOString(),
+            ...execution,
+          },
+          ...current,
+        ].slice(0, MAX_TOOL_EXECUTION_HISTORY);
+        persistToolExecutionHistory(next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const clearToolExecutionHistory = useCallback(() => {
+    setToolExecutionHistory([]);
+    persistToolExecutionHistory([]);
+  }, []);
+
   const handleExecuteTool = useCallback(async () => {
     if (!selectedToolName || toolExecuting) return;
 
@@ -690,15 +774,42 @@ const AiPage = () => {
 
     setToolExecuting(true);
     setToolResult(undefined);
+    const keys = inputKeys(parsedInput);
+    const clusterLabel = selectedClusterId
+      ? (clusterOptions.find((option) => option.value === selectedClusterId)?.label ??
+        selectedClusterId)
+      : '全局工具';
     try {
-      setToolResult(await executeTool(selectedToolName, parsedInput));
+      const result = await executeTool(selectedToolName, parsedInput);
+      setToolResult(result);
+      rememberToolExecution({
+        toolName: selectedToolName,
+        clusterLabel,
+        status: 'SUCCESS',
+        inputKeys: keys,
+        resultPreview: previewText(formatToolResult(result)),
+      });
       message.success('工具执行成功');
-    } catch {
+    } catch (error) {
+      rememberToolExecution({
+        toolName: selectedToolName,
+        clusterLabel,
+        status: 'FAILED',
+        inputKeys: keys,
+        errorMessage: error instanceof Error ? error.message : '工具执行失败',
+      });
       message.error('工具执行失败');
     } finally {
       setToolExecuting(false);
     }
-  }, [selectedToolName, toolExecuting, toolInput]);
+  }, [
+    clusterOptions,
+    rememberToolExecution,
+    selectedClusterId,
+    selectedToolName,
+    toolExecuting,
+    toolInput,
+  ]);
 
   const selectedTool = tools.find((tool) => tool.name === selectedToolName);
 
@@ -946,6 +1057,63 @@ const AiPage = () => {
               >
                 {formatToolResult(toolResult)}
               </pre>
+            </div>
+          )}
+
+          {toolExecutionHistory.length > 0 && (
+            <div>
+              <Flex align="center" justify="space-between" style={{ marginBottom: 8 }}>
+                <Text strong>最近执行</Text>
+                <Button size="small" type="link" onClick={clearToolExecutionHistory}>
+                  清空
+                </Button>
+              </Flex>
+              <Table<ToolExecutionHistoryItem>
+                rowKey="id"
+                size="small"
+                pagination={false}
+                dataSource={toolExecutionHistory}
+                columns={[
+                  {
+                    title: '时间',
+                    dataIndex: 'timestamp',
+                    width: 140,
+                    render: (value: string) => new Date(value).toLocaleString(),
+                  },
+                  {
+                    title: '工具',
+                    dataIndex: 'toolName',
+                    ellipsis: true,
+                  },
+                  {
+                    title: '集群',
+                    dataIndex: 'clusterLabel',
+                    width: 120,
+                  },
+                  {
+                    title: '状态',
+                    dataIndex: 'status',
+                    width: 80,
+                    render: (value: ToolExecutionHistoryItem['status']) => (
+                      <Tag color={value === 'SUCCESS' ? 'green' : 'red'}>
+                        {value === 'SUCCESS' ? '成功' : '失败'}
+                      </Tag>
+                    ),
+                  },
+                  {
+                    title: '输入字段',
+                    dataIndex: 'inputKeys',
+                    render: (value: string[]) => (value.length > 0 ? value.join(', ') : '-'),
+                  },
+                  {
+                    title: '结果预览',
+                    render: (_: unknown, record) =>
+                      record.status === 'SUCCESS'
+                        ? record.resultPreview || '-'
+                        : record.errorMessage || '-',
+                  },
+                ]}
+              />
             </div>
           )}
         </Flex>

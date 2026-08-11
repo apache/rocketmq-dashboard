@@ -32,6 +32,7 @@ public class AiService {
 
     private final LlmGateway llmGateway;
     private final McpServerRegistry mcpServerRegistry;
+    private final AiToolAuditService aiToolAuditService;
 
 
     public SseEmitter chat(ChatDTO request) {
@@ -81,7 +82,14 @@ public class AiService {
 
     public Object executeTool(String name, Map<String, Object> input) {
         log.info("Executing registered AI tool: {}", name);
-        return mcpServerRegistry.execute(name, input);
+        try {
+            Object result = mcpServerRegistry.execute(name, input);
+            aiToolAuditService.recordSuccess(name, input);
+            return result;
+        } catch (RuntimeException exception) {
+            aiToolAuditService.recordFailure(name, input, exception);
+            throw exception;
+        }
     }
 
     public String catalogVersion() {
