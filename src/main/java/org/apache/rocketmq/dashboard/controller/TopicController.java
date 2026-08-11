@@ -101,6 +101,9 @@ public class TopicController {
     @ResponseBody
     public Object examineTopicConfig(@RequestParam String topic,
                                      @RequestParam(required = false) String brokerName) throws RemotingException, MQClientException, InterruptedException {
+        if (brokerName != null) {
+            return topicService.examineTopicConfig(topic, brokerName);
+        }
         return topicService.examineTopicConfig(topic);
     }
 
