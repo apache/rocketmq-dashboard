@@ -74,6 +74,7 @@ public class LlmConfigService {
 
     private final SettingsService settingsService;
     private final OpenAiCompatibleLlmClient llmClient;
+    private final AgentProviderRegistry agentProviders;
     private final LlmProperties llmProperties;
     private LlmConfigVO overrides;
 
@@ -124,6 +125,9 @@ public class LlmConfigService {
         if (validation.getStatus() != 0) {
             return validation;
         }
+        if (!LlmConfigVO.ENGINE_HTTP.equalsIgnoreCase(normalized.normalizeEngine())) {
+            return testCliEngine(normalized.normalizeEngine());
+        }
         if (llmClient.supports(normalized)) {
             try {
                 llmClient.listModels(normalized);
@@ -132,6 +136,22 @@ public class LlmConfigService {
             }
         }
         return LlmOperationResultVO.success("Connection successful");
+    }
+
+    private LlmOperationResultVO testCliEngine(String engine) {
+        try {
+            AgentProvider provider = agentProviders.forEngine(engine);
+            if (provider.available()) {
+                return LlmOperationResultVO.success("CLI is available");
+            }
+            return LlmOperationResultVO.failure(
+                    "llm.provider.cli_missing",
+                    "Agent CLI is not available for engine: " + engine,
+                    "Install the selected CLI in the server runtime or select the HTTP engine.");
+        } catch (LlmGatewayException exception) {
+            return LlmOperationResultVO.failure(
+                    exception.getCode(), exception.getMessage(), exception.getHint());
+        }
     }
 
     private LlmOperationResultVO validate(LlmConfigVO normalized) {

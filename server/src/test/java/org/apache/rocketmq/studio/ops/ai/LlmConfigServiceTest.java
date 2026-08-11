@@ -31,12 +31,14 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class LlmConfigServiceTest {
 
     private SettingsService settingsService;
     private OpenAiCompatibleLlmClient llmClient;
+    private AgentProviderRegistry agentProviders;
     private LlmConfigService llmConfigService;
 
     @BeforeEach
@@ -55,7 +57,9 @@ class LlmConfigServiceTest {
                 .baseUrl("https://api.openai.com/v1")
                 .build());
         llmClient = mock(OpenAiCompatibleLlmClient.class);
-        llmConfigService = new LlmConfigService(settingsService, llmClient, new LlmProperties());
+        agentProviders = mock(AgentProviderRegistry.class);
+        llmConfigService = new LlmConfigService(
+                settingsService, llmClient, agentProviders, new LlmProperties());
     }
 
     @Test
@@ -74,7 +78,7 @@ class LlmConfigServiceTest {
     void envTokenShouldOverrideApiKeyAtRuntimeButNeverBePersisted() {
         LlmProperties properties = new LlmProperties();
         properties.setToken("env-token");
-        LlmConfigService service = new LlmConfigService(settingsService, llmClient, properties);
+        LlmConfigService service = new LlmConfigService(settingsService, llmClient, agentProviders, properties);
 
         LlmConfigVO config = service.getConfig();
         assertThat(config.getApiKey()).isEqualTo("env-token");
@@ -286,6 +290,7 @@ class LlmConfigServiceTest {
     void testConfigShouldAllowOllamaWithoutApiKey() {
         LlmOperationResultVO result = llmConfigService.testConfig(LlmConfigVO.builder()
                 .provider("ollama")
+                .engine("http")
                 .apiBase("http://localhost:11434/v1")
                 .model("llama3")
                 .build());
@@ -302,6 +307,7 @@ class LlmConfigServiceTest {
 
         LlmOperationResultVO result = llmConfigService.testConfig(LlmConfigVO.builder()
                 .provider("openai")
+                .engine("http")
                 .apiBase("https://api.openai.com/v1")
                 .model("gpt-4o")
                 .maxTokens(2048)
@@ -326,6 +332,7 @@ class LlmConfigServiceTest {
 
         LlmOperationResultVO result = llmConfigService.testConfig(LlmConfigVO.builder()
                 .provider("openai")
+                .engine("http")
                 .apiKey("sk-bad")
                 .apiBase("https://api.openai.com/v1")
                 .model("gpt-4o")
@@ -337,6 +344,49 @@ class LlmConfigServiceTest {
         assertThat(result.getCode()).isEqualTo("llm.provider.upstream_error");
         assertThat(result.getErrMsg()).contains("401");
         assertThat(result.getHint()).contains("credentials");
+    }
+
+    @Test
+    void testConfigShouldNotProbeHttpModelsForCliEngine() {
+        AgentProvider provider = mock(AgentProvider.class);
+        when(agentProviders.forEngine("claude-code")).thenReturn(provider);
+        when(provider.available()).thenReturn(true);
+
+        LlmOperationResultVO result = llmConfigService.testConfig(LlmConfigVO.builder()
+                .provider("openai")
+                .engine("claude-code")
+                .apiBase("https://api.openai.com/v1")
+                .model("claude-sonnet-4")
+                .maxTokens(2048)
+                .temperature(1.0)
+                .build());
+
+        assertThat(result.getStatus()).isZero();
+        assertThat(result.getMsg()).isEqualTo("CLI is available");
+        verify(agentProviders).forEngine("claude-code");
+        verifyNoInteractions(llmClient);
+    }
+
+    @Test
+    void testConfigShouldReportMissingCliEngine() {
+        AgentProvider provider = mock(AgentProvider.class);
+        when(agentProviders.forEngine("qoder")).thenReturn(provider);
+        when(provider.available()).thenReturn(false);
+
+        LlmOperationResultVO result = llmConfigService.testConfig(LlmConfigVO.builder()
+                .provider("openai")
+                .engine("qoder")
+                .apiBase("https://api.openai.com/v1")
+                .model("qoder-model")
+                .maxTokens(2048)
+                .temperature(1.0)
+                .build());
+
+        assertThat(result.getStatus()).isEqualTo(1);
+        assertThat(result.getCode()).isEqualTo("llm.provider.cli_missing");
+        assertThat(result.getErrMsg()).contains("qoder");
+        assertThat(result.getHint()).contains("Install").contains("HTTP engine");
+        verifyNoInteractions(llmClient);
     }
 
     @Test
