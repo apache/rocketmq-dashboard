@@ -147,6 +147,22 @@ class MqAdminExtFactoryTest {
     }
 
     @Test
+    void releaseCredentialIdentityShouldPreserveOtherCredentialIdentity() throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        RecordingFactory factory = new RecordingFactory(admin);
+
+        factory.execute("10.0.0.1:9876", mock(RPCHook.class), "credential-a", ignored -> null);
+        factory.execute("10.0.0.1:9876", mock(RPCHook.class), "credential-b", ignored -> null);
+        factory.release("10.0.0.1:9876", "credential-a");
+        factory.execute("10.0.0.1:9876", mock(RPCHook.class), "credential-b", ignored -> null);
+
+        assertThat(factory.created.get()).isEqualTo(2);
+        factory.execute("10.0.0.1:9876", mock(RPCHook.class), "credential-a", ignored -> null);
+        assertThat(factory.created.get()).isEqualTo(3);
+        verify(admin).shutdown();
+    }
+
+    @Test
     void executeShouldRejectAddressListsWithoutUsableEntries() {
         MqAdminExtFactory factory = new MqAdminExtFactory();
 

@@ -309,7 +309,7 @@ public class InstanceService {
         if (!Objects.equals(normalizeCredentialRef(existing.getAdminCredentialRef()),
                 normalizeCredentialRef(saved.getAdminCredentialRef()))
                 && Objects.equals(normalizeEndpoint(existing.getEndpoint()), normalizeEndpoint(saved.getEndpoint()))) {
-            adminFactory.release(existing.getEndpoint());
+            adminFactory.release(existing.getEndpoint(), normalizeCredentialRef(existing.getAdminCredentialRef()));
             return;
         }
         releaseEndpointIfUnused(existing.getEndpoint(), saved.getEndpoint(), existing.getId());

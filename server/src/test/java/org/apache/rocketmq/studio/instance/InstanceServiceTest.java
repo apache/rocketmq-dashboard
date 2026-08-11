@@ -371,7 +371,7 @@ class InstanceServiceTest {
         InstanceVO saved = instanceService.updateInstance(update);
 
         assertThat(saved.getAdminCredentialRef()).isEqualTo("credential-b");
-        verify(adminFactory).release("namesrv:9876");
+        verify(adminFactory).release("namesrv:9876", "credential-a");
     }
 
     @Test
