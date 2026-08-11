@@ -39,7 +39,7 @@ vi.mock('../../../services/instanceService', () => ({
   listInstances: vi.fn().mockResolvedValue([]),
 }));
 vi.mock('../../../services/topicService', () => ({
-  listTopics: vi.fn().mockResolvedValue([]),
+  listTopics: vi.fn().mockResolvedValue([{ name: 'topic-a' }]),
 }));
 
 beforeAll(() => {
@@ -108,6 +108,13 @@ const MessagePageWithProviders = () => (
 
 const renderPage = () => render(<MessagePageWithProviders />);
 
+const selectTopic = async (user: ReturnType<typeof userEvent.setup>) => {
+  const topicSelects = screen.getAllByRole('combobox');
+  await user.click(topicSelects[topicSelects.length - 1]!);
+  const topicOptions = await screen.findAllByText('topic-a');
+  await user.click(topicOptions[topicOptions.length - 1]!);
+};
+
 describe('MessagePage async request ownership', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -129,6 +136,7 @@ describe('MessagePage async request ownership', () => {
     serviceMocks.queryMessages.mockReturnValue(query.promise);
     const user = userEvent.setup();
     renderPage();
+    await selectTopic(user);
 
     await user.click(screen.getByRole('button', { name: /^search查询$/ }));
     await waitFor(() => expect(serviceMocks.queryMessages).toHaveBeenCalledTimes(1));
@@ -143,25 +151,33 @@ describe('MessagePage async request ownership', () => {
 
   it('clears query results and message details when the selected instance changes', async () => {
     serviceMocks.queryMessages.mockResolvedValue([createMessage('message-from-instance-a')]);
+    const selectInstance = vi.fn();
+    instanceFilterMocks.useInstanceFilter.mockReturnValue({
+      selectedInstanceId: 'instance-a',
+      selectInstance,
+      instanceOptions: [
+        { value: 'instance-a', label: 'Instance A' },
+        { value: 'instance-b', label: 'Instance B' },
+      ],
+    });
     const user = userEvent.setup();
-    const page = renderPage();
+    renderPage();
+    await selectTopic(user);
 
     await user.click(screen.getByRole('button', { name: /^search查询$/ }));
     const row = await screen.findByRole('row', { name: /message-from-instance-a/ });
     await user.click(within(row).getByRole('button', { name: /详情/ }));
     expect(await screen.findByRole('dialog', { name: '消息详情' })).toBeInTheDocument();
 
-    instanceFilterMocks.useInstanceFilter.mockReturnValue({
-      selectedInstanceId: 'instance-b',
-      selectInstance: vi.fn(),
-      instanceOptions: [{ value: 'instance-b', label: 'Instance B' }],
-    });
-    page.rerender(<MessagePageWithProviders />);
+    await user.click(screen.getAllByRole('combobox')[0]!);
+    const instanceOptions = await screen.findAllByText('Instance B');
+    await user.click(instanceOptions[instanceOptions.length - 1]!);
 
     await waitFor(() => {
       expect(screen.queryByText('message-from-instance-a')).not.toBeInTheDocument();
       expect(screen.queryByRole('dialog', { name: '消息详情' })).not.toBeInTheDocument();
     });
+    expect(selectInstance).toHaveBeenCalledWith('instance-b');
   });
   it('surfaces unavailable message provider errors from query requests', async () => {
     serviceMocks.queryMessages.mockRejectedValue(
@@ -169,6 +185,7 @@ describe('MessagePage async request ownership', () => {
     );
     const user = userEvent.setup();
     renderPage();
+    await selectTopic(user);
 
     await user.click(screen.getByRole('button', { name: /^search查询$/ }));
 
@@ -183,6 +200,7 @@ describe('MessagePage async request ownership', () => {
     );
     const user = userEvent.setup();
     renderPage();
+    await selectTopic(user);
 
     await user.click(screen.getByRole('button', { name: /^search查询$/ }));
     const row = await screen.findByRole('row', { name: /message-a/ });
@@ -198,6 +216,7 @@ describe('MessagePage async request ownership', () => {
     serviceMocks.queryMessages.mockResolvedValue([createMessage('message-a')]);
     const user = userEvent.setup();
     renderPage();
+    await selectTopic(user);
 
     await user.click(screen.getByRole('button', { name: /^search查询$/ }));
     const row = await screen.findByRole('row', { name: /message-a/ });
@@ -217,6 +236,7 @@ describe('MessagePage async request ownership', () => {
       .mockReturnValueOnce(secondQuery.promise);
     const user = userEvent.setup();
     renderPage();
+    await selectTopic(user);
 
     const queryButton = screen.getByRole('button', { name: /^search查询$/ });
     await user.click(queryButton);
@@ -251,6 +271,7 @@ describe('MessagePage async request ownership', () => {
       const errorSpy = vi.spyOn(message, 'error').mockImplementation(vi.fn());
       const user = userEvent.setup();
       renderPage();
+      await selectTopic(user);
 
       await user.click(screen.getByRole('button', { name: /^search查询$/ }));
       const row = await screen.findByRole('row', { name: /message-a/ });
@@ -288,6 +309,7 @@ describe('MessagePage async request ownership', () => {
     );
     const user = userEvent.setup();
     renderPage();
+    await selectTopic(user);
 
     await user.click(screen.getByRole('button', { name: /^search查询$/ }));
     const firstRow = await screen.findByRole('row', { name: /message-a/ });
@@ -327,6 +349,7 @@ describe('MessagePage async request ownership', () => {
     );
     const user = userEvent.setup();
     renderPage();
+    await selectTopic(user);
 
     await user.click(screen.getByRole('button', { name: /^search查询$/ }));
     const firstRow = await screen.findByRole('row', { name: /message-a/ });

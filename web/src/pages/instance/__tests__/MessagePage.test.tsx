@@ -112,6 +112,94 @@ describe('Message page query history', () => {
     vi.restoreAllMocks();
   });
 
+  it('requires the active query mode fields and trims submitted identifiers', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MessagePage />);
+    const queryButton = screen.getByRole('button', { name: /^search查询$/ });
+
+    expect(queryButton).toBeDisabled();
+    expect(queryButton).toHaveAttribute('title', '请选择 Topic');
+
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
+    expect(queryButton).toBeEnabled();
+    expect(queryButton).not.toHaveAttribute('title');
+
+    await user.click(screen.getByText('按 Message Key'));
+    expect(queryButton).toBeDisabled();
+    expect(queryButton).toHaveAttribute('title', '请输入 Message Key');
+
+    const keyInput = screen.getByPlaceholderText('输入 Message Key');
+    await user.type(keyInput, '   ');
+    expect(queryButton).toBeDisabled();
+    expect(messageServiceMocks.queryMessages).not.toHaveBeenCalled();
+
+    await user.clear(keyInput);
+    await user.type(keyInput, '  ORDER-001  ');
+    expect(queryButton).toBeEnabled();
+    await user.click(queryButton);
+    await waitFor(() => {
+      expect(messageServiceMocks.queryMessages).toHaveBeenLastCalledWith({
+        topic: 'order-create',
+        key: 'ORDER-001',
+        instanceId: 'instance-a',
+      });
+    });
+
+    await user.click(screen.getByText('按 Message ID'));
+    expect(queryButton).toBeDisabled();
+    expect(queryButton).toHaveAttribute('title', '请输入 Message ID');
+
+    const messageIdInput = screen.getByPlaceholderText('输入 Message ID');
+    await user.type(messageIdInput, '   ');
+    expect(queryButton).toBeDisabled();
+
+    await user.clear(messageIdInput);
+    await user.type(messageIdInput, '  MID-001  ');
+    expect(queryButton).toBeEnabled();
+    await user.click(queryButton);
+    await waitFor(() => {
+      expect(messageServiceMocks.queryMessages).toHaveBeenLastCalledWith({
+        topic: 'order-create',
+        msgId: 'MID-001',
+        instanceId: 'instance-a',
+      });
+    });
+  });
+
+  it('requires a topic even when a key or message ID is present', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<MessagePage />);
+    const queryButton = screen.getByRole('button', { name: /^search查询$/ });
+
+    await user.click(screen.getByText('按 Message Key'));
+    await user.type(screen.getByPlaceholderText('输入 Message Key'), 'ORDER-001');
+    expect(queryButton).toBeDisabled();
+    expect(queryButton).toHaveAttribute('title', '请选择 Topic');
+
+    await user.click(screen.getByText('按 Message ID'));
+    await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID-001');
+    expect(queryButton).toBeDisabled();
+    expect(queryButton).toHaveAttribute('title', '请选择 Topic');
+    expect(messageServiceMocks.queryMessages).not.toHaveBeenCalled();
+  });
+
+  it('ignores stored queries that are missing fields required by their mode', () => {
+    localStorage.setItem(
+      QUERY_HISTORY_STORAGE_KEY,
+      JSON.stringify([
+        { mode: 'topic', params: {} },
+        { mode: 'key', params: { topic: 'order-create', key: '   ' } },
+        { mode: 'msgid', params: { topic: 'order-create', msgId: '   ' } },
+      ]),
+    );
+
+    renderWithProviders(<MessagePage />);
+
+    expect(screen.getByRole('button', { name: /最近查询/ })).toBeDisabled();
+    expect(messageServiceMocks.queryMessages).not.toHaveBeenCalled();
+  });
+
   it('persists successful queries for replay and allows clearing the history', async () => {
     const user = userEvent.setup();
     const firstView = renderWithProviders(<MessagePage />);
@@ -233,8 +321,13 @@ describe('Message page query history', () => {
       tag: 'vip',
       startTime: 1_700_000_000_000,
       endTime: 1_700_003_600_000,
+      msgId: 'STALE-MESSAGE-ID',
     };
-    const keyParams = { topic: 'payment-callback', key: 'ORDER-001' };
+    const keyParams = {
+      topic: 'payment-callback',
+      key: 'ORDER-001',
+      msgId: 'STALE-MESSAGE-ID',
+    };
     localStorage.setItem(
       QUERY_HISTORY_STORAGE_KEY,
       JSON.stringify([
@@ -248,7 +341,10 @@ describe('Message page query history', () => {
     await user.click(await screen.findByText('Topic: order-create'));
     await waitFor(() => {
       expect(messageServiceMocks.queryMessages).toHaveBeenLastCalledWith({
-        ...topicParams,
+        topic: 'order-create',
+        tag: 'vip',
+        startTime: 1_700_000_000_000,
+        endTime: 1_700_003_600_000,
         instanceId: 'instance-a',
       });
     });
@@ -257,7 +353,8 @@ describe('Message page query history', () => {
     await user.click(await screen.findByText('Key: ORDER-001 · Topic: payment-callback'));
     await waitFor(() => {
       expect(messageServiceMocks.queryMessages).toHaveBeenLastCalledWith({
-        ...keyParams,
+        topic: 'payment-callback',
+        key: 'ORDER-001',
         instanceId: 'instance-a',
       });
       expect(screen.getByPlaceholderText('输入 Message Key')).toHaveValue('ORDER-001');
@@ -312,6 +409,8 @@ describe('Message page query history', () => {
     renderWithProviders(<MessagePage />);
 
     await user.click(screen.getByText('按 Message ID'));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    await user.click(lastElement(await screen.findAllByText('order-create')));
     await user.type(screen.getByPlaceholderText('输入 Message ID'), 'MID');
     await user.click(screen.getByRole('button', { name: /^search查询$/ }));
 
