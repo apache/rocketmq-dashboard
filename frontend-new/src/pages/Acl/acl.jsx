@@ -70,7 +70,7 @@ const Acl = () => {
 
     const [searchValue, setSearchValue] = useState('');
 
-    // --- Data Fetching and Initial Setup ---
+    // 集群初始化只执行一次，列表加载由 broker 选择状态单独触发。
     useEffect(() => {
         const fetchData = async () => {
             const clusterResponse = await remoteApi.getClusterList();
@@ -87,11 +87,8 @@ const Acl = () => {
                     const defaultCluster = clusterNames[0];
                     setSelectedCluster(defaultCluster);
 
-                    // Manually trigger broker list update for the default cluster
-                    updateBrokerOptions(defaultCluster, clusterInfo);
-
-                    // Set default broker and its address if available
                     const brokersInDefaultCluster = clusterInfo.clusterAddrTable[defaultCluster] || [];
+                    setBrokerNamesOptions(brokersInDefaultCluster.map(broker => ({label: broker, value: broker})));
                     if (brokersInDefaultCluster.length > 0) {
                         const defaultBroker = brokersInDefaultCluster[0];
                         setSelectedBroker(defaultBroker);
@@ -105,19 +102,22 @@ const Acl = () => {
                 console.error('Failed to fetch cluster list:', clusterResponse.errMsg);
             }
         };
-        if (!clusterData) {
-            setLoading(true);
-            fetchData().finally(() => setLoading(false));
-        }
+        setLoading(true);
+        fetchData().finally(() => setLoading(false));
+    }, []);
+
+    useEffect(() => {
         if (brokerAddress) {
+            setLoading(true);
             if (activeTab === 'users') {
                 fetchUsers().finally(() => setLoading(false));
             } else {
                 fetchAcls().finally(() => setLoading(false));
             }
         }
-
-    }, [activeTab]); // Dependencies for useEffect
+        // selectedBroker 和 selectedCluster 与 brokerAddress 在同一次选择操作中更新。
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTab, brokerAddress, selectedBroker, selectedCluster]);
 
     useEffect(() => {
         const userPermission = localStorage.getItem('userrole');
