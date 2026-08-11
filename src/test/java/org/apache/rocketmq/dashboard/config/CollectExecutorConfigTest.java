@@ -21,6 +21,8 @@ import org.junit.Test;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class CollectExecutorConfigTest {
@@ -47,5 +49,43 @@ public class CollectExecutorConfigTest {
         countDownLatch.await();
         System.out.println(collectExecutor.isTerminated());
         Assert.assertEquals(COUNT, num.get());
+    }
+
+    @Test
+    public void testCollectExecutorRejectsWhenQueueIsFull() throws Exception {
+        CollectExecutorConfig config = new CollectExecutorConfig();
+        config.setCoreSize(1);
+        config.setMaxSize(1);
+        config.setQueueSize(1);
+        ExecutorService collectExecutor = config.collectExecutor(config);
+        CountDownLatch taskStarted = new CountDownLatch(1);
+        CountDownLatch releaseTask = new CountDownLatch(1);
+        CountDownLatch queuedTaskCompleted = new CountDownLatch(1);
+
+        try {
+            collectExecutor.submit(() -> {
+                taskStarted.countDown();
+                try {
+                    releaseTask.await();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            });
+            Assert.assertTrue(taskStarted.await(5, TimeUnit.SECONDS));
+            collectExecutor.submit(queuedTaskCompleted::countDown);
+
+            try {
+                collectExecutor.submit(() -> { });
+                Assert.fail("Expected the saturated executor to reject the task");
+            } catch (RejectedExecutionException expected) {
+                Assert.assertNotNull(expected);
+            }
+
+            releaseTask.countDown();
+            Assert.assertTrue(queuedTaskCompleted.await(5, TimeUnit.SECONDS));
+        } finally {
+            releaseTask.countDown();
+            collectExecutor.shutdownNow();
+        }
     }
 }

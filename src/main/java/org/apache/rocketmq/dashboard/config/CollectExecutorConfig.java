@@ -54,7 +54,7 @@ public class CollectExecutorConfig {
                         return new Thread(r, "collectTopicThread_" + this.threadIndex.incrementAndGet());
                     }
                 },
-                new ThreadPoolExecutor.DiscardOldestPolicy()
+                new ThreadPoolExecutor.AbortPolicy()
         );
         return collectExecutor;
     }
