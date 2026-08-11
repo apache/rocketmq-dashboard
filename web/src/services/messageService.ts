@@ -51,12 +51,13 @@ export async function queryMessages(params: MessageQuery): Promise<MessageRecord
 export async function getMessageTrace(
   msgId: string,
   instanceId?: string,
+  topic?: string,
 ): Promise<TraceRecord | null> {
   if (isMockMode()) {
     const trace = mockMessageTraces[msgId] as unknown as TraceRecord | undefined;
     return trace ? cloneTrace(trace) : null;
   }
-  return messageApi.getMessageTrace(msgId, instanceId);
+  return messageApi.getMessageTrace(msgId, instanceId, topic);
 }
 
 export async function listDLQGroups(instanceId: string): Promise<DLQGroup[]> {

@@ -345,7 +345,7 @@ class AliyunInstanceProviderTest {
                 .build();
         when(asyncClient.getTrace(any())).thenReturn(CompletableFuture.completedFuture(response));
 
-        TraceRecordVO trace = provider.getMessageTrace(STUDIO_INSTANCE_ID, "msg-1");
+        TraceRecordVO trace = provider.getMessageTrace(STUDIO_INSTANCE_ID, "msg-1", "orders");
 
         assertThat(trace.getNodes()).hasSize(3);
         TraceNodeVO producer = trace.getNodes().get(0);

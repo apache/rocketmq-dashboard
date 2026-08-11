@@ -52,7 +52,7 @@ class MessageServiceTest {
         InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
         MessageService service = new MessageService(provider, registry);
 
-        assertThatThrownBy(() -> service.getMessageTrace("instance-a", "  "))
+        assertThatThrownBy(() -> service.getMessageTrace("instance-a", "  ", null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("msgId is required");
 

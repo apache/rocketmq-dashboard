@@ -37,7 +37,7 @@ class MessageProviderStubTest {
 
     @Test
     void getMessageTraceShouldFailExplicitlyWhenRealProviderIsMissing() {
-        assertThatThrownBy(() -> provider.getMessageTrace("instance-a", "msg-001"))
+        assertThatThrownBy(() -> provider.getMessageTrace("instance-a", "msg-001", "orders"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Message query provider is not configured")
                 .extracting("code")

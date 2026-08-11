@@ -494,16 +494,15 @@ public class TencentInstanceProvider implements InstanceProvider {
     }
 
     @Override
-    public TraceRecordVO getMessageTrace(String instanceId, String msgId) {
+    public TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic) {
         Context context = resolve(instanceId);
         requireMsgId(msgId);
+        requireTopic(topic);
 
         DescribeMessageTraceRequest request = new DescribeMessageTraceRequest();
         request.setInstanceId(context.cloudInstanceId());
+        request.setTopic(topic);
         request.setMsgId(msgId);
-        // Topic is resolved by the service from the message ID; it may be left empty for
-        // delay/dead-letter messages, but passing it when known improves resolution.
-        request.setTopic("");
         DescribeMessageTraceResponse response = clientFactory.call(context.credentialId(), context.regionId(),
                 client -> client.DescribeMessageTrace(request));
 

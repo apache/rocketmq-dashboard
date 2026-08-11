@@ -481,7 +481,7 @@ class TencentInstanceProviderTest {
         response.setData(new MessageTraceItem[]{produce, consume});
         when(client.DescribeMessageTrace(any())).thenReturn(response);
 
-        TraceRecordVO trace = provider.getMessageTrace(STUDIO_INSTANCE_ID, "MSG-1");
+        TraceRecordVO trace = provider.getMessageTrace(STUDIO_INSTANCE_ID, "MSG-1", "orders");
 
         assertThat(trace.getNodes()).hasSize(2);
         TraceNodeVO produceNode = trace.getNodes().get(0);
@@ -499,6 +499,7 @@ class TencentInstanceProviderTest {
         ArgumentCaptor<DescribeMessageTraceRequest> captor = ArgumentCaptor.forClass(DescribeMessageTraceRequest.class);
         verify(client).DescribeMessageTrace(captor.capture());
         assertThat(captor.getValue().getInstanceId()).isEqualTo(CLOUD_INSTANCE_ID);
+        assertThat(captor.getValue().getTopic()).isEqualTo("orders");
         assertThat(captor.getValue().getMsgId()).isEqualTo("MSG-1");
     }
 }
