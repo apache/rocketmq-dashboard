@@ -31,6 +31,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 @Slf4j
@@ -231,7 +232,7 @@ public class AclService {
     }
 
     private boolean isValidAcl2BoundType(String boundType) {
-        return switch (boundType.trim().toUpperCase()) {
+        return switch (boundType.trim().toUpperCase(Locale.ROOT)) {
             case "TOPIC", "GROUP", "*", "USER", "SERVICE_ACCOUNT" -> true;
             default -> false;
         };

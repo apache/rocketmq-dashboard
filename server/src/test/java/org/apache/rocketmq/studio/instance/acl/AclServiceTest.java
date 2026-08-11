@@ -37,6 +37,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.stream.Stream;
 
@@ -649,6 +650,22 @@ class AclServiceTest {
         policy.setWhiteSet(List.of("192.168.1.0/24", "10.0.0.1"));
 
         aclService.validateAcl2Policy(policy);
+    }
+
+    @Test
+    void validateAcl2PolicyShouldIgnoreTheJvmDefaultLocaleWhenNormalizingBoundType() {
+        Locale previous = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            Acl2PolicyContext policy = new Acl2PolicyContext();
+            policy.setPolicyName("orders-policy");
+            policy.setBoundType("topic");
+            policy.setRules(List.of(Acl2PolicyContext.AuthorizationRule.defaultAllowRule("orders-*")));
+
+            aclService.validateAcl2Policy(policy);
+        } finally {
+            Locale.setDefault(previous);
+        }
     }
 
     @Test
