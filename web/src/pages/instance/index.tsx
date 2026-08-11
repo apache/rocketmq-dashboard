@@ -98,6 +98,7 @@ const InstancePage = () => {
   const [editForm] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
   const requestIdRef = useRef(0);
+  const mutationInFlightRef = useRef(false);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
@@ -276,6 +277,8 @@ const InstancePage = () => {
   };
 
   const handleCreate = async () => {
+    if (mutationInFlightRef.current) return;
+    mutationInFlightRef.current = true;
     try {
       const values = await addForm.validateFields();
       setSubmitting(true);
@@ -301,12 +304,14 @@ const InstancePage = () => {
       }
       message.error('添加实例失败，请稍后重试');
     } finally {
+      mutationInFlightRef.current = false;
       setSubmitting(false);
     }
   };
 
   const handleUpdate = async () => {
-    if (!editingInstance) return;
+    if (!editingInstance || mutationInFlightRef.current) return;
+    mutationInFlightRef.current = true;
     try {
       const values = await editForm.validateFields();
       setSubmitting(true);
@@ -325,6 +330,7 @@ const InstancePage = () => {
       }
       message.error('更新实例失败，请稍后重试');
     } finally {
+      mutationInFlightRef.current = false;
       setSubmitting(false);
     }
   };
