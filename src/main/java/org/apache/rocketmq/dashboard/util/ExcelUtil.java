@@ -47,9 +47,9 @@ public class ExcelUtil {
                 .excelType(ExcelTypeEnum.XLSX).sheet(sheetName).registerWriteHandler(horizontalCellStyleStrategy).doWrite(data);
     }
 
-    private static OutputStream getOutputStream(String fileName, HttpServletResponse response) throws Exception {
+    static OutputStream getOutputStream(String fileName, HttpServletResponse response) throws Exception {
         fileName = URLEncoder.encode(fileName, "UTF-8");
-        response.setContentType("application/vnd.ms-excel");
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         response.setCharacterEncoding("utf8");
         response.setHeader("Content-Disposition", "attachment;filename=" + fileName + ".xlsx");
         return response.getOutputStream();
