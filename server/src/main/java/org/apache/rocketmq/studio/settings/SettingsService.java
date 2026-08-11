@@ -73,13 +73,22 @@ public class SettingsService {
 
     public SettingsService(SettingsRepository settingsRepository, RestClient.Builder restClientBuilder,
                            ObjectMapper objectMapper, OperationAuditService operationAuditService) {
+        this(settingsRepository, buildDataSourceRestClient(restClientBuilder), objectMapper, operationAuditService);
+    }
+
+    SettingsService(SettingsRepository settingsRepository, RestClient restClient,
+                    ObjectMapper objectMapper, OperationAuditService operationAuditService) {
+        this.settingsRepository = settingsRepository;
+        this.restClient = restClient;
+        this.objectMapper = objectMapper;
+        this.operationAuditService = operationAuditService;
+    }
+
+    private static RestClient buildDataSourceRestClient(RestClient.Builder restClientBuilder) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(DATA_SOURCE_TEST_CONNECT_TIMEOUT);
         requestFactory.setReadTimeout(DATA_SOURCE_TEST_READ_TIMEOUT);
-        this.settingsRepository = settingsRepository;
-        this.restClient = restClientBuilder.requestFactory(requestFactory).build();
-        this.objectMapper = objectMapper;
-        this.operationAuditService = operationAuditService;
+        return restClientBuilder.requestFactory(requestFactory).build();
     }
 
 

@@ -17,8 +17,6 @@
 package org.apache.rocketmq.studio.settings;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpServer;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.AfterEach;
@@ -27,17 +25,19 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
-import java.io.IOException;
-import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -47,9 +47,19 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 @ExtendWith(MockitoExtension.class)
 class SettingsServiceTest {
+
+    private static final String PROMETHEUS_BASE_URL = "http://192.0.2.1:9090";
+    private static final String PROMETHEUS_QUERY_URL = PROMETHEUS_BASE_URL + "/api/v1/query?query=up";
+    private static final String PROMETHEUS_SUCCESS_BODY =
+            "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[]}}";
 
     @Mock
     private SettingsRepository settingsRepository;
@@ -59,31 +69,20 @@ class SettingsServiceTest {
 
     private SettingsService settingsService;
 
-    private HttpServer prometheusServer;
-    private String prometheusBaseUrl;
+    private MockRestServiceServer prometheusServer;
 
     @BeforeEach
-    void setUp() throws IOException {
-        prometheusServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        prometheusBaseUrl = "http://127.0.0.1:" + prometheusServer.getAddress().getPort();
-        prometheusServer.start();
-        settingsService = new SettingsService(settingsRepository, RestClient.builder(), new ObjectMapper(), operationAuditService) {
-            @Override
-            boolean isAllowedDataSourceHost(String host) {
-                // The embedded test server listens on loopback, which the production SSRF
-                // guard blocks; admit it here and keep the real policy for every other host.
-                if ("127.0.0.1".equals(host)) {
-                    return true;
-                }
-                return super.isAllowedDataSourceHost(host);
-            }
-        };
+    void setUp() {
+        RestClient.Builder restClientBuilder = RestClient.builder();
+        prometheusServer = MockRestServiceServer.bindTo(restClientBuilder).build();
+        settingsService = new SettingsService(settingsRepository, restClientBuilder.build(),
+                new ObjectMapper(), operationAuditService);
     }
 
 
     @AfterEach
     void tearDown() {
-        prometheusServer.stop(0);
+        prometheusServer.verify();
     }
 
     @Test
@@ -343,15 +342,11 @@ class SettingsServiceTest {
 
     @Test
     void testConnectionShouldQueryPrometheusEndpoint() {
-        AtomicReference<String> requestPath = new AtomicReference<>();
-        AtomicReference<String> requestQuery = new AtomicReference<>();
-        prometheusServer.createContext("/api/v1/query", exchange -> {
-            requestPath.set(exchange.getRequestURI().getPath());
-            requestQuery.set(exchange.getRequestURI().getRawQuery());
-            respond(exchange, 200, "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[]}}");
-        });
+        prometheusServer.expect(requestTo(PROMETHEUS_QUERY_URL))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(PROMETHEUS_SUCCESS_BODY, MediaType.APPLICATION_JSON));
         DataSourceTestDTO request = DataSourceTestDTO.builder()
-                .url(prometheusBaseUrl)
+                .url(PROMETHEUS_BASE_URL)
                 .type("Prometheus")
                 .build();
 
@@ -359,19 +354,18 @@ class SettingsServiceTest {
 
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getMessage()).isEqualTo("Connection successful");
-        assertThat(requestPath.get()).isEqualTo("/api/v1/query");
-        assertThat(requestQuery.get()).isEqualTo("query=up");
     }
 
     @Test
     void testConnectionShouldApplyBasicAuthentication() {
-        AtomicReference<String> authorization = new AtomicReference<>();
-        prometheusServer.createContext("/api/v1/query", exchange -> {
-            authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
-            respond(exchange, 200, "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[]}}");
-        });
+        String expectedAuthorization = "Basic "
+                + Base64.getEncoder().encodeToString("prom:secret".getBytes(StandardCharsets.UTF_8));
+        prometheusServer.expect(requestTo(PROMETHEUS_QUERY_URL))
+                .andExpect(method(HttpMethod.GET))
+                .andExpect(header(HttpHeaders.AUTHORIZATION, expectedAuthorization))
+                .andRespond(withSuccess(PROMETHEUS_SUCCESS_BODY, MediaType.APPLICATION_JSON));
         DataSourceTestDTO request = DataSourceTestDTO.builder()
-                .url(prometheusBaseUrl)
+                .url(PROMETHEUS_BASE_URL)
                 .type("Prometheus")
                 .auth("Basic Auth")
                 .username("prom")
@@ -381,19 +375,18 @@ class SettingsServiceTest {
         DataSourceTestResultVO result = settingsService.testDataSource(request);
 
         assertThat(result.isSuccess()).isTrue();
-        assertThat(authorization.get()).isEqualTo("Basic "
-                + Base64.getEncoder().encodeToString("prom:secret".getBytes(StandardCharsets.UTF_8)));
     }
 
     @Test
     void testConnectionShouldNormalizeIdentifiersIndependentlyOfDefaultLocale() {
-        AtomicReference<String> authorization = new AtomicReference<>();
-        prometheusServer.createContext("/api/v1/query", exchange -> {
-            authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
-            respond(exchange, 200, "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[]}}");
-        });
+        String expectedAuthorization = "Basic "
+                + Base64.getEncoder().encodeToString("prom:secret".getBytes(StandardCharsets.UTF_8));
+        prometheusServer.expect(requestTo(PROMETHEUS_QUERY_URL))
+                .andExpect(method(HttpMethod.GET))
+                .andExpect(header(HttpHeaders.AUTHORIZATION, expectedAuthorization))
+                .andRespond(withSuccess(PROMETHEUS_SUCCESS_BODY, MediaType.APPLICATION_JSON));
         DataSourceTestDTO request = DataSourceTestDTO.builder()
-                .url(prometheusBaseUrl)
+                .url(PROMETHEUS_BASE_URL)
                 .type("MIMIR")
                 .auth("Basic Auth")
                 .username("prom")
@@ -410,19 +403,16 @@ class SettingsServiceTest {
         }
 
         assertThat(result.isSuccess()).isTrue();
-        assertThat(authorization.get()).isEqualTo("Basic "
-                + Base64.getEncoder().encodeToString("prom:secret".getBytes(StandardCharsets.UTF_8)));
     }
 
     @Test
     void testConnectionShouldApplyBearerAuthentication() {
-        AtomicReference<String> authorization = new AtomicReference<>();
-        prometheusServer.createContext("/api/v1/query", exchange -> {
-            authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
-            respond(exchange, 200, "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[]}}");
-        });
+        prometheusServer.expect(requestTo(PROMETHEUS_QUERY_URL))
+                .andExpect(method(HttpMethod.GET))
+                .andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer token-1"))
+                .andRespond(withSuccess(PROMETHEUS_SUCCESS_BODY, MediaType.APPLICATION_JSON));
         DataSourceTestDTO request = DataSourceTestDTO.builder()
-                .url(prometheusBaseUrl)
+                .url(PROMETHEUS_BASE_URL)
                 .type("Prometheus")
                 .auth("Bearer Token")
                 .bearerToken("token-1")
@@ -431,7 +421,6 @@ class SettingsServiceTest {
         DataSourceTestResultVO result = settingsService.testDataSource(request);
 
         assertThat(result.isSuccess()).isTrue();
-        assertThat(authorization.get()).isEqualTo("Bearer token-1");
     }
 
     @Test
@@ -503,7 +492,7 @@ class SettingsServiceTest {
     @Test
     void testConnectionShouldRejectIncompleteBasicAuthentication() {
         DataSourceTestResultVO result = settingsService.testDataSource(DataSourceTestDTO.builder()
-                .url(prometheusBaseUrl)
+                .url(PROMETHEUS_BASE_URL)
                 .type("Prometheus")
                 .auth("Basic Auth")
                 .username("prom")
@@ -517,7 +506,7 @@ class SettingsServiceTest {
     @Test
     void testConnectionShouldRejectMissingBearerToken() {
         DataSourceTestResultVO result = settingsService.testDataSource(DataSourceTestDTO.builder()
-                .url(prometheusBaseUrl)
+                .url(PROMETHEUS_BASE_URL)
                 .type("Prometheus")
                 .auth("Bearer Token")
                 .build());
@@ -528,10 +517,13 @@ class SettingsServiceTest {
 
     @Test
     void testConnectionShouldReturnPrometheusErrorDetails() {
-        prometheusServer.createContext("/api/v1/query", exchange -> respond(exchange, 422,
-                "{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"invalid query\"}"));
+        prometheusServer.expect(requestTo(PROMETHEUS_QUERY_URL))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withStatus(HttpStatus.UNPROCESSABLE_ENTITY)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"invalid query\"}"));
         DataSourceTestDTO request = DataSourceTestDTO.builder()
-                .url(prometheusBaseUrl)
+                .url(PROMETHEUS_BASE_URL)
                 .type("VictoriaMetrics")
                 .build();
 
@@ -557,7 +549,7 @@ class SettingsServiceTest {
     @Test
     void testConnectionShouldRejectUnsupportedType() {
         DataSourceTestResultVO result = settingsService.testDataSource(DataSourceTestDTO.builder()
-                .url(prometheusBaseUrl)
+                .url(PROMETHEUS_BASE_URL)
                 .type("rocketmq")
                 .build());
 
@@ -565,11 +557,4 @@ class SettingsServiceTest {
         assertThat(result.getMessage()).isEqualTo("Unsupported data source type: rocketmq");
     }
 
-    private void respond(HttpExchange exchange, int statusCode, String body) throws IOException {
-        byte[] response = body.getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().set("Content-Type", "application/json");
-        exchange.sendResponseHeaders(statusCode, response.length);
-        exchange.getResponseBody().write(response);
-        exchange.close();
-    }
 }
