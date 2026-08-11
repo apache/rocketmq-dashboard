@@ -673,7 +673,12 @@ public class TencentInstanceProvider implements InstanceProvider {
                 return Collections.emptyMap();
             }
             Map<String, String> properties = new LinkedHashMap<>();
-            root.fields().forEachRemaining(entry -> properties.put(entry.getKey(), entry.getValue().asText("")));
+            root.fields().forEachRemaining(entry -> {
+                JsonNode value = entry.getValue();
+                if (value != null && value.isValueNode() && !value.isNull()) {
+                    properties.put(entry.getKey(), value.asText());
+                }
+            });
             return properties;
         } catch (Exception e) {
             return Collections.emptyMap();

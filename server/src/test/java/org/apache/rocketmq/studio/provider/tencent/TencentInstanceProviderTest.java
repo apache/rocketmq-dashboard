@@ -437,6 +437,25 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void queryMessagesShouldSkipNullAndStructuredPropertyValues() throws Exception {
+        DescribeMessageResponse detail = new DescribeMessageResponse();
+        detail.setMessageId("MSG-1");
+        detail.setShowTopicName("orders");
+        detail.setProperties("{\"KEYS\":\"keyA\",\"TAGS\":null,"
+                + "\"nested\":{\"x\":1},\"retry\":3,\"enabled\":true}");
+        when(client.DescribeMessage(any())).thenReturn(detail);
+
+        MessageRecordVO record = provider.queryMessages(
+                STUDIO_INSTANCE_ID, "orders", "MSG-1", null, null, null, null).get(0);
+
+        assertThat(record.getProperties())
+                .containsEntry("KEYS", "keyA")
+                .containsEntry("retry", "3")
+                .containsEntry("enabled", "true")
+                .doesNotContainKeys("TAGS", "nested");
+    }
+
+    @Test
     void queryMessagesByTopicShouldUseMessageListTest() throws Exception {
         MessageItem one = new MessageItem();
         one.setMsgId("MSG-A");
