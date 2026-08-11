@@ -106,12 +106,14 @@ const AuditPage: React.FC = () => {
   const [filterOptions, setFilterOptions] = useState<AuditFilterOptions>(emptyFilterOptions);
   const [cleanupModalOpen, setCleanupModalOpen] = useState(false);
   const [cleanupDays, setCleanupDays] = useState(30);
+  const [cleaning, setCleaning] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [summary, setSummary] = useState<AuditSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [timelineResource, setTimelineResource] = useState<AuditTimelineResource | null>(null);
   const recordsRequestRef = useRef(0);
   const filterOptionsRequestRef = useRef(0);
+  const cleanupInFlightRef = useRef(false);
 
   useEffect(() => {
     const requestId = ++filterOptionsRequestRef.current;
@@ -289,6 +291,9 @@ const AuditPage: React.FC = () => {
   };
 
   const handleCleanup = async () => {
+    if (cleanupInFlightRef.current) return;
+    cleanupInFlightRef.current = true;
+    setCleaning(true);
     try {
       await cleanupAuditLogs(cleanupDays);
       setPage(1);
@@ -297,6 +302,9 @@ const AuditPage: React.FC = () => {
       setCleanupModalOpen(false);
     } catch {
       message.error('清理审计日志失败，请稍后重试');
+    } finally {
+      cleanupInFlightRef.current = false;
+      setCleaning(false);
     }
   };
 
@@ -562,9 +570,16 @@ const AuditPage: React.FC = () => {
         title={t('audit.cleanupTitle')}
         open={cleanupModalOpen}
         onOk={handleCleanup}
-        onCancel={() => setCleanupModalOpen(false)}
+        onCancel={() => {
+          if (!cleanupInFlightRef.current) setCleanupModalOpen(false);
+        }}
         okText={t('audit.cleanupConfirm')}
         cancelText={t('common.cancel')}
+        confirmLoading={cleaning}
+        closable={!cleaning}
+        keyboard={!cleaning}
+        maskClosable={!cleaning}
+        cancelButtonProps={{ disabled: cleaning }}
         okButtonProps={{ danger: true }}
       >
         <Flex vertical gap={12}>
