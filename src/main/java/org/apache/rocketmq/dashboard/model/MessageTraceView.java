@@ -52,10 +52,10 @@ public class MessageTraceView {
 
     public static List<MessageTraceView> decodeFromTraceTransData(String key, MessageExt messageExt) {
         List<MessageTraceView> messageTraceViewList = new ArrayList<MessageTraceView>();
-        String messageBody = new String(messageExt.getBody(), Charsets.UTF_8);
-        if (messageBody == null || messageBody.length() <= 0) {
+        if (messageExt == null || messageExt.getBody() == null || messageExt.getBody().length == 0) {
             return messageTraceViewList;
         }
+        String messageBody = new String(messageExt.getBody(), Charsets.UTF_8);
 
         List<TraceContext> traceContextList = MsgTraceDecodeUtil.decoderFromTraceDataString(messageBody);
         for (TraceContext context : traceContextList) {
