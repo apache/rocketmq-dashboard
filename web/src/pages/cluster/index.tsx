@@ -553,7 +553,7 @@ const ClusterPage = () => {
             {t('cluster.createCluster')}
           </Button>
         </Flex>
-        <Card bodyStyle={{ padding: 0 }}>
+        <Card styles={{ body: { padding: 0 } }}>
           <Table
             columns={brokerColumns}
             dataSource={allBrokers}
@@ -813,7 +813,7 @@ const ClusterPage = () => {
             {t('cluster.createNameServer')}
           </Button>
         </Flex>
-        <Card bodyStyle={{ padding: 0 }}>
+        <Card styles={{ body: { padding: 0 } }}>
           <Table
             columns={clusterColumns}
             dataSource={filteredClusters}
@@ -984,7 +984,7 @@ const ClusterPage = () => {
             {t('cluster.createCluster')}
           </Button>
         </Flex>
-        <Card bodyStyle={{ padding: 0 }}>
+        <Card styles={{ body: { padding: 0 } }}>
           <Table
             columns={proxyColumns}
             dataSource={allProxies}
@@ -1107,7 +1107,7 @@ const ClusterPage = () => {
         }}
         okText={t('common.confirm')}
         cancelText={t('common.cancel')}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={nsForm} layout="vertical" style={{ marginTop: 16 }}>
           {nsModalMode === 'create' && (
@@ -1143,7 +1143,7 @@ const ClusterPage = () => {
         onCancel={() => setSelectedProxy(null)}
         footer={<Button onClick={() => setSelectedProxy(null)}>{t('common.close')}</Button>}
         width={560}
-        destroyOnClose
+        destroyOnHidden
       >
         {selectedProxy && (
           <Descriptions column={1} bordered size="small">
@@ -1194,7 +1194,7 @@ const ClusterPage = () => {
         confirmLoading={connectTesting}
         onOk={handleTestConnection}
         width={560}
-        destroyOnClose
+        destroyOnHidden
       >
         <Text type="secondary">{t('cluster.testConnectionDesc')}</Text>
         <Form form={connectForm} layout="vertical" style={{ marginTop: 16 }}>
