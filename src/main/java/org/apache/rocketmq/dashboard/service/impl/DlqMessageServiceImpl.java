@@ -25,6 +25,7 @@ import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.dashboard.model.DlqMessageRequest;
 import org.apache.rocketmq.dashboard.model.DlqMessageResendResult;
 import org.apache.rocketmq.dashboard.model.MessagePage;
+import org.apache.rocketmq.dashboard.model.MessageQueryByPage;
 import org.apache.rocketmq.dashboard.model.MessageView;
 import org.apache.rocketmq.dashboard.model.request.MessageQuery;
 import org.apache.rocketmq.dashboard.service.DlqMessageService;
@@ -53,7 +54,9 @@ public class DlqMessageServiceImpl implements DlqMessageService {
     @Override
     public MessagePage queryDlqMessageByPage(MessageQuery query) {
         List<MessageView> messageViews = new ArrayList<>();
-        PageRequest page = PageRequest.of(query.getPageNum(), query.getPageSize());
+        MessageQueryByPage pageQuery = new MessageQueryByPage(query.getPageNum(), query.getPageSize(),
+                query.getTopic(), query.getBegin(), query.getEnd());
+        PageRequest page = pageQuery.page();
         String topic = query.getTopic();
         try {
             mqAdminExt.examineTopicRouteInfo(topic);

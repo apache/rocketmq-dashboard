@@ -89,7 +89,9 @@ public class DlqMessageControllerTest extends BaseControllerTest {
         // 1、%DLQ%group_test is not exist
         perform = mockMvc.perform(requestBuilder);
         perform.andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.page.content", hasSize(0)));
+                .andExpect(jsonPath("$.data.page.content", hasSize(0)))
+                .andExpect(jsonPath("$.data.page.number").value(0))
+                .andExpect(jsonPath("$.data.page.size").value(10));
 
         // 2、Other MQClientException occur
         perform = mockMvc.perform(requestBuilder);
