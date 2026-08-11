@@ -25,6 +25,7 @@ import com.aliyun.sdk.service.rocketmq20220801.models.GetConsumerGroupLagRespons
 import com.aliyun.sdk.service.rocketmq20220801.models.GetConsumerGroupLagResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.GetTraceResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.GetTraceResponseBody;
+import com.aliyun.sdk.service.rocketmq20220801.models.ListConsumerGroupsRequest;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListConsumerGroupsResponse;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListConsumerGroupsResponseBody;
 import com.aliyun.sdk.service.rocketmq20220801.models.ListMessagesResponse;
@@ -66,6 +67,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -427,42 +429,119 @@ class AliyunInstanceProviderTest {
     }
 
     @Test
-    void countTopicsShouldReuseListTopicsSizeTest() {
+    void countTopicsShouldUseTotalCountWithoutFetchingEveryTopicTest() {
         stubInstance();
         stubCallThrough();
+        ListTopicsResponse response = ListTopicsResponse.create().toBuilder()
+                .statusCode(200)
+                .body(ListTopicsResponseBody.builder()
+                        .data(ListTopicsResponseBody.Data.builder()
+                                .list(List.of(topicRow("topic-a", "NORMAL")))
+                                .pageNumber(1L)
+                                .pageSize(1L)
+                                .totalCount(321L)
+                                .build())
+                        .build())
+                .build();
         when(asyncClient.listTopics(any(ListTopicsRequest.class)))
-                .thenReturn(CompletableFuture.completedFuture(topicsResponse(
-                        topicRow("topic-a", "NORMAL"),
-                        topicRow("topic-b", "FIFO"))));
+                .thenReturn(CompletableFuture.completedFuture(response));
 
-        assertThat(provider.countTopics(STUDIO_INSTANCE_ID)).isEqualTo(2);
+        assertThat(provider.countTopics(STUDIO_INSTANCE_ID)).isEqualTo(321);
+        ArgumentCaptor<ListTopicsRequest> captor = ArgumentCaptor.forClass(ListTopicsRequest.class);
+        verify(asyncClient).listTopics(captor.capture());
+        assertThat(captor.getValue().getPageNumber()).isEqualTo(1L);
+        assertThat(captor.getValue().getPageSize()).isEqualTo(1L);
     }
 
     @Test
-    void countGroupsShouldReuseListConsumerGroupsSizeTest() {
+    void countGroupsShouldUseTotalCountWithoutFetchingEveryGroupTest() {
         stubInstance();
         stubCallThrough();
         ListConsumerGroupsResponse response = ListConsumerGroupsResponse.create().toBuilder()
                 .statusCode(200)
                 .body(ListConsumerGroupsResponseBody.builder()
                         .data(ListConsumerGroupsResponseBody.Data.builder()
-                                .list(List.of(
-                                        ListConsumerGroupsResponseBody.List.builder()
-                                                .consumerGroupId("GID_one")
-                                                .build(),
-                                        ListConsumerGroupsResponseBody.List.builder()
-                                                .consumerGroupId("GID_two")
-                                                .build()))
+                                .list(List.of(ListConsumerGroupsResponseBody.List.builder()
+                                        .consumerGroupId("GID_one")
+                                        .build()))
                                 .pageNumber(1L)
-                                .pageSize(100L)
-                                .totalCount(2L)
+                                .pageSize(1L)
+                                .totalCount(654L)
                                 .build())
                         .build())
                 .build();
         when(asyncClient.listConsumerGroups(any()))
                 .thenReturn(CompletableFuture.completedFuture(response));
 
+        assertThat(provider.countGroups(STUDIO_INSTANCE_ID)).isEqualTo(654);
+        ArgumentCaptor<ListConsumerGroupsRequest> captor =
+                ArgumentCaptor.forClass(ListConsumerGroupsRequest.class);
+        verify(asyncClient).listConsumerGroups(captor.capture());
+        assertThat(captor.getValue().getPageNumber()).isEqualTo(1L);
+        assertThat(captor.getValue().getPageSize()).isEqualTo(1L);
+    }
+
+    @Test
+    void countTopicsShouldFallBackToFullListingWhenTotalCountIsMissingTest() {
+        stubInstance();
+        stubCallThrough();
+        ListTopicsResponse missingTotal = ListTopicsResponse.create().toBuilder()
+                .statusCode(200)
+                .body(ListTopicsResponseBody.builder()
+                        .data(ListTopicsResponseBody.Data.builder()
+                                .list(List.of(topicRow("topic-a", "NORMAL")))
+                                .pageNumber(1L)
+                                .pageSize(1L)
+                                .build())
+                        .build())
+                .build();
+        when(asyncClient.listTopics(any(ListTopicsRequest.class)))
+                .thenReturn(CompletableFuture.completedFuture(missingTotal))
+                .thenReturn(CompletableFuture.completedFuture(topicsResponse(
+                        topicRow("topic-a", "NORMAL"),
+                        topicRow("topic-b", "FIFO"))));
+
+        assertThat(provider.countTopics(STUDIO_INSTANCE_ID)).isEqualTo(2);
+        ArgumentCaptor<ListTopicsRequest> captor = ArgumentCaptor.forClass(ListTopicsRequest.class);
+        verify(asyncClient, times(2)).listTopics(captor.capture());
+        assertThat(captor.getAllValues()).extracting(ListTopicsRequest::getPageSize)
+                .containsExactly(1, AliyunConverters.PAGE_SIZE);
+    }
+
+    @Test
+    void countGroupsShouldFallBackToFullListingWhenTotalCountIsMissingTest() {
+        stubInstance();
+        stubCallThrough();
+        ListConsumerGroupsResponse missingTotal = groupsResponse(null, "GID_one");
+        ListConsumerGroupsResponse completeListing = groupsResponse(2L, "GID_one", "GID_two");
+        when(asyncClient.listConsumerGroups(any()))
+                .thenReturn(CompletableFuture.completedFuture(missingTotal))
+                .thenReturn(CompletableFuture.completedFuture(completeListing));
+
         assertThat(provider.countGroups(STUDIO_INSTANCE_ID)).isEqualTo(2);
+        ArgumentCaptor<ListConsumerGroupsRequest> captor =
+                ArgumentCaptor.forClass(ListConsumerGroupsRequest.class);
+        verify(asyncClient, times(2)).listConsumerGroups(captor.capture());
+        assertThat(captor.getAllValues()).extracting(ListConsumerGroupsRequest::getPageSize)
+                .containsExactly(1, AliyunConverters.PAGE_SIZE);
+    }
+
+    private static ListConsumerGroupsResponse groupsResponse(Long totalCount, String... groupIds) {
+        return ListConsumerGroupsResponse.create().toBuilder()
+                .statusCode(200)
+                .body(ListConsumerGroupsResponseBody.builder()
+                        .data(ListConsumerGroupsResponseBody.Data.builder()
+                                .list(java.util.Arrays.stream(groupIds)
+                                        .map(groupId -> ListConsumerGroupsResponseBody.List.builder()
+                                                .consumerGroupId(groupId)
+                                                .build())
+                                        .toList())
+                                .pageNumber(1L)
+                                .pageSize((long) AliyunConverters.PAGE_SIZE)
+                                .totalCount(totalCount)
+                                .build())
+                        .build())
+                .build();
     }
 
     @Test

@@ -77,6 +77,7 @@ public class AliyunInstanceProvider implements InstanceProvider {
     private static final String FIXED_RETRY_POLICY = "FixedRetryPolicy";
     private static final int DEFAULT_MAX_RETRY_TIMES = 16;
     private static final int DEFAULT_FIXED_RETRY_INTERVAL_SECONDS = 10;
+    private static final int COUNT_PAGE_SIZE = 1;
     private static final String RESET_TYPE_SPECIFIED_TIME = "SPECIFIED_TIME";
     private static final String RESET_TYPE_LATEST_OFFSET = "LATEST_OFFSET";
 
@@ -90,12 +91,42 @@ public class AliyunInstanceProvider implements InstanceProvider {
 
     @Override
     public int countTopics(String instanceId) {
-        return listTopics(instanceId, null, null).size();
+        Context ctx = resolve(instanceId);
+        ListTopicsRequest request = ListTopicsRequest.builder()
+                .instanceId(ctx.cloudInstanceId())
+                .pageNumber(1)
+                .pageSize(COUNT_PAGE_SIZE)
+                .build();
+        ListTopicsResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
+                client -> client.listTopics(request));
+        ListTopicsResponseBody body = response == null ? null : response.getBody();
+        ListTopicsResponseBody.Data data = body == null ? null : body.getData();
+        Long totalCount = data == null ? null : data.getTotalCount();
+        return totalCount == null || totalCount < 0
+                ? listTopics(instanceId, null, null).size()
+                : boundedCount(totalCount);
     }
 
     @Override
     public int countGroups(String instanceId) {
-        return listConsumerGroups(instanceId, null).size();
+        Context ctx = resolve(instanceId);
+        ListConsumerGroupsRequest request = ListConsumerGroupsRequest.builder()
+                .instanceId(ctx.cloudInstanceId())
+                .pageNumber(1)
+                .pageSize(COUNT_PAGE_SIZE)
+                .build();
+        ListConsumerGroupsResponse response = clientFactory.call(ctx.credentialId(), ctx.regionId(),
+                client -> client.listConsumerGroups(request));
+        ListConsumerGroupsResponseBody body = response == null ? null : response.getBody();
+        ListConsumerGroupsResponseBody.Data data = body == null ? null : body.getData();
+        Long totalCount = data == null ? null : data.getTotalCount();
+        return totalCount == null || totalCount < 0
+                ? listConsumerGroups(instanceId, null).size()
+                : boundedCount(totalCount);
+    }
+
+    private int boundedCount(long totalCount) {
+        return totalCount > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) totalCount;
     }
 
     @Override
