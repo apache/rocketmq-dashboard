@@ -99,7 +99,10 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
     public InstanceVO save(InstanceVO instance) {
         RmqInstance entity = toEntity(instance);
         if (instanceMapper.selectById(entity.getId()) != null) {
-            instanceMapper.updateById(entity);
+            if (instanceMapper.updateById(entity) == 0) {
+                throw new BusinessException(409,
+                        "Instance update was not applied: " + entity.getId());
+            }
         } else {
             instanceMapper.insert(entity);
         }
