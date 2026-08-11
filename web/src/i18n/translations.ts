@@ -1067,6 +1067,13 @@ const translations: Record<string, Record<Lang, string>> = {
   'proxy.healthy': { zh: '健康', en: 'Healthy' },
   'proxy.unhealthy': { zh: '不健康', en: 'Unhealthy' },
   'proxy.warning': { zh: '警告', en: 'Warning' },
+  'proxy.clusterId': { zh: '集群 ID', en: 'Cluster ID' },
+  'proxy.clusterIdPlaceholder': { zh: '例：DefaultCluster', en: 'e.g. DefaultCluster' },
+  'proxy.reloadConfig': { zh: '重载配置', en: 'Reload Config' },
+  'proxy.reloadSuccess': { zh: '配置重载成功', en: 'Config reload succeeded' },
+  'proxy.reloadFailed': { zh: '配置重载失败', en: 'Config reload failed' },
+  'proxy.statusOffline': { zh: '离线', en: 'Offline' },
+  'proxy.statusError': { zh: '错误', en: 'Error' },
 
   // ─── Broker Cluster ───
   'brokerCluster.title': { zh: 'Broker 集群', en: 'Broker Cluster' },

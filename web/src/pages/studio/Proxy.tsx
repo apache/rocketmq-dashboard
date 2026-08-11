@@ -32,6 +32,7 @@ import {
   Tooltip,
   App,
   Typography,
+  Input,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -44,7 +45,7 @@ import {
 } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
-import { queryProxyHomePage, type ProxyNode } from '../../api/proxy';
+import { queryProxyHomePage, reloadProxyConfig, type ProxyNode } from '../../api/proxy';
 
 const { Text } = Typography;
 
@@ -56,6 +57,9 @@ const ProxyPage: React.FC = () => {
   const [proxyNodes, setProxyNodes] = useState<ProxyNode[]>([]);
   const [selectedNode, setSelectedNode] = useState<ProxyNode | null>(null);
   const [configModalOpen, setConfigModalOpen] = useState(false);
+  const [clusterId, setClusterId] = useState<string>(
+    localStorage.getItem('clusterId') || 'DefaultCluster',
+  );
   const loadRequestId = useRef(0);
 
   const [clusterStats, setClusterStats] = useState({
@@ -97,6 +101,7 @@ const ProxyPage: React.FC = () => {
       } else if (proxyAddrList && proxyAddrList.length > 0) {
         localStorage.setItem('proxyAddr', proxyAddrList[0]);
       }
+
       return true;
     } catch {
       if (requestId !== loadRequestId.current) return false;
@@ -129,6 +134,26 @@ const ProxyPage: React.FC = () => {
     }
   };
 
+  const handleClusterIdChange = (value: string) => {
+    setClusterId(value);
+    if (value) {
+      localStorage.setItem('clusterId', value);
+    }
+  };
+
+  const handleReloadConfig = async (node: ProxyNode) => {
+    try {
+      const result = await reloadProxyConfig(clusterId, node.address);
+      if (result.success) {
+        message.success(t('proxy.reloadSuccess'));
+      } else {
+        message.warning(t('proxy.reloadFailed'));
+      }
+    } catch {
+      message.error(t('proxy.reloadFailed'));
+    }
+  };
+
   const renderStatus = (status: string) => {
     const map: Record<string, { color: string; icon: React.ReactNode; label: string }> = {
       healthy: {
@@ -145,6 +170,16 @@ const ProxyPage: React.FC = () => {
         color: 'warning',
         icon: <Warning size={12} weight="fill" />,
         label: t('proxy.warning'),
+      },
+      error: {
+        color: 'error',
+        icon: <XCircle size={12} weight="fill" />,
+        label: t('proxy.statusError'),
+      },
+      offline: {
+        color: 'default',
+        icon: null,
+        label: t('proxy.statusOffline'),
       },
       unknown: {
         color: 'default',
@@ -262,6 +297,15 @@ const ProxyPage: React.FC = () => {
               onClick={() => handleViewConfig(record)}
             />
           </Tooltip>
+          <Tooltip title={t('proxy.reloadConfig')}>
+            <Button
+              type="link"
+              size="small"
+              icon={<ArrowClockwise size={14} />}
+              aria-label={t('proxy.reloadConfig')}
+              onClick={() => handleReloadConfig(record)}
+            />
+          </Tooltip>
         </Space>
       ),
     },
@@ -276,6 +320,13 @@ const ProxyPage: React.FC = () => {
 
         extra={
           <Space>
+            <Input
+              placeholder={t('proxy.clusterIdPlaceholder')}
+              value={clusterId}
+              onChange={(e) => handleClusterIdChange(e.target.value)}
+              style={{ width: 200 }}
+              aria-label={t('proxy.clusterId')}
+            />
             <Button type="primary" icon={<ArrowClockwise size={14} />} onClick={handleRefresh}>
               {t('common.refresh')}
             </Button>
@@ -329,7 +380,11 @@ const ProxyPage: React.FC = () => {
         </Row>
 
         {/* Node Table */}
-        <Card title={t('proxy.nodes')} bordered={false} style={{ borderRadius: 8 }}>
+        <Card
+          title={t('proxy.nodes')}
+          bordered={false}
+          style={{ borderRadius: 8, marginBottom: 24 }}
+        >
           <Table columns={columns} dataSource={proxyNodes} pagination={false} size="middle" />
         </Card>
       </Spin>

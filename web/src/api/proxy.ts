@@ -43,3 +43,18 @@ export async function queryProxyHomePage(): Promise<ProxyHomePageData> {
   const res = await client.get<{ data: ProxyHomePageData }>('/proxy/homePage.query');
   return res.data.data;
 }
+
+/**
+ * Trigger a configuration hot-reload for a proxy.
+ * Uses the same DTO as restartProxy ({ clusterId, addr }).
+ */
+export async function reloadProxyConfig(
+  clusterId: string,
+  addr: string,
+): Promise<{ success: boolean }> {
+  const res = await client.post<{ data: { success: boolean } }>('/proxies/config/reload', {
+    clusterId,
+    addr,
+  });
+  return res.data.data;
+}
