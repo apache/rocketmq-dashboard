@@ -172,7 +172,7 @@ public class MybatisPlusAlertRepository implements AlertRepository {
             return AlertLevel.info;
         }
         try {
-            return AlertLevel.valueOf(level);
+            return AlertLevel.valueOf(level.trim().toLowerCase(Locale.ROOT));
         } catch (IllegalArgumentException exception) {
             return AlertLevel.info;
         }

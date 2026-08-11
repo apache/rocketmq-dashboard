@@ -30,6 +30,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 import java.util.Locale;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.verify;
@@ -46,6 +47,17 @@ class MybatisPlusAlertRepositoryTest {
 
     @InjectMocks
     private MybatisPlusAlertRepository repository;
+
+    @Test
+    void findAlertsShouldNormalizeStoredLevelValues() {
+        RmqSystemAlert entity = new RmqSystemAlert();
+        entity.setLevel(" WARNING ");
+        when(alertMapper.selectList(any())).thenReturn(List.of(entity));
+
+        assertThat(repository.findAlerts(null)).singleElement()
+                .satisfies(alert -> assertThat(alert.getLevel()).isEqualTo(
+                        org.apache.rocketmq.studio.common.domain.enums.AlertLevel.warning));
+    }
 
     @Test
     void findAlertsShouldNormalizeLevelIndependentlyOfDefaultLocale() {
