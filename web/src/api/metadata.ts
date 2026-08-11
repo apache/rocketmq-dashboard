@@ -44,6 +44,7 @@ export interface ConsumerGroupInfo {
   messageModel: string;
   consumeTps: number;
   diffTotal: number;
+  metricsAvailable?: boolean;
 }
 
 // ─── Consumer Group (matches mock/consumers.ts) ─────────────────

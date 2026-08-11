@@ -32,4 +32,6 @@ public class TopicConsumerVO {
     private String messageModel;
     private double consumeTps;
     private long diffTotal;
+    @Builder.Default
+    private boolean metricsAvailable = true;
 }

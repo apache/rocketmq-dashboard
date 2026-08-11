@@ -565,13 +565,19 @@ const TopicPage = () => {
       title: '消费 TPS',
       dataIndex: 'consumeTps',
       key: 'consumeTps',
-      render: (n: number) => formatNumber(n),
+      render: (n: number, record) =>
+        record.metricsAvailable === false ? <Text type="secondary">不可用</Text> : formatNumber(n),
     },
     {
       title: '堆积量',
       dataIndex: 'diffTotal',
       key: 'diffTotal',
-      render: (n: number) => <Text type={n > 100 ? 'warning' : undefined}>{formatNumber(n)}</Text>,
+      render: (n: number, record) =>
+        record.metricsAvailable === false ? (
+          <Text type="secondary">不可用</Text>
+        ) : (
+          <Text type={n > 100 ? 'warning' : undefined}>{formatNumber(n)}</Text>
+        ),
     },
   ];
 
