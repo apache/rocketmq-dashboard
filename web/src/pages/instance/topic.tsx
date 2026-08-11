@@ -598,7 +598,7 @@ const TopicPage = () => {
     const typeInfo = TOPIC_TYPE_MAP[topic.type];
 
     return (
-      <Descriptions bordered column={2} size="small" labelStyle={{ fontWeight: 500 }}>
+      <Descriptions bordered column={2} size="small" styles={{ label: { fontWeight: 500 } }}>
         <Descriptions.Item label="Topic 名称" span={2}>
           {topic.name}
         </Descriptions.Item>
@@ -1068,7 +1068,7 @@ const TopicPage = () => {
         open={detailModalOpen}
         onCancel={() => setDetailModalOpen(false)}
         width={800}
-        destroyOnClose
+        destroyOnHidden
         footer={null}
       >
         {selectedTopic && (
@@ -1156,7 +1156,7 @@ const TopicPage = () => {
         okText="创建"
         cancelText="取消"
         width={560}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form
           form={form}
@@ -1250,7 +1250,7 @@ const TopicPage = () => {
             importRows.every((row) => row.status === 'success' || row.status === 'invalid'),
         }}
         width={720}
-        destroyOnClose
+        destroyOnHidden
       >
         <Space direction="vertical" style={{ width: '100%' }} size={12}>
           {importErrors.length > 0 ? (
@@ -1305,7 +1305,7 @@ const TopicPage = () => {
         cancelText="取消"
         confirmLoading={sending}
         width={640}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form
           form={sendForm}
