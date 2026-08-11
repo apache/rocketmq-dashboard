@@ -105,7 +105,7 @@ class ProxyControllerTest {
 
     @Test
     void listProxiesShouldReturnProxiesForCluster() throws Exception {
-        when(proxyAddressService.getHomePage())
+        when(proxyAddressService.getHomePage("cluster-1"))
                 .thenReturn(ProxyHomeVO.builder()
                         .proxyAddrList(List.of("127.0.0.1:8081"))
                         .currentProxyAddr("127.0.0.1:8081")
@@ -116,7 +116,7 @@ class ProxyControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data[0].addr").value("127.0.0.1:8081"));
 
-        verify(proxyAddressService).getHomePage();
+        verify(proxyAddressService).getHomePage("cluster-1");
     }
 
     @Test
@@ -141,7 +141,7 @@ class ProxyControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.success").value(true));
 
-        verify(proxyAddressService).reloadConfig("127.0.0.1:8081");
+        verify(proxyAddressService).reloadConfig("cluster-1", "127.0.0.1:8081");
     }
 
     @Test

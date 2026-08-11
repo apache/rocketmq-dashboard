@@ -42,7 +42,7 @@ public class ProxyController {
     @GetMapping
     public Result<List<ProxyVO>> listProxies(@RequestParam(required = false) String clusterId) {
         requireClusterId(clusterId);
-        List<ProxyVO> proxies = proxyAddressService.getHomePage().getProxyAddrList().stream()
+        List<ProxyVO> proxies = proxyAddressService.getHomePage(clusterId).getProxyAddrList().stream()
                 .map(addr -> ProxyVO.builder().addr(addr).build())
                 .toList();
         return Result.ok(proxies);
@@ -50,7 +50,7 @@ public class ProxyController {
 
     @PostMapping("/config/reload")
     public Result<Map<String, Boolean>> reloadProxyConfig(@Valid @RequestBody RestartProxyDTO command) {
-        proxyAddressService.reloadConfig(command.getAddr());
+        proxyAddressService.reloadConfig(command.getClusterId(), command.getAddr());
         return Result.ok(Map.of("success", true));
     }
 

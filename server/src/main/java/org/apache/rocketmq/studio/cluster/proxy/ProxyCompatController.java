@@ -34,19 +34,21 @@ public class ProxyCompatController {
     private final ProxyAddressService proxyAddressService;
 
     @GetMapping("/homePage.query")
-    public Result<ProxyHomeVO> homePage() {
-        return Result.ok(proxyAddressService.getHomePage());
+    public Result<ProxyHomeVO> homePage(@RequestParam(required = false) String clusterId) {
+        return Result.ok(proxyAddressService.getHomePage(clusterId));
     }
 
     @PostMapping(value = "/addProxyAddr.do", consumes = MediaType.APPLICATION_FORM_URLENCODED_VALUE)
-    public Result<Void> addProxyAddr(@RequestParam String newProxyAddr) {
-        proxyAddressService.addProxyAddr(newProxyAddr);
+    public Result<Void> addProxyAddr(@RequestParam String newProxyAddr,
+                                     @RequestParam(required = false) String clusterId) {
+        proxyAddressService.addProxyAddr(clusterId, newProxyAddr);
         return Result.ok();
     }
 
     @PostMapping(value = "/removeProxyAddr.do", consumes = MediaType.APPLICATION_FORM_URLENCODED_VALUE)
-    public Result<Void> removeProxyAddr(@RequestParam String proxyAddr) {
-        proxyAddressService.removeProxyAddr(proxyAddr);
+    public Result<Void> removeProxyAddr(@RequestParam String proxyAddr,
+                                        @RequestParam(required = false) String clusterId) {
+        proxyAddressService.removeProxyAddr(clusterId, proxyAddr);
         return Result.ok();
     }
 }

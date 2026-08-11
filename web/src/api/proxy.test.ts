@@ -18,7 +18,7 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { queryProxyHomePage } from './proxy';
+import { addProxyAddress, queryProxyHomePage, removeProxyAddress } from './proxy';
 
 const mock = new MockAdapter(client);
 
@@ -53,5 +53,25 @@ describe('Proxy API', () => {
     const result = await queryProxyHomePage();
     expect(result.proxyAddrList).toHaveLength(0);
     expect(result.currentProxyAddr).toBe('');
+  });
+
+  it('scopes reads and mutations to the selected cluster', async () => {
+    mock.onGet('/proxy/homePage.query').reply((config) => {
+      expect(config.params).toEqual({ clusterId: 'cluster-a' });
+      return [200, { code: 200, data: { proxyAddrList: [], currentProxyAddr: '' } }];
+    });
+    mock.onPost('/proxy/addProxyAddr.do').reply((config) => {
+      expect(String(config.data)).toContain('clusterId=cluster-a');
+      expect(String(config.data)).toContain('newProxyAddr=10.0.0.1%3A8081');
+      return [200, { code: 200 }];
+    });
+    mock.onPost('/proxy/removeProxyAddr.do').reply((config) => {
+      expect(String(config.data)).toContain('proxyAddr=10.0.0.1%3A8081');
+      return [200, { code: 200 }];
+    });
+
+    await queryProxyHomePage('cluster-a');
+    await addProxyAddress('cluster-a', '10.0.0.1:8081');
+    await removeProxyAddress('cluster-a', '10.0.0.1:8081');
   });
 });

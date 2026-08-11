@@ -33,6 +33,18 @@ CREATE TABLE IF NOT EXISTS rmq_instance (
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- 2a. Proxy address preferences, isolated by managed cluster/instance scope
+CREATE TABLE IF NOT EXISTS rmq_proxy_address (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  scope_id VARCHAR(64) NOT NULL,
+  address VARCHAR(512) NOT NULL,
+  selected TINYINT(1) DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_proxy_scope_address (scope_id, address),
+  INDEX idx_proxy_scope_selected (scope_id, selected)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- 3. Topic 管理记录（通过 Studio 创建/管理的 Topic 元数据）
 CREATE TABLE IF NOT EXISTS rmq_topic (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,

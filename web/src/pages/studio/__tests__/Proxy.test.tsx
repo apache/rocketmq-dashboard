@@ -19,13 +19,20 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
-import { queryProxyHomePage, reloadProxyConfig } from '../../../api/proxy';
+import {
+  addProxyAddress,
+  queryProxyHomePage,
+  reloadProxyConfig,
+  removeProxyAddress,
+} from '../../../api/proxy';
 import { LangProvider } from '../../../i18n/LangContext';
 import ProxyPage from '../Proxy';
 
 vi.mock('../../../api/proxy', () => ({
   queryProxyHomePage: vi.fn(),
   reloadProxyConfig: vi.fn(),
+  addProxyAddress: vi.fn(),
+  removeProxyAddress: vi.fn(),
 }));
 
 beforeAll(() => {
@@ -74,13 +81,15 @@ describe('ProxyPage', () => {
     vi.mocked(reloadProxyConfig).mockResolvedValue({
       success: true,
     });
+    vi.mocked(addProxyAddress).mockResolvedValue();
+    vi.mocked(removeProxyAddress).mockResolvedValue();
   });
 
   it('loads Proxy nodes once after the page mounts', async () => {
     renderPage();
 
     await screen.findByText('127.0.0.1:8081');
-    expect(queryProxyHomePage).toHaveBeenCalledTimes(1);
+    expect(queryProxyHomePage).toHaveBeenCalledWith('DefaultCluster');
   });
 
   it('shows success after the proxy list refreshes', async () => {
@@ -140,6 +149,27 @@ describe('ProxyPage', () => {
       expect(reloadProxyConfig).toHaveBeenCalledWith('DefaultCluster', '127.0.0.1:8081'),
     );
     expect(await screen.findByText('配置重载成功')).toBeInTheDocument();
+  });
+
+  it('adds a scoped Proxy address and refreshes the table', async () => {
+    const user = userEvent.setup();
+    vi.mocked(queryProxyHomePage)
+      .mockResolvedValueOnce(proxyHome)
+      .mockResolvedValueOnce({
+        proxyAddrList: [...proxyHome.proxyAddrList, '10.0.0.1:8081'],
+        currentProxyAddr: proxyHome.currentProxyAddr,
+      });
+    renderPage();
+    await screen.findByText('127.0.0.1:8081');
+
+    await user.click(screen.getByRole('button', { name: '添加地址' }));
+    await user.type(screen.getByRole('textbox', { name: 'Proxy 地址' }), '10.0.0.1:8081');
+    await user.click(screen.getByRole('button', { name: 'OK' }));
+
+    await waitFor(() =>
+      expect(addProxyAddress).toHaveBeenCalledWith('DefaultCluster', '10.0.0.1:8081'),
+    );
+    expect(await screen.findByText('10.0.0.1:8081')).toBeInTheDocument();
   });
 
   it('keeps the latest Proxy list when an older refresh resolves last', async () => {

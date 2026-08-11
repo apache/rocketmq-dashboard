@@ -1074,6 +1074,14 @@ const translations: Record<string, Record<Lang, string>> = {
   'proxy.reloadFailed': { zh: '配置重载失败', en: 'Config reload failed' },
   'proxy.statusOffline': { zh: '离线', en: 'Offline' },
   'proxy.statusError': { zh: '错误', en: 'Error' },
+  'proxy.address': { zh: 'Proxy 地址', en: 'Proxy address' },
+  'proxy.addAddress': { zh: '添加地址', en: 'Add address' },
+  'proxy.removeAddress': { zh: '删除地址', en: 'Remove address' },
+  'proxy.removeConfirm': { zh: '确认删除此 Proxy 地址？', en: 'Remove this Proxy address?' },
+  'proxy.addSuccess': { zh: 'Proxy 地址已添加', en: 'Proxy address added' },
+  'proxy.addFailed': { zh: '添加 Proxy 地址失败', en: 'Failed to add Proxy address' },
+  'proxy.removeSuccess': { zh: 'Proxy 地址已删除', en: 'Proxy address removed' },
+  'proxy.removeFailed': { zh: '删除 Proxy 地址失败', en: 'Failed to remove Proxy address' },
 
   // ─── Broker Cluster ───
   'brokerCluster.title': { zh: 'Broker 集群', en: 'Broker Cluster' },

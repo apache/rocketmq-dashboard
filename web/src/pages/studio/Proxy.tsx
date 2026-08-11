@@ -42,21 +42,32 @@ import {
   CheckCircle,
   XCircle,
   Warning,
+  Plus,
+  Trash,
 } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
-import { queryProxyHomePage, reloadProxyConfig, type ProxyNode } from '../../api/proxy';
+import {
+  addProxyAddress,
+  queryProxyHomePage,
+  reloadProxyConfig,
+  removeProxyAddress,
+  type ProxyNode,
+} from '../../api/proxy';
 
 const { Text } = Typography;
 
 const ProxyPage: React.FC = () => {
   const { t } = useLang();
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
 
   const [loading, setLoading] = useState(false);
   const [proxyNodes, setProxyNodes] = useState<ProxyNode[]>([]);
   const [selectedNode, setSelectedNode] = useState<ProxyNode | null>(null);
   const [configModalOpen, setConfigModalOpen] = useState(false);
+  const [addressModalOpen, setAddressModalOpen] = useState(false);
+  const [newAddress, setNewAddress] = useState('');
+  const [addressSaving, setAddressSaving] = useState(false);
   const [clusterId, setClusterId] = useState<string>(
     localStorage.getItem('clusterId') || 'DefaultCluster',
   );
@@ -73,7 +84,7 @@ const ProxyPage: React.FC = () => {
     const requestId = ++loadRequestId.current;
     setLoading(true);
     try {
-      const { proxyAddrList, currentProxyAddr } = await queryProxyHomePage();
+      const { proxyAddrList, currentProxyAddr } = await queryProxyHomePage(clusterId);
       if (requestId !== loadRequestId.current) return false;
       const nodes: ProxyNode[] = (proxyAddrList || []).map((addr) => ({
         key: addr,
@@ -112,7 +123,7 @@ const ProxyPage: React.FC = () => {
         setLoading(false);
       }
     }
-  }, [message, t]);
+  }, [clusterId, message, t]);
 
   useEffect(() => {
     const requestId = loadRequestId.current;
@@ -153,6 +164,40 @@ const ProxyPage: React.FC = () => {
     } catch {
       message.error(t('proxy.reloadFailed'));
     }
+  };
+
+  const handleAddAddress = async () => {
+    const address = newAddress.trim();
+    if (!address) return;
+    setAddressSaving(true);
+    try {
+      await addProxyAddress(clusterId, address);
+      await loadProxyNodes();
+      setNewAddress('');
+      setAddressModalOpen(false);
+      message.success(t('proxy.addSuccess'));
+    } catch {
+      message.error(t('proxy.addFailed'));
+    } finally {
+      setAddressSaving(false);
+    }
+  };
+
+  const handleRemoveAddress = (node: ProxyNode) => {
+    modal.confirm({
+      title: t('proxy.removeConfirm'),
+      content: node.address,
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          await removeProxyAddress(clusterId, node.address);
+          await loadProxyNodes();
+          message.success(t('proxy.removeSuccess'));
+        } catch {
+          message.error(t('proxy.removeFailed'));
+        }
+      },
+    });
   };
 
   const renderStatus = (status: string) => {
@@ -307,6 +352,16 @@ const ProxyPage: React.FC = () => {
               onClick={() => handleReloadConfig(record)}
             />
           </Tooltip>
+          <Tooltip title={t('proxy.removeAddress')}>
+            <Button
+              type="link"
+              danger
+              size="small"
+              icon={<Trash size={14} />}
+              aria-label={t('proxy.removeAddress')}
+              onClick={() => handleRemoveAddress(record)}
+            />
+          </Tooltip>
         </Space>
       ),
     },
@@ -328,6 +383,9 @@ const ProxyPage: React.FC = () => {
               style={{ width: 200 }}
               aria-label={t('proxy.clusterId')}
             />
+            <Button icon={<Plus size={14} />} onClick={() => setAddressModalOpen(true)}>
+              {t('proxy.addAddress')}
+            </Button>
             <Button type="primary" icon={<ArrowClockwise size={14} />} onClick={handleRefresh}>
               {t('common.refresh')}
             </Button>
@@ -407,6 +465,26 @@ const ProxyPage: React.FC = () => {
             {t('proxy.configUnavailableHint')}
           </Descriptions.Item>
         </Descriptions>
+      </Modal>
+      <Modal
+        title={t('proxy.addAddress')}
+        open={addressModalOpen}
+        confirmLoading={addressSaving}
+        okButtonProps={{ disabled: !newAddress.trim() }}
+        onOk={handleAddAddress}
+        onCancel={() => {
+          setAddressModalOpen(false);
+          setNewAddress('');
+        }}
+      >
+        <Input
+          autoFocus
+          value={newAddress}
+          placeholder="proxy.example.com:8081"
+          aria-label={t('proxy.address')}
+          onChange={(event) => setNewAddress(event.target.value)}
+          onPressEnter={() => void handleAddAddress()}
+        />
       </Modal>
     </div>
   );

@@ -27,7 +27,6 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
 
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -51,7 +50,7 @@ class ProxyCompatControllerTest {
                 .proxyAddrList(List.of("127.0.0.1:8081", "10.0.0.1:8081"))
                 .currentProxyAddr("127.0.0.1:8081")
                 .build();
-        when(proxyAddressService.getHomePage()).thenReturn(home);
+        when(proxyAddressService.getHomePage(null)).thenReturn(home);
 
         mockMvc.perform(get("/api/proxy/homePage.query"))
                 .andExpect(status().isOk())
@@ -68,7 +67,7 @@ class ProxyCompatControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
-        verify(proxyAddressService).addProxyAddr(eq("10.0.0.1:8081"));
+        verify(proxyAddressService).addProxyAddr(null, "10.0.0.1:8081");
     }
 
     @Test
@@ -79,6 +78,6 @@ class ProxyCompatControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
-        verify(proxyAddressService).removeProxyAddr(eq("10.0.0.1:8081"));
+        verify(proxyAddressService).removeProxyAddr(null, "10.0.0.1:8081");
     }
 }

@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.cluster.proxy;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -30,10 +31,7 @@ import org.springframework.web.client.RestTemplate;
 import java.io.IOException;
 import java.time.Duration;
 
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -47,12 +45,23 @@ public class ProxyAddressService {
     private static final int MAX_PORT = 65535;
 
     private static final String RELOAD_PATH = "/admin/reloadConfig";
+    static final String DEFAULT_SCOPE = "default";
+    static final String DEFAULT_PROXY_ADDRESS = "127.0.0.1:8081";
 
-    private final Set<String> proxyAddrs = new LinkedHashSet<>(List.of("127.0.0.1:8081"));
-    private String currentProxyAddr = "127.0.0.1:8081";
+    private final ProxyAddressRepository repository;
     private final RestTemplate restTemplate;
 
-    public ProxyAddressService() {
+    @Autowired
+    public ProxyAddressService(ProxyAddressRepository repository) {
+        this(repository, createRestTemplate());
+    }
+
+    ProxyAddressService(ProxyAddressRepository repository, RestTemplate restTemplate) {
+        this.repository = repository;
+        this.restTemplate = restTemplate;
+    }
+
+    private static RestTemplate createRestTemplate() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory() {
             @Override
             protected void prepareConnection(java.net.HttpURLConnection connection, String httpMethod) throws IOException {
@@ -62,34 +71,60 @@ public class ProxyAddressService {
         };
         factory.setConnectTimeout(Duration.ofSeconds(3));
         factory.setReadTimeout(Duration.ofSeconds(3));
-        this.restTemplate = new RestTemplate(factory);
+        return new RestTemplate(factory);
     }
 
     public synchronized ProxyHomeVO getHomePage() {
+        return getHomePage(DEFAULT_SCOPE);
+    }
+
+    public synchronized ProxyHomeVO getHomePage(String scopeId) {
+        String scope = normalizeScope(scopeId);
+        List<ProxyAddressRecord> records = loadOrCreateDefault(scope);
         return ProxyHomeVO.builder()
-                .proxyAddrList(new ArrayList<>(proxyAddrs))
-                .currentProxyAddr(currentProxyAddr)
+                .proxyAddrList(records.stream().map(ProxyAddressRecord::getAddress).toList())
+                .currentProxyAddr(records.stream().filter(ProxyAddressRecord::isSelected)
+                        .map(ProxyAddressRecord::getAddress).findFirst()
+                        .orElse(records.get(0).getAddress()))
                 .build();
     }
 
     public synchronized void addProxyAddr(String newProxyAddr) {
+        addProxyAddr(DEFAULT_SCOPE, newProxyAddr);
+    }
+
+    public synchronized void addProxyAddr(String scopeId, String newProxyAddr) {
+        String scope = normalizeScope(scopeId);
         String normalized = normalizeProxyAddr(newProxyAddr, "newProxyAddr");
-        proxyAddrs.add(normalized);
-        if (currentProxyAddr == null || currentProxyAddr.isBlank()) {
-            currentProxyAddr = normalized;
+        List<ProxyAddressRecord> existing = repository.findByScope(scope);
+        if (existing.stream().anyMatch(record -> normalized.equals(record.getAddress()))) {
+            return;
         }
-        log.info("Added Proxy address {}", normalized);
+        if (!repository.insert(scope, normalized, existing.isEmpty())) {
+            throw new BusinessException(500, "Failed to persist Proxy address");
+        }
+        log.info("Added Proxy address {} for scope {}", normalized, scope);
     }
 
     public synchronized void removeProxyAddr(String proxyAddr) {
+        removeProxyAddr(DEFAULT_SCOPE, proxyAddr);
+    }
+
+    public synchronized void removeProxyAddr(String scopeId, String proxyAddr) {
+        String scope = normalizeScope(scopeId);
         String normalized = normalizeProxyAddr(proxyAddr, "proxyAddr");
-        if (!proxyAddrs.remove(normalized)) {
+        List<ProxyAddressRecord> before = repository.findByScope(scope);
+        ProxyAddressRecord removed = before.stream()
+                .filter(record -> normalized.equals(record.getAddress())).findFirst()
+                .orElseThrow(() -> new BusinessException(404, "Proxy address not found: " + normalized));
+        if (!repository.delete(scope, normalized)) {
             throw new BusinessException(404, "Proxy address not found: " + normalized);
         }
-        if (normalized.equals(currentProxyAddr)) {
-            currentProxyAddr = proxyAddrs.stream().findFirst().orElse("");
+        if (removed.isSelected()) {
+            repository.findByScope(scope).stream().findFirst()
+                    .ifPresent(next -> repository.select(scope, next.getAddress()));
         }
-        log.info("Removed Proxy address {}", normalized);
+        log.info("Removed Proxy address {} from scope {}", normalized, scope);
     }
 
     /**
@@ -98,9 +133,15 @@ public class ProxyAddressService {
      * on transport or protocol failure so the caller receives a structured error response.
      */
     public void reloadConfig(String addr) {
+        reloadConfig(DEFAULT_SCOPE, addr);
+    }
+
+    public void reloadConfig(String scopeId, String addr) {
+        String scope = normalizeScope(scopeId);
         String normalized = normalizeProxyAddr(addr, "addr");
         synchronized (this) {
-            if (!proxyAddrs.contains(normalized)) {
+            if (repository.findByScope(scope).stream()
+                    .noneMatch(record -> normalized.equals(record.getAddress()))) {
                 throw new BusinessException(400, "addr is not a registered proxy address");
             }
         }
@@ -123,6 +164,25 @@ public class ProxyAddressService {
             log.warn("Proxy config reload via {} failed: {}", url, ex.getMessage());
             throw new BusinessException(500, "Config reload failed: " + ex.getMessage());
         }
+    }
+
+    private List<ProxyAddressRecord> loadOrCreateDefault(String scope) {
+        List<ProxyAddressRecord> records = repository.findByScope(scope);
+        if (!records.isEmpty()) {
+            return records;
+        }
+        if (!repository.insert(scope, DEFAULT_PROXY_ADDRESS, true)) {
+            throw new BusinessException(500, "Failed to initialize Proxy address");
+        }
+        records = repository.findByScope(scope);
+        if (records.isEmpty()) {
+            throw new BusinessException(500, "Proxy address persistence returned no records");
+        }
+        return records;
+    }
+
+    private String normalizeScope(String scopeId) {
+        return scopeId == null || scopeId.isBlank() ? DEFAULT_SCOPE : scopeId.trim();
     }
 
     private String normalizeProxyAddr(String proxyAddr, String fieldName) {

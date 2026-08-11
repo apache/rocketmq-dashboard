@@ -39,9 +39,21 @@ export interface ProxyNode {
 
 // ─── API Functions ───────────────────────────────────────────────
 
-export async function queryProxyHomePage(): Promise<ProxyHomePageData> {
-  const res = await client.get<{ data: ProxyHomePageData }>('/proxy/homePage.query');
+export async function queryProxyHomePage(clusterId?: string): Promise<ProxyHomePageData> {
+  const res = await client.get<{ data: ProxyHomePageData }>('/proxy/homePage.query', {
+    params: clusterId ? { clusterId } : undefined,
+  });
   return res.data.data;
+}
+
+export async function addProxyAddress(clusterId: string, address: string): Promise<void> {
+  const body = new URLSearchParams({ clusterId, newProxyAddr: address });
+  await client.post('/proxy/addProxyAddr.do', body);
+}
+
+export async function removeProxyAddress(clusterId: string, address: string): Promise<void> {
+  const body = new URLSearchParams({ clusterId, proxyAddr: address });
+  await client.post('/proxy/removeProxyAddr.do', body);
 }
 
 /**
