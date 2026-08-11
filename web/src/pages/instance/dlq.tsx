@@ -395,7 +395,7 @@ const DLQPage = () => {
       )}
 
       {/* ── Table ── */}
-      <Card bodyStyle={{ padding: 0 }}>
+      <Card styles={{ body: { padding: 0 } }}>
         <Table
           columns={columns}
           dataSource={filtered}
@@ -439,7 +439,7 @@ const DLQPage = () => {
         okText="确认重投"
         cancelText="取消"
         width={520}
-        destroyOnClose
+        destroyOnHidden
       >
         {retryGroup && (
           <div style={{ marginTop: 16 }}>
@@ -516,7 +516,7 @@ const DLQPage = () => {
         onCancel={() => setDetailGroup(null)}
         footer={<Button onClick={() => setDetailGroup(null)}>关闭</Button>}
         width={560}
-        destroyOnClose
+        destroyOnHidden
       >
         {detailGroup && (
           <div style={{ marginTop: 8 }}>
