@@ -21,12 +21,17 @@ import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
 import { listClusters, restartBroker } from '../../../services/clusterService';
+import { listInstances } from '../../../services/instanceService';
 import type { ClusterInfo } from '../../../api/cluster';
 import BrokerCluster from '../BrokerCluster';
 
 vi.mock('../../../services/clusterService', () => ({
   listClusters: vi.fn(),
   restartBroker: vi.fn(),
+}));
+
+vi.mock('../../../services/instanceService', () => ({
+  listInstances: vi.fn(),
 }));
 
 // Mock matchMedia for antd responsive components
@@ -128,6 +133,19 @@ const createDeferred = <T,>() => {
 describe('BrokerCluster Page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(listInstances).mockResolvedValue([
+      {
+        id: 'instance-1',
+        name: 'prod-cn',
+        remark: '',
+        type: 'DIRECT',
+        endpoint: '10.0.1.20:9876',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        createdAt: '',
+        updatedAt: '',
+      },
+    ]);
     vi.mocked(listClusters).mockResolvedValue(clusterFixture);
     vi.mocked(restartBroker).mockResolvedValue({ success: true, message: 'restarted' });
   });
@@ -153,6 +171,7 @@ describe('BrokerCluster Page', () => {
     expect(brokerA.length).toBeGreaterThan(0);
     expect(screen.getAllByText('broker-api-b').length).toBeGreaterThan(0);
     expect(screen.queryByText('broker-a')).not.toBeInTheDocument();
+    expect(listClusters).toHaveBeenCalledWith('instance-1');
   });
 
   it('should display broker status tags', async () => {
