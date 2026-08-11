@@ -441,7 +441,10 @@ public class AliyunInstanceProvider implements InstanceProvider {
         GetTraceResponseBody body = response == null ? null : response.getBody();
         GetTraceResponseBody.Data data = body == null ? null : body.getData();
         if (data == null) {
-            throw new BusinessException(404, "Message trace not found: " + msgId);
+            return TraceRecordVO.builder()
+                    .nodes(java.util.Collections.emptyList())
+                    .consumerStatus(java.util.Collections.emptyList())
+                    .build();
         }
         return AliyunConverters.toTraceRecord(data);
     }
