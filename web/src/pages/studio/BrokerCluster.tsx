@@ -25,21 +25,18 @@ import {
   Space,
   Switch,
   Progress,
-  Tooltip,
   Spin,
   App,
-  Modal,
   Select,
 } from 'antd';
 import {
   ArrowClockwise,
-  ArrowsClockwise,
   Cloud,
   ChartBar,
   PlugsConnected,
 } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
-import { listClusters, restartBroker } from '../../services/clusterService';
+import { listClusters } from '../../services/clusterService';
 import type { ClusterInfo } from '../../api/cluster';
 import { listInstances } from '../../services/instanceService';
 import type { Instance } from '../../api/instance';
@@ -204,22 +201,6 @@ const BrokerClusterPage = () => {
     }
   }, [clearData, message, selectedInstanceId, t]);
 
-  const handleRestartBroker = async (broker: BrokerRecord) => {
-    try {
-      const result = await restartBroker(broker.clusterId, broker.brokerName);
-      if (!result.success) {
-        message.error(result.message || t('common.failure'));
-        return;
-      }
-      await loadData();
-      message.success(
-        result.message || t('cluster.restartBrokerSubmitted', { name: broker.brokerName }),
-      );
-    } catch {
-      message.error(t('common.failure'));
-    }
-  };
-
   useEffect(() => {
     let active = true;
     void listInstances()
@@ -354,30 +335,6 @@ const BrokerClusterPage = () => {
         <span style={{ fontWeight: 500 }}>{value?.toLocaleString() ?? '-'}</span>
       ),
       sorter: (a: BrokerRecord, b: BrokerRecord) => (a.tpsOut ?? -1) - (b.tpsOut ?? -1),
-    },
-    {
-      title: t('common.actions'),
-      key: 'action',
-      render: (_: unknown, record: BrokerRecord) => (
-        <Tooltip title={t('brokerCluster.restart')}>
-          <Button
-            type="link"
-            size="small"
-            icon={<ArrowsClockwise size={14} />}
-            onClick={() => {
-              Modal.confirm({
-                title: t('cluster.confirmRestart'),
-                content: t('cluster.restartBrokerConfirm', { name: record.brokerName }),
-                okText: t('common.confirm'),
-                cancelText: t('common.cancel'),
-                onOk: () => handleRestartBroker(record),
-              });
-            }}
-          >
-            {t('brokerCluster.restart')}
-          </Button>
-        </Tooltip>
-      ),
     },
   ];
 

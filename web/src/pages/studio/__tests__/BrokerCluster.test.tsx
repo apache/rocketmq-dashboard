@@ -20,14 +20,13 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
-import { listClusters, restartBroker } from '../../../services/clusterService';
+import { listClusters } from '../../../services/clusterService';
 import { listInstances } from '../../../services/instanceService';
 import type { ClusterInfo } from '../../../api/cluster';
 import BrokerCluster from '../BrokerCluster';
 
 vi.mock('../../../services/clusterService', () => ({
   listClusters: vi.fn(),
-  restartBroker: vi.fn(),
 }));
 
 vi.mock('../../../services/instanceService', () => ({
@@ -147,7 +146,6 @@ describe('BrokerCluster Page', () => {
       },
     ]);
     vi.mocked(listClusters).mockResolvedValue(clusterFixture);
-    vi.mocked(restartBroker).mockResolvedValue({ success: true, message: 'restarted' });
   });
 
   afterEach(() => {
@@ -213,30 +211,12 @@ describe('BrokerCluster Page', () => {
     expect(screen.getAllByText('10.0.1.30:8080').length).toBeGreaterThan(0);
   });
 
-  it('should render only supported broker restart actions', async () => {
+  it('renders Broker runtime data without unavailable mutation actions', async () => {
     renderWithProviders(<BrokerCluster />);
     await screen.findByText('broker-api-a');
     expect(screen.queryByText('创建集群')).not.toBeInTheDocument();
     expect(screen.queryByText('配置')).not.toBeInTheDocument();
-    const restartButtons = screen.getAllByText('重启');
-    expect(restartButtons).toHaveLength(2);
-  });
-
-  it('restarts a broker after confirmation and refreshes the cluster data', async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<BrokerCluster />);
-    await screen.findByText('broker-api-a');
-
-    await user.click(screen.getAllByText('重启')[0]);
-    expect(await screen.findByText('确定要重启 Broker "broker-api-a" 吗？')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: /确\s*认/ }));
-
-    await waitFor(() => {
-      expect(restartBroker).toHaveBeenCalledWith('cluster-1', 'broker-api-a');
-    });
-    await waitFor(() => {
-      expect(listClusters).toHaveBeenCalledTimes(2);
-    });
+    expect(screen.queryByText('重启')).not.toBeInTheDocument();
   });
 
   it('does not show mock infrastructure data when the API fails', async () => {
