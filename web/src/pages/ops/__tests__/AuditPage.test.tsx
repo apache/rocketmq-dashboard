@@ -190,4 +190,28 @@ describe('Audit page', () => {
 
     await waitFor(() => expect(opsService.getAuditFilterOptions).toHaveBeenCalledTimes(2));
   });
+
+  it('submits audit cleanup only once while the request is pending', async () => {
+    const user = userEvent.setup();
+    let resolveCleanup: (deleted: number) => void = () => undefined;
+    vi.mocked(opsService.cleanupAuditLogs).mockImplementation(
+      () =>
+        new Promise<number>((resolve) => {
+          resolveCleanup = resolve;
+        }),
+    );
+
+    renderWithProviders(<AuditPage />);
+
+    expect(await screen.findByText('topic-a')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '清理日志' }));
+    const confirmButton = await screen.findByRole('button', { name: '确认清理' });
+    await user.dblClick(confirmButton);
+
+    expect(opsService.cleanupAuditLogs).toHaveBeenCalledTimes(1);
+    expect(confirmButton).toHaveClass('ant-btn-loading');
+
+    resolveCleanup(3);
+    await waitFor(() => expect(opsService.getAuditFilterOptions).toHaveBeenCalledTimes(2));
+  });
 });
