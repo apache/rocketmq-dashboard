@@ -17,6 +17,7 @@
 package org.apache.rocketmq.dashboard.service;
 
 import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
@@ -48,6 +49,11 @@ public class ClusterInfoService {
     public void init() {
         scheduler.scheduleAtFixedRate(this::refresh,
                 0, cacheExpireMs / 2, TimeUnit.MILLISECONDS);
+    }
+
+    @PreDestroy
+    public void shutdown() {
+        scheduler.shutdown();
     }
 
     public ClusterInfo get() {
