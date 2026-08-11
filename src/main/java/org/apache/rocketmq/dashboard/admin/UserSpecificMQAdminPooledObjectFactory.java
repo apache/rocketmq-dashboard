@@ -58,6 +58,7 @@ public class UserSpecificMQAdminPooledObjectFactory implements PooledObjectFacto
     @Override
     public PooledObject<MQAdminExt> makeObject() throws Exception {
         DefaultMQAdminExt mqAdminExt = new DefaultMQAdminExt(rpcHook);
+        mqAdminExt.resetClientConfig(userSpecificClientConfig);
 
         mqAdminExt.setAdminExtGroup("MQ_ADMIN_GROUP_FOR_" + userAk + "_" + instanceCreationCounter.getAndIncrement());
 
