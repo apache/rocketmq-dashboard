@@ -178,7 +178,7 @@ public class LlmConfigService {
         return LlmOperationResultVO.success("Configuration accepted");
     }
 
-    public synchronized LlmModelsResultVO listModels() {
+    public LlmModelsResultVO listModels() {
         LlmConfigVO config = getConfig();
         String provider = config.getProvider();
         // The token-plan gateway model set is curated locally; do not query the gateway.

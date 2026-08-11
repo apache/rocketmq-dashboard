@@ -24,6 +24,11 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -434,5 +439,45 @@ class LlmConfigServiceTest {
         assertThat(result.getWarningCode()).isEqualTo("llm.provider.io_error");
         assertThat(result.getWarning()).contains("Failed to list LLM provider models");
         assertThat(result.getHint()).contains("provider endpoint");
+    }
+
+    @Test
+    void listModelsShouldNotBlockConcurrentConfigReadsOrWrites() throws Exception {
+        CountDownLatch listingStarted = new CountDownLatch(1);
+        CountDownLatch releaseListing = new CountDownLatch(1);
+        when(llmClient.supports(any())).thenReturn(true);
+        when(llmClient.listModels(any())).thenAnswer(invocation -> {
+            LlmConfigVO requestedConfig = invocation.getArgument(0);
+            assertThat(requestedConfig.getProvider()).isEqualTo("openai");
+            listingStarted.countDown();
+            assertThat(releaseListing.await(5, TimeUnit.SECONDS)).isTrue();
+            return List.of(new LlmModelItemVO("provider-model", "Provider Model"));
+        });
+
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            Future<LlmModelsResultVO> listing = executor.submit(llmConfigService::listModels);
+            assertThat(listingStarted.await(5, TimeUnit.SECONDS)).isTrue();
+            Future<LlmConfigVO> configRead = executor.submit(llmConfigService::getConfig);
+
+            try {
+                assertThat(configRead.get(500, TimeUnit.MILLISECONDS).getProvider()).isEqualTo("openai");
+                Future<?> configWrite = executor.submit(() -> llmConfigService.saveConfig(LlmConfigVO.builder()
+                        .provider("deepseek")
+                        .apiKey("sk-deepseek")
+                        .apiBase("https://api.deepseek.com/v1")
+                        .model("deepseek-chat")
+                        .maxTokens(8192)
+                        .temperature(0.2)
+                        .enabled(true)
+                        .build()));
+                configWrite.get(500, TimeUnit.MILLISECONDS);
+                assertThat(llmConfigService.getConfig().getProvider()).isEqualTo("deepseek");
+                assertThat(listing.isDone()).isFalse();
+            } finally {
+                releaseListing.countDown();
+            }
+            assertThat(listing.get(5, TimeUnit.SECONDS).getSource())
+                    .isEqualTo(LlmModelsResultVO.SOURCE_PROVIDER);
+        }
     }
 }
