@@ -178,6 +178,8 @@ const isConsistentSubscription = (subscription: SubscriptionEntry): boolean =>
 const isInconsistentSubscription = (subscription: SubscriptionEntry): boolean =>
   isInconsistentValue(subscription.consistency);
 
+// Shared helper exported alongside the page component; fast-refresh rule waived.
+// eslint-disable-next-line react-refresh/only-export-components
 export const diagnosticCacheKey = (instanceId: string, groupName: string) =>
   `${instanceId}\u0000${groupName}`;
 

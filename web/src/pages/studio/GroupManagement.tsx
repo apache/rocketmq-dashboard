@@ -109,6 +109,7 @@ const GroupManagementPage = () => {
     // Reset on (re)mount: under StrictMode the previous cleanup has already
     // cleared the flag, and without this the remounted load never applies.
     mountedRef.current = true;
+    const requestId = listRequestId.current;
     const timeoutId = window.setTimeout(() => {
       void loadGroups();
     });
@@ -116,7 +117,7 @@ const GroupManagementPage = () => {
       window.clearTimeout(timeoutId);
       mountedRef.current = false;
       listRefreshQueued.current = false;
-      ++listRequestId.current;
+      listRequestId.current = requestId + 1;
     };
   }, [loadGroups]);
 

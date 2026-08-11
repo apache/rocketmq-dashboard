@@ -52,10 +52,15 @@ export const LangProvider = ({ children }: { children: ReactNode }) => {
   return <LangContext.Provider value={{ lang, setLang, t }}>{children}</LangContext.Provider>;
 };
 
+// The provider component and its consuming hooks intentionally live together;
+// this is a context module, not a component module, so fast-refresh's
+// single-component-export rule does not apply.
+// eslint-disable-next-line react-refresh/only-export-components
 export const useLang = () => useContext(LangContext);
 
 /**
  * Alias for useLang – provides the same i18n context.
  * Kept for backward compatibility with components that import `useLanguage`.
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export const useLanguage = useLang;
