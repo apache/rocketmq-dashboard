@@ -22,7 +22,7 @@ import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
 import OpsPage from '../Ops';
-import { deleteNameSvrAddr, queryOpsHomePage, updateIsVIPChannel } from '../../../api/ops';
+import { addNameSvrAddr, deleteNameSvrAddr, queryOpsHomePage, updateIsVIPChannel } from '../../../api/ops';
 import useAuthStore from '../../../stores/authStore';
 
 vi.mock('../../../api/ops', () => ({
@@ -83,6 +83,20 @@ describe('OpsPage', () => {
     expect(await screen.findByText('127.0.0.1:9876')).toBeInTheDocument();
     expect(screen.getAllByRole('switch')[0]).toBeChecked();
     expect(screen.getAllByRole('switch')[1]).not.toBeChecked();
+  });
+
+  it('prevents overlapping NameServer mutations', async () => {
+    vi.mocked(addNameSvrAddr).mockImplementation(() => new Promise(() => {}));
+    renderWithProviders(<OpsPage />);
+
+    const input = await screen.findByPlaceholderText('NamesrvAddr');
+    fireEvent.change(input, { target: { value: '127.0.0.3:9876' } });
+    const addButton = screen.getByRole('button', { name: /新增|添加/ });
+    fireEvent.click(addButton);
+    fireEvent.click(addButton);
+
+    await waitFor(() => expect(addNameSvrAddr).toHaveBeenCalledTimes(1));
+    expect(addButton).toBeDisabled();
   });
 
   it('prevents overlapping VIP channel updates', async () => {
