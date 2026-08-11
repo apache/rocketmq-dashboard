@@ -83,8 +83,28 @@ beforeAll(() => {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(instanceService.listInstances).mockResolvedValue([
-    { id: 'instance-a', name: 'Instance A', endpoint: 'a:9876', type: 'DIRECT', remark: '', topicCount: 0, consumerGroupCount: 0, createdAt: '', updatedAt: '' },
-    { id: 'instance-b', name: 'Instance B', endpoint: 'b:9876', type: 'DIRECT', remark: '', topicCount: 0, consumerGroupCount: 0, createdAt: '', updatedAt: '' },
+    {
+      id: 'instance-a',
+      name: 'Instance A',
+      endpoint: 'a:9876',
+      type: 'DIRECT',
+      remark: '',
+      topicCount: 0,
+      consumerGroupCount: 0,
+      createdAt: '',
+      updatedAt: '',
+    },
+    {
+      id: 'instance-b',
+      name: 'Instance B',
+      endpoint: 'b:9876',
+      type: 'DIRECT',
+      remark: '',
+      topicCount: 0,
+      consumerGroupCount: 0,
+      createdAt: '',
+      updatedAt: '',
+    },
   ]);
 });
 
@@ -102,9 +122,13 @@ describe('DashboardPage', () => {
     await screen.findByText('initial-cluster');
     const selector = screen.getByRole('combobox', { name: 'Dashboard instance' });
     await user.click(selector);
-    await user.click(await screen.findByText('Instance A', { selector: '.ant-select-item-option-content' }));
+    await user.click(
+      await screen.findByText('Instance A', { selector: '.ant-select-item-option-content' }),
+    );
     await user.click(selector);
-    await user.click(await screen.findByText('Instance B', { selector: '.ant-select-item-option-content' }));
+    await user.click(
+      await screen.findByText('Instance B', { selector: '.ant-select-item-option-content' }),
+    );
 
     instanceB.resolve(dashboard('instance-b-cluster'));
     expect(await screen.findByText('instance-b-cluster')).toBeInTheDocument();

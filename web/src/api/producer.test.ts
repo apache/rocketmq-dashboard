@@ -41,10 +41,13 @@ describe('Producer API', () => {
   it('fetches Studio topic records sorted alphabetically', async () => {
     mock.onGet('/topics').reply((config) => {
       expect(config.params.instanceId).toBe('instance-1');
-      return [200, {
-      code: 200,
-      data: [{ name: 'order-events' }, { name: 'user-signup' }, { name: 'batch-process' }],
-      }];
+      return [
+        200,
+        {
+          code: 200,
+          data: [{ name: 'order-events' }, { name: 'user-signup' }, { name: 'batch-process' }],
+        },
+      ];
     });
 
     const result = await fetchTopicList('instance-1');

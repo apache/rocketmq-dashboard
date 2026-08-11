@@ -38,5 +38,7 @@ public class AclUserVO {
     private String secretKey;
     private boolean admin;
     private List<String> clusters;
+    /** IP whitelist pattern for plain access accounts; empty means no restriction. */
+    private String whiteRemoteAddress;
     private LocalDateTime createdAt;
 }

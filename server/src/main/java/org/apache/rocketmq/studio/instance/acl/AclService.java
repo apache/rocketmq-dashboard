@@ -131,6 +131,34 @@ public class AclService {
     }
 
     /**
+     * Returns a store-level summary of the ACL accounts provisioned for the cluster from the
+     * MySQL-backed store. This does not query live broker state; the {@code clusterId} only
+     * scopes which stored accounts are included.
+     */
+    public AclClusterConfigVO examineBrokerClusterAclConfig(String clusterId) {
+        if (!StringUtils.hasText(clusterId)) {
+            throw new BusinessException(400, "clusterId is required");
+        }
+        log.info("Examining broker cluster ACL config for clusterId={}", clusterId);
+        return aclRepository.examineBrokerClusterAclConfig(clusterId);
+    }
+
+    /**
+     * Creates a new plain access account or updates an existing one. The account identity is
+     * persisted to {@code rmq_acl_user} (including the IP whitelist) and the per-resource
+     * permissions to {@code rmq_acl_rule} via the MySQL-backed repository. The user row and the
+     * rule replacement happen in one transaction; a blank secret on an existing account keeps
+     * the stored secret unchanged.
+     */
+    public PlainAccessConfigVO createAndUpdatePlainAccessConfig(PlainAccessConfigVO config) {
+        if (config == null || !StringUtils.hasText(config.getAccessKey())) {
+            throw new BusinessException(400, "accessKey is required");
+        }
+        log.info("Creating/updating plain access config accessKey={}", config.getAccessKey());
+        return aclRepository.createAndUpdatePlainAccessConfig(config);
+    }
+
+    /**
      * Returns the plain-text credentials of a user for the "view password" action.
      * The secret is stored base64-encoded in the database and decoded here.
      */
@@ -151,6 +179,7 @@ public class AclService {
                 .secretKey(CredentialUtils.mask(user.getSecretKey()))
                 .admin(user.isAdmin())
                 .clusters(user.getClusters() == null ? null : List.copyOf(user.getClusters()))
+                .whiteRemoteAddress(user.getWhiteRemoteAddress())
                 .createdAt(user.getCreatedAt())
                 .build();
     }

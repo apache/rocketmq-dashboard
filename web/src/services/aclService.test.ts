@@ -19,6 +19,8 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   createAclRule,
   createAclUser,
+  createAndUpdatePlainAccessConfig,
+  examineBrokerClusterAclConfig,
   listAclRules,
   listAclUsers,
   updateAclRule,
@@ -98,5 +100,49 @@ describe('ACL service mock data', () => {
 
     const afterUpdate = await listAclUsers({ keyword: 'user-created-copy-test' });
     expect(afterUpdate[0].clusters).toEqual(['rmq-updated']);
+  });
+
+  it('builds cluster ACL config from mock accounts', async () => {
+    const config = await examineBrokerClusterAclConfig('DefaultCluster');
+    expect(config.aclEnabled).toBe(true);
+    expect(config.aclVersion).toBe('ACL 2.0');
+    expect(config.globalWhiteRemoteAddresses).toContain('192.168.0.0/16');
+    expect(config.accountCount).toBe(config.accounts.length);
+    expect(config.accounts[0].accessKey).toBe('user-admin');
+  });
+
+  it('creates and updates a plain access account in mock state', async () => {
+    const created = await createAndUpdatePlainAccessConfig({
+      accessKey: 'svc-mock',
+      secretKey: 'svc-mock-secret-value',
+      admin: false,
+      defaultTopicPerm: 'PUB',
+      topicPerms: ['a=PUB'],
+    });
+    expect(created.accessKey).toBe('svc-mock');
+    // The secret is echoed only when it was just provided.
+    expect(created.secretKey).toBe('svc-mock-secret-value');
+
+    const updated = await createAndUpdatePlainAccessConfig({
+      accessKey: 'svc-mock',
+      admin: true,
+      defaultTopicPerm: 'ALL',
+    });
+    expect(updated.admin).toBe(true);
+    // A blank secret keeps the stored one and is not echoed back.
+    expect(updated.secretKey).toBeNull();
+
+    const config = await examineBrokerClusterAclConfig('c');
+    const account = config.accounts.find((a) => a.accessKey === 'svc-mock');
+    expect(account && account.admin).toBe(true);
+    // Read-back views mask the secret instead of exposing the plaintext.
+    expect(account?.secretKey).not.toBe('svc-mock-secret-value');
+    expect(account?.secretKey).toContain('****');
+  });
+
+  it('rejects a new plain access account without a secret', async () => {
+    await expect(createAndUpdatePlainAccessConfig({ accessKey: 'svc-no-secret' })).rejects.toThrow(
+      'secretKey is required',
+    );
   });
 });

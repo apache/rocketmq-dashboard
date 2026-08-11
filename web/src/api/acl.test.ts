@@ -21,8 +21,10 @@ import client from './client';
 import {
   createAclRule,
   createAclUser,
+  createAndUpdatePlainAccessConfig,
   deleteAclRule,
   deleteAclUser,
+  examineBrokerClusterAclConfig,
   listAclRules,
   updateAclRule,
   updateAclUser,
@@ -123,5 +125,45 @@ describe('ACL API contract', () => {
     await expect(updateAclUser({ id: user.id, admin: true })).resolves.toEqual(user);
     await expect(deleteAclRule(rule.id)).resolves.toBeUndefined();
     await expect(deleteAclUser(user.id)).resolves.toBeUndefined();
+  });
+
+  it('fetches cluster ACL config by clusterId', async () => {
+    mock.onGet('/acl/cluster-config').reply((config) => {
+      expect(config.params).toEqual({ clusterId: 'cluster-a' });
+      return [
+        200,
+        {
+          code: 200,
+          data: {
+            clusterId: 'cluster-a',
+            aclEnabled: true,
+            aclVersion: 'ACL 2.0',
+            globalWhiteRemoteAddresses: ['10.0.0.0/8'],
+            accounts: [],
+            accountCount: 0,
+          },
+        },
+      ];
+    });
+
+    const result = await examineBrokerClusterAclConfig('cluster-a');
+    expect(result.clusterId).toBe('cluster-a');
+    expect(result.aclVersion).toBe('ACL 2.0');
+    expect(result.accountCount).toBe(0);
+  });
+
+  it('posts plain access config to create or update', async () => {
+    const payload = {
+      accessKey: 'svc-x',
+      admin: false,
+      defaultTopicPerm: 'PUB',
+      topicPerms: ['t=PUB'],
+    };
+    mock.onPost('/acl/plain-access-config').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual(payload);
+      return [200, { code: 200, data: payload }];
+    });
+
+    await expect(createAndUpdatePlainAccessConfig(payload)).resolves.toEqual(payload);
   });
 });

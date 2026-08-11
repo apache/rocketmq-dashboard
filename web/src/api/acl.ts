@@ -73,3 +73,38 @@ export async function updateAclUser(data: Partial<AclUser>) {
 export async function deleteAclUser(id: string) {
   await client.post('/acl/users/delete', { id });
 }
+
+// ============ ACL 2.0: cluster config & plain access ============
+
+export interface PlainAccessConfig {
+  accessKey: string;
+  secretKey?: string | null;
+  whiteRemoteAddress?: string | null;
+  admin: boolean;
+  defaultTopicPerm?: string;
+  defaultGroupPerm?: string;
+  topicPerms?: string[];
+  groupPerms?: string[];
+  createdAt?: string | null;
+}
+
+export interface AclClusterConfig {
+  clusterId: string;
+  aclEnabled: boolean;
+  aclVersion: string;
+  globalWhiteRemoteAddresses: string[];
+  accounts: PlainAccessConfig[];
+  accountCount: number;
+}
+
+export async function examineBrokerClusterAclConfig(clusterId: string) {
+  const res = await client.get<{ data: AclClusterConfig }>('/acl/cluster-config', {
+    params: { clusterId },
+  });
+  return res.data.data;
+}
+
+export async function createAndUpdatePlainAccessConfig(data: Partial<PlainAccessConfig>) {
+  const res = await client.post<{ data: PlainAccessConfig }>('/acl/plain-access-config', data);
+  return res.data.data;
+}

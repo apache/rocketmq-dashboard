@@ -295,15 +295,16 @@ describe('BrokerCluster Page', () => {
     expect(screen.getByText('[2001:db8::10]:8081')).toBeInTheDocument();
   });
   it('renders unrecognized broker statuses as unavailable instead of running', async () => {
-    vi.mocked(listClusters).mockResolvedValue([{
-      ...clusterFixture[0],
-      brokers: [{ ...clusterFixture[0].brokers[0], status: 'mystery' }],
-    }]);
+    vi.mocked(listClusters).mockResolvedValue([
+      {
+        ...clusterFixture[0],
+        brokers: [{ ...clusterFixture[0].brokers[0], status: 'mystery' }],
+      },
+    ]);
     renderWithProviders(<BrokerCluster />);
 
     await screen.findByText('broker-api-a');
     expect(screen.getByText('N/A')).toBeInTheDocument();
     expect(screen.queryByText('运行中')).not.toBeInTheDocument();
   });
-
 });

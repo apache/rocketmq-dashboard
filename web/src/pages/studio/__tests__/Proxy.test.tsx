@@ -141,15 +141,16 @@ describe('ProxyPage', () => {
     const refresh = screen.getByRole('button', { name: '刷新' });
     await user.click(refresh);
     await user.click(refresh);
-    await act(async () => latest.resolve({
-      proxyAddrList: ['127.0.0.2:8081'],
-      currentProxyAddr: '127.0.0.2:8081',
-    }));
+    await act(async () =>
+      latest.resolve({
+        proxyAddrList: ['127.0.0.2:8081'],
+        currentProxyAddr: '127.0.0.2:8081',
+      }),
+    );
     expect(await screen.findByText('127.0.0.2:8081')).toBeInTheDocument();
 
     await act(async () => older.resolve(proxyHome));
     expect(screen.getByText('127.0.0.2:8081')).toBeInTheDocument();
     expect(screen.queryByText('127.0.0.1:8081')).not.toBeInTheDocument();
   });
-
 });
