@@ -207,6 +207,23 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void updateTopicShouldNormalizeTheSingleTencentQueueCountTest() throws Exception {
+        when(client.ModifyTopic(any())).thenReturn(null);
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+        topic.setType(TopicType.NORMAL);
+        topic.setWriteQueues(12);
+
+        TopicVO updated = provider.updateTopic(STUDIO_INSTANCE_ID, topic);
+
+        ArgumentCaptor<ModifyTopicRequest> captor = ArgumentCaptor.forClass(ModifyTopicRequest.class);
+        verify(client).ModifyTopic(captor.capture());
+        assertThat(captor.getValue().getQueueNum()).isEqualTo(12L);
+        assertThat(updated.getWriteQueues()).isEqualTo(12);
+        assertThat(updated.getReadQueues()).isEqualTo(12);
+    }
+
+    @Test
     void getTopicConsumersShouldMapSubscriptionsTest() throws Exception {
         SubscriptionData subscription = new SubscriptionData();
         subscription.setConsumerGroup("GID_orders");

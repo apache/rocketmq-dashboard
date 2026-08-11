@@ -184,12 +184,18 @@ public class TencentInstanceProvider implements InstanceProvider {
         request.setInstanceId(context.cloudInstanceId());
         request.setTopic(topic.getName());
         request.setRemark(topic.getRemark());
+        Long requestedQueueNum = null;
         if (topic.getWriteQueues() > 0 || topic.getReadQueues() > 0) {
-            request.setQueueNum(queueNum(topic));
+            requestedQueueNum = queueNum(topic);
+            request.setQueueNum(requestedQueueNum);
         }
         clientFactory.call(context.credentialId(), context.regionId(), client -> client.ModifyTopic(request));
         topic.setInstanceId(instanceId);
         topic.setPerm(defaultPerm(topic.getPerm()));
+        if (requestedQueueNum != null) {
+            topic.setWriteQueues(requestedQueueNum.intValue());
+            topic.setReadQueues(requestedQueueNum.intValue());
+        }
         topic.setUpdatedAt(LocalDateTime.now());
         return topic;
     }
