@@ -24,9 +24,7 @@ import { LangProvider } from '../../../i18n/LangContext';
 import ProxyPage from '../Proxy';
 
 vi.mock('../../../api/proxy', () => ({
-  addProxyAddr: vi.fn(),
   queryProxyHomePage: vi.fn(),
-  removeProxyAddr: vi.fn(),
 }));
 
 beforeAll(() => {
@@ -127,6 +125,17 @@ describe('ProxyPage', () => {
     expect(screen.queryByText('5.3.0')).not.toBeInTheDocument();
     expect(screen.getAllByText('N/A').length).toBeGreaterThanOrEqual(5);
   });
+
+  it('does not present local Proxy address records as cluster mutations', async () => {
+    renderPage();
+
+    expect(await screen.findByTestId('proxy-address-observational-notice')).toHaveTextContent(
+      '当前 Proxy 地址仅用于 Studio 本地兼容查询',
+    );
+    expect(screen.queryByRole('button', { name: '添加节点' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '移除' })).not.toBeInTheDocument();
+  });
+
   it('keeps the latest Proxy list when an older refresh resolves last', async () => {
     const older = createDeferred<typeof proxyHome>();
     const latest = createDeferred<typeof proxyHome>();

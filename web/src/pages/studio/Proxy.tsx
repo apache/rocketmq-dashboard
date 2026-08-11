@@ -23,8 +23,6 @@ import {
   Button,
   Space,
   Modal,
-  Form,
-  Input,
   Spin,
   Row,
   Col,
@@ -32,15 +30,13 @@ import {
   Progress,
   Descriptions,
   Tooltip,
-  Popconfirm,
   App,
   Typography,
+  Alert,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
   ArrowClockwise,
-  Plus,
-  Trash,
   GearSix,
   Gauge,
   CheckCircle,
@@ -49,7 +45,7 @@ import {
 } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
-import { queryProxyHomePage, addProxyAddr, removeProxyAddr, type ProxyNode } from '../../api/proxy';
+import { queryProxyHomePage, type ProxyNode } from '../../api/proxy';
 
 const { Text } = Typography;
 
@@ -61,8 +57,6 @@ const ProxyPage: React.FC = () => {
   const [proxyNodes, setProxyNodes] = useState<ProxyNode[]>([]);
   const [selectedNode, setSelectedNode] = useState<ProxyNode | null>(null);
   const [configModalOpen, setConfigModalOpen] = useState(false);
-  const [addNodeModalOpen, setAddNodeModalOpen] = useState(false);
-  const [form] = Form.useForm();
   const loadRequestId = useRef(0);
 
   const [clusterStats, setClusterStats] = useState({
@@ -99,11 +93,6 @@ const ProxyPage: React.FC = () => {
         totalTPS: null,
       });
 
-      if (currentProxyAddr) {
-        localStorage.setItem('proxyAddr', currentProxyAddr);
-      } else if (proxyAddrList && proxyAddrList.length > 0) {
-        localStorage.setItem('proxyAddr', proxyAddrList[0]);
-      }
       return true;
     } catch {
       if (requestId !== loadRequestId.current) return false;
@@ -128,41 +117,6 @@ const ProxyPage: React.FC = () => {
   const handleViewConfig = (node: ProxyNode) => {
     setSelectedNode(node);
     setConfigModalOpen(true);
-  };
-
-  const handleAddNode = async () => {
-    let values: { address: string };
-    try {
-      values = await form.validateFields();
-    } catch {
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await addProxyAddr(values.address);
-      message.success(t('common.success'));
-      setAddNodeModalOpen(false);
-      form.resetFields();
-      await loadProxyNodes();
-    } catch {
-      message.error(t('proxy.addFailed'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRemoveNode = async (node: ProxyNode) => {
-    setLoading(true);
-    try {
-      await removeProxyAddr(node.address);
-      message.success(t('common.success'));
-      await loadProxyNodes();
-    } catch {
-      message.error(t('proxy.removeFailed'));
-    } finally {
-      setLoading(false);
-    }
   };
 
   const handleRefresh = async () => {
@@ -294,29 +248,15 @@ const ProxyPage: React.FC = () => {
       title: t('proxy.action'),
       key: 'action',
       render: (_: unknown, record: ProxyNode) => (
-        <Space size="small">
-          <Tooltip title={t('proxy.viewConfig')}>
-            <Button
-              type="link"
-              size="small"
-              icon={<GearSix size={14} />}
-              aria-label={t('proxy.viewConfig')}
-              onClick={() => handleViewConfig(record)}
-            />
-          </Tooltip>
-          {!record.isSelected && (
-            <Popconfirm
-              title={t('proxy.confirmRemove')}
-              onConfirm={() => handleRemoveNode(record)}
-              okText={t('common.yes')}
-              cancelText={t('common.no')}
-            >
-              <Tooltip title={t('proxy.remove')}>
-                <Button type="link" size="small" danger icon={<Trash size={14} />} />
-              </Tooltip>
-            </Popconfirm>
-          )}
-        </Space>
+        <Tooltip title={t('proxy.viewConfig')}>
+          <Button
+            type="link"
+            size="small"
+            icon={<GearSix size={14} />}
+            aria-label={t('proxy.viewConfig')}
+            onClick={() => handleViewConfig(record)}
+          />
+        </Tooltip>
       ),
     },
   ];
@@ -329,15 +269,19 @@ const ProxyPage: React.FC = () => {
         title={t('proxy.title')}
 
         extra={
-          <Space>
-            <Button type="primary" icon={<ArrowClockwise size={14} />} onClick={handleRefresh}>
-              {t('common.refresh')}
-            </Button>
-            <Button icon={<Plus size={14} />} onClick={() => setAddNodeModalOpen(true)}>
-              {t('proxy.addNode')}
-            </Button>
-          </Space>
+          <Button type="primary" icon={<ArrowClockwise size={14} />} onClick={handleRefresh}>
+            {t('common.refresh')}
+          </Button>
         }
+      />
+
+      <Alert
+        data-testid="proxy-address-observational-notice"
+        type="warning"
+        showIcon
+        message="当前 Proxy 地址仅用于 Studio 本地兼容查询"
+        description="Studio 尚未接入 Proxy 部署或配置管理接口。该列表不是 Proxy 集群拓扑，不能在此新增、删除或扩缩容节点。"
+        style={{ marginBottom: 16 }}
       />
 
       <Spin spinning={loading} tip={t('common.loading')}>
@@ -410,37 +354,6 @@ const ProxyPage: React.FC = () => {
         </Descriptions>
       </Modal>
 
-      {/* Add Node Modal */}
-      <Modal
-        title={t('proxy.addProxyNode')}
-        open={addNodeModalOpen}
-        onCancel={() => {
-          setAddNodeModalOpen(false);
-          form.resetFields();
-        }}
-        onOk={handleAddNode}
-        okText={t('common.add')}
-        cancelText={t('common.cancel')}
-      >
-        <Form form={form} layout="vertical">
-          <Form.Item
-            name="address"
-            label={t('proxy.address')}
-            rules={[
-              {
-                required: true,
-                message: t('proxy.addrRequired'),
-              },
-              {
-                pattern: /^[\w.-]+:\d+$/,
-                message: t('proxy.invalidAddress'),
-              },
-            ]}
-          >
-            <Input placeholder={t('proxy.addressPlaceholder')} />
-          </Form.Item>
-        </Form>
-      </Modal>
     </div>
   );
 };
