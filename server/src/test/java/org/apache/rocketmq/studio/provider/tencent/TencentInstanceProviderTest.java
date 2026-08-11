@@ -25,6 +25,7 @@ import com.tencentcloudapi.trocket.v20230308.models.TopicItem;
 import com.tencentcloudapi.trocket.v20230308.TrocketClient;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
@@ -40,9 +41,13 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -74,7 +79,7 @@ class TencentInstanceProviderTest {
                 .regionId(REGION)
                 .credentialId(CREDENTIAL_ID)
                 .build()));
-        when(clientFactory.call(anyString(), anyString(), any())).thenAnswer(invocation -> {
+        lenient().when(clientFactory.call(anyString(), anyString(), any())).thenAnswer(invocation -> {
             TencentClientFactory.TencentCall<Object> action = invocation.getArgument(2);
             return action.execute(client);
         });
@@ -129,6 +134,59 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void createTopicShouldAcceptTencentQueueDefaultsAndBoundariesTest() throws Exception {
+        when(client.CreateTopic(any())).thenReturn(null);
+        for (int queueNum : new int[]{0, 3, 16}) {
+            TopicVO topic = new TopicVO();
+            topic.setName("orders-" + queueNum);
+            topic.setType(TopicType.NORMAL);
+            topic.setWriteQueues(queueNum);
+            provider.createTopic(STUDIO_INSTANCE_ID, topic);
+        }
+
+        ArgumentCaptor<CreateTopicRequest> captor = ArgumentCaptor.forClass(CreateTopicRequest.class);
+        verify(client, times(3)).CreateTopic(captor.capture());
+        assertThat(captor.getAllValues())
+                .extracting(CreateTopicRequest::getQueueNum)
+                .containsExactly(8L, 3L, 16L);
+    }
+
+    @Test
+    void createTopicShouldRejectQueueCountsOutsideTencentRangeTest() {
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+        topic.setType(TopicType.NORMAL);
+        topic.setWriteQueues(2);
+
+        assertThatThrownBy(() -> provider.createTopic(STUDIO_INSTANCE_ID, topic))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("between 3 and 16");
+
+        topic.setWriteQueues(17);
+        assertThatThrownBy(() -> provider.createTopic(STUDIO_INSTANCE_ID, topic))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("between 3 and 16");
+        verifyNoInteractions(client);
+    }
+
+    @Test
+    void topicWritesShouldRejectMismatchedQueueCountsTest() {
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+        topic.setType(TopicType.NORMAL);
+        topic.setWriteQueues(8);
+        topic.setReadQueues(4);
+
+        assertThatThrownBy(() -> provider.createTopic(STUDIO_INSTANCE_ID, topic))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("must match for Tencent Cloud");
+        assertThatThrownBy(() -> provider.updateTopic(STUDIO_INSTANCE_ID, topic))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("must match for Tencent Cloud");
+        verifyNoInteractions(client);
+    }
+
+    @Test
     void updateAndDeleteTopicShouldCallTencentOpenApiTest() throws Exception {
         when(client.ModifyTopic(any())).thenReturn(null);
         when(client.DeleteTopic(any())).thenReturn(null);
@@ -145,6 +203,7 @@ class TencentInstanceProviderTest {
         assertThat(updateCaptor.getValue().getInstanceId()).isEqualTo(CLOUD_INSTANCE_ID);
         assertThat(updateCaptor.getValue().getTopic()).isEqualTo("orders");
         assertThat(updateCaptor.getValue().getRemark()).isEqualTo("updated");
+        assertThat(updateCaptor.getValue().getQueueNum()).isNull();
     }
 
     @Test

@@ -66,6 +66,8 @@ public class TencentInstanceProvider implements InstanceProvider {
     static final int MAX_PAGES = 100;
     static final int CONSUMER_PAGE_SIZE = 100;
     static final int DEFAULT_QUEUE_NUM = 8;
+    static final int MIN_QUEUE_NUM = 3;
+    static final int MAX_QUEUE_NUM = 16;
     private static final String NOT_IMPLEMENTED = "Tencent Cloud operation is not implemented yet";
 
     private final TencentClientFactory clientFactory;
@@ -375,6 +377,15 @@ public class TencentInstanceProvider implements InstanceProvider {
     private static void validateQueueNumber(TopicVO topic) {
         if (topic.getWriteQueues() < 0 || topic.getReadQueues() < 0) {
             throw new BusinessException(400, "Topic queue number must not be negative");
+        }
+        if (topic.getWriteQueues() > 0 && topic.getReadQueues() > 0
+                && topic.getWriteQueues() != topic.getReadQueues()) {
+            throw new BusinessException(400,
+                    "Topic write and read queue numbers must match for Tencent Cloud");
+        }
+        int queueNum = topic.getWriteQueues() > 0 ? topic.getWriteQueues() : topic.getReadQueues();
+        if (queueNum > 0 && (queueNum < MIN_QUEUE_NUM || queueNum > MAX_QUEUE_NUM)) {
+            throw new BusinessException(400, "Topic queue number must be between 3 and 16");
         }
     }
 
