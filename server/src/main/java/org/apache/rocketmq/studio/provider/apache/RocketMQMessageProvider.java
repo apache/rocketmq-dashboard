@@ -20,6 +20,7 @@ import org.apache.rocketmq.client.QueryResult;
 import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
 import org.apache.rocketmq.client.consumer.PullResult;
 import org.apache.rocketmq.client.consumer.PullStatus;
+import org.apache.rocketmq.client.trace.TraceConstants;
 import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageId;
@@ -69,7 +70,6 @@ import java.util.Set;
 public class RocketMQMessageProvider implements MessageProvider {
 
     private static final String TRACE_TOPIC = "RMQ_SYS_TRACE_TOPIC";
-    private static final char FIELD_SEPARATOR = '\u0001';
     private static final int KEY_QUERY_MAX = 64;
     private static final int TRACE_QUERY_MAX = 64;
     private static final int DEFAULT_TOPIC_LIMIT = 200;
@@ -334,8 +334,9 @@ public class RocketMQMessageProvider implements MessageProvider {
     }
 
     /**
-     * Parse a trace message body. Each line is one trace context whose fields are separated by
-     * the SOH character ({@code \u0001}); the first field is the trace type.
+     * Parse a trace message body. Trace contexts are separated by STX ({@code \u0002}) and the
+     * fields in each context are separated by SOH ({@code \u0001}); the first field is the trace
+     * type.
      */
     private void parseTraceBody(byte[] body, String targetMsgId, List<TraceNodeVO> nodes,
                                 List<ConsumerStatusVO> consumerStatus) {
@@ -343,17 +344,17 @@ public class RocketMQMessageProvider implements MessageProvider {
             return;
         }
         String data = new String(body, StandardCharsets.UTF_8);
-        for (String line : data.split("\n")) {
-            if (!StringUtils.hasText(line)) {
+        for (String context : data.split(String.valueOf(TraceConstants.FIELD_SPLITOR))) {
+            if (!StringUtils.hasText(context)) {
                 continue;
             }
-            String[] fields = line.split(String.valueOf(FIELD_SEPARATOR), -1);
+            String[] fields = context.split(String.valueOf(TraceConstants.CONTENT_SPLITOR), -1);
             if (fields.length == 0) {
                 continue;
             }
             String traceType = fields[0].trim();
-            // The message id column differs by trace type: Pub/EndTransaction encode the trace bean
-            // (msgId at index 5), while SubAfter in RocketMQ 5.3.3 places msgId at index 2.
+            // The message ID column differs by trace type: Pub/EndTransaction place msgId at
+            // index 5, while SubAfter places it at index 2 in RocketMQ 5.5.0.
             int msgIdIndex = "SubAfter".equals(traceType) ? 2 : 5;
             if (!targetMsgId.equals(field(fields, msgIdIndex))) {
                 continue;
@@ -375,12 +376,13 @@ public class RocketMQMessageProvider implements MessageProvider {
                         break;
                 }
             } catch (Exception e) {
-                log.debug("Skipping unparseable trace line: {}", e.getMessage());
+                log.debug("Skipping unparseable trace context: {}", e.getMessage());
             }
         }
     }
 
-    // Pub layout (RocketMQ 5.3.3 TraceDataEncoder): type, time, region, group, topic, msgId,
+    // Pub layout (RocketMQ 5.5.0 TraceDataEncoder):
+    //             type, time, region, group, topic, msgId,
     //             tags, keys, storeHost, bodyLength, costTime, msgType, offsetMsgId, isSuccess
     private TraceNodeVO buildProduceNode(String[] f) {
         return TraceNodeVO.builder()
@@ -392,7 +394,8 @@ public class RocketMQMessageProvider implements MessageProvider {
                 .build();
     }
 
-    // SubAfter layout (RocketMQ 5.3.3 TraceDataEncoder): type, requestId, msgId, costTime,
+    // SubAfter layout (RocketMQ 5.5.0 TraceDataEncoder):
+    //                type, requestId, msgId, costTime,
     //                isSuccess, keys, contextCode, timeStamp, groupName. The trailing
     //                timeStamp/groupName columns may be absent when the trace has no region info,
     //                so lookups tolerate short lines.
@@ -415,15 +418,16 @@ public class RocketMQMessageProvider implements MessageProvider {
                 .build();
     }
 
-    // EndTransaction layout (RocketMQ 5.3.3): type, time, region, group, topic, msgId, tags,
-    //                     keys, storeHost, bodyLength, costTime, msgType, transactionId, txState
+    // EndTransaction layout (RocketMQ 5.5.0 TraceDataEncoder):
+    //                     type, time, region, group, topic, msgId, tags,
+    //                     keys, storeHost, msgType, transactionId, txState, fromTransactionCheck
     private TraceNodeVO buildTransactionNode(String[] f) {
         return TraceNodeVO.builder()
                 .title("endTransaction")
                 .timestamp(parseLong(field(f, 1)))
                 .status("finish")
                 .costTime(0L)
-                .description("group=" + field(f, 3) + ", transactionState=" + field(f, 13))
+                .description("group=" + field(f, 3) + ", transactionState=" + field(f, 11))
                 .build();
     }
 

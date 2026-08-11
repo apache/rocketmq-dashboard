@@ -20,6 +20,7 @@ import org.apache.rocketmq.client.QueryResult;
 import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
 import org.apache.rocketmq.client.consumer.PullResult;
 import org.apache.rocketmq.client.consumer.PullStatus;
+import org.apache.rocketmq.client.trace.TraceConstants;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
@@ -206,24 +207,20 @@ class RocketMQMessageProviderTest {
         assertThat(record.isBodyTruncated()).isTrue();
     }
 
-    @Test
-    void getMessageTraceParsesPubAndSubAfterPerRocketMq533Layout() throws Exception {
-        // Field order follows RocketMQ 5.3.3 TraceDataEncoder: Pub = type, time, region, group,
+    void getMessageTraceParsesBatchedPubAndSubAfterContexts() throws Exception {
+        // Field order follows RocketMQ 5.5.0 TraceDataEncoder:
+        // Pub = type, time, region, group,
         // topic, msgId, tags, keys, storeHost, bodyLength, costTime, msgType, offsetMsgId, isSuccess.
         // SubAfter = type, requestId, msgId, costTime, isSuccess, keys, contextCode, timeStamp,
         // groupName.
-        String pub = "Pub" + '' + "1000" + '' + "cn" + '' + "prod-group"
-                + '' + "TopicA" + '' + "msg-123" + '' + "tag1" + '' + "key1"
-                + '' + "broker:10911" + '' + "15" + '' + "50" + '' + "0"
-                + '' + "offset-1" + '' + "true";
-        String subAfter = "SubAfter" + '' + "req-1" + '' + "msg-123" + '' + "20"
-                + '' + "true" + '' + "key1" + '' + "3" + '' + "3000"
-                + '' + "cons-group";
-        String otherMessage = "SubAfter" + '' + "req-2" + '' + "other-msg" + '' + "5"
-                + '' + "false" + '' + "key-other" + '' + "0" + '' + "0"
-                + '' + "other-group";
+        String pub = traceContext("Pub", "1000", "cn", "prod-group", "TopicA", "msg-123",
+                "tag1", "key1", "broker:10911", "15", "50", "0", "offset-1", "true");
+        String subAfter = traceContext("SubAfter", "req-1", "msg-123", "20", "true", "key1",
+                "3", "3000", "cons-group");
+        String otherMessage = traceContext("SubAfter", "req-2", "other-msg", "5", "false",
+                "key-other", "0", "0", "other-group");
         MessageExt traceMessage = new MessageExt();
-        traceMessage.setBody(String.join("\n", pub, subAfter, otherMessage).getBytes(StandardCharsets.UTF_8));
+        traceMessage.setBody(traceBody(pub, subAfter, otherMessage).getBytes(StandardCharsets.UTF_8));
         QueryResult queryResult = new QueryResult(0L, List.of(traceMessage));
         when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
                 .thenReturn(queryResult);
@@ -252,10 +249,8 @@ class RocketMQMessageProviderTest {
 
     @Test
     void getMessageTraceParsesEndTransactionState() throws Exception {
-        String body = "EndTransaction" + '' + "2000" + '' + "cn" + '' + "tx-group"
-                + '' + "TopicA" + '' + "msg-tx" + '' + "tag2" + '' + "key2"
-                + '' + "broker:10911" + '' + "10" + '' + "40" + '' + "0"
-                + '' + "tx-1" + '' + "COMMIT_MESSAGE";
+        String body = traceBody(traceContext("EndTransaction", "2000", "cn", "tx-group", "TopicA",
+                "msg-tx", "tag2", "key2", "broker:10911", "0", "tx-1", "COMMIT_MESSAGE", "false"));
         MessageExt traceMessage = new MessageExt();
         traceMessage.setBody(body.getBytes(StandardCharsets.UTF_8));
         QueryResult queryResult = new QueryResult(0L, List.of(traceMessage));
@@ -267,7 +262,10 @@ class RocketMQMessageProviderTest {
         assertThat(record.getNodes()).hasSize(1);
         TraceNodeVO transaction = record.getNodes().get(0);
         assertThat(transaction.getTitle()).isEqualTo("endTransaction");
-        assertThat(transaction.getDescription()).contains("tx-group").contains("COMMIT_MESSAGE");
+        assertThat(transaction.getDescription())
+                .contains("tx-group")
+                .contains("transactionState=COMMIT_MESSAGE")
+                .doesNotContain("transactionState=false");
         assertThat(record.getConsumerStatus()).isEmpty();
     }
 
@@ -282,5 +280,14 @@ class RocketMQMessageProviderTest {
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
 
         verify(queryHistoryService, never()).recordTraceQuery(anyString(), anyString(), any(), anyInt(), anyInt());
+    }
+
+    private static String traceContext(String... fields) {
+        return String.join(String.valueOf(TraceConstants.CONTENT_SPLITOR), fields);
+    }
+
+    private static String traceBody(String... contexts) {
+        return String.join(String.valueOf(TraceConstants.FIELD_SPLITOR), contexts)
+                + TraceConstants.FIELD_SPLITOR;
     }
 }
