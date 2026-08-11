@@ -945,7 +945,7 @@ const ConsumerPageContent = ({
       </Flex>
 
       {/* ─── Table with expandable rows ─── */}
-      <Card bodyStyle={{ padding: 0 }}>
+      <Card styles={{ body: { padding: 0 } }}>
         <Table
           columns={columns}
           dataSource={filtered}
@@ -1006,7 +1006,7 @@ const ConsumerPageContent = ({
           setShowOnlyInconsistent(false);
         }}
         width={800}
-        destroyOnClose
+        destroyOnHidden
         footer={null}
       >
         {selectedGroup && (
@@ -1085,7 +1085,7 @@ const ConsumerPageContent = ({
                       bordered
                       column={2}
                       size="small"
-                      labelStyle={{ fontWeight: 500, width: 140 }}
+                      styles={{ label: { fontWeight: 500, width: 140 } }}
                     >
                       <Descriptions.Item label="Group 名称">
                         <Text strong>{selectedGroup.name}</Text>
@@ -1247,7 +1247,7 @@ const ConsumerPageContent = ({
                         background: '#fafafa',
                         borderRadius: 8,
                       }}
-                      bodyStyle={{ padding: '8px 16px' }}
+                      styles={{ body: { padding: '8px 16px' } }}
                     >
                       <Space size={24}>
                         <Space size={4}>
@@ -1307,7 +1307,7 @@ const ConsumerPageContent = ({
         }}
         footer={null}
         width={900}
-        destroyOnClose
+        destroyOnHidden
       >
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
           <Descriptions bordered column={2} size="small">
@@ -1439,7 +1439,7 @@ const ConsumerPageContent = ({
         okText="创建"
         cancelText="取消"
         width={560}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form
           form={form}
@@ -1539,7 +1539,7 @@ const ConsumerPageContent = ({
             importRows.every((row) => row.status === 'success' || row.status === 'invalid'),
         }}
         width={720}
-        destroyOnClose
+        destroyOnHidden
       >
         <Space direction="vertical" style={{ width: '100%' }} size={12}>
           {importErrors.length > 0 ? (
@@ -1622,7 +1622,7 @@ const ConsumerPageContent = ({
         okText="确认重置"
         cancelText="取消"
         width={480}
-        destroyOnClose
+        destroyOnHidden
       >
         {resetGroup && (
           <div style={{ marginTop: 16 }}>
