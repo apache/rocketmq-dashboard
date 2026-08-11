@@ -142,7 +142,7 @@ class RocketMQDLQProviderTest {
                 eq("RESEND_DLQ"),
                 eq("group-a"),
                 contains("matched=0, resent=0, failed=0"),
-                eq("SUCCESS"));
+                eq("NO_MESSAGES"));
         verify(runtimeAdminClientResolver).resolveEndpoint("instance-a");
     }
 
@@ -199,7 +199,7 @@ class RocketMQDLQProviderTest {
                      })) {
             assertThat(provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic"))
                     .extracting("matched", "resent", "failed", "outcome")
-                    .containsExactly(1, 0, 1, "PARTIAL");
+                    .containsExactly(1, 0, 1, "FAILED");
 
             assertThat(mockedConsumers.constructed()).hasSize(1);
             assertThat(mockedProducers.constructed()).hasSize(1);
@@ -209,7 +209,7 @@ class RocketMQDLQProviderTest {
                 eq("RESEND_DLQ"),
                 eq("group-a"),
                 contains("matched=1, resent=0, failed=1"),
-                eq("PARTIAL"));
+                eq("FAILED"));
     }
 
     @Test

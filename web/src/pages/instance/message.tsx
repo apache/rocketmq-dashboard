@@ -201,9 +201,36 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
 /* ═══════════════════════════════════════════
    MessagePage
    ═══════════════════════════════════════════ */
+type InstanceFilterProps = {
+  selectedInstanceId: string;
+  selectInstance: (instanceId: string) => void;
+  instanceOptions: { value: string; label: string }[];
+};
+
 const MessagePage = () => {
-  const { t } = useLang();
   const { selectedInstanceId, selectInstance, instanceOptions } = useInstanceFilter();
+  // Keying the content by the selected instance makes React remount it whenever the instance
+  // changes — whether from this page's own <Select> or from the shared filter/route elsewhere —
+  // so query results, the detail modal and in-flight request ownership all reset cleanly.
+  return (
+    <MessagePageContent
+      key={selectedInstanceId || 'no-instance'}
+      selectedInstanceId={selectedInstanceId}
+      selectInstance={selectInstance}
+      instanceOptions={instanceOptions}
+    />
+  );
+};
+
+/* ═══════════════════════════════════════════
+   MessagePageContent
+   ═══════════════════════════════════════════ */
+const MessagePageContent = ({
+  selectedInstanceId,
+  selectInstance,
+  instanceOptions,
+}: InstanceFilterProps) => {
+  const { t } = useLang();
   const [topicOptions, setTopicOptions] = useState<string[]>([]);
 
   useEffect(() => {
@@ -250,22 +277,6 @@ const MessagePage = () => {
   );
 
   /* ─── Handlers ─── */
-  const handleInstanceChange = (instanceId: string) => {
-    queryGenerationRef.current += 1;
-    traceGenerationRef.current += 1;
-    setTopicOptions([]);
-    setSelectedTopic(undefined);
-    setMessages([]);
-    setQueryLoading(false);
-    setQueryError(null);
-    setSelectedMsg(null);
-    setModalOpen(false);
-    setTraceData(null);
-    setTraceLoading(false);
-    setTraceError(null);
-    selectInstance(instanceId);
-  };
-
   const handleReset = () => {
     queryGenerationRef.current += 1;
     setSelectedTopic(undefined);
@@ -700,7 +711,7 @@ const MessagePage = () => {
             <Select
               placeholder="选择实例"
               value={selectedInstanceId || undefined}
-              onChange={handleInstanceChange}
+              onChange={selectInstance}
               options={instanceOptions}
               style={{ width: 220 }}
               notFoundContent="暂无实例"
