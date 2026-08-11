@@ -184,15 +184,20 @@ export const diagnosticCacheKey = (instanceId: string, groupName: string) =>
 /* ═══════════════════════════════════════════
    ConsumerPage
    ═══════════════════════════════════════════ */
-const ConsumerPage = () => {
+type ConsumerPageContentProps = ReturnType<typeof useInstanceFilter>;
+
+const ConsumerPageContent = ({
+  selectedInstanceId,
+  selectedInstance,
+  selectInstance,
+  instanceOptions,
+}: ConsumerPageContentProps) => {
   const { t } = useLang();
-  const { selectedInstanceId, selectedInstance, selectInstance, instanceOptions } =
-    useInstanceFilter();
   const isCloudInstance =
     selectedInstance?.vendor === 'ALIYUN' || selectedInstance?.vendor === 'TENCENT';
   const hasSelectedInstance = Boolean(selectedInstanceId);
   const [groups, setGroups] = useState<ConsumerGroup[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(hasSelectedInstance);
   const [submitting, setSubmitting] = useState(false);
   const [resetSubmitting, setResetSubmitting] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
@@ -234,22 +239,8 @@ const ConsumerPage = () => {
   const stackRequestIdRef = useRef(0);
 
   useEffect(() => {
-    stackRequestIdRef.current += 1;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- clear state owned by the previous instance
-    setSelectedGroup(null);
-    setModalOpen(false);
-    setResetGroup(null);
-    setResetTopic(undefined);
-    setResetModalOpen(false);
-  }, [selectedInstanceId]);
-
-  useEffect(() => {
     if (!selectedInstanceId) {
       groupRequestIdRef.current += 1;
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- clear state when the instance scope is removed
-      setGroups([]);
-      setSelectedRowKeys([]);
-      setLoading(false);
       return;
     }
     const requestId = ++groupRequestIdRef.current;
@@ -1719,6 +1710,16 @@ const ConsumerPage = () => {
         )}
       </Modal>
     </div>
+  );
+};
+
+const ConsumerPage = () => {
+  const instanceFilter = useInstanceFilter();
+  return (
+    <ConsumerPageContent
+      key={instanceFilter.selectedInstanceId || 'no-selected-instance'}
+      {...instanceFilter}
+    />
   );
 };
 
