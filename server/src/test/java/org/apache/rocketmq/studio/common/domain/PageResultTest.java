@@ -16,29 +16,16 @@
  */
 package org.apache.rocketmq.studio.common.domain;
 
-import lombok.Getter;
-import java.util.Collections;
-import java.util.List;
+import org.junit.jupiter.api.Test;
 
-@Getter
-public class PageResult<T> {
-    private List<T> items;
-    private long total;
-    private int page;
-    private int size;
+import static org.assertj.core.api.Assertions.assertThat;
 
-    private PageResult() {}
+class PageResultTest {
 
-    public static <T> PageResult<T> of(List<T> items, long total, int page, int size) {
-        PageResult<T> result = new PageResult<>();
-        result.items = items == null ? Collections.emptyList() : items;
-        result.total = total;
-        result.page = page;
-        result.size = size;
-        return result;
-    }
+    @Test
+    void ofShouldNormalizeNullItemsToAnEmptyList() {
+        PageResult<String> result = PageResult.of(null, 0, 1, 20);
 
-    public static <T> PageResult<T> empty(int page, int size) {
-        return of(Collections.emptyList(), 0, page, size);
+        assertThat(result.getItems()).isNotNull().isEmpty();
     }
 }
