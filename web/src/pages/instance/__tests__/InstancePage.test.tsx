@@ -157,6 +157,30 @@ describe('InstancePage', () => {
     expect(screen.getByText('latest-instance')).toBeInTheDocument();
   });
 
+  it('ignores duplicate create submissions while the first request is pending', async () => {
+    const user = userEvent.setup();
+    vi.mocked(instanceService.createInstance).mockImplementation(() => new Promise(() => {}));
+    renderPage();
+
+    expect(await screen.findByText('production-proxy')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /添加实例/ }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByLabelText('实例名称'), 'new-proxy');
+    const createTypeSelect = within(dialog).getByRole('combobox');
+    fireEvent.mouseDown(createTypeSelect.parentElement!);
+    const proxyOptions = await screen.findAllByText('Proxy 模式', {
+      selector: '.ant-select-item-option-content',
+    });
+    await user.click(proxyOptions[proxyOptions.length - 1]);
+    await user.type(within(dialog).getByLabelText('接入地址'), 'proxy-new:8080');
+    const connect = within(dialog).getByRole('button', { name: /连\s*接/ });
+
+    fireEvent.click(connect);
+    fireEvent.click(connect);
+
+    await waitFor(() => expect(instanceService.createInstance).toHaveBeenCalledTimes(1));
+  });
+
   it('reloads the current filters after creating an instance', async () => {
     const user = userEvent.setup();
     vi.mocked(instanceService.createInstance).mockResolvedValue(instance('created', 'new-proxy'));
