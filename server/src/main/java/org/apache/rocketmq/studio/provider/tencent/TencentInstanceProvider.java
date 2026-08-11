@@ -78,7 +78,19 @@ public class TencentInstanceProvider implements InstanceProvider {
 
     @Override
     public int countTopics(String instanceId) {
-        return listTopics(instanceId, null, null, false).size();
+        Context context = resolve(instanceId);
+        DescribeTopicListRequest request = new DescribeTopicListRequest();
+        request.setInstanceId(context.cloudInstanceId());
+        request.setOffset(0L);
+        request.setLimit(1L);
+        DescribeTopicListResponse response = clientFactory.call(context.credentialId(), context.regionId(),
+                client -> client.DescribeTopicList(request));
+        if (response == null || response.getData() == null || response.getData().length == 0) {
+            return 0;
+        }
+        // Use the response total count if available; otherwise fall back to full scan
+        Long total = response.getTotalCount();
+        return total != null ? Math.toIntExact(total) : listTopics(instanceId, null, null, false).size();
     }
 
     @Override
