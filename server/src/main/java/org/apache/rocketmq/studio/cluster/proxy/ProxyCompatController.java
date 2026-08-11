@@ -19,7 +19,6 @@ package org.apache.rocketmq.studio.cluster.proxy;
 
 import org.apache.rocketmq.studio.common.domain.Result;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -34,19 +33,22 @@ public class ProxyCompatController {
     private final ProxyAddressService proxyAddressService;
 
     @GetMapping("/homePage.query")
-    public Result<ProxyHomeVO> homePage() {
-        return Result.ok(proxyAddressService.getHomePage());
+    public Result<ProxyHomeVO> homePage(@RequestParam String instanceId) {
+        return Result.ok(proxyAddressService.getHomePage(instanceId));
     }
 
-    @PostMapping(value = "/addProxyAddr.do", consumes = MediaType.APPLICATION_FORM_URLENCODED_VALUE)
-    public Result<Void> addProxyAddr(@RequestParam String newProxyAddr) {
-        proxyAddressService.addProxyAddr(newProxyAddr);
-        return Result.ok();
+    /**
+     * Kept for legacy Dashboard clients. Proxy endpoint changes belong to managed-instance
+     * configuration; this page must not mutate a process-local address list.
+     */
+    @PostMapping("/addProxyAddr.do")
+    public Result<Void> addProxyAddr() {
+        throw new UnsupportedOperationException("Update the managed instance endpoint instead");
     }
 
-    @PostMapping(value = "/removeProxyAddr.do", consumes = MediaType.APPLICATION_FORM_URLENCODED_VALUE)
-    public Result<Void> removeProxyAddr(@RequestParam String proxyAddr) {
-        proxyAddressService.removeProxyAddr(proxyAddr);
-        return Result.ok();
+    @PostMapping("/removeProxyAddr.do")
+    public Result<Void> removeProxyAddr() {
+        throw new UnsupportedOperationException("Update the managed instance endpoint instead");
     }
+
 }

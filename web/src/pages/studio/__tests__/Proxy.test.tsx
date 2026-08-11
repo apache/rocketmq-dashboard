@@ -20,11 +20,16 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { queryProxyHomePage } from '../../../api/proxy';
+import { listInstances } from '../../../services/instanceService';
 import { LangProvider } from '../../../i18n/LangContext';
 import ProxyPage from '../Proxy';
 
 vi.mock('../../../api/proxy', () => ({
   queryProxyHomePage: vi.fn(),
+}));
+
+vi.mock('../../../services/instanceService', () => ({
+  listInstances: vi.fn(),
 }));
 
 beforeAll(() => {
@@ -69,6 +74,19 @@ const createDeferred = <T,>() => {
 describe('ProxyPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(listInstances).mockResolvedValue([
+      {
+        id: 'proxy-a',
+        name: 'Proxy A',
+        remark: null,
+        type: 'PROXY',
+        endpoint: '127.0.0.1:8081',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        createdAt: '',
+        updatedAt: '',
+      },
+    ]);
     vi.mocked(queryProxyHomePage).mockResolvedValue(proxyHome);
   });
 
@@ -76,6 +94,7 @@ describe('ProxyPage', () => {
     renderPage();
 
     await screen.findByText('127.0.0.1:8081');
+    expect(queryProxyHomePage).toHaveBeenCalledWith('proxy-a');
     expect(queryProxyHomePage).toHaveBeenCalledTimes(1);
   });
 
@@ -150,5 +169,26 @@ describe('ProxyPage', () => {
     await act(async () => older.resolve(proxyHome));
     expect(screen.getByText('127.0.0.2:8081')).toBeInTheDocument();
     expect(screen.queryByText('127.0.0.1:8081')).not.toBeInTheDocument();
+  });
+
+  it('loads the selected Proxy instance endpoint instead of a process-global address', async () => {
+    vi.mocked(listInstances).mockResolvedValue([
+      {
+        id: 'proxy-a', name: 'Proxy A', remark: null, type: 'PROXY', endpoint: '127.0.0.1:8081',
+        topicCount: 0, consumerGroupCount: 0, createdAt: '', updatedAt: '',
+      },
+      {
+        id: 'proxy-b', name: 'Proxy B', remark: null, type: 'PROXY', endpoint: '127.0.0.2:8081',
+        topicCount: 0, consumerGroupCount: 0, createdAt: '', updatedAt: '',
+      },
+    ]);
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('127.0.0.1:8081');
+
+    await user.click(screen.getByRole('combobox', { name: 'Proxy instance' }));
+    await user.click(await screen.findByText('Proxy B'));
+
+    await waitFor(() => expect(queryProxyHomePage).toHaveBeenLastCalledWith('proxy-b'));
   });
 });

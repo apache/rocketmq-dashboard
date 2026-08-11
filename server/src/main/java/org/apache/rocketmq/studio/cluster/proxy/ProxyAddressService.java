@@ -21,65 +21,42 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
+import org.apache.rocketmq.studio.instance.InstanceRepository;
+import org.apache.rocketmq.studio.instance.InstanceVO;
+import lombok.RequiredArgsConstructor;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class ProxyAddressService {
 
-    private static final Pattern PROXY_ADDR_PATTERN =
-            Pattern.compile("^(\\[[0-9a-fA-F:.]+]|[A-Za-z0-9._-]+):(\\d{1,5})$");
-    private static final int MIN_PORT = 1;
-    private static final int MAX_PORT = 65535;
+    private final InstanceRepository instanceRepository;
 
-    private final Set<String> proxyAddrs = new LinkedHashSet<>(List.of("127.0.0.1:8081"));
-    private String currentProxyAddr = "127.0.0.1:8081";
-
-    public synchronized ProxyHomeVO getHomePage() {
+    /**
+     * A managed Proxy instance has one durable access endpoint. Multi-address discovery and
+     * failover require a Proxy Admin contract and are intentionally not inferred here.
+     */
+    public ProxyHomeVO getHomePage(String instanceId) {
+        if (instanceId == null || instanceId.isBlank()) {
+            throw new BusinessException(400, "instanceId is required");
+        }
+        InstanceVO instance = instanceRepository.findById(instanceId)
+                .orElseThrow(() -> new BusinessException(404, "Instance not found: " + instanceId));
+        if (instance.getType() != InstanceType.PROXY) {
+            throw new BusinessException(400, "Instance is not a Proxy instance: " + instanceId);
+        }
+        String endpoint = instance.getEndpoint();
+        if (endpoint == null || endpoint.isBlank()) {
+            throw new BusinessException(409, "Proxy instance has no configured endpoint: " + instanceId);
+        }
+        String normalizedEndpoint = endpoint.trim();
+        log.debug("Resolved Proxy endpoint for instance {}", instanceId);
         return ProxyHomeVO.builder()
-                .proxyAddrList(new ArrayList<>(proxyAddrs))
-                .currentProxyAddr(currentProxyAddr)
+                .proxyAddrList(List.of(normalizedEndpoint))
+                .currentProxyAddr(normalizedEndpoint)
                 .build();
     }
 
-    public synchronized void addProxyAddr(String newProxyAddr) {
-        String normalized = normalizeProxyAddr(newProxyAddr, "newProxyAddr");
-        proxyAddrs.add(normalized);
-        if (currentProxyAddr == null || currentProxyAddr.isBlank()) {
-            currentProxyAddr = normalized;
-        }
-        log.info("Added Proxy address {}", normalized);
-    }
-
-    public synchronized void removeProxyAddr(String proxyAddr) {
-        String normalized = normalizeProxyAddr(proxyAddr, "proxyAddr");
-        if (!proxyAddrs.remove(normalized)) {
-            throw new BusinessException(404, "Proxy address not found: " + normalized);
-        }
-        if (normalized.equals(currentProxyAddr)) {
-            currentProxyAddr = proxyAddrs.stream().findFirst().orElse("");
-        }
-        log.info("Removed Proxy address {}", normalized);
-    }
-
-    private String normalizeProxyAddr(String proxyAddr, String fieldName) {
-        if (proxyAddr == null || proxyAddr.trim().isEmpty()) {
-            throw new BusinessException(400, fieldName + " is required");
-        }
-        String normalized = proxyAddr.trim();
-        Matcher matcher = PROXY_ADDR_PATTERN.matcher(normalized);
-        if (!matcher.matches()) {
-            throw new BusinessException(400, fieldName + " must be in host:port or [ipv6]:port format");
-        }
-        int port = Integer.parseInt(matcher.group(2));
-        if (port < MIN_PORT || port > MAX_PORT) {
-            throw new BusinessException(400, fieldName + " port must be between 1 and 65535");
-        }
-        return normalized;
-    }
 }

@@ -39,7 +39,9 @@ export interface ProxyNode {
 
 // ─── API Functions ───────────────────────────────────────────────
 
-export async function queryProxyHomePage(): Promise<ProxyHomePageData> {
-  const res = await client.get<{ data: ProxyHomePageData }>('/proxy/homePage.query');
+export async function queryProxyHomePage(instanceId: string): Promise<ProxyHomePageData> {
+  const res = await client.get<{ data: ProxyHomePageData }>('/proxy/homePage.query', {
+    params: { instanceId },
+  });
   return res.data.data;
 }

@@ -38,19 +38,19 @@ describe('Proxy API', () => {
       proxyAddrList: ['192.168.1.1:8081', '192.168.1.2:8081'],
       currentProxyAddr: '192.168.1.1:8081',
     };
-    mock.onGet('/proxy/homePage.query').reply(200, { code: 200, data });
+    mock.onGet('/proxy/homePage.query', { params: { instanceId: 'instance-a' } }).reply(200, { code: 200, data });
 
-    const result = await queryProxyHomePage();
+    const result = await queryProxyHomePage('instance-a');
     expect(result.proxyAddrList).toHaveLength(2);
     expect(result.currentProxyAddr).toBe('192.168.1.1:8081');
   });
 
   it('handles empty proxy address list', async () => {
     mock
-      .onGet('/proxy/homePage.query')
+      .onGet('/proxy/homePage.query', { params: { instanceId: 'instance-a' } })
       .reply(200, { code: 200, data: { proxyAddrList: [], currentProxyAddr: '' } });
 
-    const result = await queryProxyHomePage();
+    const result = await queryProxyHomePage('instance-a');
     expect(result.proxyAddrList).toHaveLength(0);
     expect(result.currentProxyAddr).toBe('');
   });

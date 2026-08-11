@@ -18,111 +18,77 @@
 package org.apache.rocketmq.studio.cluster.proxy;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
+import org.apache.rocketmq.studio.instance.InstanceRepository;
+import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.junit.jupiter.api.extension.ExtendWith;
 
-import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.when;
 
+@ExtendWith(MockitoExtension.class)
 class ProxyAddressServiceTest {
 
-    private final ProxyAddressService proxyAddressService = new ProxyAddressService();
+    @Mock
+    private InstanceRepository instanceRepository;
 
-    @Test
-    void homePageShouldReturnDefaultProxyAddress() {
-        ProxyHomeVO home = proxyAddressService.getHomePage();
+    private ProxyAddressService proxyAddressService;
 
-        assertThat(home.getProxyAddrList()).containsExactly("127.0.0.1:8081");
-        assertThat(home.getCurrentProxyAddr()).isEqualTo("127.0.0.1:8081");
+    @BeforeEach
+    void setUp() {
+        proxyAddressService = new ProxyAddressService(instanceRepository);
     }
 
     @Test
-    void addProxyAddrShouldTrimAndKeepUniqueAddresses() {
-        proxyAddressService.addProxyAddr(" 10.0.0.1:8081 ");
-        proxyAddressService.addProxyAddr("10.0.0.1:8081");
+    void homePageShouldReturnSelectedProxyInstanceEndpoint() {
+        when(instanceRepository.findById("proxy-a")).thenReturn(Optional.of(proxyInstance("proxy-a", "10.0.0.1:8081")));
 
-        ProxyHomeVO home = proxyAddressService.getHomePage();
-        assertThat(home.getProxyAddrList()).containsExactly("127.0.0.1:8081", "10.0.0.1:8081");
-        assertThat(home.getCurrentProxyAddr()).isEqualTo("127.0.0.1:8081");
+        ProxyHomeVO home = proxyAddressService.getHomePage("proxy-a");
+
+        assertThat(home.getProxyAddrList()).containsExactly("10.0.0.1:8081");
+        assertThat(home.getCurrentProxyAddr()).isEqualTo("10.0.0.1:8081");
     }
 
     @Test
-    void addProxyAddrShouldRejectBlankAddress() {
-        assertThatThrownBy(() -> proxyAddressService.addProxyAddr(" "))
+    void homePageShouldRequireInstanceId() {
+        assertThatThrownBy(() -> proxyAddressService.getHomePage(" "))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("newProxyAddr is required")
+                .hasMessage("instanceId is required")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
     }
 
     @Test
-    void addProxyAddrShouldAcceptBracketedIpv6Address() {
-        proxyAddressService.addProxyAddr(" [::1]:8081 ");
+    void homePageShouldRejectDirectInstance() {
+        InstanceVO direct = proxyInstance("direct-a", "127.0.0.1:9876");
+        direct.setType(InstanceType.DIRECT);
+        when(instanceRepository.findById("direct-a")).thenReturn(Optional.of(direct));
 
-        ProxyHomeVO home = proxyAddressService.getHomePage();
-        assertThat(home.getProxyAddrList()).containsExactly("127.0.0.1:8081", "[::1]:8081");
-    }
-
-    @Test
-    void addProxyAddrShouldRejectInvalidAddressFormats() {
-        List<String> invalidProxyAddrs = List.of(
-                "10.0.0.1",
-                "10.0.0.1:abc",
-                "10.0.0.1:0",
-                "10.0.0.1:65536",
-                "http://10.0.0.1:8081",
-                "10.0.0.1:8081/path"
-        );
-
-        for (String invalidProxyAddr : invalidProxyAddrs) {
-            assertThatThrownBy(() -> proxyAddressService.addProxyAddr(invalidProxyAddr))
-                    .as("invalid proxy address %s", invalidProxyAddr)
-                    .isInstanceOf(BusinessException.class)
-                    .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
-        }
-    }
-
-    @Test
-    void removeProxyAddrShouldTrimAndRemoveAddress() {
-        proxyAddressService.addProxyAddr("10.0.0.1:8081");
-
-        proxyAddressService.removeProxyAddr(" 10.0.0.1:8081 ");
-
-        ProxyHomeVO home = proxyAddressService.getHomePage();
-        assertThat(home.getProxyAddrList()).containsExactly("127.0.0.1:8081");
-        assertThat(home.getCurrentProxyAddr()).isEqualTo("127.0.0.1:8081");
-    }
-
-    @Test
-    void removeProxyAddrShouldSelectNextProxyWhenCurrentIsRemoved() {
-        proxyAddressService.removeProxyAddr("127.0.0.1:8081");
-
-        ProxyHomeVO emptyHome = proxyAddressService.getHomePage();
-        assertThat(emptyHome.getProxyAddrList()).isEmpty();
-        assertThat(emptyHome.getCurrentProxyAddr()).isEmpty();
-
-        proxyAddressService.addProxyAddr("10.0.0.1:8081");
-        proxyAddressService.addProxyAddr("10.0.0.2:8081");
-        proxyAddressService.removeProxyAddr("10.0.0.1:8081");
-
-        ProxyHomeVO home = proxyAddressService.getHomePage();
-        assertThat(home.getProxyAddrList()).containsExactly("10.0.0.2:8081");
-        assertThat(home.getCurrentProxyAddr()).isEqualTo("10.0.0.2:8081");
-    }
-
-    @Test
-    void removeProxyAddrShouldRejectBlankAddress() {
-        assertThatThrownBy(() -> proxyAddressService.removeProxyAddr(" "))
+        assertThatThrownBy(() -> proxyAddressService.getHomePage("direct-a"))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("proxyAddr is required")
+                .hasMessage("Instance is not a Proxy instance: direct-a")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
     }
 
     @Test
-    void removeProxyAddrShouldRejectUnknownAddress() {
-        assertThatThrownBy(() -> proxyAddressService.removeProxyAddr("10.0.0.1:8081"))
+    void homePageShouldRejectMissingInstance() {
+        when(instanceRepository.findById("missing")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> proxyAddressService.getHomePage("missing"))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("Proxy address not found: 10.0.0.1:8081")
+                .hasMessage("Instance not found: missing")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
+    }
+
+    private InstanceVO proxyInstance(String id, String endpoint) {
+        InstanceVO instance = InstanceVO.builder().type(InstanceType.PROXY).endpoint(endpoint).build();
+        instance.setId(id);
+        return instance;
     }
 }
