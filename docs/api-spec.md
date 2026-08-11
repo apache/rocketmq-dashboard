@@ -1191,6 +1191,13 @@ GET /api/messages?topic={topic}&msgId={msgId}&key={key}&startTime={startTime}&en
 GET /api/messages/:msgId/trace
 ```
 
+**Query 参数：**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | Studio 实例 ID |
+| `storeTime` | `number` | 否 | 消息存储时间（Unix 毫秒），作为轨迹时间窗口提示；仅接受最近 7 天内且不晚于当前时间 5 分钟的值，缺失或无效时回退到最近 1 小时 |
+
 **Response `data`:** `TraceRecord`
 
 ```json

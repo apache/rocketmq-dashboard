@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.provider.apache;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.message.MessageProvider;
+import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -73,5 +74,15 @@ class ApacheInstanceProviderTest {
         assertThat(provider.listConsumerGroups("inst-1", "orders")).isEmpty();
 
         verify(metadataProvider).listConsumerGroups("inst-1", null, "orders");
+    }
+
+    @Test
+    void getMessageTraceShouldPassStoreTimeToMessageProvider() {
+        TraceRecordVO trace = TraceRecordVO.builder().build();
+        when(messageProvider.getMessageTrace("inst-1", "msg-1", 1784246400000L)).thenReturn(trace);
+
+        assertThat(provider.getMessageTrace("inst-1", "msg-1", 1784246400000L)).isSameAs(trace);
+
+        verify(messageProvider).getMessageTrace("inst-1", "msg-1", 1784246400000L);
     }
 }

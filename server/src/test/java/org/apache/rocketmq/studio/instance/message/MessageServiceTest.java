@@ -11,12 +11,18 @@
 package org.apache.rocketmq.studio.instance.message;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.junit.jupiter.api.Test;
 
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 class MessageServiceTest {
 
@@ -57,6 +63,36 @@ class MessageServiceTest {
                 .hasMessage("msgId is required");
 
         verifyNoInteractions(provider, registry);
+    }
+
+    @Test
+    void forwardsTraceStoreTimeToTheSelectedInstanceProvider() {
+        MessageProvider fallbackProvider = mock(MessageProvider.class);
+        InstanceProvider selectedProvider = mock(InstanceProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(fallbackProvider, registry);
+        TraceRecordVO trace = TraceRecordVO.builder().build();
+        when(registry.byInstanceId("instance-a")).thenReturn(Optional.of(selectedProvider));
+        when(selectedProvider.getMessageTrace("instance-a", "msg-001", 1784246400000L)).thenReturn(trace);
+
+        assertThat(service.getMessageTrace("instance-a", "msg-001", 1784246400000L)).isSameAs(trace);
+
+        verify(selectedProvider).getMessageTrace("instance-a", "msg-001", 1784246400000L);
+        verifyNoInteractions(fallbackProvider);
+    }
+
+    @Test
+    void forwardsTraceStoreTimeToTheFallbackProvider() {
+        MessageProvider fallbackProvider = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(fallbackProvider, registry);
+        TraceRecordVO trace = TraceRecordVO.builder().build();
+        when(registry.byInstanceId("instance-a")).thenReturn(Optional.empty());
+        when(fallbackProvider.getMessageTrace("instance-a", "msg-001", 1784246400000L)).thenReturn(trace);
+
+        assertThat(service.getMessageTrace("instance-a", "msg-001", 1784246400000L)).isSameAs(trace);
+
+        verify(fallbackProvider).getMessageTrace("instance-a", "msg-001", 1784246400000L);
     }
 
     @Test

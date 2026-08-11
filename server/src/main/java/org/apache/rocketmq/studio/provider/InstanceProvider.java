@@ -66,4 +66,8 @@ public interface InstanceProvider {
                                         String tag, String key, Long startTime, Long endTime);
 
     TraceRecordVO getMessageTrace(String instanceId, String msgId);
+
+    default TraceRecordVO getMessageTrace(String instanceId, String msgId, Long storeTime) {
+        return getMessageTrace(instanceId, msgId);
+    }
 }

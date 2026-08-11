@@ -188,6 +188,12 @@ describe('MessagePage async request ownership', () => {
     const row = await screen.findByRole('row', { name: /message-a/ });
     await user.click(within(row).getByRole('button', { name: /轨迹/ }));
 
+    expect(serviceMocks.getMessageTrace).toHaveBeenCalledWith(
+      'message-a',
+      'instance-a',
+      '2026-07-31T00:00:00Z',
+    );
+
     const dialog = await screen.findByRole('dialog', { name: '消息详情' });
     expect(
       await within(dialog).findByText('Message query provider is not configured'),

@@ -79,6 +79,9 @@ public class RocketMQMessageProvider implements MessageProvider {
     private static final int MAX_PROPERTIES = 64;
     private static final int MAX_PROPERTY_VALUE_CHARS = 1024;
     private static final long ONE_HOUR_MILLIS = 3600_000L;
+    private static final long ONE_DAY_MILLIS = 24 * ONE_HOUR_MILLIS;
+    private static final long MAX_TRACE_LOOKBACK_MILLIS = 7 * ONE_DAY_MILLIS;
+    private static final long TRACE_TIME_SKEW_MILLIS = 5 * 60_000L;
     private static final int MAX_CONSECUTIVE_OFFSET_ILLEGAL = 3;
 
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
@@ -264,15 +267,32 @@ public class RocketMQMessageProvider implements MessageProvider {
 
     @Override
     public TraceRecordVO getMessageTrace(String instanceId, String msgId) {
-        return runtimeAdminClientResolver.execute(instanceId,
-                adminExt -> getMessageTrace(instanceId, (DefaultMQAdminExt) adminExt, msgId));
+        return getMessageTrace(instanceId, msgId, null);
     }
 
-    private TraceRecordVO getMessageTrace(String instanceId, DefaultMQAdminExt adminExt, String msgId) {
+    @Override
+    public TraceRecordVO getMessageTrace(String instanceId, String msgId, Long storeTime) {
+        return runtimeAdminClientResolver.execute(instanceId,
+                adminExt -> getMessageTrace(instanceId, (DefaultMQAdminExt) adminExt, msgId, storeTime));
+    }
+
+    private TraceRecordVO getMessageTrace(String instanceId, DefaultMQAdminExt adminExt,
+                                          String msgId, Long storeTime) {
 
         long now = System.currentTimeMillis();
-        long begin = now - ONE_HOUR_MILLIS;
-        long end = now + 60_000L;
+        long begin;
+        long end;
+        long messageStoreTimestamp = normalizeTraceStoreTime(storeTime, now);
+        if (messageStoreTimestamp > 0) {
+            begin = messageStoreTimestamp - TRACE_TIME_SKEW_MILLIS;
+            end = Math.max(messageStoreTimestamp + ONE_DAY_MILLIS, now + 60_000L);
+        } else {
+            if (storeTime != null) {
+                log.warn("Invalid storeTime={} for msgId={}, falling back to 1h trace window", storeTime, msgId);
+            }
+            begin = now - ONE_HOUR_MILLIS;
+            end = now + 60_000L;
+        }
 
         List<TraceNodeVO> nodes = new ArrayList<>();
         List<ConsumerStatusVO> consumerStatus = new ArrayList<>();
@@ -296,6 +316,18 @@ public class RocketMQMessageProvider implements MessageProvider {
                 .nodes(nodes)
                 .consumerStatus(consumerStatus)
                 .build();
+    }
+
+    private long normalizeTraceStoreTime(Long storeTime, long now) {
+        // The value is a client-supplied query hint, so keep it bounded before building the range.
+        if (storeTime == null || storeTime <= 0) {
+            return 0L;
+        }
+        if (storeTime > now + TRACE_TIME_SKEW_MILLIS
+                || storeTime < now - MAX_TRACE_LOOKBACK_MILLIS) {
+            return 0L;
+        }
+        return storeTime;
     }
 
     /**

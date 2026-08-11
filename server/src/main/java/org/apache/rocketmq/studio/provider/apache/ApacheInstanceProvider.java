@@ -129,6 +129,11 @@ public class ApacheInstanceProvider implements InstanceProvider {
         return messageProvider.getMessageTrace(instanceId, msgId);
     }
 
+    @Override
+    public TraceRecordVO getMessageTrace(String instanceId, String msgId, Long storeTime) {
+        return messageProvider.getMessageTrace(instanceId, msgId, storeTime);
+    }
+
     private boolean matchesInstance(String topicInstanceId, String instanceId) {
         if (instanceId == null || instanceId.isBlank()) {
             return true;

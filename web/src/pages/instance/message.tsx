@@ -404,7 +404,7 @@ const MessagePage = () => {
     setTraceLoading(true);
     setTraceError(null);
     try {
-      const result = await getMessageTrace(record.msgId, selectedInstanceId);
+      const result = await getMessageTrace(record.msgId, selectedInstanceId, record.storeTime);
       if (traceGenerationRef.current !== requestGeneration) return;
       setTraceData(result);
       setTraceError(null);

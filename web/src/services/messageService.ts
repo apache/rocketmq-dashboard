@@ -51,12 +51,20 @@ export async function queryMessages(params: MessageQuery): Promise<MessageRecord
 export async function getMessageTrace(
   msgId: string,
   instanceId?: string,
+  storeTime?: MessageRecord['storeTime'],
 ): Promise<TraceRecord | null> {
   if (isMockMode()) {
     const trace = mockMessageTraces[msgId] as unknown as TraceRecord | undefined;
     return trace ? cloneTrace(trace) : null;
   }
-  return messageApi.getMessageTrace(msgId, instanceId);
+  const storeTimestamp = storeTime === undefined ? undefined : toStoreTimestamp(storeTime);
+  const validStoreTimestamp =
+    storeTimestamp !== undefined && Number.isFinite(storeTimestamp) && storeTimestamp > 0;
+  return messageApi.getMessageTrace(
+    msgId,
+    instanceId,
+    validStoreTimestamp ? storeTimestamp : undefined,
+  );
 }
 
 export async function listDLQGroups(instanceId: string): Promise<DLQGroup[]> {

@@ -108,10 +108,12 @@ describe('message API', () => {
       ],
     };
     mock
-      .onGet('/messages/msg-1/trace', { params: { instanceId: 'instance-a' } })
+      .onGet('/messages/msg-1/trace', {
+        params: { instanceId: 'instance-a', storeTime: 1784246400000 },
+      })
       .reply(200, { code: 200, data: trace });
 
-    await expect(getMessageTrace('msg-1', 'instance-a')).resolves.toEqual(trace);
+    await expect(getMessageTrace('msg-1', 'instance-a', 1784246400000)).resolves.toEqual(trace);
   });
 
   it('encodes message IDs before requesting trace records', async () => {

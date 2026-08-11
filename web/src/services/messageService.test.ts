@@ -15,15 +15,27 @@
  * limitations under the License.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as messageApi from '../api/message';
 import { getMessageTrace, listDLQGroups, queryMessages } from './messageService';
 
-vi.mock('./dataMode', () => ({ isMockMode: () => true }));
+const { mode } = vi.hoisted(() => ({ mode: { mock: true } }));
+
+vi.mock('./dataMode', () => ({ isMockMode: () => mode.mock }));
 vi.mock('../config', () => ({
   API_BASE_URL: '/api',
 }));
+vi.mock('../api/message', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/message')>();
+  return { ...actual, getMessageTrace: vi.fn() };
+});
 
 describe('message service mock data', () => {
+  beforeEach(() => {
+    mode.mock = true;
+    vi.clearAllMocks();
+  });
+
   it('returns copied message rows and properties', async () => {
     const first = await queryMessages({ msgId: 'AC1E0A6400002A9F0000000001A3F2B1' });
     expect(first[0].topic).toBe('order-create');
@@ -62,6 +74,28 @@ describe('message service mock data', () => {
     expect(second?.consumerStatus[0].group).toBe('cg-order-processor');
     expect(second?.nodes[0]).not.toBe(first?.nodes[0]);
     expect(second?.consumerStatus[0]).not.toBe(first?.consumerStatus[0]);
+  });
+
+  it('converts an ISO store time before requesting a trace in API mode', async () => {
+    mode.mock = false;
+    vi.mocked(messageApi.getMessageTrace).mockResolvedValue({ nodes: [], consumerStatus: [] });
+
+    await getMessageTrace('msg-1', 'instance-a', '2026-07-31T00:00:00Z');
+
+    expect(messageApi.getMessageTrace).toHaveBeenCalledWith(
+      'msg-1',
+      'instance-a',
+      Date.parse('2026-07-31T00:00:00Z'),
+    );
+  });
+
+  it('omits an invalid store time when requesting a trace in API mode', async () => {
+    mode.mock = false;
+    vi.mocked(messageApi.getMessageTrace).mockResolvedValue({ nodes: [], consumerStatus: [] });
+
+    await getMessageTrace('msg-1', 'instance-a', 'not-a-time');
+
+    expect(messageApi.getMessageTrace).toHaveBeenCalledWith('msg-1', 'instance-a', undefined);
   });
 
   it('returns copied DLQ group rows', async () => {

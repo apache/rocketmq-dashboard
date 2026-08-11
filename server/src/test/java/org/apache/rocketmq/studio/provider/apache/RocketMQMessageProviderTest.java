@@ -35,6 +35,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockedConstruction;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -62,6 +63,9 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class RocketMQMessageProviderTest {
+
+    private static final long ONE_HOUR_MILLIS = 60 * 60_000L;
+    private static final long ONE_DAY_MILLIS = 24 * ONE_HOUR_MILLIS;
 
     @Mock
     private DefaultMQAdminExt adminExt;
@@ -268,5 +272,71 @@ class RocketMQMessageProviderTest {
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
 
         verify(queryHistoryService, never()).recordTraceQuery(anyString(), anyString(), any(), anyInt(), anyInt());
+    }
+
+    @Test
+    void getMessageTraceUsesSuppliedStoreTimeForTheQueryWindow() throws Exception {
+        long storeTime = System.currentTimeMillis() - 2 * ONE_HOUR_MILLIS;
+        long expectedBegin = storeTime - 5 * 60_000L;
+        long expectedEnd = storeTime + ONE_DAY_MILLIS;
+        when(adminExt.queryMessage("RMQ_SYS_TRACE_TOPIC", "msg-old", 64, expectedBegin, expectedEnd))
+                .thenReturn(new QueryResult(0L, List.of()));
+
+        TraceRecordVO record = provider.getMessageTrace("instance-a", "msg-old", storeTime);
+
+        assertThat(record.getNodes()).isEmpty();
+        verify(adminExt).queryMessage("RMQ_SYS_TRACE_TOPIC", "msg-old", 64, expectedBegin, expectedEnd);
+        verify(queryHistoryService).recordTraceQuery("instance-a", "msg-old", null, 0, 0);
+    }
+
+    @Test
+    void getMessageTraceExtendsTheWindowToNowForOlderMessages() throws Exception {
+        long before = System.currentTimeMillis();
+        long storeTime = before - 2 * ONE_DAY_MILLIS;
+        long expectedBegin = storeTime - 5 * 60_000L;
+        when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
+                .thenReturn(new QueryResult(0L, List.of()));
+
+        provider.getMessageTrace("instance-a", "msg-two-days-old", storeTime);
+
+        long after = System.currentTimeMillis();
+        ArgumentCaptor<Long> end = ArgumentCaptor.forClass(Long.class);
+        verify(adminExt).queryMessage(eq("RMQ_SYS_TRACE_TOPIC"), eq("msg-two-days-old"), eq(64),
+                eq(expectedBegin), end.capture());
+        assertThat(end.getValue()).isBetween(before + 60_000L, after + 60_000L);
+    }
+
+    @Test
+    void getMessageTraceFallsBackToOneHourForAnInvalidStoreTime() throws Exception {
+        when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
+                .thenReturn(new QueryResult(0L, List.of()));
+        long before = System.currentTimeMillis();
+
+        provider.getMessageTrace("instance-a", "msg-future", Long.MAX_VALUE);
+
+        long after = System.currentTimeMillis();
+        ArgumentCaptor<Long> begin = ArgumentCaptor.forClass(Long.class);
+        ArgumentCaptor<Long> end = ArgumentCaptor.forClass(Long.class);
+        verify(adminExt).queryMessage(eq("RMQ_SYS_TRACE_TOPIC"), eq("msg-future"), eq(64),
+                begin.capture(), end.capture());
+        assertThat(begin.getValue()).isBetween(before - ONE_HOUR_MILLIS, after - ONE_HOUR_MILLIS);
+        assertThat(end.getValue()).isBetween(before + 60_000L, after + 60_000L);
+    }
+
+    @Test
+    void getMessageTraceFallsBackToOneHourForStoreTimeOlderThanSevenDays() throws Exception {
+        when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
+                .thenReturn(new QueryResult(0L, List.of()));
+        long before = System.currentTimeMillis();
+
+        provider.getMessageTrace("instance-a", "msg-old", before - 8 * ONE_DAY_MILLIS);
+
+        long after = System.currentTimeMillis();
+        ArgumentCaptor<Long> begin = ArgumentCaptor.forClass(Long.class);
+        ArgumentCaptor<Long> end = ArgumentCaptor.forClass(Long.class);
+        verify(adminExt).queryMessage(eq("RMQ_SYS_TRACE_TOPIC"), eq("msg-old"), eq(64),
+                begin.capture(), end.capture());
+        assertThat(begin.getValue()).isBetween(before - ONE_HOUR_MILLIS, after - ONE_HOUR_MILLIS);
+        assertThat(end.getValue()).isBetween(before + 60_000L, after + 60_000L);
     }
 }

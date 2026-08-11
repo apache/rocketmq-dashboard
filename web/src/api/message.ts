@@ -78,10 +78,10 @@ export async function queryMessages(params: MessageQuery) {
   return sortMessagesByStoreTimeDesc(res.data.data);
 }
 
-export async function getMessageTrace(msgId: string, instanceId?: string) {
+export async function getMessageTrace(msgId: string, instanceId?: string, storeTime?: number) {
   const res = await client.get<{ data: TraceRecord }>(
     `/messages/${encodeURIComponent(msgId)}/trace`,
-    { params: { instanceId } },
+    { params: { instanceId, ...(storeTime !== undefined ? { storeTime } : {}) } },
   );
   return res.data.data;
 }
