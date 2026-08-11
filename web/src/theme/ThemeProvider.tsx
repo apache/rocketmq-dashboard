@@ -48,8 +48,14 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
         current.followsSystem ? { ...current, darkMode: event.matches } : current,
       );
     };
-    mediaQuery.addEventListener('change', updateTheme);
-    return () => mediaQuery.removeEventListener('change', updateTheme);
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', updateTheme);
+      return () => mediaQuery.removeEventListener('change', updateTheme);
+    }
+    if (typeof mediaQuery.addListener === 'function') {
+      mediaQuery.addListener(updateTheme);
+      return () => mediaQuery.removeListener(updateTheme);
+    }
   }, [themeState.followsSystem]);
 
   return (

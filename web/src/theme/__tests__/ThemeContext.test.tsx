@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ThemeProvider } from '../ThemeProvider';
 import { useTheme } from '../useTheme';
@@ -153,5 +153,35 @@ describe('ThemeContext', () => {
 
     await user.click(screen.getByText('set-light'));
     expect(screen.getByTestId('mode')).toHaveTextContent('light');
+  });
+
+  it('follows system changes through legacy matchMedia listeners', () => {
+    let changeListener: ((event: MediaQueryListEvent) => void) | undefined;
+    const addListener = vi.fn((listener: (event: MediaQueryListEvent) => void) => {
+      changeListener = listener;
+    });
+    const removeListener = vi.fn();
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockReturnValue({
+        matches: false,
+        media: '(prefers-color-scheme: dark)',
+        addListener,
+        removeListener,
+      }),
+    });
+
+    const { unmount } = render(
+      <ThemeProvider>
+        <ThemeConsumer />
+      </ThemeProvider>,
+    );
+    expect(screen.getByTestId('mode')).toHaveTextContent('light');
+
+    act(() => changeListener?.({ matches: true } as MediaQueryListEvent));
+    expect(screen.getByTestId('mode')).toHaveTextContent('dark');
+
+    unmount();
+    expect(removeListener).toHaveBeenCalledWith(changeListener);
   });
 });
