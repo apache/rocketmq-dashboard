@@ -27,6 +27,8 @@ import {
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import { getNameServerConfigDiff, listClusters } from '../../services/clusterService';
+import { listInstances } from '../../services/instanceService';
+import type { Instance } from '../../api/instance';
 
 const { Text, Title } = Typography;
 
@@ -34,6 +36,8 @@ const NameServerConfigDriftPage = () => {
   const { t } = useLang();
   const { message } = App.useApp();
   const requestSequence = useRef(0);
+  const [instances, setInstances] = useState<Instance[]>([]);
+  const [selectedInstanceId, setSelectedInstanceId] = useState<string>();
   const [clusters, setClusters] = useState<ClusterInfo[]>([]);
   const [selectedClusterId, setSelectedClusterId] = useState<string>();
   const [clustersLoading, setClustersLoading] = useState(true);
@@ -41,11 +45,11 @@ const NameServerConfigDriftPage = () => {
   const [result, setResult] = useState<NameServerConfigDiffResult>();
 
   const runCheck = useCallback(
-    async (clusterId: string) => {
+    async (clusterId: string, instanceId: string) => {
       const sequence = ++requestSequence.current;
       setChecking(true);
       try {
-        const nextResult = await getNameServerConfigDiff(clusterId);
+        const nextResult = await getNameServerConfigDiff(clusterId, instanceId);
         if (sequence === requestSequence.current) setResult(nextResult);
       } catch {
         if (sequence === requestSequence.current) {
@@ -61,13 +65,23 @@ const NameServerConfigDriftPage = () => {
 
   useEffect(() => {
     let cancelled = false;
-    void listClusters()
-      .then((items) => {
+    void listInstances()
+      .then(async (items) => {
         if (cancelled) return;
-        setClusters(items);
-        const firstClusterId = items[0]?.id;
+        const apacheInstances = items.filter((instance) => instance.vendor === 'APACHE');
+        setInstances(apacheInstances);
+        const firstInstanceId = apacheInstances[0]?.id;
+        setSelectedInstanceId(firstInstanceId);
+        if (!firstInstanceId) {
+          setClusters([]);
+          return;
+        }
+        const clustersForInstance = await listClusters(firstInstanceId);
+        if (cancelled) return;
+        setClusters(clustersForInstance);
+        const firstClusterId = clustersForInstance[0]?.id;
         setSelectedClusterId(firstClusterId);
-        if (firstClusterId) void runCheck(firstClusterId);
+        if (firstClusterId) void runCheck(firstClusterId, firstInstanceId);
       })
       .catch(() => {
         if (!cancelled) message.error(t('nameServerDrift.loadClustersFailed'));
@@ -81,10 +95,31 @@ const NameServerConfigDriftPage = () => {
     };
   }, [message, runCheck, t]);
 
+  const selectInstance = async (instanceId: string) => {
+    const sequence = ++requestSequence.current;
+    setSelectedInstanceId(instanceId);
+    setSelectedClusterId(undefined);
+    setClusters([]);
+    setResult(undefined);
+    setClustersLoading(true);
+    try {
+      const nextClusters = await listClusters(instanceId);
+      if (sequence !== requestSequence.current) return;
+      setClusters(nextClusters);
+      const firstClusterId = nextClusters[0]?.id;
+      setSelectedClusterId(firstClusterId);
+      if (firstClusterId) void runCheck(firstClusterId, instanceId);
+    } catch {
+      if (sequence === requestSequence.current) message.error(t('nameServerDrift.loadClustersFailed'));
+    } finally {
+      if (sequence === requestSequence.current) setClustersLoading(false);
+    }
+  };
+
   const selectCluster = (clusterId: string) => {
     setSelectedClusterId(clusterId);
     setResult(undefined);
-    void runCheck(clusterId);
+    if (selectedInstanceId) void runCheck(clusterId, selectedInstanceId);
   };
 
   const columns = useMemo<TableColumnsType<NameServerConfigDifference>>(() => {
@@ -159,6 +194,15 @@ const NameServerConfigDriftPage = () => {
 
       <Flex wrap gap={8} align="center" style={{ marginBottom: 20 }}>
         <Select
+          aria-label="NameServer drift instance"
+          loading={clustersLoading}
+          value={selectedInstanceId}
+          onChange={(instanceId) => void selectInstance(instanceId)}
+          placeholder={t('common.selectInstance')}
+          options={instances.map((instance) => ({ label: instance.name, value: instance.id }))}
+          style={{ width: 'min(100%, 280px)' }}
+        />
+        <Select
           aria-label={t('nameServerDrift.cluster')}
           loading={clustersLoading}
           value={selectedClusterId}
@@ -175,8 +219,10 @@ const NameServerConfigDriftPage = () => {
             aria-label={t('nameServerDrift.refresh')}
             icon={<ArrowsClockwise size={16} />}
             loading={checking}
-            disabled={!selectedClusterId}
-            onClick={() => selectedClusterId && void runCheck(selectedClusterId)}
+            disabled={!selectedClusterId || !selectedInstanceId}
+            onClick={() =>
+              selectedClusterId && selectedInstanceId && void runCheck(selectedClusterId, selectedInstanceId)
+            }
           />
         </Tooltip>
         <Tooltip title={t('nameServerDrift.export')}>

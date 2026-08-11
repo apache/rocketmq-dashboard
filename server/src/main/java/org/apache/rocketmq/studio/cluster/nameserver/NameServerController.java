@@ -39,8 +39,9 @@ public class NameServerController {
 
     @GetMapping("/config-diff")
     public Result<NameServerConfigDiffVO> compareConfiguration(
-            @RequestParam(required = false) String clusterId) {
-        return Result.ok(configDiffService.compare(clusterId));
+            @RequestParam(required = false) String clusterId,
+            @RequestParam(required = false) String instanceId) {
+        return Result.ok(configDiffService.compare(clusterId, instanceId));
     }
 
     @PostMapping("/create")

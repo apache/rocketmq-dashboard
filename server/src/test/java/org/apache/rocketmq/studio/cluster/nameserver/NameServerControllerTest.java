@@ -64,21 +64,22 @@ class NameServerControllerTest {
                 .nodes(java.util.List.of())
                 .differences(java.util.List.of())
                 .build();
-        when(configDiffService.compare("cluster-1")).thenReturn(result);
+        when(configDiffService.compare("cluster-1", "instance-1")).thenReturn(result);
 
         mockMvc.perform(get("/api/nameservers/config-diff")
-                        .param("clusterId", "cluster-1"))
+                        .param("clusterId", "cluster-1")
+                        .param("instanceId", "instance-1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.cluster").value("cluster-1"))
                 .andExpect(jsonPath("$.data.driftDetected").value(true));
 
-        verify(configDiffService).compare("cluster-1");
+        verify(configDiffService).compare("cluster-1", "instance-1");
     }
 
     @Test
     void compareConfigurationShouldRejectMissingClusterId() throws Exception {
-        when(configDiffService.compare(null)).thenThrow(
+        when(configDiffService.compare(null, null)).thenThrow(
                 new org.apache.rocketmq.studio.common.exception.BusinessException(
                         400, "cluster is required"));
 
@@ -87,7 +88,7 @@ class NameServerControllerTest {
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.message").value("cluster is required"));
 
-        verify(configDiffService).compare(null);
+        verify(configDiffService).compare(null, null);
     }
 
     @Test

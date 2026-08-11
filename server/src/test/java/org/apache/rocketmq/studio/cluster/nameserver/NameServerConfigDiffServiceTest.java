@@ -38,6 +38,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class NameServerConfigDiffServiceTest {
@@ -106,6 +107,23 @@ class NameServerConfigDiffServiceTest {
                 .containsExactly(
                         tuple("ns-a:9876", true),
                         tuple("ns-b:9876", true));
+    }
+
+    @Test
+    void compareShouldResolveClusterThroughSelectedInstance() throws Exception {
+        stubAdminFactory();
+        when(clusterService.getCluster("cluster-a", "instance-a")).thenReturn(cluster(
+                "ns-a:9876;ns-b:9876",
+                List.of(nameServer("ns-a:9876"), nameServer("ns-b:9876"))));
+        when(admin.getNameServerConfig(List.of("ns-a:9876")))
+                .thenReturn(Map.of("ns-a:9876", properties("listenPort", "9876")));
+        when(admin.getNameServerConfig(List.of("ns-b:9876")))
+                .thenReturn(Map.of("ns-b:9876", properties("listenPort", "9876")));
+
+        NameServerConfigDiffVO result = service.compare(" cluster-a ", " instance-a ");
+
+        assertThat(result.isComplete()).isTrue();
+        verify(clusterService).getCluster("cluster-a", "instance-a");
     }
 
     @Test
