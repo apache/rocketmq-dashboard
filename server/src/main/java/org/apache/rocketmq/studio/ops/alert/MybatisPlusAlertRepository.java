@@ -67,8 +67,7 @@ public class MybatisPlusAlertRepository implements AlertRepository {
         if (ruleMapper.selectById(rule.getId()) == null) {
             return false;
         }
-        ruleMapper.updateById(toRuleEntity(rule));
-        return true;
+        return ruleMapper.updateById(toRuleEntity(rule)) > 0;
     }
 
     @Override
