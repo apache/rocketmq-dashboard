@@ -23,6 +23,7 @@ import org.apache.rocketmq.studio.persistence.entity.RmqDataSource;
 import org.apache.rocketmq.studio.persistence.entity.RmqSettings;
 import org.apache.rocketmq.studio.persistence.mapper.RmqDataSourceMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqSettingsMapper;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.settings.DataSourceVO;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
@@ -73,18 +74,7 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
             return objectMapper.readValue(entity.getJson(), GeneralSettingsVO.class);
         } catch (JsonProcessingException e) {
             log.error("Failed to deserialize general settings", e);
-            return GeneralSettingsVO.builder()
-                    .theme("system")
-                    .compact(false)
-                    .desktopNotify(true)
-                    .notifySound(false)
-                    .sessionTimeout(30)
-                    .requireLogin(false)
-                    .llmProvider("openai")
-                    .apiKey("")
-                    .model("gpt-4")
-                    .baseUrl("")
-                    .build();
+            throw new BusinessException(500, "Persisted general settings are invalid");
         }
     }
 
@@ -162,7 +152,7 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
             return vo;
         } catch (JsonProcessingException e) {
             log.error("Failed to deserialize data source: {}", entity.getDsKey(), e);
-            return DataSourceVO.builder().key(entity.getDsKey()).build();
+            throw new BusinessException(500, "Persisted data source is invalid: " + entity.getDsKey());
         }
     }
 
