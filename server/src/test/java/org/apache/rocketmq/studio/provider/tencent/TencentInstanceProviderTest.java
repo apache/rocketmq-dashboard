@@ -111,6 +111,16 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void countTopicsShouldClampOversizedTotals() throws Exception {
+        DescribeTopicListResponse response = new DescribeTopicListResponse();
+        response.setData(new TopicItem[]{topicItem("orders", "NORMAL", 8L)});
+        response.setTotalCount(Long.MAX_VALUE);
+        when(client.DescribeTopicList(any())).thenReturn(response);
+
+        assertThat(provider.countTopics(STUDIO_INSTANCE_ID)).isEqualTo(Integer.MAX_VALUE);
+    }
+
+    @Test
     void listTopicsShouldMapAndFilterAndEnrichTimesTest() throws Exception {
         TopicItem normal = topicItem("orders", "NORMAL", 8L);
         TopicItem fifo = topicItem("orders-fifo", "FIFO", 4L);

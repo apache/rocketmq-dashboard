@@ -137,7 +137,13 @@ public class TencentInstanceProvider implements InstanceProvider {
         }
         // Use the response total count if available; otherwise fall back to full scan
         Long total = response.getTotalCount();
-        return total != null ? Math.toIntExact(total) : listTopics(instanceId, null, null, false).size();
+        if (total == null) {
+            return listTopics(instanceId, null, null, false).size();
+        }
+        if (total <= 0L) {
+            return 0;
+        }
+        return total > Integer.MAX_VALUE ? Integer.MAX_VALUE : total.intValue();
     }
 
     @Override
