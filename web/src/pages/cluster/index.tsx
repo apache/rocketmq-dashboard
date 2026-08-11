@@ -16,6 +16,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Table,
   Tabs,
@@ -85,6 +86,8 @@ const compareText = (left: string | null | undefined, right: string | null | und
 
 const ClusterPage = () => {
   const { t } = useLang();
+  const [searchParams] = useSearchParams();
+  const requestedInstanceId = searchParams.get('instanceId') ?? '';
   const [clusters, setClusters] = useState<ClusterInfo[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [selectedInstanceId, setSelectedInstanceId] = useState('');
@@ -164,7 +167,11 @@ const ClusterPage = () => {
         if (cancelled) return;
         const apacheInstances = nextInstances.filter((instance) => instance.vendor === 'APACHE');
         setInstances(apacheInstances);
-        const initialInstanceId = apacheInstances[0]?.id ?? '';
+        const initialInstanceId = apacheInstances.some(
+          (instance) => instance.id === requestedInstanceId,
+        )
+          ? requestedInstanceId
+          : (apacheInstances[0]?.id ?? '');
         selectedInstanceIdRef.current = initialInstanceId;
         setSelectedInstanceId(initialInstanceId);
         setInstanceLoadError(null);
@@ -185,7 +192,7 @@ const ClusterPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [instanceLoadKey]);
+  }, [instanceLoadKey, requestedInstanceId]);
 
   const clearRefreshTimer = useCallback(() => {
     if (refreshTimerRef.current !== null) {

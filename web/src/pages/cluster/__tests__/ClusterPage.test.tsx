@@ -19,6 +19,7 @@ import { App, message, Modal } from 'antd';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ClusterInfo } from '../../../api/cluster';
 import { LangProvider } from '../../../i18n/LangContext';
@@ -60,7 +61,18 @@ beforeAll(() => {
 const renderWithProviders = (ui: React.ReactElement) =>
   render(
     <App>
-      <LangProvider>{ui}</LangProvider>
+      <LangProvider>
+        <MemoryRouter>{ui}</MemoryRouter>
+      </LangProvider>
+    </App>,
+  );
+
+const renderWithRoute = (ui: React.ReactElement, route: string) =>
+  render(
+    <App>
+      <LangProvider>
+        <MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>
+      </LangProvider>
     </App>,
   );
 
@@ -136,6 +148,40 @@ const flushPromises = async () => {
 };
 
 describe('Cluster page', () => {
+  it('uses a valid instanceId from the route instead of the default instance', async () => {
+    instanceServiceMocks.listInstances.mockResolvedValue([
+      {
+        id: 'instance-a',
+        name: 'Instance A',
+        type: 'DIRECT',
+        vendor: 'APACHE',
+        endpoint: '127.0.0.1:9876',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      },
+      {
+        id: 'instance-b',
+        name: 'Instance B',
+        type: 'DIRECT',
+        vendor: 'APACHE',
+        endpoint: '127.0.0.2:9876',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      },
+    ]);
+    renderWithRoute(<ClusterPage />, '/cluster?instanceId=instance-b');
+
+    await screen.findByText('rocketmq-prod');
+
+    expect(clusterServiceMocks.listClusters).toHaveBeenCalledWith('instance-b');
+  });
+
   beforeEach(() => {
     instanceServiceMocks.listInstances.mockReset().mockResolvedValue([
       {

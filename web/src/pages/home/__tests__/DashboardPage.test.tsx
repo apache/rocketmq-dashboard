@@ -9,7 +9,7 @@ import { App } from 'antd';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DashboardData } from '../../../api/metrics';
 import { LangProvider } from '../../../i18n/LangContext';
@@ -68,6 +68,16 @@ const renderWithProviders = (ui: React.ReactElement) =>
       </LangProvider>
     </App>,
   );
+
+const LocationProbe = () => {
+  const location = useLocation();
+  return (
+    <output data-testid="location">
+      {location.pathname}
+      {location.search}
+    </output>
+  );
+};
 
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
@@ -138,5 +148,26 @@ describe('DashboardPage', () => {
       expect(screen.queryByText('instance-a-cluster')).not.toBeInTheDocument();
     });
     expect(screen.getByText('instance-b-cluster')).toBeInTheDocument();
+  });
+
+  it('preserves the selected instance when navigating to the cluster page', async () => {
+    vi.mocked(dashboardService.getDashboard).mockResolvedValue(dashboard('instance-a-cluster'));
+    const user = userEvent.setup();
+    renderWithProviders(
+      <>
+        <DashboardPage />
+        <LocationProbe />
+      </>,
+    );
+
+    await screen.findByText('instance-a-cluster');
+    const selector = screen.getByRole('combobox', { name: 'Dashboard instance' });
+    await user.click(selector);
+    await user.click(
+      await screen.findByText('Instance B', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.click(screen.getByText('查看全部'));
+
+    expect(screen.getByTestId('location')).toHaveTextContent('/cluster?instanceId=instance-b');
   });
 });
