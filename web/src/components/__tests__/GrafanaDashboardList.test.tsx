@@ -70,6 +70,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  vi.clearAllMocks();
   vi.mocked(listGrafanaDashboards).mockResolvedValue(dashboards);
   vi.mocked(getGrafanaDashboard).mockResolvedValue(dashboardModel);
   vi.mocked(exportGrafanaDashboard).mockResolvedValue(
@@ -165,7 +166,8 @@ describe('GrafanaDashboardList', () => {
     );
 
     await screen.findByText('RocketMQ Cluster Overview');
-    const exportButtons = screen.getAllByRole('button', { name: /Export|导出/ });
+    // Exact-name match: the toolbar "Export all" button also matches /Export|导出/.
+    const exportButtons = screen.getAllByRole('button', { name: /^(Export|导出)$/ });
     await user.click(exportButtons[0]);
     await user.click(exportButtons[1]);
 
