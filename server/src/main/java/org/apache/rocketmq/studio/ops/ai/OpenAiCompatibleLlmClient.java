@@ -56,6 +56,7 @@ public class OpenAiCompatibleLlmClient {
     public OpenAiCompatibleLlmClient(ObjectMapper objectMapper) {
         this(objectMapper, HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
+                .followRedirects(HttpClient.Redirect.NEVER)
                 .build(), Duration.ofSeconds(60));
     }
 
