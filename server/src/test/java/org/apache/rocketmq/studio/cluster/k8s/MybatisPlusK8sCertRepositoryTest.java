@@ -24,9 +24,25 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 class MybatisPlusK8sCertRepositoryTest {
+
+    @Test
+    void saveShouldReportALostConcurrentUpdate() {
+        RmqK8sCertificateMapper mapper = mock(RmqK8sCertificateMapper.class);
+        when(mapper.selectById("cert-1")).thenReturn(certificate());
+        when(mapper.updateById(any(RmqK8sCertificate.class))).thenReturn(0);
+        K8sCertVO cert = K8sCertVO.builder().name("broker").build();
+        cert.setId("cert-1");
+
+        assertThatThrownBy(() -> repository(mapper).save(cert))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Certificate update was not applied: cert-1")
+                .satisfies(error -> org.assertj.core.api.Assertions.assertThat(
+                        ((BusinessException) error).getCode()).isEqualTo(409));
+    }
 
     @Test
     void findByIdSurfacesInvalidPersistedCertificateType() {
