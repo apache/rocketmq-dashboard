@@ -32,13 +32,14 @@ const MiniBar = ({ data, color = '#1677ff', height = 32, width = 120, label }: M
     );
   }
 
-  const max = Math.max(...data, 1);
+  const normalizedData = data.map((value) => (Number.isFinite(value) ? Math.max(0, value) : 0));
+  const max = Math.max(...normalizedData, 1);
   const barWidth = Math.max(2, (width - (data.length - 1) * 2) / data.length);
 
   return (
     <div
       role="img"
-      aria-label={label || `趋势数据：${data.join('、')}`}
+      aria-label={label || `趋势数据：${normalizedData.join('、')}`}
       style={{
         display: 'inline-flex',
         alignItems: 'flex-end',
@@ -47,7 +48,7 @@ const MiniBar = ({ data, color = '#1677ff', height = 32, width = 120, label }: M
         width,
       }}
     >
-      {data.map((value, i) => (
+      {normalizedData.map((value, i) => (
         <div
           key={i}
           style={{

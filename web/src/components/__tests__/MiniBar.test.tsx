@@ -34,4 +34,16 @@ describe('MiniBar', () => {
 
     expect(getBarHeights()).toEqual(['0px', '4px', '20px']);
   });
+
+  it('treats negative and non-finite throughput samples as zero', () => {
+    render(
+      <MiniBar
+        data={[-5, Number.NaN, Number.POSITIVE_INFINITY, 10]}
+        height={20}
+        label="Throughput trend"
+      />,
+    );
+
+    expect(getBarHeights()).toEqual(['0px', '0px', '0px', '20px']);
+  });
 });
