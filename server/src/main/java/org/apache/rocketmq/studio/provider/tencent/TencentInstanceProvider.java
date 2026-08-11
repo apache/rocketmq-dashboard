@@ -25,6 +25,14 @@ import com.tencentcloudapi.trocket.v20230308.models.DescribeConsumerGroupRequest
 import com.tencentcloudapi.trocket.v20230308.models.DescribeConsumerGroupResponse;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeConsumerGroupListRequest;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeConsumerGroupListResponse;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeMessageListRequest;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeMessageListResponse;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeMessageRequest;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeMessageResponse;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeMessageTraceRequest;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeMessageTraceResponse;
+import com.tencentcloudapi.trocket.v20230308.models.MessageItem;
+import com.tencentcloudapi.trocket.v20230308.models.MessageTraceItem;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicListByGroupRequest;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicListByGroupResponse;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicListRequest;
@@ -36,6 +44,7 @@ import com.tencentcloudapi.trocket.v20230308.models.ResetConsumerGroupOffsetRequ
 import com.tencentcloudapi.trocket.v20230308.models.SubscriptionData;
 import com.tencentcloudapi.trocket.v20230308.models.TopicItem;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
+import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
@@ -45,7 +54,9 @@ import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
+import org.apache.rocketmq.studio.instance.message.ConsumerStatusVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
+import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
@@ -54,20 +65,26 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import lombok.RequiredArgsConstructor;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * Tencent Cloud TDMQ RocketMQ 5.x topic operations backed by Trocket v20230308 OpenAPI.
  *
- * <p>Topic management is supported independently from the other instance-scoped operations. The
- * remaining operations intentionally retain the provider's unsupported-operation behavior until
- * their corresponding Tencent Cloud APIs are mapped to Studio's common models.</p>
+ * <p>In addition to topic/consumer-group management, message query is supported via
+ * DescribeMessageList (list), DescribeMessage (detail) and DescribeMessageTrace (trace).</p>
  */
 @RequiredArgsConstructor
 @Component
@@ -80,7 +97,14 @@ public class TencentInstanceProvider implements InstanceProvider {
     static final int MIN_QUEUE_NUM = 3;
     static final int MAX_QUEUE_NUM = 16;
     static final int DEFAULT_MAX_RETRY_TIMES = 16;
-    private static final String NOT_IMPLEMENTED = "Tencent Cloud operation is not implemented yet";
+    static final int MESSAGE_LIMIT = 100;
+    private static final DateTimeFormatter TENCENT_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss[,SSS][,SS]");
+    private static final long ONE_HOUR_MILLIS = 60L * 60L * 1000L;
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    private static final String STAGE_PRODUCE = "produce";
+    private static final String STAGE_PERSIST = "persist";
+    private static final String STAGE_CONSUME = "consume";
 
     private final TencentClientFactory clientFactory;
     private final InstanceRepository instanceRepository;
@@ -416,12 +440,268 @@ public class TencentInstanceProvider implements InstanceProvider {
     @Override
     public List<MessageRecordVO> queryMessages(String instanceId, String topic, String msgId,
                                                String tag, String key, Long startTime, Long endTime) {
-        throw new UnsupportedOperationException(NOT_IMPLEMENTED);
+        Context context = resolve(instanceId);
+        requireTopic(topic);
+        // Querying by message ID returns the full detail (body, properties and tracks) via
+        // DescribeMessage, mirroring the msgId path of the base provider.
+        if (StringUtils.hasText(msgId)) {
+            MessageRecordVO record = toRecordVO(describeMessage(context, topic, msgId));
+            return record == null ? Collections.emptyList() : Collections.singletonList(record);
+        }
+
+        long end = endTime != null ? endTime : System.currentTimeMillis();
+        long begin = startTime != null ? startTime : end - ONE_HOUR_MILLIS;
+        if (begin >= end) {
+            throw new BusinessException(400, "Message query start time must be before end time");
+        }
+
+        DescribeMessageListRequest request = new DescribeMessageListRequest();
+        request.setInstanceId(context.cloudInstanceId());
+        request.setTopic(topic);
+        request.setStartTime(begin);
+        request.setEndTime(end);
+        if (StringUtils.hasText(key)) {
+            request.setMsgKey(key);
+        }
+        if (StringUtils.hasText(tag)) {
+            request.setTag(tag);
+        }
+        request.setOffset(0L);
+        request.setLimit((long) MESSAGE_LIMIT);
+        DescribeMessageListResponse response = clientFactory.call(context.credentialId(), context.regionId(),
+                client -> client.DescribeMessageList(request));
+        MessageItem[] data = response == null ? null : response.getData();
+        if (data == null || data.length == 0) {
+            return Collections.emptyList();
+        }
+        List<MessageRecordVO> result = new ArrayList<>(data.length);
+        for (MessageItem item : data) {
+            result.add(toRecordVO(item, topic));
+        }
+        return result;
     }
 
     @Override
     public TraceRecordVO getMessageTrace(String instanceId, String msgId) {
-        throw new UnsupportedOperationException(NOT_IMPLEMENTED);
+        Context context = resolve(instanceId);
+        requireMsgId(msgId);
+
+        DescribeMessageTraceRequest request = new DescribeMessageTraceRequest();
+        request.setInstanceId(context.cloudInstanceId());
+        request.setMsgId(msgId);
+        // Topic is resolved by the service from the message ID; it may be left empty for
+        // delay/dead-letter messages, but passing it when known improves resolution.
+        request.setTopic("");
+        DescribeMessageTraceResponse response = clientFactory.call(context.credentialId(), context.regionId(),
+                client -> client.DescribeMessageTrace(request));
+
+        List<TraceNodeVO> nodes = new ArrayList<>();
+        List<ConsumerStatusVO> consumerStatus = new ArrayList<>();
+        MessageTraceItem[] items = response == null ? null : response.getData();
+        if (items != null) {
+            for (MessageTraceItem item : items) {
+                buildTraceStage(item, nodes, consumerStatus);
+            }
+        }
+        return TraceRecordVO.builder()
+                .nodes(nodes)
+                .consumerStatus(consumerStatus)
+                .build();
+    }
+
+    private DescribeMessageResponse describeMessage(Context context, String topic, String msgId) {
+        DescribeMessageRequest request = new DescribeMessageRequest();
+        request.setInstanceId(context.cloudInstanceId());
+        request.setTopic(topic);
+        request.setMsgId(msgId);
+        return clientFactory.call(context.credentialId(), context.regionId(),
+                client -> client.DescribeMessage(request));
+    }
+
+    private static void buildTraceStage(MessageTraceItem item, List<TraceNodeVO> nodes,
+                                        List<ConsumerStatusVO> consumerStatus) {
+        String stage = item == null ? null : item.getStage();
+        String data = item == null ? null : item.getData();
+        if (!StringUtils.hasText(stage) || !StringUtils.hasText(data)) {
+            return;
+        }
+        try {
+            JsonNode root = OBJECT_MAPPER.readTree(data);
+            switch (stage) {
+                case STAGE_PRODUCE:
+                    nodes.add(buildProduceNode(root));
+                    break;
+                case STAGE_PERSIST:
+                    nodes.add(buildPersistNode(root));
+                    break;
+                case STAGE_CONSUME:
+                    buildConsumeNodes(root, nodes, consumerStatus);
+                    break;
+                default:
+                    break;
+            }
+        } catch (Exception e) {
+            // Unparseable trace payloads are skipped rather than failing the whole trace.
+        }
+    }
+
+    private static TraceNodeVO buildProduceNode(JsonNode root) {
+        return TraceNodeVO.builder()
+                .title(STAGE_PRODUCE)
+                .timestamp(parseTraceTime(root.path("ProduceTime").asText(null)))
+                .status(toTraceStatus(root.path("Status").asInt(0)))
+                .costTime(root.path("Duration").asLong(0L))
+                .description("producer=" + root.path("ProducerAddr").asText(""))
+                .build();
+    }
+
+    private static TraceNodeVO buildPersistNode(JsonNode root) {
+        return TraceNodeVO.builder()
+                .title(STAGE_PERSIST)
+                .timestamp(parseTraceTime(root.path("PersistTime").asText(null)))
+                .status(toTraceStatus(root.path("Status").asInt(0)))
+                .costTime(0L)
+                .description("store persist")
+                .build();
+    }
+
+    private static void buildConsumeNodes(JsonNode root, List<TraceNodeVO> nodes,
+                                          List<ConsumerStatusVO> consumerStatus) {
+        JsonNode logs = root.path("RocketMqConsumeLogs");
+        if (!logs.isArray()) {
+            return;
+        }
+        for (JsonNode log : logs) {
+            String group = log.path("ConsumerGroup").asText("");
+            long pushTime = parseTraceTime(log.path("PushTime").asText(null));
+            int status = log.path("Status").asInt(0);
+            int retryTimes = log.path("RetryTimes").asInt(0);
+            nodes.add(TraceNodeVO.builder()
+                    .title(STAGE_CONSUME)
+                    .timestamp(pushTime)
+                    .status(toConsumeTraceStatus(status))
+                    .costTime(0L)
+                    .description("group=" + group + ", consumer=" + log.path("ConsumerAddr").asText(""))
+                    .build());
+            consumerStatus.add(ConsumerStatusVO.builder()
+                    .group(group)
+                    .deliveryStatus(toDeliveryStatus(status))
+                    .consumeTime(pushTime)
+                    .retryCount(retryTimes)
+                    .build());
+        }
+    }
+
+    private static MessageRecordVO toRecordVO(DescribeMessageResponse response) {
+        if (response == null) {
+            return null;
+        }
+        Map<String, String> properties = parseProperties(response.getProperties());
+        return MessageRecordVO.builder()
+                .msgId(defaultIfBlank(response.getMessageId(), ""))
+                .topic(defaultIfBlank(response.getShowTopicName(), ""))
+                .tag(null)
+                .key(null)
+                .body(response.getBody())
+                .bodyEncoding("UTF-8")
+                .bodyTruncated(false)
+                .storeTime(parseTraceTime(response.getProduceTime()))
+                .bornHost(response.getProducerAddr())
+                .properties(properties)
+                .propertiesTruncated(false)
+                .size(0)
+                .build();
+    }
+
+    private static MessageRecordVO toRecordVO(MessageItem item, String topic) {
+        if (item == null) {
+            return null;
+        }
+        return MessageRecordVO.builder()
+                .msgId(defaultIfBlank(item.getMsgId(), ""))
+                .topic(topic)
+                .tag(item.getTags())
+                .key(item.getKeys())
+                .body(null)
+                .bodyEncoding(null)
+                .bodyTruncated(false)
+                .storeTime(parseTraceTime(item.getProduceTime()))
+                .bornHost(item.getProducerAddr())
+                .properties(Collections.emptyMap())
+                .propertiesTruncated(false)
+                .size(0)
+                .build();
+    }
+
+    private static Map<String, String> parseProperties(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return Collections.emptyMap();
+        }
+        try {
+            JsonNode root = OBJECT_MAPPER.readTree(raw);
+            if (root == null || !root.isObject()) {
+                return Collections.emptyMap();
+            }
+            Map<String, String> properties = new LinkedHashMap<>();
+            root.fields().forEachRemaining(entry -> properties.put(entry.getKey(), entry.getValue().asText("")));
+            return properties;
+        } catch (Exception e) {
+            return Collections.emptyMap();
+        }
+    }
+
+    private static long parseTraceTime(String value) {
+        if (!StringUtils.hasText(value)) {
+            return 0L;
+        }
+        try {
+            LocalDateTime parsed = LocalDateTime.parse(value, TENCENT_TIME_FORMATTER);
+            return parsed.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+        } catch (Exception e) {
+            try {
+                return Long.parseLong(value.trim());
+            } catch (NumberFormatException ignored) {
+                return 0L;
+            }
+        }
+    }
+
+    private static String toTraceStatus(int status) {
+        return status == 0 ? "finish" : "failed";
+    }
+
+    private static String toConsumeTraceStatus(int status) {
+        // Tencent consume log Status uses the RocketMQ convention where 2 means consumed.
+        return status == 2 ? "finish" : "failed";
+    }
+
+    private static DeliveryStatus toDeliveryStatus(int status) {
+        // Tencent consume log status: 0/1 in-flight, 2 consumed, others failed.
+        switch (status) {
+            case 2:
+                return DeliveryStatus.success;
+            case 0:
+            case 1:
+                return DeliveryStatus.pending;
+            default:
+                return DeliveryStatus.failed;
+        }
+    }
+
+    private static String defaultIfBlank(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
+    }
+
+    private static void requireTopic(String topic) {
+        if (!StringUtils.hasText(topic)) {
+            throw new BusinessException(400, "topic is required for Tencent Cloud message query");
+        }
+    }
+
+    private static void requireMsgId(String msgId) {
+        if (!StringUtils.hasText(msgId)) {
+            throw new BusinessException(400, "msgId is required for message trace query");
+        }
     }
 
     private Context resolve(String instanceId) {

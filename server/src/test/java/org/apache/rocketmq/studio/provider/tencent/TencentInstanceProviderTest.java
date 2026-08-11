@@ -22,6 +22,14 @@ import com.tencentcloudapi.trocket.v20230308.models.CreateTopicRequest;
 import com.tencentcloudapi.trocket.v20230308.models.DeleteConsumerGroupRequest;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeConsumerGroupListResponse;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeConsumerGroupResponse;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeMessageListRequest;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeMessageListResponse;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeMessageRequest;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeMessageResponse;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeMessageTraceRequest;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeMessageTraceResponse;
+import com.tencentcloudapi.trocket.v20230308.models.MessageItem;
+import com.tencentcloudapi.trocket.v20230308.models.MessageTraceItem;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicListByGroupResponse;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicListResponse;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicRequest;
@@ -32,6 +40,7 @@ import com.tencentcloudapi.trocket.v20230308.models.SubscriptionData;
 import com.tencentcloudapi.trocket.v20230308.models.TopicItem;
 import com.tencentcloudapi.trocket.v20230308.TrocketClient;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
+import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -40,6 +49,9 @@ import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
+import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
+import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
+import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.junit.jupiter.api.BeforeEach;
@@ -392,5 +404,98 @@ class TencentInstanceProviderTest {
         subscription.setConsumeType("CLUSTERING");
         subscription.setMessageModel("CLUSTERING");
         return subscription;
+    }
+
+    @Test
+    void queryMessagesByMsgIdShouldReturnDetailWithBodyTest() throws Exception {
+        DescribeMessageResponse detail = new DescribeMessageResponse();
+        detail.setMessageId("MSG-1");
+        detail.setShowTopicName("orders");
+        detail.setBody("hello body");
+        detail.setProducerAddr("1.2.3.4:5000");
+        detail.setProduceTime("2024-09-12 14:06:55,591");
+        detail.setProperties("{\"UNIQ_KEY\":\"MSG-1\",\"__CLIENT_HOST\":\"1.2.3.4\"}");
+        when(client.DescribeMessage(any())).thenReturn(detail);
+
+        List<MessageRecordVO> messages =
+                provider.queryMessages(STUDIO_INSTANCE_ID, "orders", "MSG-1", null, null, null, null);
+
+        assertThat(messages).hasSize(1);
+        MessageRecordVO record = messages.get(0);
+        assertThat(record.getMsgId()).isEqualTo("MSG-1");
+        assertThat(record.getTopic()).isEqualTo("orders");
+        assertThat(record.getBody()).isEqualTo("hello body");
+        assertThat(record.getBornHost()).isEqualTo("1.2.3.4:5000");
+        assertThat(record.getProperties()).containsEntry("UNIQ_KEY", "MSG-1");
+        ArgumentCaptor<DescribeMessageRequest> captor = ArgumentCaptor.forClass(DescribeMessageRequest.class);
+        verify(client).DescribeMessage(captor.capture());
+        assertThat(captor.getValue().getInstanceId()).isEqualTo(CLOUD_INSTANCE_ID);
+        assertThat(captor.getValue().getTopic()).isEqualTo("orders");
+        assertThat(captor.getValue().getMsgId()).isEqualTo("MSG-1");
+    }
+
+    @Test
+    void queryMessagesByTopicShouldUseMessageListTest() throws Exception {
+        MessageItem one = new MessageItem();
+        one.setMsgId("MSG-A");
+        one.setTags("tagA");
+        one.setKeys("keyA");
+        one.setProducerAddr("1.2.3.4:5000");
+        one.setProduceTime("2024-09-12 14:06:55,591");
+        DescribeMessageListResponse response = new DescribeMessageListResponse();
+        response.setData(new MessageItem[]{one});
+        when(client.DescribeMessageList(any())).thenReturn(response);
+
+        List<MessageRecordVO> messages = provider.queryMessages(STUDIO_INSTANCE_ID, "orders", null,
+                "tagA", "keyA", 1600000000000L, 1600001000000L);
+
+        assertThat(messages).hasSize(1);
+        MessageRecordVO record = messages.get(0);
+        assertThat(record.getMsgId()).isEqualTo("MSG-A");
+        assertThat(record.getTag()).isEqualTo("tagA");
+        assertThat(record.getKey()).isEqualTo("keyA");
+        assertThat(record.getBornHost()).isEqualTo("1.2.3.4:5000");
+        assertThat(record.getStoreTime()).isGreaterThan(0L);
+        ArgumentCaptor<DescribeMessageListRequest> captor = ArgumentCaptor.forClass(DescribeMessageListRequest.class);
+        verify(client).DescribeMessageList(captor.capture());
+        assertThat(captor.getValue().getInstanceId()).isEqualTo(CLOUD_INSTANCE_ID);
+        assertThat(captor.getValue().getTopic()).isEqualTo("orders");
+        assertThat(captor.getValue().getMsgKey()).isEqualTo("keyA");
+        assertThat(captor.getValue().getTag()).isEqualTo("tagA");
+    }
+
+    @Test
+    void getMessageTraceShouldMapStagesTest() throws Exception {
+        MessageTraceItem produce = new MessageTraceItem();
+        produce.setStage("produce");
+        produce.setData("{\"MsgId\":\"MSG-1\",\"Status\":0,\"ProduceTime\":\"2024-09-12 14:06:55,591\","
+                + "\"ProducerAddr\":\"1.2.3.4:5000\",\"Duration\":2}");
+        MessageTraceItem consume = new MessageTraceItem();
+        consume.setStage("consume");
+        consume.setData("{\"TotalCount\":1,\"RocketMqConsumeLogs\":[{\"MsgId\":\"MSG-1\",\"Status\":2,"
+                + "\"PushTime\":\"2024-09-12 14:06:55,600\",\"ConsumerGroup\":\"GID_test\",\"RetryTimes\":1}]}");
+        DescribeMessageTraceResponse response = new DescribeMessageTraceResponse();
+        response.setData(new MessageTraceItem[]{produce, consume});
+        when(client.DescribeMessageTrace(any())).thenReturn(response);
+
+        TraceRecordVO trace = provider.getMessageTrace(STUDIO_INSTANCE_ID, "MSG-1");
+
+        assertThat(trace.getNodes()).hasSize(2);
+        TraceNodeVO produceNode = trace.getNodes().get(0);
+        assertThat(produceNode.getTitle()).isEqualTo("produce");
+        assertThat(produceNode.getStatus()).isEqualTo("finish");
+        assertThat(produceNode.getCostTime()).isEqualTo(2L);
+        assertThat(produceNode.getTimestamp()).isGreaterThan(0L);
+        TraceNodeVO consumeNode = trace.getNodes().get(1);
+        assertThat(consumeNode.getTitle()).isEqualTo("consume");
+        assertThat(consumeNode.getStatus()).isEqualTo("finish");
+        assertThat(trace.getConsumerStatus()).hasSize(1);
+        assertThat(trace.getConsumerStatus().get(0).getGroup()).isEqualTo("GID_test");
+        assertThat(trace.getConsumerStatus().get(0).getDeliveryStatus()).isEqualTo(DeliveryStatus.success);
+        assertThat(trace.getConsumerStatus().get(0).getRetryCount()).isEqualTo(1);
+        ArgumentCaptor<DescribeMessageTraceRequest> captor = ArgumentCaptor.forClass(DescribeMessageTraceRequest.class);
+        verify(client).DescribeMessageTrace(captor.capture());
+        assertThat(captor.getValue().getInstanceId()).isEqualTo(CLOUD_INSTANCE_ID);
+        assertThat(captor.getValue().getMsgId()).isEqualTo("MSG-1");
     }
 }
