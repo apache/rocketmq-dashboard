@@ -80,8 +80,8 @@ public class DlqMessageExcelModel extends BaseRowModel implements Serializable {
         this.bornTimestamp = DateUtils.format(new Date(messageExt.getBornTimestamp()), DateUtils.DATE_FORMAT_19);
         this.storeTimestamp = DateUtils.format(new Date(messageExt.getStoreTimestamp()), DateUtils.DATE_FORMAT_19);
         this.reconsumeTimes = messageExt.getReconsumeTimes();
-        this.properties = messageExt.getProperties().toString();
-        this.messageBody = new String(messageExt.getBody(), Charsets.UTF_8);
+        this.properties = messageExt.getProperties() == null ? "" : messageExt.getProperties().toString();
+        this.messageBody = messageExt.getBody() == null ? "" : new String(messageExt.getBody(), Charsets.UTF_8);
         this.bodyCRC = messageExt.getBodyCRC();
     }
 
