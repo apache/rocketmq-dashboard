@@ -329,6 +329,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                             .messageModel("CLUSTERING")
                             .consumeTps(0)
                             .diffTotal(0)
+                            .metricsAvailable(false)
                             .build());
                 }
             }

@@ -426,4 +426,24 @@ describe('TopicPage', () => {
     expect(screen.getByRole('button', { name: /导入/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: /创建 Topic/ })).toBeDisabled();
   });
+
+  it('renders unavailable Topic consumer metrics distinctly from zero', async () => {
+    const user = userEvent.setup();
+    topicServiceMocks.listTopics.mockResolvedValue([buildTopics(1)[0]]);
+    topicServiceMocks.getTopicConsumers.mockResolvedValue([
+      {
+        group: 'cg-orders',
+        consumeType: 'CLUSTERING',
+        messageModel: 'CLUSTERING',
+        consumeTps: 0,
+        diffTotal: 0,
+        metricsAvailable: false,
+      },
+    ]);
+    renderWithProviders();
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+
+    expect(await screen.findAllByText('不可用')).not.toHaveLength(0);
+  });
 });

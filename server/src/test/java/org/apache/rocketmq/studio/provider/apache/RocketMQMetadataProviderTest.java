@@ -30,11 +30,13 @@ import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.persistence.entity.RmqGroup;
 import org.apache.rocketmq.studio.persistence.mapper.RmqGroupMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqTopicMapper;
+import org.apache.rocketmq.remoting.protocol.body.GroupList;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.HashSet;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -156,6 +158,23 @@ class RocketMQMetadataProviderTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Failed to get consumers for topic TopicA: broker unavailable")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void getTopicConsumersMarksMetricsUnavailableWhenGroupStatsCannotBeRead() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        GroupList groupList = new GroupList();
+        groupList.setGroupList(new HashSet<>(List.of("cg-orders")));
+        when(admin.queryTopicConsumeByWho("TopicA")).thenReturn(groupList);
+        when(admin.examineConsumeStats("cg-orders", "TopicA"))
+                .thenThrow(new IllegalStateException("broker unavailable"));
+
+        List<TopicConsumerVO> consumers = newLiveProvider(admin).getTopicConsumers(null, "TopicA");
+
+        assertThat(consumers).singleElement().satisfies(consumer -> {
+            assertThat(consumer.getGroup()).isEqualTo("cg-orders");
+            assertThat(consumer.isMetricsAvailable()).isFalse();
+        });
     }
 
     @Test
