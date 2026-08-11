@@ -94,7 +94,7 @@ public class ClusterRepositoryImpl implements ClusterRepository {
                 .brokers(cluster.getBrokers() == null ? null : new ArrayList<>(cluster.getBrokers()))
                 .proxies(cluster.getProxies() == null ? null : new ArrayList<>(cluster.getProxies()))
                 .nameServers(cluster.getNameServers() == null ? null : new ArrayList<>(cluster.getNameServers()))
-                .config(cluster.getConfig())
+                .config(copyConfig(cluster.getConfig()))
                 .topicCount(cluster.getTopicCount())
                 .groupCount(cluster.getGroupCount())
                 .tpsHistory(cluster.getTpsHistory() == null ? null : new ArrayList<>(cluster.getTpsHistory()))
@@ -103,6 +103,24 @@ public class ClusterRepositoryImpl implements ClusterRepository {
         copy.setCreatedAt(cluster.getCreatedAt());
         copy.setUpdatedAt(cluster.getUpdatedAt());
         return copy;
+    }
+
+    private ClusterConfigVO copyConfig(ClusterConfigVO config) {
+        if (config == null) {
+            return null;
+        }
+        return ClusterConfigVO.builder()
+                .writeQueueNums(config.getWriteQueueNums())
+                .readQueueNums(config.getReadQueueNums())
+                .maxMessageSize(config.getMaxMessageSize())
+                .msgTraceTopicName(config.getMsgTraceTopicName())
+                .autoCreateTopicEnable(config.isAutoCreateTopicEnable())
+                .autoCreateSubscriptionGroup(config.isAutoCreateSubscriptionGroup())
+                .deleteWhen(config.getDeleteWhen())
+                .fileReservedTime(config.getFileReservedTime())
+                .flushDiskType(config.getFlushDiskType())
+                .brokerPermission(config.getBrokerPermission())
+                .build();
     }
 
     private void initStubData() {
