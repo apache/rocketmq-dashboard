@@ -309,7 +309,12 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                     if (stats != null && stats.getOffsetTable() != null) {
                         for (Map.Entry<MessageQueue, OffsetWrapper> entry : stats.getOffsetTable().entrySet()) {
                             OffsetWrapper ow = entry.getValue();
-                            diffTotal += resolveDiff(ow.getBrokerOffset(), ow.getConsumerOffset());
+                            long queueDiff = resolveDiff(ow.getBrokerOffset(), ow.getConsumerOffset());
+                            if (queueDiff == ConsumerLagResolver.UNKNOWN) {
+                                diffTotal = ConsumerLagResolver.UNKNOWN;
+                                break;
+                            }
+                            diffTotal += queueDiff;
                         }
                         consumeTps = stats.getConsumeTps();
                     }
