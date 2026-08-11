@@ -31,6 +31,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -214,6 +215,17 @@ class OpenAiCompatibleLlmClientTest {
                     assertThat(gatewayException.getCode()).isEqualTo("llm.config.unsupported_provider");
                     assertThat(gatewayException.getHint()).contains("openai");
                 });
+    }
+
+    @Test
+    void supportsShouldNormalizeProviderIndependentlyOfDefaultLocale() {
+        Locale originalLocale = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            assertThat(client.supports(config("TONGYI", "key"))).isTrue();
+        } finally {
+            Locale.setDefault(originalLocale);
+        }
     }
 
     @Test
