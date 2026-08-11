@@ -103,4 +103,26 @@ describe('SystemAlertsPage', () => {
       expect(acknowledgeButtons[1]).toHaveClass('ant-btn-loading');
     });
   });
+
+  it('submits only one acknowledgement for the same alert while pending', async () => {
+    let resolveAcknowledgement: () => void = () => undefined;
+    vi.mocked(acknowledgeAlert).mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveAcknowledgement = resolve;
+        }),
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('Broker unavailable');
+    const acknowledgeButton = screen.getAllByRole('button', { name: /^确认$/ })[0];
+    await user.dblClick(acknowledgeButton);
+
+    expect(acknowledgeAlert).toHaveBeenCalledTimes(1);
+    expect(acknowledgeButton).toHaveClass('ant-btn-loading');
+
+    resolveAcknowledgement();
+    await waitFor(() => expect(acknowledgeButton).not.toBeInTheDocument());
+  });
 });

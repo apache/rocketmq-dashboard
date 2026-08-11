@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Card, Tag, Flex, Typography, Badge, Button, message } from 'antd';
 import { CheckCircle, Trash } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
@@ -43,6 +43,7 @@ const SystemAlertsPage = () => {
   const [loading, setLoading] = useState(true);
   const [acknowledgingIds, setAcknowledgingIds] = useState<Set<string>>(() => new Set());
   const [clearing, setClearing] = useState(false);
+  const acknowledgingIdsRef = useRef(new Set<string>());
 
   useEffect(() => {
     let cancelled = false;
@@ -68,6 +69,8 @@ const SystemAlertsPage = () => {
   const unackCount = alerts.filter((a) => !a.acknowledged).length;
 
   const handleAck = async (id: string) => {
+    if (acknowledgingIdsRef.current.has(id)) return;
+    acknowledgingIdsRef.current.add(id);
     setAcknowledgingIds((current) => new Set(current).add(id));
     try {
       await acknowledgeAlert(id);
@@ -76,6 +79,7 @@ const SystemAlertsPage = () => {
     } catch {
       message.error('确认告警失败，请稍后重试');
     } finally {
+      acknowledgingIdsRef.current.delete(id);
       setAcknowledgingIds((current) => {
         const next = new Set(current);
         next.delete(id);
