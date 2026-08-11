@@ -35,6 +35,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 @Slf4j
@@ -159,7 +160,7 @@ public class InstanceService {
         if (endpointType == null) {
             return 2;
         }
-        return switch (endpointType.toUpperCase()) {
+        return switch (endpointType.toUpperCase(Locale.ROOT)) {
             case "TCP_VPC" -> 0;
             case "TCP_INTERNET" -> 1;
             default -> 2;
