@@ -62,6 +62,7 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -401,7 +402,7 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
                 Message msg = new Message(sendTopicMessageRequest.getTopic(),
                         sendTopicMessageRequest.getTag(),
                         sendTopicMessageRequest.getKey(),
-                        sendTopicMessageRequest.getMessageBody().getBytes()
+                        sendTopicMessageRequest.getMessageBody().getBytes(StandardCharsets.UTF_8)
                 );
                 return producer.sendMessageInTransaction(msg, null);
             } catch (Exception e) {
@@ -422,7 +423,7 @@ public class TopicServiceImpl extends AbstractCommonService implements TopicServ
                 Message msg = new Message(sendTopicMessageRequest.getTopic(),
                         sendTopicMessageRequest.getTag(),
                         sendTopicMessageRequest.getKey(),
-                        sendTopicMessageRequest.getMessageBody().getBytes()
+                        sendTopicMessageRequest.getMessageBody().getBytes(StandardCharsets.UTF_8)
                 );
                 return producer.send(msg);
             } catch (Exception e) {

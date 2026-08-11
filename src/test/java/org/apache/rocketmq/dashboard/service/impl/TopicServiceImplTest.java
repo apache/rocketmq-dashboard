@@ -43,6 +43,7 @@ import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.MockitoJUnitRunner;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -81,7 +82,7 @@ public class TopicServiceImplTest extends BaseTest {
         request.setTopic("testTopic");
         request.setTag("testTag");
         request.setKey("testKey");
-        request.setMessageBody("Hello RocketMQ");
+        request.setMessageBody("RocketMQ-\u4E16\u754C");
         request.setTraceEnabled(false);
 
         // Mock the topic config
@@ -121,7 +122,7 @@ public class TopicServiceImplTest extends BaseTest {
         Assert.assertEquals("testTopic", sentMessage.getTopic());
         Assert.assertEquals("testTag", sentMessage.getTags());
         Assert.assertEquals("testKey", sentMessage.getKeys());
-        Assert.assertEquals("Hello RocketMQ", new String(sentMessage.getBody()));
+        Assert.assertArrayEquals(request.getMessageBody().getBytes(StandardCharsets.UTF_8), sentMessage.getBody());
 
         // Verify producer shutdown
         verify(mockProducer).shutdown();
@@ -134,7 +135,7 @@ public class TopicServiceImplTest extends BaseTest {
         request.setTopic("testTopic");
         request.setTag("testTag");
         request.setKey("testKey");
-        request.setMessageBody("Hello RocketMQ");
+        request.setMessageBody("RocketMQ-\u4E16\u754C");
         request.setTraceEnabled(false);
 
         // Mock the topic config
@@ -175,7 +176,7 @@ public class TopicServiceImplTest extends BaseTest {
         Assert.assertEquals("testTopic", sentMessage.getTopic());
         Assert.assertEquals("testTag", sentMessage.getTags());
         Assert.assertEquals("testKey", sentMessage.getKeys());
-        Assert.assertEquals("Hello RocketMQ", new String(sentMessage.getBody()));
+        Assert.assertArrayEquals(request.getMessageBody().getBytes(StandardCharsets.UTF_8), sentMessage.getBody());
 
         // Verify producer shutdown
         verify(mockProducer).shutdown();
