@@ -249,6 +249,10 @@ public abstract class AbstractPrometheusCompatibleMetricsSource implements Metri
         Iterator<Map.Entry<String, JsonNode>> fields = metric.fields();
         fields.forEachRemaining(entry -> {
             String key = entry.getKey();
+            if (!entry.getValue().isTextual()) {
+                throw new PrometheusException(HttpStatus.BAD_GATEWAY.value(),
+                        backendLabel() + " returned a malformed time-series label");
+            }
             String value = entry.getValue().asText();
             if (key.length() > MAX_LABEL_KEY_LENGTH || value.length() > MAX_LABEL_VALUE_LENGTH) {
                 throw new PrometheusException(HttpStatus.PAYLOAD_TOO_LARGE.value(),
@@ -272,12 +276,17 @@ public abstract class AbstractPrometheusCompatibleMetricsSource implements Metri
 
     private MetricDataVO.MetricSampleVO parseSample(JsonNode sampleNode) {
         if (sampleNode == null || !sampleNode.isArray() || sampleNode.size() != 2
-                || !sampleNode.get(0).isNumber()) {
+                || !sampleNode.get(0).isNumber() || !sampleNode.get(1).isTextual()) {
+            throw new PrometheusException(HttpStatus.BAD_GATEWAY.value(),
+                    backendLabel() + " returned a malformed sample");
+        }
+        double timestamp = sampleNode.get(0).asDouble();
+        if (!Double.isFinite(timestamp)) {
             throw new PrometheusException(HttpStatus.BAD_GATEWAY.value(),
                     backendLabel() + " returned a malformed sample");
         }
         return MetricDataVO.MetricSampleVO.builder()
-                .timestamp(sampleNode.get(0).asDouble())
+                .timestamp(timestamp)
                 .value(sampleNode.get(1).asText())
                 .build();
     }
@@ -288,8 +297,13 @@ public abstract class AbstractPrometheusCompatibleMetricsSource implements Metri
             throw new PrometheusException(HttpStatus.BAD_GATEWAY.value(),
                     backendLabel() + " returned a malformed histogram sample");
         }
+        double timestamp = sampleNode.get(0).asDouble();
+        if (!Double.isFinite(timestamp)) {
+            throw new PrometheusException(HttpStatus.BAD_GATEWAY.value(),
+                    backendLabel() + " returned a malformed histogram sample");
+        }
         return MetricDataVO.MetricHistogramSampleVO.builder()
-                .timestamp(sampleNode.get(0).asDouble())
+                .timestamp(timestamp)
                 .histogram(sampleNode.get(1))
                 .build();
     }
