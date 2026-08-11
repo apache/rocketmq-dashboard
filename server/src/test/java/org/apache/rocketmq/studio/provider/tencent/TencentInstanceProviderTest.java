@@ -414,7 +414,7 @@ class TencentInstanceProviderTest {
         detail.setBody("hello body");
         detail.setProducerAddr("1.2.3.4:5000");
         detail.setProduceTime("2024-09-12 14:06:55,591");
-        detail.setProperties("{\"UNIQ_KEY\":\"MSG-1\",\"__CLIENT_HOST\":\"1.2.3.4\"}");
+        detail.setProperties("{\"UNIQ_KEY\":\"MSG-1\",\"TAGS\":\"tagA\",\"KEYS\":\"keyA\",\"__CLIENT_HOST\":\"1.2.3.4\"}");
         when(client.DescribeMessage(any())).thenReturn(detail);
 
         List<MessageRecordVO> messages =
@@ -426,6 +426,8 @@ class TencentInstanceProviderTest {
         assertThat(record.getTopic()).isEqualTo("orders");
         assertThat(record.getBody()).isEqualTo("hello body");
         assertThat(record.getBornHost()).isEqualTo("1.2.3.4:5000");
+        assertThat(record.getTag()).isEqualTo("tagA");
+        assertThat(record.getKey()).isEqualTo("keyA");
         assertThat(record.getProperties()).containsEntry("UNIQ_KEY", "MSG-1");
         ArgumentCaptor<DescribeMessageRequest> captor = ArgumentCaptor.forClass(DescribeMessageRequest.class);
         verify(client).DescribeMessage(captor.capture());

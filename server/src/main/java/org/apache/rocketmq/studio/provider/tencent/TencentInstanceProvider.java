@@ -609,11 +609,13 @@ public class TencentInstanceProvider implements InstanceProvider {
             return null;
         }
         Map<String, String> properties = parseProperties(response.getProperties());
+        // DescribeMessage carries the tag and key inside Properties (TAGS / KEYS), not as
+        // top-level fields, so surface them onto the record for the message list/detail page.
         return MessageRecordVO.builder()
                 .msgId(defaultIfBlank(response.getMessageId(), ""))
                 .topic(defaultIfBlank(response.getShowTopicName(), ""))
-                .tag(null)
-                .key(null)
+                .tag(properties.get("TAGS"))
+                .key(properties.get("KEYS"))
                 .body(response.getBody())
                 .bodyEncoding("UTF-8")
                 .bodyTruncated(false)
