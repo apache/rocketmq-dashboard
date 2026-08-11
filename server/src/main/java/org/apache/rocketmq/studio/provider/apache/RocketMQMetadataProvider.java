@@ -293,13 +293,22 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 try {
                     ConsumeStats stats = admin.examineConsumeStats(group, name);
                     long diffTotal = 0;
+                    boolean hasUnknown = false;
                     double consumeTps = 0;
                     if (stats != null && stats.getOffsetTable() != null) {
                         for (Map.Entry<MessageQueue, OffsetWrapper> entry : stats.getOffsetTable().entrySet()) {
                             OffsetWrapper ow = entry.getValue();
-                            diffTotal += resolveDiff(ow.getBrokerOffset(), ow.getConsumerOffset());
+                            long diff = resolveDiff(ow.getBrokerOffset(), ow.getConsumerOffset());
+                            if (diff == ConsumerLagResolver.UNKNOWN) {
+                                hasUnknown = true;
+                            } else {
+                                diffTotal += diff;
+                            }
                         }
                         consumeTps = stats.getConsumeTps();
+                    }
+                    if (hasUnknown) {
+                        diffTotal = ConsumerLagResolver.UNKNOWN;
                     }
 
                     ConsumeType consumeType = ConsumeType.CLUSTERING;
