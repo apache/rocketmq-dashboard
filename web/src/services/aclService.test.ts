@@ -20,6 +20,7 @@ import {
   createAclRule,
   createAclUser,
   createAndUpdatePlainAccessConfig,
+  deleteAclUser,
   examineBrokerClusterAclConfig,
   listAclRules,
   listAclUsers,
@@ -100,6 +101,22 @@ describe('ACL service mock data', () => {
 
     const afterUpdate = await listAclUsers({ keyword: 'user-created-copy-test' });
     expect(afterUpdate[0].clusters).toEqual(['rmq-updated']);
+  });
+
+  it('assigns unique ACL user IDs within the same millisecond', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000);
+    const first = await createAclUser({ username: 'same-clock-user-a' });
+    const second = await createAclUser({ username: 'same-clock-user-b' });
+
+    try {
+      expect(first.id).not.toBe(second.id);
+      expect(first.id).toContain('1800000000000');
+      expect(second.id).toContain('1800000000000');
+    } finally {
+      now.mockRestore();
+      await deleteAclUser(first.id);
+      await deleteAclUser(second.id);
+    }
   });
 
   it('builds cluster ACL config from mock accounts', async () => {
