@@ -82,7 +82,7 @@ public class MessageQueryByPage {
     }
 
     public int getPageSize() {
-        if (pageSize <= 1) {
+        if (pageSize < MIN_PAGE_SIZE) {
             return MIN_PAGE_SIZE;
         } else if (pageSize > MAX_PAGE_SIZE) {
             return MAX_PAGE_SIZE;
