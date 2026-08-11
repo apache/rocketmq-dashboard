@@ -26,4 +26,6 @@ public class DLQResendResultVO {
     int resent;
     int failed;
     String outcome;
+    boolean scanIncomplete;
+    int failedQueueCount;
 }

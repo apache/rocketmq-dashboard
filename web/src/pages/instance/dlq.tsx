@@ -223,7 +223,11 @@ const DLQPage = () => {
         targetTopic: retryTargetTopic,
       });
       setRefreshKey((key) => key + 1);
-      if (result.failed > 0) {
+      if (result.scanIncomplete) {
+        message.warning(
+          `重投扫描不完整：${result.failedQueueCount ?? 0} 个队列无法扫描，已重投 ${result.resent} 条`,
+        );
+      } else if (result.failed > 0) {
         message.warning(`重投部分完成：成功 ${result.resent}，失败 ${result.failed}`);
       } else {
         message.success(

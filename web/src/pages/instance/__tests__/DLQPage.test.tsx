@@ -291,6 +291,30 @@ describe('DLQ page', () => {
     expect(await screen.findByText('DLQ provider is not configured')).toBeInTheDocument();
   });
 
+  it('warns when DLQ resend scans only part of the available queues', async () => {
+    vi.mocked(messageService.resendDLQ).mockResolvedValue({
+      matched: 3,
+      resent: 3,
+      failed: 0,
+      outcome: 'PARTIAL',
+      scanIncomplete: true,
+      failedQueueCount: 1,
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<DLQPage />);
+
+    const orderRow = (await screen.findByText('cg-order')).closest('tr');
+    if (!orderRow) throw new Error('DLQ group row not found');
+
+    await user.click(within(orderRow).getByRole('button', { name: '重投消息' }));
+    await user.type(screen.getByPlaceholderText('输入目标 Topic 名称'), 'orders-retry');
+    await user.click(screen.getByRole('button', { name: '确认重投' }));
+
+    expect(
+      await screen.findByText('重投扫描不完整：1 个队列无法扫描，已重投 3 条'),
+    ).toBeInTheDocument();
+  });
+
   it('clears retry state before loading groups for a newly selected instance', async () => {
     let resolveSecondInstance!: (groups: DLQGroup[]) => void;
     vi.mocked(messageService.listDLQGroups)

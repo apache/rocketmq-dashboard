@@ -69,7 +69,9 @@ export interface DLQResendResult {
   matched: number;
   resent: number;
   failed: number;
-  outcome: 'SUCCESS' | 'PARTIAL';
+  outcome: 'SUCCESS' | 'PARTIAL' | 'FAILED' | 'NO_MESSAGES';
+  scanIncomplete?: boolean;
+  failedQueueCount?: number;
 }
 
 // ─── Messages ───────────────────────────────────────────────────
