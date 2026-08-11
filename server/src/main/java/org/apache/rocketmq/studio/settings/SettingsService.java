@@ -22,9 +22,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.UrlHostGuard;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
-
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -37,10 +34,18 @@ import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.InetAddress;
 import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.UnknownHostException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.GeneralSecurityException;
+import java.security.KeyStore;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
@@ -67,6 +72,9 @@ public class SettingsService {
     private static final String AUTH_BEARER = "bearer token";
     private static final Duration DATA_SOURCE_TEST_CONNECT_TIMEOUT = Duration.ofSeconds(3);
     private static final Duration DATA_SOURCE_TEST_READ_TIMEOUT = Duration.ofSeconds(5);
+    private static final Set<String> SSL_PROTOCOLS = Set.of("TLSv1.2", "TLSv1.3");
+    private static final Set<String> SSL_CLIENT_AUTH = Set.of("none", "want", "need");
+    private static final Set<String> SSL_STORE_TYPES = Set.of("JKS", "PKCS12");
 
     private final SettingsRepository settingsRepository;
     private final RestClient restClient;
@@ -120,6 +128,181 @@ public class SettingsService {
         } catch (Exception auditFailure) {
             log.warn("Failed to record general settings audit: {}", auditFailure.getMessage());
         }
+    }
+
+    public SslSettingsVO getSslSettings() {
+        log.debug("Loading SSL settings");
+        return toSslSettingsVO(settingsRepository.loadSslSettings());
+    }
+
+    public synchronized SslSettingsVO saveSslSettings(SslSettingsUpdateDTO request) {
+        if (request == null) {
+            throw new BusinessException(400, "SSL settings request is required");
+        }
+        SslSettingsRecord updated = mergeSslSettings(settingsRepository.loadSslSettings(), request);
+        validateSslSettingsRecord(updated);
+        settingsRepository.saveSslSettings(updated);
+        recordSslSettingsAudit(updated);
+        return toSslSettingsVO(updated);
+    }
+
+    public SslSettingsValidationResultVO validateSslSettings(SslSettingsUpdateDTO request) {
+        if (request == null) {
+            throw new BusinessException(400, "SSL settings request is required");
+        }
+        SslSettingsRecord settings = mergeSslSettings(settingsRepository.loadSslSettings(), request);
+        validateSslSettingsRecord(settings);
+        if (!settings.isEnabled()) {
+            return SslSettingsValidationResultVO.builder()
+                    .success(true)
+                    .message("SSL/TLS is disabled")
+                    .warnings(List.of())
+                    .build();
+        }
+
+        List<String> warnings = new ArrayList<>();
+        try {
+            loadKeyStore("KeyStore", settings.getKeyStoreType(), settings.getKeyStorePath(),
+                    settings.getKeyStorePassword());
+            if (!AUTH_NONE.equals(settings.getClientAuth())) {
+                loadKeyStore("TrustStore", settings.getTrustStoreType(), settings.getTrustStorePath(),
+                        settings.getTrustStorePassword());
+            } else if (StringUtils.hasText(settings.getTrustStorePath())) {
+                warnings.add("TrustStore is configured but client authentication is disabled");
+            }
+        } catch (IllegalArgumentException exception) {
+            return SslSettingsValidationResultVO.builder()
+                    .success(false)
+                    .message(exception.getMessage())
+                    .warnings(warnings)
+                    .build();
+        }
+
+        return SslSettingsValidationResultVO.builder()
+                .success(true)
+                .message("SSL/TLS keystore settings are valid")
+                .warnings(warnings)
+                .build();
+    }
+
+    private void recordSslSettingsAudit(SslSettingsRecord settings) {
+        try {
+            operationAuditService.record("UPDATE_SSL_SETTINGS", "SETTINGS", "ssl",
+                    null, "enabled=" + settings.isEnabled() + ", protocol=" + settings.getProtocol()
+                            + ", clientAuth=" + settings.getClientAuth(), "SUCCESS", null);
+        } catch (Exception auditFailure) {
+            log.warn("Failed to record SSL settings audit: {}", auditFailure.getMessage());
+        }
+    }
+
+    private SslSettingsVO toSslSettingsVO(SslSettingsRecord settings) {
+        SslSettingsRecord normalized = settings == null ? SslSettingsRecord.defaults() : settings;
+        return SslSettingsVO.builder()
+                .enabled(normalized.isEnabled())
+                .protocol(defaultIfBlank(normalized.getProtocol(), "TLSv1.3"))
+                .clientAuth(defaultIfBlank(normalized.getClientAuth(), AUTH_NONE))
+                .keyStoreType(defaultIfBlank(normalized.getKeyStoreType(), "PKCS12"))
+                .keyStorePath(defaultIfBlank(normalized.getKeyStorePath(), ""))
+                .keyStorePasswordConfigured(StringUtils.hasText(normalized.getKeyStorePassword()))
+                .trustStoreType(defaultIfBlank(normalized.getTrustStoreType(), "PKCS12"))
+                .trustStorePath(defaultIfBlank(normalized.getTrustStorePath(), ""))
+                .trustStorePasswordConfigured(StringUtils.hasText(normalized.getTrustStorePassword()))
+                .restartRequired(normalized.isEnabled())
+                .build();
+    }
+
+    private SslSettingsRecord mergeSslSettings(SslSettingsRecord current, SslSettingsUpdateDTO request) {
+        SslSettingsRecord existing = current == null ? SslSettingsRecord.defaults() : current;
+        String keyStorePassword = existing.getKeyStorePassword();
+        if (request.isClearKeyStorePassword()) {
+            keyStorePassword = "";
+        } else if (StringUtils.hasText(request.getKeyStorePassword())) {
+            keyStorePassword = request.getKeyStorePassword();
+        }
+
+        String trustStorePassword = existing.getTrustStorePassword();
+        if (request.isClearTrustStorePassword()) {
+            trustStorePassword = "";
+        } else if (StringUtils.hasText(request.getTrustStorePassword())) {
+            trustStorePassword = request.getTrustStorePassword();
+        }
+
+        return SslSettingsRecord.builder()
+                .enabled(request.getEnabled() == null ? existing.isEnabled() : request.getEnabled())
+                .protocol(normalizeSslProtocol(defaultIfBlank(request.getProtocol(), existing.getProtocol())))
+                .clientAuth(normalizeSslClientAuth(defaultIfBlank(request.getClientAuth(), existing.getClientAuth())))
+                .keyStoreType(normalizeSslStoreType(defaultIfBlank(request.getKeyStoreType(),
+                        existing.getKeyStoreType())))
+                .keyStorePath(defaultIfBlank(request.getKeyStorePath(), existing.getKeyStorePath()).trim())
+                .keyStorePassword(defaultIfBlank(keyStorePassword, ""))
+                .trustStoreType(normalizeSslStoreType(defaultIfBlank(request.getTrustStoreType(),
+                        existing.getTrustStoreType())))
+                .trustStorePath(defaultIfBlank(request.getTrustStorePath(), existing.getTrustStorePath()).trim())
+                .trustStorePassword(defaultIfBlank(trustStorePassword, ""))
+                .build();
+    }
+
+    private void validateSslSettingsRecord(SslSettingsRecord settings) {
+        if (!settings.isEnabled()) {
+            return;
+        }
+        if (!StringUtils.hasText(settings.getKeyStorePath())) {
+            throw new BusinessException(400, "KeyStore path is required when SSL/TLS is enabled");
+        }
+        if (!AUTH_NONE.equals(settings.getClientAuth()) && !StringUtils.hasText(settings.getTrustStorePath())) {
+            throw new BusinessException(400,
+                    "TrustStore path is required when SSL/TLS client authentication is enabled");
+        }
+    }
+
+    private void loadKeyStore(String label, String type, String rawPath, String password) {
+        if (!StringUtils.hasText(rawPath)) {
+            throw new IllegalArgumentException(label + " path is required");
+        }
+        Path path = Path.of(rawPath.trim()).normalize();
+        if (!Files.isRegularFile(path)) {
+            throw new IllegalArgumentException(label + " file does not exist: " + path);
+        }
+        if (!Files.isReadable(path)) {
+            throw new IllegalArgumentException(label + " file is not readable: " + path);
+        }
+        try (InputStream input = Files.newInputStream(path)) {
+            KeyStore keyStore = KeyStore.getInstance(type);
+            keyStore.load(input, StringUtils.hasText(password) ? password.toCharArray() : null);
+        } catch (IOException | GeneralSecurityException exception) {
+            throw new IllegalArgumentException(label + " cannot be loaded: " + exception.getMessage(), exception);
+        }
+    }
+
+    private String normalizeSslProtocol(String protocol) {
+        String normalized = defaultIfBlank(protocol, "TLSv1.3").trim();
+        if (!SSL_PROTOCOLS.contains(normalized)) {
+            throw new BusinessException(400, "SSL protocol must be one of TLSv1.2, TLSv1.3");
+        }
+        return normalized;
+    }
+
+    private String normalizeSslClientAuth(String clientAuth) {
+        String normalized = defaultIfBlank(clientAuth, AUTH_NONE).trim().toLowerCase(Locale.ROOT);
+        if (!SSL_CLIENT_AUTH.contains(normalized)) {
+            throw new BusinessException(400, "SSL client authentication must be one of none, want, need");
+        }
+        return normalized;
+    }
+
+    private String normalizeSslStoreType(String storeType) {
+        String normalized = defaultIfBlank(storeType, "PKCS12").trim().toUpperCase(Locale.ROOT);
+        if (!SSL_STORE_TYPES.contains(normalized)) {
+            throw new BusinessException(400, "SSL store type must be one of JKS, PKCS12");
+        }
+        return normalized;
+    }
+
+    private String defaultIfBlank(String value, String fallback) {
+        if (StringUtils.hasText(value)) {
+            return value;
+        }
+        return fallback == null ? "" : fallback;
     }
 
     private void recordDataSourceAudit(String operation, DataSourceVO dataSource) {

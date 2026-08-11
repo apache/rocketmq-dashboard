@@ -17,7 +17,9 @@
 package org.apache.rocketmq.studio.settings;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.auth.AuthService;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -54,6 +56,15 @@ class SettingsControllerTest {
 
     @MockBean
     private SettingsService settingsService;
+
+    @MockBean
+    private AuthService authService;
+
+    @BeforeEach
+    void setUpAuth() {
+        when(authService.isAuthenticated(any())).thenReturn(true);
+        when(authService.isAdmin(any())).thenReturn(true);
+    }
 
     @Test
     void getGeneralSettingsShouldReturnSettings() throws Exception {
@@ -157,6 +168,97 @@ class SettingsControllerTest {
                 .andExpect(status().isBadRequest());
 
         verifyNoInteractions(settingsService);
+    }
+
+    @Test
+    void getSslSettingsShouldReturnSettingsWithoutPasswords() throws Exception {
+        SslSettingsVO settings = SslSettingsVO.builder()
+                .enabled(true)
+                .protocol("TLSv1.3")
+                .clientAuth("need")
+                .keyStoreType("PKCS12")
+                .keyStorePath("/etc/rocketmq/server.p12")
+                .keyStorePasswordConfigured(true)
+                .trustStoreType("PKCS12")
+                .trustStorePath("/etc/rocketmq/trust.p12")
+                .trustStorePasswordConfigured(false)
+                .restartRequired(true)
+                .build();
+        when(settingsService.getSslSettings()).thenReturn(settings);
+
+        mockMvc.perform(get("/api/settings/ssl"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code", is(200)))
+                .andExpect(jsonPath("$.data.enabled", is(true)))
+                .andExpect(jsonPath("$.data.protocol", is("TLSv1.3")))
+                .andExpect(jsonPath("$.data.clientAuth", is("need")))
+                .andExpect(jsonPath("$.data.keyStorePath", is("/etc/rocketmq/server.p12")))
+                .andExpect(jsonPath("$.data.keyStorePassword").doesNotExist())
+                .andExpect(jsonPath("$.data.keyStorePasswordConfigured", is(true)))
+                .andExpect(jsonPath("$.data.trustStorePassword").doesNotExist());
+    }
+
+    @Test
+    void saveSslSettingsShouldReturnSanitizedSettings() throws Exception {
+        SslSettingsVO saved = SslSettingsVO.builder()
+                .enabled(true)
+                .protocol("TLSv1.3")
+                .clientAuth("none")
+                .keyStoreType("PKCS12")
+                .keyStorePath("/etc/rocketmq/server.p12")
+                .keyStorePasswordConfigured(true)
+                .trustStoreType("PKCS12")
+                .trustStorePath("")
+                .restartRequired(true)
+                .build();
+        when(settingsService.saveSslSettings(any(SslSettingsUpdateDTO.class))).thenReturn(saved);
+
+        mockMvc.perform(post("/api/settings/ssl/save")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "enabled": true,
+                                  "protocol": "TLSv1.3",
+                                  "clientAuth": "none",
+                                  "keyStoreType": "PKCS12",
+                                  "keyStorePath": "/etc/rocketmq/server.p12",
+                                  "keyStorePassword": "secret",
+                                  "trustStoreType": "PKCS12",
+                                  "trustStorePath": ""
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.keyStorePassword").doesNotExist())
+                .andExpect(jsonPath("$.data.keyStorePasswordConfigured", is(true)));
+
+        verify(settingsService).saveSslSettings(argThat(request ->
+                "secret".equals(request.getKeyStorePassword())
+                        && "/etc/rocketmq/server.p12".equals(request.getKeyStorePath())));
+    }
+
+    @Test
+    void validateSslSettingsShouldReturnValidationResult() throws Exception {
+        when(settingsService.validateSslSettings(any(SslSettingsUpdateDTO.class))).thenReturn(
+                SslSettingsValidationResultVO.builder()
+                        .success(true)
+                        .message("SSL/TLS keystore settings are valid")
+                        .warnings(List.of())
+                        .build());
+
+        mockMvc.perform(post("/api/settings/ssl/validate")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "enabled": true,
+                                  "protocol": "TLSv1.3",
+                                  "clientAuth": "none",
+                                  "keyStoreType": "PKCS12",
+                                  "keyStorePath": "/etc/rocketmq/server.p12"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.success", is(true)))
+                .andExpect(jsonPath("$.data.message", is("SSL/TLS keystore settings are valid")));
     }
 
     @Test

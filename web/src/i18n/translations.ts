@@ -1179,12 +1179,32 @@ const translations: Record<string, Record<Lang, string>> = {
   },
   'ssl.uploadTruststore': { zh: '上传 TrustStore 文件', en: 'Upload TrustStore File' },
   'ssl.save': { zh: '保存', en: 'Save' },
+  'ssl.validate': { zh: '验证配置', en: 'Validate configuration' },
   'ssl.upload': { zh: '上传', en: 'Upload' },
   'ssl.certInfo': { zh: '证书信息', en: 'Certificate Information' },
   'ssl.issuer': { zh: '颁发者', en: 'Issuer' },
   'ssl.expiryDate': { zh: '过期日期', en: 'Expiry Date' },
   'ssl.active': { zh: '有效', en: 'Active' },
   'ssl.saveSuccess': { zh: 'SSL 配置保存成功', en: 'SSL configuration saved successfully' },
+  'ssl.saveFailed': { zh: 'SSL 配置保存失败', en: 'Failed to save SSL configuration' },
+  'ssl.loadFailed': { zh: 'SSL 配置加载失败', en: 'Failed to load SSL configuration' },
+  'ssl.validateFailed': { zh: 'SSL 配置验证失败', en: 'Failed to validate SSL configuration' },
+  'ssl.restartRequired': {
+    zh: 'SSL/TLS 配置用于重启前校验',
+    en: 'SSL/TLS settings are validated before restart',
+  },
+  'ssl.restartRequiredDesc': {
+    zh: 'Studio 会保存配置并验证 KeyStore/TrustStore 文件是否可加载，但不会热切换 TLS，也不会自动写入容器启动参数。请同步到部署配置后重启生效。',
+    en: 'Studio saves the configuration and validates that KeyStore/TrustStore files are loadable, but it does not hot-swap TLS or rewrite container startup parameters. Sync the values to deployment config before restart.',
+  },
+  'ssl.passwordConfigured': {
+    zh: '已保存密码；留空将继续保留现有密码',
+    en: 'Password is saved; leave blank to keep it unchanged',
+  },
+  'ssl.passwordPreservePlaceholder': {
+    zh: '留空保留现有密码',
+    en: 'Leave blank to keep the existing password',
+  },
   'ssl.saveUnavailable': {
     zh: 'SSL 配置保存功能尚未接入真实后端接口',
     en: 'SSL configuration persistence is not wired to a backend API yet',

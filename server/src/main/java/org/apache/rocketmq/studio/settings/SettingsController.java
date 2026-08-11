@@ -46,6 +46,22 @@ public class SettingsController {
         return Result.ok();
     }
 
+    @GetMapping("/ssl")
+    public Result<SslSettingsVO> getSslSettings() {
+        return Result.ok(settingsService.getSslSettings());
+    }
+
+    @PostMapping("/ssl/save")
+    public Result<SslSettingsVO> saveSslSettings(@RequestBody(required = false) SslSettingsUpdateDTO request) {
+        return Result.ok(settingsService.saveSslSettings(request));
+    }
+
+    @PostMapping("/ssl/validate")
+    public Result<SslSettingsValidationResultVO> validateSslSettings(
+            @RequestBody(required = false) SslSettingsUpdateDTO request) {
+        return Result.ok(settingsService.validateSslSettings(request));
+    }
+
     @GetMapping("/datasources")
     public Result<List<DataSourceVO>> listDataSources() {
         return Result.ok(settingsService.listDataSources());

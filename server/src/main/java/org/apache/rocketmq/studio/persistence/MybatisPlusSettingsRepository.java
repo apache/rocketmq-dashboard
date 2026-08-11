@@ -27,6 +27,7 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.settings.DataSourceVO;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
+import org.apache.rocketmq.studio.settings.SslSettingsRecord;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,6 +41,7 @@ import java.util.stream.Collectors;
 public class MybatisPlusSettingsRepository implements SettingsRepository {
 
     private static final String SETTINGS_ID = "singleton";
+    private static final String SSL_SETTINGS_ID = "ssl";
 
     private final RmqSettingsMapper settingsMapper;
     private final RmqDataSourceMapper dataSourceMapper;
@@ -81,12 +83,36 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
     @Override
     @Transactional
     public void saveGeneralSettings(GeneralSettingsVO settings) {
+        saveSettingsJson(SETTINGS_ID, settings);
+    }
+
+    @Override
+    public SslSettingsRecord loadSslSettings() {
+        RmqSettings entity = settingsMapper.selectById(SSL_SETTINGS_ID);
+        if (entity == null || entity.getJson() == null) {
+            return SslSettingsRecord.defaults();
+        }
+        try {
+            return objectMapper.readValue(entity.getJson(), SslSettingsRecord.class);
+        } catch (JsonProcessingException e) {
+            log.error("Failed to deserialize SSL settings", e);
+            throw new BusinessException(500, "Persisted SSL settings are invalid");
+        }
+    }
+
+    @Override
+    @Transactional
+    public void saveSslSettings(SslSettingsRecord settings) {
+        saveSettingsJson(SSL_SETTINGS_ID, settings);
+    }
+
+    private void saveSettingsJson(String id, Object settings) {
         try {
             String json = objectMapper.writeValueAsString(settings);
-            RmqSettings entity = settingsMapper.selectById(SETTINGS_ID);
+            RmqSettings entity = settingsMapper.selectById(id);
             if (entity == null) {
                 entity = new RmqSettings();
-                entity.setId(SETTINGS_ID);
+                entity.setId(id);
                 entity.setJson(json);
                 entity.setUpdatedAt(LocalDateTime.now());
                 settingsMapper.insert(entity);
@@ -96,7 +122,7 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
                 settingsMapper.updateById(entity);
             }
         } catch (JsonProcessingException e) {
-            log.error("Failed to serialize general settings", e);
+            log.error("Failed to serialize settings: {}", id, e);
             throw new RuntimeException("Failed to save settings", e);
         }
     }

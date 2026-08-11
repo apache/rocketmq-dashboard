@@ -13,12 +13,15 @@ import org.apache.rocketmq.studio.persistence.entity.RmqSettings;
 import org.apache.rocketmq.studio.persistence.mapper.RmqDataSourceMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqSettingsMapper;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
+import org.apache.rocketmq.studio.settings.SslSettingsRecord;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class MybatisPlusSettingsRepositoryTest {
@@ -68,6 +71,68 @@ class MybatisPlusSettingsRepositoryTest {
 
         assertThat(loaded.getTheme()).isEqualTo("dark");
         assertThat(loaded.isRequireLogin()).isTrue();
+    }
+
+    @Test
+    void shouldReturnDefaultsWhenSslSettingsDoNotExist() {
+        when(settingsMapper.selectById("ssl")).thenReturn(null);
+
+        SslSettingsRecord settings = repository.loadSslSettings();
+
+        assertThat(settings.isEnabled()).isFalse();
+        assertThat(settings.getProtocol()).isEqualTo("TLSv1.3");
+        assertThat(settings.getKeyStoreType()).isEqualTo("PKCS12");
+    }
+
+    @Test
+    void shouldReadValidPersistedSslSettings() {
+        RmqSettings settings = new RmqSettings();
+        settings.setJson("""
+                {
+                  "enabled": true,
+                  "protocol": "TLSv1.2",
+                  "clientAuth": "need",
+                  "keyStoreType": "PKCS12",
+                  "keyStorePath": "/etc/server.p12",
+                  "keyStorePassword": "secret"
+                }
+                """);
+        when(settingsMapper.selectById("ssl")).thenReturn(settings);
+
+        SslSettingsRecord loaded = repository.loadSslSettings();
+
+        assertThat(loaded.isEnabled()).isTrue();
+        assertThat(loaded.getProtocol()).isEqualTo("TLSv1.2");
+        assertThat(loaded.getKeyStorePassword()).isEqualTo("secret");
+    }
+
+    @Test
+    void shouldSaveSslSettingsUnderDedicatedSettingsRow() {
+        when(settingsMapper.selectById("ssl")).thenReturn(null);
+        SslSettingsRecord settings = SslSettingsRecord.defaults();
+        settings.setEnabled(true);
+        settings.setKeyStorePath("/etc/server.p12");
+        settings.setKeyStorePassword("secret");
+
+        repository.saveSslSettings(settings);
+
+        verify(settingsMapper).insert(argThat((RmqSettings entity) ->
+                "ssl".equals(entity.getId())
+                        && entity.getJson().contains("/etc/server.p12")
+                        && entity.getJson().contains("secret")));
+    }
+
+    @Test
+    void shouldRejectCorruptPersistedSslSettings() {
+        RmqSettings settings = new RmqSettings();
+        settings.setJson("{not-json");
+        when(settingsMapper.selectById("ssl")).thenReturn(settings);
+
+        assertThatThrownBy(repository::loadSslSettings)
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Persisted SSL settings are invalid")
+                .extracting("code")
+                .isEqualTo(500);
     }
 
     @Test

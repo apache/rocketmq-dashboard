@@ -21,11 +21,14 @@ import client from './client';
 import {
   createDataSource,
   deleteDataSource,
+  getSslSettings,
   listDataSources,
+  saveSslSettings,
   testDataSource,
   updateDataSource,
+  validateSslSettings,
 } from './settings';
-import type { DataSource } from './settings';
+import type { DataSource, SslSettings } from './settings';
 
 const mock = new MockAdapter(client);
 const source: DataSource = {
@@ -35,6 +38,19 @@ const source: DataSource = {
   url: 'http://prometheus:9090',
   auth: 'None',
   status: 'healthy',
+};
+
+const sslSettings: SslSettings = {
+  enabled: true,
+  protocol: 'TLSv1.3',
+  clientAuth: 'none',
+  keyStoreType: 'PKCS12',
+  keyStorePath: '/etc/rocketmq/server.p12',
+  keyStorePasswordConfigured: true,
+  trustStoreType: 'PKCS12',
+  trustStorePath: '',
+  trustStorePasswordConfigured: false,
+  restartRequired: true,
 };
 
 describe('data sources API', () => {
@@ -76,5 +92,83 @@ describe('data sources API', () => {
     await expect(
       testDataSource({ type: source.type, url: source.url, auth: source.auth }),
     ).resolves.toEqual({ success: true, message: 'Connection successful' });
+  });
+});
+
+describe('SSL settings API', () => {
+  beforeEach(() => {
+    mock.reset();
+    vi.stubGlobal('localStorage', { getItem: vi.fn().mockReturnValue(null) });
+  });
+
+  afterEach(() => {
+    mock.reset();
+    vi.unstubAllGlobals();
+  });
+
+  it('loads SSL settings and strips blank passwords before saving', async () => {
+    mock.onGet('/settings/ssl').reply(200, { code: 200, data: sslSettings });
+    mock.onPost('/settings/ssl/save').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({
+        enabled: true,
+        protocol: 'TLSv1.3',
+        clientAuth: 'none',
+        keyStoreType: 'PKCS12',
+        keyStorePath: '/etc/rocketmq/server.p12',
+        trustStoreType: 'PKCS12',
+        trustStorePath: '',
+      });
+      return [200, { code: 200, data: sslSettings }];
+    });
+
+    await expect(getSslSettings()).resolves.toEqual(sslSettings);
+    await expect(
+      saveSslSettings({
+        enabled: true,
+        protocol: 'TLSv1.3',
+        clientAuth: 'none',
+        keyStoreType: 'PKCS12',
+        keyStorePath: '/etc/rocketmq/server.p12',
+        keyStorePassword: ' ',
+        trustStoreType: 'PKCS12',
+        trustStorePath: '',
+      }),
+    ).resolves.toEqual(sslSettings);
+  });
+
+  it('validates SSL settings through the backend validation endpoint', async () => {
+    mock.onPost('/settings/ssl/validate').reply((config) => {
+      expect(JSON.parse(config.data)).toMatchObject({
+        enabled: true,
+        keyStorePath: '/etc/rocketmq/server.p12',
+      });
+      return [
+        200,
+        {
+          code: 200,
+          data: {
+            success: true,
+            message: 'SSL/TLS keystore settings are valid',
+            warnings: [],
+          },
+        },
+      ];
+    });
+
+    await expect(
+      validateSslSettings({
+        enabled: true,
+        protocol: 'TLSv1.3',
+        clientAuth: 'none',
+        keyStoreType: 'PKCS12',
+        keyStorePath: '/etc/rocketmq/server.p12',
+        trustStoreType: 'PKCS12',
+        trustStorePath: '',
+      }),
+    ).resolves.toEqual({
+      success: true,
+      message: 'SSL/TLS keystore settings are valid',
+      warnings: [],
+    });
   });
 });

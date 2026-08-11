@@ -23,6 +23,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpHeaders;
@@ -32,8 +33,12 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
+import java.io.OutputStream;
 import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.KeyStore;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
@@ -44,6 +49,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -194,6 +200,119 @@ class SettingsServiceTest {
         verify(settingsRepository).saveGeneralSettings(update);
         verify(operationAuditService).record("UPDATE_SETTINGS", "SETTINGS", "general",
                 null, "General settings updated", "SUCCESS", null);
+    }
+
+    @Test
+    void getSslSettingsShouldHidePersistedPasswords() {
+        when(settingsRepository.loadSslSettings()).thenReturn(SslSettingsRecord.builder()
+                .enabled(true)
+                .protocol("TLSv1.3")
+                .clientAuth("none")
+                .keyStoreType("PKCS12")
+                .keyStorePath("/etc/rocketmq/server.p12")
+                .keyStorePassword("secret")
+                .trustStoreType("PKCS12")
+                .trustStorePath("")
+                .trustStorePassword("")
+                .build());
+
+        SslSettingsVO result = settingsService.getSslSettings();
+
+        assertThat(result.isEnabled()).isTrue();
+        assertThat(result.getKeyStorePath()).isEqualTo("/etc/rocketmq/server.p12");
+        assertThat(result.isKeyStorePasswordConfigured()).isTrue();
+        assertThat(result.isTrustStorePasswordConfigured()).isFalse();
+    }
+
+    @Test
+    void saveSslSettingsShouldPreserveExistingPasswordsWhenOmitted() {
+        when(settingsRepository.loadSslSettings()).thenReturn(SslSettingsRecord.builder()
+                .enabled(true)
+                .protocol("TLSv1.2")
+                .clientAuth("none")
+                .keyStoreType("PKCS12")
+                .keyStorePath("/old/server.p12")
+                .keyStorePassword("existing-secret")
+                .trustStoreType("PKCS12")
+                .trustStorePath("")
+                .trustStorePassword("")
+                .build());
+        SslSettingsUpdateDTO request = new SslSettingsUpdateDTO();
+        request.setEnabled(true);
+        request.setProtocol("TLSv1.3");
+        request.setClientAuth("none");
+        request.setKeyStoreType("PKCS12");
+        request.setKeyStorePath("/etc/rocketmq/server.p12");
+        request.setTrustStoreType("PKCS12");
+
+        SslSettingsVO saved = settingsService.saveSslSettings(request);
+
+        assertThat(saved.getProtocol()).isEqualTo("TLSv1.3");
+        assertThat(saved.isKeyStorePasswordConfigured()).isTrue();
+        verify(settingsRepository).saveSslSettings(argThat(settings ->
+                "existing-secret".equals(settings.getKeyStorePassword())
+                        && "/etc/rocketmq/server.p12".equals(settings.getKeyStorePath())));
+        verify(operationAuditService).record("UPDATE_SSL_SETTINGS", "SETTINGS", "ssl",
+                null, "enabled=true, protocol=TLSv1.3, clientAuth=none", "SUCCESS", null);
+    }
+
+    @Test
+    void saveSslSettingsShouldRejectEnabledConfigWithoutKeyStorePath() {
+        SslSettingsUpdateDTO request = new SslSettingsUpdateDTO();
+        request.setEnabled(true);
+        request.setProtocol("TLSv1.3");
+        request.setClientAuth("none");
+        request.setKeyStoreType("PKCS12");
+
+        assertThatThrownBy(() -> settingsService.saveSslSettings(request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("KeyStore path is required when SSL/TLS is enabled")
+                .extracting("code")
+                .isEqualTo(400);
+    }
+
+    @Test
+    void validateSslSettingsShouldLoadConfiguredKeyStore(@TempDir Path tempDir) throws Exception {
+        Path keyStore = tempDir.resolve("server.p12");
+        writePkcs12Store(keyStore, "secret");
+        SslSettingsUpdateDTO request = new SslSettingsUpdateDTO();
+        request.setEnabled(true);
+        request.setProtocol("TLSv1.3");
+        request.setClientAuth("none");
+        request.setKeyStoreType("PKCS12");
+        request.setKeyStorePath(keyStore.toString());
+        request.setKeyStorePassword("secret");
+        request.setTrustStoreType("PKCS12");
+
+        SslSettingsValidationResultVO result = settingsService.validateSslSettings(request);
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getMessage()).isEqualTo("SSL/TLS keystore settings are valid");
+        assertThat(result.getWarnings()).isEmpty();
+    }
+
+    @Test
+    void validateSslSettingsShouldReportMissingKeyStoreFile() {
+        SslSettingsUpdateDTO request = new SslSettingsUpdateDTO();
+        request.setEnabled(true);
+        request.setProtocol("TLSv1.3");
+        request.setClientAuth("none");
+        request.setKeyStoreType("PKCS12");
+        request.setKeyStorePath("/path/not-found/server.p12");
+        request.setTrustStoreType("PKCS12");
+
+        SslSettingsValidationResultVO result = settingsService.validateSslSettings(request);
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getMessage()).contains("KeyStore file does not exist");
+    }
+
+    private void writePkcs12Store(Path path, String password) throws Exception {
+        KeyStore keyStore = KeyStore.getInstance("PKCS12");
+        keyStore.load(null, password.toCharArray());
+        try (OutputStream output = Files.newOutputStream(path)) {
+            keyStore.store(output, password.toCharArray());
+        }
     }
 
     @Test

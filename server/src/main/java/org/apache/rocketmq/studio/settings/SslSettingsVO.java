@@ -16,27 +16,24 @@
  */
 package org.apache.rocketmq.studio.settings;
 
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-import java.util.List;
-import java.util.Optional;
-
-public interface SettingsRepository {
-
-    GeneralSettingsVO loadGeneralSettings();
-
-    void saveGeneralSettings(GeneralSettingsVO settings);
-
-    SslSettingsRecord loadSslSettings();
-
-    void saveSslSettings(SslSettingsRecord settings);
-
-    List<DataSourceVO> findAllDataSources();
-
-    DataSourceVO saveDataSource(DataSourceVO dataSource);
-
-    boolean replaceDataSource(DataSourceVO dataSource);
-
-    boolean deleteDataSource(String key);
-
-    Optional<DataSourceVO> findDataSourceByKey(String key);
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class SslSettingsVO {
+    private boolean enabled;
+    private String protocol;
+    private String clientAuth;
+    private String keyStoreType;
+    private String keyStorePath;
+    private boolean keyStorePasswordConfigured;
+    private String trustStoreType;
+    private String trustStorePath;
+    private boolean trustStorePasswordConfigured;
+    private boolean restartRequired;
 }

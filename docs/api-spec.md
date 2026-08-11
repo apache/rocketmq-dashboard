@@ -104,23 +104,26 @@
 | 61 | POST | `/api/audit-logs/cleanup` | 清理审计日志 |
 | 62 | GET | `/api/settings/general` | 获取通用设置 |
 | 63 | POST | `/api/settings/general/save` | 保存通用设置 |
-| 64 | GET | `/api/settings/datasources` | 数据源列表 |
-| 65 | POST | `/api/settings/datasources/create` | 创建数据源 |
-| 66 | POST | `/api/settings/datasources/update` | 更新数据源 |
-| 67 | POST | `/api/settings/datasources/delete` | 删除数据源 |
-| 68 | POST | `/api/settings/datasources/test` | 测试数据源连接 |
-| 69 | POST | `/api/ai/chat` | AI 对话（SSE） |
-| 70 | POST | `/api/ai/execute` | 执行 AI 指令 |
-| 71 | GET | `/api/ai/tools` | 可用工具列表 |
-| 72 | POST | `/api/ai/tools/:name/execute` | 执行只读 AI 工具 |
-| 73 | POST | `/api/metrics/query` | 查询监控指标数据 |
-| 74 | GET | `/api/acl/cluster-config` | 集群 ACL 配置概要（存储级） |
-| 75 | POST | `/api/acl/plain-access-config` | 创建/更新 Plain Access 账号 |
-| 76 | GET | `/api/acl/users/:id/credentials` | 查看单个用户明文凭证 |
-| 77 | GET | `/api/metrics/grafana/dashboards` | Grafana 看板列表 |
-| 78 | GET | `/api/metrics/grafana/dashboards/:uid` | Grafana 看板 JSON 模型 |
-| 79 | GET | `/api/metrics/grafana/dashboards/:uid/export` | 导出单个 Grafana 看板 JSON |
-| 80 | GET | `/api/metrics/grafana/dashboards/export` | 打包导出全部 Grafana 看板 |
+| 64 | GET | `/api/settings/ssl` | 获取 SSL/TLS 设置 |
+| 65 | POST | `/api/settings/ssl/save` | 保存 SSL/TLS 设置 |
+| 66 | POST | `/api/settings/ssl/validate` | 验证 SSL/TLS KeyStore/TrustStore |
+| 67 | GET | `/api/settings/datasources` | 数据源列表 |
+| 68 | POST | `/api/settings/datasources/create` | 创建数据源 |
+| 69 | POST | `/api/settings/datasources/update` | 更新数据源 |
+| 70 | POST | `/api/settings/datasources/delete` | 删除数据源 |
+| 71 | POST | `/api/settings/datasources/test` | 测试数据源连接 |
+| 72 | POST | `/api/ai/chat` | AI 对话（SSE） |
+| 73 | POST | `/api/ai/execute` | 执行 AI 指令 |
+| 74 | GET | `/api/ai/tools` | 可用工具列表 |
+| 75 | POST | `/api/ai/tools/:name/execute` | 执行只读 AI 工具 |
+| 76 | POST | `/api/metrics/query` | 查询监控指标数据 |
+| 77 | GET | `/api/acl/cluster-config` | 集群 ACL 配置概要（存储级） |
+| 78 | POST | `/api/acl/plain-access-config` | 创建/更新 Plain Access 账号 |
+| 79 | GET | `/api/acl/users/:id/credentials` | 查看单个用户明文凭证 |
+| 80 | GET | `/api/metrics/grafana/dashboards` | Grafana 看板列表 |
+| 81 | GET | `/api/metrics/grafana/dashboards/:uid` | Grafana 看板 JSON 模型 |
+| 82 | GET | `/api/metrics/grafana/dashboards/:uid/export` | 导出单个 Grafana 看板 JSON |
+| 83 | GET | `/api/metrics/grafana/dashboards/export` | 打包导出全部 Grafana 看板 |
 
 ## 通用响应格式
 
@@ -1678,7 +1681,70 @@ POST /api/settings/general/save
 
 **Response `data`:** `null`
 
-### 14.3 获取数据源列表
+### 14.3 获取 SSL/TLS 设置
+
+```
+GET /api/settings/ssl
+```
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `enabled` | `boolean` | 是否启用 SSL/TLS |
+| `protocol` | `string` | 协议: `TLSv1.3` / `TLSv1.2` |
+| `clientAuth` | `string` | 客户端认证: `none` / `want` / `need` |
+| `keyStoreType` | `string` | KeyStore 类型: `PKCS12` / `JKS` |
+| `keyStorePath` | `string` | KeyStore 文件路径 |
+| `keyStorePasswordConfigured` | `boolean` | 是否已保存 KeyStore 密码；响应不会返回密码内容 |
+| `trustStoreType` | `string` | TrustStore 类型: `PKCS12` / `JKS` |
+| `trustStorePath` | `string` | TrustStore 文件路径 |
+| `trustStorePasswordConfigured` | `boolean` | 是否已保存 TrustStore 密码；响应不会返回密码内容 |
+| `restartRequired` | `boolean` | 保存后是否需要重启服务才能生效 |
+
+### 14.4 保存 SSL/TLS 设置
+
+```
+POST /api/settings/ssl/save
+```
+
+**Request Body:**
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `enabled` | `boolean` | 否 | 是否启用 SSL/TLS |
+| `protocol` | `string` | 否 | 协议: `TLSv1.3` / `TLSv1.2` |
+| `clientAuth` | `string` | 否 | 客户端认证: `none` / `want` / `need` |
+| `keyStoreType` | `string` | 否 | KeyStore 类型: `PKCS12` / `JKS` |
+| `keyStorePath` | `string` | 否 | KeyStore 文件路径；启用 SSL/TLS 时必填 |
+| `keyStorePassword` | `string` | 否 | 新 KeyStore 密码；省略或传空值时保留现有密码 |
+| `clearKeyStorePassword` | `boolean` | 否 | 传 `true` 时显式清除现有 KeyStore 密码 |
+| `trustStoreType` | `string` | 否 | TrustStore 类型: `PKCS12` / `JKS` |
+| `trustStorePath` | `string` | 否 | TrustStore 文件路径；启用客户端认证时必填 |
+| `trustStorePassword` | `string` | 否 | 新 TrustStore 密码；省略或传空值时保留现有密码 |
+| `clearTrustStorePassword` | `boolean` | 否 | 传 `true` 时显式清除现有 TrustStore 密码 |
+
+**Response `data`:** `SslSettings`
+
+> 保存配置不会热切换运行中的服务端 TLS，也不会自动写入容器启动参数；运维需将配置同步到部署参数后重启 Studio。
+
+### 14.5 验证 SSL/TLS KeyStore/TrustStore
+
+```
+POST /api/settings/ssl/validate
+```
+
+**Request Body:** 同 `POST /api/settings/ssl/save`
+
+**Response `data`:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `success` | `boolean` | KeyStore/TrustStore 是否可加载 |
+| `message` | `string` | 验证结果说明 |
+| `warnings` | `string[]` | 非阻断告警，例如 TrustStore 已配置但未启用客户端认证 |
+
+### 14.6 获取数据源列表
 
 ```
 GET /api/settings/datasources
@@ -1695,7 +1761,7 @@ GET /api/settings/datasources
 | `auth` | `string` | 认证方式: `None` / `Basic Auth` / `Bearer Token` |
 | `status` | `string` | 状态: `healthy` / `error` |
 
-### 14.4 创建数据源
+### 14.7 创建数据源
 
 ```
 POST /api/settings/datasources/create
@@ -1712,7 +1778,7 @@ POST /api/settings/datasources/create
 
 **Response `data`:** `DataSource`
 
-### 14.5 更新数据源
+### 14.8 更新数据源
 
 ```
 POST /api/settings/datasources/update
@@ -1730,7 +1796,7 @@ POST /api/settings/datasources/update
 
 **Response `data`:** `DataSource`
 
-### 14.6 删除数据源
+### 14.9 删除数据源
 
 ```
 POST /api/settings/datasources/delete
@@ -1744,7 +1810,7 @@ POST /api/settings/datasources/delete
 
 **Response `data`:** `null`
 
-### 14.7 测试数据源连接
+### 14.10 测试数据源连接
 
 ```
 POST /api/settings/datasources/test

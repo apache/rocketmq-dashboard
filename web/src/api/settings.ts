@@ -49,6 +49,35 @@ export interface DataSource {
   instanceIds?: string[];
 }
 
+export interface SslSettings {
+  enabled: boolean;
+  protocol: string;
+  clientAuth: string;
+  keyStoreType: string;
+  keyStorePath: string;
+  keyStorePasswordConfigured: boolean;
+  trustStoreType: string;
+  trustStorePath: string;
+  trustStorePasswordConfigured: boolean;
+  restartRequired: boolean;
+}
+
+export type SslSettingsUpdate = Omit<
+  SslSettings,
+  'keyStorePasswordConfigured' | 'trustStorePasswordConfigured' | 'restartRequired'
+> & {
+  keyStorePassword?: string;
+  clearKeyStorePassword?: boolean;
+  trustStorePassword?: string;
+  clearTrustStorePassword?: boolean;
+};
+
+export interface SslSettingsValidationResult {
+  success: boolean;
+  message: string;
+  warnings: string[];
+}
+
 // ─── General Settings ───────────────────────────────────────────
 export async function getGeneralSettings() {
   const res = await client.get<{ data: GeneralSettings }>('/settings/general');
@@ -60,6 +89,34 @@ export async function saveGeneralSettings(data: GeneralSettingsUpdate) {
   delete payload.apiKeyConfigured;
   if (!payload.apiKey?.trim()) delete payload.apiKey;
   await client.post('/settings/general/save', payload);
+}
+
+// ─── SSL Settings ────────────────────────────────────────────────
+export async function getSslSettings() {
+  const res = await client.get<{ data: SslSettings }>('/settings/ssl');
+  return res.data.data;
+}
+
+export async function saveSslSettings(data: SslSettingsUpdate) {
+  const payload = cleanSslSettingsPayload(data);
+  const res = await client.post<{ data: SslSettings }>('/settings/ssl/save', payload);
+  return res.data.data;
+}
+
+export async function validateSslSettings(data: SslSettingsUpdate) {
+  const payload = cleanSslSettingsPayload(data);
+  const res = await client.post<{ data: SslSettingsValidationResult }>(
+    '/settings/ssl/validate',
+    payload,
+  );
+  return res.data.data;
+}
+
+function cleanSslSettingsPayload(data: SslSettingsUpdate) {
+  const payload = { ...data };
+  if (!payload.keyStorePassword?.trim()) delete payload.keyStorePassword;
+  if (!payload.trustStorePassword?.trim()) delete payload.trustStorePassword;
+  return payload;
 }
 
 // ─── Data Sources ───────────────────────────────────────────────
