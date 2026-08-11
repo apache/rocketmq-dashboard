@@ -17,7 +17,7 @@
 
 import type { ReactElement } from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
@@ -115,6 +115,14 @@ const renderWithProviders = (ui: ReactElement) => {
       <LangProvider>{ui}</LangProvider>
     </App>,
   );
+};
+
+const createDeferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
 };
 
 describe('AlertManagementPage', () => {
@@ -233,6 +241,30 @@ describe('AlertManagementPage', () => {
       expect(toggleAlertRule).toHaveBeenCalledWith('rule-broker-down', false);
     });
     expect(await screen.findByText('告警规则已更新')).toBeInTheDocument();
+  });
+
+  it('does not let a stale refresh overwrite a completed rule toggle', async () => {
+    const staleRefresh = createDeferred<typeof alertRules>();
+    vi.mocked(listAlertRules)
+      .mockResolvedValueOnce(alertRules)
+      .mockReturnValueOnce(staleRefresh.promise);
+    renderWithProviders(<AlertManagementPage />);
+
+    const brokerRule = await screen.findByText('BrokerDown');
+    const brokerRow = brokerRule.closest('tr');
+    expect(brokerRow).not.toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /刷新/ }));
+    await waitFor(() => expect(listAlertRules).toHaveBeenCalledTimes(2));
+    fireEvent.click(within(brokerRow!).getByRole('switch'));
+
+    await waitFor(() => expect(within(brokerRow!).getByRole('switch')).not.toBeChecked());
+
+    await act(async () => {
+      staleRefresh.resolve(alertRules);
+      await staleRefresh.promise;
+    });
+    expect(within(brokerRow!).getByRole('switch')).not.toBeChecked();
   });
 
   it('creates a persisted alert rule from the editor modal', async () => {

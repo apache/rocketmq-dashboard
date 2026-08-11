@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   App,
   Badge,
@@ -288,17 +288,24 @@ const AlertManagementPage: React.FC = () => {
   const [filterSeverity, setFilterSeverity] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [selectedRuleKeys, setSelectedRuleKeys] = useState<React.Key[]>([]);
+  const loadRequestId = useRef(0);
+
+  const invalidateRuleLoads = () => {
+    loadRequestId.current += 1;
+    setLoading(false);
+  };
 
   useEffect(() => {
     let cancelled = false;
 
     const loadRules = async () => {
-      if (!cancelled) {
+      const requestId = ++loadRequestId.current;
+      if (!cancelled && requestId === loadRequestId.current) {
         setLoading(true);
       }
       try {
         const loadedRules = await loadAlertRuleRows();
-        if (!cancelled) {
+        if (!cancelled && requestId === loadRequestId.current) {
           const enabledRuleKeys = new Set<React.Key>(
             loadedRules.filter((rule) => rule.enabled).map((rule) => rule.key),
           );
@@ -308,11 +315,11 @@ const AlertManagementPage: React.FC = () => {
           );
         }
       } catch {
-        if (!cancelled) {
+        if (!cancelled && requestId === loadRequestId.current) {
           message.error(fetchFailedMessage);
         }
       } finally {
-        if (!cancelled) {
+        if (!cancelled && requestId === loadRequestId.current) {
           setLoading(false);
         }
       }
@@ -322,22 +329,25 @@ const AlertManagementPage: React.FC = () => {
 
     return () => {
       cancelled = true;
+      loadRequestId.current += 1;
     };
   }, [fetchFailedMessage, message]);
 
   const fetchAlertRules = async () => {
+    const requestId = ++loadRequestId.current;
     setLoading(true);
     try {
       const loadedRules = await loadAlertRuleRows();
+      if (requestId !== loadRequestId.current) return;
       const enabledRuleKeys = new Set<React.Key>(
         loadedRules.filter((rule) => rule.enabled).map((rule) => rule.key),
       );
       setAlertRules(loadedRules);
       setSelectedRuleKeys((currentKeys) => currentKeys.filter((key) => enabledRuleKeys.has(key)));
     } catch {
-      message.error(t('alertMgmt.fetchFailed'));
+      if (requestId === loadRequestId.current) message.error(t('alertMgmt.fetchFailed'));
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestId.current) setLoading(false);
     }
   };
 
@@ -348,6 +358,7 @@ const AlertManagementPage: React.FC = () => {
     }
     try {
       const updated = await toggleAlertRule(rule.id, enabled);
+      invalidateRuleLoads();
       const nextRule = toUiRule(updated, rule.index - 1);
       setAlertRules((rules) => rules.map((item) => (item.key === rule.key ? nextRule : item)));
       setSelectedRuleKeys((keys) => (enabled ? keys : keys.filter((key) => key !== rule.key)));
@@ -389,6 +400,7 @@ const AlertManagementPage: React.FC = () => {
     }
     try {
       await deleteAlertRule(rule.id);
+      invalidateRuleLoads();
       setAlertRules((rules) =>
         rules
           .filter((item) => item.key !== rule.key)
@@ -411,6 +423,7 @@ const AlertManagementPage: React.FC = () => {
           return;
         }
         const updated = await updateAlertRule(request);
+        invalidateRuleLoads();
         const nextRule = toUiRule(updated, editingRule.index - 1);
         setAlertRules((rules) =>
           rules.map((rule) => (rule.key === editingRule.key ? nextRule : rule)),
@@ -418,6 +431,7 @@ const AlertManagementPage: React.FC = () => {
         message.success(t('alertMgmt.updateSuccess'));
       } else {
         const created = await createAlertRule(request);
+        invalidateRuleLoads();
         setAlertRules((rules) =>
           [toUiRule(created, 0), ...rules].map((rule, index) => ({ ...rule, index: index + 1 })),
         );
