@@ -39,7 +39,8 @@ public class AuthInterceptor implements HandlerInterceptor {
             "/api/ai/chat",
             "/api/clusters/test-connection",
             "/api/llm/config/test",
-            "/api/metrics/query");
+            "/api/metrics/query",
+            "/api/metrics/query/datasource");
 
     private final AuthProperties authProperties;
     private final AuthService authService;
