@@ -154,7 +154,7 @@ public class RocketMQDashboardProvider implements DashboardProvider {
             Map<String, Set<String>> topicsByCluster = new HashMap<>();
             Set<String> topicCountsUnavailableClusters = new HashSet<>();
             Set<String> allGroups = new HashSet<>();
-            Map<String, Integer> groupsByCluster = new HashMap<>();
+            Map<String, Set<String>> groupsByCluster = new HashMap<>();
             for (String brokerAddr : masterAddrs) {
                 String clusterName = brokerAddrToCluster.get(brokerAddr);
                 try {
@@ -185,7 +185,8 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                             if (!isSystemGroup(groupName)) {
                                 allGroups.add(groupName);
                                 if (clusterName != null) {
-                                    groupsByCluster.merge(clusterName, 1, Integer::sum);
+                                    groupsByCluster.computeIfAbsent(clusterName, ignored -> new HashSet<>())
+                                            .add(groupName);
                                 }
                             }
                         }
@@ -260,7 +261,7 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                         .brokers(clusterBrokers)
                         .proxies(0)
                         .topics(topicsByCluster.getOrDefault(clusterName, Set.of()).size())
-                        .groups(groupsByCluster.getOrDefault(clusterName, 0))
+                        .groups(groupsByCluster.getOrDefault(clusterName, Set.of()).size())
                         .tpsIn(clusterTpsIn)
                         .tpsOut(clusterTpsOut)
                         .version(version)

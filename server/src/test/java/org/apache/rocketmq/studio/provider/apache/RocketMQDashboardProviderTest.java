@@ -25,9 +25,11 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.KVTable;
+import org.apache.rocketmq.remoting.protocol.body.SubscriptionGroupWrapper;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
 import org.apache.rocketmq.remoting.protocol.body.TopicConfigSerializeWrapper;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
+import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -108,6 +110,25 @@ class RocketMQDashboardProviderTest {
                 .extracting(cluster -> cluster.getTopics())
                 .isEqualTo(3);
         verify(adminExt, never()).examineTopicRouteInfo(anyString());
+    }
+
+    @Test
+    void dashboardShouldDeduplicateGroupsReportedByMultipleClusterBrokers() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());
+        when(adminExt.getAllSubscriptionGroup("10.0.0.11:10911", 5000))
+                .thenReturn(subscriptionGroups("cg-orders", "cg-payments"));
+        when(adminExt.getAllSubscriptionGroup("10.0.0.12:10911", 5000))
+                .thenReturn(subscriptionGroups("cg-orders", "cg-inventory"));
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.12:10911")).thenReturn(runtimeStats());
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getStats().getTotalConsumerGroups()).isEqualTo(3);
+        assertThat(dashboard.getClusters()).singleElement()
+                .extracting(cluster -> cluster.getGroups())
+                .isEqualTo(3);
     }
 
     @Test
@@ -350,6 +371,16 @@ class RocketMQDashboardProviderTest {
             configs.put(name, new TopicConfig(name));
         }
         wrapper.setTopicConfigTable(configs);
+        return wrapper;
+    }
+
+    private SubscriptionGroupWrapper subscriptionGroups(String... names) {
+        SubscriptionGroupWrapper wrapper = new SubscriptionGroupWrapper();
+        ConcurrentHashMap<String, SubscriptionGroupConfig> groups = new ConcurrentHashMap<>();
+        for (String name : names) {
+            groups.put(name, new SubscriptionGroupConfig());
+        }
+        wrapper.setSubscriptionGroupTable(groups);
         return wrapper;
     }
 
