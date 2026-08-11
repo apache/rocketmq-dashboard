@@ -202,14 +202,25 @@ const MainLayout = () => {
     [t],
   );
 
-  const pathSnippets = location.pathname.split('/').filter((i) => i);
-  const breadcrumbItems = useMemo(
-    () => [
+  const breadcrumbItems = useMemo(() => {
+    const pathSnippets = location.pathname.split('/').filter((segment) => segment);
+    return [
       {
         title: (
-          <span onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>
+          <button
+            type="button"
+            aria-label={t('layout.goHome')}
+            onClick={() => navigate('/')}
+            style={{
+              cursor: 'pointer',
+              border: 0,
+              padding: 0,
+              background: 'transparent',
+              font: 'inherit',
+            }}
+          >
             🏠
-          </span>
+          </button>
         ),
         key: 'home',
       },
@@ -224,9 +235,8 @@ const MainLayout = () => {
           key: path,
         };
       }),
-    ],
-    [location.pathname, navigate, breadcrumbMap, instanceScopedMatch],
-  );
+    ];
+  }, [location.pathname, navigate, breadcrumbMap, instanceScopedMatch, t]);
 
   const userMenu = {
     onClick: handleUserMenuClick,
@@ -273,7 +283,7 @@ const MainLayout = () => {
           event.currentTarget.style.transform = 'translateY(-150%)';
         }}
       >
-        跳到主要内容
+        {t('layout.skipToMain')}
       </a>
       <Layout style={{ height: '100vh', minHeight: 0, overflow: 'hidden' }}>
         <Sider
@@ -339,7 +349,9 @@ const MainLayout = () => {
             {/* Right: Search + Lang + Theme + User */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
               {/* Search button */}
-              <div
+              <button
+                type="button"
+                aria-label={t('layout.openSearch')}
                 onClick={() => setSearchOpen(true)}
                 style={{
                   display: 'flex',
@@ -352,6 +364,8 @@ const MainLayout = () => {
                   fontSize: 13,
                   color: '#9CA3AF',
                   minWidth: 160,
+                  background: 'transparent',
+                  font: 'inherit',
                 }}
               >
                 <MagnifyingGlass size={14} />
@@ -368,10 +382,15 @@ const MainLayout = () => {
                 >
                   ⌘K
                 </span>
-              </div>
+              </button>
 
               {/* Data mode toggle */}
-              <div
+              <button
+                type="button"
+                aria-label={
+                  useMock ? t('layout.switchToRealData') : t('layout.switchToMockData')
+                }
+                aria-pressed={useMock}
                 onClick={handleDataModeToggle}
                 style={{
                   cursor: 'pointer',
@@ -385,12 +404,10 @@ const MainLayout = () => {
                   fontWeight: 500,
                   color: useMock ? '#d48806' : '#389e0d',
                   transition: 'all 0.2s',
+                  background: 'transparent',
+                  font: 'inherit',
                 }}
-                title={
-                  useMock
-                    ? 'Data Mode: Mock (click to switch to Real)'
-                    : 'Data Mode: Real (click to switch to Mock)'
-                }
+                title={useMock ? t('layout.switchToRealData') : t('layout.switchToMockData')}
               >
                 <span
                   style={{
@@ -402,10 +419,14 @@ const MainLayout = () => {
                   }}
                 />
                 {useMock ? 'Mock' : 'Real'}
-              </div>
+              </button>
 
               {/* Language toggle */}
-              <div
+              <button
+                type="button"
+                aria-label={
+                  lang === 'zh' ? t('layout.switchToEnglish') : t('layout.switchToChinese')
+                }
                 onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
                 style={{
                   cursor: 'pointer',
@@ -419,14 +440,25 @@ const MainLayout = () => {
                   fontWeight: 600,
                   color: '#1677ff',
                   transition: 'background 0.2s',
+                  border: 0,
+                  padding: 0,
+                  background: 'transparent',
+                  font: 'inherit',
                 }}
-                title={lang === 'zh' ? 'Switch to English' : '切换到中文'}
+                title={
+                  lang === 'zh' ? t('layout.switchToEnglish') : t('layout.switchToChinese')
+                }
               >
                 {lang === 'zh' ? 'En' : '中'}
-              </div>
+              </button>
 
               {/* Theme toggle */}
-              <div
+              <button
+                type="button"
+                aria-label={
+                  darkMode ? t('layout.switchToLightTheme') : t('layout.switchToDarkTheme')
+                }
+                aria-pressed={darkMode}
                 onClick={toggleTheme}
                 style={{
                   cursor: 'pointer',
@@ -437,23 +469,41 @@ const MainLayout = () => {
                   height: 28,
                   borderRadius: 6,
                   transition: 'background 0.2s',
+                  border: 0,
+                  padding: 0,
+                  background: 'transparent',
+                  font: 'inherit',
                 }}
-                title={darkMode ? 'Light mode' : 'Dark mode'}
+                title={
+                  darkMode ? t('layout.switchToLightTheme') : t('layout.switchToDarkTheme')
+                }
               >
                 {darkMode ? (
                   <Sun size={18} color="#9CA3AF" weight="fill" />
                 ) : (
                   <Moon size={18} color="#9CA3AF" weight="fill" />
                 )}
-              </div>
+              </button>
 
               {/* User avatar */}
               <Dropdown menu={userMenu} trigger={['click']}>
-                <Avatar
-                  size={28}
-                  style={{ backgroundColor: '#1677ff', cursor: 'pointer' }}
-                  icon={<UserGear size={16} />}
-                />
+                <button
+                  type="button"
+                  aria-label={t('layout.openUserMenu')}
+                  style={{
+                    cursor: 'pointer',
+                    border: 0,
+                    padding: 0,
+                    background: 'transparent',
+                    font: 'inherit',
+                  }}
+                >
+                  <Avatar
+                    size={28}
+                    style={{ backgroundColor: '#1677ff' }}
+                    icon={<UserGear size={16} />}
+                  />
+                </button>
               </Dropdown>
             </div>
           </div>
@@ -509,7 +559,8 @@ const MainLayout = () => {
         <div style={{ maxHeight: 360, overflow: 'auto', padding: '8px 12px 12px' }}>
           {searchResults.length ? (
             searchResults.map((item) => (
-              <div
+              <button
+                type="button"
                 key={item.key}
                 onClick={() => {
                   navigate(item.key as string);
@@ -525,6 +576,12 @@ const MainLayout = () => {
                   cursor: 'pointer',
                   fontSize: 14,
                   transition: 'background 0.15s',
+                  width: '100%',
+                  border: 0,
+                  background: 'transparent',
+                  color: 'inherit',
+                  textAlign: 'left',
+                  font: 'inherit',
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.background = darkMode ? '#1a1a1a' : '#f5f5f5';
@@ -535,7 +592,7 @@ const MainLayout = () => {
               >
                 {item.icon}
                 <span>{item.label}</span>
-              </div>
+              </button>
             ))
           ) : (
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未找到匹配页面" />
