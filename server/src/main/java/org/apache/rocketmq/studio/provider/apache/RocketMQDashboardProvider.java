@@ -289,9 +289,13 @@ public class RocketMQDashboardProvider implements DashboardProvider {
 
         long messagesPerSecond = tpsIn + tpsOut;
 
+        int healthyClusters = Math.toIntExact(clusters.stream()
+                .filter(cluster -> cluster.getStatus() == ClusterStatus.healthy)
+                .count());
+
         DashboardStatsVO stats = DashboardStatsVO.builder()
                 .totalClusters(totalClusters)
-                .healthyClusters(totalClusters)
+                .healthyClusters(healthyClusters)
                 .totalBrokers(totalBrokers)
                 .totalProxies(0)
                 .totalNameServers(0)
