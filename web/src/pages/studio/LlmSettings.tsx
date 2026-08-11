@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -80,6 +80,7 @@ const LlmSettingsPage: React.FC = () => {
   const [apiKeyConfigured, setApiKeyConfigured] = useState(false);
   const [modelOptions, setModelOptions] = useState<{ value: string; label: string }[]>([]);
   const [testResult, setTestResult] = useState<TestState | null>(null);
+  const testRequestIdRef = useRef(0);
 
   const buildModelOptions = (
     nextProvider: string,
@@ -126,11 +127,19 @@ const LlmSettingsPage: React.FC = () => {
       });
     return () => {
       cancelled = true;
+      testRequestIdRef.current += 1;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const invalidateTestRequest = () => {
+    testRequestIdRef.current += 1;
+    setTesting(false);
+    setTestResult(null);
+  };
+
   const handleProviderChange = (nextProvider: string) => {
+    invalidateTestRequest();
     setModelOptions(fallbackModelOptions(nextProvider));
     const fallbackModel = fallbackModelOptions(nextProvider)[0]?.value;
     form.setFieldsValue({
@@ -138,7 +147,6 @@ const LlmSettingsPage: React.FC = () => {
       model: fallbackModel,
       apiBase: DEFAULT_BASE_URL[nextProvider] || form.getFieldValue('apiBase'),
     });
-    setTestResult(null);
   };
 
   const buildPayload = async (): Promise<LlmConfig | null> => {
@@ -177,14 +185,23 @@ const LlmSettingsPage: React.FC = () => {
   const handleTest = async () => {
     const payload = await buildPayload();
     if (!payload) return;
+    const requestId = testRequestIdRef.current + 1;
+    testRequestIdRef.current = requestId;
     setTesting(true);
     setTestResult(null);
     try {
-      applyTestResult(await testLlmConnection(payload));
+      const result = await testLlmConnection(payload);
+      if (testRequestIdRef.current === requestId) {
+        applyTestResult(result);
+      }
     } catch {
-      setTestResult({ success: false, msg: '连接测试请求失败，请稍后重试' });
+      if (testRequestIdRef.current === requestId) {
+        setTestResult({ success: false, msg: '连接测试请求失败，请稍后重试' });
+      }
     } finally {
-      setTesting(false);
+      if (testRequestIdRef.current === requestId) {
+        setTesting(false);
+      }
     }
   };
 
@@ -219,6 +236,7 @@ const LlmSettingsPage: React.FC = () => {
           form={form}
           layout="vertical"
           initialValues={{ provider: 'tongyi', engine: 'claude-code' }}
+          onValuesChange={invalidateTestRequest}
         >
           <Form.Item
             label="执行引擎"

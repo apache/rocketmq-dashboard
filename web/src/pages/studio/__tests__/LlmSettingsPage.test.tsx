@@ -16,7 +16,7 @@
  */
 
 import { App } from 'antd';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangProvider } from '../../../i18n/LangContext';
@@ -93,5 +93,28 @@ describe('LlmSettingsPage', () => {
     const payload = llmApiMocks.saveLlmConfig.mock.calls[0][0];
     expect(payload).toMatchObject({ provider: 'tongyi', model: 'qwen3.8-max' });
     expect(payload.apiKey).toBeUndefined();
+  });
+
+  it('ignores a connection result after the tested configuration changes', async () => {
+    let resolveTest!: (result: { status: number; msg: string }) => void;
+    llmApiMocks.testLlmConnection.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveTest = resolve;
+        }),
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('密钥已配置');
+    await user.click(screen.getByRole('button', { name: /测试连接/ }));
+    await waitFor(() => expect(llmApiMocks.testLlmConnection).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getAllByRole('combobox')[1]);
+    await user.click(await screen.findByText('OpenAI', { selector: '.ant-select-item-option-content' }));
+    await act(async () => resolveTest({ status: 0, msg: 'old provider succeeded' }));
+
+    expect(screen.queryByText('old provider succeeded')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /测试连接/ })).not.toHaveClass('ant-btn-loading');
   });
 });
