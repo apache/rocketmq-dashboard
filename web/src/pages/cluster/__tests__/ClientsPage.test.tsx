@@ -222,6 +222,25 @@ describe('Clients page', () => {
     expect(within(screen.getByTestId('connection-total')).getByText('0')).toBeInTheDocument();
   });
 
+  it('retries the current instance connection query after a runtime failure', async () => {
+    vi.mocked(connectionsService.listConnections)
+      .mockRejectedValueOnce(new Error('Client connection provider is not configured'))
+      .mockResolvedValueOnce([connection]);
+    const user = userEvent.setup();
+    renderWithProviders(<ClientsPage />);
+
+    expect(
+      await screen.findByText('Client connection provider is not configured'),
+    ).toBeInTheDocument();
+    expect(connectionsService.listConnections).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole('button', { name: /重\s*试/ }));
+
+    expect(await screen.findByText('order-svc-0@10.0.1.12:49152')).toBeInTheDocument();
+    expect(connectionsService.listConnections).toHaveBeenCalledTimes(2);
+    expect(connectionsService.listConnections).toHaveBeenLastCalledWith({ instanceId: 'instance-1' });
+  });
+
   it('clears the previous instance data when the next instance connection request fails', async () => {
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       {

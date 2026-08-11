@@ -115,6 +115,7 @@ const ClientsPage = () => {
   const [selectedConnection, setSelectedConnection] = useState<ClientConnection | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [instanceLoadKey, setInstanceLoadKey] = useState(0);
+  const [connectionLoadKey, setConnectionLoadKey] = useState(0);
 
   const handleInstanceChange = (instanceId: string) => {
     setSelectedInstanceId(instanceId);
@@ -181,7 +182,7 @@ const ClientsPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [selectedInstanceId]);
+  }, [connectionLoadKey, selectedInstanceId]);
 
   /* ─── Cluster options using nsClusterName ─── */
   const clusterOptions = useMemo(() => {
@@ -392,7 +393,9 @@ const ClientsPage = () => {
               size="small"
               onClick={() => {
                 setLoading(true);
+                setLoadError(null);
                 setInstanceLoadKey((key) => key + 1);
+                setConnectionLoadKey((key) => key + 1);
               }}
             >
               重试
