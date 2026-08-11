@@ -29,6 +29,7 @@ const LangConsumer = () => {
       <span data-testid="translated">{t('nav.home')}</span>
       <span data-testid="missing">{t('nonexistent.key')}</span>
       <span data-testid="param">{t('common.total', { count: 42 })}</span>
+      <span data-testid="literal-param">{t('instance.confirmDelete', { name: 'orders$&' })}</span>
       <button onClick={() => setLang('en')}>switch-en</button>
       <button onClick={() => setLang('zh')}>switch-zh</button>
     </div>
@@ -109,6 +110,19 @@ describe('LangContext', () => {
     // Even if the key doesn't have a {count} placeholder, the t() function
     // should not throw — it simply replaces matching placeholders.
     expect(screen.getByTestId('param')).toHaveTextContent('Total');
+  });
+
+  it('interpolates replacement-pattern characters literally', async () => {
+    const user = userEvent.setup();
+    render(
+      <LangProvider>
+        <LangConsumer />
+      </LangProvider>,
+    );
+
+    await user.click(screen.getByText('switch-en'));
+
+    expect(screen.getByTestId('literal-param')).toHaveTextContent('Delete "orders$&"?');
   });
 
   it('useLanguage alias provides the same context as useLang', () => {
