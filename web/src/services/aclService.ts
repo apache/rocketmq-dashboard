@@ -149,7 +149,8 @@ export async function updateAclUser(data: Partial<AclUser>): Promise<AclUser> {
 export async function deleteAclUser(id: string): Promise<void> {
   if (isMockMode()) {
     const idx = aclUsersState.findIndex((user) => user.id === id);
-    if (idx >= 0) aclUsersState.splice(idx, 1);
+    if (idx < 0) throw new Error(`ACL user not found: ${id}`);
+    aclUsersState.splice(idx, 1);
     return;
   }
   return aclApi.deleteAclUser(id);
