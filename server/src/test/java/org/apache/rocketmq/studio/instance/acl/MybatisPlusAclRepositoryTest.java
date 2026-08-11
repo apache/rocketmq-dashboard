@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.instance.acl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.persistence.entity.RmqAclRule;
@@ -38,6 +39,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -185,6 +187,31 @@ class MybatisPlusAclRepositoryTest {
         ArgumentCaptor<RmqAclUser> captor = ArgumentCaptor.forClass(RmqAclUser.class);
         verify(userMapper).insert(captor.capture());
         assertThat(captor.getValue().getWhiteRemoteAddress()).isNull();
+    }
+
+    @Test
+    void updateShouldExplicitlyClearBlankWhiteRemoteAddress() {
+        RmqAclUser existing = userEntity("plain-svc-x", "svc-x",
+                CredentialUtils.encodeBase64("kept-secret-value"));
+        existing.setWhiteRemoteAddress("10.0.1.0/24");
+        when(userMapper.selectOne(any(QueryWrapper.class))).thenReturn(existing);
+        when(userMapper.updateById(any(RmqAclUser.class))).thenReturn(1);
+        when(userMapper.update(isNull(), any(UpdateWrapper.class))).thenReturn(1);
+        when(ruleMapper.delete(any(QueryWrapper.class))).thenReturn(0);
+
+        PlainAccessConfigVO config = PlainAccessConfigVO.builder()
+                .accessKey("svc-x")
+                .whiteRemoteAddress("   ")
+                .build();
+
+        PlainAccessConfigVO result = repository.createAndUpdatePlainAccessConfig(config);
+
+        @SuppressWarnings("rawtypes")
+        ArgumentCaptor<UpdateWrapper> captor = ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(userMapper).update(isNull(), captor.capture());
+        assertThat(captor.getValue().getSqlSet()).contains("white_remote_address");
+        assertThat(captor.getValue().getParamNameValuePairs()).containsValue(null);
+        assertThat(result.getWhiteRemoteAddress()).isNull();
     }
 
     @Test

@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.instance.acl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.persistence.entity.RmqAclRule;
@@ -176,6 +177,13 @@ public class MybatisPlusAclRepository implements AclRepository {
         entity.setUpdatedAt(LocalDateTime.now());
         if (existing != null) {
             userMapper.updateById(entity);
+            if (entity.getWhiteRemoteAddress() == null) {
+                // MyBatis-Plus omits null entity fields from updateById. Assign this column
+                // explicitly so clearing the whitelist does not silently retain its old value.
+                userMapper.update(null, new UpdateWrapper<RmqAclUser>()
+                        .eq("id", entity.getId())
+                        .set("white_remote_address", null));
+            }
         } else {
             userMapper.insert(entity);
         }
