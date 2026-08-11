@@ -58,6 +58,23 @@ class MybatisPlusAclRepositoryTest {
     private MybatisPlusAclRepository repository;
 
     @Test
+    void replaceRuleShouldReturnEmptyWhenConcurrentDeleteWins() {
+        RmqAclRule existing = new RmqAclRule();
+        existing.setId("rule-a");
+        existing.setCreatedAt(LocalDateTime.of(2026, 1, 1, 0, 0));
+        when(ruleMapper.selectById("rule-a")).thenReturn(existing);
+        when(ruleMapper.updateById(any(RmqAclRule.class))).thenReturn(0);
+
+        AclRuleVO replacement = AclRuleVO.builder()
+                .id("rule-a")
+                .principal("svc-a")
+                .resource("orders")
+                .build();
+
+        assertThat(repository.replaceRule(replacement)).isEmpty();
+    }
+
+    @Test
     void upsertShouldAssignUniqueRuleIdPerPermission() {
         when(userMapper.selectOne(any(QueryWrapper.class))).thenReturn(null);
         when(userMapper.insert(any(RmqAclUser.class))).thenReturn(1);
