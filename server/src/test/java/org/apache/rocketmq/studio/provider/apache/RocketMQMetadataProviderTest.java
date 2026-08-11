@@ -17,6 +17,10 @@
 package org.apache.rocketmq.studio.provider.apache;
 
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
+import org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper;
+import org.apache.rocketmq.remoting.protocol.body.GroupList;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
@@ -39,6 +43,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -200,6 +206,44 @@ class RocketMQMetadataProviderTest {
     }
 
     @Test
+    void getTopicConsumersKeepsUnknownWhenAnyQueueLagIsUnknown() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        mockTopicConsumeStats(admin, offset(20, 10), offset(0, 1));
+
+        List<TopicConsumerVO> consumers = newLiveProvider(admin).getTopicConsumers(null, "TopicA");
+
+        assertThat(consumers).singleElement()
+                .extracting(TopicConsumerVO::getDiffTotal)
+                .isEqualTo(ConsumerLagResolver.UNKNOWN);
+    }
+
+    @Test
+    void getTopicConsumersStillSumsKnownQueueLags() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        mockTopicConsumeStats(admin, offset(20, 10), offset(7, 4));
+
+        List<TopicConsumerVO> consumers = newLiveProvider(admin).getTopicConsumers(null, "TopicA");
+
+        assertThat(consumers).singleElement()
+                .extracting(TopicConsumerVO::getDiffTotal)
+                .isEqualTo(13L);
+    }
+
+    @Test
+    void getTopicConsumersReportsUnknownWhenGroupStatsCannotBeRead() throws Exception {
+        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        mockTopicGroup(admin);
+        when(admin.examineConsumeStats("group-a", "TopicA"))
+                .thenThrow(new IllegalStateException("stats unavailable"));
+
+        List<TopicConsumerVO> consumers = newLiveProvider(admin).getTopicConsumers(null, "TopicA");
+
+        assertThat(consumers).singleElement()
+                .extracting(TopicConsumerVO::getDiffTotal)
+                .isEqualTo(ConsumerLagResolver.UNKNOWN);
+    }
+
+    @Test
     void getGroupProgressSurfacesAdminFailure() throws Exception {
         DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
         when(admin.examineConsumeStats("group-a")).thenThrow(new IllegalStateException("broker unavailable"));
@@ -230,5 +274,29 @@ class RocketMQMetadataProviderTest {
                 invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(2).apply(admin));
         return new RocketMQMetadataProvider(factory, liveProperties, topicMapper, groupMapper,
                 runtimeAdminClientResolver);
+    }
+
+    private void mockTopicConsumeStats(DefaultMQAdminExt admin, OffsetWrapper... queueOffsets) throws Exception {
+        mockTopicGroup(admin);
+        Map<MessageQueue, OffsetWrapper> offsets = new LinkedHashMap<>();
+        for (int queueId = 0; queueId < queueOffsets.length; queueId++) {
+            offsets.put(new MessageQueue("TopicA", "broker-a", queueId), queueOffsets[queueId]);
+        }
+        ConsumeStats stats = new ConsumeStats();
+        stats.setOffsetTable(offsets);
+        when(admin.examineConsumeStats("group-a", "TopicA")).thenReturn(stats);
+    }
+
+    private void mockTopicGroup(DefaultMQAdminExt admin) throws Exception {
+        GroupList groupList = new GroupList();
+        groupList.setGroupList(new HashSet<>(List.of("group-a")));
+        when(admin.queryTopicConsumeByWho("TopicA")).thenReturn(groupList);
+    }
+
+    private OffsetWrapper offset(long brokerOffset, long consumerOffset) {
+        OffsetWrapper offset = new OffsetWrapper();
+        offset.setBrokerOffset(brokerOffset);
+        offset.setConsumerOffset(consumerOffset);
+        return offset;
     }
 }
