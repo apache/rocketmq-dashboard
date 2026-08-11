@@ -790,6 +790,28 @@ class InstanceServiceTest {
     }
 
     @Test
+    void createInstanceShouldRejectMissingCloudCatalogDetails() {
+        InstanceVO instance = InstanceVO.builder()
+                .vendor(InstanceVendor.ALIYUN)
+                .credentialId("cred-1")
+                .cloudInstanceId("rmq-missing")
+                .regionId("cn-hangzhou")
+                .build();
+        CloudCredentialVO credential = new CloudCredentialVO();
+        credential.setVendor(InstanceVendor.ALIYUN);
+        when(cloudCredentialRepository.findById("cred-1")).thenReturn(Optional.of(credential));
+        CloudCatalogProvider catalog = org.mockito.Mockito.mock(CloudCatalogProvider.class);
+        when(providerRegistry.catalogFor(InstanceVendor.ALIYUN)).thenReturn(catalog);
+        when(catalog.getCloudInstance("cred-1", "cn-hangzhou", "rmq-missing")).thenReturn(null);
+
+        assertThatThrownBy(() -> instanceService.createInstance(instance))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Cloud instance details unavailable: rmq-missing")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(502));
+        verify(instanceRepository, never()).save(any());
+    }
+
+    @Test
     void createInstanceShouldResolveAliyunEndpointFromCatalogTest() {
         InstanceVO instance = InstanceVO.builder()
                 .vendor(InstanceVendor.ALIYUN)
