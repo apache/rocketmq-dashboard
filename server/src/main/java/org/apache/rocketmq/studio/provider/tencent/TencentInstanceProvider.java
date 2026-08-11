@@ -16,13 +16,23 @@
  */
 package org.apache.rocketmq.studio.provider.tencent;
 
+import com.tencentcloudapi.trocket.v20230308.models.ConsumeGroupItem;
+import com.tencentcloudapi.trocket.v20230308.models.CreateConsumerGroupRequest;
 import com.tencentcloudapi.trocket.v20230308.models.CreateTopicRequest;
+import com.tencentcloudapi.trocket.v20230308.models.DeleteConsumerGroupRequest;
 import com.tencentcloudapi.trocket.v20230308.models.DeleteTopicRequest;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeConsumerGroupRequest;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeConsumerGroupResponse;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeConsumerGroupListRequest;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeConsumerGroupListResponse;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicListByGroupRequest;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicListByGroupResponse;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicListRequest;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicListResponse;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicRequest;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicResponse;
 import com.tencentcloudapi.trocket.v20230308.models.ModifyTopicRequest;
+import com.tencentcloudapi.trocket.v20230308.models.ResetConsumerGroupOffsetRequest;
 import com.tencentcloudapi.trocket.v20230308.models.SubscriptionData;
 import com.tencentcloudapi.trocket.v20230308.models.TopicItem;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
@@ -48,6 +58,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 
@@ -68,6 +79,7 @@ public class TencentInstanceProvider implements InstanceProvider {
     static final int DEFAULT_QUEUE_NUM = 8;
     static final int MIN_QUEUE_NUM = 3;
     static final int MAX_QUEUE_NUM = 16;
+    static final int DEFAULT_MAX_RETRY_TIMES = 16;
     private static final String NOT_IMPLEMENTED = "Tencent Cloud operation is not implemented yet";
 
     private final TencentClientFactory clientFactory;
@@ -97,7 +109,7 @@ public class TencentInstanceProvider implements InstanceProvider {
 
     @Override
     public int countGroups(String instanceId) {
-        throw new UnsupportedOperationException(NOT_IMPLEMENTED);
+        return listConsumerGroups(instanceId, null, false).size();
     }
 
     @Override
@@ -257,32 +269,148 @@ public class TencentInstanceProvider implements InstanceProvider {
 
     @Override
     public List<ConsumerGroupVO> listConsumerGroups(String instanceId, String search) {
-        throw new UnsupportedOperationException(NOT_IMPLEMENTED);
+        return listConsumerGroups(instanceId, search, true);
+    }
+
+    private List<ConsumerGroupVO> listConsumerGroups(String instanceId, String search, boolean enrichTimes) {
+        Context context = resolve(instanceId);
+        List<ConsumerGroupVO> groups = new ArrayList<>();
+        for (int page = 0; page < MAX_PAGES; page++) {
+            DescribeConsumerGroupListRequest request = new DescribeConsumerGroupListRequest();
+            request.setInstanceId(context.cloudInstanceId());
+            request.setOffset((long) page * PAGE_SIZE);
+            request.setLimit((long) PAGE_SIZE);
+            DescribeConsumerGroupListResponse response = clientFactory.call(context.credentialId(), context.regionId(),
+                    client -> client.DescribeConsumerGroupList(request));
+            ConsumeGroupItem[] data = response == null ? null : response.getData();
+            if (data == null || data.length == 0) {
+                break;
+            }
+            for (ConsumeGroupItem item : data) {
+                if (item == null) {
+                    continue;
+                }
+                ConsumerGroupVO group = toConsumerGroup(item, instanceId);
+                if (matchesSearch(search, group.getName())) {
+                    if (enrichTimes) {
+                        enrichConsumerGroupDetail(context, group);
+                    }
+                    groups.add(group);
+                }
+            }
+            if (data.length < PAGE_SIZE) {
+                break;
+            }
+        }
+        return groups;
+    }
+
+    /**
+     * DescribeConsumerGroupList exposes limited fields, so resolve the creation timestamp and the
+     * real consume model from DescribeConsumerGroup. Kept off the cheap count path to avoid N+1
+     * calls for instance listings.
+     */
+    private void enrichConsumerGroupDetail(Context context, ConsumerGroupVO group) {
+        try {
+            DescribeConsumerGroupRequest request = new DescribeConsumerGroupRequest();
+            request.setInstanceId(context.cloudInstanceId());
+            request.setConsumerGroup(group.getName());
+            DescribeConsumerGroupResponse response = clientFactory.call(context.credentialId(), context.regionId(),
+                    client -> client.DescribeConsumerGroup(request));
+            if (response == null) {
+                return;
+            }
+            group.setCreatedAt(toLocalDateTime(response.getCreatedTime()));
+            if (StringUtils.hasText(response.getConsumeModel())) {
+                group.setConsumeType(toConsumeType(response.getConsumeModel()));
+            }
+        } catch (BusinessException ignored) {
+            // A single group detail lookup failure should not fail the whole list.
+        }
     }
 
     @Override
     public ConsumerGroupVO createConsumerGroup(String instanceId, ConsumerGroupVO group) {
-        throw new UnsupportedOperationException(NOT_IMPLEMENTED);
+        Context context = resolve(instanceId);
+        validateConsumerGroup(group);
+        CreateConsumerGroupRequest request = new CreateConsumerGroupRequest();
+        request.setInstanceId(context.cloudInstanceId());
+        request.setConsumerGroup(group.getName());
+        request.setMaxRetryTimes((long) retryMaxTimes(group));
+        request.setConsumeEnable(true);
+        request.setConsumeMessageOrderly(isOrderly(group));
+        clientFactory.call(context.credentialId(), context.regionId(), client -> client.CreateConsumerGroup(request));
+        group.setInstanceId(instanceId);
+        group.setRetryMaxTimes(retryMaxTimes(group));
+        group.setSubscribedTopics(java.util.List.of());
+        group.setCreatedAt(LocalDateTime.now());
+        group.setUpdatedAt(LocalDateTime.now());
+        return group;
     }
 
     @Override
     public void deleteConsumerGroup(String instanceId, String groupName) {
-        throw new UnsupportedOperationException(NOT_IMPLEMENTED);
+        Context context = resolve(instanceId);
+        requireGroupName(groupName);
+        DeleteConsumerGroupRequest request = new DeleteConsumerGroupRequest();
+        request.setInstanceId(context.cloudInstanceId());
+        request.setConsumerGroup(groupName);
+        clientFactory.call(context.credentialId(), context.regionId(), client -> client.DeleteConsumerGroup(request));
     }
 
     @Override
     public List<QueueProgressVO> getGroupProgress(String instanceId, String groupName) {
-        throw new UnsupportedOperationException(NOT_IMPLEMENTED);
+        Context context = resolve(instanceId);
+        requireGroupName(groupName);
+        List<SubscriptionData> subscriptions = listTopicSubscriptionsByGroup(context, groupName);
+        List<QueueProgressVO> rows = new ArrayList<>();
+        for (SubscriptionData subscription : subscriptions) {
+            if (subscription == null) {
+                continue;
+            }
+            rows.add(QueueProgressVO.builder()
+                    .broker("topic:" + subscription.getTopic())
+                    .queueId(0)
+                    .brokerOffset(0L)
+                    .consumerOffset(0L)
+                    .diffTotal(subscription.getConsumerLag() == null ? 0L : subscription.getConsumerLag())
+                    .build());
+        }
+        return rows;
     }
 
     @Override
     public List<SubscriptionEntryVO> getGroupSubscriptions(String instanceId, String groupName) {
-        throw new UnsupportedOperationException(NOT_IMPLEMENTED);
+        Context context = resolve(instanceId);
+        requireGroupName(groupName);
+        List<SubscriptionData> subscriptions = listTopicSubscriptionsByGroup(context, groupName);
+        List<SubscriptionEntryVO> entries = new ArrayList<>();
+        for (SubscriptionData subscription : subscriptions) {
+            if (subscription == null) {
+                continue;
+            }
+            entries.add(toSubscriptionEntry(subscription));
+        }
+        return entries;
     }
 
     @Override
     public void resetOffset(String instanceId, String groupName, long timestamp, String topic) {
-        throw new UnsupportedOperationException(NOT_IMPLEMENTED);
+        Context context = resolve(instanceId);
+        requireGroupName(groupName);
+        if (!StringUtils.hasText(topic)) {
+            throw new BusinessException(400, "Topic is required to reset consumer group offset");
+        }
+        ResetConsumerGroupOffsetRequest request = new ResetConsumerGroupOffsetRequest();
+        request.setInstanceId(context.cloudInstanceId());
+        request.setConsumerGroup(groupName);
+        request.setTopic(topic);
+        if (timestamp > 0L) {
+            request.setResetTimestamp(timestamp);
+        } else {
+            request.setResetTimestamp(System.currentTimeMillis());
+        }
+        clientFactory.call(context.credentialId(), context.regionId(), client -> client.ResetConsumerGroupOffset(request));
     }
 
     @Override
@@ -336,6 +464,98 @@ public class TencentInstanceProvider implements InstanceProvider {
                 .build();
     }
 
+    private static ConsumerGroupVO toConsumerGroup(ConsumeGroupItem item, String instanceId) {
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName(item.getConsumerGroup());
+        group.setInstanceId(instanceId);
+        group.setClusterId(item.getClusterIdV4());
+        group.setNamespace(item.getNamespaceV4());
+        group.setConsumeType(toConsumeType(item.getConsumeMessageOrderly()));
+        group.setDeliveryOrderType(item.getConsumeMessageOrderly() == null || !item.getConsumeMessageOrderly()
+                ? "Concurrently" : "Orderly");
+        group.setRetryMaxTimes(toInt(item.getMaxRetryTimes()));
+        group.setSubscribedTopics(java.util.List.of());
+        group.setInstances(java.util.List.of());
+        return group;
+    }
+
+    private List<SubscriptionData> listTopicSubscriptionsByGroup(Context context, String groupName) {
+        List<SubscriptionData> all = new ArrayList<>();
+        for (int page = 0; page < MAX_PAGES; page++) {
+            DescribeTopicListByGroupRequest request = new DescribeTopicListByGroupRequest();
+            request.setInstanceId(context.cloudInstanceId());
+            request.setConsumerGroup(groupName);
+            request.setOffset((long) page * PAGE_SIZE);
+            request.setLimit((long) PAGE_SIZE);
+            DescribeTopicListByGroupResponse response = clientFactory.call(context.credentialId(), context.regionId(),
+                    client -> client.DescribeTopicListByGroup(request));
+            SubscriptionData[] data = response == null ? null : response.getData();
+            if (data == null || data.length == 0) {
+                break;
+            }
+            all.addAll(Arrays.asList(data));
+            if (data.length < PAGE_SIZE) {
+                break;
+            }
+        }
+        return all;
+    }
+
+    private static SubscriptionEntryVO toSubscriptionEntry(SubscriptionData subscription) {
+        return SubscriptionEntryVO.builder()
+                .topic(subscription.getTopic())
+                .expression(subscription.getSubString())
+                .type(subscription.getExpressionType())
+                .filterMode(subscription.getExpressionType())
+                .consistency(subscription.getConsistency() == null ? null : String.valueOf(subscription.getConsistency()))
+                .build();
+    }
+
+    private static void validateConsumerGroup(ConsumerGroupVO group) {
+        if (group == null || !StringUtils.hasText(group.getName())) {
+            throw new BusinessException(400, "Consumer group name is required");
+        }
+    }
+
+    private static void requireGroupName(String groupName) {
+        if (!StringUtils.hasText(groupName)) {
+            throw new BusinessException(400, "Consumer group name is required");
+        }
+    }
+
+    private static int retryMaxTimes(ConsumerGroupVO group) {
+        return group.getRetryMaxTimes() > 0 ? group.getRetryMaxTimes() : DEFAULT_MAX_RETRY_TIMES;
+    }
+
+    private static boolean isOrderly(ConsumerGroupVO group) {
+        String deliveryOrderType = group.getDeliveryOrderType();
+        return deliveryOrderType != null
+                && (deliveryOrderType.toUpperCase(Locale.ROOT).contains("FIFO")
+                || deliveryOrderType.toUpperCase(Locale.ROOT).contains("ORDER"));
+    }
+
+    private static int toInt(Long value) {
+        return value == null ? 0 : Math.toIntExact(value);
+    }
+
+    private static ConsumeType toConsumeType(Boolean consumeMessageOrderly) {
+        // Tencent consumer groups use clustering consumption; orderly only affects delivery order.
+        return ConsumeType.CLUSTERING;
+    }
+
+    private static ConsumeType toConsumeType(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        if (raw.toUpperCase(Locale.ROOT).contains("BROADCAST")) {
+            return ConsumeType.BROADCASTING;
+        }
+        if (raw.toUpperCase(Locale.ROOT).contains("CLUSTER")) {
+            return ConsumeType.CLUSTERING;
+        }
+        return null;
+    }
+
     private static TopicType toTopicType(String raw) {
         if (!StringUtils.hasText(raw)) {
             return null;
@@ -372,6 +592,13 @@ public class TencentInstanceProvider implements InstanceProvider {
         }
         String needle = search.trim().toLowerCase(Locale.ROOT);
         return contains(topic.getName(), needle) || contains(topic.getRemark(), needle);
+    }
+
+    private static boolean matchesSearch(String search, String value) {
+        if (!StringUtils.hasText(search)) {
+            return true;
+        }
+        return contains(value, search.trim().toLowerCase(Locale.ROOT));
     }
 
     private static boolean contains(String value, String needle) {

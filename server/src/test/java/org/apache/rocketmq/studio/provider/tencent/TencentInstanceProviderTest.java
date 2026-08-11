@@ -16,19 +16,30 @@
  */
 package org.apache.rocketmq.studio.provider.tencent;
 
+import com.tencentcloudapi.trocket.v20230308.models.ConsumeGroupItem;
+import com.tencentcloudapi.trocket.v20230308.models.CreateConsumerGroupRequest;
 import com.tencentcloudapi.trocket.v20230308.models.CreateTopicRequest;
+import com.tencentcloudapi.trocket.v20230308.models.DeleteConsumerGroupRequest;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeConsumerGroupListResponse;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeConsumerGroupResponse;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicListByGroupResponse;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicListResponse;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicRequest;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicResponse;
 import com.tencentcloudapi.trocket.v20230308.models.ModifyTopicRequest;
+import com.tencentcloudapi.trocket.v20230308.models.ResetConsumerGroupOffsetRequest;
 import com.tencentcloudapi.trocket.v20230308.models.SubscriptionData;
 import com.tencentcloudapi.trocket.v20230308.models.TopicItem;
 import com.tencentcloudapi.trocket.v20230308.TrocketClient;
+import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
+import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
+import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
+import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.junit.jupiter.api.BeforeEach;
@@ -268,6 +279,103 @@ class TencentInstanceProviderTest {
         assertThat(captor.getAllValues())
                 .extracting(DescribeTopicRequest::getLimit)
                 .containsOnly(100L);
+    }
+
+    @Test
+    void listConsumerGroupsShouldMapAndFilterTest() throws Exception {
+        ConsumeGroupItem one = new ConsumeGroupItem();
+        one.setConsumerGroup("GID_test");
+        one.setMaxRetryTimes(10L);
+        one.setConsumeMessageOrderly(false);
+        ConsumeGroupItem two = new ConsumeGroupItem();
+        two.setConsumerGroup("GID_orders");
+        two.setMaxRetryTimes(16L);
+        DescribeConsumerGroupListResponse response = new DescribeConsumerGroupListResponse();
+        response.setData(new ConsumeGroupItem[]{one, two});
+        when(client.DescribeConsumerGroupList(any())).thenReturn(response);
+        DescribeConsumerGroupResponse detail = new DescribeConsumerGroupResponse();
+        detail.setCreatedTime(1600000000000L);
+        detail.setConsumeModel("CLUSTERING");
+        when(client.DescribeConsumerGroup(any())).thenReturn(detail);
+
+        List<ConsumerGroupVO> groups = provider.listConsumerGroups(STUDIO_INSTANCE_ID, "orders");
+
+        assertThat(groups).hasSize(1);
+        assertThat(groups.get(0).getName()).isEqualTo("GID_orders");
+        assertThat(groups.get(0).getInstanceId()).isEqualTo(STUDIO_INSTANCE_ID);
+        assertThat(groups.get(0).getRetryMaxTimes()).isEqualTo(16);
+        assertThat(groups.get(0).getCreatedAt()).isNotNull();
+        assertThat(groups.get(0).getConsumeType()).isEqualTo(ConsumeType.CLUSTERING);
+        assertThat(groups.get(0).getInstances()).isNotNull().isEmpty();
+    }
+
+    @Test
+    void createConsumerGroupShouldCallTencentOpenApiTest() throws Exception {
+        when(client.CreateConsumerGroup(any())).thenReturn(null);
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName("GID_new");
+        group.setRetryMaxTimes(20);
+
+        ConsumerGroupVO created = provider.createConsumerGroup(STUDIO_INSTANCE_ID, group);
+
+        ArgumentCaptor<CreateConsumerGroupRequest> captor = ArgumentCaptor.forClass(CreateConsumerGroupRequest.class);
+        verify(client).CreateConsumerGroup(captor.capture());
+        assertThat(captor.getValue().getInstanceId()).isEqualTo(CLOUD_INSTANCE_ID);
+        assertThat(captor.getValue().getConsumerGroup()).isEqualTo("GID_new");
+        assertThat(captor.getValue().getMaxRetryTimes()).isEqualTo(20L);
+        assertThat(created.getInstanceId()).isEqualTo(STUDIO_INSTANCE_ID);
+        assertThat(created.getRetryMaxTimes()).isEqualTo(20);
+    }
+
+    @Test
+    void deleteConsumerGroupShouldCallTencentOpenApiTest() throws Exception {
+        when(client.DeleteConsumerGroup(any())).thenReturn(null);
+
+        provider.deleteConsumerGroup(STUDIO_INSTANCE_ID, "GID_test");
+
+        ArgumentCaptor<DeleteConsumerGroupRequest> captor = ArgumentCaptor.forClass(DeleteConsumerGroupRequest.class);
+        verify(client).DeleteConsumerGroup(captor.capture());
+        assertThat(captor.getValue().getInstanceId()).isEqualTo(CLOUD_INSTANCE_ID);
+        assertThat(captor.getValue().getConsumerGroup()).isEqualTo("GID_test");
+    }
+
+    @Test
+    void getGroupProgressAndSubscriptionsShouldMapSubscriptionDataTest() throws Exception {
+        SubscriptionData subscription = new SubscriptionData();
+        subscription.setTopic("orders");
+        subscription.setSubString("*");
+        subscription.setExpressionType("TAG");
+        subscription.setConsumerLag(42L);
+        subscription.setConsistency(0L);
+        DescribeTopicListByGroupResponse response = new DescribeTopicListByGroupResponse();
+        response.setData(new SubscriptionData[]{subscription});
+        when(client.DescribeTopicListByGroup(any())).thenReturn(response);
+
+        List<QueueProgressVO> progress = provider.getGroupProgress(STUDIO_INSTANCE_ID, "GID_test");
+        assertThat(progress).hasSize(1);
+        assertThat(progress.get(0).getBroker()).isEqualTo("topic:orders");
+        assertThat(progress.get(0).getDiffTotal()).isEqualTo(42L);
+
+        List<SubscriptionEntryVO> subscriptions = provider.getGroupSubscriptions(STUDIO_INSTANCE_ID, "GID_test");
+        assertThat(subscriptions).hasSize(1);
+        assertThat(subscriptions.get(0).getTopic()).isEqualTo("orders");
+        assertThat(subscriptions.get(0).getExpression()).isEqualTo("*");
+        assertThat(subscriptions.get(0).getType()).isEqualTo("TAG");
+    }
+
+    @Test
+    void resetOffsetShouldCallTencentOpenApiTest() throws Exception {
+        when(client.ResetConsumerGroupOffset(any())).thenReturn(null);
+
+        provider.resetOffset(STUDIO_INSTANCE_ID, "GID_test", 1600000000000L, "orders");
+
+        ArgumentCaptor<ResetConsumerGroupOffsetRequest> captor =
+                ArgumentCaptor.forClass(ResetConsumerGroupOffsetRequest.class);
+        verify(client).ResetConsumerGroupOffset(captor.capture());
+        assertThat(captor.getValue().getInstanceId()).isEqualTo(CLOUD_INSTANCE_ID);
+        assertThat(captor.getValue().getConsumerGroup()).isEqualTo("GID_test");
+        assertThat(captor.getValue().getTopic()).isEqualTo("orders");
+        assertThat(captor.getValue().getResetTimestamp()).isEqualTo(1600000000000L);
     }
 
     private static TopicItem topicItem(String name, String type, long queueNum) {

@@ -108,7 +108,7 @@
         <dependency>
             <groupId>com.tencentcloudapi</groupId>
             <artifactId>tencentcloud-sdk-java-trocket</artifactId>
-            <version>3.1.1292</version>
+            <version>3.1.1498</version>
         </dependency>
         <!-- rocketmq-common also brings Kotlin-based okio-jvm 3.x; keep its runtime available. -->
         <dependency>
