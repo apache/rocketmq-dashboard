@@ -24,6 +24,20 @@ import {remoteApi, tools} from '../../api/remoteApi/remoteApi';
 
 const {Option} = Select;
 
+// 生成 Broker Top 10 图表数据，标签使用后端返回的 brokerId 区分主从节点。
+export const buildBrokerTop10Data = (brokers) => {
+    const sortedBrokers = [...brokers].sort((firstBroker, lastBroker) => {
+        const firstTotalMsg = parseFloat(firstBroker.msgGetTotalTodayNow || 0);
+        const lastTotalMsg = parseFloat(lastBroker.msgGetTotalTodayNow || 0);
+        return lastTotalMsg - firstTotalMsg;
+    });
+
+    return {
+        xAxisData: sortedBrokers.slice(0, 10).map(broker => `${broker.brokerName}:${broker.brokerId}`),
+        data: sortedBrokers.slice(0, 10).map(broker => parseFloat(broker.msgGetTotalTodayNow || 0)),
+    };
+};
+
 const DashboardPage = () => {
     const {t} = useLanguage();
     const barChartRef = useRef(null);
@@ -261,18 +275,7 @@ const DashboardPage = () => {
                 }));
                 setBrokerTableData(newData);
 
-                brokerArray.sort((firstBroker, lastBroker) => {
-                    const firstTotalMsg = parseFloat(firstBroker.msgGetTotalTodayNow || 0);
-                    const lastTotalMsg = parseFloat(lastBroker.msgGetTotalTodayNow || 0);
-                    return lastTotalMsg - firstTotalMsg;
-                });
-
-                const xAxisData = [];
-                const data = [];
-                brokerArray.slice(0, 10).forEach(broker => {
-                    xAxisData.push(`${broker.brokerName}:${broker.index}`);
-                    data.push(parseFloat(broker.msgGetTotalTodayNow || 0));
-                });
+                const {xAxisData, data} = buildBrokerTop10Data(brokerArray);
                 barChartInstance.current?.setOption(getBrokerBarChartOp(xAxisData, data));
             } else {
                 notificationApi.error({message: resp.errMsg || t.QUERY_CLUSTER_LIST_FAILED, duration: 2});
