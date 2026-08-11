@@ -30,5 +30,23 @@ public class MatcherUtilTest {
         Assert.assertTrue(b1);
         Assert.assertFalse(b2);
     }
-}
 
+    @Test
+    public void testRegexMetacharactersAreMatchedLiterally() {
+        Assert.assertFalse(MatcherUtil.match("/topic/*.query", "/topic/routeXquery"));
+        Assert.assertTrue(MatcherUtil.match("/acl/[user.query", "/acl/[user.query"));
+        Assert.assertTrue(MatcherUtil.match("/acl/[user](admin)+{$^|}\\.query",
+            "/acl/[user](admin)+{$^|}\\.query"));
+        Assert.assertFalse(MatcherUtil.match("/acl/[user](admin)+{$^|}\\.query",
+            "/acl/u(admin)+{$^|}\\.query"));
+    }
+
+    @Test
+    public void testGlobMetacharactersKeepTheirSemantics() {
+        Assert.assertTrue(MatcherUtil.match("/topic/*.query", "/topic/route.query"));
+        Assert.assertFalse(MatcherUtil.match("/topic/*.query", "/topic/a/b.query"));
+        Assert.assertTrue(MatcherUtil.match("/topic/**.query", "/topic/a/b.query"));
+        Assert.assertTrue(MatcherUtil.match("/topic/?.query", "/topic/a.query"));
+        Assert.assertFalse(MatcherUtil.match("/topic/?.query", "/topic/ab.query"));
+    }
+}

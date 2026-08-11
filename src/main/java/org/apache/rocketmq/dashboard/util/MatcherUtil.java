@@ -19,6 +19,7 @@ package org.apache.rocketmq.dashboard.util;
 import java.util.regex.Pattern;
 
 public class MatcherUtil {
+    private static final String REGEX_META_CHARACTERS = "\\.^$|?*+()[]{}";
 
     public static boolean match(String accessUrl, String reqPath) {
         String regPath = getRegPath(accessUrl);
@@ -26,33 +27,29 @@ public class MatcherUtil {
     }
 
     private static String getRegPath(String path) {
-        char[] chars = path.toCharArray();
-        int len = chars.length;
         StringBuilder sb = new StringBuilder();
-        boolean preX = false;
-        for (int i = 0; i < len; i++) {
-            if (chars[i] == '*') {
-                if (preX) {
+        for (int i = 0; i < path.length(); i++) {
+            char current = path.charAt(i);
+            if (current == '*') {
+                if (i + 1 < path.length() && path.charAt(i + 1) == '*') {
                     sb.append(".*");
-                    preX = false;
-                } else if (i + 1 == len) {
-                    sb.append("[^/]*");
+                    i++;
                 } else {
-                    preX = true;
-                    continue;
+                    sb.append("[^/]*");
                 }
+            } else if (current == '?') {
+                sb.append('.');
             } else {
-                if (preX) {
-                    sb.append("[^/]*");
-                    preX = false;
-                }
-                if (chars[i] == '?') {
-                    sb.append('.');
-                } else {
-                    sb.append(chars[i]);
-                }
+                appendLiteral(sb, current);
             }
         }
         return sb.toString();
+    }
+
+    private static void appendLiteral(StringBuilder regex, char current) {
+        if (REGEX_META_CHARACTERS.indexOf(current) >= 0) {
+            regex.append('\\');
+        }
+        regex.append(current);
     }
 }
