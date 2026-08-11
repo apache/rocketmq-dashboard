@@ -64,10 +64,16 @@ public class SettingsService {
 
     public SettingsService(SettingsRepository settingsRepository, RestClient.Builder restClientBuilder,
                            ObjectMapper objectMapper, OperationAuditService operationAuditService) {
-        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        // Disable redirect following to prevent SSRF bypass via HTTP redirect
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory() {
+            @Override
+            protected void prepareConnection(java.net.HttpURLConnection connection, String httpMethod) throws IOException {
+                super.prepareConnection(connection, httpMethod);
+                connection.setInstanceFollowRedirects(false);
+            }
+        };
         requestFactory.setConnectTimeout(DATA_SOURCE_TEST_CONNECT_TIMEOUT);
         requestFactory.setReadTimeout(DATA_SOURCE_TEST_READ_TIMEOUT);
-        requestFactory.setFollowRedirects(false);
         this.settingsRepository = settingsRepository;
         this.restClient = restClientBuilder.requestFactory(requestFactory).build();
         this.objectMapper = objectMapper;
