@@ -23,8 +23,8 @@ import { isMockMode } from './services/dataMode';
 import { useLang } from './i18n/LangContext';
 import useAuthStore from './stores/authStore';
 import MainLayout from './layouts/MainLayout';
-import LoginPage from './pages/login';
 
+const LoginPage = lazy(() => import('./pages/login'));
 const HomePage = lazy(() => import('./pages/home'));
 const InstancePage = lazy(() => import('./pages/instance'));
 const TopicPage = lazy(() => import('./pages/instance/topic'));
@@ -141,7 +141,23 @@ export function LazyRouteOutlet() {
 function App() {
   return (
     <Routes>
-      <Route path="/login" element={<LoginPage />} />
+      <Route
+        path="/login"
+        element={
+          <Suspense
+            fallback={
+              <div
+                role="status"
+                style={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}
+              >
+                <Spin size="large" />
+              </div>
+            }
+          >
+            <LoginPage />
+          </Suspense>
+        }
+      />
       <Route element={<AuthGate />}>
         <Route path="/" element={<MainLayout />}>
           <Route element={<LazyRouteOutlet />}>
