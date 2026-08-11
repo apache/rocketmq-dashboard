@@ -100,7 +100,8 @@ public final class UrlHostGuard {
         }
         try {
             InetAddress address = InetAddress.getByName(normalized);
-            if (address.isAnyLocalAddress() || address.isLinkLocalAddress()) {
+            if (address.isAnyLocalAddress() || address.isLinkLocalAddress()
+                    || address.isMulticastAddress()) {
                 return false;
             }
             if (address.isLoopbackAddress()) {
