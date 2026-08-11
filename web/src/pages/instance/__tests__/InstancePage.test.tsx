@@ -147,6 +147,32 @@ describe('InstancePage', () => {
     );
   });
 
+  it('keeps unavailable resource counts after available values in both sort directions', async () => {
+    vi.mocked(instanceService.listInstances).mockResolvedValue([
+      { ...instance('unavailable', 'unavailable-instance'), topicCount: 0, resourceCountsAvailable: false },
+      { ...instance('zero', 'zero-instance'), topicCount: 0 },
+      { ...instance('many', 'many-instance'), topicCount: 10 },
+    ]);
+    const { container } = renderPage();
+
+    await screen.findByText('unavailable-instance');
+    const topicHeader = screen.getByRole('columnheader', { name: 'Topic' });
+    const rowNames = () =>
+      Array.from(container.querySelectorAll('tbody tr')).map(
+        (row) => row.querySelector('td')?.textContent,
+      );
+
+    fireEvent.click(topicHeader);
+    await waitFor(() => {
+      expect(rowNames()).toEqual(['zero-instance', 'many-instance', 'unavailable-instance']);
+    });
+
+    fireEvent.click(topicHeader);
+    await waitFor(() => {
+      expect(rowNames()).toEqual(['many-instance', 'zero-instance', 'unavailable-instance']);
+    });
+  });
+
   it('ignores an older search response that finishes after the latest request', async () => {
     let resolveOldSearch!: (instances: Instance[]) => void;
     let resolveLatestSearch!: (instances: Instance[]) => void;
