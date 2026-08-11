@@ -494,14 +494,8 @@ public class RocketMQMessageProvider implements MessageProvider {
             return new DisplayBody(null, null, false);
         }
         int textLength = Math.min(body.length, MAX_BODY_DISPLAY_BYTES);
-        // When truncating, walk back to the last complete UTF-8 character boundary
-        // to avoid splitting a multi-byte character, which would cause the decoder
-        // to fall through to BASE64 encoding even for valid UTF-8 text.
-        if (textLength < body.length) {
-            while (textLength > 0 && (body[textLength] & 0xC0) == 0x80) {
-                textLength--;
-            }
-            if (textLength > 0 && (body[textLength] & 0xC0) == 0xC0) {
+        if (textLength < body.length && isUtf8ContinuationByte(body[textLength])) {
+            while (textLength > 0 && isUtf8ContinuationByte(body[textLength])) {
                 textLength--;
             }
         }
@@ -517,6 +511,10 @@ public class RocketMQMessageProvider implements MessageProvider {
             return new DisplayBody(Base64.getEncoder().encodeToString(
                     java.util.Arrays.copyOf(body, binaryLength)), "BASE64", body.length > binaryLength);
         }
+    }
+
+    private boolean isUtf8ContinuationByte(byte value) {
+        return (value & 0xC0) == 0x80;
     }
 
     private Map<String, String> limitProperties(Map<String, String> properties) {

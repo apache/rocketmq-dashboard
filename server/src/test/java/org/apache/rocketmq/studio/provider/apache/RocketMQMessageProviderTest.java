@@ -193,6 +193,20 @@ class RocketMQMessageProviderTest {
     }
 
     @Test
+    void toRecordVODoesNotSplitUtf8CharacterAtBodyLimit() {
+        MessageExt message = new MessageExt();
+        message.setMsgId("msg-utf8");
+        message.setTopic("TopicA");
+        message.setBody(("x".repeat(64 * 1024 - 1) + "\u4E2Dsuffix").getBytes(StandardCharsets.UTF_8));
+
+        MessageRecordVO record = provider.toRecordVO(message);
+
+        assertThat(record.getBodyEncoding()).isEqualTo("UTF-8");
+        assertThat(record.getBody()).isEqualTo("x".repeat(64 * 1024 - 1));
+        assertThat(record.isBodyTruncated()).isTrue();
+    }
+
+    @Test
     void getMessageTraceParsesPubAndSubAfterPerRocketMq533Layout() throws Exception {
         // Field order follows RocketMQ 5.3.3 TraceDataEncoder: Pub = type, time, region, group,
         // topic, msgId, tags, keys, storeHost, bodyLength, costTime, msgType, offsetMsgId, isSuccess.
