@@ -57,6 +57,25 @@ describe('AI API', () => {
   });
 
   describe('chatStream (SSE)', () => {
+    it('continues without auth when browser storage is unavailable', async () => {
+      vi.mocked(localStorage.getItem).mockImplementation(() => {
+        throw new DOMException('storage disabled', 'SecurityError');
+      });
+      const fetchMock = vi.fn().mockResolvedValue(streamResponse(['data: [DONE]\n\n']));
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(
+        chatStream({ message: 'hello', mode: 'chat', model: 'stub' }, vi.fn()),
+      ).resolves.toBeUndefined();
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/ai/chat',
+        expect.objectContaining({
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+
     it('reassembles an event split across network chunks', async () => {
       vi.stubGlobal(
         'fetch',
