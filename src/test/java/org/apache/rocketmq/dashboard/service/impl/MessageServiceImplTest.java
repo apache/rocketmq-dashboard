@@ -32,6 +32,7 @@ import org.apache.rocketmq.dashboard.model.MessagePage;
 import org.apache.rocketmq.dashboard.model.MessageQueryByPage;
 import org.apache.rocketmq.dashboard.model.MessageView;
 import org.apache.rocketmq.dashboard.model.QueueOffsetInfo;
+import org.apache.rocketmq.dashboard.model.request.MessageQuery;
 import org.apache.rocketmq.dashboard.support.AutoCloseConsumerWrapper;
 import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.remoting.protocol.body.Connection;
@@ -433,6 +434,70 @@ public class MessageServiceImplTest {
         assertEquals(10, (qo1.getEndOffset() - 5L) + (qo2.getEndOffset() - 10L));
     }
 
+    @Test
+    public void testQueryMessageByPageAdvancesPullOffsetAcrossBatches() throws Exception {
+        MessageQueue messageQueue = new MessageQueue(TOPIC, "broker-1", 0);
+        when(defaultMQPullConsumer.fetchSubscribeMessageQueues(TOPIC))
+                .thenReturn(Collections.singleton(messageQueue));
+        when(defaultMQPullConsumer.searchOffset(messageQueue, 1000L)).thenReturn(0L);
+        when(defaultMQPullConsumer.searchOffset(messageQueue, 3000L)).thenReturn(4L);
+
+        PullResult boundaryResult = createPullResult(PullStatus.FOUND,
+                Collections.singletonList(createMessageExt("boundary", TOPIC, "body", 1500L)), 1L, 0L);
+        PullResult endResult = createPullResult(PullStatus.FOUND, Arrays.asList(
+                createMessageExt("id1", TOPIC, "body1", 1500L),
+                createMessageExt("id2", TOPIC, "body2", 1600L),
+                createMessageExt("id3", TOPIC, "body3", 1700L),
+                createMessageExt("id4", TOPIC, "body4", 1800L)), 4L, 0L);
+        PullResult firstBatch = createPullResult(PullStatus.FOUND, Arrays.asList(
+                createMessageExt("id1", TOPIC, "body1", 1500L),
+                createMessageExt("id2", TOPIC, "body2", 1600L)), 2L, 0L);
+        PullResult secondBatch = createPullResult(PullStatus.FOUND, Arrays.asList(
+                createMessageExt("id3", TOPIC, "body3", 1700L),
+                createMessageExt("id4", TOPIC, "body4", 1800L)), 4L, 2L);
+
+        when(defaultMQPullConsumer.pull(messageQueue, "*", 0L, 32))
+                .thenReturn(boundaryResult)
+                .thenReturn(firstBatch);
+        when(defaultMQPullConsumer.pull(messageQueue, "*", 0L, 4)).thenReturn(endResult);
+        when(defaultMQPullConsumer.pull(messageQueue, "*", 2L, 32)).thenReturn(secondBatch);
+
+        MessagePage result = messageService.queryMessageByPage(createMessageQuery(4));
+
+        assertEquals(Arrays.asList("id1", "id2", "id3", "id4"), result.getPage().getContent().stream()
+                .map(MessageView::getMsgId).collect(java.util.stream.Collectors.toList()));
+        verify(defaultMQPullConsumer).pull(messageQueue, "*", 2L, 32);
+    }
+
+    @Test
+    public void testQueryMessageByPageStopsWhenPullOffsetDoesNotAdvance() throws Exception {
+        MessageQueue messageQueue = new MessageQueue(TOPIC, "broker-1", 0);
+        when(defaultMQPullConsumer.fetchSubscribeMessageQueues(TOPIC))
+                .thenReturn(Collections.singleton(messageQueue));
+        when(defaultMQPullConsumer.searchOffset(messageQueue, 1000L)).thenReturn(0L);
+        when(defaultMQPullConsumer.searchOffset(messageQueue, 3000L)).thenReturn(3L);
+
+        PullResult boundaryResult = createPullResult(PullStatus.FOUND,
+                Collections.singletonList(createMessageExt("boundary", TOPIC, "body", 1500L)), 1L, 0L);
+        PullResult endResult = createPullResult(PullStatus.FOUND, Arrays.asList(
+                createMessageExt("id1", TOPIC, "body1", 1500L),
+                createMessageExt("id2", TOPIC, "body2", 1600L),
+                createMessageExt("id3", TOPIC, "body3", 1700L)), 3L, 0L);
+        PullResult stalledResult = createPullResult(PullStatus.FOUND,
+                Collections.singletonList(createMessageExt("id1", TOPIC, "body1", 1500L)), 0L, 0L);
+
+        when(defaultMQPullConsumer.pull(messageQueue, "*", 0L, 32))
+                .thenReturn(boundaryResult)
+                .thenReturn(stalledResult);
+        when(defaultMQPullConsumer.pull(messageQueue, "*", 0L, 3)).thenReturn(endResult);
+
+        MessagePage result = messageService.queryMessageByPage(createMessageQuery(3));
+
+        assertEquals(1, result.getPage().getContent().size());
+        assertEquals("id1", result.getPage().getContent().get(0).getMsgId());
+        verify(defaultMQPullConsumer, times(2)).pull(messageQueue, "*", 0L, 32);
+    }
+
     // Helper methods
 
     private MessageExt createMessageExt(String msgId, String topic, String body, long storeTimestamp) {
@@ -446,5 +511,16 @@ public class MessageServiceImplTest {
 
     private PullResult createPullResult(PullStatus status, List<MessageExt> msgFoundList, long nextBeginOffset, long minOffset) {
         return new PullResult(status, nextBeginOffset, minOffset, minOffset + msgFoundList.size(), msgFoundList);
+    }
+
+    private MessageQuery createMessageQuery(int pageSize) {
+        MessageQuery query = new MessageQuery();
+        query.setPageNum(1);
+        query.setPageSize(pageSize);
+        query.setTopic(TOPIC);
+        query.setTaskId("");
+        query.setBegin(1000L);
+        query.setEnd(3000L);
+        return query;
     }
 }

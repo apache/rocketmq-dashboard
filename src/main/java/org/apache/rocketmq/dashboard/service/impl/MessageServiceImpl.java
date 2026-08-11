@@ -384,6 +384,14 @@ public class MessageServiceImpl implements MessageService {
                                 size--;
                             }
                         }
+                        long nextBeginOffset = pullResult.getNextBeginOffset();
+                        if (size > 0 && nextBeginOffset <= start) {
+                            logger.warn("Pull offset did not advance, topic={}, queueId={}, offset={}",
+                                    queueOffsetInfo.getMessageQueues().getTopic(),
+                                    queueOffsetInfo.getMessageQueues().getQueueId(), start);
+                            break;
+                        }
+                        start = nextBeginOffset;
                     } else {
                         break;
                     }
@@ -451,6 +459,14 @@ public class MessageServiceImpl implements MessageService {
                                 size--;
                             }
                         }
+                        long nextBeginOffset = pullResult.getNextBeginOffset();
+                        if (size > 0 && nextBeginOffset <= start) {
+                            logger.warn("Pull offset did not advance, topic={}, queueId={}, offset={}",
+                                    queueOffsetInfo.getMessageQueues().getTopic(),
+                                    queueOffsetInfo.getMessageQueues().getQueueId(), start);
+                            break;
+                        }
+                        start = nextBeginOffset;
                     } else {
                         break;
                     }
