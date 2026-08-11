@@ -120,6 +120,24 @@ describe('API client response contract', () => {
     await client.get('/clusters');
   });
 
+  it('sends requests without authorization when browser storage is unavailable', async () => {
+    const getItem = vi.spyOn(localStorage, 'getItem').mockImplementation(() => {
+      throw new DOMException('Storage is unavailable', 'SecurityError');
+    });
+    mock.onGet('/clusters').reply((config) => {
+      expect(config.headers?.Authorization).toBeUndefined();
+      return [200, { code: 200, message: 'success', data: [] }];
+    });
+
+    try {
+      await expect(client.get('/clusters')).resolves.toMatchObject({
+        data: { code: 200, data: [] },
+      });
+    } finally {
+      getItem.mockRestore();
+    }
+  });
+
   it.each(['/auth/login', '/auth/status'])(
     'does not clear the current session when public auth request %s returns 401',
     async (path) => {

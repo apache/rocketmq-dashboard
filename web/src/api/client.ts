@@ -55,6 +55,14 @@ function isPublicAuthRequest(url?: string): boolean {
   return PUBLIC_AUTH_PATHS.has(relativePath);
 }
 
+function readStoredToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
 const client = axios.create({
   baseURL: API_BASE_URL,
   timeout: 30000,
@@ -63,7 +71,7 @@ const client = axios.create({
 // Request interceptor: attach Authorization header
 client.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+    const token = readStoredToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
