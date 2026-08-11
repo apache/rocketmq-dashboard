@@ -181,7 +181,7 @@ public abstract class AbstractPrometheusCompatibleMetricsSource implements Metri
             // SSRF guard: a stored data source is queried server-side on every request, so the
             // host must be validated here even though it was checked when the data source was
             // saved (a pre-save check alone is bypassable via direct DB edits).
-            org.apache.rocketmq.studio.common.util.UrlHostGuard.check(baseUrl, false);
+            validateQueryHost(baseUrl);
             URI uri = URI.create(baseUrl + settings.getQueryPath());
             if (!"http".equalsIgnoreCase(uri.getScheme()) && !"https".equalsIgnoreCase(uri.getScheme())) {
                 throw new IllegalArgumentException("Unsupported " + backendLabel() + " URL scheme");
@@ -191,6 +191,14 @@ public abstract class AbstractPrometheusCompatibleMetricsSource implements Metri
             throw new PrometheusException(HttpStatus.SERVICE_UNAVAILABLE.value(),
                     backendLabel() + " base URL is invalid", exception);
         }
+    }
+
+    /**
+     * SSRF validation hook for the query target. Package-visible and overridable so tests can
+     * admit the loopback-bound embedded server while production keeps the strict guard.
+     */
+    protected void validateQueryHost(String url) {
+        org.apache.rocketmq.studio.common.util.UrlHostGuard.check(url, false);
     }
 
     private void applyAuthentication(HttpHeaders headers) {

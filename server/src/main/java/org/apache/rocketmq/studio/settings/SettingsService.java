@@ -25,6 +25,7 @@ import org.apache.rocketmq.studio.common.util.UrlHostGuard;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -73,6 +74,7 @@ public class SettingsService {
     private final ObjectMapper objectMapper;
     private final OperationAuditService operationAuditService;
 
+    @Autowired
     public SettingsService(SettingsRepository settingsRepository, RestClient.Builder restClientBuilder,
                            ObjectMapper objectMapper, OperationAuditService operationAuditService) {
         this(settingsRepository, buildDataSourceRestClient(restClientBuilder), objectMapper, operationAuditService);
