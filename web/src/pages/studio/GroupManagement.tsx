@@ -123,6 +123,15 @@ const GroupManagementPage = () => {
       .then((nextInstances) => {
         if (cancelled) return;
         setInstances(nextInstances);
+        if (nextInstances.length === 0) {
+          setSelectedInstanceId('');
+          setGroups([]);
+          setSelectedGroup(null);
+          setSubscriptions([]);
+          setProgress([]);
+          setLoading(false);
+          return;
+        }
         setSelectedInstanceId((current) =>
           nextInstances.some((instance) => instance.id === current)
             ? current

@@ -189,6 +189,17 @@ describe('GroupManagement Page', () => {
     expect(consumerService.listConsumerGroups).not.toHaveBeenCalled();
   });
 
+  it('stops loading when no managed instances are available', async () => {
+    vi.mocked(instanceService.listInstances).mockResolvedValueOnce([]);
+    const { container } = renderWithProviders(<GroupManagement />);
+
+    await waitFor(() => {
+      expect(instanceService.listInstances).toHaveBeenCalledOnce();
+      expect(container.querySelector('.ant-table-wrapper .ant-spin-spinning')).toBeNull();
+    });
+    expect(consumerService.listConsumerGroups).not.toHaveBeenCalled();
+  });
+
   it('should render search input with placeholder', () => {
     renderWithProviders(<GroupManagement />);
     expect(screen.getByPlaceholderText('搜索消费组')).toBeInTheDocument();
