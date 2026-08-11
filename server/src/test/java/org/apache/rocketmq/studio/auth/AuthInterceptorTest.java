@@ -256,6 +256,18 @@ class AuthInterceptorTest {
     }
 
     @Test
+    void shouldAllowConfiguredDataSourceQueryForNonAdminUser() throws Exception {
+        TestSession session = login(false);
+        MockHttpServletRequest request = authenticatedRequest(
+                "POST", "/api/metrics/query/datasource", session.token());
+
+        boolean allowed = session.interceptor().preHandle(
+                request, new MockHttpServletResponse(), new Object());
+
+        assertThat(allowed).isTrue();
+    }
+
+    @Test
     void shouldRejectDataSourceTestForNonAdminUser() throws Exception {
         TestSession session = login(false);
         MockHttpServletRequest request = authenticatedRequest(
