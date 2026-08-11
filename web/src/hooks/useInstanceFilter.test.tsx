@@ -33,6 +33,24 @@ function InstanceRouteProbe() {
 }
 
 describe('useInstanceFilter', () => {
+  it('preserves the routed instance when instance discovery fails', async () => {
+    instanceServiceMocks.listInstances.mockRejectedValue(new Error('instance service unavailable'));
+
+    render(
+      <MemoryRouter initialEntries={['/instance/instance-route-1/topic']}>
+        <Routes>
+          <Route path="/instance/:instanceId/topic" element={<InstanceRouteProbe />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('/instance/instance-route-1/topic|instance-route-1'),
+      ).toBeInTheDocument();
+    });
+  });
+
   it('replaces an unknown route instance with the first available instance', async () => {
     instanceServiceMocks.listInstances.mockResolvedValue([
       {

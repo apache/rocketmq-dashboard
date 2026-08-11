@@ -38,6 +38,7 @@ export function useInstanceFilter() {
   const section = scopedMatch?.[2] ?? staticMatch?.[1] ?? 'topic';
 
   const [instances, setInstances] = useState<Instance[]>([]);
+  const [instanceDiscoveryFailed, setInstanceDiscoveryFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -45,6 +46,7 @@ export function useInstanceFilter() {
       .then((nextInstances) => {
         if (cancelled) return;
         setInstances(nextInstances);
+        setInstanceDiscoveryFailed(false);
         const isKnownInstance = nextInstances.some((instance) => instance.id === routeInstanceId);
         if (nextInstances.length > 0 && !isKnownInstance) {
           navigate(`/instance/${nextInstances[0].id}/${section}`, { replace: true });
@@ -52,6 +54,7 @@ export function useInstanceFilter() {
       })
       .catch(() => {
         // 实例列表加载失败时不做实例过滤，保持页面数据可用
+        if (!cancelled) setInstanceDiscoveryFailed(true);
       });
     return () => {
       cancelled = true;
@@ -59,7 +62,8 @@ export function useInstanceFilter() {
   }, [navigate, routeInstanceId, section]);
 
   const selectedInstanceId =
-    routeInstanceId && instances.some((instance) => instance.id === routeInstanceId)
+    routeInstanceId &&
+    (instanceDiscoveryFailed || instances.some((instance) => instance.id === routeInstanceId))
       ? routeInstanceId
       : (instances[0]?.id ?? '');
   const selectedInstance = instances.find((instance) => instance.id === selectedInstanceId);
