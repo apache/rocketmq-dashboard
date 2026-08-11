@@ -43,19 +43,3 @@ export async function queryProxyHomePage(): Promise<ProxyHomePageData> {
   const res = await client.get<{ data: ProxyHomePageData }>('/proxy/homePage.query');
   return res.data.data;
 }
-
-export async function addProxyAddr(address: string): Promise<void> {
-  const params = new URLSearchParams();
-  params.append('newProxyAddr', address);
-  await client.post('/proxy/addProxyAddr.do', params, {
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-  });
-}
-
-export async function removeProxyAddr(address: string): Promise<void> {
-  const params = new URLSearchParams();
-  params.append('proxyAddr', address);
-  await client.post('/proxy/removeProxyAddr.do', params, {
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-  });
-}

@@ -47,6 +47,9 @@ class ProxyControllerTest {
     @MockBean
     private ClusterService clusterService;
 
+    @MockBean
+    private ProxyAddressService proxyAddressService;
+
     @Test
     void restartProxyShouldPassValidatedRequest() throws Exception {
         RestartProxyDTO request = RestartProxyDTO.builder()

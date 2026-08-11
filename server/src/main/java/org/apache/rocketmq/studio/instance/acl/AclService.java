@@ -21,6 +21,7 @@ import org.springframework.util.StringUtils;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
+import org.apache.rocketmq.studio.model.Acl2PolicyContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -169,6 +170,50 @@ public class AclService {
         log.info("Revealing credentials for ACL user id={}", id);
         return aclRepository.findUserById(id)
                 .orElseThrow(() -> new BusinessException(404, "ACL user not found: " + id));
+    }
+
+    /**
+     * Validates an ACL 2.0 RBAC policy context so the model can be used by callers before it is
+     * persisted. This makes the {@link org.apache.rocketmq.studio.model.Acl2PolicyContext} model
+     * operational without duplicating the cluster-config endpoints owned by the separate ACL 2.0
+     * functional change.
+     *
+     * <p>Checks: non-blank policy name, a valid binding type, a non-null rules list, and that every
+     * IP whitelist entry is a well-formed range (validated through {@link IpRangeMatcher}).
+     *
+     * @param policy the ACL 2.0 policy to validate
+     * @throws BusinessException with HTTP 400 when a required field is missing or malformed
+     */
+    public void validateAcl2Policy(Acl2PolicyContext policy) {
+        if (policy == null) {
+            throw new BusinessException(400, "ACL 2.0 policy is required");
+        }
+        if (!StringUtils.hasText(policy.getPolicyName())) {
+            throw new BusinessException(400, "ACL 2.0 policyName is required");
+        }
+        if (!StringUtils.hasText(policy.getBoundType()) || !isValidAcl2BoundType(policy.getBoundType())) {
+            throw new BusinessException(400,
+                    "ACL 2.0 boundType must be one of TOPIC, GROUP, *, USER, SERVICE_ACCOUNT (got: "
+                            + policy.getBoundType() + ")");
+        }
+        if (policy.getRules() == null) {
+            throw new BusinessException(400, "ACL 2.0 policy rules are required");
+        }
+        if (policy.getWhiteSet() != null) {
+            for (String entry : policy.getWhiteSet()) {
+                if (!IpRangeMatcher.isValidRange(entry)) {
+                    throw new BusinessException(400,
+                            "ACL 2.0 whiteSet entry is not a valid IP/CIDR range: " + entry);
+                }
+            }
+        }
+    }
+
+    private boolean isValidAcl2BoundType(String boundType) {
+        return switch (boundType.trim().toUpperCase()) {
+            case "TOPIC", "GROUP", "*", "USER", "SERVICE_ACCOUNT" -> true;
+            default -> false;
+        };
     }
 
     private AclUserVO maskCredentials(AclUserVO user) {

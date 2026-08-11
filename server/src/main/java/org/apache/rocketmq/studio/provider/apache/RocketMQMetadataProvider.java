@@ -90,6 +90,13 @@ public class RocketMQMetadataProvider implements MetadataProvider {
     private final RmqGroupMapper groupMapper;
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
 
+    /**
+     * Default proxy stats source until a real proxy transport is wired in. It reports the unknown
+     * sentinel ({@link ConsumerLagResolver#UNKNOWN}) so a {@code -1} gRPC lag is surfaced instead of
+     * being silently clamped to zero.
+     */
+    private final ProxyStatsProvider proxyStatsProvider = new NoopProxyStatsProvider();
+
     /** Whether a default NameServer is configured and live queries are therefore possible. */
     private boolean hasAdmin() {
         return StringUtils.hasText(properties.getNamesrvAddr());
@@ -290,7 +297,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                     if (stats != null && stats.getOffsetTable() != null) {
                         for (Map.Entry<MessageQueue, OffsetWrapper> entry : stats.getOffsetTable().entrySet()) {
                             OffsetWrapper ow = entry.getValue();
-                            diffTotal += Math.max(0, ow.getBrokerOffset() - ow.getConsumerOffset());
+                            diffTotal += resolveDiff(ow.getBrokerOffset(), ow.getConsumerOffset());
                         }
                         consumeTps = stats.getConsumeTps();
                     }
@@ -359,7 +366,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             for (Map.Entry<MessageQueue, OffsetWrapper> entry : stats.getOffsetTable().entrySet()) {
                 MessageQueue mq = entry.getKey();
                 OffsetWrapper ow = entry.getValue();
-                long diff = Math.max(0, ow.getBrokerOffset() - ow.getConsumerOffset());
+                long diff = resolveDiff(ow.getBrokerOffset(), ow.getConsumerOffset());
 
                 progress.add(QueueProgressVO.builder()
                         .broker(mq.getBrokerName())
@@ -419,6 +426,14 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
     // ── Helper methods ──────────────────────────────────────────────────
 
+    /**
+     * Resolves the lag for a single queue without clamping the broker's {@code -1} "unknown"
+     * sentinel to zero. A negative raw diff (typical for RocketMQ 5.0 gRPC consumers) is passed
+     * through {@link ConsumerLagResolver} so the unknown state stays visible.
+     */
+    private long resolveDiff(long brokerOffset, long consumerOffset) {
+        return ConsumerLagResolver.resolve(brokerOffset - consumerOffset, proxyStatsProvider);
+    }
     private String filterMode(String expressionType) {
         if ("SQL92".equals(expressionType)) {
             return "SQL";

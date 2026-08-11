@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.instance.acl;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
+import org.apache.rocketmq.studio.model.Acl2PolicyContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -561,5 +562,91 @@ class AclServiceTest {
 
     private String mask(String credential) {
         return credential.substring(0, 4) + "****" + credential.substring(credential.length() - 4);
+    }
+
+    @Test
+    void validateAcl2PolicyShouldAcceptValidPolicy() {
+        Acl2PolicyContext policy = new Acl2PolicyContext();
+        policy.setPolicyName("orders-policy");
+        policy.setBoundType("Topic");
+        policy.setRules(List.of(Acl2PolicyContext.AuthorizationRule.defaultAllowRule("orders-*")));
+        policy.setWhiteSet(List.of("192.168.1.0/24", "10.0.0.1"));
+
+        aclService.validateAcl2Policy(policy);
+    }
+
+    @Test
+    void validateAcl2PolicyShouldRejectNullPolicy() {
+        assertThatThrownBy(() -> aclService.validateAcl2Policy(null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+    }
+
+    @Test
+    void validateAcl2PolicyShouldRequirePolicyName() {
+        Acl2PolicyContext policy = new Acl2PolicyContext();
+        policy.setBoundType("Group");
+        policy.setRules(List.of(Acl2PolicyContext.AuthorizationRule.defaultAllowRule("*")));
+
+        assertThatThrownBy(() -> aclService.validateAcl2Policy(policy))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("ACL 2.0 policyName is required");
+    }
+
+    @Test
+    void validateAcl2PolicyShouldRejectInvalidBoundType() {
+        Acl2PolicyContext policy = new Acl2PolicyContext();
+        policy.setPolicyName("p");
+        policy.setBoundType("NONSENSE");
+        policy.setRules(List.of(Acl2PolicyContext.AuthorizationRule.defaultAllowRule("*")));
+
+        assertThatThrownBy(() -> aclService.validateAcl2Policy(policy))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("boundType must be one of");
+    }
+
+    @Test
+    void validateAcl2PolicyShouldAcceptWildcardBoundType() {
+        Acl2PolicyContext policy = new Acl2PolicyContext();
+        policy.setPolicyName("p");
+        policy.setBoundType("*");
+        policy.setRules(List.of(Acl2PolicyContext.AuthorizationRule.defaultAllowRule("*")));
+
+        aclService.validateAcl2Policy(policy);
+    }
+
+    @Test
+    void validateAcl2PolicyShouldRequireRules() {
+        Acl2PolicyContext policy = new Acl2PolicyContext();
+        policy.setPolicyName("p");
+        policy.setBoundType("Topic");
+
+        assertThatThrownBy(() -> aclService.validateAcl2Policy(policy))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("ACL 2.0 policy rules are required");
+    }
+
+    @Test
+    void validateAcl2PolicyShouldAcceptZeroDotZeroWildcardInWhiteSet() {
+        Acl2PolicyContext policy = new Acl2PolicyContext();
+        policy.setPolicyName("p");
+        policy.setBoundType("Group");
+        policy.setRules(List.of(Acl2PolicyContext.AuthorizationRule.defaultAllowRule("*")));
+        policy.setWhiteSet(List.of("0.0.0.0"));
+
+        aclService.validateAcl2Policy(policy);
+    }
+
+    @Test
+    void validateAcl2PolicyShouldRejectMalformedWhiteSetEntry() {
+        Acl2PolicyContext policy = new Acl2PolicyContext();
+        policy.setPolicyName("p");
+        policy.setBoundType("Group");
+        policy.setRules(List.of(Acl2PolicyContext.AuthorizationRule.defaultAllowRule("*")));
+        policy.setWhiteSet(List.of("192.168.1.0/24", "not-an-ip"));
+
+        assertThatThrownBy(() -> aclService.validateAcl2Policy(policy))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("whiteSet entry is not a valid IP/CIDR range");
     }
 }
