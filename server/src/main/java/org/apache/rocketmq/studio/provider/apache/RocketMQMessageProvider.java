@@ -321,7 +321,9 @@ public class RocketMQMessageProvider implements MessageProvider {
      */
     private long resolveMessageStoreTimestamp(DefaultMQAdminExt adminExt, String msgId) {
         try {
-            MessageExt messageExt = adminExt.viewMessage(msgId);
+            // No topic hint is available in the trace flow, so locate the message purely
+            // by its offset msgId.
+            MessageExt messageExt = viewMessageByOffsetId(adminExt, msgId);
             if (messageExt != null) {
                 return messageExt.getStoreTimestamp();
             }
