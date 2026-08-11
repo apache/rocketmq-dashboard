@@ -45,6 +45,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -224,7 +225,7 @@ class SettingsServiceTest {
     @Test
     void createDataSourceShouldAssignKeyBeforeSaving() {
         DataSourceVO input = DataSourceVO.builder().name("New DS").type("rocketmq")
-                .url("new-host:9876").build();
+                .url("http://10.1.2.3").build();
         when(settingsRepository.saveDataSource(any(DataSourceVO.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -239,7 +240,8 @@ class SettingsServiceTest {
 
     @Test
     void createDataSourceShouldReplaceClientProvidedKey() {
-        DataSourceVO input = DataSourceVO.builder().key("existing-key").name("New DS").build();
+        DataSourceVO input = DataSourceVO.builder().key("existing-key").name("New DS")
+                .url("http://10.1.2.3").build();
         when(settingsRepository.saveDataSource(any(DataSourceVO.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -261,9 +263,35 @@ class SettingsServiceTest {
     }
 
     @Test
+    void createDataSourceShouldRejectLoopbackUrl() {
+        DataSourceVO input = DataSourceVO.builder().name("Loopback DS").type("rocketmq")
+                .url("http://127.0.0.1:9090").build();
+
+        assertThatThrownBy(() -> settingsService.createDataSource(input))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("local, loopback or metadata address")
+                .extracting("code")
+                .isEqualTo(400);
+        verify(settingsRepository, never()).saveDataSource(any());
+    }
+
+    @Test
+    void updateDataSourceShouldRejectMetadataUrl() {
+        DataSourceVO input = DataSourceVO.builder().key("ds-1").name("Metadata DS").type("rocketmq")
+                .url("http://169.254.169.254/latest/meta-data/").build();
+
+        assertThatThrownBy(() -> settingsService.updateDataSource(input))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("local, loopback or metadata address")
+                .extracting("code")
+                .isEqualTo(400);
+        verify(settingsRepository, never()).replaceDataSource(any());
+    }
+
+    @Test
     void updateDataSourceShouldDelegateToRepository() {
         DataSourceVO input = DataSourceVO.builder().key("ds-1").name("Updated DS").type("rocketmq")
-                .url("updated-host:9876").build();
+                .url("http://10.1.2.3").build();
         when(settingsRepository.replaceDataSource(input)).thenReturn(true);
 
         DataSourceVO result = settingsService.updateDataSource(input);
@@ -290,7 +318,7 @@ class SettingsServiceTest {
     void updateDataSourceShouldRejectUnknownKey() {
         SettingsService service = new SettingsService(settingsRepository, RestClient.builder(), new ObjectMapper(), operationAuditService);
         DataSourceVO input = DataSourceVO.builder().key("missing").name("Unexpected DS").type("rocketmq")
-                .url("unexpected-host:9876").build();
+                .url("http://10.1.2.3").build();
 
         assertThatThrownBy(() -> service.updateDataSource(input))
                 .isInstanceOf(BusinessException.class)
@@ -305,7 +333,7 @@ class SettingsServiceTest {
         SettingsService service = new SettingsService(settingsRepository, RestClient.builder(), new ObjectMapper(),
                 operationAuditService);
         DataSourceVO input = DataSourceVO.builder().key(" ").name("Unexpected DS").type("rocketmq")
-                .url("unexpected-host:9876").build();
+                .url("http://10.1.2.3").build();
 
         assertThatThrownBy(() -> service.updateDataSource(input))
                 .isInstanceOf(BusinessException.class)

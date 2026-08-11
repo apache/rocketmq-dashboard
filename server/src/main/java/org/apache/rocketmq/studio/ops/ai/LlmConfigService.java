@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.ops.ai;
 
 import org.springframework.util.StringUtils;
 
+import org.apache.rocketmq.studio.common.util.UrlHostGuard;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.apache.rocketmq.studio.settings.SettingsService;
 import lombok.RequiredArgsConstructor;
@@ -321,8 +322,14 @@ public class LlmConfigService {
         try {
             URI uri = new URI(apiBase);
             String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
-            return ("http".equals(scheme) || "https".equals(scheme)) && !!StringUtils.hasText(uri.getHost())
-                    && !apiBase.endsWith(CHAT_COMPLETIONS_PATH);
+            if (!("http".equals(scheme) || "https".equals(scheme)) || !StringUtils.hasText(uri.getHost())
+                    || apiBase.endsWith(CHAT_COMPLETIONS_PATH)) {
+                return false;
+            }
+            // SSRF guard on both the save and test paths (validate() runs for each). Loopback is
+            // allowed because a local ollama gateway is a supported provider, but link-local and
+            // cloud-metadata addresses (169.254.x.x) are rejected.
+            return UrlHostGuard.isAllowedHost(uri.getHost(), true);
         } catch (URISyntaxException exception) {
             return false;
         }

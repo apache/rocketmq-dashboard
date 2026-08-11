@@ -128,14 +128,14 @@ deploy_remote() {
 
   if [[ "$TARGET" == "all" || "$TARGET" == "server" ]]; then
     info "重启 rocketmq-server..."
+    # Backend port is only exposed inside the podman network; the edge nginx proxies /api/.
     ssh "$REMOTE" "
       podman rm -f rocketmq-server 2>/dev/null || true
       podman run -d \
         --name rocketmq-server \
         --network $NETWORK \
         --restart unless-stopped \
-        -p 8888:8888 \
-        -e STUDIO_AUTH_LOGIN_REQUIRED=\"${STUDIO_AUTH_LOGIN_REQUIRED:-false}\" \
+        -e STUDIO_AUTH_LOGIN_REQUIRED=\"${STUDIO_AUTH_LOGIN_REQUIRED:-true}\" \
         -e STUDIO_AUTH_ADMIN_USERNAME=\"${STUDIO_AUTH_ADMIN_USERNAME:-}\" \
         -e STUDIO_AUTH_ADMIN_PASSWORD=\"${STUDIO_AUTH_ADMIN_PASSWORD:-}\" \
         -e STUDIO_METRICS_PROMETHEUS_BASE_URL=\"${STUDIO_METRICS_PROMETHEUS_BASE_URL:-}\" \

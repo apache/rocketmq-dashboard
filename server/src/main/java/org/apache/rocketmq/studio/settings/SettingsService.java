@@ -21,6 +21,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.UrlHostGuard;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -33,11 +37,9 @@ import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.io.IOException;
-import java.net.InetAddress;
 import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.net.UnknownHostException;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
@@ -155,6 +157,7 @@ public class SettingsService {
         }
         log.info("Creating data source: {}", dataSource.getName());
         dataSource.setKey(UUID.randomUUID().toString());
+        validateDataSourceUrl(dataSource.getUrl());
         DataSourceVO saved = settingsRepository.saveDataSource(dataSource);
         recordDataSourceAudit("CREATE_DATA_SOURCE", saved);
         return saved;
@@ -168,11 +171,20 @@ public class SettingsService {
         String key = normalizeDataSourceKey(dataSource.getKey());
         dataSource.setKey(key);
         log.info("Updating data source: {}", key);
+        validateDataSourceUrl(dataSource.getUrl());
         if (!settingsRepository.replaceDataSource(dataSource)) {
             throw new BusinessException(404, "Data source not found: " + key);
         }
         recordDataSourceAudit("UPDATE_DATA_SOURCE", dataSource);
         return dataSource;
+    }
+
+    private void validateDataSourceUrl(String url) {
+        try {
+            UrlHostGuard.check(url, false);
+        } catch (IllegalArgumentException exception) {
+            throw new BusinessException(400, exception.getMessage());
+        }
     }
 
 
