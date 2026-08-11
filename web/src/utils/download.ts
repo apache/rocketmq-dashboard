@@ -21,8 +21,11 @@ export const downloadBlob = (blob: Blob, filename: string) => {
   anchor.href = url;
   anchor.download = filename;
   anchor.style.display = 'none';
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
+  try {
+    document.body.appendChild(anchor);
+    anchor.click();
+  } finally {
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
 };

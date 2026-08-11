@@ -52,4 +52,26 @@ describe('downloadBlob', () => {
     expect(document.querySelector('a[download="export.csv"]')).not.toBeInTheDocument();
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:download');
   });
+
+  it('removes the anchor and revokes the URL when download activation throws', () => {
+    const createObjectURL = vi.fn(() => 'blob:failed-download');
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, 'createObjectURL', {
+      writable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      writable: true,
+      value: revokeObjectURL,
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {
+      throw new Error('Download blocked');
+    });
+
+    const blob = new Blob(['content'], { type: 'text/csv' });
+
+    expect(() => downloadBlob(blob, 'failed.csv')).toThrow('Download blocked');
+    expect(document.querySelector('a[download="failed.csv"]')).not.toBeInTheDocument();
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:failed-download');
+  });
 });
