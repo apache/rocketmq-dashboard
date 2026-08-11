@@ -16,15 +16,25 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import type { K8sCertInfo } from '../../../api/cluster';
-import { listK8sCerts } from '../../../services/clusterService';
+import {
+  createK8sCert,
+  deleteK8sCert,
+  listK8sCerts,
+  renewK8sCert,
+  updateK8sCert,
+} from '../../../services/clusterService';
 import K8sCertsPage from '../certs';
 
 vi.mock('../../../services/clusterService', () => ({
+  createK8sCert: vi.fn(),
+  deleteK8sCert: vi.fn(),
   listK8sCerts: vi.fn(),
+  renewK8sCert: vi.fn(),
+  updateK8sCert: vi.fn(),
 }));
 
 const certs: K8sCertInfo[] = [
@@ -77,6 +87,10 @@ describe('K8sCertsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(listK8sCerts).mockResolvedValue(certs);
+    vi.mocked(createK8sCert).mockResolvedValue(certs[0]);
+    vi.mocked(updateK8sCert).mockResolvedValue(certs[0]);
+    vi.mocked(renewK8sCert).mockResolvedValue(certs[0]);
+    vi.mocked(deleteK8sCert).mockResolvedValue();
   });
 
   const renderPage = () =>
@@ -101,7 +115,7 @@ describe('K8sCertsPage', () => {
     renderPage();
 
     expect(await screen.findByTestId('k8s-cert-local-metadata-notice')).toHaveTextContent(
-      '当前证书记录仅保存为 Studio 本地元数据',
+      '证书记录保存为 Studio 本地元数据',
     );
   });
 
@@ -142,15 +156,20 @@ describe('K8sCertsPage', () => {
     expect(screen.queryByText('rocketmq-prod-tls')).not.toBeInTheDocument();
   });
 
-  it('does not expose local metadata mutations as Kubernetes certificate operations', async () => {
+  it('exposes local metadata create, edit, renew and delete operations', async () => {
+    const user = userEvent.setup();
     renderPage();
 
     await screen.findByText('rocketmq-prod-tls');
 
-    expect(screen.queryByRole('button', { name: '添加证书' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '编辑' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '续期' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '删除' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /添加证书/ })).toBeInTheDocument();
+    const renewButtons = screen.getAllByRole('button', { name: /续期/ });
+    await user.click(renewButtons[0]);
+    await waitFor(() => expect(renewK8sCert).toHaveBeenCalledWith('cert-prod'));
+
+    await user.click(screen.getAllByRole('button', { name: /编辑/ })[0]);
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByLabelText('证书名称')).toHaveValue('rocketmq-prod-tls');
   });
 
   it('trims certificate search text before filtering', async () => {
