@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Table,
   Tag,
@@ -58,6 +58,7 @@ const K8sCertsPage = () => {
   const [certs, setCerts] = useState<K8sCertInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const saveInFlightRef = useRef(false);
   const [renewingIds, setRenewingIds] = useState<Set<string>>(() => new Set());
   const [certSearch, setCertSearch] = useState('');
   const [certTypeFilter, setCertTypeFilter] = useState<string>('');
@@ -97,23 +98,25 @@ const K8sCertsPage = () => {
   };
 
   const saveCert = async () => {
-    const values = await editForm.validateFields();
-    const data = {
-      name: values.name,
-      namespace: values.namespace,
-      cluster: values.cluster,
-      type: values.type,
-      issuer: values.issuer,
-      san: values.san
-        ? String(values.san)
-            .split(',')
-            .map((value) => value.trim())
-            .filter(Boolean)
-        : [],
-    };
-
-    setSubmitting(true);
+    if (saveInFlightRef.current) return;
+    saveInFlightRef.current = true;
     try {
+      const values = await editForm.validateFields();
+      const data = {
+        name: values.name,
+        namespace: values.namespace,
+        cluster: values.cluster,
+        type: values.type,
+        issuer: values.issuer,
+        san: values.san
+          ? String(values.san)
+              .split(',')
+              .map((value) => value.trim())
+              .filter(Boolean)
+          : [],
+      };
+
+      setSubmitting(true);
       if (editingCert) {
         const updated = await updateK8sCert({ id: editingCert.id, ...data });
         setCerts((prev) => prev.map((cert) => (cert.id === updated.id ? updated : cert)));
@@ -127,6 +130,7 @@ const K8sCertsPage = () => {
     } catch (error) {
       message.error(getErrorMessage(error));
     } finally {
+      saveInFlightRef.current = false;
       setSubmitting(false);
     }
   };

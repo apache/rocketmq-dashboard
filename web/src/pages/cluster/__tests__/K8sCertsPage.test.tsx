@@ -16,11 +16,11 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App, Modal } from 'antd';
 import type { K8sCertInfo } from '../../../api/cluster';
-import { listK8sCerts, renewK8sCert } from '../../../services/clusterService';
+import { createK8sCert, listK8sCerts, renewK8sCert } from '../../../services/clusterService';
 import K8sCertsPage from '../certs';
 
 vi.mock('../../../services/clusterService', () => ({
@@ -89,6 +89,26 @@ describe('K8sCertsPage', () => {
         <K8sCertsPage />
       </App>,
     );
+
+  it('ignores duplicate certificate saves while the first request is pending', async () => {
+    vi.mocked(createK8sCert).mockImplementation(() => new Promise(() => {}));
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('rocketmq-prod-tls');
+    await user.click(screen.getByRole('button', { name: /添加证书/ }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByLabelText('证书名称'), 'new-cert');
+    await user.type(within(dialog).getByLabelText('K8s 集群名称'), 'prod');
+    await user.type(within(dialog).getByLabelText('签发者'), 'test-ca');
+    const save = within(dialog).getByRole('button', { name: /保\s*存/ });
+
+    fireEvent.click(save);
+    fireEvent.click(save);
+
+    await waitFor(() => expect(createK8sCert).toHaveBeenCalledTimes(1));
+    expect(dialog).toBeInTheDocument();
+  });
 
   it('displays certificate namespace and SAN metadata', async () => {
     renderPage();
