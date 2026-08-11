@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.auth;
 
 import org.apache.rocketmq.studio.instance.acl.AclController;
+import org.apache.rocketmq.studio.instance.acl.ApacheAclReadService;
 import org.apache.rocketmq.studio.instance.acl.AclService;
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialController;
 import org.apache.rocketmq.studio.provider.credential.CloudCredentialService;
@@ -49,6 +50,9 @@ class AuthCredentialAuthorizationIntegrationTest {
 
     @MockBean
     private AclService aclService;
+
+    @MockBean
+    private ApacheAclReadService apacheAclReadService;
 
     @MockBean
     private CloudCredentialService cloudCredentialService;
