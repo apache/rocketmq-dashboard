@@ -22,6 +22,7 @@ import {
   createTopic,
   deleteTopic,
   getConsumerStack,
+  getTopicConsumerPage,
   getTopicConsumers,
   getTopicRoutes,
   listTopics,
@@ -59,9 +60,23 @@ describe('topic metadata API', () => {
     mock
       .onGet('/topics/%25DLQ%25cg-order/consumers', { params: { instanceId: 'instance-a' } })
       .reply(200, { code: 200, data: [] });
+    mock
+      .onGet('/topics/%25DLQ%25cg-order/consumers/page', {
+        params: { instanceId: 'instance-a', page: 2, pageSize: 20 },
+      })
+      .reply(200, {
+        code: 200,
+        data: { items: [], total: 21, page: 2, pageSize: 20 },
+      });
 
     await expect(getTopicRoutes(topicName, 'instance-a')).resolves.toEqual([]);
     await expect(getTopicConsumers(topicName, 'instance-a')).resolves.toEqual([]);
+    await expect(getTopicConsumerPage(topicName, 'instance-a', 2, 20)).resolves.toEqual({
+      items: [],
+      total: 21,
+      page: 2,
+      pageSize: 20,
+    });
   });
 
   it('encodes consumer stack route parameters and passes instanceId', async () => {

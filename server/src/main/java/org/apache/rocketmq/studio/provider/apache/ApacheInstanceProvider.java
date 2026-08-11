@@ -25,6 +25,7 @@ import org.apache.rocketmq.studio.instance.message.MessageProvider;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
+import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.springframework.stereotype.Component;
@@ -86,6 +87,11 @@ public class ApacheInstanceProvider implements InstanceProvider {
     @Override
     public List<TopicConsumerVO> getTopicConsumers(String instanceId, String topicName) {
         return metadataProvider.getTopicConsumers(instanceId, topicName);
+    }
+
+    @Override
+    public TopicConsumerPageVO getTopicConsumersPage(String instanceId, String topicName, int page, int pageSize) {
+        return metadataProvider.getTopicConsumersPage(instanceId, topicName, page, pageSize);
     }
 
     @Override

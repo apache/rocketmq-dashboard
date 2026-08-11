@@ -103,6 +103,17 @@ public class MetadataService {
         return resolve(instanceId).getTopicConsumers(instanceId, topicName);
     }
 
+    public TopicConsumerPageVO getTopicConsumersPage(String instanceId, String name, int page, int pageSize) {
+        String topicName = requireName(name, "topic name");
+        if (page < 1) {
+            throw new BusinessException(400, "page must be greater than zero");
+        }
+        if (pageSize < 1 || pageSize > 100) {
+            throw new BusinessException(400, "pageSize must be between 1 and 100");
+        }
+        return resolve(instanceId).getTopicConsumersPage(instanceId, topicName, page, pageSize);
+    }
+
 
     public SendMessageVO sendMessage(SendMessageDTO request) {
         requireSendMessageRequest(request);

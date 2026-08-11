@@ -41,6 +41,7 @@ import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.topic.BrokerRouteVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
+import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.persistence.entity.RmqGroup;
 import org.apache.rocketmq.studio.persistence.entity.RmqTopic;
@@ -265,16 +266,22 @@ public class RocketMQMetadataProvider implements MetadataProvider {
 
     @Override
     public List<TopicConsumerVO> getTopicConsumers(String instanceId, String name) {
-        if (StringUtils.hasText(instanceId)) {
-            return runtimeAdminClientResolver.execute(instanceId, admin -> getTopicConsumers(admin, name));
-        }
-        if (!hasAdmin()) {
-            return Collections.emptyList();
-        }
-        return adminExecute(admin -> getTopicConsumers(admin, name));
+        return getTopicConsumersPage(instanceId, name, 1, Integer.MAX_VALUE).getItems();
     }
 
-    private List<TopicConsumerVO> getTopicConsumers(MQAdminExt admin, String name) {
+    @Override
+    public TopicConsumerPageVO getTopicConsumersPage(String instanceId, String name, int page, int pageSize) {
+        if (StringUtils.hasText(instanceId)) {
+            return runtimeAdminClientResolver.execute(instanceId,
+                    admin -> getTopicConsumersPage(admin, name, page, pageSize));
+        }
+        if (!hasAdmin()) {
+            return TopicConsumerPageVO.builder().items(List.of()).total(0).page(page).pageSize(pageSize).build();
+        }
+        return adminExecute(admin -> getTopicConsumersPage(admin, name, page, pageSize));
+    }
+
+    private TopicConsumerPageVO getTopicConsumersPage(MQAdminExt admin, String name, int page, int pageSize) {
         try {
             // Ask the broker who consumes this topic instead of scanning every subscription
             // group, which floods the result with system groups.
@@ -288,8 +295,13 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                 }
             }
 
+            List<String> sortedGroups = new ArrayList<>(subscribingGroups);
+            sortedGroups.sort(String::compareToIgnoreCase);
+            int total = sortedGroups.size();
+            int from = Math.min((page - 1) * pageSize, total);
+            int to = Math.min(from + pageSize, total);
             List<TopicConsumerVO> consumers = new ArrayList<>();
-            for (String group : subscribingGroups) {
+            for (String group : sortedGroups.subList(from, to)) {
                 try {
                     ConsumeStats stats = admin.examineConsumeStats(group, name);
                     long diffTotal = 0;
@@ -332,8 +344,12 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                             .build());
                 }
             }
-            consumers.sort((a, b) -> a.getGroup().compareToIgnoreCase(b.getGroup()));
-            return consumers;
+            return TopicConsumerPageVO.builder()
+                    .items(consumers)
+                    .total(total)
+                    .page(page)
+                    .pageSize(pageSize)
+                    .build();
         } catch (Exception e) {
             log.warn("Failed to get consumers for topic {}: {}", name, e.getMessage());
             throw new BusinessException(502, "Failed to get consumers for topic " + name + ": " + e.getMessage());

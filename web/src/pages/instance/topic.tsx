@@ -55,12 +55,12 @@ import {
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import { TOPIC_TYPE_MAP, CLUSTER_TYPE_MAP } from '../../constants/theme';
-import type { Topic, BrokerRoute, ConsumerGroupInfo } from '../../api/metadata';
+import type { Topic, BrokerRoute, ConsumerGroupInfo, TopicConsumerPage } from '../../api/metadata';
 import {
   batchDeleteTopics,
   createTopic,
   deleteTopic,
-  getTopicConsumers,
+  getTopicConsumerPage,
   getTopicRoutes,
   listTopics,
   sendTopicMessage,
@@ -279,7 +279,7 @@ const TopicPage = () => {
   const [topics, setTopics] = useState<Topic[]>([]);
   const [loading, setLoading] = useState(true);
   const [routesByTopic, setRoutesByTopic] = useState<Record<string, BrokerRoute[]>>({});
-  const [consumersByTopic, setConsumersByTopic] = useState<Record<string, ConsumerGroupInfo[]>>({});
+  const [consumersByTopic, setConsumersByTopic] = useState<Record<string, TopicConsumerPage>>({});
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [searchText, setSearchText] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
@@ -361,18 +361,27 @@ const TopicPage = () => {
     setTablePage(1);
   };
 
+  const loadTopicConsumers = async (topic: Topic, page = 1, pageSize = 20) => {
+    const consumers = await getTopicConsumerPage(
+      topic.name,
+      selectedInstanceId || undefined,
+      page,
+      pageSize,
+    );
+    setConsumersByTopic((previous) => ({ ...previous, [topic.name]: consumers }));
+  };
+
   // ─── Open detail modal ────────────────────────────────────────
   const openDetail = async (topic: Topic) => {
     setSelectedTopic(topic);
     setDetailModalOpen(true);
     setDetailLoading(true);
     try {
-      const consumers = await getTopicConsumers(topic.name, selectedInstanceId || undefined);
+      await loadTopicConsumers(topic);
       if (!isCloudInstance) {
         const routes = await getTopicRoutes(topic.name, selectedInstanceId || undefined);
         setRoutesByTopic((previous) => ({ ...previous, [topic.name]: routes }));
       }
-      setConsumersByTopic((previous) => ({ ...previous, [topic.name]: consumers }));
     } catch {
       message.error('Topic 详情加载失败，请稍后重试');
     } finally {
@@ -404,7 +413,8 @@ const TopicPage = () => {
 
   // ─── Route / consumer helpers ─────────────────────────────────
   const getRoutes = (name: string): BrokerRoute[] => routesByTopic[name] ?? [];
-  const getConsumers = (name: string): ConsumerGroupInfo[] => consumersByTopic[name] ?? [];
+  const getConsumerPage = (name: string): TopicConsumerPage =>
+    consumersByTopic[name] ?? { items: [], total: 0, page: 1, pageSize: 20 };
 
   const handleAction = (key: string, topic: Topic) => {
     if (key === 'detail') {
@@ -1099,9 +1109,18 @@ const TopicPage = () => {
             </Text>
             <Table<ConsumerGroupInfo>
               columns={consumerColumns}
-              dataSource={getConsumers(selectedTopic.name)}
+              dataSource={getConsumerPage(selectedTopic.name).items}
               rowKey="group"
-              pagination={false}
+              pagination={{
+                current: getConsumerPage(selectedTopic.name).page,
+                pageSize: getConsumerPage(selectedTopic.name).pageSize,
+                total: getConsumerPage(selectedTopic.name).total,
+                showSizeChanger: true,
+                pageSizeOptions: [10, 20, 50, 100],
+                onChange: (page, pageSize) => {
+                  void loadTopicConsumers(selectedTopic, page, pageSize);
+                },
+              }}
               size="small"
             />
           </>
