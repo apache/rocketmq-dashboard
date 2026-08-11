@@ -140,7 +140,8 @@ export async function toggleAlertRule(id: string, enabled: boolean): Promise<Ale
 export async function deleteAlertRule(id: string): Promise<void> {
   if (isMockMode()) {
     const idx = alertRulesState.findIndex((rule) => rule.id === id);
-    if (idx >= 0) alertRulesState.splice(idx, 1);
+    if (idx < 0) throw new Error(`Alert rule not found: ${id}`);
+    alertRulesState.splice(idx, 1);
     return;
   }
   return opsApi.deleteAlertRule(id);

@@ -20,6 +20,7 @@ import type { AuditRecord } from '../api/ops';
 import { mockAuditRecords } from '../mock/audit';
 import {
   createAlertRule,
+  deleteAlertRule,
   exportAuditLogs,
   getAuditFilterOptions,
   listAlertRules,
@@ -98,6 +99,15 @@ describe('ops service mock data', () => {
     const after = await listAlertRules();
     expect(after.map((rule) => rule.id)).toEqual(before.map((rule) => rule.id));
     expect(after.find((rule) => rule.id === 'missing-alert-rule')).toBeUndefined();
+  });
+
+  it('rejects deletion of an unknown alert rule without changing mock state', async () => {
+    const before = await listAlertRules();
+
+    await expect(deleteAlertRule('missing-alert-rule')).rejects.toThrow(
+      'Alert rule not found: missing-alert-rule',
+    );
+    await expect(listAlertRules()).resolves.toEqual(before);
   });
 
   it('returns copied system alert rows', async () => {
