@@ -515,15 +515,12 @@ class ToolGatewayServiceTest {
     @Test
     void failsStartupWhenToolSchemaContainsAnUnresolvedReference() throws IOException {
         String yaml = canonicalCatalogText().replace(
-                """
-                            inputSchema:
-                              type: object
-                              additionalProperties: false
-                        """,
-                """
-                            inputSchema:
-                              $ref: '#/missing'
-                        """);
+                "    inputSchema:\n"
+                        + "      type: object\n"
+                        + "      additionalProperties: false\n",
+                "    inputSchema:\n"
+                        + "      $ref: '#/missing'\n");
+        assertThat(yaml).contains("$ref: '#/missing'");
         ToolCatalog invalidCatalog = ToolCatalog.load(
                 new ByteArrayResource(yaml.getBytes(StandardCharsets.UTF_8)),
                 new ClassPathResource("tool-catalog/rmq-tools.schema.json"));
@@ -545,14 +542,11 @@ class ToolGatewayServiceTest {
     @Test
     void failsStartupWhenToolSchemaViolatesTheJsonSchemaMetaSchema() throws IOException {
         String yaml = canonicalCatalogText().replace(
-                """
-                            inputSchema:
-                              type: object
-                        """,
-                """
-                            inputSchema:
-                              type: unsupported
-                        """);
+                "    inputSchema:\n"
+                        + "      type: object\n",
+                "    inputSchema:\n"
+                        + "      type: unsupported\n");
+        assertThat(yaml).contains("type: unsupported");
         ToolCatalog invalidCatalog = ToolCatalog.load(
                 new ByteArrayResource(yaml.getBytes(StandardCharsets.UTF_8)),
                 new ClassPathResource("tool-catalog/rmq-tools.schema.json"));
@@ -615,7 +609,8 @@ class ToolGatewayServiceTest {
 
     private static String canonicalCatalogText() throws IOException {
         return new ClassPathResource("tool-catalog/rmq-tools.yaml")
-                .getContentAsString(StandardCharsets.UTF_8);
+                .getContentAsString(StandardCharsets.UTF_8)
+                .replace("\r\n", "\n");
     }
 
     private static ClusterVO cluster(ClusterType type) {
