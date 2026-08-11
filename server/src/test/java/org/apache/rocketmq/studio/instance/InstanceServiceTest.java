@@ -35,6 +35,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -817,6 +818,30 @@ class InstanceServiceTest {
         assertThat(created.getName()).isEqualTo("prod-mq");
         assertThat(created.getEndpoint()).isEqualTo("vpc:8080");
         assertThat(created.getType()).isEqualTo(InstanceType.PROXY);
+    }
+
+    @Test
+    void createInstanceShouldSkipNullCloudEndpointEntries() {
+        InstanceVO instance = InstanceVO.builder()
+                .vendor(InstanceVendor.ALIYUN)
+                .credentialId("cred-1")
+                .cloudInstanceId("rmq-cn-xxx")
+                .regionId("cn-hangzhou")
+                .build();
+        CloudCredentialVO credential = new CloudCredentialVO();
+        credential.setVendor(InstanceVendor.ALIYUN);
+        when(cloudCredentialRepository.findById("cred-1")).thenReturn(Optional.of(credential));
+        CloudCatalogProvider catalog = org.mockito.Mockito.mock(CloudCatalogProvider.class);
+        CloudInstanceDetailVO detail = new CloudInstanceDetailVO();
+        detail.setInstanceId("rmq-cn-xxx");
+        detail.setInstanceName("prod-mq");
+        detail.setEndpoints(Arrays.asList(null,
+                new CloudInstanceDetailVO.CloudEndpoint("TCP_VPC", "vpc:8080")));
+        when(providerRegistry.catalogFor(InstanceVendor.ALIYUN)).thenReturn(catalog);
+        when(catalog.getCloudInstance("cred-1", "cn-hangzhou", "rmq-cn-xxx")).thenReturn(detail);
+        when(instanceRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertThat(instanceService.createInstance(instance).getEndpoint()).isEqualTo("vpc:8080");
     }
 
     @Test

@@ -151,6 +151,7 @@ public class InstanceService {
             throw new BusinessException(502, "Cloud instance has no endpoint: " + detail.getInstanceId());
         }
         return detail.getEndpoints().stream()
+                .filter(Objects::nonNull)
                 .filter(endpoint -> endpoint.getEndpointUrl() != null && !endpoint.getEndpointUrl().isBlank())
                 .sorted((a, b) -> Integer.compare(endpointPriority(a.getEndpointType()), endpointPriority(b.getEndpointType())))
                 .map(CloudInstanceDetailVO.CloudEndpoint::getEndpointUrl)
