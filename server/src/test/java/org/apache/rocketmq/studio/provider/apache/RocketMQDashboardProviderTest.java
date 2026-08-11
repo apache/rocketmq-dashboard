@@ -20,10 +20,13 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
+import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.KVTable;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
+import org.apache.rocketmq.remoting.protocol.body.TopicConfigSerializeWrapper;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
@@ -42,6 +45,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -53,6 +57,7 @@ class RocketMQDashboardProviderTest {
         DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
         when(adminExt.fetchAllTopicList()).thenReturn(topicList());
+        when(adminExt.getAllTopicConfig("10.0.0.11:10911", 5000)).thenReturn(topicConfig("order-topic"));
         when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
 
         RocketMQDashboardProvider provider = newProvider(adminExt);
@@ -64,6 +69,41 @@ class RocketMQDashboardProviderTest {
         assertThat(dashboard.getClusters().get(0).getType()).isEqualTo(ClusterType.V5_PROXY_CLUSTER);
         assertThat(dashboard.getStats().getHealthyClusters()).isEqualTo(1);
         verify(adminExt, times(1)).fetchBrokerRuntimeStats("10.0.0.11:10911");
+    }
+
+    @Test
+    void dashboardShouldCountTopicsFromBrokerConfigWithoutPerTopicRouteRequests() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        when(adminExt.getAllTopicConfig("10.0.0.11:10911", 5000))
+                .thenReturn(topicConfig("order-topic", "payments", "SCHEDULE_TOPIC_XXXX"));
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getStats().getTotalTopics()).isEqualTo(2);
+        assertThat(dashboard.getClusters()).singleElement().satisfies(cluster -> {
+            assertThat(cluster.getTopics()).isEqualTo(2);
+            assertThat(cluster.getStatus()).isEqualTo(ClusterStatus.healthy);
+        });
+        verify(adminExt).getAllTopicConfig("10.0.0.11:10911", 5000);
+        verify(adminExt, never()).examineTopicRouteInfo(anyString());
+    }
+
+    @Test
+    void dashboardShouldMarkClusterWarningWhenTopicCountsAreUnavailable() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        when(adminExt.getAllTopicConfig("10.0.0.11:10911", 5000))
+                .thenThrow(new RuntimeException("broker unavailable"));
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getClusters()).singleElement()
+                .extracting(cluster -> cluster.getStatus())
+                .isEqualTo(ClusterStatus.warning);
+        assertThat(dashboard.getStats().getHealthyClusters()).isZero();
     }
 
     @Test
@@ -262,6 +302,16 @@ class RocketMQDashboardProviderTest {
         TopicList topicList = new TopicList();
         topicList.setTopicList(Set.of("order-topic"));
         return topicList;
+    }
+
+    private TopicConfigSerializeWrapper topicConfig(String... names) {
+        TopicConfigSerializeWrapper wrapper = new TopicConfigSerializeWrapper();
+        ConcurrentHashMap<String, TopicConfig> configs = new ConcurrentHashMap<>();
+        for (String name : names) {
+            configs.put(name, new TopicConfig(name));
+        }
+        wrapper.setTopicConfigTable(configs);
+        return wrapper;
     }
 
     private KVTable runtimeStats() {
