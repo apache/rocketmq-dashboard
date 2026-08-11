@@ -21,6 +21,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -210,6 +212,36 @@ class AuthInterceptorTest {
         TestSession session = login(false);
         MockHttpServletRequest request = authenticatedRequest(
                 "GET", "/api/clusters", session.token());
+
+        boolean allowed = session.interceptor().preHandle(
+                request, new MockHttpServletResponse(), new Object());
+
+        assertThat(allowed).isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "/api/cloud/aliyun/regions",
+        "/api/cloud/aliyun/instances",
+        "/api/cloud/tencent/regions",
+        "/api/cloud/tencent/instances"
+    })
+    void shouldRejectCloudCatalogReadsForNonAdminUser(String path) throws Exception {
+        TestSession session = login(false);
+        MockHttpServletRequest request = authenticatedRequest("GET", path, session.token());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        boolean allowed = session.interceptor().preHandle(request, response, new Object());
+
+        assertThat(allowed).isFalse();
+        assertThat(response.getStatus()).isEqualTo(403);
+    }
+
+    @Test
+    void shouldAllowCloudCatalogReadsForAdminUser() throws Exception {
+        TestSession session = login(true);
+        MockHttpServletRequest request = authenticatedRequest(
+                "GET", "/api/cloud/aliyun/instances", session.token());
 
         boolean allowed = session.interceptor().preHandle(
                 request, new MockHttpServletResponse(), new Object());

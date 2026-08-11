@@ -100,8 +100,14 @@ public class AuthInterceptor implements HandlerInterceptor {
     private boolean isAdminOnlyGetPath(String path) {
         String normalizedPath = normalizePath(stripPathParameters(path));
         return "/api/llm/models".equals(normalizedPath)
+                || isCloudCatalogPath(normalizedPath)
                 || isCredentialRevealPath(normalizedPath, "/api/acl/users/")
                 || isCredentialRevealPath(normalizedPath, "/api/cloud-credentials/");
+    }
+
+    private boolean isCloudCatalogPath(String path) {
+        return path.startsWith("/api/cloud/aliyun/")
+                || path.startsWith("/api/cloud/tencent/");
     }
 
     private boolean isCredentialRevealPath(String path, String prefix) {
