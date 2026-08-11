@@ -72,8 +72,14 @@ public class NameServerConfigDiffService {
     private final MqAdminExtFactory adminFactory;
 
     public NameServerConfigDiffVO compare(String clusterId) {
+        return compare(clusterId, null);
+    }
+
+    public NameServerConfigDiffVO compare(String clusterId, String instanceId) {
         String normalizedClusterId = requireClusterId(clusterId);
-        ClusterVO cluster = clusterService.getCluster(normalizedClusterId);
+        ClusterVO cluster = instanceId == null || instanceId.isBlank()
+                ? clusterService.getCluster(normalizedClusterId)
+                : clusterService.getCluster(normalizedClusterId, instanceId);
         List<String> addresses = collectNameServerAddresses(cluster);
         if (addresses.isEmpty()) {
             throw new BusinessException(409,

@@ -27,6 +27,8 @@ import {
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import { getNameServerConfigDiff, listClusters } from '../../services/clusterService';
+import { listInstances } from '../../services/instanceService';
+import type { Instance } from '../../api/instance';
 
 const { Text, Title } = Typography;
 
@@ -34,6 +36,8 @@ const NameServerConfigDriftPage = () => {
   const { t } = useLang();
   const { message } = App.useApp();
   const requestSequence = useRef(0);
+  const [instances, setInstances] = useState<Instance[]>([]);
+  const [selectedInstanceId, setSelectedInstanceId] = useState<string>();
   const [clusters, setClusters] = useState<ClusterInfo[]>([]);
   const [selectedClusterId, setSelectedClusterId] = useState<string>();
   const [clustersLoading, setClustersLoading] = useState(true);
@@ -41,11 +45,11 @@ const NameServerConfigDriftPage = () => {
   const [result, setResult] = useState<NameServerConfigDiffResult>();
 
   const runCheck = useCallback(
-    async (clusterId: string) => {
+    async (clusterId: string, instanceId?: string) => {
       const sequence = ++requestSequence.current;
       setChecking(true);
       try {
-        const nextResult = await getNameServerConfigDiff(clusterId);
+        const nextResult = await getNameServerConfigDiff(clusterId, instanceId);
         if (sequence === requestSequence.current) setResult(nextResult);
       } catch {
         if (sequence === requestSequence.current) {
@@ -61,13 +65,19 @@ const NameServerConfigDriftPage = () => {
 
   useEffect(() => {
     let cancelled = false;
-    void listClusters()
-      .then((items) => {
+    void listInstances()
+      .then(async (nextInstances) => {
+        if (cancelled) return;
+        const apacheInstances = nextInstances.filter((instance) => instance.vendor === 'APACHE');
+        setInstances(apacheInstances);
+        const instanceId = apacheInstances[0]?.id;
+        setSelectedInstanceId(instanceId);
+        const items = await listClusters(instanceId);
         if (cancelled) return;
         setClusters(items);
         const firstClusterId = items[0]?.id;
         setSelectedClusterId(firstClusterId);
-        if (firstClusterId) void runCheck(firstClusterId);
+        if (firstClusterId) void runCheck(firstClusterId, instanceId);
       })
       .catch(() => {
         if (!cancelled) message.error(t('nameServerDrift.loadClustersFailed'));
@@ -84,7 +94,24 @@ const NameServerConfigDriftPage = () => {
   const selectCluster = (clusterId: string) => {
     setSelectedClusterId(clusterId);
     setResult(undefined);
-    void runCheck(clusterId);
+    void runCheck(clusterId, selectedInstanceId);
+  };
+
+  const selectInstance = (instanceId: string) => {
+    setSelectedInstanceId(instanceId);
+    setClusters([]);
+    setSelectedClusterId(undefined);
+    setResult(undefined);
+    setClustersLoading(true);
+    void listClusters(instanceId)
+      .then((items) => {
+        setClusters(items);
+        const firstClusterId = items[0]?.id;
+        setSelectedClusterId(firstClusterId);
+        if (firstClusterId) void runCheck(firstClusterId, instanceId);
+      })
+      .catch(() => message.error(t('nameServerDrift.loadClustersFailed')))
+      .finally(() => setClustersLoading(false));
   };
 
   const columns = useMemo<TableColumnsType<NameServerConfigDifference>>(() => {
@@ -159,6 +186,15 @@ const NameServerConfigDriftPage = () => {
 
       <Flex wrap gap={8} align="center" style={{ marginBottom: 20 }}>
         <Select
+          aria-label="实例"
+          loading={clustersLoading}
+          value={selectedInstanceId}
+          onChange={selectInstance}
+          placeholder="选择实例"
+          options={instances.map((instance) => ({ label: instance.name, value: instance.id }))}
+          style={{ width: 'min(100%, 280px)' }}
+        />
+        <Select
           aria-label={t('nameServerDrift.cluster')}
           loading={clustersLoading}
           value={selectedClusterId}
@@ -176,7 +212,7 @@ const NameServerConfigDriftPage = () => {
             icon={<ArrowsClockwise size={16} />}
             loading={checking}
             disabled={!selectedClusterId}
-            onClick={() => selectedClusterId && void runCheck(selectedClusterId)}
+            onClick={() => selectedClusterId && void runCheck(selectedClusterId, selectedInstanceId)}
           />
         </Tooltip>
         <Tooltip title={t('nameServerDrift.export')}>

@@ -70,8 +70,9 @@ export async function getCluster(id: string, instanceId?: string): Promise<Clust
 
 export async function getNameServerConfigDiff(
   clusterId: string,
+  instanceId?: string,
 ): Promise<NameServerConfigDiffResult> {
-  if (!isMockMode()) return clusterApi.getNameServerConfigDiff(clusterId);
+  if (!isMockMode()) return clusterApi.getNameServerConfigDiff(clusterId, instanceId);
 
   const cluster = getMockCluster(clusterId);
   const nodes = cluster.nameServers.map((nameServer) => ({

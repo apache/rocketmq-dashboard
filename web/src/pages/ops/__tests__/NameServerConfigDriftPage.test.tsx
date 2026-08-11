@@ -23,12 +23,14 @@ import { App } from 'antd';
 import { type ClusterInfo, type NameServerConfigDiffResult } from '../../../api/cluster';
 import { LangProvider } from '../../../i18n/LangContext';
 import { getNameServerConfigDiff, listClusters } from '../../../services/clusterService';
+import { listInstances } from '../../../services/instanceService';
 import NameServerConfigDriftPage from '../nameServerConfigDrift';
 
 vi.mock('../../../services/clusterService', () => ({
   getNameServerConfigDiff: vi.fn(),
   listClusters: vi.fn(),
 }));
+vi.mock('../../../services/instanceService', () => ({ listInstances: vi.fn() }));
 
 const createObjectURL = vi.fn(() => 'blob:nameserver-config-drift');
 const revokeObjectURL = vi.fn();
@@ -91,6 +93,20 @@ describe('NameServerConfigDriftPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(listClusters).mockResolvedValue([cluster]);
+    vi.mocked(listInstances).mockResolvedValue([
+      {
+        id: 'instance-1',
+        name: 'Instance 1',
+        remark: null,
+        type: 'DIRECT',
+        endpoint: '127.0.0.1:9876',
+        vendor: 'APACHE',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      },
+    ]);
     vi.mocked(getNameServerConfigDiff).mockResolvedValue(driftResult);
   });
 
@@ -98,7 +114,8 @@ describe('NameServerConfigDriftPage', () => {
     renderWithProviders(<NameServerConfigDriftPage />);
 
     await waitFor(() => {
-      expect(getNameServerConfigDiff).toHaveBeenCalledWith('cluster-a');
+      expect(listClusters).toHaveBeenCalledWith('instance-1');
+      expect(getNameServerConfigDiff).toHaveBeenCalledWith('cluster-a', 'instance-1');
     });
     expect(await screen.findByText('检测到配置漂移')).toBeInTheDocument();
     expect(screen.getByText('listenPort')).toBeInTheDocument();
