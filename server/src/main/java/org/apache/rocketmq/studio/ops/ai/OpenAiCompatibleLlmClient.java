@@ -25,6 +25,7 @@ import org.springframework.util.StringUtils;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -39,6 +40,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 
 @Component
@@ -129,7 +134,7 @@ public class OpenAiCompatibleLlmClient {
                 throw upstreamException(response.statusCode(),
                         new String(response.body().readAllBytes(), StandardCharsets.UTF_8));
             }
-            parseStream(response, tokenConsumer);
+            parseStreamWithTimeout(response, tokenConsumer);
         } catch (HttpTimeoutException exception) {
             throw new LlmGatewayException(504, "llm.provider.timeout",
                     "LLM provider stream timed out",
@@ -145,7 +150,46 @@ public class OpenAiCompatibleLlmClient {
         }
     }
 
-    private void parseStream(HttpResponse<java.io.InputStream> response, Consumer<String> tokenConsumer)
+    private void parseStreamWithTimeout(HttpResponse<InputStream> response, Consumer<String> tokenConsumer)
+            throws IOException, InterruptedException {
+        FutureTask<Void> readerTask = new FutureTask<>(() -> {
+            parseStream(response, tokenConsumer);
+            return null;
+        });
+        Thread.ofVirtual().name("openai-sse-reader").start(readerTask);
+        try {
+            readerTask.get(requestTimeout.toNanos(), TimeUnit.NANOSECONDS);
+        } catch (TimeoutException exception) {
+            throw new HttpTimeoutException("LLM provider stream timed out");
+        } catch (ExecutionException exception) {
+            Throwable cause = exception.getCause();
+            if (cause instanceof IOException ioException) {
+                throw ioException;
+            }
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            if (cause instanceof Error error) {
+                throw error;
+            }
+            throw new IOException("Failed to consume LLM provider stream", cause);
+        } finally {
+            if (!readerTask.isDone()) {
+                closeQuietly(response.body());
+                readerTask.cancel(true);
+            }
+        }
+    }
+
+    private void closeQuietly(InputStream stream) {
+        try {
+            stream.close();
+        } catch (IOException ignored) {
+            // Preserve the timeout or interruption that caused stream cancellation.
+        }
+    }
+
+    private void parseStream(HttpResponse<InputStream> response, Consumer<String> tokenConsumer)
             throws IOException {
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
