@@ -155,12 +155,13 @@ public class RocketMQDashboardProvider implements DashboardProvider {
             Set<String> topicCountsUnavailableClusters = new HashSet<>();
             Set<String> allGroups = new HashSet<>();
             Map<String, Set<String>> groupsByCluster = new HashMap<>();
+            Set<String> groupCountsUnavailableClusters = new HashSet<>();
             for (String brokerAddr : masterAddrs) {
                 String clusterName = brokerAddrToCluster.get(brokerAddr);
                 try {
                     TopicConfigSerializeWrapper topicConfig = admin.getAllTopicConfig(brokerAddr, 5000);
                     if (topicConfig == null || topicConfig.getTopicConfigTable() == null) {
-                        markTopicCountUnavailable(topicCountsUnavailableClusters, clusterName);
+                        markCountUnavailable(topicCountsUnavailableClusters, clusterName);
                     } else {
                         Set<String> clusterTopics = topicsByCluster.computeIfAbsent(
                                 clusterName, ignored -> new HashSet<>());
@@ -172,7 +173,7 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                                 });
                     }
                 } catch (Exception e) {
-                    markTopicCountUnavailable(topicCountsUnavailableClusters, clusterName);
+                    markCountUnavailable(topicCountsUnavailableClusters, clusterName);
                     log.warn("Failed to get topic config from broker {}: {}", brokerAddr, e.getMessage());
                 }
 
@@ -192,6 +193,7 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                         }
                     }
                 } catch (Exception e) {
+                    markCountUnavailable(groupCountsUnavailableClusters, clusterName);
                     log.warn("Failed to get subscription groups from broker {}: {}", brokerAddr, e.getMessage());
                 }
 
@@ -227,7 +229,8 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                 long clusterTpsIn = 0;
                 long clusterTpsOut = 0;
                 String version = "unknown";
-                boolean runtimeMetricsUnavailable = topicCountsUnavailableClusters.contains(clusterName);
+                boolean runtimeMetricsUnavailable = topicCountsUnavailableClusters.contains(clusterName)
+                        || groupCountsUnavailableClusters.contains(clusterName);
 
                 for (String brokerName : brokerNames) {
                     BrokerData brokerData = brokerAddrTable.get(brokerName);
@@ -357,7 +360,7 @@ public class RocketMQDashboardProvider implements DashboardProvider {
         return SystemGroupFilter.isSystem(group);
     }
 
-    private void markTopicCountUnavailable(Set<String> unavailableClusters, String clusterName) {
+    private void markCountUnavailable(Set<String> unavailableClusters, String clusterName) {
         if (clusterName != null) {
             unavailableClusters.add(clusterName);
         }

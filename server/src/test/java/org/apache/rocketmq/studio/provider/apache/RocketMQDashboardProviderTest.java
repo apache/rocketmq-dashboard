@@ -148,6 +148,23 @@ class RocketMQDashboardProviderTest {
     }
 
     @Test
+    void dashboardShouldMarkClusterWarningWhenGroupCountsAreUnavailable() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        when(adminExt.getAllTopicConfig("10.0.0.11:10911", 5000)).thenReturn(topicConfig("orders"));
+        when(adminExt.getAllSubscriptionGroup("10.0.0.11:10911", 5000))
+                .thenThrow(new RuntimeException("broker unavailable"));
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getClusters()).singleElement()
+                .extracting(cluster -> cluster.getStatus())
+                .isEqualTo(ClusterStatus.warning);
+        assertThat(dashboard.getStats().getHealthyClusters()).isZero();
+    }
+
+    @Test
     void dashboardShouldSurviveNullTopologyTables() throws Exception {
         DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
         ClusterInfo bare = new ClusterInfo();
