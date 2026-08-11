@@ -85,7 +85,7 @@ public class SettingsService {
     }
 
     private static RestClient buildDataSourceRestClient(RestClient.Builder restClientBuilder) {
-        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        SimpleClientHttpRequestFactory requestFactory = new DataSourceClientHttpRequestFactory();
         requestFactory.setConnectTimeout(DATA_SOURCE_TEST_CONNECT_TIMEOUT);
         requestFactory.setReadTimeout(DATA_SOURCE_TEST_READ_TIMEOUT);
         return restClientBuilder.requestFactory(requestFactory).build();
