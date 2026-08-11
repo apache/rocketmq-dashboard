@@ -12,6 +12,7 @@ import org.apache.rocketmq.studio.persistence.entity.RmqDataSource;
 import org.apache.rocketmq.studio.persistence.entity.RmqSettings;
 import org.apache.rocketmq.studio.persistence.mapper.RmqDataSourceMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqSettingsMapper;
+import org.apache.rocketmq.studio.settings.DataSourceVO;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -82,5 +83,21 @@ class MybatisPlusSettingsRepositoryTest {
                 .hasMessage("Persisted data source is invalid: metrics-prod")
                 .extracting("code")
                 .isEqualTo(500);
+    }
+
+    @Test
+    void shouldReportWhenDataSourceDisappearsDuringReplacement() {
+        RmqDataSource existing = new RmqDataSource();
+        existing.setDsKey("metrics-prod");
+        when(dataSourceMapper.selectById("metrics-prod")).thenReturn(existing);
+        when(dataSourceMapper.updateById(existing)).thenReturn(0);
+        DataSourceVO replacement = DataSourceVO.builder()
+                .key("metrics-prod")
+                .name("Production metrics")
+                .type("prometheus")
+                .url("https://metrics.example.com")
+                .build();
+
+        assertThat(repository.replaceDataSource(replacement)).isFalse();
     }
 }

@@ -127,8 +127,7 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
         }
         existing.setJson(toJson(dataSource));
         existing.setUpdatedAt(LocalDateTime.now());
-        dataSourceMapper.updateById(existing);
-        return true;
+        return dataSourceMapper.updateById(existing) > 0;
     }
 
     @Override
