@@ -15,10 +15,14 @@
  * limitations under the License.
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { filterNavigationEntries, isNavigationSearchShortcut } from './navigationSearch';
 
 describe('navigation search helpers', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   const entries = [
     { key: '/cluster', label: 'RocketMQ 集群' },
     { key: '/settings', label: 'Settings' },
@@ -28,6 +32,15 @@ describe('navigation search helpers', () => {
   it('filters labels case-insensitively and ignores query whitespace', () => {
     expect(filterNavigationEntries(entries, ' SETTINGS ')).toEqual([entries[1]]);
     expect(filterNavigationEntries(entries, '集群')).toEqual([entries[0]]);
+  });
+
+  it('normalizes searches independently of the browser locale', () => {
+    const localeLowerCase = String.prototype.toLocaleLowerCase;
+    vi.spyOn(String.prototype, 'toLocaleLowerCase').mockImplementation(function () {
+      return localeLowerCase.call(this, 'tr');
+    });
+
+    expect(filterNavigationEntries(entries, 'SETTINGS')).toEqual([entries[1]]);
   });
 
   it('filters by route keys case-insensitively', () => {
