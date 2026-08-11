@@ -27,6 +27,7 @@ import org.apache.rocketmq.remoting.protocol.body.TopicList;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
@@ -36,6 +37,7 @@ import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -80,6 +82,32 @@ class RocketMQDashboardProviderTest {
         // A partial NameServer payload must not throw and zero the page.
         assertThat(dashboard.getStats()).isNotNull();
         assertThat(dashboard.getClusters()).isEmpty();
+    }
+
+    @Test
+    void dashboardShouldRejectAnUnavailableTopologyInsteadOfReturningAnEmptyOverview() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(null);
+
+        RocketMQDashboardProvider provider = newProvider(adminExt);
+
+        assertThatThrownBy(provider::getDashboardData)
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502))
+                .hasMessageContaining("Failed to collect dashboard data");
+    }
+
+    @Test
+    void dashboardShouldRejectAdminFailuresInsteadOfReturningAnEmptyOverview() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenThrow(new IllegalStateException("access denied"));
+
+        RocketMQDashboardProvider provider = newProvider(adminExt);
+
+        assertThatThrownBy(provider::getDashboardData)
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502))
+                .hasMessageContaining("access denied");
     }
 
     @Test

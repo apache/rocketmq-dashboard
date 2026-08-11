@@ -33,6 +33,7 @@ import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
@@ -98,8 +99,7 @@ public class RocketMQDashboardProvider implements DashboardProvider {
         try {
             ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
             if (clusterInfo == null) {
-                log.warn("NameServer returned no cluster topology, returning empty dashboard");
-                return emptyDashboard();
+                throw new BusinessException(502, "Failed to collect dashboard data: NameServer returned no cluster topology");
             }
             // The NameServer topology is decoded from JSON; a payload missing either
             // table yields null here. Treat it as empty so a partial topology degrades
@@ -283,8 +283,11 @@ public class RocketMQDashboardProvider implements DashboardProvider {
             }
 
         } catch (Exception e) {
+            if (e instanceof BusinessException businessException) {
+                throw businessException;
+            }
             log.error("Failed to collect dashboard data from RocketMQ cluster", e);
-            return emptyDashboard();
+            throw new BusinessException(502, "Failed to collect dashboard data: " + e.getMessage());
         }
 
         long messagesPerSecond = tpsIn + tpsOut;
