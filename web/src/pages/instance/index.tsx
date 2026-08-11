@@ -37,6 +37,7 @@ import { useLang } from '../../i18n/LangContext';
 import { Plus, MagnifyingGlass } from '@phosphor-icons/react';
 import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import type { SortOrder } from 'antd/es/table/interface';
 import type { Instance, InstanceQuery } from '../../api/instance';
 import { listCloudCredentials, type CloudCredential } from '../../api/cloudCredential';
 import {
@@ -69,6 +70,24 @@ const typeLabel: Record<string, { text: string; color: string }> = {
 };
 
 type InstanceTypeFilter = 'ALL' | Instance['type'];
+
+function compareResourceCounts(
+  left: Instance,
+  right: Instance,
+  field: 'topicCount' | 'consumerGroupCount',
+  sortOrder?: SortOrder,
+): number {
+  const leftUnavailable = left.resourceCountsAvailable === false;
+  const rightUnavailable = right.resourceCountsAvailable === false;
+  if (leftUnavailable || rightUnavailable) {
+    if (leftUnavailable === rightUnavailable) return 0;
+    // Ant Design reverses the comparator for descending order, so invert this
+    // branch to keep unavailable counts after numeric values in either order.
+    const unavailableAfterAvailable = sortOrder === 'descend' ? -1 : 1;
+    return leftUnavailable ? unavailableAfterAvailable : -unavailableAfterAvailable;
+  }
+  return left[field] - right[field];
+}
 
 /* ═══════════════════════════════════════════
    InstancePage
@@ -332,7 +351,7 @@ const InstancePage = () => {
       key: 'topicCount',
       width: 80,
       align: 'center' as const,
-      sorter: (a, b) => a.topicCount - b.topicCount,
+      sorter: (a, b, sortOrder) => compareResourceCounts(a, b, 'topicCount', sortOrder),
       render: (count: number, record: Instance) =>
         record.resourceCountsAvailable === false ? '不可用' : count,
     },
@@ -342,7 +361,8 @@ const InstancePage = () => {
       key: 'consumerGroupCount',
       width: 80,
       align: 'center' as const,
-      sorter: (a, b) => a.consumerGroupCount - b.consumerGroupCount,
+      sorter: (a, b, sortOrder) =>
+        compareResourceCounts(a, b, 'consumerGroupCount', sortOrder),
       render: (count: number, record: Instance) =>
         record.resourceCountsAvailable === false ? '不可用' : count,
     },
