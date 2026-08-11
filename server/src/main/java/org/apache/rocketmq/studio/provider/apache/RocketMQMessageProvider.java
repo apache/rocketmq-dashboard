@@ -321,7 +321,7 @@ public class RocketMQMessageProvider implements MessageProvider {
      */
     private long resolveMessageStoreTimestamp(DefaultMQAdminExt adminExt, String msgId) {
         try {
-            MessageExt messageExt = adminExt.viewMessage(msgId);
+            MessageExt messageExt = viewMessageByOffsetId(adminExt, msgId);
             if (messageExt != null) {
                 return messageExt.getStoreTimestamp();
             }

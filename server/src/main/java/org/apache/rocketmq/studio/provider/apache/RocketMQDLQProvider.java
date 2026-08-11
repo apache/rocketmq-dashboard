@@ -270,7 +270,7 @@ public class RocketMQDLQProvider implements DLQProvider {
             }
             // Copy user properties from the original message, skipping system-reserved
             // keys to avoid conflicts with broker-internal properties.
-            Map<String, String> userProperties = deadLetter.getUserProperties();
+            Map<String, String> userProperties = deadLetter.getProperties();
             if (userProperties != null) {
                 for (Map.Entry<String, String> entry : userProperties.entrySet()) {
                     String key = entry.getKey();
