@@ -101,6 +101,7 @@ describe('metrics API', () => {
   it('posts a data-source query by key and returns its result', async () => {
     const dsQuery = {
       key: 'ds-prom-1',
+      instanceId: 'instance-a',
       query: { metric: 'up', start: 1, end: 2, step: '1m' },
     };
     const result = {
@@ -119,6 +120,7 @@ describe('metrics API', () => {
       expect(config.params).toEqual({ key: 'ds-prom-1' });
       expect(JSON.parse(config.data)).toEqual({
         query: dsQuery.query,
+        instanceId: 'instance-a',
         username: undefined,
         password: undefined,
         bearerToken: undefined,

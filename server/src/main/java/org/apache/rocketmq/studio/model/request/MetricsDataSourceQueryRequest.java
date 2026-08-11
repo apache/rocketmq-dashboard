@@ -36,6 +36,8 @@ public class MetricsDataSourceQueryRequest {
     @NotNull(message = "query is required")
     private MetricQueryDTO query;
 
+    private String instanceId;
+
     private String username;
 
     private String password;
