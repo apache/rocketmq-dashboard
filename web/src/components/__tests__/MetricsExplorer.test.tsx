@@ -272,6 +272,97 @@ describe('MetricsExplorer', () => {
     expect(vi.mocked(queryMetrics).mock.calls.length).toBe(queryMetricsCallsBefore);
   });
 
+  it('prompts for basic credentials and supplies them only to the selected data source query', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listDataSources).mockResolvedValue([
+      {
+        key: 'ds-basic',
+        name: 'Protected Prometheus',
+        type: 'Prometheus',
+        url: '',
+        auth: 'Basic Auth',
+        status: 'healthy',
+      },
+    ]);
+
+    renderWithProviders(<MetricsExplorer />);
+
+    await user.click(await screen.findByRole('combobox', { name: '数据源' }));
+    await user.click(
+      await screen.findByText('Protected Prometheus', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+
+    expect(await screen.findByRole('dialog', { name: '数据源认证' })).toBeInTheDocument();
+    expect(queryByDataSource).not.toHaveBeenCalled();
+
+    await user.type(screen.getByLabelText('用户名'), 'metrics-reader');
+    await user.type(screen.getByLabelText('密码'), 'secret-value');
+    await user.click(screen.getByRole('button', { name: /连\s*接/ }));
+
+    await waitFor(() =>
+      expect(queryByDataSource).toHaveBeenCalledWith({
+        key: 'ds-basic',
+        username: 'metrics-reader',
+        password: 'secret-value',
+        instanceId: undefined,
+        query: {
+          metric: 'sum(rate(rocketmq_messages_in_total[1m])) by (cluster, node_id)',
+          start: 1_799_996_400,
+          end: 1_800_000_000,
+          step: '30s',
+        },
+      }),
+    );
+  });
+
+  it('prompts for a bearer token without persisting it when the source is left', async () => {
+    const user = userEvent.setup();
+    vi.mocked(listDataSources).mockResolvedValue([
+      {
+        key: 'ds-bearer',
+        name: 'Bearer Prometheus',
+        type: 'Prometheus',
+        url: '',
+        auth: 'Bearer Token',
+        status: 'healthy',
+      },
+    ]);
+
+    renderWithProviders(<MetricsExplorer />);
+
+    const sourceSelect = await screen.findByRole('combobox', { name: '数据源' });
+    await user.click(sourceSelect);
+    await user.click(
+      await screen.findByText('Bearer Prometheus', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+    await user.type(await screen.findByLabelText('令牌'), 'ephemeral-token');
+    await user.click(screen.getByRole('button', { name: /连\s*接/ }));
+
+    await waitFor(() =>
+      expect(queryByDataSource).toHaveBeenCalledWith(
+        expect.objectContaining({ key: 'ds-bearer', bearerToken: 'ephemeral-token' }),
+      ),
+    );
+
+    await user.click(sourceSelect);
+    await user.click(
+      await screen.findByText('默认数据源', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.click(sourceSelect);
+    await user.click(
+      await screen.findByText('Bearer Prometheus', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+
+    expect(await screen.findByRole('dialog', { name: '数据源认证' })).toBeInTheDocument();
+    expect(screen.getByLabelText('令牌')).toHaveValue('');
+  });
+
   it('only offers data sources bound to the selected instance or globally available', async () => {
     vi.mocked(listDataSources).mockResolvedValue([
       {
