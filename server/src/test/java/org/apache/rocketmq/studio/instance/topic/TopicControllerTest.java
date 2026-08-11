@@ -104,6 +104,22 @@ class TopicControllerTest {
     }
 
     @Test
+    void topicConsumerPageShouldPassSelectedInstanceAndPaging() throws Exception {
+        TopicConsumerPageVO page = TopicConsumerPageVO.builder()
+                .items(List.of()).total(3).page(2).pageSize(20).build();
+        when(metadataService.getTopicConsumersPage("instance-a", "orders", 2, 20)).thenReturn(page);
+
+        mockMvc.perform(get("/api/topics/orders/consumers/page")
+                        .param("instanceId", "instance-a")
+                        .param("page", "2")
+                        .param("pageSize", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(3));
+
+        verify(metadataService).getTopicConsumersPage("instance-a", "orders", 2, 20);
+    }
+
+    @Test
     void createTopicShouldReturnCreatedTopic() throws Exception {
         TopicVO input = new TopicVO();
         input.setName("new-topic");

@@ -172,6 +172,17 @@ class MetadataServiceTest {
     }
 
     @Test
+    void topicConsumerPageShouldDelegateWithSelectedInstance() {
+        TopicConsumerPageVO page = TopicConsumerPageVO.builder()
+                .items(List.of()).total(3).page(1).pageSize(20).build();
+        when(apacheProvider.getTopicConsumersPage("instance-a", "orders", 1, 20)).thenReturn(page);
+
+        assertThat(metadataService.getTopicConsumersPage("instance-a", "orders", 1, 20)).isSameAs(page);
+
+        verify(apacheProvider).getTopicConsumersPage("instance-a", "orders", 1, 20);
+    }
+
+    @Test
     void runtimeDiagnosticsShouldRejectBlankTopicAndGroupNamesBeforeProviderResolution() {
         assertThatThrownBy(() -> metadataService.getTopicRoutes("instance-a", " "))
                 .isInstanceOf(BusinessException.class)

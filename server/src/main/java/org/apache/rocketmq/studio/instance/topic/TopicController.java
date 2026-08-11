@@ -79,6 +79,15 @@ public class TopicController {
         return Result.ok(metadataService.getTopicConsumers(instanceId, name));
     }
 
+    @GetMapping("/{name}/consumers/page")
+    public Result<TopicConsumerPageVO> getTopicConsumersPage(
+            @PathVariable String name,
+            @RequestParam(required = false) String instanceId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        return Result.ok(metadataService.getTopicConsumersPage(instanceId, name, page, pageSize));
+    }
+
     @PostMapping("/send")
     public Result<SendMessageVO> sendMessage(@Valid @RequestBody(required = false) SendMessageDTO request) {
         requireSendMessageRequest(request);

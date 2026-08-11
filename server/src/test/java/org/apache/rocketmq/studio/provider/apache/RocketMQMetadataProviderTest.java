@@ -21,11 +21,13 @@ import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
+import org.apache.rocketmq.remoting.protocol.body.GroupList;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.topic.BrokerRouteVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
+import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.persistence.entity.RmqGroup;
 import org.apache.rocketmq.studio.persistence.mapper.RmqGroupMapper;
@@ -38,6 +40,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.HashSet;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -47,6 +50,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -116,12 +120,32 @@ class RocketMQMetadataProviderTest {
 
     @Test
     void getTopicConsumersShouldUseSelectedInstanceRuntimeClient() {
-        List<TopicConsumerVO> consumers = List.of(TopicConsumerVO.builder().group("cg-orders").build());
+        TopicConsumerPageVO consumers = TopicConsumerPageVO.builder()
+                .items(List.of(TopicConsumerVO.builder().group("cg-orders").build()))
+                .total(1).page(1).pageSize(Integer.MAX_VALUE).build();
         when(runtimeAdminClientResolver.execute(eq("instance-a"), any())).thenReturn(consumers);
         RocketMQMetadataProvider provider = newProvider();
 
-        assertThat(provider.getTopicConsumers("instance-a", "orders")).containsExactlyElementsOf(consumers);
+        assertThat(provider.getTopicConsumers("instance-a", "orders"))
+                .extracting(TopicConsumerVO::getGroup).containsExactly("cg-orders");
         verify(runtimeAdminClientResolver).execute(eq("instance-a"), any());
+    }
+
+    @Test
+    void getTopicConsumersPageShouldOnlyFetchDiagnosticsForTheRequestedGroups() throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        GroupList groups = new GroupList();
+        groups.setGroupList(new HashSet<>(List.of("group-a", "group-b", "group-c")));
+        when(admin.queryTopicConsumeByWho("TopicA")).thenReturn(groups);
+
+        TopicConsumerPageVO result = newLiveProvider(admin).getTopicConsumersPage(null, "TopicA", 2, 2);
+
+        assertThat(result.getTotal()).isEqualTo(3);
+        assertThat(result.getItems()).extracting(TopicConsumerVO::getGroup).containsExactly("group-c");
+        verify(admin).examineConsumeStats("group-c", "TopicA");
+        verify(admin).examineConsumerConnectionInfo("group-c");
+        verify(admin, never()).examineConsumeStats("group-a", "TopicA");
+        verify(admin, never()).examineConsumeStats("group-b", "TopicA");
     }
 
     @Test

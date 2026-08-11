@@ -5,6 +5,7 @@ import type {
   TopicQuery,
   BrokerRoute,
   ConsumerGroupInfo,
+  TopicConsumerPage,
   SendTopicMessageRequest,
   SendTopicMessageResult,
 } from '../api/metadata';
@@ -104,6 +105,27 @@ export async function getTopicConsumers(
   if (isMockMode())
     return cloneConsumers((topicConsumers[name] as unknown as ConsumerGroupInfo[]) ?? []);
   return metadataApi.getTopicConsumers(name, instanceId);
+}
+
+export async function getTopicConsumerPage(
+  name: string,
+  instanceId: string | undefined,
+  page: number,
+  pageSize: number,
+): Promise<TopicConsumerPage> {
+  if (isMockMode()) {
+    const consumers = cloneConsumers(
+      (topicConsumers[name] as unknown as ConsumerGroupInfo[]) ?? [],
+    );
+    const from = Math.min((page - 1) * pageSize, consumers.length);
+    return {
+      items: consumers.slice(from, from + pageSize),
+      total: consumers.length,
+      page,
+      pageSize,
+    };
+  }
+  return metadataApi.getTopicConsumerPage(name, instanceId, page, pageSize);
 }
 
 export async function sendTopicMessage(

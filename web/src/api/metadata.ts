@@ -47,6 +47,13 @@ export interface ConsumerGroupInfo {
   metricsAvailable?: boolean;
 }
 
+export interface TopicConsumerPage {
+  items: ConsumerGroupInfo[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 // ─── Consumer Group (matches mock/consumers.ts) ─────────────────
 export interface ConsumerGroup {
   name: string;
@@ -157,6 +164,19 @@ export async function getTopicConsumers(name: string, instanceId?: string) {
   const res = await client.get<{ data: ConsumerGroupInfo[] }>(
     `/topics/${encodeURIComponent(name)}/consumers`,
     { params: instanceId ? { instanceId } : {} },
+  );
+  return res.data.data;
+}
+
+export async function getTopicConsumerPage(
+  name: string,
+  instanceId: string | undefined,
+  page: number,
+  pageSize: number,
+) {
+  const res = await client.get<{ data: TopicConsumerPage }>(
+    `/topics/${encodeURIComponent(name)}/consumers/page`,
+    { params: { ...(instanceId ? { instanceId } : {}), page, pageSize } },
   );
   return res.data.data;
 }

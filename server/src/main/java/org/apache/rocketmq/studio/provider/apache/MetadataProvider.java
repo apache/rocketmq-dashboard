@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.provider.apache;
 
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
+import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
 import org.apache.rocketmq.studio.instance.topic.BrokerRouteVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
@@ -35,6 +36,19 @@ public interface MetadataProvider {
 
     List<BrokerRouteVO> getTopicRoutes(String instanceId, String name);
     List<TopicConsumerVO> getTopicConsumers(String instanceId, String name);
+
+    default TopicConsumerPageVO getTopicConsumersPage(String instanceId, String name, int page, int pageSize) {
+        List<TopicConsumerVO> consumers = getTopicConsumers(instanceId, name);
+        int total = consumers.size();
+        int from = Math.min((page - 1) * pageSize, total);
+        int to = Math.min(from + pageSize, total);
+        return TopicConsumerPageVO.builder()
+                .items(consumers.subList(from, to))
+                .total(total)
+                .page(page)
+                .pageSize(pageSize)
+                .build();
+    }
     List<QueueProgressVO> getGroupProgress(String instanceId, String name);
     List<SubscriptionEntryVO> getGroupSubscriptions(String instanceId, String name);
 }

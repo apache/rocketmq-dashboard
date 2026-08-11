@@ -23,6 +23,7 @@ import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
+import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 
 import java.util.List;
@@ -49,6 +50,19 @@ public interface InstanceProvider {
     void deleteTopic(String instanceId, String topicName);
 
     List<TopicConsumerVO> getTopicConsumers(String instanceId, String topicName);
+
+    default TopicConsumerPageVO getTopicConsumersPage(String instanceId, String topicName, int page, int pageSize) {
+        List<TopicConsumerVO> consumers = getTopicConsumers(instanceId, topicName);
+        int total = consumers.size();
+        int from = Math.min((page - 1) * pageSize, total);
+        int to = Math.min(from + pageSize, total);
+        return TopicConsumerPageVO.builder()
+                .items(consumers.subList(from, to))
+                .total(total)
+                .page(page)
+                .pageSize(pageSize)
+                .build();
+    }
 
     List<ConsumerGroupVO> listConsumerGroups(String instanceId, String search);
 

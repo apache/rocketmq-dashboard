@@ -29,6 +29,7 @@ const topicServiceMocks = vi.hoisted(() => ({
   createTopic: vi.fn(),
   deleteTopic: vi.fn(),
   getTopicConsumers: vi.fn(),
+  getTopicConsumerPage: vi.fn(),
   getTopicRoutes: vi.fn(),
   listTopics: vi.fn(),
   sendTopicMessage: vi.fn(),
@@ -135,6 +136,12 @@ describe('TopicPage', () => {
     }));
     topicServiceMocks.getTopicRoutes.mockResolvedValue([]);
     topicServiceMocks.getTopicConsumers.mockResolvedValue([]);
+    topicServiceMocks.getTopicConsumerPage.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+    });
     instanceServiceMocks.listInstances.mockResolvedValue([
       {
         id: 'instance-proxy-1',
@@ -247,6 +254,12 @@ describe('TopicPage', () => {
     await user.click(screen.getAllByRole('button', { name: /详情/ })[0]);
     await waitFor(() =>
       expect(topicServiceMocks.getTopicRoutes).toHaveBeenCalledWith('topic-21', 'instance-a'),
+    );
+    expect(topicServiceMocks.getTopicConsumerPage).toHaveBeenCalledWith(
+      'topic-21',
+      'instance-a',
+      1,
+      20,
     );
 
     const closeButton = document.querySelector('.ant-modal-close');

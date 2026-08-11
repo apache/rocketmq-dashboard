@@ -15,7 +15,13 @@
  * limitations under the License.
  */
 
-import { createTopic, getTopicConsumers, getTopicRoutes, listTopics } from './topicService';
+import {
+  createTopic,
+  getTopicConsumerPage,
+  getTopicConsumers,
+  getTopicRoutes,
+  listTopics,
+} from './topicService';
 
 vi.mock('./dataMode', () => ({ isMockMode: () => true }));
 vi.mock('../config', () => ({
@@ -54,6 +60,13 @@ describe('topic service mock data', () => {
     const second = await getTopicConsumers('order-create');
     expect(second[0].group).toBe('GID_order_service');
     expect(second[0]).not.toBe(first[0]);
+  });
+
+  it('paginates copied topic consumer rows', async () => {
+    const page = await getTopicConsumerPage('order-create', undefined, 1, 1);
+
+    expect(page).toMatchObject({ total: 4, page: 1, pageSize: 1 });
+    expect(page.items[0].group).toBe('GID_order_service');
   });
 
   it('trims search text before filtering topic names', async () => {
