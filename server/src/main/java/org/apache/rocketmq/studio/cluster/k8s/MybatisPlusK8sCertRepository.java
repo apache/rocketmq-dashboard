@@ -139,8 +139,12 @@ public class MybatisPlusK8sCertRepository implements K8sCertRepository {
             return List.of();
         }
         try {
-            return objectMapper.readValue(json, new TypeReference<List<String>>() {
+            List<String> san = objectMapper.readValue(json, new TypeReference<List<String>>() {
             });
+            if (san == null) {
+                throw invalidPersistedValue(certificateId, "SAN JSON", json);
+            }
+            return san;
         } catch (JsonProcessingException exception) {
             throw invalidPersistedValue(certificateId, "SAN JSON", json);
         }

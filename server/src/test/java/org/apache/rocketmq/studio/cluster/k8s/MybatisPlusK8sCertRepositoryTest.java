@@ -53,6 +53,18 @@ class MybatisPlusK8sCertRepositoryTest {
     }
 
     @Test
+    void findByIdSurfacesNullPersistedSanJson() {
+        RmqK8sCertificateMapper mapper = mock(RmqK8sCertificateMapper.class);
+        RmqK8sCertificate entity = certificate();
+        entity.setSan("null");
+        when(mapper.selectById("cert-1")).thenReturn(entity);
+
+        assertThatThrownBy(() -> repository(mapper).findById("cert-1"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("SAN JSON");
+    }
+
+    @Test
     void findByIdSurfacesInvalidPersistedCertificateStatus() {
         RmqK8sCertificateMapper mapper = mock(RmqK8sCertificateMapper.class);
         RmqK8sCertificate entity = certificate();
