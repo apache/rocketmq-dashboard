@@ -290,16 +290,19 @@ public class AlertService {
         if (!hasText(metric)) {
             return "broker";
         }
-        if (metric.contains("replication") || metric.contains("fall_behind") || metric.contains("slave")) {
+        String normalizedMetric = metric.toLowerCase(Locale.ROOT);
+        if (normalizedMetric.contains("replication") || normalizedMetric.contains("fall_behind")
+                || normalizedMetric.contains("slave")) {
             return "broker";
         }
-        if (metric.contains("consumer") || metric.contains("lag")) {
+        if (normalizedMetric.contains("consumer") || normalizedMetric.contains("lag")) {
             return "consumer";
         }
-        if (metric.contains("producer") || metric.contains("client")) {
+        if (normalizedMetric.contains("producer") || normalizedMetric.contains("client")) {
             return "client";
         }
-        if (metric.contains("topic") || metric.contains("messages_in") || metric.contains("messages_out")) {
+        if (normalizedMetric.contains("topic") || normalizedMetric.contains("messages_in")
+                || normalizedMetric.contains("messages_out")) {
             return "topic";
         }
         return "broker";

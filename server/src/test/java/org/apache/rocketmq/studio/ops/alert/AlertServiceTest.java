@@ -179,6 +179,22 @@ class AlertServiceTest {
     }
 
     @Test
+    void exportPrometheusRulesYamlShouldInferTeamWithoutMetricCaseSensitivity() {
+        AlertRuleVO rule = AlertRuleVO.builder()
+                .name("Uppercase lag")
+                .metric("ROCKETMQ_CONSUMER_LAG_MESSAGES")
+                .operator(">")
+                .threshold(10)
+                .enabled(true)
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+
+        String result = alertService.exportPrometheusRulesYaml();
+
+        assertThat(result).contains("- name: rocketmq-consumer.rules");
+    }
+
+    @Test
     void exportPrometheusRulesYamlShouldRenderReplicationLagRuleWithScopeAndSeverity() {
         AlertRuleVO rule = AlertRuleVO.builder()
                 .name("Replication Lag High")
