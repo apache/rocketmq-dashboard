@@ -410,7 +410,15 @@ class PrometheusMetricsSourceTest {
     }
 
     private PrometheusMetricsSource source(PrometheusProperties properties) {
-        return new PrometheusMetricsSource(RestClient.builder(), new ObjectMapper(), properties);
+        return new PrometheusMetricsSource(RestClient.builder(), new ObjectMapper(), properties) {
+            @Override
+            protected void validateQueryHost(String url) {
+                if (url != null && url.startsWith(baseUrl)) {
+                    return;
+                }
+                super.validateQueryHost(url);
+            }
+        };
     }
 
     private PrometheusProperties properties(Duration readTimeout) {

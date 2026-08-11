@@ -51,6 +51,9 @@ class AuthCredentialAuthorizationIntegrationTest {
     private AclService aclService;
 
     @MockBean
+    private org.apache.rocketmq.studio.instance.acl.ApacheAclReadService apacheAclReadService;
+
+    @MockBean
     private CloudCredentialService cloudCredentialService;
 
     @MockBean

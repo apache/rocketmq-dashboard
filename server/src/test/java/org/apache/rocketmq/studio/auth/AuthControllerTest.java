@@ -178,6 +178,7 @@ class AuthControllerTest {
     @Test
     void logoutShouldReturnSuccess() throws Exception {
         doNothing().when(authService).logout("Bearer token-1");
+        when(authService.isAuthenticated("Bearer token-1")).thenReturn(true);
 
         mockMvc.perform(post("/api/auth/logout")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer token-1"))

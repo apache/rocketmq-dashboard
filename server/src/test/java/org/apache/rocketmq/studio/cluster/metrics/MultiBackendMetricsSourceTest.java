@@ -43,8 +43,9 @@ class MultiBackendMetricsSourceTest {
 
     @BeforeEach
     void setUp() throws IOException {
-        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
+        java.net.InetAddress bindAddress = findSiteLocalAddress();
+        server = HttpServer.create(new InetSocketAddress(bindAddress, 0), 0);
+        baseUrl = "http://" + bindAddress.getHostAddress() + ":" + server.getAddress().getPort();
         server.start();
     }
 
@@ -124,5 +125,26 @@ class MultiBackendMetricsSourceTest {
         exchange.sendResponseHeaders(statusCode, response.length);
         exchange.getResponseBody().write(response);
         exchange.close();
+    }
+
+    private static java.net.InetAddress findSiteLocalAddress() throws java.net.SocketException {
+        java.util.Enumeration<java.net.NetworkInterface> interfaces =
+                java.net.NetworkInterface.getNetworkInterfaces();
+        while (interfaces.hasMoreElements()) {
+            java.net.NetworkInterface iface = interfaces.nextElement();
+            if (!iface.isUp() || iface.isLoopback()) {
+                continue;
+            }
+            for (java.net.InterfaceAddress address : iface.getInterfaceAddresses()) {
+                java.net.InetAddress inet = address.getAddress();
+                if (inet instanceof java.net.Inet4Address
+                        && inet.isSiteLocalAddress()
+                        && !inet.isLoopbackAddress()
+                        && !inet.isLinkLocalAddress()) {
+                    return inet;
+                }
+            }
+        }
+        return java.net.InetAddress.getLoopbackAddress();
     }
 }
