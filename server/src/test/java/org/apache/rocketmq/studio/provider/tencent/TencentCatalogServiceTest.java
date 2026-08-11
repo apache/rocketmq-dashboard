@@ -53,10 +53,16 @@ class TencentCatalogServiceTest {
     }
 
     @Test
-    void listRegionsShouldContainChengduTest() {
+    void listRegionsShouldContainAllSupportedRocketmq5RegionsTest() {
         List<CloudRegionVO> regions = service.listRegions(CREDENTIAL_ID);
 
-        assertThat(regions).extracting(CloudRegionVO::getRegionId).contains("ap-chengdu");
+        assertThat(regions).extracting(CloudRegionVO::getRegionId)
+                .containsExactly(
+                        "ap-guangzhou", "ap-shenzhen-fsi", "ap-nanjing", "ap-shanghai",
+                        "ap-shanghai-fsi", "ap-shanghai-adc", "ap-hongkong", "ap-beijing",
+                        "ap-chengdu", "ap-chongqing", "ap-singapore", "ap-bangkok",
+                        "ap-jakarta", "ap-seoul", "ap-tokyo", "na-siliconvalley",
+                        "na-ashburn", "eu-frankfurt", "sa-saopaulo");
     }
 
     @Test
