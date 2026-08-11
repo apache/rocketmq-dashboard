@@ -285,15 +285,27 @@ public class SettingsService {
             return false;
         }
         try {
-            InetAddress address = InetAddress.getByName(normalized);
-            return !address.isAnyLocalAddress()
-                    && !address.isLinkLocalAddress()
-                    && !address.isLoopbackAddress()
-                    && !isKnownCloudMetadataAddress(address);
+            return areAllowedDataSourceAddresses(InetAddress.getAllByName(normalized));
         } catch (UnknownHostException exception) {
             // Unresolvable host: let the connection attempt surface the real connectivity error.
             return true;
         }
+    }
+
+    boolean areAllowedDataSourceAddresses(InetAddress[] addresses) {
+        if (addresses == null || addresses.length == 0) {
+            return false;
+        }
+        for (InetAddress address : addresses) {
+            if (address == null
+                    || address.isAnyLocalAddress()
+                    || address.isLinkLocalAddress()
+                    || address.isLoopbackAddress()
+                    || isKnownCloudMetadataAddress(address)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private boolean isKnownCloudMetadataAddress(InetAddress address) {

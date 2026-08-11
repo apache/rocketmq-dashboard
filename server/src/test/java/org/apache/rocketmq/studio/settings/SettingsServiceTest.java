@@ -32,6 +32,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
+import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Base64;
@@ -487,6 +488,26 @@ class SettingsServiceTest {
         assertThat(result.getMessage()).contains("local or private address");
         assertThat(ipv4MappedResult.isSuccess()).isFalse();
         assertThat(ipv4MappedResult.getMessage()).contains("local or private address");
+    }
+
+    @Test
+    void dataSourceAddressPolicyShouldRejectMixedSafeAndLoopbackResults() throws Exception {
+        InetAddress[] addresses = {
+                InetAddress.getByName("192.0.2.1"),
+                InetAddress.getByName("127.0.0.1")
+        };
+
+        assertThat(settingsService.areAllowedDataSourceAddresses(addresses)).isFalse();
+    }
+
+    @Test
+    void dataSourceAddressPolicyShouldAcceptAllSafeResults() throws Exception {
+        InetAddress[] addresses = {
+                InetAddress.getByName("192.0.2.1"),
+                InetAddress.getByName("198.51.100.1")
+        };
+
+        assertThat(settingsService.areAllowedDataSourceAddresses(addresses)).isTrue();
     }
 
     @Test
