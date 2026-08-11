@@ -34,6 +34,7 @@ import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.util.SystemGroupFilter;
+import org.apache.rocketmq.studio.common.util.SystemTopicFilter;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;

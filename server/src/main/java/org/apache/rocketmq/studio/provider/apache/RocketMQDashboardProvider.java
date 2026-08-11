@@ -42,6 +42,7 @@ import org.apache.rocketmq.studio.ops.dashboard.DashboardDataVO;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardProvider;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardStatsVO;
 import org.apache.rocketmq.studio.common.util.SystemGroupFilter;
+import org.apache.rocketmq.studio.common.util.SystemTopicFilter;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
