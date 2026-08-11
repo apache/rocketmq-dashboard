@@ -33,6 +33,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -88,6 +89,16 @@ class AliyunCatalogServiceTest {
         assertThat(regions).extracting(CloudRegionVO::getRegionId)
                 .containsExactly("cn-beijing", "cn-hangzhou", "cn-shanghai");
         assertThat(regions.get(1).getRegionName()).isEqualTo("hangzhou");
+    }
+
+    @Test
+    void listCloudInstancesShouldSkipNullSdkRecords() {
+        when(clientFactory.call(eq(CREDENTIAL_ID), eq(REGION), any()))
+                .thenReturn(instancesResponse(Arrays.asList(null, instanceRow("rmq-a", "A"))));
+
+        assertThat(service.listCloudInstances(CREDENTIAL_ID, REGION, null))
+                .extracting(CloudInstanceOptionVO::getInstanceId)
+                .containsExactly("rmq-a");
     }
 
     @Test

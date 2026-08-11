@@ -86,6 +86,9 @@ public class AliyunCatalogService implements CloudCatalogProvider {
         List<ListInstancesResponseBody.List> all = fetchAllInstances(credentialId, regionId);
         List<CloudInstanceOptionVO> options = new ArrayList<>();
         for (ListInstancesResponseBody.List item : all) {
+            if (item == null) {
+                continue;
+            }
             CloudInstanceOptionVO vo = AliyunConverters.toInstanceOptionVO(item);
             if (matchesSearch(search, vo)) {
                 options.add(vo);
