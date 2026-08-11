@@ -68,11 +68,14 @@ public class K8sCertService {
         LocalDateTime now = LocalDateTime.now(clock);
         LocalDateTime notAfter = now.plusYears(1);
 
+        if (command.getType() == null) {
+            throw new BusinessException(400, "Type is required");
+        }
         K8sCertVO cert = K8sCertVO.builder()
                 .name(command.getName())
                 .namespace(command.getNamespace())
                 .cluster(command.getCluster())
-                .type(CertType.valueOf(command.getType()))
+                .type(parseCertType(command.getType()))
                 .issuer(command.getIssuer())
                 .notBefore(now)
                 .notAfter(notAfter)
@@ -107,7 +110,7 @@ public class K8sCertService {
             updated.setCluster(command.getCluster());
         }
         if (command.getType() != null) {
-            updated.setType(CertType.valueOf(command.getType()));
+            updated.setType(parseCertType(command.getType()));
         }
         if (command.getIssuer() != null) {
             updated.setIssuer(command.getIssuer());
@@ -155,6 +158,15 @@ public class K8sCertService {
         recordAudit("DELETE_K8S_CERTIFICATE", "K8S_CERTIFICATE", command.getId(), null,
                 null);
         log.info("K8s certificate deleted: {}", command.getId());
+    }
+
+    private CertType parseCertType(String type) {
+        try {
+            return CertType.valueOf(type);
+        } catch (IllegalArgumentException e) {
+            throw new BusinessException(400, "Invalid certificate type: " + type
+                    + ". Valid types: TLS, mTLS, ServiceAccount");
+        }
     }
 
     private void requireCommand(Object command) {
