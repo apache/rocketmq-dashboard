@@ -17,6 +17,8 @@
 package org.apache.rocketmq.studio.instance.message;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
@@ -24,11 +26,14 @@ import org.apache.rocketmq.studio.persistence.entity.RmqMessageQuery;
 import org.apache.rocketmq.studio.persistence.entity.RmqTraceQuery;
 import org.apache.rocketmq.studio.persistence.mapper.RmqMessageQueryMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqTraceQueryMapper;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Slf4j
 @Service
@@ -88,6 +93,63 @@ public class QueryHistoryService {
         log.debug("Trace query recorded: clusterId={} msgId={} topic={}", clusterId, msgId, topic);
     }
 
+    public PageResult<MessageQueryHistoryVO> listMessageQueries(String clusterId, String queryType,
+                                                                 String search, int page, int pageSize) {
+        QueryWrapper<RmqMessageQuery> query = new QueryWrapper<RmqMessageQuery>()
+                .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId)
+                .eq(StringUtils.hasText(queryType), "query_type", queryType)
+                .and(StringUtils.hasText(search), nested -> nested
+                        .like("topic", search)
+                        .or().like("msg_id", search)
+                        .or().like("message_key", search)
+                        .or().like("queried_by", search))
+                .orderByDesc("queried_at", "id");
+        Page<RmqMessageQuery> result = messageQueryMapper.selectPage(new Page<>(page, pageSize), query);
+        List<MessageQueryHistoryVO> items = result.getRecords().stream()
+                .map(QueryHistoryService::toMessageHistory).toList();
+        return PageResult.of(items, result.getTotal(), page, pageSize);
+    }
+
+    public PageResult<TraceQueryHistoryVO> listTraceQueries(String clusterId, String search,
+                                                             int page, int pageSize) {
+        QueryWrapper<RmqTraceQuery> query = new QueryWrapper<RmqTraceQuery>()
+                .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId)
+                .and(StringUtils.hasText(search), nested -> nested
+                        .like("topic", search)
+                        .or().like("msg_id", search)
+                        .or().like("queried_by", search))
+                .orderByDesc("queried_at", "id");
+        Page<RmqTraceQuery> result = traceQueryMapper.selectPage(new Page<>(page, pageSize), query);
+        List<TraceQueryHistoryVO> items = result.getRecords().stream()
+                .map(QueryHistoryService::toTraceHistory).toList();
+        return PageResult.of(items, result.getTotal(), page, pageSize);
+    }
+
+    public QueryHistorySummaryVO summarize(String clusterId) {
+        QueryWrapper<RmqMessageQuery> messageFilter = new QueryWrapper<RmqMessageQuery>()
+                .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId);
+        QueryWrapper<RmqTraceQuery> traceFilter = new QueryWrapper<RmqTraceQuery>()
+                .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId);
+        long messageCount = messageQueryMapper.selectCount(messageFilter);
+        long traceCount = traceQueryMapper.selectCount(traceFilter);
+        RmqMessageQuery latestMessage = messageQueryMapper.selectOne(
+                new QueryWrapper<RmqMessageQuery>()
+                        .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId)
+                        .orderByDesc("queried_at", "id").last("LIMIT 1"));
+        RmqTraceQuery latestTrace = traceQueryMapper.selectOne(
+                new QueryWrapper<RmqTraceQuery>()
+                        .eq(StringUtils.hasText(clusterId), "cluster_id", clusterId)
+                        .orderByDesc("queried_at", "id").last("LIMIT 1"));
+        LocalDateTime latest = latestOf(
+                latestMessage == null ? null : latestMessage.getQueriedAt(),
+                latestTrace == null ? null : latestTrace.getQueriedAt());
+        return QueryHistorySummaryVO.builder()
+                .messageQueries(messageCount)
+                .traceQueries(traceCount)
+                .latestQueryAt(latest)
+                .build();
+    }
+
     @Scheduled(fixedDelayString = "${studio.query-history.cleanup-interval:PT24H}")
     public void purgeExpiredQueries() {
         int retentionDays = properties.getRetentionDays();
@@ -118,5 +180,30 @@ public class QueryHistoryService {
         } catch (RuntimeException e) {
             log.warn("Failed to purge expired trace query records: {}", e.getMessage());
         }
+    }
+
+    private static LocalDateTime latestOf(LocalDateTime left, LocalDateTime right) {
+        if (left == null) return right;
+        if (right == null) return left;
+        return left.isAfter(right) ? left : right;
+    }
+
+    private static MessageQueryHistoryVO toMessageHistory(RmqMessageQuery query) {
+        return MessageQueryHistoryVO.builder()
+                .id(query.getId()).queryType(query.getQueryType()).topic(query.getTopic())
+                .msgId(query.getMsgId()).tag(query.getTag()).messageKey(query.getMessageKey())
+                .startTime(query.getStartTime()).endTime(query.getEndTime())
+                .resultCount(query.getResultCount() == null ? 0 : query.getResultCount())
+                .clusterId(query.getClusterId()).queriedBy(query.getQueriedBy())
+                .queriedAt(query.getQueriedAt()).build();
+    }
+
+    private static TraceQueryHistoryVO toTraceHistory(RmqTraceQuery query) {
+        return TraceQueryHistoryVO.builder()
+                .id(query.getId()).msgId(query.getMsgId()).topic(query.getTopic())
+                .nodeCount(query.getNodeCount() == null ? 0 : query.getNodeCount())
+                .consumerCount(query.getConsumerCount() == null ? 0 : query.getConsumerCount())
+                .clusterId(query.getClusterId()).queriedBy(query.getQueriedBy())
+                .queriedAt(query.getQueriedAt()).build();
     }
 }

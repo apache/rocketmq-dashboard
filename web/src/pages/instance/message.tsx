@@ -52,6 +52,7 @@ import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import PageHeader from '../../components/PageHeader';
+import MessageQueryHistoryDrawer from '../../components/MessageQueryHistoryDrawer';
 import { useLang } from '../../i18n/LangContext';
 import type { MessageQuery, MessageRecord, TraceRecord } from '../../api/message';
 import { getMessageTrace, queryMessages } from '../../services/messageService';
@@ -302,6 +303,7 @@ const MessagePageContent = ({
   const [queryError, setQueryError] = useState<string | null>(null);
   const [traceError, setTraceError] = useState<string | null>(null);
   const [recentQueries, setRecentQueries] = useState<RecentQuery[]>(loadRecentQueries);
+  const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
   const queryGenerationRef = useRef(0);
   const traceGenerationRef = useRef(0);
 
@@ -866,9 +868,18 @@ const MessagePageContent = ({
             <Button icon={<ReloadOutlined />} onClick={handleReset}>
               重置
             </Button>
+            <Button icon={<HistoryOutlined />} onClick={() => setHistoryDrawerOpen(true)}>
+              服务端历史
+            </Button>
           </Space>
         </Space>
       </Card>
+
+      <MessageQueryHistoryDrawer
+        open={historyDrawerOpen}
+        clusterId={selectedInstanceId || undefined}
+        onClose={() => setHistoryDrawerOpen(false)}
+      />
 
       {queryError && (
         <Alert showIcon type="warning" message={queryError} style={{ marginBottom: 16 }} />
