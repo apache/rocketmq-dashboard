@@ -269,6 +269,32 @@ class AuthInterceptorTest {
     }
 
     @Test
+    void shouldRejectNameServerConnectionTestForNonAdminUser() throws Exception {
+        TestSession session = login(false);
+        MockHttpServletRequest request = authenticatedRequest(
+                "POST", "/api/clusters/test-connection", session.token());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        boolean allowed = session.interceptor().preHandle(request, response, new Object());
+
+        assertThat(allowed).isFalse();
+        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(response.getContentAsString()).contains("Admin permission required");
+    }
+
+    @Test
+    void shouldAllowNameServerConnectionTestForAdminUser() throws Exception {
+        TestSession session = login(true);
+        MockHttpServletRequest request = authenticatedRequest(
+                "POST", "/api/clusters/test-connection", session.token());
+
+        boolean allowed = session.interceptor().preHandle(
+                request, new MockHttpServletResponse(), new Object());
+
+        assertThat(allowed).isTrue();
+    }
+
+    @Test
     void shouldAllowLogoutForNonAdminUser() throws Exception {
         TestSession session = login(false);
         MockHttpServletRequest request = authenticatedRequest(
