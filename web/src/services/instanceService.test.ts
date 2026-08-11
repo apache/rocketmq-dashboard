@@ -83,6 +83,22 @@ describe('instanceService mock instances', () => {
     expect(storedUpdated?.remark).toBe('updated');
   });
 
+  it('assigns unique IDs to creations in the same millisecond', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000);
+    const first = await createInstance({ name: 'same-clock-a', endpoint: 'a:8080' });
+    const second = await createInstance({ name: 'same-clock-b', endpoint: 'b:8080' });
+
+    try {
+      expect(first.id).not.toBe(second.id);
+      expect(first.id).toContain('1800000000000');
+      expect(second.id).toContain('1800000000000');
+    } finally {
+      now.mockRestore();
+      await deleteInstance(first.id);
+      await deleteInstance(second.id);
+    }
+  });
+
   it('rejects deleting missing mock instances', async () => {
     const before = await listInstances();
 

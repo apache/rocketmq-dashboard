@@ -9,6 +9,12 @@ import type {
 import { mockInstances } from '../mock/instances';
 
 // Compile-time switch: mock or real API
+let mockInstanceIdSequence = 0;
+
+function nextMockInstanceId(): string {
+  mockInstanceIdSequence += 1;
+  return `mock-instance-${Date.now()}-${mockInstanceIdSequence}`;
+}
 
 function copyInstance(instance: Instance): Instance {
   return { ...instance };
@@ -34,7 +40,7 @@ export async function listInstances(query: InstanceQuery = {}): Promise<Instance
 export async function createInstance(data: CreateInstanceRequest): Promise<Instance> {
   if (isMockMode()) {
     const instance: Instance = {
-      id: String(Date.now()),
+      id: nextMockInstanceId(),
       ...data,
       name: data.name || '',
       type: data.type || 'PROXY',
