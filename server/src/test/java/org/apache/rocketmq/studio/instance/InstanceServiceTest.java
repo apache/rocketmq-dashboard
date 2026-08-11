@@ -493,15 +493,17 @@ class InstanceServiceTest {
     }
 
     @Test
-    void updateInstanceShouldKeepEndpointClientWhenAnotherInstanceReferencesIt() {
+    void updateInstanceShouldReleaseOnlyUnusedCredentialWhenEndpointIsShared() {
         InstanceVO existing = InstanceVO.builder()
                 .name("instance")
                 .endpoint("shared-namesrv:9876")
+                .adminCredentialRef("credential-a")
                 .build();
         existing.setId("inst-1");
         InstanceVO shared = InstanceVO.builder()
                 .name("shared-instance")
                 .endpoint(" shared-namesrv:9876 ")
+                .adminCredentialRef("credential-b")
                 .build();
         shared.setId("inst-2");
         InstanceVO update = InstanceVO.builder().endpoint("new-namesrv:9876").build();
@@ -513,6 +515,7 @@ class InstanceServiceTest {
 
         instanceService.updateInstance(update);
 
+        verify(adminFactory).release("shared-namesrv:9876", "credential-a");
         verify(adminFactory, never()).release("shared-namesrv:9876");
     }
 
@@ -712,6 +715,53 @@ class InstanceServiceTest {
 
         verify(instanceRepository).deleteById("inst-1");
         verify(adminFactory).release("namesrv:9876");
+    }
+
+    @Test
+    void deleteInstanceShouldReleaseOnlyUnusedCredentialWhenEndpointIsShared() {
+        InstanceVO existing = InstanceVO.builder()
+                .name("to-delete")
+                .endpoint("namesrv:9876")
+                .adminCredentialRef("credential-a")
+                .build();
+        existing.setId("inst-1");
+        InstanceVO shared = InstanceVO.builder()
+                .name("remaining")
+                .endpoint("namesrv:9876")
+                .adminCredentialRef("credential-b")
+                .build();
+        shared.setId("inst-2");
+        when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(existing));
+        when(instanceRepository.findAll()).thenReturn(List.of(shared));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+
+        instanceService.deleteInstance("inst-1");
+
+        verify(adminFactory).release("namesrv:9876", "credential-a");
+        verify(adminFactory, never()).release("namesrv:9876");
+    }
+
+    @Test
+    void deleteInstanceShouldKeepCredentialClientWhenIdentityIsShared() {
+        InstanceVO existing = InstanceVO.builder()
+                .name("to-delete")
+                .endpoint("namesrv:9876")
+                .adminCredentialRef("credential-a")
+                .build();
+        existing.setId("inst-1");
+        InstanceVO shared = InstanceVO.builder()
+                .name("remaining")
+                .endpoint(" namesrv:9876 ")
+                .adminCredentialRef(" credential-a ")
+                .build();
+        shared.setId("inst-2");
+        when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(existing));
+        when(instanceRepository.findAll()).thenReturn(List.of(shared));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+
+        instanceService.deleteInstance("inst-1");
+
+        verifyNoInteractions(adminFactory);
     }
 
     @Test

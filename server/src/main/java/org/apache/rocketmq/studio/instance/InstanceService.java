@@ -294,38 +294,57 @@ public class InstanceService {
     }
 
     private void releaseApacheEndpointIfUnused(InstanceVO existing, String currentEndpoint) {
-        InstanceVendor vendor = existing.getVendor() == null ? InstanceVendor.APACHE : existing.getVendor();
-        if (vendor != InstanceVendor.APACHE) {
+        if (!isApacheInstance(existing)) {
             return;
         }
-        releaseEndpointIfUnused(existing.getEndpoint(), currentEndpoint, existing.getId());
-    }
-
-    private void releaseApacheClientIfChanged(InstanceVO existing, InstanceVO saved) {
-        InstanceVendor vendor = existing.getVendor() == null ? InstanceVendor.APACHE : existing.getVendor();
-        if (vendor != InstanceVendor.APACHE) {
-            return;
-        }
-        if (!Objects.equals(normalizeCredentialRef(existing.getAdminCredentialRef()),
-                normalizeCredentialRef(saved.getAdminCredentialRef()))
-                && Objects.equals(normalizeEndpoint(existing.getEndpoint()), normalizeEndpoint(saved.getEndpoint()))) {
-            adminFactory.release(existing.getEndpoint(), normalizeCredentialRef(existing.getAdminCredentialRef()));
-            return;
-        }
-        releaseEndpointIfUnused(existing.getEndpoint(), saved.getEndpoint(), existing.getId());
-    }
-
-    private void releaseEndpointIfUnused(String previousEndpoint, String currentEndpoint, String excludedInstanceId) {
-        String oldEndpoint = normalizeEndpoint(previousEndpoint);
+        String oldEndpoint = normalizeEndpoint(existing.getEndpoint());
         if (oldEndpoint == null || oldEndpoint.equals(normalizeEndpoint(currentEndpoint))) {
             return;
         }
-        boolean stillReferenced = instanceRepository.findAll().stream()
-                .anyMatch(instance -> !excludedInstanceId.equals(instance.getId())
-                        && oldEndpoint.equals(normalizeEndpoint(instance.getEndpoint())));
-        if (!stillReferenced) {
+        releaseAdminClientIfUnused(existing, false);
+    }
+
+    private void releaseApacheClientIfChanged(InstanceVO existing, InstanceVO saved) {
+        if (!isApacheInstance(existing)) {
+            return;
+        }
+        String oldEndpoint = normalizeEndpoint(existing.getEndpoint());
+        String currentEndpoint = normalizeEndpoint(saved.getEndpoint());
+        String oldCredentialRef = normalizeCredentialRef(existing.getAdminCredentialRef());
+        String currentCredentialRef = normalizeCredentialRef(saved.getAdminCredentialRef());
+        if (Objects.equals(oldEndpoint, currentEndpoint)
+                && Objects.equals(oldCredentialRef, currentCredentialRef)) {
+            return;
+        }
+        releaseAdminClientIfUnused(existing, Objects.equals(oldEndpoint, currentEndpoint));
+    }
+
+    private void releaseAdminClientIfUnused(InstanceVO existing, boolean endpointRetainedByUpdatedInstance) {
+        String oldEndpoint = normalizeEndpoint(existing.getEndpoint());
+        if (oldEndpoint == null) {
+            return;
+        }
+        String oldCredentialRef = normalizeCredentialRef(existing.getAdminCredentialRef());
+        List<InstanceVO> endpointReferences = instanceRepository.findAll().stream()
+                .filter(this::isApacheInstance)
+                .filter(instance -> !existing.getId().equals(instance.getId()))
+                .filter(instance -> oldEndpoint.equals(normalizeEndpoint(instance.getEndpoint())))
+                .toList();
+        boolean identityStillReferenced = endpointReferences.stream()
+                .anyMatch(instance -> Objects.equals(oldCredentialRef,
+                        normalizeCredentialRef(instance.getAdminCredentialRef())));
+        if (identityStillReferenced) {
+            return;
+        }
+        if (endpointRetainedByUpdatedInstance || !endpointReferences.isEmpty()) {
+            adminFactory.release(oldEndpoint, oldCredentialRef);
+        } else {
             adminFactory.release(oldEndpoint);
         }
+    }
+
+    private boolean isApacheInstance(InstanceVO instance) {
+        return instance.getVendor() == null || instance.getVendor() == InstanceVendor.APACHE;
     }
 
     private String normalizeEndpoint(String endpoint) {
