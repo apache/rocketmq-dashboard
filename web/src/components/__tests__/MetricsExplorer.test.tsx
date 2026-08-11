@@ -310,4 +310,44 @@ describe('MetricsExplorer', () => {
     expect(screen.getByText('Instance A Prometheus')).toBeInTheDocument();
     expect(screen.queryByText('Instance B Prometheus')).not.toBeInTheDocument();
   });
+
+  it('falls back to the default source when the selected source is unavailable for a new instance', async () => {
+    vi.mocked(listDataSources).mockResolvedValue([
+      {
+        key: 'ds-instance-a',
+        name: 'Instance A Prometheus',
+        type: 'Prometheus',
+        url: '',
+        auth: 'None',
+        status: 'healthy',
+        instanceIds: ['instance-a'],
+      },
+    ]);
+
+    const user = userEvent.setup();
+    const { rerender } = renderWithProviders(<MetricsExplorer instanceId="instance-a" />);
+
+    await user.click(await screen.findByRole('combobox', { name: '数据源' }));
+    await user.click(
+      await screen.findByText('Instance A Prometheus', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+    await waitFor(() => expect(queryByDataSource).toHaveBeenCalledTimes(1));
+
+    rerender(
+      <App>
+        <LangProvider>
+          <MetricsExplorer instanceId="instance-b" />
+        </LangProvider>
+      </App>,
+    );
+
+    await waitFor(() => expect(queryMetrics).toHaveBeenCalledTimes(2));
+    expect(queryByDataSource).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole('button', { name: '刷新指标' }));
+    await waitFor(() => expect(queryMetrics).toHaveBeenCalledTimes(3));
+    expect(queryByDataSource).toHaveBeenCalledTimes(1);
+  });
 });

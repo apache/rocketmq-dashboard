@@ -384,12 +384,15 @@ const MetricsExplorer = ({ instanceId }: MetricsExplorerProps) => {
 
   useEffect(() => {
     if (dataSourceKey && !availableDataSources.some((source) => source.key === dataSourceKey)) {
-      window.setTimeout(() => {
+      const timeoutId = window.setTimeout(() => {
+        dataSourceKeyRef.current = '';
         setDataSourceKey('');
         setData(null);
+        void loadMetrics(selectedMetric, selectedRange);
       }, 0);
+      return () => window.clearTimeout(timeoutId);
     }
-  }, [availableDataSources, dataSourceKey]);
+  }, [availableDataSources, dataSourceKey, loadMetrics, selectedMetric, selectedRange]);
 
   return (
     <section aria-labelledby="metrics-explorer-title" style={{ marginTop: 24 }}>
