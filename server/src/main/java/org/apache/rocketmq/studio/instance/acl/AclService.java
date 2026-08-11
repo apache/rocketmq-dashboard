@@ -19,9 +19,12 @@ package org.apache.rocketmq.studio.instance.acl;
 import org.springframework.util.StringUtils;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.model.Acl2PolicyContext;
+import org.apache.rocketmq.studio.instance.InstanceRepository;
+import org.apache.rocketmq.studio.instance.InstanceVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -37,6 +40,18 @@ public class AclService {
 
     private final AclRepository aclRepository;
     private final OperationAuditService operationAuditService;
+    private final InstanceRepository instanceRepository;
+
+    public AclCapabilitiesVO capabilities(String instanceId) {
+        if (!StringUtils.hasText(instanceId)) {
+            throw new BusinessException(400, "instanceId is required");
+        }
+        InstanceVO instance = instanceRepository.findById(instanceId)
+                .orElseThrow(() -> new BusinessException(404, "Instance not found: " + instanceId));
+        boolean apacheInstance = instance.getVendor() == null || instance.getVendor() == InstanceVendor.APACHE;
+        return new AclCapabilitiesVO(instance.getId(), instance.getVendor(), instance.getType(),
+                apacheInstance ? "APACHE_ACL2" : "STUDIO_LOCAL", apacheInstance, false);
+    }
 
 
     public List<AclRuleVO> listRules(String clusterId, String principal) {

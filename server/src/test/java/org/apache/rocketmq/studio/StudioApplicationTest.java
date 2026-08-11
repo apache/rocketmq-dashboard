@@ -18,6 +18,10 @@ package org.apache.rocketmq.studio;
 
 import org.apache.rocketmq.studio.ops.ai.tool.ToolCatalog;
 import org.apache.rocketmq.studio.ops.ai.tool.ToolGatewayService;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.instance.InstanceVO;
+import org.apache.rocketmq.studio.instance.MybatisPlusInstanceRepository;
 import org.apache.rocketmq.studio.persistence.mapper.RmqInstanceMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,6 +48,9 @@ class StudioApplicationTest {
     private RmqInstanceMapper instanceMapper;
 
     @Autowired
+    private MybatisPlusInstanceRepository instanceRepository;
+
+    @Autowired
     private MockMvc mockMvc;
 
     @Test
@@ -55,5 +62,28 @@ class StudioApplicationTest {
         mockMvc.perform(get("/api/instances"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isEmpty());
+    }
+
+    @Test
+    void instanceRepositoryPersistsAdminCredentialReference() {
+        InstanceVO instance = InstanceVO.builder()
+                .name("acl-admin-ref-roundtrip")
+                .type(InstanceType.DIRECT)
+                .vendor(InstanceVendor.APACHE)
+                .endpoint("127.0.0.1:9876")
+                .adminCredentialRef("production-admin")
+                .build();
+        instance.setId("acl-admin-ref-roundtrip");
+
+        instanceRepository.save(instance);
+
+        assertThat(instanceMapper.selectById(instance.getId()).getAdminCredentialRef())
+                .isEqualTo("production-admin");
+        assertThat(instanceRepository.findById(instance.getId()))
+                .get()
+                .extracting(InstanceVO::getAdminCredentialRef)
+                .isEqualTo("production-admin");
+
+        instanceRepository.deleteById(instance.getId());
     }
 }

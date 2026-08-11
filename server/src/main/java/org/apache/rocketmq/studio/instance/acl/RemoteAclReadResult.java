@@ -14,37 +14,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.instance;
+package org.apache.rocketmq.studio.instance.acl;
 
-import jakarta.validation.constraints.NotBlank;
-import lombok.Data;
-import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
+import lombok.Builder;
+import lombok.Value;
+import java.util.List;
+import java.util.Map;
 
-@Data
-public class UpdateInstanceDTO {
+/** Provider-backed ACL 2.0 read result, retaining per-Broker provenance. */
+@Value
+@Builder
+public class RemoteAclReadResult {
+    String source;
+    Map<String, List<RemoteAclPolicyVO>> policiesByBroker;
+    Map<String, String> failuresByBroker;
 
-    @NotBlank(message = "instance id is required")
-    private String id;
-
-    private String name;
-
-    private InstanceType type;
-
-    private String endpoint;
-
-    private String remark;
-
-    private String adminCredentialRef;
-
-    public InstanceVO toInstanceVO() {
-        InstanceVO vo = InstanceVO.builder()
-                .name(name)
-                .type(type)
-                .endpoint(endpoint)
-                .remark(remark)
-                .adminCredentialRef(adminCredentialRef)
-                .build();
-        vo.setId(id);
-        return vo;
+    public boolean isPartial() {
+        return !failuresByBroker.isEmpty() && !policiesByBroker.isEmpty();
     }
 }

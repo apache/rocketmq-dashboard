@@ -54,8 +54,40 @@ class AclControllerTest {
     @MockBean
     private AclService aclService;
 
+    @MockBean
+    private ApacheAclReadService apacheAclReadService;
+
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Test
+    void capabilitiesShouldReturnApacheRemoteReadState() throws Exception {
+        when(aclService.capabilities("instance-1"))
+                .thenReturn(new AclCapabilitiesVO("instance-1",
+                        org.apache.rocketmq.studio.common.domain.enums.InstanceVendor.APACHE,
+                        org.apache.rocketmq.studio.common.domain.enums.InstanceType.DIRECT,
+                        "APACHE_ACL2", true, false));
+
+        mockMvc.perform(get("/api/acl/capabilities").param("instanceId", "instance-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.instanceId").value("instance-1"))
+                .andExpect(jsonPath("$.data.stateSource").value("APACHE_ACL2"))
+                .andExpect(jsonPath("$.data.remoteReadSupported").value(true))
+                .andExpect(jsonPath("$.data.remoteWriteSupported").value(false));
+    }
+
+    @Test
+    void listRemoteRulesShouldRequireInstanceAndDelegateToApacheProvider() throws Exception {
+        RemoteAclReadResult result = RemoteAclReadResult.builder()
+                .source("APACHE_ACL2").policiesByBroker(Map.of()).failuresByBroker(Map.of()).build();
+        when(apacheAclReadService.listRules("instance-1", null, null)).thenReturn(result);
+
+        mockMvc.perform(get("/api/acl/remote/rules").param("instanceId", "instance-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.source").value("APACHE_ACL2"));
+
+        verify(apacheAclReadService).listRules("instance-1", null, null);
+    }
 
     @Test
     void listRulesShouldReturnRules() throws Exception {

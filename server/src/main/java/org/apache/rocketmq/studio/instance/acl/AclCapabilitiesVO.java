@@ -14,37 +14,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.instance;
 
-import jakarta.validation.constraints.NotBlank;
-import lombok.Data;
+package org.apache.rocketmq.studio.instance.acl;
+
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 
-@Data
-public class UpdateInstanceDTO {
-
-    @NotBlank(message = "instance id is required")
-    private String id;
-
-    private String name;
-
-    private InstanceType type;
-
-    private String endpoint;
-
-    private String remark;
-
-    private String adminCredentialRef;
-
-    public InstanceVO toInstanceVO() {
-        InstanceVO vo = InstanceVO.builder()
-                .name(name)
-                .type(type)
-                .endpoint(endpoint)
-                .remark(remark)
-                .adminCredentialRef(adminCredentialRef)
-                .build();
-        vo.setId(id);
-        return vo;
-    }
+/**
+ * Describes whether ACL operations are backed by the selected instance.
+ */
+public record AclCapabilitiesVO(
+        String instanceId,
+        InstanceVendor vendor,
+        InstanceType instanceType,
+        String stateSource,
+        boolean remoteReadSupported,
+        boolean remoteWriteSupported) {
 }

@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS rmq_instance (
   vendor VARCHAR(32),
   cloud_instance_id VARCHAR(128),
   credential_id VARCHAR(64),
+  admin_credential_ref VARCHAR(128) COMMENT 'External Apache admin credential reference; no secret material',
   region_id VARCHAR(128),
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP

@@ -37,6 +37,8 @@ public class CreateInstanceDTO {
 
     private String credentialId;
 
+    private String adminCredentialRef;
+
     private String regionId;
 
     public InstanceVO toInstanceVO() {
@@ -48,6 +50,7 @@ public class CreateInstanceDTO {
                 .vendor(vendor)
                 .cloudInstanceId(cloudInstanceId)
                 .credentialId(credentialId)
+                .adminCredentialRef(adminCredentialRef)
                 .regionId(regionId)
                 .build();
         return vo;
