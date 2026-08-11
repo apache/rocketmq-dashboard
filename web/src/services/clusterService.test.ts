@@ -171,4 +171,20 @@ describe('clusterService mock clusters', () => {
       await deleteK8sCert(created.id);
     }
   });
+
+  it('assigns unique certificate IDs when the clock does not advance', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000);
+    const first = await createK8sCert({ name: 'same-clock-cert-a' });
+    const second = await createK8sCert({ name: 'same-clock-cert-b' });
+
+    try {
+      expect(first.id).not.toBe(second.id);
+      expect(first.id).toContain('1800000000000');
+      expect(second.id).toContain('1800000000000');
+    } finally {
+      now.mockRestore();
+      await deleteK8sCert(first.id);
+      await deleteK8sCert(second.id);
+    }
+  });
 });

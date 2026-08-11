@@ -14,6 +14,12 @@ const mockCertStore: K8sCertInfo[] = mockK8sCerts.map((cert) => ({
   ...cert,
   san: [...cert.san],
 }));
+let mockCertificateIdSequence = 0;
+
+function nextMockCertificateId(): string {
+  mockCertificateIdSequence += 1;
+  return `cert-${Date.now()}-${mockCertificateIdSequence}`;
+}
 
 function copyCluster(cluster: ClusterInfo): ClusterInfo {
   return {
@@ -116,7 +122,7 @@ export async function createK8sCert(data: Partial<K8sCertInfo>): Promise<K8sCert
     const notAfter = new Date(now);
     notAfter.setFullYear(notAfter.getFullYear() + 1);
     const cert: K8sCertInfo = {
-      id: `cert-${Date.now()}`,
+      id: nextMockCertificateId(),
       name: data.name ?? '',
       namespace: data.namespace ?? '',
       cluster: data.cluster ?? '',
