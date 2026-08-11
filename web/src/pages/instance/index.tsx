@@ -141,22 +141,41 @@ const InstancePage = () => {
 
   useEffect(() => {
     if (!cloudVendor || !addModalOpen) {
-      return;
+      const timer = window.setTimeout(() => setCredentialsLoading(false), 0);
+      return () => window.clearTimeout(timer);
     }
+    let active = true;
     const timer = window.setTimeout(() => {
       setCredentialsLoading(true);
       listCloudCredentials()
-        .then((items) => setCredentials(items.filter((item) => item.vendor === vendor)))
-        .catch(() => message.error('云凭据列表加载失败'))
-        .finally(() => setCredentialsLoading(false));
+        .then((items) => {
+          if (active) {
+            setCredentials(items.filter((item) => item.vendor === vendor));
+          }
+        })
+        .catch(() => {
+          if (active) {
+            message.error('云凭据列表加载失败');
+          }
+        })
+        .finally(() => {
+          if (active) {
+            setCredentialsLoading(false);
+          }
+        });
     }, 0);
-    return () => window.clearTimeout(timer);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
   }, [vendor, cloudVendor, addModalOpen]);
 
   useEffect(() => {
     if (!cloudVendor || !addCredentialId) {
-      return;
+      const timer = window.setTimeout(() => setRegionsLoading(false), 0);
+      return () => window.clearTimeout(timer);
     }
+    let active = true;
     const timer = window.setTimeout(() => {
       setRegionsLoading(true);
       const request =
@@ -165,6 +184,9 @@ const InstancePage = () => {
           : listTencentRegions(addCredentialId);
       request
         .then((items) => {
+          if (!active) {
+            return;
+          }
           setRegions(items);
           if (!addForm.getFieldValue('regionId')) {
             const preferred = items.find(
@@ -175,16 +197,29 @@ const InstancePage = () => {
             }
           }
         })
-        .catch(() => message.error('云地域列表加载失败'))
-        .finally(() => setRegionsLoading(false));
+        .catch(() => {
+          if (active) {
+            message.error('云地域列表加载失败');
+          }
+        })
+        .finally(() => {
+          if (active) {
+            setRegionsLoading(false);
+          }
+        });
     }, 0);
-    return () => window.clearTimeout(timer);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
   }, [vendor, cloudVendor, addCredentialId, addForm]);
 
   useEffect(() => {
     if (!cloudVendor || !addCredentialId || !addRegionId) {
-      return;
+      const timer = window.setTimeout(() => setCloudInstancesLoading(false), 0);
+      return () => window.clearTimeout(timer);
     }
+    let active = true;
     const timer = window.setTimeout(() => {
       setCloudInstancesLoading(true);
       const request =
@@ -192,12 +227,42 @@ const InstancePage = () => {
           ? listAliyunInstances(addCredentialId, addRegionId)
           : listTencentInstances(addCredentialId, addRegionId);
       request
-        .then(setCloudInstances)
-        .catch(() => message.error('云实例列表加载失败'))
-        .finally(() => setCloudInstancesLoading(false));
+        .then((items) => {
+          if (active) {
+            setCloudInstances(items);
+          }
+        })
+        .catch(() => {
+          if (active) {
+            message.error('云实例列表加载失败');
+          }
+        })
+        .finally(() => {
+          if (active) {
+            setCloudInstancesLoading(false);
+          }
+        });
     }, 0);
-    return () => window.clearTimeout(timer);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
   }, [vendor, cloudVendor, addCredentialId, addRegionId]);
+
+  const handleVendorChange = (nextVendor: string) => {
+    setVendor(nextVendor as InstanceVendor);
+    setCredentials([]);
+    setRegions([]);
+    setCloudInstances([]);
+    setCredentialsLoading(false);
+    setRegionsLoading(false);
+    setCloudInstancesLoading(false);
+    addForm.setFieldsValue({
+      credentialId: undefined,
+      regionId: undefined,
+      cloudInstanceId: undefined,
+    });
+  };
 
   const handleCredentialChange = () => {
     setRegions([]);
@@ -499,7 +564,7 @@ const InstancePage = () => {
         <Tabs
           type="card"
           activeKey={vendor}
-          onChange={(key) => setVendor(key as InstanceVendor)}
+          onChange={handleVendorChange}
           style={{ marginTop: 8, marginBottom: 4 }}
           items={VENDOR_OPTIONS.map((option) => ({
             key: option.key,

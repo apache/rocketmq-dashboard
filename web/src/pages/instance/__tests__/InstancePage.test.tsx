@@ -20,10 +20,26 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as aliyunCatalogApi from '../../../api/aliyunCatalog';
+import * as cloudCredentialApi from '../../../api/cloudCredential';
 import type { Instance } from '../../../api/instance';
 import { LangProvider } from '../../../i18n/LangContext';
 import * as instanceService from '../../../services/instanceService';
 import InstancePage from '../index';
+
+vi.mock('../../../api/aliyunCatalog', () => ({
+  listAliyunInstances: vi.fn(),
+  listAliyunRegions: vi.fn(),
+}));
+
+vi.mock('../../../api/cloudCredential', () => ({
+  listCloudCredentials: vi.fn(),
+}));
+
+vi.mock('../../../api/tencentCatalog', () => ({
+  listTencentInstances: vi.fn(),
+  listTencentRegions: vi.fn(),
+}));
 
 vi.mock('../../../services/instanceService', () => ({
   createInstance: vi.fn(),
@@ -76,9 +92,22 @@ const renderPage = () =>
     </App>,
   );
 
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+};
+
 describe('InstancePage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue([]);
+    vi.mocked(aliyunCatalogApi.listAliyunRegions).mockResolvedValue([]);
+    vi.mocked(aliyunCatalogApi.listAliyunInstances).mockResolvedValue([]);
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       instance('proxy-1', 'production-proxy'),
       instance('direct-1', 'development-direct', 'DIRECT'),
@@ -209,6 +238,293 @@ describe('InstancePage', () => {
 
     await user.click(within(dialog).getByRole('tab', { name: /Aliyun 版/ }));
     expect(within(dialog).getByText(/云凭据与云上实例完成接入/)).toBeInTheDocument();
+  });
+
+  it('ignores a stale region response after the cloud credential changes', async () => {
+    const user = userEvent.setup();
+    const oldRegions = deferred<Array<{ regionId: string; regionName: string }>>();
+    const latestRegions = deferred<Array<{ regionId: string; regionName: string }>>();
+    vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue([
+      {
+        id: 'cred-old',
+        name: 'old-account',
+        vendor: 'ALIYUN',
+        accessKey: 'LTAI-old',
+        createdAt: '2026-01-01T00:00:00Z',
+      },
+      {
+        id: 'cred-latest',
+        name: 'latest-account',
+        vendor: 'ALIYUN',
+        accessKey: 'LTAI-latest',
+        createdAt: '2026-01-01T00:00:00Z',
+      },
+    ]);
+    vi.mocked(aliyunCatalogApi.listAliyunRegions)
+      .mockReturnValueOnce(oldRegions.promise)
+      .mockReturnValueOnce(latestRegions.promise);
+
+    renderPage();
+    expect(await screen.findByText('production-proxy')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /添加实例/ }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('tab', { name: /Aliyun 版/ }));
+    await waitFor(() => expect(cloudCredentialApi.listCloudCredentials).toHaveBeenCalled());
+
+    const credentialSelect = within(dialog).getAllByRole('combobox')[0];
+    fireEvent.mouseDown(credentialSelect.parentElement!);
+    await user.click(
+      await screen.findByText(/old-account/, { selector: '.ant-select-item-option-content' }),
+    );
+    await waitFor(() =>
+      expect(aliyunCatalogApi.listAliyunRegions).toHaveBeenCalledWith('cred-old'),
+    );
+
+    fireEvent.mouseDown(credentialSelect.parentElement!);
+    await user.click(
+      await screen.findByText(/latest-account/, { selector: '.ant-select-item-option-content' }),
+    );
+    await waitFor(() =>
+      expect(aliyunCatalogApi.listAliyunRegions).toHaveBeenCalledWith('cred-latest'),
+    );
+
+    await act(async () =>
+      latestRegions.resolve([{ regionId: 'cn-shanghai', regionName: 'Shanghai' }]),
+    );
+    await act(async () =>
+      oldRegions.resolve([{ regionId: 'cn-hangzhou-old', regionName: 'Old Hangzhou' }]),
+    );
+
+    const regionSelect = within(dialog).getAllByRole('combobox')[1];
+    fireEvent.mouseDown(regionSelect.parentElement!);
+    expect(
+      await screen.findByText(/Shanghai/, { selector: '.ant-select-item-option-content' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Old Hangzhou/, { selector: '.ant-select-item-option-content' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('ignores a stale instance response after the cloud region changes', async () => {
+    const user = userEvent.setup();
+    const oldInstances =
+      deferred<
+        Array<{ instanceId: string; instanceName: string; status: string; regionId: string }>
+      >();
+    const latestInstances =
+      deferred<
+        Array<{ instanceId: string; instanceName: string; status: string; regionId: string }>
+      >();
+    vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue([
+      {
+        id: 'cred-1',
+        name: 'cloud-account',
+        vendor: 'ALIYUN',
+        accessKey: 'LTAI-one',
+        createdAt: '2026-01-01T00:00:00Z',
+      },
+    ]);
+    vi.mocked(aliyunCatalogApi.listAliyunRegions).mockResolvedValue([
+      { regionId: 'cn-beijing', regionName: 'Beijing' },
+      { regionId: 'cn-shanghai', regionName: 'Shanghai' },
+    ]);
+    vi.mocked(aliyunCatalogApi.listAliyunInstances)
+      .mockReturnValueOnce(oldInstances.promise)
+      .mockReturnValueOnce(latestInstances.promise);
+
+    renderPage();
+    expect(await screen.findByText('production-proxy')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /添加实例/ }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('tab', { name: /Aliyun 版/ }));
+    await waitFor(() => expect(cloudCredentialApi.listCloudCredentials).toHaveBeenCalled());
+
+    const selects = within(dialog).getAllByRole('combobox');
+    fireEvent.mouseDown(selects[0].parentElement!);
+    await user.click(
+      await screen.findByText(/cloud-account/, { selector: '.ant-select-item-option-content' }),
+    );
+    await waitFor(() => expect(aliyunCatalogApi.listAliyunRegions).toHaveBeenCalledWith('cred-1'));
+
+    fireEvent.mouseDown(selects[1].parentElement!);
+    await user.click(
+      await screen.findByText(/Beijing/, { selector: '.ant-select-item-option-content' }),
+    );
+    await waitFor(() =>
+      expect(aliyunCatalogApi.listAliyunInstances).toHaveBeenCalledWith('cred-1', 'cn-beijing'),
+    );
+
+    fireEvent.mouseDown(selects[1].parentElement!);
+    await user.click(
+      await screen.findByText(/Shanghai/, { selector: '.ant-select-item-option-content' }),
+    );
+    await waitFor(() =>
+      expect(aliyunCatalogApi.listAliyunInstances).toHaveBeenCalledWith('cred-1', 'cn-shanghai'),
+    );
+
+    await act(async () =>
+      latestInstances.resolve([
+        {
+          instanceId: 'rmq-latest',
+          instanceName: 'latest-instance',
+          status: 'RUNNING',
+          regionId: 'cn-shanghai',
+        },
+      ]),
+    );
+    await act(async () =>
+      oldInstances.resolve([
+        {
+          instanceId: 'rmq-old',
+          instanceName: 'old-instance',
+          status: 'RUNNING',
+          regionId: 'cn-beijing',
+        },
+      ]),
+    );
+
+    fireEvent.mouseDown(selects[2].parentElement!);
+    expect(
+      await screen.findByText(/latest-instance/, { selector: '.ant-select-item-option-content' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/old-instance/, { selector: '.ant-select-item-option-content' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('clears a pending region load when the cloud vendor changes', async () => {
+    const user = userEvent.setup();
+    const pendingRegions = deferred<Array<{ regionId: string; regionName: string }>>();
+    vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue([
+      {
+        id: 'cred-aliyun',
+        name: 'aliyun-account',
+        vendor: 'ALIYUN',
+        accessKey: 'LTAI-one',
+        createdAt: '2026-01-01T00:00:00Z',
+      },
+      {
+        id: 'cred-tencent',
+        name: 'tencent-account',
+        vendor: 'TENCENT',
+        accessKey: 'AKID-one',
+        createdAt: '2026-01-01T00:00:00Z',
+      },
+    ]);
+    vi.mocked(aliyunCatalogApi.listAliyunRegions).mockReturnValue(pendingRegions.promise);
+
+    renderPage();
+    expect(await screen.findByText('production-proxy')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /添加实例/ }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('tab', { name: /Aliyun/ }));
+    await waitFor(() => expect(cloudCredentialApi.listCloudCredentials).toHaveBeenCalled());
+
+    const credentialSelect = within(dialog).getAllByRole('combobox')[0];
+    fireEvent.mouseDown(credentialSelect.parentElement!);
+    await user.click(
+      await screen.findByText(/aliyun-account/, { selector: '.ant-select-item-option-content' }),
+    );
+    await waitFor(() =>
+      expect(aliyunCatalogApi.listAliyunRegions).toHaveBeenCalledWith('cred-aliyun'),
+    );
+    await waitFor(() =>
+      expect(within(dialog).getAllByRole('combobox')[1].closest('.ant-select')).toHaveClass(
+        'ant-select-loading',
+      ),
+    );
+
+    await user.click(within(dialog).getByRole('tab', { name: /Tencent/ }));
+
+    const switchedSelects = within(dialog).getAllByRole('combobox');
+    expect(switchedSelects[0]).toHaveValue('');
+    expect(switchedSelects[1]).toHaveValue('');
+    expect(switchedSelects[2]).toHaveValue('');
+    expect(switchedSelects[1]).toBeDisabled();
+    expect(switchedSelects[2]).toBeDisabled();
+    expect(switchedSelects[1].closest('.ant-select')).not.toHaveClass('ant-select-loading');
+
+    await act(async () =>
+      pendingRegions.resolve([{ regionId: 'cn-hangzhou-old', regionName: 'Old Hangzhou' }]),
+    );
+    expect(switchedSelects[1]).toBeDisabled();
+  });
+
+  it('clears a pending instance load when the cloud vendor changes', async () => {
+    const user = userEvent.setup();
+    const pendingInstances =
+      deferred<
+        Array<{ instanceId: string; instanceName: string; status: string; regionId: string }>
+      >();
+    vi.mocked(cloudCredentialApi.listCloudCredentials).mockResolvedValue([
+      {
+        id: 'cred-aliyun',
+        name: 'aliyun-account',
+        vendor: 'ALIYUN',
+        accessKey: 'LTAI-one',
+        createdAt: '2026-01-01T00:00:00Z',
+      },
+      {
+        id: 'cred-tencent',
+        name: 'tencent-account',
+        vendor: 'TENCENT',
+        accessKey: 'AKID-one',
+        createdAt: '2026-01-01T00:00:00Z',
+      },
+    ]);
+    vi.mocked(aliyunCatalogApi.listAliyunRegions).mockResolvedValue([
+      { regionId: 'cn-beijing', regionName: 'Beijing' },
+    ]);
+    vi.mocked(aliyunCatalogApi.listAliyunInstances).mockReturnValue(pendingInstances.promise);
+
+    renderPage();
+    expect(await screen.findByText('production-proxy')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /添加实例/ }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('tab', { name: /Aliyun/ }));
+    await waitFor(() => expect(cloudCredentialApi.listCloudCredentials).toHaveBeenCalled());
+
+    const selects = within(dialog).getAllByRole('combobox');
+    fireEvent.mouseDown(selects[0].parentElement!);
+    await user.click(
+      await screen.findByText(/aliyun-account/, { selector: '.ant-select-item-option-content' }),
+    );
+    await waitFor(() => expect(aliyunCatalogApi.listAliyunRegions).toHaveBeenCalled());
+    fireEvent.mouseDown(selects[1].parentElement!);
+    await user.click(
+      await screen.findByText(/Beijing/, { selector: '.ant-select-item-option-content' }),
+    );
+    await waitFor(() =>
+      expect(aliyunCatalogApi.listAliyunInstances).toHaveBeenCalledWith(
+        'cred-aliyun',
+        'cn-beijing',
+      ),
+    );
+    await waitFor(() =>
+      expect(selects[2].closest('.ant-select')).toHaveClass('ant-select-loading'),
+    );
+
+    await user.click(within(dialog).getByRole('tab', { name: /Tencent/ }));
+
+    const switchedSelects = within(dialog).getAllByRole('combobox');
+    expect(switchedSelects[0]).toHaveValue('');
+    expect(switchedSelects[1]).toHaveValue('');
+    expect(switchedSelects[2]).toHaveValue('');
+    expect(switchedSelects[1]).toBeDisabled();
+    expect(switchedSelects[2]).toBeDisabled();
+    expect(switchedSelects[2].closest('.ant-select')).not.toHaveClass('ant-select-loading');
+
+    await act(async () =>
+      pendingInstances.resolve([
+        {
+          instanceId: 'rmq-old',
+          instanceName: 'old-instance',
+          status: 'RUNNING',
+          regionId: 'cn-beijing',
+        },
+      ]),
+    );
+    expect(switchedSelects[2]).toBeDisabled();
   });
 
   it('sorts and renders instances without remarks', async () => {
