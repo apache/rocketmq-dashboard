@@ -160,9 +160,9 @@ class SettingsControllerTest {
 
     @Test
     void listDataSourcesShouldReturnAllSources() throws Exception {
-        DataSourceVO ds1 = DataSourceVO.builder().key("ds-1").name("Production").type("rocketmq")
+        DataSourceVO ds1 = DataSourceVO.builder().key("ds-1").name("Production").type("Prometheus")
                 .url("prod:9876").status("connected").build();
-        DataSourceVO ds2 = DataSourceVO.builder().key("ds-2").name("Staging").type("rocketmq")
+        DataSourceVO ds2 = DataSourceVO.builder().key("ds-2").name("Staging").type("Prometheus")
                 .url("staging:9876").status("disconnected").build();
         when(settingsService.listDataSources()).thenReturn(Arrays.asList(ds1, ds2));
 
@@ -189,9 +189,9 @@ class SettingsControllerTest {
 
     @Test
     void createDataSourceShouldReturnCreatedSource() throws Exception {
-        DataSourceVO input = DataSourceVO.builder().name("New DS").type("rocketmq")
+        DataSourceVO input = DataSourceVO.builder().name("New DS").type("Prometheus")
                 .url("new-host:9876").build();
-        DataSourceVO created = DataSourceVO.builder().key("ds-new").name("New DS").type("rocketmq")
+        DataSourceVO created = DataSourceVO.builder().key("ds-new").name("New DS").type("Prometheus")
                 .url("new-host:9876").status("connected").build();
         when(settingsService.createDataSource(any(DataSourceVO.class))).thenReturn(created);
 
@@ -223,6 +223,43 @@ class SettingsControllerTest {
     }
 
     @Test
+    void createDataSourceShouldRejectUnsupportedMetricsType() throws Exception {
+        mockMvc.perform(post("/api/settings/datasources/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "New DS",
+                                  "type": "unsupported",
+                                  "url": "http://metrics.example.test"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is(400)))
+                .andExpect(jsonPath("$.message", is("Unsupported metrics data source type")));
+
+        verifyNoInteractions(settingsService);
+    }
+
+    @Test
+    void createDataSourceShouldRejectUnsupportedAuthentication() throws Exception {
+        mockMvc.perform(post("/api/settings/datasources/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "New DS",
+                                  "type": "Prometheus",
+                                  "url": "http://metrics.example.test",
+                                  "auth": "API Key"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is(400)))
+                .andExpect(jsonPath("$.message", is("Unsupported metrics data source authentication")));
+
+        verifyNoInteractions(settingsService);
+    }
+
+    @Test
     void createDataSourceShouldRejectNullRequestBody() throws Exception {
         mockMvc.perform(post("/api/settings/datasources/create")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -236,7 +273,7 @@ class SettingsControllerTest {
 
     @Test
     void updateDataSourceShouldReturnUpdatedSource() throws Exception {
-        DataSourceVO input = DataSourceVO.builder().key("ds-1").name("Updated DS").type("rocketmq")
+        DataSourceVO input = DataSourceVO.builder().key("ds-1").name("Updated DS").type("Prometheus")
                 .url("updated:9876").build();
         when(settingsService.updateDataSource(any(DataSourceVO.class))).thenReturn(input);
 
@@ -256,13 +293,52 @@ class SettingsControllerTest {
                         .content("""
                                 {
                                   "key": "ds-1",
-                                  "type": "rocketmq",
+                                  "type": "Prometheus",
                                   "url": "updated:9876"
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code", is(400)))
                 .andExpect(jsonPath("$.message", is("name is required")));
+
+        verifyNoInteractions(settingsService);
+    }
+
+    @Test
+    void updateDataSourceShouldRejectUnsupportedMetricsType() throws Exception {
+        mockMvc.perform(post("/api/settings/datasources/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "key": "ds-1",
+                                  "name": "Updated DS",
+                                  "type": "unsupported",
+                                  "url": "http://metrics.example.test"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is(400)))
+                .andExpect(jsonPath("$.message", is("Unsupported metrics data source type")));
+
+        verifyNoInteractions(settingsService);
+    }
+
+    @Test
+    void updateDataSourceShouldRejectUnsupportedAuthentication() throws Exception {
+        mockMvc.perform(post("/api/settings/datasources/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "key": "ds-1",
+                                  "name": "Updated DS",
+                                  "type": "Prometheus",
+                                  "url": "http://metrics.example.test",
+                                  "auth": "API Key"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code", is(400)))
+                .andExpect(jsonPath("$.message", is("Unsupported metrics data source authentication")));
 
         verifyNoInteractions(settingsService);
     }

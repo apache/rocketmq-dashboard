@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.settings;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import lombok.Data;
 
 @Data
@@ -28,20 +29,26 @@ public class DataSourceDTO {
     private String name;
 
     @NotBlank(message = "type is required")
+    @Pattern(
+            regexp = "(?i)\\s*(?:prometheus|victoria[ _]?metrics|thanos|mimir|cortex|arms)?\\s*",
+            message = "Unsupported metrics data source type")
     private String type;
 
     @NotBlank(message = "url is required")
     private String url;
 
+    @Pattern(
+            regexp = "(?i)\\s*(?:none|basic auth|bearer token)?\\s*",
+            message = "Unsupported metrics data source authentication")
     private String auth;
 
     public DataSourceVO toDataSourceVO() {
         return DataSourceVO.builder()
                 .key(key)
                 .name(name)
-                .type(type)
+                .type(type.trim())
                 .url(url)
-                .auth(auth)
+                .auth(auth == null ? null : auth.trim())
                 .build();
     }
 }
