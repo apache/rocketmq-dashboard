@@ -19,6 +19,8 @@ package org.apache.rocketmq.studio.auth;
 
 import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
+import org.apache.rocketmq.studio.settings.SettingsRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
@@ -37,17 +39,26 @@ public class AuthController {
 
     private final AuthService authService;
     private final AuthProperties authProperties;
+    private final SettingsRepository settingsRepository;
 
     @GetMapping("/status")
     public ResponseEntity<Result<AuthStatusVO>> status(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization) {
         AuthStatusVO status = AuthStatusVO.builder()
-                .loginRequired(authProperties.isLoginRequired())
+                .loginRequired(isLoginRequired())
                 .authenticated(authService.isAuthenticated(authorization))
                 .build();
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
                 .body(Result.ok(status));
+    }
+
+    private boolean isLoginRequired() {
+        if (authProperties.isLoginRequired()) {
+            return true;
+        }
+        GeneralSettingsVO settings = settingsRepository.loadGeneralSettings();
+        return settings != null && settings.isRequireLogin();
     }
 
     @PostMapping("/login")

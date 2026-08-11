@@ -18,6 +18,7 @@
 package org.apache.rocketmq.studio.auth;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -69,6 +70,20 @@ class AuthControllerTest {
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.loginRequired").value(false))
+                .andExpect(jsonPath("$.data.authenticated").value(false));
+    }
+
+    @Test
+    void statusShouldReportRuntimeLoginProtection() throws Exception {
+        when(authProperties.isLoginRequired()).thenReturn(false);
+        when(settingsRepository.loadGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
+                .requireLogin(true)
+                .build());
+        when(authService.isAuthenticated(null)).thenReturn(false);
+
+        mockMvc.perform(get("/api/auth/status"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.loginRequired").value(true))
                 .andExpect(jsonPath("$.data.authenticated").value(false));
     }
 
