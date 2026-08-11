@@ -112,6 +112,24 @@ class AuthInterceptorTest {
     }
 
     @Test
+    void shouldEnforceLoginWhenRuntimePolicyCannotBeLoaded() throws Exception {
+        AuthProperties properties = new AuthProperties();
+        SettingsRepository failingSettingsRepository = mock(SettingsRepository.class);
+        when(failingSettingsRepository.loadGeneralSettings())
+                .thenThrow(new IllegalStateException("settings database unavailable"));
+        AuthInterceptor interceptor = new AuthInterceptor(properties, authService(properties),
+                failingSettingsRepository);
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/clusters");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        boolean allowed = interceptor.preHandle(request, response, new Object());
+
+        assertThat(allowed).isFalse();
+        assertThat(response.getStatus()).isEqualTo(401);
+        assertThat(response.getContentAsString()).contains("Unauthorized");
+    }
+
+    @Test
     void shouldAllowLoginEndpointWhenLoginIsEnabled() throws Exception {
         AuthProperties properties = new AuthProperties();
         properties.setLoginRequired(true);
