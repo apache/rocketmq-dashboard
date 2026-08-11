@@ -25,6 +25,7 @@ import {
   Tabs,
   Card,
   Row,
+  Select,
   Col,
   Descriptions,
   Space,
@@ -39,6 +40,8 @@ import {
   getConsumerSubscriptions,
   listConsumerGroups,
 } from '../../services/consumerService';
+import { listInstances } from '../../services/instanceService';
+import type { Instance } from '../../api/instance';
 
 // ─── Helpers ────────────────────────────────────────────────────
 type GroupStatus = 'running' | 'warning' | 'stopped';
@@ -62,6 +65,8 @@ const GroupManagementPage = () => {
   const [selectedGroup, setSelectedGroup] = useState<ConsumerGroup | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [groups, setGroups] = useState<ConsumerGroup[]>([]);
+  const [instances, setInstances] = useState<Instance[]>([]);
+  const [selectedInstanceId, setSelectedInstanceId] = useState('');
   const [loading, setLoading] = useState(true);
   const [subscriptions, setSubscriptions] = useState<SubscriptionEntry[]>([]);
   const [progress, setProgress] = useState<QueueProgress[]>([]);
@@ -74,6 +79,9 @@ const GroupManagementPage = () => {
   const { t } = useLang();
 
   const loadGroups = useCallback((): Promise<void> => {
+    if (!selectedInstanceId) {
+      return Promise.resolve();
+    }
     if (listInFlight.current) {
       listRefreshQueued.current = true;
       return listInFlight.current;
@@ -85,7 +93,7 @@ const GroupManagementPage = () => {
         listRefreshQueued.current = false;
         const requestId = ++listRequestId.current;
         try {
-          const data = await listConsumerGroups();
+          const data = await listConsumerGroups({ instanceId: selectedInstanceId });
           if (!mountedRef.current || requestId !== listRequestId.current) return;
           setGroups(data);
         } catch {
@@ -95,14 +103,47 @@ const GroupManagementPage = () => {
       } while (mountedRef.current && listRefreshQueued.current);
     };
 
-    const cycle = run().finally(() => {
-      listInFlight.current = null;
-      if (mountedRef.current) {
-        setLoading(false);
+    let cycle: Promise<void>;
+    cycle = run().finally(() => {
+      if (listInFlight.current === cycle) {
+        listInFlight.current = null;
+        if (mountedRef.current) {
+          setLoading(false);
+        }
       }
     });
     listInFlight.current = cycle;
     return cycle;
+  }, [selectedInstanceId, t]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void listInstances()
+      .then((nextInstances) => {
+        if (cancelled) return;
+        setInstances(nextInstances);
+        setSelectedInstanceId((current) =>
+          nextInstances.some((instance) => instance.id === current)
+            ? current
+            : nextInstances[0]?.id || '',
+        );
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setInstances([]);
+        setSelectedInstanceId('');
+        setGroups([]);
+        setSelectedGroup(null);
+        setSubscriptions([]);
+        setProgress([]);
+        setLoading(false);
+        message.error(t('consumer.fetchListFailed'));
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [t]);
 
   useEffect(() => {
@@ -132,6 +173,18 @@ const GroupManagementPage = () => {
   const handleRefresh = useCallback(() => {
     void loadGroups();
   }, [loadGroups]);
+
+  const handleInstanceChange = (instanceId: string) => {
+    ++detailRequestId.current;
+    ++listRequestId.current;
+    listInFlight.current = null;
+    listRefreshQueued.current = false;
+    setSelectedInstanceId(instanceId);
+    setGroups([]);
+    setSelectedGroup(null);
+    setSubscriptions([]);
+    setProgress([]);
+  };
 
   const handleViewDetail = useCallback(
     async (group: ConsumerGroup) => {
@@ -303,6 +356,15 @@ const GroupManagementPage = () => {
             onChange={(e) => setSearchText(e.target.value)}
             style={{ width: 240 }}
             allowClear
+          />
+          <Select
+            aria-label={t('common.selectInstance')}
+            value={selectedInstanceId || undefined}
+            onChange={handleInstanceChange}
+            placeholder={t('common.selectInstance')}
+            options={instances.map((instance) => ({ value: instance.id, label: instance.name }))}
+            style={{ width: 220 }}
+            disabled={instances.length === 0}
           />
           <Switch
             checked={autoRefresh}

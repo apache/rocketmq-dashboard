@@ -22,12 +22,17 @@ import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
 import type { ConsumerGroup, QueueProgress, SubscriptionEntry } from '../../../api/metadata';
 import * as consumerService from '../../../services/consumerService';
+import * as instanceService from '../../../services/instanceService';
 import GroupManagement from '../GroupManagement';
 
 vi.mock('../../../services/consumerService', () => ({
   listConsumerGroups: vi.fn(),
   getConsumerProgress: vi.fn(),
   getConsumerSubscriptions: vi.fn(),
+}));
+
+vi.mock('../../../services/instanceService', () => ({
+  listInstances: vi.fn(),
 }));
 
 // Mock matchMedia for antd responsive components
@@ -95,6 +100,19 @@ const createDeferred = <T,>() => {
 describe('GroupManagement Page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(instanceService.listInstances).mockResolvedValue([
+      {
+        id: 'instance-a',
+        name: 'Instance A',
+        remark: null,
+        type: 'DIRECT',
+        endpoint: 'namesrv-a:9876',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        createdAt: '',
+        updatedAt: '',
+      },
+    ]);
     vi.mocked(consumerService.listConsumerGroups).mockResolvedValue(groups);
     vi.mocked(consumerService.getConsumerProgress).mockResolvedValue([]);
     vi.mocked(consumerService.getConsumerSubscriptions).mockResolvedValue([]);
@@ -107,6 +125,68 @@ describe('GroupManagement Page', () => {
   it('should render the page title', () => {
     renderWithProviders(<GroupManagement />);
     expect(screen.getByText('消费组管理')).toBeInTheDocument();
+  });
+
+  it('loads consumer groups for the selected managed instance', async () => {
+    renderWithProviders(<GroupManagement />);
+
+    await waitFor(() => {
+      expect(instanceService.listInstances).toHaveBeenCalledOnce();
+      expect(consumerService.listConsumerGroups).toHaveBeenCalledWith({ instanceId: 'instance-a' });
+    });
+  });
+
+  it('reloads consumer groups after selecting another managed instance', async () => {
+    vi.mocked(instanceService.listInstances).mockResolvedValue([
+      {
+        id: 'instance-a',
+        name: 'Instance A',
+        remark: null,
+        type: 'DIRECT',
+        endpoint: 'namesrv-a:9876',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        createdAt: '',
+        updatedAt: '',
+      },
+      {
+        id: 'instance-b',
+        name: 'Instance B',
+        remark: null,
+        type: 'DIRECT',
+        endpoint: 'namesrv-b:9876',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        createdAt: '',
+        updatedAt: '',
+      },
+    ]);
+    const user = userEvent.setup();
+    renderWithProviders(<GroupManagement />);
+
+    await waitFor(() => {
+      expect(consumerService.listConsumerGroups).toHaveBeenCalledWith({ instanceId: 'instance-a' });
+    });
+
+    await user.click(screen.getByRole('combobox', { name: '选择实例' }));
+    await user.click(
+      await screen.findByText('Instance B', { selector: '.ant-select-item-option-content' }),
+    );
+
+    await waitFor(() => {
+      expect(consumerService.listConsumerGroups).toHaveBeenLastCalledWith({ instanceId: 'instance-b' });
+    });
+  });
+
+  it('does not fall back to the legacy global group list when instance loading fails', async () => {
+    vi.mocked(instanceService.listInstances).mockRejectedValueOnce(new Error('instance API unavailable'));
+
+    renderWithProviders(<GroupManagement />);
+
+    await waitFor(() => {
+      expect(instanceService.listInstances).toHaveBeenCalledOnce();
+    });
+    expect(consumerService.listConsumerGroups).not.toHaveBeenCalled();
   });
 
   it('should render search input with placeholder', () => {
@@ -219,13 +299,13 @@ describe('GroupManagement Page', () => {
   });
 
   it('polls only while auto refresh is enabled', async () => {
-    vi.useFakeTimers();
     renderWithProviders(<GroupManagement />);
 
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
+    await waitFor(() => {
+      expect(consumerService.listConsumerGroups).toHaveBeenCalledTimes(1);
     });
-    expect(consumerService.listConsumerGroups).toHaveBeenCalledTimes(1);
+
+    vi.useFakeTimers();
 
     const autoRefreshSwitch = screen.getByRole('switch');
     fireEvent.click(autoRefreshSwitch);
