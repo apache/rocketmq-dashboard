@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.provider.credential;
 
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
+import lombok.ToString;
 
 @Data
 public class UpdateCloudCredentialDTO {
@@ -27,6 +28,7 @@ public class UpdateCloudCredentialDTO {
 
     private String name;
 
+    @ToString.Exclude
     private String secretKey;
 
     private String remark;

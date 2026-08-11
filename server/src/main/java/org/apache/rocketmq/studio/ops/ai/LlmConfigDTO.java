@@ -17,12 +17,14 @@
 package org.apache.rocketmq.studio.ops.ai;
 
 import lombok.Data;
+import lombok.ToString;
 
 @Data
 public class LlmConfigDTO {
 
     private String provider;
     private String engine;
+    @ToString.Exclude
     private String apiKey;
     private String apiBase;
     private String model;
