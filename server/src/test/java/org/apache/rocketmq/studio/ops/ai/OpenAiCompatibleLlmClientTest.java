@@ -31,6 +31,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -77,6 +78,21 @@ class OpenAiCompatibleLlmClientTest {
         assertThat(requestBody.get().path("messages").path(0).path("role").asText()).isEqualTo("user");
         assertThat(requestBody.get().path("messages").path(0).path("content").asText()).isEqualTo("hello");
         assertThat(requestBody.get().path("max_tokens").asInt()).isEqualTo(256);
+    }
+
+    @Test
+    void supportsShouldNormalizeProviderIndependentlyOfDefaultLocale() {
+        Locale originalLocale = Locale.getDefault();
+
+        boolean supported;
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            supported = client.supports(config("OPENAI", "sk-test"));
+        } finally {
+            Locale.setDefault(originalLocale);
+        }
+
+        assertThat(supported).isTrue();
     }
 
     @Test
