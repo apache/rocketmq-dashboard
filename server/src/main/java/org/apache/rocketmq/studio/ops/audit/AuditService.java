@@ -106,6 +106,9 @@ public class AuditService {
         if (beforeDays <= 0) {
             throw new BusinessException(400, "beforeDays must be greater than 0");
         }
+        if (beforeDays > 365) {
+            throw new BusinessException(400, "beforeDays must not exceed 365");
+        }
         log.info("Cleaning up audit logs older than {} days", beforeDays);
         LocalDateTime cutoff = LocalDateTime.now().minusDays(beforeDays);
         return auditRepository.deleteBefore(cutoff);
