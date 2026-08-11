@@ -461,16 +461,21 @@ describe('TopicPage', () => {
   it('renders unavailable Topic consumer metrics distinctly from zero', async () => {
     const user = userEvent.setup();
     topicServiceMocks.listTopics.mockResolvedValue([buildTopics(1)[0]]);
-    topicServiceMocks.getTopicConsumers.mockResolvedValue([
-      {
-        group: 'cg-orders',
-        consumeType: 'CLUSTERING',
-        messageModel: 'CLUSTERING',
-        consumeTps: 0,
-        diffTotal: 0,
-        metricsAvailable: false,
-      },
-    ]);
+    topicServiceMocks.getTopicConsumerPage.mockResolvedValue({
+      items: [
+        {
+          group: 'cg-orders',
+          consumeType: 'CLUSTERING',
+          messageModel: 'CLUSTERING',
+          consumeTps: 0,
+          diffTotal: 0,
+          metricsAvailable: false,
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
     renderWithProviders();
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
