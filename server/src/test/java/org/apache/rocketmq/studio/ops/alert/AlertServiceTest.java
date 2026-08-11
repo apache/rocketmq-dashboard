@@ -154,6 +154,31 @@ class AlertServiceTest {
     }
 
     @Test
+    void exportPrometheusRulesYamlShouldDisambiguateDuplicateAlertNames() {
+        AlertRuleVO first = AlertRuleVO.builder()
+                .name("High Lag")
+                .metric("rocketmq_consumer_lag_messages")
+                .operator(">")
+                .threshold(1000)
+                .enabled(true)
+                .build();
+        AlertRuleVO second = AlertRuleVO.builder()
+                .name("High-Lag")
+                .metric("rocketmq_consumer_lag_messages")
+                .operator(">")
+                .threshold(2000)
+                .enabled(true)
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(first, second));
+
+        String result = alertService.exportPrometheusRulesYaml();
+
+        assertThat(result)
+                .contains("- alert: HighLag\n")
+                .contains("- alert: HighLag_2\n");
+    }
+
+    @Test
     void exportPrometheusRulesYamlShouldRenderReplicationLagRuleWithScopeAndSeverity() {
         AlertRuleVO rule = AlertRuleVO.builder()
                 .name("Replication Lag High")
@@ -197,6 +222,26 @@ class AlertServiceTest {
         assertThat(result)
                 .contains("expr: rocketmq_broker_replication_lag_bytes > 1024")
                 .contains("severity: warning");
+    }
+
+    @Test
+    void exportPrometheusRulesYamlShouldReplaceInvalidPrometheusFields() {
+        AlertRuleVO rule = AlertRuleVO.builder()
+                .name("Malformed rule")
+                .metric("up) or vector(1")
+                .operator("> 0 or")
+                .threshold(10)
+                .duration("5xyz")
+                .enabled(true)
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+
+        String result = alertService.exportPrometheusRulesYaml();
+
+        assertThat(result)
+                .contains("expr: rocketmq_consumer_lag_messages > 10")
+                .contains("for: 5m")
+                .doesNotContain("vector(1", "> 0 or", "5xyz");
     }
 
     @Test
