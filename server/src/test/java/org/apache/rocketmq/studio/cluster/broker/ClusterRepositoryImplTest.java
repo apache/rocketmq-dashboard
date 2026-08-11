@@ -47,11 +47,14 @@ class ClusterRepositoryImplTest {
 
         ClusterVO first = repository.findById("cluster-001").orElseThrow();
         first.setName("mutated");
+        first.getConfig().setFileReservedTime(1);
 
         ClusterVO second = repository.findById("cluster-001").orElseThrow();
 
         // Mutating the returned copy must not affect the cached cluster.
         assertThat(second.getName()).isEqualTo("rmq-cluster-prod");
         assertThat(first.getBrokers()).isNotSameAs(second.getBrokers());
+        assertThat(second.getConfig()).isNotSameAs(first.getConfig());
+        assertThat(second.getConfig().getFileReservedTime()).isEqualTo(72);
     }
 }
