@@ -59,6 +59,19 @@ class MybatisPlusSettingsRepositoryTest {
     }
 
     @Test
+    void shouldRejectNullPersistedGeneralSettings() {
+        RmqSettings settings = new RmqSettings();
+        settings.setJson("null");
+        when(settingsMapper.selectById("singleton")).thenReturn(settings);
+
+        assertThatThrownBy(repository::loadGeneralSettings)
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Persisted general settings are invalid")
+                .extracting("code")
+                .isEqualTo(500);
+    }
+
+    @Test
     void shouldReadValidPersistedGeneralSettings() {
         RmqSettings settings = new RmqSettings();
         settings.setJson("{\"theme\":\"dark\",\"requireLogin\":true}");
@@ -68,6 +81,20 @@ class MybatisPlusSettingsRepositoryTest {
 
         assertThat(loaded.getTheme()).isEqualTo("dark");
         assertThat(loaded.isRequireLogin()).isTrue();
+    }
+
+    @Test
+    void shouldRejectNullPersistedDataSource() {
+        RmqDataSource dataSource = new RmqDataSource();
+        dataSource.setDsKey("metrics-prod");
+        dataSource.setJson("null");
+        when(dataSourceMapper.selectById("metrics-prod")).thenReturn(dataSource);
+
+        assertThatThrownBy(() -> repository.findDataSourceByKey("metrics-prod"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Persisted data source is invalid: metrics-prod")
+                .extracting("code")
+                .isEqualTo(500);
     }
 
     @Test

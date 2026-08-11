@@ -71,7 +71,11 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
                     .build();
         }
         try {
-            return objectMapper.readValue(entity.getJson(), GeneralSettingsVO.class);
+            GeneralSettingsVO settings = objectMapper.readValue(entity.getJson(), GeneralSettingsVO.class);
+            if (settings == null) {
+                throw new BusinessException(500, "Persisted general settings are invalid");
+            }
+            return settings;
         } catch (JsonProcessingException e) {
             log.error("Failed to deserialize general settings", e);
             throw new BusinessException(500, "Persisted general settings are invalid");
@@ -148,9 +152,12 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
     private DataSourceVO toDataSourceVO(RmqDataSource entity) {
         try {
             DataSourceVO vo = objectMapper.readValue(entity.getJson(), DataSourceVO.class);
+            if (vo == null) {
+                throw new BusinessException(500, "Persisted data source is invalid: " + entity.getDsKey());
+            }
             vo.setKey(entity.getDsKey());
             return vo;
-        } catch (JsonProcessingException e) {
+        } catch (JsonProcessingException | IllegalArgumentException e) {
             log.error("Failed to deserialize data source: {}", entity.getDsKey(), e);
             throw new BusinessException(500, "Persisted data source is invalid: " + entity.getDsKey());
         }
