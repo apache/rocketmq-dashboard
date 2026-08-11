@@ -120,8 +120,8 @@ export const GrafanaDashboardList: React.FC = () => {
   const handleExportAll = async () => {
     setExportingAll(true);
     try {
-      const blob = await exportGrafanaDashboards();
-      triggerDownload('rocketmq-grafana-dashboards.zip', blob);
+      const download = await exportGrafanaDashboards();
+      triggerDownload(download.filename, download.blob);
       message.success(t('grafana.exportAllDone'));
     } catch {
       message.error(t('grafana.exportAllFailed'));
