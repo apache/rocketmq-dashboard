@@ -214,23 +214,31 @@ public class TencentInstanceProvider implements InstanceProvider {
     public List<TopicConsumerVO> getTopicConsumers(String instanceId, String topicName) {
         Context context = resolve(instanceId);
         requireTopicName(topicName);
-        DescribeTopicRequest request = new DescribeTopicRequest();
-        request.setInstanceId(context.cloudInstanceId());
-        request.setTopic(topicName);
-        request.setOffset(0L);
-        request.setLimit((long) CONSUMER_PAGE_SIZE);
-        DescribeTopicResponse response = clientFactory.call(context.credentialId(), context.regionId(),
-                client -> client.DescribeTopic(request));
-        SubscriptionData[] data = response == null ? null : response.getSubscriptionData();
         List<TopicConsumerVO> consumers = new ArrayList<>();
-        if (data == null) {
-            return consumers;
-        }
-        for (SubscriptionData subscription : data) {
-            if (subscription == null) {
-                continue;
+        long fetchedSubscriptions = 0L;
+        for (int page = 0; page < MAX_PAGES; page++) {
+            DescribeTopicRequest request = new DescribeTopicRequest();
+            request.setInstanceId(context.cloudInstanceId());
+            request.setTopic(topicName);
+            request.setOffset((long) page * CONSUMER_PAGE_SIZE);
+            request.setLimit((long) CONSUMER_PAGE_SIZE);
+            DescribeTopicResponse response = clientFactory.call(context.credentialId(), context.regionId(),
+                    client -> client.DescribeTopic(request));
+            SubscriptionData[] data = response == null ? null : response.getSubscriptionData();
+            if (data == null || data.length == 0) {
+                break;
             }
-            consumers.add(toTopicConsumer(subscription));
+            fetchedSubscriptions += data.length;
+            for (SubscriptionData subscription : data) {
+                if (subscription != null) {
+                    consumers.add(toTopicConsumer(subscription));
+                }
+            }
+            Long subscriptionCount = response.getSubscriptionCount();
+            if (data.length < CONSUMER_PAGE_SIZE
+                    || subscriptionCount != null && fetchedSubscriptions >= subscriptionCount) {
+                break;
+            }
         }
         return consumers;
     }
