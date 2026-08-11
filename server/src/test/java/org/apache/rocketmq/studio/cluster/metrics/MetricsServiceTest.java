@@ -29,6 +29,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
@@ -347,6 +348,32 @@ class MetricsServiceTest {
         verify(settingsService).getDataSource("ds-1");
         verify(metricsSourceFactory).create(any(MetricsDataSourceConfig.class));
         verify(metricsSource).query(any(MetricQueryDTO.class));
+    }
+
+    @Test
+    void queryByDataSourceShouldNormalizeAuthIndependentlyOfDefaultLocale() {
+        MetricQueryDTO query = MetricQueryDTO.builder()
+                .metric("cpu").start(1700000000L).end(1700003600L).step("1m").build();
+        MetricsDataSourceQueryRequest request = new MetricsDataSourceQueryRequest();
+        request.setQuery(query);
+        DataSourceVO dataSource = DataSourceVO.builder()
+                .key("ds-1").name("prometheus").type("prometheus")
+                .url("http://prometheus:9090").auth("BASIC AUTH").build();
+        when(settingsService.getDataSource("ds-1")).thenReturn(dataSource);
+        when(metricsSourceFactory.create(any(MetricsDataSourceConfig.class))).thenReturn(metricsSource);
+        when(metricsSource.query(any(MetricQueryDTO.class))).thenReturn(metricData("cpu", List.of()));
+
+        Locale originalLocale = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            metricsService.queryByDataSource("ds-1", request);
+        } finally {
+            Locale.setDefault(originalLocale);
+        }
+
+        ArgumentCaptor<MetricsDataSourceConfig> configCaptor = ArgumentCaptor.forClass(MetricsDataSourceConfig.class);
+        verify(metricsSourceFactory).create(configCaptor.capture());
+        assertThat(configCaptor.getValue().getAuthType()).isEqualTo("basic");
     }
 
     @Test
