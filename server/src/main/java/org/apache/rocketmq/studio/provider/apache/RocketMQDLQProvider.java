@@ -137,6 +137,9 @@ public class RocketMQDLQProvider implements DLQProvider {
     @Override
     public DLQResendResultVO resendMessages(String instanceId, String groupName, Long startTime, Long endTime,
                                              String targetTopic) {
+        if (!StringUtils.hasText(groupName)) {
+            throw new BusinessException(400, "groupName is required for DLQ resend");
+        }
         String endpoint = runtimeAdminClientResolver.resolveEndpoint(instanceId);
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + groupName;
 
