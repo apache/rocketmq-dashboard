@@ -264,7 +264,7 @@ public class RocketMQMessageProvider implements MessageProvider {
     }
 
     @Override
-    public TraceRecordVO getMessageTrace(String instanceId, String msgId) {
+    public TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic) {
         return runtimeAdminClientResolver.execute(instanceId,
                 adminExt -> getMessageTrace(instanceId, (DefaultMQAdminExt) adminExt, msgId));
     }

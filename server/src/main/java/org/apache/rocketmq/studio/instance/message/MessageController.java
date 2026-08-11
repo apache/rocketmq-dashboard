@@ -46,7 +46,10 @@ public class MessageController {
     }
 
     @GetMapping("/{msgId}/trace")
-    public Result<TraceRecordVO> getMessageTrace(@PathVariable String msgId, @RequestParam String instanceId) {
-        return Result.ok(messageService.getMessageTrace(instanceId, msgId));
+    public Result<TraceRecordVO> getMessageTrace(@PathVariable String msgId, @RequestParam String instanceId,
+                                                 // Optional for the Apache/Aliyun providers; the Tencent
+                                                 // provider requires a non-empty topic (DescribeMessageTrace).
+                                                 @RequestParam(required = false) String topic) {
+        return Result.ok(messageService.getMessageTrace(instanceId, msgId, topic));
     }
 }

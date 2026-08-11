@@ -430,7 +430,7 @@ public class AliyunInstanceProvider implements InstanceProvider {
     }
 
     @Override
-    public TraceRecordVO getMessageTrace(String instanceId, String msgId) {
+    public TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic) {
         Context ctx = resolve(instanceId);
         GetTraceRequest request = GetTraceRequest.builder()
                 .instanceId(ctx.cloudInstanceId())

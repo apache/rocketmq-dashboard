@@ -74,12 +74,13 @@ class MessageControllerTest {
     @Test
     void messageTraceShouldPassInstanceId() throws Exception {
         TraceRecordVO trace = TraceRecordVO.builder().nodes(List.of()).consumerStatus(List.of()).build();
-        when(messageService.getMessageTrace("instance-a", "msg-001")).thenReturn(trace);
+        when(messageService.getMessageTrace("instance-a", "msg-001", "orders")).thenReturn(trace);
 
-        mockMvc.perform(get("/api/messages/msg-001/trace").param("instanceId", "instance-a"))
+        mockMvc.perform(get("/api/messages/msg-001/trace").param("instanceId", "instance-a")
+                .param("topic", "orders"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
-        verify(messageService).getMessageTrace("instance-a", "msg-001");
+        verify(messageService).getMessageTrace("instance-a", "msg-001", "orders");
     }
 }

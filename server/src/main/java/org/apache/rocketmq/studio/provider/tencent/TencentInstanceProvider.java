@@ -16,16 +16,35 @@
  */
 package org.apache.rocketmq.studio.provider.tencent;
 
+import com.tencentcloudapi.trocket.v20230308.models.ConsumeGroupItem;
+import com.tencentcloudapi.trocket.v20230308.models.CreateConsumerGroupRequest;
 import com.tencentcloudapi.trocket.v20230308.models.CreateTopicRequest;
+import com.tencentcloudapi.trocket.v20230308.models.DeleteConsumerGroupRequest;
 import com.tencentcloudapi.trocket.v20230308.models.DeleteTopicRequest;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeConsumerGroupRequest;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeConsumerGroupResponse;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeConsumerGroupListRequest;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeConsumerGroupListResponse;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeMessageListRequest;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeMessageListResponse;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeMessageRequest;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeMessageResponse;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeMessageTraceRequest;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeMessageTraceResponse;
+import com.tencentcloudapi.trocket.v20230308.models.MessageItem;
+import com.tencentcloudapi.trocket.v20230308.models.MessageTraceItem;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicListByGroupRequest;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicListByGroupResponse;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicListRequest;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicListResponse;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicRequest;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicResponse;
 import com.tencentcloudapi.trocket.v20230308.models.ModifyTopicRequest;
+import com.tencentcloudapi.trocket.v20230308.models.ResetConsumerGroupOffsetRequest;
 import com.tencentcloudapi.trocket.v20230308.models.SubscriptionData;
 import com.tencentcloudapi.trocket.v20230308.models.TopicItem;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
+import org.apache.rocketmq.studio.common.domain.enums.DeliveryStatus;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.domain.enums.TopicType;
@@ -35,7 +54,9 @@ import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
+import org.apache.rocketmq.studio.instance.message.ConsumerStatusVO;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
+import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
@@ -43,22 +64,32 @@ import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.UUID;
 
 /**
  * Tencent Cloud TDMQ RocketMQ 5.x topic operations backed by Trocket v20230308 OpenAPI.
  *
- * <p>Topic management is supported independently from the other instance-scoped operations. The
- * remaining operations intentionally retain the provider's unsupported-operation behavior until
- * their corresponding Tencent Cloud APIs are mapped to Studio's common models.</p>
+ * <p>In addition to topic/consumer-group management, message query is supported via
+ * DescribeMessageList (list), DescribeMessage (detail) and DescribeMessageTrace (trace).</p>
  */
 @RequiredArgsConstructor
+@Slf4j
 @Component
 public class TencentInstanceProvider implements InstanceProvider {
 
@@ -68,7 +99,21 @@ public class TencentInstanceProvider implements InstanceProvider {
     static final int DEFAULT_QUEUE_NUM = 8;
     static final int MIN_QUEUE_NUM = 3;
     static final int MAX_QUEUE_NUM = 16;
-    private static final String NOT_IMPLEMENTED = "Tencent Cloud operation is not implemented yet";
+    static final int DEFAULT_MAX_RETRY_TIMES = 16;
+    static final int MESSAGE_LIMIT = 100;
+    private static final DateTimeFormatter TENCENT_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss[,SSS][,SS]");
+    private static final DateTimeFormatter[] TENCENT_TIME_FORMATTERS = {
+        TENCENT_TIME_FORMATTER,
+        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"),
+        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS"),
+        DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSZ")
+    };
+    private static final long ONE_HOUR_MILLIS = 60L * 60L * 1000L;
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    private static final String STAGE_PRODUCE = "produce";
+    private static final String STAGE_PERSIST = "persist";
+    private static final String STAGE_CONSUME = "consume";
 
     private final TencentClientFactory clientFactory;
     private final InstanceRepository instanceRepository;
@@ -97,7 +142,7 @@ public class TencentInstanceProvider implements InstanceProvider {
 
     @Override
     public int countGroups(String instanceId) {
-        throw new UnsupportedOperationException(NOT_IMPLEMENTED);
+        return listConsumerGroups(instanceId, null, false).size();
     }
 
     @Override
@@ -257,43 +302,450 @@ public class TencentInstanceProvider implements InstanceProvider {
 
     @Override
     public List<ConsumerGroupVO> listConsumerGroups(String instanceId, String search) {
-        throw new UnsupportedOperationException(NOT_IMPLEMENTED);
+        return listConsumerGroups(instanceId, search, true);
+    }
+
+    private List<ConsumerGroupVO> listConsumerGroups(String instanceId, String search, boolean enrichTimes) {
+        Context context = resolve(instanceId);
+        List<ConsumerGroupVO> groups = new ArrayList<>();
+        for (int page = 0; page < MAX_PAGES; page++) {
+            DescribeConsumerGroupListRequest request = new DescribeConsumerGroupListRequest();
+            request.setInstanceId(context.cloudInstanceId());
+            request.setOffset((long) page * PAGE_SIZE);
+            request.setLimit((long) PAGE_SIZE);
+            DescribeConsumerGroupListResponse response = clientFactory.call(context.credentialId(), context.regionId(),
+                    client -> client.DescribeConsumerGroupList(request));
+            ConsumeGroupItem[] data = response == null ? null : response.getData();
+            if (data == null || data.length == 0) {
+                break;
+            }
+            for (ConsumeGroupItem item : data) {
+                if (item == null) {
+                    continue;
+                }
+                ConsumerGroupVO group = toConsumerGroup(item, instanceId);
+                if (matchesSearch(search, group.getName())) {
+                    if (enrichTimes) {
+                        enrichConsumerGroupDetail(context, group);
+                    }
+                    groups.add(group);
+                }
+            }
+            if (data.length < PAGE_SIZE) {
+                break;
+            }
+        }
+        return groups;
+    }
+
+    /**
+     * DescribeConsumerGroupList exposes limited fields, so resolve the creation timestamp and the
+     * real consume model from DescribeConsumerGroup. Kept off the cheap count path to avoid N+1
+     * calls for instance listings.
+     */
+    private void enrichConsumerGroupDetail(Context context, ConsumerGroupVO group) {
+        try {
+            DescribeConsumerGroupRequest request = new DescribeConsumerGroupRequest();
+            request.setInstanceId(context.cloudInstanceId());
+            request.setConsumerGroup(group.getName());
+            DescribeConsumerGroupResponse response = clientFactory.call(context.credentialId(), context.regionId(),
+                    client -> client.DescribeConsumerGroup(request));
+            if (response == null) {
+                return;
+            }
+            group.setCreatedAt(toLocalDateTime(response.getCreatedTime()));
+            if (StringUtils.hasText(response.getConsumeModel())) {
+                group.setConsumeType(toConsumeType(response.getConsumeModel()));
+            }
+        } catch (BusinessException ignored) {
+            // A single group detail lookup failure should not fail the whole list.
+        }
     }
 
     @Override
     public ConsumerGroupVO createConsumerGroup(String instanceId, ConsumerGroupVO group) {
-        throw new UnsupportedOperationException(NOT_IMPLEMENTED);
+        Context context = resolve(instanceId);
+        validateConsumerGroup(group);
+        CreateConsumerGroupRequest request = new CreateConsumerGroupRequest();
+        request.setInstanceId(context.cloudInstanceId());
+        request.setConsumerGroup(group.getName());
+        request.setMaxRetryTimes((long) retryMaxTimes(group));
+        request.setConsumeEnable(true);
+        request.setConsumeMessageOrderly(isOrderly(group));
+        clientFactory.call(context.credentialId(), context.regionId(), client -> client.CreateConsumerGroup(request));
+        group.setInstanceId(instanceId);
+        group.setRetryMaxTimes(retryMaxTimes(group));
+        group.setSubscribedTopics(java.util.List.of());
+        group.setCreatedAt(LocalDateTime.now());
+        group.setUpdatedAt(LocalDateTime.now());
+        return group;
     }
 
     @Override
     public void deleteConsumerGroup(String instanceId, String groupName) {
-        throw new UnsupportedOperationException(NOT_IMPLEMENTED);
+        Context context = resolve(instanceId);
+        requireGroupName(groupName);
+        DeleteConsumerGroupRequest request = new DeleteConsumerGroupRequest();
+        request.setInstanceId(context.cloudInstanceId());
+        request.setConsumerGroup(groupName);
+        clientFactory.call(context.credentialId(), context.regionId(), client -> client.DeleteConsumerGroup(request));
     }
 
     @Override
     public List<QueueProgressVO> getGroupProgress(String instanceId, String groupName) {
-        throw new UnsupportedOperationException(NOT_IMPLEMENTED);
+        Context context = resolve(instanceId);
+        requireGroupName(groupName);
+        List<SubscriptionData> subscriptions = listTopicSubscriptionsByGroup(context, groupName);
+        List<QueueProgressVO> rows = new ArrayList<>();
+        for (SubscriptionData subscription : subscriptions) {
+            if (subscription == null) {
+                continue;
+            }
+            rows.add(QueueProgressVO.builder()
+                    .broker("topic:" + subscription.getTopic())
+                    .queueId(0)
+                    .brokerOffset(0L)
+                    .consumerOffset(0L)
+                    .diffTotal(subscription.getConsumerLag() == null ? 0L : subscription.getConsumerLag())
+                    .build());
+        }
+        return rows;
     }
 
     @Override
     public List<SubscriptionEntryVO> getGroupSubscriptions(String instanceId, String groupName) {
-        throw new UnsupportedOperationException(NOT_IMPLEMENTED);
+        Context context = resolve(instanceId);
+        requireGroupName(groupName);
+        List<SubscriptionData> subscriptions = listTopicSubscriptionsByGroup(context, groupName);
+        List<SubscriptionEntryVO> entries = new ArrayList<>();
+        for (SubscriptionData subscription : subscriptions) {
+            if (subscription == null) {
+                continue;
+            }
+            entries.add(toSubscriptionEntry(subscription));
+        }
+        return entries;
     }
 
     @Override
     public void resetOffset(String instanceId, String groupName, long timestamp, String topic) {
-        throw new UnsupportedOperationException(NOT_IMPLEMENTED);
+        Context context = resolve(instanceId);
+        requireGroupName(groupName);
+        if (!StringUtils.hasText(topic)) {
+            throw new BusinessException(400, "Topic is required to reset consumer group offset");
+        }
+        ResetConsumerGroupOffsetRequest request = new ResetConsumerGroupOffsetRequest();
+        request.setInstanceId(context.cloudInstanceId());
+        request.setConsumerGroup(groupName);
+        request.setTopic(topic);
+        if (timestamp > 0L) {
+            request.setResetTimestamp(timestamp);
+        } else {
+            request.setResetTimestamp(System.currentTimeMillis());
+        }
+        clientFactory.call(context.credentialId(), context.regionId(), client -> client.ResetConsumerGroupOffset(request));
     }
 
     @Override
     public List<MessageRecordVO> queryMessages(String instanceId, String topic, String msgId,
                                                String tag, String key, Long startTime, Long endTime) {
-        throw new UnsupportedOperationException(NOT_IMPLEMENTED);
+        Context context = resolve(instanceId);
+        requireTopic(topic);
+        // Querying by message ID returns the full detail (body, properties and tracks) via
+        // DescribeMessage, mirroring the msgId path of the base provider.
+        if (StringUtils.hasText(msgId)) {
+            MessageRecordVO record = toRecordVO(describeMessage(context, topic, msgId));
+            return record == null ? Collections.emptyList() : Collections.singletonList(record);
+        }
+
+        long end = endTime != null ? endTime : System.currentTimeMillis();
+        long begin = startTime != null ? startTime : end - ONE_HOUR_MILLIS;
+        if (begin >= end) {
+            throw new BusinessException(400, "Message query start time must be before end time");
+        }
+
+        // DescribeMessageList is an async, task-based query: each logical query is identified by a
+        // TaskRequestId, and paging through that query reuses the same id (the response returns it
+        // for the next page). A fresh random id starts a brand-new query. The frontend message table
+        // is not server-paginated (pagination=false), so page through the whole result set here.
+        String taskRequestId = UUID.randomUUID().toString();
+        List<MessageRecordVO> result = new ArrayList<>();
+        for (int page = 0; page < MAX_PAGES; page++) {
+            DescribeMessageListRequest request = new DescribeMessageListRequest();
+            request.setInstanceId(context.cloudInstanceId());
+            request.setTopic(topic);
+            request.setStartTime(begin);
+            request.setEndTime(end);
+            request.setTaskRequestId(taskRequestId);
+            if (StringUtils.hasText(key)) {
+                request.setMsgKey(key);
+            }
+            if (StringUtils.hasText(tag)) {
+                request.setTag(tag);
+            }
+            request.setOffset((long) result.size());
+            request.setLimit((long) MESSAGE_LIMIT);
+            DescribeMessageListResponse response = clientFactory.call(context.credentialId(), context.regionId(),
+                    client -> client.DescribeMessageList(request));
+            MessageItem[] data = response == null ? null : response.getData();
+            long total = response == null ? 0L : (response.getTotalCount() == null ? 0L : response.getTotalCount());
+            if (data != null) {
+                for (MessageItem item : data) {
+                    if (item != null) {
+                        result.add(toRecordVO(item, topic));
+                    }
+                }
+            }
+            // Stop on the last page (returned fewer rows than requested) or once all results have
+            // been collected. Like the Aliyun provider, the short-page check is the primary signal
+            // so we do not rely on TotalCount, which may not be populated for every query.
+            int returned = data == null ? 0 : data.length;
+            // Stop on the last page (returned fewer rows than requested) or once all results have
+            // been collected. Like the Aliyun provider, the short-page check is the primary signal
+            // so we do not rely on TotalCount, which may not be populated for every query.
+            if (isLastPage(returned, total, result.size())) {
+                break;
+            }
+        }
+        return result;
     }
 
     @Override
-    public TraceRecordVO getMessageTrace(String instanceId, String msgId) {
-        throw new UnsupportedOperationException(NOT_IMPLEMENTED);
+    public TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic) {
+        Context context = resolve(instanceId);
+        requireMsgId(msgId);
+        requireTopic(topic);
+
+        DescribeMessageTraceRequest request = new DescribeMessageTraceRequest();
+        request.setInstanceId(context.cloudInstanceId());
+        request.setTopic(topic);
+        request.setMsgId(msgId);
+        DescribeMessageTraceResponse response = clientFactory.call(context.credentialId(), context.regionId(),
+                client -> client.DescribeMessageTrace(request));
+
+        List<TraceNodeVO> nodes = new ArrayList<>();
+        List<ConsumerStatusVO> consumerStatus = new ArrayList<>();
+        MessageTraceItem[] items = response == null ? null : response.getData();
+        if (items != null) {
+            for (MessageTraceItem item : items) {
+                buildTraceStage(item, nodes, consumerStatus);
+            }
+        }
+        return TraceRecordVO.builder()
+                .nodes(nodes)
+                .consumerStatus(consumerStatus)
+                .build();
+    }
+
+    private DescribeMessageResponse describeMessage(Context context, String topic, String msgId) {
+        DescribeMessageRequest request = new DescribeMessageRequest();
+        request.setInstanceId(context.cloudInstanceId());
+        request.setTopic(topic);
+        request.setMsgId(msgId);
+        return clientFactory.call(context.credentialId(), context.regionId(),
+                client -> client.DescribeMessage(request));
+    }
+
+    private static void buildTraceStage(MessageTraceItem item, List<TraceNodeVO> nodes,
+                                        List<ConsumerStatusVO> consumerStatus) {
+        String stage = item == null ? null : item.getStage();
+        String data = item == null ? null : item.getData();
+        if (!StringUtils.hasText(stage) || !StringUtils.hasText(data)) {
+            return;
+        }
+        try {
+            JsonNode root = OBJECT_MAPPER.readTree(data);
+            switch (stage) {
+                case STAGE_PRODUCE:
+                    nodes.add(buildProduceNode(root));
+                    break;
+                case STAGE_PERSIST:
+                    nodes.add(buildPersistNode(root));
+                    break;
+                case STAGE_CONSUME:
+                    buildConsumeNodes(root, nodes, consumerStatus);
+                    break;
+                default:
+                    break;
+            }
+        } catch (Exception e) {
+            // Unparseable trace payloads are skipped rather than failing the whole trace.
+        }
+    }
+
+    private static TraceNodeVO buildProduceNode(JsonNode root) {
+        return TraceNodeVO.builder()
+                .title(STAGE_PRODUCE)
+                .timestamp(parseTraceTime(root.path("ProduceTime").asText(null)))
+                .status(toTraceStatus(root.path("Status").asInt(0)))
+                .costTime(root.path("Duration").asLong(0L))
+                .description("producer=" + root.path("ProducerAddr").asText(""))
+                .build();
+    }
+
+    private static TraceNodeVO buildPersistNode(JsonNode root) {
+        return TraceNodeVO.builder()
+                .title(STAGE_PERSIST)
+                .timestamp(parseTraceTime(root.path("PersistTime").asText(null)))
+                .status(toTraceStatus(root.path("Status").asInt(0)))
+                .costTime(0L)
+                .description("store persist")
+                .build();
+    }
+
+    private static void buildConsumeNodes(JsonNode root, List<TraceNodeVO> nodes,
+                                          List<ConsumerStatusVO> consumerStatus) {
+        JsonNode logs = root.path("RocketMqConsumeLogs");
+        if (!logs.isArray()) {
+            return;
+        }
+        for (JsonNode log : logs) {
+            String group = log.path("ConsumerGroup").asText("");
+            long pushTime = parseTraceTime(log.path("PushTime").asText(null));
+            int status = log.path("Status").asInt(0);
+            int retryTimes = log.path("RetryTimes").asInt(0);
+            nodes.add(TraceNodeVO.builder()
+                    .title(STAGE_CONSUME)
+                    .timestamp(pushTime)
+                    .status(toConsumeTraceStatus(status))
+                    .costTime(0L)
+                    .description("group=" + group + ", consumer=" + log.path("ConsumerAddr").asText(""))
+                    .build());
+            consumerStatus.add(ConsumerStatusVO.builder()
+                    .group(group)
+                    .deliveryStatus(toDeliveryStatus(status))
+                    .consumeTime(pushTime)
+                    .retryCount(retryTimes)
+                    .build());
+        }
+    }
+
+    private static MessageRecordVO toRecordVO(DescribeMessageResponse response) {
+        if (response == null) {
+            return null;
+        }
+        Map<String, String> properties = parseProperties(response.getProperties());
+        // DescribeMessage carries the tag and key inside Properties (TAGS / KEYS), not as
+        // top-level fields, so surface them onto the record for the message list/detail page.
+        return MessageRecordVO.builder()
+                .msgId(defaultIfBlank(response.getMessageId(), ""))
+                .topic(defaultIfBlank(response.getShowTopicName(), ""))
+                .tag(properties.get("TAGS"))
+                .key(properties.get("KEYS"))
+                .body(response.getBody())
+                .bodyEncoding("UTF-8")
+                .bodyTruncated(false)
+                .storeTime(parseTraceTime(response.getProduceTime()))
+                .bornHost(response.getProducerAddr())
+                .properties(properties)
+                .propertiesTruncated(false)
+                .size(0)
+                .build();
+    }
+
+    private static MessageRecordVO toRecordVO(MessageItem item, String topic) {
+        if (item == null) {
+            return null;
+        }
+        return MessageRecordVO.builder()
+                .msgId(defaultIfBlank(item.getMsgId(), ""))
+                .topic(topic)
+                .tag(item.getTags())
+                .key(item.getKeys())
+                .body(null)
+                .bodyEncoding(null)
+                .bodyTruncated(false)
+                .storeTime(parseTraceTime(item.getProduceTime()))
+                .bornHost(item.getProducerAddr())
+                .properties(Collections.emptyMap())
+                .propertiesTruncated(false)
+                .size(0)
+                .build();
+    }
+
+    private static Map<String, String> parseProperties(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return Collections.emptyMap();
+        }
+        try {
+            JsonNode root = OBJECT_MAPPER.readTree(raw);
+            if (root == null || !root.isObject()) {
+                return Collections.emptyMap();
+            }
+            Map<String, String> properties = new LinkedHashMap<>();
+            root.fields().forEachRemaining(entry -> properties.put(entry.getKey(), entry.getValue().asText("")));
+            return properties;
+        } catch (Exception e) {
+            return Collections.emptyMap();
+        }
+    }
+
+    private static boolean isLastPage(int returned, long total, int collected) {
+        // The last page is one that returned no rows or fewer rows than requested. When the API
+        // reports a TotalCount, also stop once all expected results have been collected.
+        boolean shortPage = returned == 0 || returned < MESSAGE_LIMIT;
+        boolean allCollected = total > 0 && collected >= total;
+        return shortPage || allCollected;
+    }
+
+    private static long parseTraceTime(String value) {
+        if (!StringUtils.hasText(value)) {
+            log.warn("Tencent message query: empty ProduceTime, storeTime=0");
+            return 0L;
+        }
+        String trimmed = value.trim();
+        for (DateTimeFormatter formatter : TENCENT_TIME_FORMATTERS) {
+            try {
+                return LocalDateTime.parse(trimmed, formatter)
+                        .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+            } catch (Exception ignored) {
+                // try next format
+            }
+        }
+        try {
+            return Long.parseLong(trimmed);
+        } catch (NumberFormatException ignored) {
+            log.warn("Tencent message query: unparseable ProduceTime={}, storeTime=0", value);
+        }
+        return 0L;
+    }
+
+    private static String toTraceStatus(int status) {
+        return status == 0 ? "finish" : "failed";
+    }
+
+    private static String toConsumeTraceStatus(int status) {
+        // Tencent consume log Status uses the RocketMQ convention where 2 means consumed.
+        return status == 2 ? "finish" : "failed";
+    }
+
+    private static DeliveryStatus toDeliveryStatus(int status) {
+        // Tencent consume log status: 0/1 in-flight, 2 consumed, others failed.
+        switch (status) {
+            case 2:
+                return DeliveryStatus.success;
+            case 0:
+            case 1:
+                return DeliveryStatus.pending;
+            default:
+                return DeliveryStatus.failed;
+        }
+    }
+
+    private static String defaultIfBlank(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
+    }
+
+    private static void requireTopic(String topic) {
+        if (!StringUtils.hasText(topic)) {
+            throw new BusinessException(400, "topic is required for Tencent Cloud message query");
+        }
+    }
+
+    private static void requireMsgId(String msgId) {
+        if (!StringUtils.hasText(msgId)) {
+            throw new BusinessException(400, "msgId is required for message trace query");
+        }
     }
 
     private Context resolve(String instanceId) {
@@ -336,6 +788,98 @@ public class TencentInstanceProvider implements InstanceProvider {
                 .build();
     }
 
+    private static ConsumerGroupVO toConsumerGroup(ConsumeGroupItem item, String instanceId) {
+        ConsumerGroupVO group = new ConsumerGroupVO();
+        group.setName(item.getConsumerGroup());
+        group.setInstanceId(instanceId);
+        group.setClusterId(item.getClusterIdV4());
+        group.setNamespace(item.getNamespaceV4());
+        group.setConsumeType(toConsumeType(item.getConsumeMessageOrderly()));
+        group.setDeliveryOrderType(item.getConsumeMessageOrderly() == null || !item.getConsumeMessageOrderly()
+                ? "Concurrently" : "Orderly");
+        group.setRetryMaxTimes(toInt(item.getMaxRetryTimes()));
+        group.setSubscribedTopics(java.util.List.of());
+        group.setInstances(java.util.List.of());
+        return group;
+    }
+
+    private List<SubscriptionData> listTopicSubscriptionsByGroup(Context context, String groupName) {
+        List<SubscriptionData> all = new ArrayList<>();
+        for (int page = 0; page < MAX_PAGES; page++) {
+            DescribeTopicListByGroupRequest request = new DescribeTopicListByGroupRequest();
+            request.setInstanceId(context.cloudInstanceId());
+            request.setConsumerGroup(groupName);
+            request.setOffset((long) page * PAGE_SIZE);
+            request.setLimit((long) PAGE_SIZE);
+            DescribeTopicListByGroupResponse response = clientFactory.call(context.credentialId(), context.regionId(),
+                    client -> client.DescribeTopicListByGroup(request));
+            SubscriptionData[] data = response == null ? null : response.getData();
+            if (data == null || data.length == 0) {
+                break;
+            }
+            all.addAll(Arrays.asList(data));
+            if (data.length < PAGE_SIZE) {
+                break;
+            }
+        }
+        return all;
+    }
+
+    private static SubscriptionEntryVO toSubscriptionEntry(SubscriptionData subscription) {
+        return SubscriptionEntryVO.builder()
+                .topic(subscription.getTopic())
+                .expression(subscription.getSubString())
+                .type(subscription.getExpressionType())
+                .filterMode(subscription.getExpressionType())
+                .consistency(subscription.getConsistency() == null ? null : String.valueOf(subscription.getConsistency()))
+                .build();
+    }
+
+    private static void validateConsumerGroup(ConsumerGroupVO group) {
+        if (group == null || !StringUtils.hasText(group.getName())) {
+            throw new BusinessException(400, "Consumer group name is required");
+        }
+    }
+
+    private static void requireGroupName(String groupName) {
+        if (!StringUtils.hasText(groupName)) {
+            throw new BusinessException(400, "Consumer group name is required");
+        }
+    }
+
+    private static int retryMaxTimes(ConsumerGroupVO group) {
+        return group.getRetryMaxTimes() > 0 ? group.getRetryMaxTimes() : DEFAULT_MAX_RETRY_TIMES;
+    }
+
+    private static boolean isOrderly(ConsumerGroupVO group) {
+        String deliveryOrderType = group.getDeliveryOrderType();
+        return deliveryOrderType != null
+                && (deliveryOrderType.toUpperCase(Locale.ROOT).contains("FIFO")
+                || deliveryOrderType.toUpperCase(Locale.ROOT).contains("ORDER"));
+    }
+
+    private static int toInt(Long value) {
+        return value == null ? 0 : Math.toIntExact(value);
+    }
+
+    private static ConsumeType toConsumeType(Boolean consumeMessageOrderly) {
+        // Tencent consumer groups use clustering consumption; orderly only affects delivery order.
+        return ConsumeType.CLUSTERING;
+    }
+
+    private static ConsumeType toConsumeType(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        if (raw.toUpperCase(Locale.ROOT).contains("BROADCAST")) {
+            return ConsumeType.BROADCASTING;
+        }
+        if (raw.toUpperCase(Locale.ROOT).contains("CLUSTER")) {
+            return ConsumeType.CLUSTERING;
+        }
+        return null;
+    }
+
     private static TopicType toTopicType(String raw) {
         if (!StringUtils.hasText(raw)) {
             return null;
@@ -372,6 +916,13 @@ public class TencentInstanceProvider implements InstanceProvider {
         }
         String needle = search.trim().toLowerCase(Locale.ROOT);
         return contains(topic.getName(), needle) || contains(topic.getRemark(), needle);
+    }
+
+    private static boolean matchesSearch(String search, String value) {
+        if (!StringUtils.hasText(search)) {
+            return true;
+        }
+        return contains(value, search.trim().toLowerCase(Locale.ROOT));
     }
 
     private static boolean contains(String value, String needle) {

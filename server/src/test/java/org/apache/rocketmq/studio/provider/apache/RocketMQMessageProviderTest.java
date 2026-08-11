@@ -225,7 +225,7 @@ class RocketMQMessageProviderTest {
         when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
                 .thenReturn(queryResult);
 
-        TraceRecordVO record = provider.getMessageTrace("instance-a", "msg-123");
+        TraceRecordVO record = provider.getMessageTrace("instance-a", "msg-123", "orders");
 
         assertThat(record.getNodes()).hasSize(2);
         verify(queryHistoryService).recordTraceQuery(eq("instance-a"), eq("msg-123"), eq(null), eq(2), eq(1));
@@ -257,7 +257,7 @@ class RocketMQMessageProviderTest {
         when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
                 .thenReturn(queryResult);
 
-        TraceRecordVO record = provider.getMessageTrace("instance-a", "msg-tx");
+        TraceRecordVO record = provider.getMessageTrace("instance-a", "msg-tx", "orders");
 
         assertThat(record.getNodes()).hasSize(1);
         TraceNodeVO transaction = record.getNodes().get(0);
@@ -274,7 +274,7 @@ class RocketMQMessageProviderTest {
         when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
                 .thenThrow(new IllegalStateException("broker unavailable"));
 
-        assertThatThrownBy(() -> provider.getMessageTrace("instance-a", "msg-123"))
+        assertThatThrownBy(() -> provider.getMessageTrace("instance-a", "msg-123", "orders"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Failed to query message trace: broker unavailable")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));

@@ -36,7 +36,7 @@ public class MessageProviderStub implements MessageProvider {
     }
 
     @Override
-    public TraceRecordVO getMessageTrace(String instanceId, String msgId) {
+    public TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic) {
         log.warn("MessageProviderStub.getMessageTrace called but no real message provider is configured");
         throw unsupported();
     }

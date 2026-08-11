@@ -44,14 +44,14 @@ public class MessageService {
                 .orElseGet(() -> messageProvider.queryMessages(instanceId, topic, msgId, tag, key, startTime, endTime));
     }
 
-    public TraceRecordVO getMessageTrace(String instanceId, String msgId) {
+    public TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic) {
         if (!StringUtils.hasText(msgId)) {
             throw new BusinessException(400, "msgId is required");
         }
-        log.info("Getting message trace: msgId={}", msgId);
+        log.info("Getting message trace: msgId={}, topic={}", msgId, topic);
         return providerRegistry.byInstanceId(instanceId)
-                .map(provider -> provider.getMessageTrace(instanceId, msgId))
-                .orElseGet(() -> messageProvider.getMessageTrace(instanceId, msgId));
+                .map(provider -> provider.getMessageTrace(instanceId, msgId, topic))
+                .orElseGet(() -> messageProvider.getMessageTrace(instanceId, msgId, topic));
     }
 
     private void validateTopicQueryWindow(String topic, String msgId, String key, Long startTime, Long endTime) {

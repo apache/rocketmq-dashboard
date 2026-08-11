@@ -79,5 +79,5 @@ public interface InstanceProvider {
     List<MessageRecordVO> queryMessages(String instanceId, String topic, String msgId,
                                         String tag, String key, Long startTime, Long endTime);
 
-    TraceRecordVO getMessageTrace(String instanceId, String msgId);
+    TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic);
 }
