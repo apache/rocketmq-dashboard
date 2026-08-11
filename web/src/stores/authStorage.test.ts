@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   clearAuthSession,
   persistAuthSession,
@@ -34,6 +34,33 @@ describe('auth session storage', () => {
     persistAuthSession('token-1', 'studio-admin', true);
 
     expect(readAuthSession()).toEqual({ token: 'token-1', user: 'studio-admin', admin: true });
+  });
+
+  it('rolls back every session key when a later storage write fails', () => {
+    persistAuthSession('old-token', 'old-user', false);
+    const originalSetItem = Storage.prototype.setItem;
+    let writeCount = 0;
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (
+      this: Storage,
+      key: string,
+      value: string,
+    ) {
+      writeCount += 1;
+      if (writeCount === 2) {
+        throw new DOMException('Storage quota exceeded', 'QuotaExceededError');
+      }
+      originalSetItem.call(this, key, value);
+    });
+
+    try {
+      persistAuthSession('new-token', 'new-user', true);
+    } finally {
+      setItem.mockRestore();
+    }
+
+    expect(localStorage.getItem(TOKEN_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(USER_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(USER_ADMIN_STORAGE_KEY)).toBeNull();
   });
 
   it('does not restore an orphaned user without a token', () => {

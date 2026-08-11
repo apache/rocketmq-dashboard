@@ -45,7 +45,8 @@ export function persistAuthSession(token: string, user: string, admin: boolean):
     localStorage.setItem(USER_STORAGE_KEY, user);
     localStorage.setItem(USER_ADMIN_STORAGE_KEY, String(admin));
   } catch {
-    // The in-memory store remains usable when browser storage is unavailable.
+    // Roll back a partially written browser session. The in-memory store remains usable.
+    clearAuthSession();
   }
 }
 
