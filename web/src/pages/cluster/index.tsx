@@ -41,7 +41,6 @@ import {
   ReloadOutlined,
   SettingOutlined,
   EyeOutlined,
-  EditOutlined,
   PlusOutlined,
 } from '@ant-design/icons';
 import { Cpu, HardDrives, Globe } from '@phosphor-icons/react';
@@ -57,12 +56,9 @@ import type {
   ClusterProbeResult,
 } from '../../api/cluster';
 import {
-  createNameServer,
   listClusters,
-  restartProxy,
   testClusterConnection,
   updateClusterConfig,
-  updateNameServer,
 } from '../../services/clusterService';
 import { listInstances } from '../../services/instanceService';
 import type { Instance } from '../../api/instance';
@@ -95,10 +91,7 @@ const ClusterPage = () => {
 
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [selectedCluster, setSelectedCluster] = useState<ClusterInfo | null>(null);
-  const [nsModalOpen, setNsModalOpen] = useState(false);
-  const [nsModalMode, setNsModalMode] = useState<'create' | 'edit'>('create');
   const [selectedProxy, setSelectedProxy] = useState<ProxyDetail | null>(null);
-  const [nsForm] = Form.useForm();
   const [configForm] = Form.useForm();
 
   // ─── Connection test ──────────────────────────────────────────────────────
@@ -635,7 +628,7 @@ const ClusterPage = () => {
       })
       .filter((c) => c.filteredNameServers.length > 0);
 
-    const getNsSubColumns = (clusterId: string): ColumnsType<NameServerInfo> => [
+    const getNsSubColumns = (): ColumnsType<NameServerInfo> => [
       {
         title: t('common.address'),
         dataIndex: 'addr',
@@ -663,27 +656,6 @@ const ClusterPage = () => {
           const cfg = map[status] ?? { color: 'default', label: status };
           return <Tag color={cfg.color}>{cfg.label}</Tag>;
         },
-      },
-      {
-        title: t('common.actions'),
-        key: 'action',
-        width: 100,
-        render: (_: unknown, record: NameServerInfo) => (
-          <Flex gap={6}>
-            <Button
-              size="small"
-              icon={<EditOutlined />}
-              style={{ borderColor: '#722ed1', color: '#722ed1' }}
-              onClick={() => {
-                setNsModalMode('edit');
-                nsForm.setFieldsValue({ clusterId, addr: record.addr, newAddr: '' });
-                setNsModalOpen(true);
-              }}
-            >
-              {t('common.edit')}
-            </Button>
-          </Flex>
-        ),
       },
     ];
 
@@ -766,17 +738,6 @@ const ClusterPage = () => {
               style={{ width: 240 }}
             />
           </Space>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => {
-              setNsModalMode('create');
-              nsForm.resetFields();
-              setNsModalOpen(true);
-            }}
-          >
-            {t('cluster.createNameServer')}
-          </Button>
         </Flex>
         <Card bodyStyle={{ padding: 0 }}>
           <Table
@@ -790,7 +751,7 @@ const ClusterPage = () => {
               expandedRowRender: (record) => (
                 <div style={{ padding: '8px 0' }}>
                   <Table
-                    columns={getNsSubColumns(record.id)}
+                    columns={getNsSubColumns()}
                     dataSource={record.filteredNameServers}
                     rowKey="addr"
                     pagination={false}
@@ -832,7 +793,7 @@ const ClusterPage = () => {
         title: t('cluster.k8sName'),
         dataIndex: 'clusterName',
         key: 'clusterName',
-        width: 160,
+        width: 100,
         sorter: (a, b) => a.clusterName.localeCompare(b.clusterName),
         render: (name: string) => (
           <Text strong style={{ fontSize: 13 }}>
@@ -907,26 +868,6 @@ const ClusterPage = () => {
               onClick={() => setSelectedProxy(record)}
             >
               {t('common.detail')}
-            </Button>
-            <Button
-              size="small"
-              icon={<ReloadOutlined />}
-              style={{ borderColor: '#faad14', color: '#faad14' }}
-              onClick={() => {
-                Modal.confirm({
-                  title: t('cluster.confirmRestart'),
-                  content: t('cluster.restartProxyConfirm', { addr: record.addr }),
-                  okText: t('common.confirm'),
-                  cancelText: t('common.cancel'),
-                  onOk: async () => {
-                    await restartProxy({ clusterId: record.clusterId, addr: record.addr });
-                    await requestRefresh('operation');
-                    message.success(t('cluster.restartProxySubmitted', { addr: record.addr }));
-                  },
-                });
-              }}
-            >
-              {t('cluster.restart')}
             </Button>
           </Flex>
         ),
@@ -1031,63 +972,6 @@ const ClusterPage = () => {
           50% { opacity: 0.6; box-shadow: 0 0 0 4px rgba(82, 196, 26, 0); }
         }
       `}</style>
-      {/* ─── NameServer Create/Edit Modal ─── */}
-      <Modal
-        title={
-          nsModalMode === 'create' ? t('cluster.createNameServer') : t('cluster.editNameServer')
-        }
-        open={nsModalOpen}
-        onCancel={() => setNsModalOpen(false)}
-        onOk={() => {
-          nsForm.validateFields().then(async (values: Record<string, string>) => {
-            if (nsModalMode === 'create') {
-              await createNameServer({ clusterId: values.clusterId, addr: values.addr });
-              message.success(`${t('cluster.nsCreated')}: ${values.addr}`);
-            } else {
-              await updateNameServer({
-                clusterId: values.clusterId,
-                addr: values.addr,
-                newAddr: values.newAddr,
-              });
-              message.success(
-                `${t('cluster.nsUpdated')}: ${values.addr}${values.newAddr ? ` → ${values.newAddr}` : ''}`,
-              );
-            }
-            await requestRefresh('operation');
-            setNsModalOpen(false);
-          });
-        }}
-        okText={t('common.confirm')}
-        cancelText={t('common.cancel')}
-        destroyOnClose
-      >
-        <Form form={nsForm} layout="vertical" style={{ marginTop: 16 }}>
-          {nsModalMode === 'create' && (
-            <Form.Item
-              name="clusterId"
-              label={t('cluster.selectCluster')}
-              rules={[{ required: true, message: t('cluster.selectCluster') }]}
-            >
-              <Select
-                placeholder={t('cluster.selectCluster')}
-                options={clusters.map((c) => ({ label: c.name, value: c.id }))}
-              />
-            </Form.Item>
-          )}
-          <Form.Item
-            name="addr"
-            label={t('cluster.nsAddr')}
-            rules={[{ required: true, message: t('cluster.nsAddr') }]}
-          >
-            <Input placeholder={t('cluster.nsAddrPlaceholder')} disabled={nsModalMode === 'edit'} />
-          </Form.Item>
-          {nsModalMode === 'edit' && (
-            <Form.Item name="newAddr" label={t('cluster.newAddr')}>
-              <Input placeholder={t('cluster.newAddrPlaceholder')} />
-            </Form.Item>
-          )}
-        </Form>
-      </Modal>
       <Tabs items={tabItems} defaultActiveKey="broker" />
       <Modal
         title={t('cluster.proxyDetailTitle', { addr: selectedProxy?.addr ?? '' })}
