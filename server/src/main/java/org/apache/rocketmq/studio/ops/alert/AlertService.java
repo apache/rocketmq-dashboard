@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -120,9 +121,10 @@ public class AlertService {
 
     public AlertRuleVO toggleRule(String id, boolean enabled) {
         log.info("Toggling alert rule id={}, enabled={}", id, enabled);
+        validateRuleId(id);
         List<AlertRuleVO> rules = alertRepository.findAllRules();
         AlertRuleVO rule = rules.stream()
-                .filter(r -> r.getId().equals(id))
+                .filter(r -> Objects.equals(r.getId(), id))
                 .findFirst()
                 .orElseThrow(() -> new org.apache.rocketmq.studio.common.exception.BusinessException(404, "Alert rule not found: " + id));
         rule.setEnabled(enabled);
@@ -134,6 +136,7 @@ public class AlertService {
 
     public void deleteRule(String id) {
         log.info("Deleting alert rule id={}", id);
+        validateRuleId(id);
         if (!alertRepository.deleteRule(id)) {
             throw ruleNotFound(id);
         }

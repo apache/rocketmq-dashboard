@@ -503,12 +503,41 @@ class AlertServiceTest {
     }
 
     @Test
+    void toggleRuleShouldRejectBlankIdBeforeLoadingRules() {
+        assertThatThrownBy(() -> alertService.toggleRule("  ", true))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Alert rule ID is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verify(alertRepository, never()).findAllRules();
+    }
+
+    @Test
+    void toggleRuleShouldIgnorePersistedRulesWithNullIds() {
+        when(alertRepository.findAllRules()).thenReturn(List.of(AlertRuleVO.builder().name("corrupt").build()));
+
+        assertThatThrownBy(() -> alertService.toggleRule("missing", true))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Alert rule not found: missing");
+    }
+
+    @Test
     void toggleRuleShouldThrowWhenRuleNotFound() {
         when(alertRepository.findAllRules()).thenReturn(Collections.emptyList());
 
         assertThatThrownBy(() -> alertService.toggleRule("non-existent", true))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Alert rule not found: non-existent");
+    }
+
+    @Test
+    void deleteRuleShouldRejectBlankIdBeforeDeleting() {
+        assertThatThrownBy(() -> alertService.deleteRule(" "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Alert rule ID is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verify(alertRepository, never()).deleteRule(any());
     }
 
     @Test
