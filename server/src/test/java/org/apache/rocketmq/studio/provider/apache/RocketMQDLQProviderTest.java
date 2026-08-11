@@ -30,6 +30,7 @@ import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.dlq.DLQGroupVO;
 import org.apache.rocketmq.studio.ops.audit.AuditService;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
@@ -46,6 +47,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -53,6 +55,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.never;
@@ -144,6 +147,60 @@ class RocketMQDLQProviderTest {
                 contains("matched=0, resent=0, failed=0"),
                 eq("NO_MESSAGES"));
         verify(runtimeAdminClientResolver).resolveEndpoint("instance-a");
+    }
+
+    @Test
+    void resendMessagesRejectsAnAllFailedDlqScan() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        try (MockedConstruction<DefaultMQPullConsumer> mockedConsumers =
+                     mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
+                         doThrow(new IllegalStateException("broker unavailable")).when(consumer).start();
+                         doNothing().when(consumer).shutdown();
+                     })) {
+            assertThatThrownBy(() -> provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic"))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("Failed to scan DLQ topic " + dlqTopic)
+                    .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+
+            verify(mockedConsumers.constructed().get(0)).shutdown();
+        }
+        verify(auditService).record(
+                eq("RESEND_DLQ"),
+                eq("group-a"),
+                contains("scanFailedQueues=all"),
+                eq("FAILED"));
+    }
+
+    @Test
+    void resendMessagesMarksAResultPartialWhenOneDlqQueueCannotBeScanned() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue unavailableQueue = new MessageQueue(dlqTopic, "broker-a", 0);
+        MessageQueue emptyQueue = new MessageQueue(dlqTopic, "broker-b", 0);
+        PullResult emptyResult = new PullResult(PullStatus.NO_NEW_MSG, 1L, 0L, 0L, List.of());
+        try (MockedConstruction<DefaultMQPullConsumer> mockedConsumers =
+                     mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
+                         doNothing().when(consumer).start();
+                         when(consumer.fetchSubscribeMessageQueues(dlqTopic))
+                                 .thenReturn(Set.of(unavailableQueue, emptyQueue));
+                         when(consumer.searchOffset(eq(unavailableQueue), anyLong()))
+                                 .thenThrow(new IllegalStateException("broker unavailable"));
+                         when(consumer.searchOffset(eq(emptyQueue), anyLong())).thenReturn(0L);
+                         when(consumer.pull(eq(emptyQueue), eq("*"), eq(0L), eq(32))).thenReturn(emptyResult);
+                         doNothing().when(consumer).shutdown();
+                     });
+             MockedConstruction<DefaultMQProducer> mockedProducers =
+                     mockConstruction(DefaultMQProducer.class)) {
+            assertThat(provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic"))
+                    .extracting("matched", "resent", "failed", "outcome", "scanIncomplete", "failedQueueCount")
+                    .containsExactly(0, 0, 0, "PARTIAL", true, 1);
+
+            assertThat(mockedProducers.constructed()).isEmpty();
+        }
+        verify(auditService).record(
+                eq("RESEND_DLQ"),
+                eq("group-a"),
+                contains("scanFailedQueues=1"),
+                eq("PARTIAL"));
     }
 
     @Test

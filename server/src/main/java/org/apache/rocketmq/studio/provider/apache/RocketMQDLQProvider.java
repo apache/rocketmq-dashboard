@@ -31,6 +31,7 @@ import org.apache.rocketmq.remoting.protocol.admin.TopicOffset;
 import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
+import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.instance.dlq.DLQGroupVO;
 import org.apache.rocketmq.studio.instance.dlq.DLQProvider;
 import org.apache.rocketmq.studio.instance.dlq.DLQResendResultVO;
@@ -142,7 +143,18 @@ public class RocketMQDLQProvider implements DLQProvider {
         long end = endTime != null ? endTime : System.currentTimeMillis();
         long begin = startTime != null ? startTime : end - ONE_HOUR_MILLIS;
 
-        List<MessageExt> deadLetters = collectDeadLetters(endpoint, dlqTopic, begin, end);
+        DeadLetterScanResult scanResult;
+        try {
+            scanResult = collectDeadLetters(endpoint, dlqTopic, begin, end);
+        } catch (BusinessException e) {
+            String detail = String.format("instanceId=%s, group=%s, dlqTopic=%s, targetTopic=%s, "
+                            + "matched=0, resent=0, failed=0, scanIncomplete=true, scanFailedQueues=all",
+                    instanceId, groupName, dlqTopic,
+                    StringUtils.hasText(targetTopic) ? targetTopic : "<original>");
+            recordAudit(groupName, detail, "FAILED");
+            throw e;
+        }
+        List<MessageExt> deadLetters = scanResult.messages();
         int resent = 0;
         int failed = 0;
         if (!deadLetters.isEmpty()) {
@@ -164,27 +176,32 @@ public class RocketMQDLQProvider implements DLQProvider {
             }
         }
 
-        String detail = String.format("instanceId=%s, group=%s, dlqTopic=%s, targetTopic=%s, matched=%d, resent=%d, failed=%d",
+        String outcome = classifyOutcome(deadLetters.size(), resent, failed, scanResult.scanIncomplete());
+        String detail = String.format("instanceId=%s, group=%s, dlqTopic=%s, targetTopic=%s, matched=%d, resent=%d, "
+                        + "failed=%d, scanIncomplete=%s, scanFailedQueues=%d",
                 instanceId, groupName, dlqTopic, StringUtils.hasText(targetTopic) ? targetTopic : "<original>",
-                deadLetters.size(), resent, failed);
-        recordAudit(groupName, detail, classifyOutcome(deadLetters.size(), resent, failed));
+                deadLetters.size(), resent, failed, scanResult.scanIncomplete(), scanResult.failedQueueCount());
+        recordAudit(groupName, detail, outcome);
         log.info("DLQ resend completed: {}", detail);
         return DLQResendResultVO.builder()
                 .matched(deadLetters.size())
                 .resent(resent)
                 .failed(failed)
-                .outcome(classifyOutcome(deadLetters.size(), resent, failed))
+                .outcome(outcome)
+                .scanIncomplete(scanResult.scanIncomplete())
+                .failedQueueCount(scanResult.failedQueueCount())
                 .build();
     }
 
-    private List<MessageExt> collectDeadLetters(String endpoint, String dlqTopic, long begin, long end) {
+    private DeadLetterScanResult collectDeadLetters(String endpoint, String dlqTopic, long begin, long end) {
         DefaultMQPullConsumer consumer = newPullConsumer(endpoint);
         List<MessageExt> result = new ArrayList<>();
+        int failedQueueCount = 0;
         try {
             consumer.start();
             Set<MessageQueue> queues = consumer.fetchSubscribeMessageQueues(dlqTopic);
             if (queues == null || queues.isEmpty()) {
-                return result;
+                return new DeadLetterScanResult(result, 0);
             }
             outer:
             for (MessageQueue queue : queues) {
@@ -201,6 +218,7 @@ public class RocketMQDLQProvider implements DLQProvider {
                         PullResult pullResult = consumer.pull(queue, "*", offset, 32);
                         if (pullResult == null) {
                             log.warn("Stop DLQ scan for {} because queue {} returned no pull result", dlqTopic, queue);
+                            failedQueueCount++;
                             break;
                         }
                         long nextOffset = pullResult.getNextBeginOffset();
@@ -243,15 +261,23 @@ public class RocketMQDLQProvider implements DLQProvider {
                         }
                     }
                 } catch (Exception e) {
+                    failedQueueCount++;
                     log.warn("Failed to scan DLQ queue {} in {}: {}", queue, dlqTopic, e.getMessage());
                 }
             }
+            if (failedQueueCount == queues.size()) {
+                throw new BusinessException(502, "Failed to scan DLQ topic " + dlqTopic);
+            }
         } catch (Exception e) {
+            if (e instanceof BusinessException businessException) {
+                throw businessException;
+            }
             log.warn("Failed to collect dead letters from {}: {}", dlqTopic, e.getMessage());
+            throw new BusinessException(502, "Failed to scan DLQ topic " + dlqTopic + ": " + e.getMessage());
         } finally {
             consumer.shutdown();
         }
-        return result;
+        return new DeadLetterScanResult(result, failedQueueCount);
     }
 
     private boolean resendOne(DefaultMQProducer producer, MessageExt deadLetter, String targetTopic) {
@@ -335,7 +361,10 @@ public class RocketMQDLQProvider implements DLQProvider {
         return ShortLivedClientName.next("studio-dlq-resend");
     }
 
-    private String classifyOutcome(int matched, int resent, int failed) {
+    private String classifyOutcome(int matched, int resent, int failed, boolean scanIncomplete) {
+        if (scanIncomplete) {
+            return "PARTIAL";
+        }
         if (matched == 0) {
             return "NO_MESSAGES";
         }
@@ -353,6 +382,12 @@ public class RocketMQDLQProvider implements DLQProvider {
             auditService.record("RESEND_DLQ", groupName, detail, result);
         } catch (Exception e) {
             log.warn("Failed to record DLQ resend audit: {}", e.getMessage());
+        }
+    }
+
+    private record DeadLetterScanResult(List<MessageExt> messages, int failedQueueCount) {
+        boolean scanIncomplete() {
+            return failedQueueCount > 0;
         }
     }
 }
