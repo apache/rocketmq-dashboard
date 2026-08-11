@@ -361,6 +361,50 @@ describe('TopicPage', () => {
     expect(screen.getByText('10.0.2.21:8080')).toBeInTheDocument();
   });
 
+  it('closes Topic details when switching to another instance', async () => {
+    const user = userEvent.setup();
+    const base = buildTopics(1)[0];
+    instanceServiceMocks.listInstances.mockResolvedValue([
+      {
+        ...selectedInstance,
+        id: 'instance-a',
+        name: 'Instance A',
+        type: 'DIRECT',
+      },
+      {
+        ...selectedInstance,
+        id: 'instance-b',
+        name: 'Instance B',
+        type: 'DIRECT',
+        endpoint: '127.0.0.2:9876',
+      },
+    ]);
+    topicServiceMocks.listTopics.mockImplementation(async (params) => [
+      {
+        ...base,
+        name: params?.instanceId === 'instance-b' ? 'topic-b' : 'topic-a',
+        instanceId: params?.instanceId ?? 'instance-a',
+      },
+    ]);
+    renderWithProviders('/instance/instance-a/topic');
+
+    expect(await screen.findByText('topic-a')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /详情/ }));
+    const findTopicDetailDialog = () =>
+      screen
+        .getAllByRole('dialog')
+        .find((dialog) => within(dialog).queryByText('基本信息'));
+    await waitFor(() => expect(findTopicDetailDialog()).toBeDefined());
+
+    await user.click(screen.getAllByRole('combobox')[0]);
+    await user.click(
+      await screen.findByText('Instance B', { selector: '.ant-select-item-option-content' }),
+    );
+
+    expect(await screen.findByText('topic-b')).toBeInTheDocument();
+    await waitFor(() => expect(findTopicDetailDialog()).toBeUndefined());
+  });
+
   it('imports valid topic CSV rows through the create service with the selected instance', async () => {
     const user = userEvent.setup();
     topicServiceMocks.listTopics.mockResolvedValue([]);

@@ -267,10 +267,15 @@ const formatDateTime = (iso?: string): string => {
 };
 
 // ═══════════════════════════════════════════════════════════════════
-const TopicPage = () => {
+type TopicPageContentProps = ReturnType<typeof useInstanceFilter>;
+
+const TopicPageContent = ({
+  selectedInstanceId,
+  selectedInstance,
+  selectInstance,
+  instanceOptions,
+}: TopicPageContentProps) => {
   const { t } = useLang();
-  const { selectedInstanceId, selectedInstance, selectInstance, instanceOptions } =
-    useInstanceFilter();
   const isCloudInstance =
     selectedInstance?.vendor === 'ALIYUN' || selectedInstance?.vendor === 'TENCENT';
   const hasSelectedInstance = Boolean(selectedInstanceId);
@@ -1423,6 +1428,16 @@ const TopicPage = () => {
         </Form>
       </Modal>
     </div>
+  );
+};
+
+const TopicPage = () => {
+  const instanceFilter = useInstanceFilter();
+  return (
+    <TopicPageContent
+      key={instanceFilter.selectedInstanceId || 'no-selected-instance'}
+      {...instanceFilter}
+    />
   );
 };
 
