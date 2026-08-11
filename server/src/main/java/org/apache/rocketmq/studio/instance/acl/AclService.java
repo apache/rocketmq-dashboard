@@ -109,6 +109,9 @@ public class AclService {
         log.info("Updating ACL user id={}, username={}", user.getId(), user.getUsername());
         AclUserVO existing = aclRepository.findUserById(user.getId())
                 .orElseThrow(() -> new BusinessException(404, "ACL user not found: " + user.getId()));
+        if (user.getUsername() != null && !StringUtils.hasText(user.getUsername())) {
+            throw new BusinessException(400, "ACL username is required");
+        }
         AclUserVO merged = AclUserVO.builder()
                 .id(existing.getId())
                 .username(user.getUsername() == null ? existing.getUsername() : user.getUsername())
