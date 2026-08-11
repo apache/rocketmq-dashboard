@@ -37,7 +37,6 @@ public class AuthInterceptor implements HandlerInterceptor {
     private static final Set<String> READER_POST_PATHS = Set.of(
             "/api/auth/logout",
             "/api/ai/chat",
-            "/api/llm/config/test",
             "/api/metrics/query",
             "/api/metrics/query/datasource");
 
