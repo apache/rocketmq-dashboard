@@ -908,4 +908,76 @@ class InstanceServiceTest {
         assertThat(updated.getRemark()).isEqualTo("updated");
         assertThat(updated.getCloudInstanceId()).isEqualTo("rmq-cn-xxx");
     }
+
+    @Test
+    void exportInstancesShouldSortAndExcludeRuntimeCounts() {
+        InstanceVO second = InstanceVO.builder().name("zeta").type(InstanceType.PROXY)
+                .endpoint("zeta:8080").topicCount(12).consumerGroupCount(4).build();
+        second.setId("instance-z");
+        InstanceVO first = InstanceVO.builder().name("Alpha").type(InstanceType.DIRECT)
+                .endpoint("alpha:9876").topicCount(8).consumerGroupCount(2).build();
+        first.setId("instance-a");
+        when(instanceRepository.findAll()).thenReturn(List.of(second, first));
+
+        InstanceExportVO exported = instanceService.exportInstances();
+
+        assertThat(exported.getSchemaVersion()).isEqualTo(1);
+        assertThat(exported.getInstances()).extracting(InstanceImportItemDTO::getId)
+                .containsExactly("instance-a", "instance-z");
+    }
+
+    @Test
+    void importInstancesShouldCreateSkipAndReportInvalidRows() {
+        InstanceVO existing = InstanceVO.builder().name("Existing").type(InstanceType.PROXY)
+                .endpoint("old:8080").build();
+        existing.setId("existing");
+        existing.setCreatedAt(LocalDateTime.of(2026, 1, 1, 0, 0));
+        when(instanceRepository.findById("new-instance")).thenReturn(Optional.empty());
+        when(instanceRepository.findById("existing")).thenReturn(Optional.of(existing));
+        when(instanceRepository.save(any(InstanceVO.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        InstanceImportItemDTO created = importItem("new-instance", "New", "new:8080");
+        InstanceImportItemDTO skipped = importItem("existing", "Existing replacement", "next:8080");
+        InstanceImportItemDTO invalid = importItem("invalid", "Invalid", " ");
+        InstanceImportRequestDTO request = new InstanceImportRequestDTO();
+        request.setInstances(List.of(created, skipped, invalid));
+
+        InstanceImportResultVO result = instanceService.importInstances(request);
+
+        assertThat(result.getCreatedIds()).containsExactly("new-instance");
+        assertThat(result.getSkippedIds()).containsExactly("existing");
+        assertThat(result.getErrors()).containsKey("invalid");
+        verify(instanceRepository).save(argThat(instance -> "new-instance".equals(instance.getId())));
+    }
+
+    @Test
+    void dryRunImportShouldPlanOverwriteWithoutSaving() {
+        InstanceVO existing = InstanceVO.builder().name("Existing").type(InstanceType.PROXY)
+                .endpoint("old:8080").build();
+        existing.setId("existing");
+        existing.setCreatedAt(LocalDateTime.of(2026, 1, 1, 0, 0));
+        when(instanceRepository.findById("existing")).thenReturn(Optional.of(existing));
+        InstanceImportRequestDTO request = new InstanceImportRequestDTO();
+        request.setInstances(List.of(importItem("existing", "Replacement", "next:8080")));
+        request.setOverwrite(true);
+        request.setDryRun(true);
+
+        InstanceImportResultVO result = instanceService.importInstances(request);
+
+        assertThat(result.isDryRun()).isTrue();
+        assertThat(result.getUpdatedIds()).containsExactly("existing");
+        verify(instanceRepository, never()).save(any());
+        verifyNoInteractions(operationAuditService);
+    }
+
+    private static InstanceImportItemDTO importItem(String id, String name, String endpoint) {
+        InstanceImportItemDTO item = new InstanceImportItemDTO();
+        item.setId(id);
+        item.setName(name);
+        item.setType(InstanceType.PROXY);
+        item.setEndpoint(endpoint);
+        item.setVendor(InstanceVendor.APACHE);
+        return item;
+    }
 }

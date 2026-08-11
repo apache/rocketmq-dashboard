@@ -243,6 +243,43 @@ class InstanceControllerTest {
         verifyNoInteractions(instanceService);
     }
 
+    @Test
+    void exportInstancesShouldReturnVersionedBundle() throws Exception {
+        when(instanceService.exportInstances()).thenReturn(InstanceExportVO.builder()
+                .schemaVersion(1).exportedAt(LocalDateTime.of(2026, 8, 5, 12, 0))
+                .instances(List.of()).build());
+
+        mockMvc.perform(get("/api/instances/export"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.schemaVersion").value(1))
+                .andExpect(jsonPath("$.data.instances").isArray());
+    }
+
+    @Test
+    void importInstancesShouldReturnDryRunPlan() throws Exception {
+        when(instanceService.importInstances(any(InstanceImportRequestDTO.class)))
+                .thenReturn(InstanceImportResultVO.builder()
+                        .createdIds(List.of("new-instance")).updatedIds(List.of())
+                        .skippedIds(List.of()).errors(Map.of()).dryRun(true).build());
+
+        mockMvc.perform(post("/api/instances/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"instances\":[{\"id\":\"new-instance\",\"name\":\"New\","
+                                + "\"type\":\"PROXY\",\"endpoint\":\"proxy:8080\"}],\"dryRun\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.dryRun").value(true))
+                .andExpect(jsonPath("$.data.createdIds[0]").value("new-instance"));
+    }
+
+    @Test
+    void importInstancesShouldRejectEmptyBundle() throws Exception {
+        mockMvc.perform(post("/api/instances/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"instances\":[]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("instances are required"));
+    }
+
     private InstanceVO buildInstance(String id, String name, InstanceType type, String endpoint) {
         InstanceVO instance = InstanceVO.builder()
                 .name(name)

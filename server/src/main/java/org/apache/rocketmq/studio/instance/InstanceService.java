@@ -34,10 +34,15 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -260,6 +265,123 @@ public class InstanceService {
         releaseApacheEndpointIfUnused(existing, null);
         recordAudit("DELETE_INSTANCE", "INSTANCE", id, null,
                 instanceAuditDetail(existing));
+    }
+
+    public InstanceExportVO exportInstances() {
+        List<InstanceImportItemDTO> items = instanceRepository.findAll().stream()
+                .sorted(Comparator.comparing(InstanceVO::getName, String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(InstanceVO::getId))
+                .map(this::toImportItem)
+                .toList();
+        return InstanceExportVO.builder()
+                .schemaVersion(1)
+                .exportedAt(LocalDateTime.now())
+                .instances(items)
+                .build();
+    }
+
+    public InstanceImportResultVO importInstances(InstanceImportRequestDTO request) {
+        if (request == null || request.getInstances() == null || request.getInstances().isEmpty()) {
+            throw new BusinessException(400, "instances are required");
+        }
+        List<String> created = new ArrayList<>();
+        List<String> updated = new ArrayList<>();
+        List<String> skipped = new ArrayList<>();
+        LinkedHashMap<String, String> errors = new LinkedHashMap<>();
+        Set<String> seenIds = new HashSet<>();
+        for (int index = 0; index < request.getInstances().size(); index++) {
+            InstanceImportItemDTO item = request.getInstances().get(index);
+            String rowKey = item == null || !StringUtils.hasText(item.getId())
+                    ? "row-" + (index + 1) : item.getId().trim();
+            try {
+                InstanceVO candidate = validateImportItem(item);
+                if (!seenIds.add(candidate.getId())) {
+                    throw new BusinessException(400, "Duplicate instance id in import file");
+                }
+                InstanceVO existing = instanceRepository.findById(candidate.getId()).orElse(null);
+                if (existing != null && !request.isOverwrite()) {
+                    skipped.add(candidate.getId());
+                    continue;
+                }
+                LocalDateTime now = LocalDateTime.now();
+                candidate.setCreatedAt(existing == null ? now : existing.getCreatedAt());
+                candidate.setUpdatedAt(now);
+                if (!request.isDryRun()) {
+                    instanceRepository.save(candidate);
+                    if (existing != null) {
+                        releaseApacheClientIfChanged(existing, candidate);
+                    }
+                }
+                (existing == null ? created : updated).add(candidate.getId());
+            } catch (RuntimeException failure) {
+                errors.put(rowKey, failure.getMessage() == null ? "Import failed" : failure.getMessage());
+            }
+        }
+        InstanceImportResultVO result = InstanceImportResultVO.builder()
+                .createdIds(created).updatedIds(updated).skippedIds(skipped)
+                .errors(errors).dryRun(request.isDryRun()).build();
+        if (!request.isDryRun()) {
+            recordAudit("IMPORT_INSTANCES", "INSTANCE", "bulk", null,
+                    String.format("created=%d, updated=%d, skipped=%d, failed=%d",
+                            created.size(), updated.size(), skipped.size(), errors.size()));
+        }
+        return result;
+    }
+
+    private InstanceVO validateImportItem(InstanceImportItemDTO item) {
+        if (item == null) {
+            throw new BusinessException(400, "Instance entry is required");
+        }
+        String id = StringUtils.hasText(item.getId()) ? item.getId().trim() : UUID.randomUUID().toString();
+        InstanceVendor vendor = item.getVendor() == null ? InstanceVendor.APACHE : item.getVendor();
+        InstanceType type = item.getType();
+        if (type == null) {
+            throw new BusinessException(400, "Instance type is required");
+        }
+        String endpoint = requireValidEndpoint(item.getEndpoint());
+        if (vendor != InstanceVendor.APACHE) {
+            if (!StringUtils.hasText(item.getCredentialId())) {
+                throw new BusinessException(400, "credentialId is required for " + vendor + " instances");
+            }
+            CloudCredentialVO credential = cloudCredentialRepository.findById(item.getCredentialId().trim())
+                    .orElseThrow(() -> new BusinessException(404,
+                            "Cloud credential not found: " + item.getCredentialId().trim()));
+            if (credential.getVendor() != vendor) {
+                throw new BusinessException(400, "Cloud credential vendor does not match " + vendor);
+            }
+        }
+        InstanceVO candidate = InstanceVO.builder()
+                .name(requireInstanceName(item.getName()))
+                .remark(item.getRemark())
+                .type(type)
+                .endpoint(endpoint)
+                .vendor(vendor)
+                .cloudInstanceId(trimToNull(item.getCloudInstanceId()))
+                .credentialId(trimToNull(item.getCredentialId()))
+                .adminCredentialRef(normalizeCredentialRef(item.getAdminCredentialRef()))
+                .regionId(trimToNull(item.getRegionId()))
+                .build();
+        candidate.setId(id);
+        return candidate;
+    }
+
+    private InstanceImportItemDTO toImportItem(InstanceVO instance) {
+        InstanceImportItemDTO item = new InstanceImportItemDTO();
+        item.setId(instance.getId());
+        item.setName(instance.getName());
+        item.setRemark(instance.getRemark());
+        item.setType(instance.getType());
+        item.setEndpoint(instance.getEndpoint());
+        item.setVendor(instance.getVendor() == null ? InstanceVendor.APACHE : instance.getVendor());
+        item.setCloudInstanceId(instance.getCloudInstanceId());
+        item.setCredentialId(instance.getCredentialId());
+        item.setAdminCredentialRef(instance.getAdminCredentialRef());
+        item.setRegionId(instance.getRegionId());
+        return item;
+    }
+
+    private String trimToNull(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
     }
 
     private void requireInstance(InstanceVO instance) {

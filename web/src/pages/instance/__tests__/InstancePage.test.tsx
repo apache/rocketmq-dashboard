@@ -44,6 +44,8 @@ vi.mock('../../../api/tencentCatalog', () => ({
 vi.mock('../../../services/instanceService', () => ({
   createInstance: vi.fn(),
   deleteInstance: vi.fn(),
+  exportInstances: vi.fn(),
+  importInstances: vi.fn(),
   listInstances: vi.fn(),
   updateInstance: vi.fn(),
 }));
@@ -149,7 +151,11 @@ describe('InstancePage', () => {
 
   it('keeps unavailable resource counts after available values in both sort directions', async () => {
     vi.mocked(instanceService.listInstances).mockResolvedValue([
-      { ...instance('unavailable', 'unavailable-instance'), topicCount: 0, resourceCountsAvailable: false },
+      {
+        ...instance('unavailable', 'unavailable-instance'),
+        topicCount: 0,
+        resourceCountsAvailable: false,
+      },
       { ...instance('zero', 'zero-instance'), topicCount: 0 },
       { ...instance('many', 'many-instance'), topicCount: 10 },
     ]);

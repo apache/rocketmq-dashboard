@@ -60,4 +60,15 @@ public class InstanceController {
         instanceService.deleteInstance(request.getId());
         return Result.ok();
     }
+
+    @GetMapping("/export")
+    public Result<InstanceExportVO> exportInstances() {
+        return Result.ok(instanceService.exportInstances());
+    }
+
+    @PostMapping("/import")
+    public Result<InstanceImportResultVO> importInstances(
+            @Valid @RequestBody InstanceImportRequestDTO request) {
+        return Result.ok(instanceService.importInstances(request));
+    }
 }

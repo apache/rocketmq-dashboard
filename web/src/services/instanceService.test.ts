@@ -22,7 +22,14 @@ vi.mock('../config', () => ({
   API_BASE_URL: '/api',
 }));
 
-import { createInstance, deleteInstance, listInstances, updateInstance } from './instanceService';
+import {
+  createInstance,
+  deleteInstance,
+  exportInstances,
+  importInstances,
+  listInstances,
+  updateInstance,
+} from './instanceService';
 
 describe('instanceService mock instances', () => {
   it('returns defensive copies from list reads', async () => {
@@ -91,5 +98,34 @@ describe('instanceService mock instances', () => {
     );
 
     await expect(listInstances()).resolves.toEqual(before);
+  });
+
+  it('previews and applies mock imports without mutating during dry runs', async () => {
+    const bundle = await exportInstances();
+    expect(bundle.schemaVersion).toBe(1);
+    expect(bundle.instances.length).toBeGreaterThan(0);
+
+    const imported = {
+      id: 'imported-instance-test',
+      name: 'imported-instance-test',
+      type: 'PROXY' as const,
+      endpoint: 'imported.example:8080',
+    };
+    const preview = await importInstances({
+      instances: [imported],
+      overwrite: false,
+      dryRun: true,
+    });
+    expect(preview.createdIds).toEqual([imported.id]);
+    expect((await listInstances()).some((item) => item.id === imported.id)).toBe(false);
+
+    const applied = await importInstances({
+      instances: [imported],
+      overwrite: false,
+      dryRun: false,
+    });
+    expect(applied.createdIds).toEqual([imported.id]);
+    expect((await listInstances()).some((item) => item.id === imported.id)).toBe(true);
+    await deleteInstance(imported.id);
   });
 });

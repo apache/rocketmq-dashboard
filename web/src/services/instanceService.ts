@@ -3,6 +3,9 @@ import * as instanceApi from '../api/instance';
 import type {
   Instance,
   CreateInstanceRequest,
+  InstanceExportBundle,
+  InstanceImportRequest,
+  InstanceImportResult,
   InstanceQuery,
   UpdateInstanceRequest,
 } from '../api/instance';
@@ -74,4 +77,84 @@ export async function deleteInstance(id: string): Promise<void> {
     return;
   }
   return instanceApi.deleteInstance(id);
+}
+
+const toImportItem = (instance: Instance) => ({
+  id: instance.id,
+  name: instance.name,
+  remark: instance.remark,
+  type: instance.type,
+  endpoint: instance.endpoint,
+  vendor: instance.vendor || ('APACHE' as const),
+  cloudInstanceId: instance.cloudInstanceId,
+  credentialId: instance.credentialId,
+  adminCredentialRef: instance.adminCredentialRef,
+  regionId: instance.regionId,
+});
+
+export async function exportInstances(): Promise<InstanceExportBundle> {
+  if (isMockMode()) {
+    return {
+      schemaVersion: 1,
+      exportedAt: new Date().toISOString(),
+      instances: mockInstances
+        .slice()
+        .sort((left, right) => left.name.localeCompare(right.name))
+        .map(toImportItem),
+    };
+  }
+  return instanceApi.exportInstances();
+}
+
+export async function importInstances(
+  request: InstanceImportRequest,
+): Promise<InstanceImportResult> {
+  if (!isMockMode()) return instanceApi.importInstances(request);
+
+  const result: InstanceImportResult = {
+    createdIds: [],
+    updatedIds: [],
+    skippedIds: [],
+    errors: {},
+    dryRun: request.dryRun,
+  };
+  const seenIds = new Set<string>();
+  request.instances.forEach((item, index) => {
+    const id = item.id?.trim() || `mock-import-${Date.now()}-${index}`;
+    if (seenIds.has(id)) {
+      result.errors[id] = 'Duplicate instance id in import file';
+      return;
+    }
+    seenIds.add(id);
+    const existingIndex = mockInstances.findIndex((instance) => instance.id === id);
+    if (existingIndex >= 0 && !request.overwrite) {
+      result.skippedIds.push(id);
+      return;
+    }
+    if (!item.name?.trim() || !item.type || !item.endpoint?.trim()) {
+      result.errors[id] = 'name, type and endpoint are required';
+      return;
+    }
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    const imported: Instance = {
+      ...item,
+      id,
+      name: item.name.trim(),
+      endpoint: item.endpoint.trim(),
+      remark: item.remark || '',
+      vendor: item.vendor || 'APACHE',
+      topicCount: 0,
+      consumerGroupCount: 0,
+      createdAt: existingIndex >= 0 ? mockInstances[existingIndex].createdAt : now,
+      updatedAt: now,
+    };
+    if (existingIndex >= 0) {
+      result.updatedIds.push(id);
+      if (!request.dryRun) mockInstances.splice(existingIndex, 1, imported);
+    } else {
+      result.createdIds.push(id);
+      if (!request.dryRun) mockInstances.push(imported);
+    }
+  });
+  return result;
 }

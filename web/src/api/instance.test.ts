@@ -18,7 +18,14 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { createInstance, deleteInstance, listInstances, updateInstance } from './instance';
+import {
+  createInstance,
+  deleteInstance,
+  exportInstances,
+  importInstances,
+  listInstances,
+  updateInstance,
+} from './instance';
 
 const mock = new MockAdapter(client);
 const instance = {
@@ -83,5 +90,30 @@ describe('instance API', () => {
     });
 
     await expect(deleteInstance(instance.id)).resolves.toBeUndefined();
+  });
+
+  it('exports and imports versioned instance bundles', async () => {
+    const bundle = { schemaVersion: 1, exportedAt: '2026-08-12T00:00:00Z', instances: [instance] };
+    const result = {
+      createdIds: [instance.id],
+      updatedIds: [],
+      skippedIds: [],
+      errors: {},
+      dryRun: true,
+    };
+    mock.onGet('/instances/export').reply(200, { code: 200, data: bundle });
+    mock.onPost('/instances/import').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({
+        instances: [instance],
+        overwrite: true,
+        dryRun: true,
+      });
+      return [200, { code: 200, data: result }];
+    });
+
+    await expect(exportInstances()).resolves.toEqual(bundle);
+    await expect(
+      importInstances({ instances: [instance], overwrite: true, dryRun: true }),
+    ).resolves.toEqual(result);
   });
 });

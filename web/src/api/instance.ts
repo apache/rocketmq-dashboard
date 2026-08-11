@@ -64,6 +64,39 @@ export interface InstanceQuery {
   search?: string;
 }
 
+export interface InstanceImportItem {
+  id?: string;
+  name: string;
+  remark?: string | null;
+  type: Instance['type'];
+  endpoint: string;
+  vendor?: InstanceVendor;
+  cloudInstanceId?: string;
+  credentialId?: string;
+  adminCredentialRef?: string;
+  regionId?: string;
+}
+
+export interface InstanceExportBundle {
+  schemaVersion: number;
+  exportedAt: string;
+  instances: InstanceImportItem[];
+}
+
+export interface InstanceImportRequest {
+  instances: InstanceImportItem[];
+  overwrite: boolean;
+  dryRun: boolean;
+}
+
+export interface InstanceImportResult {
+  createdIds: string[];
+  updatedIds: string[];
+  skippedIds: string[];
+  errors: Record<string, string>;
+  dryRun: boolean;
+}
+
 // ─── Instance CRUD ──────────────────────────────────────────────
 export async function listInstances(query: InstanceQuery = {}) {
   const search = query.search?.trim();
@@ -87,4 +120,14 @@ export async function updateInstance(data: UpdateInstanceRequest) {
 
 export async function deleteInstance(id: string) {
   await client.post('/instances/delete', { id });
+}
+
+export async function exportInstances() {
+  const res = await client.get<{ data: InstanceExportBundle }>('/instances/export');
+  return res.data.data;
+}
+
+export async function importInstances(data: InstanceImportRequest) {
+  const res = await client.post<{ data: InstanceImportResult }>('/instances/import', data);
+  return res.data.data;
 }

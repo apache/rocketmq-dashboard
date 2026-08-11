@@ -35,7 +35,7 @@ import {
 } from 'antd';
 import { useLang } from '../../i18n/LangContext';
 import { Plus, MagnifyingGlass } from '@phosphor-icons/react';
-import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { DownloadOutlined, EditOutlined, DeleteOutlined, UploadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { SortOrder } from 'antd/es/table/interface';
 import type { Instance, InstanceQuery } from '../../api/instance';
@@ -51,10 +51,13 @@ import { formatDateTime } from '../../utils/format';
 import {
   createInstance,
   deleteInstance,
+  exportInstances,
   listInstances,
   updateInstance,
 } from '../../services/instanceService';
+import { downloadBlob } from '../../utils/download';
 import { DEFAULT_VENDOR, VENDOR_OPTIONS, type InstanceVendor } from './vendorOptions';
+import InstanceImportDialog from './InstanceImportDialog';
 
 const { Text } = Typography;
 
@@ -113,6 +116,8 @@ const InstancePage = () => {
   const [cloudInstances, setCloudInstances] = useState<CloudInstanceOption[]>([]);
   const [cloudInstancesLoading, setCloudInstancesLoading] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [editingInstance, setEditingInstance] = useState<Instance | null>(null);
   const [editForm] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
@@ -364,6 +369,23 @@ const InstancePage = () => {
     }
   };
 
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const bundle = await exportInstances();
+      const date = new Date().toISOString().slice(0, 10);
+      downloadBlob(
+        new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json;charset=utf-8' }),
+        `rocketmq-instances-${date}.json`,
+      );
+      message.success(`已导出 ${bundle.instances.length} 个实例`);
+    } catch {
+      message.error('导出实例配置失败');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const sortedInstances = [...instances].sort((a, b) => a.name.localeCompare(b.name));
 
   const columns: ColumnsType<Instance> = [
@@ -436,8 +458,7 @@ const InstancePage = () => {
       key: 'consumerGroupCount',
       width: 80,
       align: 'center' as const,
-      sorter: (a, b, sortOrder) =>
-        compareResourceCounts(a, b, 'consumerGroupCount', sortOrder),
+      sorter: (a, b, sortOrder) => compareResourceCounts(a, b, 'consumerGroupCount', sortOrder),
       render: (count: number, record: Instance) =>
         record.resourceCountsAvailable === false ? '不可用' : count,
     },
@@ -545,13 +566,25 @@ const InstancePage = () => {
             ]}
           />
         </Space>
-        <Button
-          type="primary"
-          icon={<Plus size={14} weight="bold" />}
-          onClick={() => setAddModalOpen(true)}
-        >
-          添加实例
-        </Button>
+        <Space>
+          <Button icon={<UploadOutlined />} onClick={() => setImportModalOpen(true)}>
+            导入配置
+          </Button>
+          <Button
+            icon={<DownloadOutlined />}
+            loading={exporting}
+            onClick={() => void handleExport()}
+          >
+            导出配置
+          </Button>
+          <Button
+            type="primary"
+            icon={<Plus size={14} weight="bold" />}
+            onClick={() => setAddModalOpen(true)}
+          >
+            添加实例
+          </Button>
+        </Space>
       </Flex>
 
       {/* Table */}
@@ -782,6 +815,12 @@ const InstancePage = () => {
           </Form.Item>
         </Form>
       </Modal>
+
+      <InstanceImportDialog
+        open={importModalOpen}
+        onCancel={() => setImportModalOpen(false)}
+        onImported={loadInstances}
+      />
     </div>
   );
 };
