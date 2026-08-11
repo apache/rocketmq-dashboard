@@ -33,6 +33,7 @@ const DashboardPage = () => {
   const navigate = useNavigate();
   const { t } = useLang();
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
+  const [dashboardInstanceId, setDashboardInstanceId] = useState<string>();
   const [instances, setInstances] = useState<Instance[]>([]);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string>();
   const [loading, setLoading] = useState(true);
@@ -50,6 +51,7 @@ const DashboardPage = () => {
       const nextDashboard = await getDashboard(selectedInstanceId);
       if (requestId === dashboardRequestIdRef.current) {
         setDashboard(nextDashboard);
+        setDashboardInstanceId(selectedInstanceId);
       }
     } catch {
       if (requestId === dashboardRequestIdRef.current) {
@@ -80,6 +82,9 @@ const DashboardPage = () => {
     void Promise.resolve().then(loadDashboard);
   }, [loadDashboard]);
 
+  const visibleDashboard =
+    dashboardInstanceId === selectedInstanceId ? dashboard : null;
+
   const dashboardHeader = (
     <PageHeader
       title={t('dashboard.title')}
@@ -103,7 +108,7 @@ const DashboardPage = () => {
     />
   );
 
-  if (loading && !dashboard) {
+  if (loading && !visibleDashboard) {
     return (
       <div style={{ padding: 24 }}>
         {dashboardHeader}
@@ -112,7 +117,7 @@ const DashboardPage = () => {
     );
   }
 
-  if (loadError || !dashboard) {
+  if (loadError || !visibleDashboard) {
     return (
       <div style={{ padding: 24 }}>
         {dashboardHeader}
@@ -131,7 +136,7 @@ const DashboardPage = () => {
     );
   }
 
-  const { stats, clusters } = dashboard;
+  const { stats, clusters } = visibleDashboard;
 
   const statCards = [
     {

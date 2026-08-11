@@ -119,6 +119,25 @@ beforeEach(() => {
 });
 
 describe('DashboardPage', () => {
+  it('does not show dashboard data from the previous instance while loading a new selection', async () => {
+    const instanceA = deferred<DashboardData>();
+    vi.mocked(dashboardService.getDashboard)
+      .mockResolvedValueOnce(dashboard('initial-cluster'))
+      .mockReturnValueOnce(instanceA.promise);
+    const user = userEvent.setup();
+    renderWithProviders(<DashboardPage />);
+
+    await screen.findByText('initial-cluster');
+    const selector = screen.getByRole('combobox', { name: 'Dashboard instance' });
+    await user.click(selector);
+    await user.click(await screen.findByText('Instance A', { selector: '.ant-select-item-option-content' }));
+    await waitFor(() => expect(dashboardService.getDashboard).toHaveBeenCalledWith('instance-a'));
+
+    expect(screen.queryByText('initial-cluster')).not.toBeInTheDocument();
+    instanceA.resolve(dashboard('instance-a-cluster'));
+    await screen.findByText('instance-a-cluster');
+  });
+
   it('does not let a stale instance response overwrite the latest selection', async () => {
     const instanceA = deferred<DashboardData>();
     const instanceB = deferred<DashboardData>();
