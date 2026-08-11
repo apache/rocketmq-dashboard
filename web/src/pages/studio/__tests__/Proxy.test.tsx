@@ -19,12 +19,13 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
-import { queryProxyHomePage } from '../../../api/proxy';
+import { queryProxyHomePage, reloadProxyConfig } from '../../../api/proxy';
 import { LangProvider } from '../../../i18n/LangContext';
 import ProxyPage from '../Proxy';
 
 vi.mock('../../../api/proxy', () => ({
   queryProxyHomePage: vi.fn(),
+  reloadProxyConfig: vi.fn(),
 }));
 
 beforeAll(() => {
@@ -70,6 +71,9 @@ describe('ProxyPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(queryProxyHomePage).mockResolvedValue(proxyHome);
+    vi.mocked(reloadProxyConfig).mockResolvedValue({
+      success: true,
+    });
   });
 
   it('loads Proxy nodes once after the page mounts', async () => {
@@ -82,7 +86,7 @@ describe('ProxyPage', () => {
   it('shows success after the proxy list refreshes', async () => {
     const user = userEvent.setup();
     renderPage();
-    await screen.findByText('127.0.0.1:8081');
+    await screen.findAllByText('127.0.0.1:8081');
 
     await user.click(screen.getByRole('button', { name: '刷新' }));
 
@@ -93,7 +97,7 @@ describe('ProxyPage', () => {
   it('does not show success when the proxy list refresh fails', async () => {
     const user = userEvent.setup();
     renderPage();
-    await screen.findByText('127.0.0.1:8081');
+    await screen.findAllByText('127.0.0.1:8081');
     vi.mocked(queryProxyHomePage).mockRejectedValueOnce(new Error('network error'));
 
     await user.click(screen.getByRole('button', { name: '刷新' }));
@@ -106,7 +110,7 @@ describe('ProxyPage', () => {
   it('does not render simulated proxy configuration values', async () => {
     const user = userEvent.setup();
     renderPage();
-    await screen.findByText('127.0.0.1:8081');
+    await screen.findAllByText('127.0.0.1:8081');
 
     await user.click(screen.getByRole('button', { name: '查看配置' }));
 
@@ -120,11 +124,24 @@ describe('ProxyPage', () => {
 
   it('marks runtime metrics unavailable when proxy API only returns addresses', async () => {
     renderPage();
-    await screen.findByText('127.0.0.1:8081');
+    await screen.findAllByText('127.0.0.1:8081');
 
     expect(screen.queryByText('5.3.0')).not.toBeInTheDocument();
     expect(screen.getAllByText('N/A').length).toBeGreaterThanOrEqual(5);
   });
+  it('calls reloadProxyConfig when the reload button is clicked', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findAllByText('127.0.0.1:8081');
+
+    await user.click(screen.getByRole('button', { name: '重载配置' }));
+
+    await waitFor(() =>
+      expect(reloadProxyConfig).toHaveBeenCalledWith('DefaultCluster', '127.0.0.1:8081'),
+    );
+    expect(await screen.findByText('配置重载成功')).toBeInTheDocument();
+  });
+
   it('keeps the latest Proxy list when an older refresh resolves last', async () => {
     const older = createDeferred<typeof proxyHome>();
     const latest = createDeferred<typeof proxyHome>();

@@ -125,4 +125,12 @@ class ProxyAddressServiceTest {
                 .hasMessage("Proxy address not found: 10.0.0.1:8081")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
     }
+
+    @Test
+    void reloadConfigShouldRejectUnregisteredAddressTest() {
+        assertThatThrownBy(() -> proxyAddressService.reloadConfig("10.0.0.1:8081"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("addr is not a registered proxy address")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+    }
 }
