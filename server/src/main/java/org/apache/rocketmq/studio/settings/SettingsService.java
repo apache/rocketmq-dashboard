@@ -67,6 +67,7 @@ public class SettingsService {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(DATA_SOURCE_TEST_CONNECT_TIMEOUT);
         requestFactory.setReadTimeout(DATA_SOURCE_TEST_READ_TIMEOUT);
+        requestFactory.setFollowRedirects(false);
         this.settingsRepository = settingsRepository;
         this.restClient = restClientBuilder.requestFactory(requestFactory).build();
         this.objectMapper = objectMapper;
