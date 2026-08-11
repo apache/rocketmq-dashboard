@@ -496,8 +496,11 @@ public class TencentInstanceProvider implements InstanceProvider {
                     }
                 }
             }
-            // Stop when the last page returned no rows or we have collected everything.
-            if (data == null || data.length == 0 || result.size() >= total) {
+            // Stop on the last page (returned fewer rows than requested) or once all results have
+            // been collected. Like the Aliyun provider, the short-page check is the primary signal
+            // so we do not rely on TotalCount, which may not be populated for every query.
+            int returned = data == null ? 0 : data.length;
+            if (returned == 0 || returned < MESSAGE_LIMIT || total > 0 && result.size() >= total) {
                 break;
             }
         }

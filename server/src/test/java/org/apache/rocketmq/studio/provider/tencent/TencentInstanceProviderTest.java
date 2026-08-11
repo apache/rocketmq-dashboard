@@ -471,21 +471,22 @@ class TencentInstanceProviderTest {
 
     @Test
     void queryMessagesByTopicShouldPageWithSameTaskRequestIdTest() throws Exception {
-        MessageItem first = new MessageItem();
-        first.setMsgId("MSG-1");
-        first.setProduceTime("2024-09-12 14:06:55,591");
-        MessageItem second = new MessageItem();
-        second.setMsgId("MSG-2");
-        second.setProduceTime("2024-09-12 14:06:56,591");
-        MessageItem third = new MessageItem();
-        third.setMsgId("MSG-3");
-        third.setProduceTime("2024-09-12 14:06:57,591");
+        // Page 1 returns a full page (MESSAGE_LIMIT), forcing a second page; page 2 is a short
+        // page, which terminates the loop.
+        MessageItem[] page1Items = new MessageItem[TencentInstanceProvider.MESSAGE_LIMIT];
+        for (int i = 0; i < page1Items.length; i++) {
+            MessageItem item = new MessageItem();
+            item.setMsgId("MSG-" + (i + 1));
+            item.setProduceTime("2024-09-12 14:06:55,591");
+            page1Items[i] = item;
+        }
+        MessageItem last = new MessageItem();
+        last.setMsgId("MSG-LAST");
+        last.setProduceTime("2024-09-12 14:06:56,591");
         DescribeMessageListResponse page1 = new DescribeMessageListResponse();
-        page1.setData(new MessageItem[]{first, second});
-        page1.setTotalCount(3L);
+        page1.setData(page1Items);
         DescribeMessageListResponse page2 = new DescribeMessageListResponse();
-        page2.setData(new MessageItem[]{third});
-        page2.setTotalCount(3L);
+        page2.setData(new MessageItem[]{last});
         when(client.DescribeMessageList(any()))
                 .thenReturn(page1)
                 .thenReturn(page2);
@@ -493,16 +494,17 @@ class TencentInstanceProviderTest {
         List<MessageRecordVO> messages = provider.queryMessages(STUDIO_INSTANCE_ID, "orders", null,
                 null, null, 1600000000000L, 1600001000000L);
 
-        assertThat(messages).hasSize(3);
+        assertThat(messages).hasSize(TencentInstanceProvider.MESSAGE_LIMIT + 1);
         assertThat(messages.get(0).getMsgId()).isEqualTo("MSG-1");
-        assertThat(messages.get(1).getMsgId()).isEqualTo("MSG-2");
-        assertThat(messages.get(2).getMsgId()).isEqualTo("MSG-3");
+        assertThat(messages.get(TencentInstanceProvider.MESSAGE_LIMIT - 1).getMsgId())
+                .isEqualTo("MSG-" + TencentInstanceProvider.MESSAGE_LIMIT);
+        assertThat(messages.get(TencentInstanceProvider.MESSAGE_LIMIT).getMsgId()).isEqualTo("MSG-LAST");
         ArgumentCaptor<DescribeMessageListRequest> captor = ArgumentCaptor.forClass(DescribeMessageListRequest.class);
         verify(client, org.mockito.Mockito.times(2)).DescribeMessageList(captor.capture());
         java.util.List<DescribeMessageListRequest> requests = captor.getAllValues();
         assertThat(requests).hasSize(2);
         assertThat(requests.get(0).getOffset()).isEqualTo(0L);
-        assertThat(requests.get(1).getOffset()).isEqualTo(2L);
+        assertThat(requests.get(1).getOffset()).isEqualTo((long) TencentInstanceProvider.MESSAGE_LIMIT);
         // A single logical query reuses the same TaskRequestId across pages; only offset advances.
         assertThat(requests.get(1).getTaskRequestId())
                 .isEqualTo(requests.get(0).getTaskRequestId())
