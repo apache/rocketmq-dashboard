@@ -116,6 +116,9 @@ public class DashboardCollectServiceImpl implements DashboardCollectService {
             sb.append(string);
         }
         JSONObject json = (JSONObject) JSONObject.parse(sb.toString());
+        if (json == null) {
+            return Maps.newHashMap();
+        }
         Set<Map.Entry<String, Object>> entries = json.entrySet();
         Map<String, List<String>> map = Maps.newHashMap();
         for (Map.Entry<String, Object> entry : entries) {
