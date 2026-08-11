@@ -150,6 +150,7 @@ describe('BrokerCluster Page', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it('should render the page title', () => {
@@ -231,24 +232,37 @@ describe('BrokerCluster Page', () => {
     expect(screen.queryByText('proxy-a')).not.toBeInTheDocument();
   });
 
-  it('polls only while live refresh is enabled', async () => {
-    vi.useFakeTimers();
+  it('polls only while live refresh is enabled and the document is visible', async () => {
+    const visibilityState = vi
+      .spyOn(document, 'visibilityState', 'get')
+      .mockReturnValue('hidden');
     renderWithProviders(<BrokerCluster />);
 
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
+    await screen.findByText('broker-api-a');
     expect(listClusters).toHaveBeenCalledTimes(1);
+    vi.useFakeTimers();
 
     const liveRefreshSwitch = screen.getByRole('switch');
     fireEvent.click(liveRefreshSwitch);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(6000);
     });
+    expect(listClusters).toHaveBeenCalledTimes(1);
+
+    visibilityState.mockReturnValue('visible');
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    expect(listClusters).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000);
+    });
     expect(listClusters).toHaveBeenCalledTimes(4);
 
     fireEvent.click(liveRefreshSwitch);
     await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
       await vi.advanceTimersByTimeAsync(4000);
     });
     expect(listClusters).toHaveBeenCalledTimes(4);

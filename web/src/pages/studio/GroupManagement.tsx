@@ -39,6 +39,7 @@ import {
   getConsumerSubscriptions,
   listConsumerGroups,
 } from '../../services/consumerService';
+import { useVisiblePolling } from '../../hooks/useVisiblePolling';
 
 // ─── Helpers ────────────────────────────────────────────────────
 type GroupStatus = 'running' | 'warning' | 'stopped';
@@ -121,14 +122,7 @@ const GroupManagementPage = () => {
     };
   }, [loadGroups]);
 
-  useEffect(() => {
-    if (!autoRefresh) return;
-
-    const intervalId = window.setInterval(() => {
-      void loadGroups();
-    }, GROUP_REFRESH_INTERVAL_MS);
-    return () => window.clearInterval(intervalId);
-  }, [autoRefresh, loadGroups]);
+  useVisiblePolling(autoRefresh, GROUP_REFRESH_INTERVAL_MS, loadGroups);
 
   const handleRefresh = useCallback(() => {
     void loadGroups();
