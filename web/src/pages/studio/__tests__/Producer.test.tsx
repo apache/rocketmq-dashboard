@@ -16,7 +16,7 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
@@ -79,6 +79,14 @@ const producerResult = (connectionSet: ProducerConnection[]): ProducerConnection
     readiness: connectionSet.length === 0 ? 'UNAVAILABLE' : 'READY',
   },
 });
+
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+};
 
 describe('ProducerPage', () => {
   beforeEach(() => {
@@ -318,5 +326,42 @@ describe('ProducerPage', () => {
     // scope to the page container: antd keeps closed dropdown portals in document.body
     expect(within(container).queryByText('producer-1')).not.toBeInTheDocument();
     expect(within(container).queryByText('order-events')).not.toBeInTheDocument();
+  });
+
+  it('ignores an in-flight query after its form criteria change', async () => {
+    const pendingQuery = deferred<ProducerConnectionResult>();
+    vi.mocked(queryProducerConnection).mockReturnValue(pendingQuery.promise);
+    const user = userEvent.setup();
+    renderWithProviders(<ProducerPage />);
+
+    await waitFor(() => expect(fetchTopicList).toHaveBeenCalledTimes(1));
+    const [, topicSelect, groupInput] = screen.getAllByRole('combobox');
+    fireEvent.mouseDown(topicSelect.parentElement!);
+    await user.click(
+      await screen.findByText('order-events', { selector: '.ant-select-item-option-content' }),
+    );
+    await user.type(groupInput, 'pg-order');
+    await user.click(screen.getByRole('button', { name: /搜索/ }));
+    await waitFor(() => expect(queryProducerConnection).toHaveBeenCalledTimes(1));
+
+    await user.clear(groupInput);
+    await user.type(groupInput, 'pg-payment');
+    await act(async () => {
+      pendingQuery.resolve(
+        producerResult([
+          {
+            clientId: 'stale-producer',
+            clientAddr: '192.168.1.20',
+            language: 'JAVA',
+            versionDesc: '5.2.0',
+          },
+        ]),
+      );
+      await pendingQuery.promise;
+    });
+
+    expect(screen.queryByText('stale-producer')).not.toBeInTheDocument();
+    expect(screen.queryByText('生产者连接健康')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /搜索/ })).not.toHaveClass('ant-btn-loading');
   });
 });

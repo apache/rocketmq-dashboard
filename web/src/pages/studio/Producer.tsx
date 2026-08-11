@@ -96,6 +96,13 @@ const ProducerPage = () => {
     form.setFieldsValue({ selectedTopic: undefined, producerGroup: undefined });
   };
 
+  const handleQueryCriteriaChange = () => {
+    queryRequestIdRef.current += 1;
+    setConnectionList([]);
+    setConnectionSummary(null);
+    setLoading(false);
+  };
+
   useEffect(() => {
     let cancelled = false;
 
@@ -238,7 +245,13 @@ const ProducerPage = () => {
       </div>
 
       <Card bordered={false} style={{ borderRadius: 8, boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}>
-        <Form form={form} layout="inline" onFinish={onFinish} style={{ marginBottom: 20 }}>
+        <Form
+          form={form}
+          layout="inline"
+          onFinish={onFinish}
+          onValuesChange={handleQueryCriteriaChange}
+          style={{ marginBottom: 20 }}
+        >
           <Form.Item label="INSTANCE">
             <Select
               aria-label="Instance"
