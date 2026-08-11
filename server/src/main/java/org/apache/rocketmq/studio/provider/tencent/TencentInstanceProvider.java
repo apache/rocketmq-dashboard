@@ -80,6 +80,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Tencent Cloud TDMQ RocketMQ 5.x topic operations backed by Trocket v20230308 OpenAPI.
@@ -463,32 +464,42 @@ public class TencentInstanceProvider implements InstanceProvider {
             throw new BusinessException(400, "Message query start time must be before end time");
         }
 
-        DescribeMessageListRequest request = new DescribeMessageListRequest();
-        request.setInstanceId(context.cloudInstanceId());
-        request.setTopic(topic);
-        request.setStartTime(begin);
-        request.setEndTime(end);
-        // DescribeMessageList is an async, task-based query: the first call uses an empty
-        // TaskRequestId to start the query, and later pages reuse the id returned by the
-        // previous response. We only fetch the first page here.
-        request.setTaskRequestId("");
-        if (StringUtils.hasText(key)) {
-            request.setMsgKey(key);
-        }
-        if (StringUtils.hasText(tag)) {
-            request.setTag(tag);
-        }
-        request.setOffset(0L);
-        request.setLimit((long) MESSAGE_LIMIT);
-        DescribeMessageListResponse response = clientFactory.call(context.credentialId(), context.regionId(),
-                client -> client.DescribeMessageList(request));
-        MessageItem[] data = response == null ? null : response.getData();
-        if (data == null || data.length == 0) {
-            return Collections.emptyList();
-        }
-        List<MessageRecordVO> result = new ArrayList<>(data.length);
-        for (MessageItem item : data) {
-            result.add(toRecordVO(item, topic));
+        // DescribeMessageList is an async, task-based query: each logical query is identified by a
+        // TaskRequestId, and paging through that query reuses the same id (the response returns it
+        // for the next page). A fresh random id starts a brand-new query. The frontend message table
+        // is not server-paginated (pagination=false), so page through the whole result set here.
+        String taskRequestId = UUID.randomUUID().toString();
+        List<MessageRecordVO> result = new ArrayList<>();
+        for (int page = 0; page < MAX_PAGES; page++) {
+            DescribeMessageListRequest request = new DescribeMessageListRequest();
+            request.setInstanceId(context.cloudInstanceId());
+            request.setTopic(topic);
+            request.setStartTime(begin);
+            request.setEndTime(end);
+            request.setTaskRequestId(taskRequestId);
+            if (StringUtils.hasText(key)) {
+                request.setMsgKey(key);
+            }
+            if (StringUtils.hasText(tag)) {
+                request.setTag(tag);
+            }
+            request.setOffset((long) result.size());
+            request.setLimit((long) MESSAGE_LIMIT);
+            DescribeMessageListResponse response = clientFactory.call(context.credentialId(), context.regionId(),
+                    client -> client.DescribeMessageList(request));
+            MessageItem[] data = response == null ? null : response.getData();
+            long total = response == null ? 0L : (response.getTotalCount() == null ? 0L : response.getTotalCount());
+            if (data != null) {
+                for (MessageItem item : data) {
+                    if (item != null) {
+                        result.add(toRecordVO(item, topic));
+                    }
+                }
+            }
+            // Stop when the last page returned no rows or we have collected everything.
+            if (data == null || data.length == 0 || result.size() >= total) {
+                break;
+            }
         }
         return result;
     }

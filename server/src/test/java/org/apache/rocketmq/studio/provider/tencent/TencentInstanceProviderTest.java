@@ -446,6 +446,7 @@ class TencentInstanceProviderTest {
         one.setProduceTime("2024-09-12 14:06:55,591");
         DescribeMessageListResponse response = new DescribeMessageListResponse();
         response.setData(new MessageItem[]{one});
+        response.setTotalCount(1L);
         when(client.DescribeMessageList(any())).thenReturn(response);
 
         List<MessageRecordVO> messages = provider.queryMessages(STUDIO_INSTANCE_ID, "orders", null,
@@ -464,7 +465,48 @@ class TencentInstanceProviderTest {
         assertThat(captor.getValue().getTopic()).isEqualTo("orders");
         assertThat(captor.getValue().getMsgKey()).isEqualTo("keyA");
         assertThat(captor.getValue().getTag()).isEqualTo("tagA");
-        assertThat(captor.getValue().getTaskRequestId()).isEqualTo("");
+        assertThat(captor.getValue().getTaskRequestId()).isNotBlank();
+        assertThat(captor.getValue().getOffset()).isEqualTo(0L);
+    }
+
+    @Test
+    void queryMessagesByTopicShouldPageWithSameTaskRequestIdTest() throws Exception {
+        MessageItem first = new MessageItem();
+        first.setMsgId("MSG-1");
+        first.setProduceTime("2024-09-12 14:06:55,591");
+        MessageItem second = new MessageItem();
+        second.setMsgId("MSG-2");
+        second.setProduceTime("2024-09-12 14:06:56,591");
+        MessageItem third = new MessageItem();
+        third.setMsgId("MSG-3");
+        third.setProduceTime("2024-09-12 14:06:57,591");
+        DescribeMessageListResponse page1 = new DescribeMessageListResponse();
+        page1.setData(new MessageItem[]{first, second});
+        page1.setTotalCount(3L);
+        DescribeMessageListResponse page2 = new DescribeMessageListResponse();
+        page2.setData(new MessageItem[]{third});
+        page2.setTotalCount(3L);
+        when(client.DescribeMessageList(any()))
+                .thenReturn(page1)
+                .thenReturn(page2);
+
+        List<MessageRecordVO> messages = provider.queryMessages(STUDIO_INSTANCE_ID, "orders", null,
+                null, null, 1600000000000L, 1600001000000L);
+
+        assertThat(messages).hasSize(3);
+        assertThat(messages.get(0).getMsgId()).isEqualTo("MSG-1");
+        assertThat(messages.get(1).getMsgId()).isEqualTo("MSG-2");
+        assertThat(messages.get(2).getMsgId()).isEqualTo("MSG-3");
+        ArgumentCaptor<DescribeMessageListRequest> captor = ArgumentCaptor.forClass(DescribeMessageListRequest.class);
+        verify(client, org.mockito.Mockito.times(2)).DescribeMessageList(captor.capture());
+        java.util.List<DescribeMessageListRequest> requests = captor.getAllValues();
+        assertThat(requests).hasSize(2);
+        assertThat(requests.get(0).getOffset()).isEqualTo(0L);
+        assertThat(requests.get(1).getOffset()).isEqualTo(2L);
+        // A single logical query reuses the same TaskRequestId across pages; only offset advances.
+        assertThat(requests.get(1).getTaskRequestId())
+                .isEqualTo(requests.get(0).getTaskRequestId())
+                .isNotBlank();
     }
 
     @Test
