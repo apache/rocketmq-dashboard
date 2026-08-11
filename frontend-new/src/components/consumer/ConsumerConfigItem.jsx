@@ -21,6 +21,53 @@ import {remoteApi} from '../../api/remoteApi/remoteApi'; // 确保路径正确
 
 const {Option} = Select;
 
+export const submitConsumerConfig = async ({
+                                               form,
+                                               initialConfig,
+                                               isAddConfig,
+                                               group,
+                                               onCancel,
+                                               onSuccess,
+                                               t,
+                                               messageApi = message,
+                                           }) => {
+    try {
+        const values = await form.validateFields();
+        const numericValues = {
+            retryQueueNums: Number(values.retryQueueNums),
+            retryMaxTimes: Number(values.retryMaxTimes),
+            brokerId: Number(values.brokerId),
+            whichBrokerWhenConsumeSlowly: Number(values.whichBrokerWhenConsumeSlowly),
+        };
+
+        const finalBrokerNameList = Array.isArray(values.brokerName) ? values.brokerName : [values.brokerName];
+        const finalClusterNameList = Array.isArray(values.clusterName) ? values.clusterName : [values.clusterName];
+        const payload = {
+            subscriptionGroupConfig: {
+                ...(initialConfig && initialConfig.subscriptionGroupConfig ? initialConfig.subscriptionGroupConfig : {}),
+                ...values,
+                ...numericValues,
+                groupName: isAddConfig ? values.groupName : group,
+            },
+            brokerNameList: finalBrokerNameList,
+            clusterNameList: isAddConfig ? finalClusterNameList : null,
+        };
+
+        const response = await remoteApi.createOrUpdateConsumer(payload);
+        if (response.status === 0) {
+            messageApi.success(t.SUCCESS);
+            onSuccess();
+            onCancel();
+        } else {
+            messageApi.error(`${t.OPERATION_FAILED}: ${response.errMsg}`);
+            console.error('Failed to create or update consumer:', response.errMsg);
+        }
+    } catch (error) {
+        console.error('Validation failed or API call error:', error);
+        messageApi.error(t.FORM_VALIDATION_FAILED);
+    }
+};
+
 const ConsumerConfigItem = ({
                                 initialConfig,
                                 isAddConfig,
@@ -72,47 +119,15 @@ const ConsumerConfigItem = ({
         }
     }, [initialConfig, isAddConfig, form]);
 
-    const handleSubmit = async () => {
-        try {
-            const values = await form.validateFields();
-            const numericValues = {
-                retryQueueNums: Number(values.retryQueueNums),
-                retryMaxTimes: Number(values.retryMaxTimes),
-                brokerId: Number(values.brokerId),
-                whichBrokerWhenConsumeSlowly: Number(values.whichBrokerWhenConsumeSlowly),
-            };
-
-            // 确保brokerNameList是数组
-            let finalBrokerNameList = Array.isArray(values.brokerName) ? values.brokerName : [values.brokerName];
-            // 确保clusterNameList是数组
-            let finalClusterNameList = Array.isArray(values.clusterName) ? values.clusterName : [values.clusterName];
-
-            const payload = {
-                subscriptionGroupConfig: {
-                    ...(initialConfig && initialConfig.subscriptionGroupConfig ? initialConfig.subscriptionGroupConfig : {}), // 保留旧的配置，除非被新值覆盖
-                    ...values,
-                    ...numericValues,
-                    groupName: isAddConfig ? values.groupName : group, // 添加模式使用表单中的groupName，更新模式使用传入的group
-                },
-                brokerNameList: finalBrokerNameList,
-                clusterNameList: isAddConfig ? finalClusterNameList : null, // 更新模式保留原有clusterNameList
-            };
-
-            const response = await remoteApi.createOrUpdateConsumer(payload);
-            if (response.status === 0) {
-                message.success(t.SUCCESS);
-                onSuccess();
-            } else {
-                message.error(`${t.OPERATION_FAILED}: ${response.errMsg}`);
-                console.error('Failed to create or update consumer:', response.errMsg);
-            }
-        } catch (error) {
-            console.error('Validation failed or API call error:', error);
-            message.error(t.FORM_VALIDATION_FAILED);
-        } finally {
-            onCancel()
-        }
-    };
+    const handleSubmit = () => submitConsumerConfig({
+        form,
+        initialConfig,
+        isAddConfig,
+        group,
+        onCancel,
+        onSuccess,
+        t,
+    });
 
     // Helper function to parse input value to number
     const parseNumber = (event) => {
