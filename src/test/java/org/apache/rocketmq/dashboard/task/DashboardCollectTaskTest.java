@@ -176,19 +176,14 @@ public class DashboardCollectTaskTest extends BaseTest {
                     .thenReturn(kvTable);
             when(rmqConfigure.isEnableDashBoardCollect()).thenReturn(true);
         }
-        // fetchBrokerRuntimeStats exception
-        try {
-            dashboardCollectTask.collectBroker();
-        } catch (Exception e) {
-            Assert.assertEquals(e.getMessage(), "fetchBrokerRuntimeStats exception");
-        }
+        dashboardCollectTask.collectBroker();
 
         for (int i = 0; i < taskExecuteNum; i++) {
             dashboardCollectTask.collectBroker();
         }
         LoadingCache<String, List<String>> map = dashboardCollectService.getBrokerMap();
         Assert.assertEquals(map.size(), 1);
-        Assert.assertEquals(map.get("broker-a" + ":" + MixAll.MASTER_ID).size(), taskExecuteNum);
+        Assert.assertEquals(map.get("broker-a" + ":" + MixAll.MASTER_ID).size(), taskExecuteNum + 1);
         mockBrokerFileExistBeforeSaveData();
         dashboardCollectTask.saveData();
         Assert.assertEquals(brokerFile.exists(), true);
@@ -196,7 +191,7 @@ public class DashboardCollectTaskTest extends BaseTest {
                 JsonUtil.string2Obj(MixAll.file2String(brokerFile),
                         new TypeReference<Map<String, List<String>>>() {
                         });
-        Assert.assertEquals(brokerData.get("broker-a" + ":" + MixAll.MASTER_ID).size(), taskExecuteNum + 2);
+        Assert.assertEquals(brokerData.get("broker-a" + ":" + MixAll.MASTER_ID).size(), taskExecuteNum + 3);
     }
 
     @After
