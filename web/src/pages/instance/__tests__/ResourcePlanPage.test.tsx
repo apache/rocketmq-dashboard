@@ -16,7 +16,7 @@
  */
 
 import { App } from 'antd';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -143,5 +143,88 @@ describe('ResourcePlanPage', () => {
       within(screen.getByText('总资源').closest('.ant-card')!).getByText('2'),
     ).toBeInTheDocument();
     expect(screen.getByText('writeQueues: 16 → 8')).toBeInTheDocument();
+  });
+
+  it('ignores an obsolete preview after the resource bundle changes', async () => {
+    let resolveFirstPreview: (value: unknown) => void = () => undefined;
+    const firstPreview = new Promise((resolve) => {
+      resolveFirstPreview = resolve;
+    });
+    const latestPlan = {
+      instanceId: 'instance-proxy-1',
+      summary: {
+        total: 1,
+        creates: 1,
+        updates: 0,
+        skips: 0,
+        conflicts: 0,
+        invalids: 0,
+        applicable: 1,
+      },
+      entries: [
+        {
+          resourceType: 'TOPIC',
+          name: 'payments',
+          rowIndex: 1,
+          action: 'CREATE',
+          applicable: true,
+          reason: 'Topic does not exist in the selected instance',
+          changes: [],
+        },
+      ],
+    };
+    resourcePlanServiceMocks.previewResourcePlan
+      .mockImplementationOnce(() => firstPreview)
+      .mockResolvedValueOnce(latestPlan);
+
+    const user = userEvent.setup();
+    renderWithProviders();
+    await screen.findByText('资源变更计划');
+
+    await user.click(screen.getByRole('button', { name: /生成计划/ }));
+    await waitFor(() =>
+      expect(resourcePlanServiceMocks.previewResourcePlan).toHaveBeenCalledTimes(1),
+    );
+
+    resourcePlanServiceMocks.parseResourceBundle.mockReturnValue({
+      topics: [{ name: 'payments' }],
+      consumerGroups: [],
+    });
+    fireEvent.change(screen.getByRole('textbox'), {
+      target: { value: '{"topics":[{"name":"payments"}]}' },
+    });
+    await user.click(screen.getByRole('button', { name: /生成计划/ }));
+
+    expect(await screen.findByText('payments')).toBeInTheDocument();
+
+    resolveFirstPreview({
+      instanceId: 'instance-proxy-1',
+      summary: {
+        total: 1,
+        creates: 0,
+        updates: 1,
+        skips: 0,
+        conflicts: 0,
+        invalids: 0,
+        applicable: 1,
+      },
+      entries: [
+        {
+          resourceType: 'TOPIC',
+          name: 'orders',
+          rowIndex: 1,
+          action: 'UPDATE',
+          applicable: true,
+          reason: 'Topic exists with different configuration',
+          changes: [],
+        },
+      ],
+    });
+
+    await waitFor(() =>
+      expect(resourcePlanServiceMocks.previewResourcePlan).toHaveBeenCalledTimes(2),
+    );
+    expect(screen.getByText('payments')).toBeInTheDocument();
+    expect(screen.queryByText('orders')).not.toBeInTheDocument();
   });
 });

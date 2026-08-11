@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   Alert,
   App,
@@ -65,6 +65,8 @@ const ResourcePlanPage = () => {
   const [bundleText, setBundleText] = useState(RESOURCE_PLAN_SAMPLE);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [plan, setPlan] = useState<Awaited<ReturnType<typeof previewResourcePlan>> | null>(null);
+  const previewGenerationRef = useRef(0);
+  const currentPlan = plan?.instanceId === selectedInstanceId ? plan : null;
 
   const columns = useMemo<ColumnsType<ResourcePlanEntry>>(
     () => [
@@ -130,18 +132,32 @@ const ResourcePlanPage = () => {
       message.warning('请先选择实例');
       return;
     }
+    const requestGeneration = previewGenerationRef.current + 1;
+    previewGenerationRef.current = requestGeneration;
     setPreviewLoading(true);
     try {
       const bundle = parseResourceBundle(bundleText);
       const request = { instanceId: selectedInstanceId, ...bundle };
       const nextPlan = await previewResourcePlan(request);
+      if (previewGenerationRef.current !== requestGeneration) return;
       setPlan(nextPlan);
       message.success('资源变更计划已生成');
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '资源变更计划生成失败');
+      if (previewGenerationRef.current === requestGeneration) {
+        message.error(error instanceof Error ? error.message : '资源变更计划生成失败');
+      }
     } finally {
-      setPreviewLoading(false);
+      if (previewGenerationRef.current === requestGeneration) {
+        setPreviewLoading(false);
+      }
     }
+  };
+
+  const handleBundleChange = (value: string) => {
+    previewGenerationRef.current += 1;
+    setBundleText(value);
+    setPlan(null);
+    setPreviewLoading(false);
   };
 
   return (
@@ -156,9 +172,14 @@ const ResourcePlanPage = () => {
               placeholder="选择实例"
               style={{ width: 220 }}
               options={instanceOptions}
-              onChange={selectInstance}
+              onChange={(instanceId) => {
+                previewGenerationRef.current += 1;
+                setPlan(null);
+                setPreviewLoading(false);
+                selectInstance(instanceId);
+              }}
             />
-            <Button onClick={() => setBundleText(RESOURCE_PLAN_SAMPLE)}>填充示例</Button>
+            <Button onClick={() => handleBundleChange(RESOURCE_PLAN_SAMPLE)}>填充示例</Button>
             <Button
               type="primary"
               icon={<PlayCircleOutlined />}
@@ -199,7 +220,7 @@ const ResourcePlanPage = () => {
           >
             <TextArea
               value={bundleText}
-              onChange={(event) => setBundleText(event.target.value)}
+              onChange={(event) => handleBundleChange(event.target.value)}
               autoSize={{ minRows: 20, maxRows: 30 }}
               spellCheck={false}
               style={{ fontFamily: 'Menlo, Monaco, Consolas, monospace', fontSize: 12 }}
@@ -207,18 +228,18 @@ const ResourcePlanPage = () => {
           </Card>
         </Col>
         <Col xs={24} lg={15}>
-          {plan && (
+          {currentPlan && (
             <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
               <Col xs={12} md={6}>
                 <Card size="small">
-                  <Statistic title="总资源" value={plan.summary.total} />
+                  <Statistic title="总资源" value={currentPlan.summary.total} />
                 </Card>
               </Col>
               <Col xs={12} md={6}>
                 <Card size="small">
                   <Statistic
                     title="可应用"
-                    value={plan.summary.applicable}
+                    value={currentPlan.summary.applicable}
                     valueStyle={{ color: '#389e0d' }}
                   />
                 </Card>
@@ -227,7 +248,7 @@ const ResourcePlanPage = () => {
                 <Card size="small">
                   <Statistic
                     title="冲突"
-                    value={plan.summary.conflicts}
+                    value={currentPlan.summary.conflicts}
                     valueStyle={{ color: '#d46b08' }}
                   />
                 </Card>
@@ -236,7 +257,7 @@ const ResourcePlanPage = () => {
                 <Card size="small">
                   <Statistic
                     title="无效"
-                    value={plan.summary.invalids}
+                    value={currentPlan.summary.invalids}
                     valueStyle={{ color: '#cf1322' }}
                   />
                 </Card>
@@ -248,7 +269,7 @@ const ResourcePlanPage = () => {
               rowKey={(record) => `${record.resourceType}-${record.name}-${record.rowIndex}`}
               loading={previewLoading}
               columns={columns}
-              dataSource={plan?.entries ?? []}
+              dataSource={currentPlan?.entries ?? []}
               pagination={{ pageSize: 10, showSizeChanger: true }}
               scroll={{ x: 1080 }}
               locale={{
