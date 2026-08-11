@@ -64,10 +64,20 @@ class SettingsServiceTest {
 
     @BeforeEach
     void setUp() throws IOException {
-        settingsService = new SettingsService(settingsRepository, RestClient.builder(), new ObjectMapper(), operationAuditService);
         prometheusServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         prometheusBaseUrl = "http://127.0.0.1:" + prometheusServer.getAddress().getPort();
         prometheusServer.start();
+        settingsService = new SettingsService(settingsRepository, RestClient.builder(), new ObjectMapper(), operationAuditService) {
+            @Override
+            boolean isAllowedDataSourceHost(String host) {
+                // The embedded test server listens on loopback, which the production SSRF
+                // guard blocks; admit it here and keep the real policy for every other host.
+                if ("127.0.0.1".equals(host)) {
+                    return true;
+                }
+                return super.isAllowedDataSourceHost(host);
+            }
+        };
     }
 
     @AfterEach
