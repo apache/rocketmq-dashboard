@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.provider.apache;
 
+import org.apache.rocketmq.client.exception.MQBrokerException;
 import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.client.producer.SendResult;
@@ -207,7 +208,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 throw e;
             } catch (Exception e) {
                 recordAudit("CREATE_TOPIC", topicName, e.getMessage(), "FAILED");
-                throw new BusinessException(500, "Failed to create topic: " + e.getMessage());
+                throw classifyBrokerFailure(e, "create topic");
             }
         });
     }
@@ -272,7 +273,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 throw e;
             } catch (Exception e) {
                 recordAudit("UPDATE_TOPIC", topicName, e.getMessage(), "FAILED");
-                throw new BusinessException(500, "Failed to update topic: " + e.getMessage());
+                throw classifyBrokerFailure(e, "update topic");
             }
         });
     }
@@ -311,7 +312,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 throw e;
             } catch (Exception e) {
                 recordAudit("DELETE_TOPIC", name, e.getMessage(), "FAILED");
-                throw new BusinessException(500, "Failed to delete topic: " + e.getMessage());
+                throw classifyBrokerFailure(e, "delete topic");
             }
         });
     }
@@ -443,7 +444,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
             throw e;
         } catch (Exception e) {
             recordAudit("CREATE_GROUP", groupName, e.getMessage(), "FAILED");
-            throw new BusinessException(500, "Failed to create consumer group: " + e.getMessage());
+            throw classifyBrokerFailure(e, "create consumer group");
         }
     }
 
@@ -481,7 +482,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
             throw e;
         } catch (Exception e) {
             recordAudit("DELETE_GROUP", name, e.getMessage(), "FAILED");
-            throw new BusinessException(500, "Failed to delete consumer group: " + e.getMessage());
+            throw classifyBrokerFailure(e, "delete consumer group");
         }
     }
 
@@ -511,6 +512,23 @@ public class RocketMQAdminClientImpl implements AdminClient {
     }
 
     // ── Helper methods ──────────────────────────────────────────────────
+
+    /**
+     * Classifies a broker failure, surfacing a clear "not supported in proxy mode" error when the
+     * broker rejects a request code (e.g. {@code 106} / {@code 206}) that the 5.0 proxy does not
+     * forward. This is the guarded seam for proxy fallback: instead of crashing on the raw broker
+     * exception, callers get an actionable message pointing at the proxy endpoint.
+     */
+    private BusinessException classifyBrokerFailure(Exception e, String operation) {
+        if (e instanceof MQBrokerException mbe && ProxyFallbackPolicy.isUnsupportedRequestCode(mbe)) {
+            log.warn("Broker request not supported during {} ({}); connect via the RocketMQ 5.0 proxy",
+                    operation, mbe.getErrorMessage());
+            return new BusinessException(501, "Operation '" + operation
+                    + "' is not supported when connecting through a RocketMQ 5.0 proxy "
+                    + "(request code not supported). Use the proxy endpoint. Cause: " + mbe.getErrorMessage());
+        }
+        return new BusinessException(500, "Failed to " + operation + ": " + e.getMessage());
+    }
 
     private void recordAudit(String action, String resource, String detail, String result) {
         try {

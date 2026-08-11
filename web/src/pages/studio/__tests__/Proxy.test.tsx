@@ -24,9 +24,7 @@ import { LangProvider } from '../../../i18n/LangContext';
 import ProxyPage from '../Proxy';
 
 vi.mock('../../../api/proxy', () => ({
-  addProxyAddr: vi.fn(),
   queryProxyHomePage: vi.fn(),
-  removeProxyAddr: vi.fn(),
 }));
 
 beforeAll(() => {
