@@ -40,7 +40,7 @@ import { useLang } from '../../i18n/LangContext';
 import type { ClientConnection } from '../../api/connections';
 import { listConnections } from '../../services/connectionsService';
 import { listInstances } from '../../services/instanceService';
-import type { Instance } from '../../api/instance';
+import { supportsApacheRuntime, type Instance } from '../../api/instance';
 import { formatDateTime } from '../../utils/format';
 
 const { Text } = Typography;
@@ -131,8 +131,13 @@ const ClientsPage = () => {
     void listInstances()
       .then((nextInstances) => {
         if (cancelled) return;
-        setInstances(nextInstances);
-        setSelectedInstanceId((current) => current || nextInstances[0]?.id || '');
+        const apacheInstances = nextInstances.filter(supportsApacheRuntime);
+        setInstances(apacheInstances);
+        setSelectedInstanceId((current) =>
+          apacheInstances.some((instance) => instance.id === current)
+            ? current
+            : (apacheInstances[0]?.id ?? ''),
+        );
         setLoadError(null);
       })
       .catch((error) => {

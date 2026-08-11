@@ -40,7 +40,7 @@ import {
   type ProducerConnectionWarning,
   type ProducerReadiness,
 } from '../../api/producer';
-import type { Instance } from '../../api/instance';
+import { supportsApacheRuntime, type Instance } from '../../api/instance';
 import { listInstances } from '../../services/instanceService';
 
 const readinessConfig: Record<ProducerReadiness, { color: string; type: 'success' | 'warning' }> = {
@@ -71,8 +71,13 @@ const ProducerPage = () => {
     void listInstances()
       .then((nextInstances) => {
         if (cancelled) return;
-        setInstances(nextInstances);
-        setSelectedInstanceId((current) => current || nextInstances[0]?.id || '');
+        const apacheInstances = nextInstances.filter(supportsApacheRuntime);
+        setInstances(apacheInstances);
+        setSelectedInstanceId((current) =>
+          apacheInstances.some((instance) => instance.id === current)
+            ? current
+            : (apacheInstances[0]?.id ?? ''),
+        );
       })
       .catch(() => {
         if (!cancelled) {

@@ -18,7 +18,13 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { createInstance, deleteInstance, listInstances, updateInstance } from './instance';
+import {
+  createInstance,
+  deleteInstance,
+  listInstances,
+  supportsApacheRuntime,
+  updateInstance,
+} from './instance';
 
 const mock = new MockAdapter(client);
 const instance = {
@@ -83,5 +89,12 @@ describe('instance API', () => {
     });
 
     await expect(deleteInstance(instance.id)).resolves.toBeUndefined();
+  });
+
+  it('identifies instances supported by Apache MQAdmin runtime APIs', () => {
+    expect(supportsApacheRuntime({ vendor: 'APACHE' })).toBe(true);
+    expect(supportsApacheRuntime({})).toBe(true);
+    expect(supportsApacheRuntime({ vendor: 'ALIYUN' })).toBe(false);
+    expect(supportsApacheRuntime({ vendor: 'TENCENT' })).toBe(false);
   });
 });

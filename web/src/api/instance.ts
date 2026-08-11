@@ -61,6 +61,11 @@ export interface InstanceQuery {
   search?: string;
 }
 
+/** Whether an instance can be queried through the Apache MQAdmin runtime APIs. */
+export function supportsApacheRuntime(instance: Pick<Instance, 'vendor'>): boolean {
+  return instance.vendor === undefined || instance.vendor === 'APACHE';
+}
+
 // ─── Instance CRUD ──────────────────────────────────────────────
 export async function listInstances(query: InstanceQuery = {}) {
   const search = query.search?.trim();
