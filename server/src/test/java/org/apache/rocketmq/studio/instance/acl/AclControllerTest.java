@@ -25,6 +25,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -41,6 +42,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -231,6 +233,20 @@ class AclControllerTest {
                 .andExpect(jsonPath("$.data[0].accessKey").value("acce****3456"))
                 .andExpect(jsonPath("$.data[0].secretKey").value("secr****7654"))
                 .andExpect(jsonPath("$.data[0].admin").value(true));
+    }
+
+    @Test
+    void getUserCredentialsShouldDisableResponseCaching() throws Exception {
+        AclUserVO credentials = AclUserVO.builder()
+                .id("user-1")
+                .accessKey("access-key")
+                .secretKey("secret-key")
+                .build();
+        when(aclService.getUserCredentials("user-1")).thenReturn(credentials);
+
+        mockMvc.perform(get("/api/acl/users/user-1/credentials"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"));
     }
 
     @Test
