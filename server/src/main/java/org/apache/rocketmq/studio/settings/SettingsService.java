@@ -120,6 +120,28 @@ public class SettingsService {
         }
     }
 
+    private void recordDataSourceAudit(String operation, DataSourceVO dataSource) {
+        if (dataSource == null) {
+            return;
+        }
+        String detail = String.format("name=%s, type=%s, instanceCount=%d", dataSource.getName(),
+                dataSource.getType(), dataSource.getInstanceIds() == null ? 0 : dataSource.getInstanceIds().size());
+        recordDataSourceAudit(operation, dataSource.getKey(), detail);
+    }
+
+    private void recordDataSourceDeleteAudit(String key) {
+        recordDataSourceAudit("DELETE_DATA_SOURCE", key, "key=" + key);
+    }
+
+    private void recordDataSourceAudit(String operation, String key, String detail) {
+        try {
+            operationAuditService.record(operation, "METRICS_DATA_SOURCE", key, null, detail, "SUCCESS", null);
+        } catch (Exception auditFailure) {
+            log.warn("Failed to record data source audit operation={} key={}: {}", operation, key,
+                    auditFailure.getMessage());
+        }
+    }
+
 
     public List<DataSourceVO> listDataSources() {
         log.debug("Listing all data sources");
@@ -133,7 +155,9 @@ public class SettingsService {
         }
         log.info("Creating data source: {}", dataSource.getName());
         dataSource.setKey(UUID.randomUUID().toString());
-        return settingsRepository.saveDataSource(dataSource);
+        DataSourceVO saved = settingsRepository.saveDataSource(dataSource);
+        recordDataSourceAudit("CREATE_DATA_SOURCE", saved);
+        return saved;
     }
 
 
@@ -147,6 +171,7 @@ public class SettingsService {
         if (!settingsRepository.replaceDataSource(dataSource)) {
             throw new BusinessException(404, "Data source not found: " + key);
         }
+        recordDataSourceAudit("UPDATE_DATA_SOURCE", dataSource);
         return dataSource;
     }
 
@@ -157,6 +182,7 @@ public class SettingsService {
         if (!settingsRepository.deleteDataSource(normalizedKey)) {
             throw new BusinessException(404, "Data source not found: " + normalizedKey);
         }
+        recordDataSourceDeleteAudit(normalizedKey);
     }
 
 

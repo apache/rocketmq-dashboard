@@ -232,6 +232,8 @@ class SettingsServiceTest {
         assertThat(result.getKey()).isNotBlank();
         assertThat(result.getName()).isEqualTo("New DS");
         verify(settingsRepository).saveDataSource(input);
+        verify(operationAuditService).record("CREATE_DATA_SOURCE", "METRICS_DATA_SOURCE", result.getKey(),
+                null, "name=New DS, type=rocketmq, instanceCount=0", "SUCCESS", null);
     }
 
     @Test
@@ -268,6 +270,8 @@ class SettingsServiceTest {
         assertThat(result.getKey()).isEqualTo("ds-1");
         assertThat(result.getName()).isEqualTo("Updated DS");
         verify(settingsRepository).replaceDataSource(input);
+        verify(operationAuditService).record("UPDATE_DATA_SOURCE", "METRICS_DATA_SOURCE", "ds-1",
+                null, "name=Updated DS, type=rocketmq, instanceCount=0", "SUCCESS", null);
     }
 
     @Test
@@ -317,6 +321,8 @@ class SettingsServiceTest {
         settingsService.deleteDataSource("ds-1");
 
         verify(settingsRepository).deleteDataSource("ds-1");
+        verify(operationAuditService).record("DELETE_DATA_SOURCE", "METRICS_DATA_SOURCE", "ds-1",
+                null, "key=ds-1", "SUCCESS", null);
     }
 
     @Test
