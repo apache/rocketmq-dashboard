@@ -53,6 +53,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -112,6 +113,32 @@ class RocketMQClientProviderTest {
                 .extracting(ClientConnectionVO::getGroupOrTopic)
                 .containsExactlyInAnyOrder("pg-order", "pg-payment");
         verify(adminExt, never()).examineProducerConnectionInfo(anyString(), anyString());
+    }
+
+    @Test
+    void clientScanUsesActualBrokerClustersAndFiltersRequestedCluster() throws Exception {
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo(Map.of(
+                "127.0.0.1:10911", "cluster-a",
+                "127.0.0.2:10911", "cluster-b")));
+        when(adminExt.getAllProducerInfo("127.0.0.1:10911"))
+                .thenReturn(new ProducerTableInfo(Map.of(
+                        "pg-a", List.of(producerInfo("producer-a", "10.0.0.1:1000")))));
+        when(adminExt.getAllProducerInfo("127.0.0.2:10911"))
+                .thenReturn(new ProducerTableInfo(Map.of(
+                        "pg-b", List.of(producerInfo("producer-b", "10.0.0.2:1000")))));
+
+        List<ClientConnectionVO> allConnections = provider.findConnections("instance-a", null, "Producer");
+        List<ClientConnectionVO> clusterBConnections = provider.findConnections("instance-a", "cluster-b", "Producer");
+
+        assertThat(allConnections)
+                .extracting(ClientConnectionVO::getClusterName)
+                .containsExactlyInAnyOrder("cluster-a", "cluster-b");
+        assertThat(clusterBConnections).singleElement().satisfies(connection -> {
+            assertThat(connection.getClientId()).isEqualTo("producer-b");
+            assertThat(connection.getClusterName()).isEqualTo("cluster-b");
+        });
+        verify(adminExt).getAllProducerInfo("127.0.0.1:10911");
+        verify(adminExt, times(2)).getAllProducerInfo("127.0.0.2:10911");
     }
 
     @Test
@@ -221,6 +248,27 @@ class RocketMQClientProviderTest {
     }
 
     @Test
+    void consumerScanFiltersSubscriptionGroupsByClusterAndPreservesClusterName() throws Exception {
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo(Map.of(
+                "127.0.0.1:10911", "cluster-a",
+                "127.0.0.2:10911", "cluster-b")));
+        when(adminExt.getAllSubscriptionGroup("127.0.0.2:10911", 5000L))
+                .thenReturn(subscriptionGroups("group-b"));
+        ConsumerConnection consumerConnection = new ConsumerConnection();
+        consumerConnection.setConnectionSet(new HashSet<>(List.of(connection("consumer-b", "10.0.0.2:1000"))));
+        when(adminExt.examineConsumerConnectionInfo("group-b")).thenReturn(consumerConnection);
+
+        List<ClientConnectionVO> connections = provider.findConnections("instance-a", "cluster-b", "Consumer");
+
+        assertThat(connections).singleElement().satisfies(connection -> {
+            assertThat(connection.getClientId()).isEqualTo("consumer-b");
+            assertThat(connection.getClusterName()).isEqualTo("cluster-b");
+        });
+        verify(adminExt, never()).getAllSubscriptionGroup("127.0.0.1:10911", 5000L);
+        verify(adminExt).getAllSubscriptionGroup("127.0.0.2:10911", 5000L);
+    }
+
+    @Test
     void consumerScanFailsWhenBrokerDiscoveryFails() throws Exception {
         when(adminExt.examineBrokerClusterInfo()).thenThrow(new IllegalStateException("broker unavailable"));
 
@@ -324,12 +372,22 @@ class RocketMQClientProviderTest {
     }
 
     private static ClusterInfo clusterInfo(String... brokerAddresses) {
+        Map<String, String> clusters = new HashMap<>();
+        for (int i = 0; i < brokerAddresses.length; i++) {
+            clusters.put(brokerAddresses[i], "cluster-a");
+        }
+        return clusterInfo(clusters);
+    }
+
+    private static ClusterInfo clusterInfo(Map<String, String> clustersByAddress) {
         ClusterInfo clusterInfo = new ClusterInfo();
         Map<String, BrokerData> brokerAddrTable = new HashMap<>();
-        for (int i = 0; i < brokerAddresses.length; i++) {
+        int i = 0;
+        for (Map.Entry<String, String> entry : clustersByAddress.entrySet()) {
             String brokerName = "broker-" + i;
             brokerAddrTable.put(brokerName, new BrokerData(
-                    "cluster-a", brokerName, new HashMap<>(Map.of(0L, brokerAddresses[i]))));
+                    entry.getValue(), brokerName, new HashMap<>(Map.of(0L, entry.getKey()))));
+            i++;
         }
         clusterInfo.setBrokerAddrTable(brokerAddrTable);
         return clusterInfo;
