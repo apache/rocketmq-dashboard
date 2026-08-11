@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.ops.ai;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -37,7 +38,8 @@ public class AgentProviderRegistry {
     }
 
     public AgentProvider forEngine(String engine) {
-        AgentProvider provider = providers.get(engine == null ? "" : engine.trim().toLowerCase());
+        AgentProvider provider = providers.get(
+                engine == null ? "" : engine.trim().toLowerCase(Locale.ROOT));
         if (provider == null) {
             throw new LlmGatewayException(400, "llm.config.unsupported_engine",
                     "Agent engine is not supported: " + engine,

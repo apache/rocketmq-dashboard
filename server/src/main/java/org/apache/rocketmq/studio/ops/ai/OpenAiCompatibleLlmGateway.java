@@ -29,6 +29,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -83,7 +84,8 @@ public class OpenAiCompatibleLlmGateway implements LlmGateway {
 
     /** Request-level engine (per-user preference) overrides the global config. */
     private String resolveEngine(String requestEngine, LlmConfigVO config) {
-        String engine = StringUtils.hasText(requestEngine) ? requestEngine.trim().toLowerCase() : null;
+        String engine = StringUtils.hasText(requestEngine)
+                ? requestEngine.trim().toLowerCase(Locale.ROOT) : null;
         if (engine == null) {
             return config.normalizeEngine();
         }
