@@ -576,6 +576,25 @@ class AlertServiceTest {
     }
 
     @Test
+    void acknowledgeAlertShouldRejectBlankIdBeforeLoadingAlerts() {
+        assertThatThrownBy(() -> alertService.acknowledgeAlert(" "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("System alert ID is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verify(alertRepository, never()).findAlerts(any());
+    }
+
+    @Test
+    void acknowledgeAlertShouldIgnorePersistedAlertsWithNullIds() {
+        when(alertRepository.findAlerts(null)).thenReturn(List.of(SystemAlertVO.builder().title("corrupt").build()));
+
+        assertThatThrownBy(() -> alertService.acknowledgeAlert("missing"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("System alert not found: missing");
+    }
+
+    @Test
     void acknowledgeAlertShouldThrowWhenAlertNotFound() {
         when(alertRepository.findAlerts(null)).thenReturn(Collections.emptyList());
 

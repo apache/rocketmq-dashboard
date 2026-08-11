@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -149,9 +150,12 @@ public class AlertService {
 
     public SystemAlertVO acknowledgeAlert(String id) {
         log.info("Acknowledging system alert id={}", id);
+        if (id == null || id.isBlank()) {
+            throw new BusinessException(400, "System alert ID is required");
+        }
         List<SystemAlertVO> alerts = alertRepository.findAlerts(null);
         SystemAlertVO alert = alerts.stream()
-                .filter(a -> a.getId().equals(id))
+                .filter(a -> Objects.equals(a.getId(), id))
                 .findFirst()
                 .orElseThrow(() -> new org.apache.rocketmq.studio.common.exception.BusinessException(404, "System alert not found: " + id));
         alert.setAcknowledged(true);
