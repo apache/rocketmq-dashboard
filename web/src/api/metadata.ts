@@ -121,7 +121,7 @@ export interface ConsumerGroupQuery {
 export interface ResetConsumerOffsetRequest {
   name: string;
   timestamp: number;
-  topic?: string;
+  topic: string;
 }
 
 // ─── Topic API ──────────────────────────────────────────────────
@@ -231,7 +231,7 @@ export interface ResetConsumerOffsetRequest {
   name: string;
   instanceId?: string;
   timestamp: number;
-  topic?: string;
+  topic: string;
 }
 
 export async function resetConsumerOffset(data: ResetConsumerOffsetRequest) {
