@@ -50,11 +50,20 @@ public class TencentCatalogService implements CloudCatalogProvider {
             region("ap-chongqing", "Chongqing"),
             region("ap-guangzhou", "Guangzhou"),
             region("ap-hongkong", "Hong Kong"),
+            region("ap-mumbai", "Mumbai"),
             region("ap-nanjing", "Nanjing"),
+            region("ap-seoul", "Seoul"),
             region("ap-shanghai", "Shanghai"),
+            region("ap-shanghai-fsi", "Shanghai Finance"),
+            region("ap-shenzhen-fsi", "Shenzhen Finance"),
             region("ap-singapore", "Singapore"),
             region("ap-tokyo", "Tokyo"),
-            region("na-siliconvalley", "Silicon Valley"));
+            region("ap-bangkok", "Bangkok"),
+            region("ap-jakarta", "Jakarta"),
+            region("eu-frankfurt", "Frankfurt"),
+            region("na-ashburn", "Ashburn"),
+            region("na-siliconvalley", "Silicon Valley"),
+            region("na-toronto", "Toronto"));
 
     private final TencentClientFactory clientFactory;
 
