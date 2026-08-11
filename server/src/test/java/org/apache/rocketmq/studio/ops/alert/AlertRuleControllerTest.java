@@ -252,4 +252,33 @@ class AlertRuleControllerTest {
 
         verifyNoInteractions(alertService);
     }
+
+    @Test
+    void bulkToggleShouldReturnPartialResults() throws Exception {
+        AlertRuleVO updated = AlertRuleVO.builder().id("rule-1").enabled(false).build();
+        when(alertService.bulkToggleRules(List.of("rule-1", "missing"), false))
+                .thenReturn(AlertRuleBulkResultVO.builder()
+                        .succeededIds(List.of("rule-1"))
+                        .failures(Map.of("missing", "Alert rule not found"))
+                        .updatedRules(List.of(updated)).build());
+
+        mockMvc.perform(post("/api/alert-rules/bulk-toggle")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"ids\":[\"rule-1\",\"missing\"],\"enabled\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.succeededIds[0]").value("rule-1"))
+                .andExpect(jsonPath("$.data.failures.missing").value("Alert rule not found"))
+                .andExpect(jsonPath("$.data.updatedRules[0].enabled").value(false));
+    }
+
+    @Test
+    void bulkDeleteShouldRejectEmptyIds() throws Exception {
+        mockMvc.perform(post("/api/alert-rules/bulk-delete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"ids\":[]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("ids are required"));
+
+        verifyNoInteractions(alertService);
+    }
 }

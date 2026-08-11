@@ -140,6 +140,71 @@ public class AlertService {
         recordAudit("DELETE_ALERT_RULE", "ALERT_RULE", id, null, null);
     }
 
+    public AlertRuleBulkResultVO bulkToggleRules(List<String> ids, boolean enabled) {
+        List<String> normalizedIds = normalizeBulkIds(ids);
+        Map<String, AlertRuleVO> rulesById = new LinkedHashMap<>();
+        for (AlertRuleVO rule : alertRepository.findAllRules()) {
+            rulesById.put(rule.getId(), rule);
+        }
+        List<String> succeeded = new ArrayList<>();
+        Map<String, String> failures = new LinkedHashMap<>();
+        List<AlertRuleVO> updated = new ArrayList<>();
+        for (String id : normalizedIds) {
+            AlertRuleVO rule = rulesById.get(id);
+            if (rule == null) {
+                failures.put(id, "Alert rule not found");
+                continue;
+            }
+            try {
+                rule.setEnabled(enabled);
+                AlertRuleVO saved = alertRepository.saveRule(rule);
+                auditRule("TOGGLE_ALERT_RULE", saved, "enabled=" + enabled + ", bulk=true");
+                succeeded.add(id);
+                updated.add(saved);
+            } catch (RuntimeException failure) {
+                failures.put(id, failure.getMessage() == null ? "Update failed" : failure.getMessage());
+            }
+        }
+        return AlertRuleBulkResultVO.builder()
+                .succeededIds(succeeded).failures(failures).updatedRules(updated).build();
+    }
+
+    public AlertRuleBulkResultVO bulkDeleteRules(List<String> ids) {
+        List<String> normalizedIds = normalizeBulkIds(ids);
+        List<String> succeeded = new ArrayList<>();
+        Map<String, String> failures = new LinkedHashMap<>();
+        for (String id : normalizedIds) {
+            try {
+                if (!alertRepository.deleteRule(id)) {
+                    failures.put(id, "Alert rule not found");
+                    continue;
+                }
+                recordAudit("DELETE_ALERT_RULE", "ALERT_RULE", id, null, "bulk=true");
+                succeeded.add(id);
+            } catch (RuntimeException failure) {
+                failures.put(id, failure.getMessage() == null ? "Delete failed" : failure.getMessage());
+            }
+        }
+        return AlertRuleBulkResultVO.builder()
+                .succeededIds(succeeded).failures(failures).updatedRules(List.of()).build();
+    }
+
+    private List<String> normalizeBulkIds(List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            throw new BusinessException(400, "ids are required");
+        }
+        Set<String> seen = new HashSet<>();
+        List<String> normalized = new ArrayList<>();
+        for (String id : ids) {
+            validateRuleId(id);
+            String trimmed = id.trim();
+            if (seen.add(trimmed)) {
+                normalized.add(trimmed);
+            }
+        }
+        return normalized;
+    }
+
 
     public List<SystemAlertVO> listAlerts(String level) {
         log.info("Listing system alerts, level={}", level);

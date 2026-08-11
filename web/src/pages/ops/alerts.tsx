@@ -40,6 +40,8 @@ import { useLang } from '../../i18n/LangContext';
 import type { AlertRule } from '../../api/ops';
 import {
   createAlertRule,
+  bulkDeleteAlertRules,
+  bulkToggleAlertRules,
   deleteAlertRule,
   listAlertRules,
   toggleAlertRule,
@@ -69,7 +71,7 @@ const AlertsPage = () => {
   const [submitting, setSubmitting] = useState(false);
   const [actionId, setActionId] = useState<string | null>(null);
   const [selectedRuleIds, setSelectedRuleIds] = useState<Key[]>([]);
-  const [bulkAction, setBulkAction] = useState<'enable' | 'disable' | null>(null);
+  const [bulkAction, setBulkAction] = useState<'enable' | 'disable' | 'delete' | null>(null);
   const [form] = Form.useForm();
 
   const channelLabels: Record<string, string> = {
@@ -155,24 +157,9 @@ const AlertsPage = () => {
 
     setBulkAction(enabled ? 'enable' : 'disable');
     try {
-      const results = await Promise.allSettled(
-        targetIds.map(async (id) => ({
-          id,
-          rule: await toggleAlertRule(id, enabled),
-        })),
-      );
-
-      const updatedRules = new Map<string, AlertRule>();
-      const failedIds: string[] = [];
-
-      results.forEach((result, index) => {
-        const id = targetIds[index];
-        if (result.status === 'fulfilled') {
-          updatedRules.set(result.value.id, result.value.rule);
-        } else {
-          failedIds.push(id);
-        }
-      });
+      const result = await bulkToggleAlertRules(targetIds, enabled);
+      const updatedRules = new Map(result.updatedRules.map((rule) => [rule.id, rule]));
+      const failedIds = Object.keys(result.failures);
 
       if (updatedRules.size > 0) {
         setRules((previous) => previous.map((rule) => updatedRules.get(rule.id) ?? rule));
@@ -200,9 +187,44 @@ const AlertsPage = () => {
           }),
         );
       }
+    } catch {
+      message.error(
+        t(enabled ? 'alerts.bulkEnableFailed' : 'alerts.bulkDisableFailed', {
+          count: targetIds.length,
+        }),
+      );
     } finally {
       setBulkAction(null);
     }
+  };
+
+  const handleBulkDelete = () => {
+    const targetIds = selectedRuleIds.map(String);
+    if (targetIds.length === 0 || isActionRunning) return;
+    Modal.confirm({
+      title: t('alerts.bulkDeleteConfirm', { count: targetIds.length }),
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        setBulkAction('delete');
+        try {
+          const result = await bulkDeleteAlertRules(targetIds);
+          const succeeded = new Set(result.succeededIds);
+          const failedIds = Object.keys(result.failures);
+          setRules((previous) => previous.filter((rule) => !succeeded.has(rule.id)));
+          setSelectedRuleIds(failedIds);
+          if (failedIds.length === 0) message.success(t('alerts.bulkDeleteSuccess'));
+          else
+            message.warning(
+              t('alerts.bulkDeletePartial', {
+                success: result.succeededIds.length,
+                failed: failedIds.length,
+              }),
+            );
+        } finally {
+          setBulkAction(null);
+        }
+      },
+    });
   };
 
   const rowSelection: TableRowSelection<AlertRule> = {
@@ -392,6 +414,15 @@ const AlertsPage = () => {
               onClick={() => void handleBulkToggle(false)}
             >
               {t('alerts.bulkDisable')}
+            </Button>
+            <Button
+              danger
+              size="small"
+              disabled={!hasSelectedRules || isActionRunning}
+              loading={bulkAction === 'delete'}
+              onClick={handleBulkDelete}
+            >
+              {t('alerts.bulkDelete')}
             </Button>
           </Flex>
         </Flex>

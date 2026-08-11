@@ -30,6 +30,8 @@ import {
   updateAlertRule,
   toggleAlertRule,
   deleteAlertRule,
+  bulkDeleteAlertRules,
+  bulkToggleAlertRules,
   listSystemAlerts,
   acknowledgeAlert,
   clearAcknowledgedAlerts,
@@ -181,6 +183,18 @@ describe('Ops API - Alert Rules', () => {
       return [200, { code: 200 }];
     });
     await deleteAlertRule('1');
+  });
+
+  it('submits bulk alert rule operations in one request', async () => {
+    const result = { succeededIds: ['1'], failures: { missing: 'not found' }, updatedRules: [] };
+    mock.onPost('/alert-rules/bulk-toggle').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({ ids: ['1', 'missing'], enabled: false });
+      return [200, { code: 200, data: result }];
+    });
+    mock.onPost('/alert-rules/bulk-delete').reply(200, { code: 200, data: result });
+
+    await expect(bulkToggleAlertRules(['1', 'missing'], false)).resolves.toEqual(result);
+    await expect(bulkDeleteAlertRules(['1', 'missing'])).resolves.toEqual(result);
   });
 });
 
