@@ -229,6 +229,9 @@ final class AliyunConverters {
         List<TraceNodeVO> nodes = new ArrayList<>();
         if (data.getProducerInfo() != null && data.getProducerInfo().getRecords() != null) {
             for (GetTraceResponseBody.ProducerInfoRecords record : data.getProducerInfo().getRecords()) {
+                if (record == null) {
+                    continue;
+                }
                 nodes.add(TraceNodeVO.builder()
                         .title("Producer")
                         .timestamp(parseTimeMillis(record.getProduceTime()))
@@ -240,6 +243,9 @@ final class AliyunConverters {
         }
         if (data.getBrokerInfo() != null && data.getBrokerInfo().getOperations() != null) {
             for (GetTraceResponseBody.Operations operation : data.getBrokerInfo().getOperations()) {
+                if (operation == null) {
+                    continue;
+                }
                 nodes.add(TraceNodeVO.builder()
                         .title("Broker " + operation.getOperateType())
                         .timestamp(parseTimeMillis(operation.getOperateTime()))
@@ -248,6 +254,9 @@ final class AliyunConverters {
         }
         if (data.getConsumerInfos() != null) {
             for (GetTraceResponseBody.ConsumerInfos consumerInfo : data.getConsumerInfos()) {
+                if (consumerInfo == null) {
+                    continue;
+                }
                 if (consumerInfo.getRecords() == null || consumerInfo.getRecords().isEmpty()) {
                     nodes.add(TraceNodeVO.builder()
                             .title("Consumer " + consumerInfo.getConsumerGroupId())
@@ -256,6 +265,9 @@ final class AliyunConverters {
                     continue;
                 }
                 for (GetTraceResponseBody.Records record : consumerInfo.getRecords()) {
+                    if (record == null) {
+                        continue;
+                    }
                     String operateTime = null;
                     if (record.getOperations() != null && !record.getOperations().isEmpty()) {
                         operateTime = record.getOperations().get(0).getOperateTime();
