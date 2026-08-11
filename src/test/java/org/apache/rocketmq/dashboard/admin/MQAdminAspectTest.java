@@ -20,6 +20,7 @@ package org.apache.rocketmq.dashboard.admin;
 import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.apache.rocketmq.dashboard.aspect.admin.MQAdminAspect;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
+import org.apache.rocketmq.dashboard.service.client.MQAdminInstance;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -92,6 +93,16 @@ public class MQAdminAspectTest {
             fail("Expected RuntimeException but no exception was thrown");
         } catch (RuntimeException e) {
             assertEquals("returnObject exception", e.getMessage());
+        }
+
+        try {
+            MQAdminInstance.threadLocalMQAdminExt();
+            fail("Expected the MQAdminExt ThreadLocal to be cleared");
+        } catch (IllegalStateException expected) {
+            assertEquals("MQAdminExt instance should be set by MQAdminAspect before it's accessed.",
+                    expected.getMessage());
+        } finally {
+            MQAdminInstance.clearCurrentMQAdminExt();
         }
 
         // 6. 验证 borrowObject() 和 returnObject() 各调用了两次

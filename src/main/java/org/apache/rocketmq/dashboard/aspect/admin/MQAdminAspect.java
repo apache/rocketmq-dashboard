@@ -101,8 +101,11 @@ public class MQAdminAspect {
 
             if (currentUserInfo != null) {
                 if (mqAdminExt != null) {
-                    userMQAdminPoolManager.returnMQAdminExt(currentUserInfo.getUsername(), mqAdminExt);
-                    MQAdminInstance.clearCurrentMQAdminExt();
+                    try {
+                        userMQAdminPoolManager.returnMQAdminExt(currentUserInfo.getUsername(), mqAdminExt);
+                    } finally {
+                        MQAdminInstance.clearCurrentMQAdminExt();
+                    }
                     log.debug("MQAdminExt returned for user {} and cleared from ThreadLocal.", currentUserInfo.getUsername());
                 }
                 log.debug("Operation {} for user {} cost {}ms",
@@ -111,8 +114,11 @@ public class MQAdminAspect {
                         System.currentTimeMillis() - start);
             } else {
                 if (mqAdminExt != null) {
-                    mqAdminExtPool.returnObject(mqAdminExt);
-                    MQAdminInstance.clearCurrentMQAdminExt();
+                    try {
+                        mqAdminExtPool.returnObject(mqAdminExt);
+                    } finally {
+                        MQAdminInstance.clearCurrentMQAdminExt();
+                    }
                     log.debug("MQAdminExt returned to default pool and cleared from ThreadLocal.");
                 }
                 log.debug("Operation {} cost {}ms",
