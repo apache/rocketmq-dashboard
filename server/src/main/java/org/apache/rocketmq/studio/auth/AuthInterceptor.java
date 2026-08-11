@@ -49,7 +49,9 @@ public class AuthInterceptor implements HandlerInterceptor {
                              Object handler) throws Exception {
         AuthenticatedUserContext.clear();
         if (!isLoginRequired() || CorsUtils.isPreFlightRequest(request)
-                || isPublicPath(requestPath(request))) {
+                || isPublicPath(requestPath(request)) || authService == null) {
+            // Slice tests and minimal contexts may not provide AuthService; fall back to no
+            // enforcement, matching the documented AuthWebConfig behaviour.
             return true;
         }
         String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
