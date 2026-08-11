@@ -288,9 +288,13 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
         List<ConsumeStats> consumeStatses = new ArrayList<>();
         String topic = null;
         try {
-            String[] addresses = address.split(",");
-            for (String addr : addresses) {
-                consumeStatses.add(mqAdminExt.examineConsumeStats(addr, groupName, null, 3000));
+            if (StringUtils.isBlank(address)) {
+                consumeStatses.add(mqAdminExt.examineConsumeStats(groupName));
+            } else {
+                String[] addresses = address.split(",");
+                for (String addr : addresses) {
+                    consumeStatses.add(mqAdminExt.examineConsumeStats(addr, groupName, null, 3000));
+                }
             }
         } catch (Exception e) {
             Throwables.throwIfUnchecked(e);
@@ -522,6 +526,9 @@ public class ConsumerServiceImpl extends AbstractCommonService implements Consum
     public ConsumerConnection getConsumerConnection(String consumerGroup, String address) {
         consumerGroup = getConsumerGroup(consumerGroup);
         try {
+            if (StringUtils.isBlank(address)) {
+                return mqAdminExt.examineConsumerConnectionInfo(consumerGroup);
+            }
             String[] addresses = address.split(",");
             String addr = addresses[0];
             return mqAdminExt.examineConsumerConnectionInfo(consumerGroup, addr);
