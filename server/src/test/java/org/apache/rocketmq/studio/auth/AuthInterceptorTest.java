@@ -218,6 +218,31 @@ class AuthInterceptorTest {
     }
 
     @Test
+    void shouldRejectLlmModelDiscoveryForNonAdminUser() throws Exception {
+        TestSession session = login(false);
+        MockHttpServletRequest request = authenticatedRequest(
+                "GET", "/api/llm/models", session.token());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        boolean allowed = session.interceptor().preHandle(request, response, new Object());
+
+        assertThat(allowed).isFalse();
+        assertThat(response.getStatus()).isEqualTo(403);
+    }
+
+    @Test
+    void shouldAllowLlmModelDiscoveryForAdminUser() throws Exception {
+        TestSession session = login(true);
+        MockHttpServletRequest request = authenticatedRequest(
+                "GET", "/api/llm/models", session.token());
+
+        boolean allowed = session.interceptor().preHandle(
+                request, new MockHttpServletResponse(), new Object());
+
+        assertThat(allowed).isTrue();
+    }
+
+    @Test
     void shouldRejectMutatingPostForNonAdminUser() throws Exception {
         TestSession session = login(false);
         MockHttpServletRequest request = authenticatedRequest(
@@ -304,6 +329,19 @@ class AuthInterceptorTest {
                 request, new MockHttpServletResponse(), new Object());
 
         assertThat(allowed).isTrue();
+    }
+
+    @Test
+    void shouldRejectLlmConfigTestForNonAdminUser() throws Exception {
+        TestSession session = login(false);
+        MockHttpServletRequest request = authenticatedRequest(
+                "POST", "/api/llm/config/test", session.token());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        boolean allowed = session.interceptor().preHandle(request, response, new Object());
+
+        assertThat(allowed).isFalse();
+        assertThat(response.getStatus()).isEqualTo(403);
     }
 
     @Test
