@@ -49,7 +49,9 @@ public class ProducerConnectionSummaryVO {
     private String readiness = READY;
 
     public static ProducerConnectionSummaryVO from(List<ProducerConnectionVO> connections) {
-        List<ProducerConnectionVO> safeConnections = connections == null ? List.of() : connections;
+        List<ProducerConnectionVO> safeConnections = connections == null
+                ? List.of()
+                : connections.stream().filter(Objects::nonNull).toList();
         ProducerConnectionSummaryVO summary = new ProducerConnectionSummaryVO();
         summary.totalConnections = safeConnections.size();
         summary.uniqueClientCount = countDistinct(safeConnections, ProducerConnectionVO::getClientId);
