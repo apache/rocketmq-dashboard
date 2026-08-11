@@ -40,11 +40,15 @@ public class AuthWebConfig implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        // Slice tests and minimal contexts may not provide any of these beans; when they are
-        // missing the interceptor falls back to the static login-required property (effectively
-        // no enforcement), matching the old conditional-registration behaviour.
+        AuthService authService = authServiceProvider.getIfAvailable();
+        // MVC slice tests and other minimal contexts do not necessarily provide authentication
+        // infrastructure. Registering an interceptor without its service turns every request into
+        // a 500 response instead of leaving authentication outside the scope of that context.
+        if (authService == null) {
+            return;
+        }
         registry.addInterceptor(new AuthInterceptor(authPropertiesProvider.getIfAvailable(),
-                        authServiceProvider.getIfAvailable(), settingsRepositoryProvider.getIfAvailable()))
+                        authService, settingsRepositoryProvider.getIfAvailable()))
                 .addPathPatterns("/api/**");
     }
 }
