@@ -21,6 +21,8 @@ import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -81,8 +83,10 @@ public class AclController {
     }
 
     @GetMapping("/users/{id}/credentials")
-    public Result<AclUserVO> getUserCredentials(@PathVariable String id) {
-        return Result.ok(aclService.getUserCredentials(id));
+    public ResponseEntity<Result<AclUserVO>> getUserCredentials(@PathVariable String id) {
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(Result.ok(aclService.getUserCredentials(id)));
     }
 
     @PostMapping("/users/create")
