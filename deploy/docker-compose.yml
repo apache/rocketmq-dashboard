@@ -7,7 +7,7 @@ services:
     restart: unless-stopped
     environment:
       TZ: ${TZ:-Asia/Shanghai}
-      MYSQL_ROOT_PASSWORD: studio123
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-studio123}
       MYSQL_DATABASE: rocketmq
     ports:
       - "3306:3306"
@@ -19,7 +19,7 @@ services:
       - studio-net
       - rocketmq
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-pstudio123"]
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p\"$$MYSQL_ROOT_PASSWORD\""]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -33,7 +33,7 @@ services:
     restart: unless-stopped
     environment:
       TZ: ${TZ:-Asia/Shanghai}
-      STUDIO_AUTH_LOGIN_REQUIRED: ${STUDIO_AUTH_LOGIN_REQUIRED:-false}
+      STUDIO_AUTH_LOGIN_REQUIRED: ${STUDIO_AUTH_LOGIN_REQUIRED:-true}
       STUDIO_AUTH_ADMIN_USERNAME: ${STUDIO_AUTH_ADMIN_USERNAME:-}
       STUDIO_AUTH_ADMIN_PASSWORD: ${STUDIO_AUTH_ADMIN_PASSWORD:-}
       STUDIO_METRICS_PROMETHEUS_BASE_URL: ${STUDIO_METRICS_PROMETHEUS_BASE_URL:-}
@@ -43,7 +43,7 @@ services:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/rocketmq?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=UTF-8&connectionCollation=utf8mb4_unicode_ci
       SPRING_DATASOURCE_USERNAME: root
-      SPRING_DATASOURCE_PASSWORD: studio123
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD:-studio123}
       STUDIO_ROCKETMQ_NAMESRV_ADDR: ${STUDIO_ROCKETMQ_NAMESRV_ADDR:-nameserver:9876}
       RMQ_LLM_TOKEN: ${RMQ_LLM_TOKEN:-}
       RMQ_ANTHROPIC_BASE_URL: ${RMQ_ANTHROPIC_BASE_URL:-}

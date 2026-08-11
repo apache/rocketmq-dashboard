@@ -178,6 +178,10 @@ public abstract class AbstractPrometheusCompatibleMetricsSource implements Metri
             while (baseUrl.endsWith("/")) {
                 baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
             }
+            // SSRF guard: a stored data source is queried server-side on every request, so the
+            // host must be validated here even though it was checked when the data source was
+            // saved (a pre-save check alone is bypassable via direct DB edits).
+            org.apache.rocketmq.studio.common.util.UrlHostGuard.check(baseUrl, false);
             URI uri = URI.create(baseUrl + settings.getQueryPath());
             if (!"http".equalsIgnoreCase(uri.getScheme()) && !"https".equalsIgnoreCase(uri.getScheme())) {
                 throw new IllegalArgumentException("Unsupported " + backendLabel() + " URL scheme");

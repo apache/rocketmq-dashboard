@@ -77,12 +77,13 @@ public class AuthInterceptor implements HandlerInterceptor {
             return true;
         }
         if (settingsRepository == null) {
-            return false;
+            return true;
         }
         try {
             GeneralSettingsVO settings = settingsRepository.loadGeneralSettings();
-            return settings != null && settings.isRequireLogin();
+            return settings == null || settings.isRequireLogin();
         } catch (Exception exception) {
+            // Fail closed: when the policy cannot be read, default to requiring login.
             return true;
         }
     }
