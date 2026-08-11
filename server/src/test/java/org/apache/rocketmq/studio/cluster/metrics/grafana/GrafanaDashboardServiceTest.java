@@ -66,6 +66,17 @@ class GrafanaDashboardServiceTest {
     }
 
     @Test
+    void getDashboardShouldRejectNullJsonAsset() {
+        GrafanaDashboardService service = serviceWithResources(resource("null.json", "null"));
+
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> service.getDashboard("null"));
+
+        assertEquals(500, exception.getCode());
+        assertEquals("Failed to read Grafana dashboard: null", exception.getMessage());
+    }
+
+    @Test
     void getDashboardShouldThrowWhenUidUnknown() {
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> service.getDashboard("no-such-dashboard"));

@@ -100,6 +100,9 @@ public class GrafanaDashboardService {
         try (InputStream in = resource.getInputStream()) {
             @SuppressWarnings("unchecked")
             Map<String, Object> model = objectMapper.readValue(in, Map.class);
+            if (model == null) {
+                throw new BusinessException(500, "Failed to read Grafana dashboard: " + uid);
+            }
             return model;
         } catch (IOException e) {
             throw new BusinessException(500, "Failed to read Grafana dashboard: " + uid);
