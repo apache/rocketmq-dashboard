@@ -16,7 +16,7 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { MemoryRouter } from 'react-router-dom';
@@ -134,6 +134,33 @@ describe('AiPage tool runner', () => {
     });
     expect(await within(dialog).findByTestId('tool-result')).toHaveTextContent('"capabilities": [');
     expect(within(dialog).getByTestId('tool-result')).toHaveTextContent('"GRPC"');
+  });
+
+  it('ignores an older tool catalog after the cluster changes', async () => {
+    const oldTools = [{ name: 'rmq.old', description: 'old', parameters: {} }];
+    const latestTools = [{ name: 'rmq.latest', description: 'latest', parameters: {} }];
+    let resolveOld!: (value: typeof oldTools) => void;
+    let resolveLatest!: (value: typeof latestTools) => void;
+    vi.mocked(listTools)
+      .mockReturnValueOnce(new Promise((resolve) => { resolveOld = resolve; }))
+      .mockReturnValueOnce(new Promise((resolve) => { resolveLatest = resolve; }));
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByRole('button', { name: '工具' }));
+    const dialog = await screen.findByRole('dialog', { name: 'AI 工具' });
+    await waitFor(() => expect(listTools).toHaveBeenCalledWith('cluster-a'));
+    await user.click(within(dialog).getByRole('combobox', { name: '选择集群' }));
+    await user.click(
+      await screen.findByText('Cluster B', { selector: '.ant-select-item-option-content' }),
+    );
+    await waitFor(() => expect(listTools).toHaveBeenCalledWith('cluster-b'));
+
+    await act(async () => resolveLatest(latestTools));
+    expect(await within(dialog).findByText('rmq.latest')).toBeInTheDocument();
+    await act(async () => resolveOld(oldTools));
+    expect(within(dialog).getByText('rmq.latest')).toBeInTheDocument();
+    expect(within(dialog).queryByText('rmq.old')).not.toBeInTheDocument();
   });
 
   it('reloads the available tools and template when the cluster changes', async () => {

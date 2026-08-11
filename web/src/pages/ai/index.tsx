@@ -402,6 +402,7 @@ const AiPage = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const conversationIdRef = useRef<string | null>(null);
+  const toolLoadRequestRef = useRef(0);
   const consumedDraftRef = useRef(false);
   const pendingAutoSendRef = useRef<{ prompt: string; model?: string; enhance?: boolean } | null>(
     null,
@@ -619,19 +620,23 @@ const AiPage = () => {
 
   const loadTools = useCallback(
     async (clusterId: string) => {
+      const requestId = ++toolLoadRequestRef.current;
       setSelectedToolName('');
       setToolResult(undefined);
       setToolsLoading(true);
       try {
         const availableTools = await listTools(clusterId || undefined);
+        if (requestId !== toolLoadRequestRef.current) return;
         setTools(availableTools);
         const firstTool = availableTools.find((tool) => !tool.deprecated);
         if (firstTool) selectTool(firstTool.name, availableTools, clusterId);
       } catch {
-        setTools([]);
-        message.error('AI 工具目录加载失败');
+        if (requestId === toolLoadRequestRef.current) {
+          setTools([]);
+          message.error('AI 工具目录加载失败');
+        }
       } finally {
-        setToolsLoading(false);
+        if (requestId === toolLoadRequestRef.current) setToolsLoading(false);
       }
     },
     [selectTool],
@@ -853,7 +858,11 @@ const AiPage = () => {
       <Modal
         title="AI 工具"
         open={toolModalOpen}
-        onCancel={() => setToolModalOpen(false)}
+        onCancel={() => {
+          toolLoadRequestRef.current += 1;
+          setToolsLoading(false);
+          setToolModalOpen(false);
+        }}
         onOk={() => void handleExecuteTool()}
         okText="执行"
         cancelText="关闭"
