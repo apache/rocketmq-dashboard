@@ -47,12 +47,16 @@ function getBusinessError(data: unknown): string | null {
 
 function isPublicAuthRequest(url?: string): boolean {
   if (!url) return false;
-  const requestPath = new URL(url, window.location.origin).pathname;
-  const apiBasePath = new URL(API_BASE_URL, window.location.origin).pathname;
-  const relativePath = requestPath.startsWith(`${apiBasePath}/`)
-    ? requestPath.slice(apiBasePath.length)
-    : requestPath;
-  return PUBLIC_AUTH_PATHS.has(relativePath);
+  try {
+    const requestPath = new URL(url, window.location.origin).pathname;
+    const apiBasePath = new URL(API_BASE_URL, window.location.origin).pathname;
+    const relativePath = requestPath.startsWith(`${apiBasePath}/`)
+      ? requestPath.slice(apiBasePath.length)
+      : requestPath;
+    return PUBLIC_AUTH_PATHS.has(relativePath);
+  } catch {
+    return false;
+  }
 }
 
 const client = axios.create({
