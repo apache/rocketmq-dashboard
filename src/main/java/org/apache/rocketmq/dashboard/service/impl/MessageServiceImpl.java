@@ -420,7 +420,7 @@ public class MessageServiceImpl implements MessageService {
                 total += end - start;
             }
             if (total <= offset) {
-                return Page.empty();
+                return new PageImpl<>(Collections.emptyList(), query.page(), total);
             }
             long pageSize = total - offset > query.getPageSize() ? query.getPageSize() : total - offset;
 

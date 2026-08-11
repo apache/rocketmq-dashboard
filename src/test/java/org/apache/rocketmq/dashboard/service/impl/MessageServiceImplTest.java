@@ -46,6 +46,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.springframework.data.domain.Page;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -431,6 +432,23 @@ public class MessageServiceImplTest {
 
         // Verify total endOffset increment is page size
         assertEquals(10, (qo1.getEndOffset() - 5L) + (qo2.getEndOffset() - 10L));
+    }
+
+    @Test
+    public void testOutOfRangeTaskPagePreservesTotalElements() throws Exception {
+        MessageQueue messageQueue = new MessageQueue(TOPIC, "broker", 0);
+        List<QueueOffsetInfo> queueOffsets = Collections.singletonList(
+                new QueueOffsetInfo(0, 0L, 5L, 0L, 0L, messageQueue));
+        MessageQueryByPage query = new MessageQueryByPage(2, 10, TOPIC, 1000, 3000);
+
+        Method method = MessageServiceImpl.class.getDeclaredMethod(
+                "queryMessageByTaskPage", MessageQueryByPage.class, List.class);
+        method.setAccessible(true);
+        Page<?> page = (Page<?>) method.invoke(messageService, query, queueOffsets);
+
+        assertTrue(page.isEmpty());
+        assertEquals(5L, page.getTotalElements());
+        assertEquals(1, page.getNumber());
     }
 
     // Helper methods
