@@ -39,6 +39,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.UnknownHostException;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -48,6 +49,14 @@ import java.util.UUID;
 @Service
 public class SettingsService {
 
+    private static final List<byte[]> CLOUD_METADATA_ADDRESSES = List.of(
+            new byte[] {
+                (byte) 0xfd, 0x00, 0x0e, (byte) 0xc2,
+                0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x02, 0x54
+            }, // AWS IMDS IPv6: fd00:ec2::254
+            new byte[] {100, 100, 100, (byte) 200}); // Alibaba Cloud ECS metadata
     private static final Set<String> PROMETHEUS_COMPATIBLE_TYPES = Set.of(
             "prometheus", "victoriametrics", "thanos", "mimir", "cortex", "arms");
     private static final String PROMETHEUS_TEST_QUERY = "up";
@@ -251,11 +260,12 @@ public class SettingsService {
 
     /**
      * SSRF guard: the test endpoint performs a server-side HTTP request to an attacker-supplied
-     * URL. The hostname {@code localhost}, loopback IPs (127.x.x.x, ::1) and link-local addresses
-     * (169.254.x.x, fe80:: — the cloud metadata range) are never legitimate Prometheus endpoints
-     * and are rejected. Private site-local ranges stay allowed because on-premise Prometheus
-     * servers live on the internal network and the endpoint itself requires admin rights.
-     * Package-private so tests can admit the loopback-bound embedded test server.
+     * URL. The hostname {@code localhost}, loopback IPs (127.x.x.x, ::1), link-local addresses
+     * (169.254.x.x, fe80:: — the cloud metadata range), and known metadata endpoints not covered
+     * by Java's address categories are never legitimate Prometheus endpoints and are rejected.
+     * Private site-local ranges stay allowed because on-premise Prometheus servers live on the
+     * internal network and the endpoint itself requires admin rights. Package-private so tests
+     * can admit the loopback-bound embedded test server.
      */
     boolean isAllowedDataSourceHost(String host) {
         if (!StringUtils.hasText(host)) {
@@ -269,11 +279,17 @@ public class SettingsService {
             InetAddress address = InetAddress.getByName(normalized);
             return !address.isAnyLocalAddress()
                     && !address.isLinkLocalAddress()
-                    && !address.isLoopbackAddress();
+                    && !address.isLoopbackAddress()
+                    && !isKnownCloudMetadataAddress(address);
         } catch (UnknownHostException exception) {
             // Unresolvable host: let the connection attempt surface the real connectivity error.
             return true;
         }
+    }
+
+    private boolean isKnownCloudMetadataAddress(InetAddress address) {
+        return CLOUD_METADATA_ADDRESSES.stream()
+                .anyMatch(metadataAddress -> Arrays.equals(address.getAddress(), metadataAddress));
     }
 
     private DataSourceTestResultVO prometheusSuccess(JsonNode response) {

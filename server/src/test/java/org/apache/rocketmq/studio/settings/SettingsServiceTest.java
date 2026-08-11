@@ -461,6 +461,46 @@ class SettingsServiceTest {
     }
 
     @Test
+    void testConnectionShouldRejectAwsImdsIpv6Address() {
+        DataSourceTestDTO compressedRequest = DataSourceTestDTO.builder()
+                .url("http://[fd00:ec2::254]/latest/meta-data/")
+                .type("Prometheus")
+                .build();
+        DataSourceTestDTO expandedRequest = DataSourceTestDTO.builder()
+                .url("http://[fd00:0ec2:0000:0000:0000:0000:0000:0254]/latest/meta-data/")
+                .type("Prometheus")
+                .build();
+
+        DataSourceTestResultVO compressedResult = settingsService.testDataSource(compressedRequest);
+        DataSourceTestResultVO expandedResult = settingsService.testDataSource(expandedRequest);
+
+        assertThat(compressedResult.isSuccess()).isFalse();
+        assertThat(compressedResult.getMessage()).contains("local or private address");
+        assertThat(expandedResult.isSuccess()).isFalse();
+        assertThat(expandedResult.getMessage()).contains("local or private address");
+    }
+
+    @Test
+    void testConnectionShouldRejectAlibabaCloudMetadataAddress() {
+        DataSourceTestDTO request = DataSourceTestDTO.builder()
+                .url("http://100.100.100.200/latest/meta-data/")
+                .type("Prometheus")
+                .build();
+        DataSourceTestDTO ipv4MappedRequest = DataSourceTestDTO.builder()
+                .url("http://[::ffff:100.100.100.200]/latest/meta-data/")
+                .type("Prometheus")
+                .build();
+
+        DataSourceTestResultVO result = settingsService.testDataSource(request);
+        DataSourceTestResultVO ipv4MappedResult = settingsService.testDataSource(ipv4MappedRequest);
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getMessage()).contains("local or private address");
+        assertThat(ipv4MappedResult.isSuccess()).isFalse();
+        assertThat(ipv4MappedResult.getMessage()).contains("local or private address");
+    }
+
+    @Test
     void testConnectionShouldRejectIncompleteBasicAuthentication() {
         DataSourceTestResultVO result = settingsService.testDataSource(DataSourceTestDTO.builder()
                 .url(prometheusBaseUrl)
