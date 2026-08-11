@@ -73,7 +73,7 @@ public class AuthWebMVCConfigurerAdapter implements WebMvcConfigurer {
 
             @Override
             public boolean supportsParameter(MethodParameter methodParameter) {
-                return methodParameter.getParameterType().isAssignableFrom(UserInfo.class);
+                return UserInfo.class.isAssignableFrom(methodParameter.getParameterType());
             }
 
             @Override

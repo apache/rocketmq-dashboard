@@ -17,42 +17,31 @@
 
 package org.apache.rocketmq.dashboard.config;
 
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
 import org.apache.rocketmq.dashboard.BaseTest;
+import org.apache.rocketmq.dashboard.model.UserInfo;
+import org.junit.Assert;
+import org.junit.Test;
+import org.springframework.core.MethodParameter;
+import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 
 public class AuthWebMVCConfigurerAdapterTest extends BaseTest {
 
-//    @InjectMocks
-//    private AuthWebMVCConfigurerAdapter authWebMVCConfigurerAdapter;
-//
-//    @Mock
-//    private RMQConfigure configure;
-//
-//    @Mock
-//    private AuthInterceptor authInterceptor;
-//
-//    @Before
-//    public void init() throws Exception {
-//        MockitoAnnotations.initMocks(this);
-//    }
-//
-//
-//    @Test
-//    public void addInterceptors() {
-//        Mockito.when(configure.isLoginRequired()).thenReturn(true);
-//        InterceptorRegistry registry = new InterceptorRegistry();
-//        Assertions.assertDoesNotThrow(() -> authWebMVCConfigurerAdapter.addInterceptors(registry));
-//    }
-//
-//    @Test
-//    public void addArgumentResolvers() {
-//        List<HandlerMethodArgumentResolver> argumentResolvers = Lists.newArrayList();
-//        authWebMVCConfigurerAdapter.addArgumentResolvers(argumentResolvers);
-//        Assertions.assertEquals(1, argumentResolvers.size());
-//    }
-//
-//    @Test
-//    public void addViewControllers() {
-//        ViewControllerRegistry registry = new ViewControllerRegistry(new ClassPathXmlApplicationContext());
-//        Assertions.assertDoesNotThrow(() -> authWebMVCConfigurerAdapter.addViewControllers(registry));
-//    }
+    @Test
+    public void testUserInfoArgumentResolverSupportsOnlyUserInfo() throws Exception {
+        AuthWebMVCConfigurerAdapter configurer = new AuthWebMVCConfigurerAdapter();
+        List<HandlerMethodArgumentResolver> resolvers = new ArrayList<>();
+        configurer.addArgumentResolvers(resolvers);
+
+        Assert.assertEquals(1, resolvers.size());
+        HandlerMethodArgumentResolver resolver = resolvers.get(0);
+        Method method = getClass().getDeclaredMethod("handleArguments", UserInfo.class, Object.class);
+        Assert.assertTrue(resolver.supportsParameter(new MethodParameter(method, 0)));
+        Assert.assertFalse(resolver.supportsParameter(new MethodParameter(method, 1)));
+    }
+
+    private void handleArguments(UserInfo userInfo, Object object) {
+    }
 }
