@@ -34,6 +34,7 @@ import {
   Space,
   Typography,
   Card,
+  Alert,
   message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -87,6 +88,8 @@ const ClusterPage = () => {
   const [clusters, setClusters] = useState<ClusterInfo[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [selectedInstanceId, setSelectedInstanceId] = useState('');
+  const [instanceLoadError, setInstanceLoadError] = useState<string | null>(null);
+  const [instanceLoadKey, setInstanceLoadKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const [nsSearch, setNsSearch] = useState('');
   const [brokerSearch, setBrokerSearch] = useState('');
@@ -155,19 +158,34 @@ const ClusterPage = () => {
   const selectedInstanceIdRef = useRef('');
 
   useEffect(() => {
+    let cancelled = false;
     void listInstances()
       .then((nextInstances) => {
+        if (cancelled) return;
         const apacheInstances = nextInstances.filter((instance) => instance.vendor === 'APACHE');
         setInstances(apacheInstances);
         const initialInstanceId = apacheInstances[0]?.id ?? '';
         selectedInstanceIdRef.current = initialInstanceId;
         setSelectedInstanceId(initialInstanceId);
-        void requestRefreshRef.current('manual');
+        setInstanceLoadError(null);
+        if (initialInstanceId) void requestRefreshRef.current('manual');
       })
       .catch(() => {
-        // Keep the page usable without instance filtering when the instance list is unavailable.
+        if (cancelled) return;
+        selectedInstanceIdRef.current = '';
+        setInstances([]);
+        setSelectedInstanceId('');
+        setClusters([]);
+        setSelectedProxy(null);
+        setInstanceLoadError(tRef.current('common.fetchDataFailed'));
+        setLoading(false);
+        setAutoRefresh(false);
+        autoRefreshRef.current = false;
       });
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [instanceLoadKey]);
 
   const clearRefreshTimer = useCallback(() => {
     if (refreshTimerRef.current !== null) {
@@ -180,6 +198,12 @@ const ClusterPage = () => {
     (source: RefreshSource): Promise<void> => {
       clearRefreshTimer();
       if (!mountedRef.current) return Promise.resolve();
+
+      if (!selectedInstanceIdRef.current) {
+        setClusters([]);
+        setLoading(false);
+        return Promise.resolve();
+      }
 
       if (source !== 'background') setLoading(true);
 
@@ -1029,6 +1053,19 @@ const ClusterPage = () => {
           </Flex>
         }
       />
+      {instanceLoadError && (
+        <Alert
+          type="error"
+          showIcon
+          message={instanceLoadError}
+          action={
+            <Button size="small" onClick={() => setInstanceLoadKey((key) => key + 1)}>
+              {t('common.retry')}
+            </Button>
+          }
+          style={{ marginBottom: 16 }}
+        />
+      )}
       <style>{`
         @keyframes livePulse {
           0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(82, 196, 26, 0.4); }
