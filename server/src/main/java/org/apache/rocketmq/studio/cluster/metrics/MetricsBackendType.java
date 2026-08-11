@@ -16,6 +16,8 @@
  */
 package org.apache.rocketmq.studio.cluster.metrics;
 
+import java.util.Locale;
+
 /**
  * Prometheus-compatible metrics backend types supported by RocketMQ Studio.
  * <p>
@@ -53,7 +55,7 @@ public enum MetricsBackendType {
         if (providerType == null) {
             return PROMETHEUS;
         }
-        return switch (providerType.trim().toUpperCase()) {
+        return switch (providerType.trim().toUpperCase(Locale.ROOT)) {
             case "PROMETHEUS" -> PROMETHEUS;
             case "VICTORIAMETRICS", "VICTORIA_METRICS", "VICTORIA" -> VICTORIA_METRICS;
             case "THANOS" -> THANOS;

@@ -18,6 +18,8 @@ package org.apache.rocketmq.studio.cluster.metrics;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.Locale;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class MetricsBackendTypeTest {
@@ -41,6 +43,21 @@ class MetricsBackendTypeTest {
         assertThat(MetricsBackendType.fromProviderType(null)).isEqualTo(MetricsBackendType.PROMETHEUS);
         assertThat(MetricsBackendType.fromProviderType("")).isEqualTo(MetricsBackendType.PROMETHEUS);
         assertThat(MetricsBackendType.fromProviderType("unknown-backend")).isEqualTo(MetricsBackendType.PROMETHEUS);
+    }
+
+    @Test
+    void shouldResolveProviderTypeIndependentlyOfDefaultLocale() {
+        Locale originalLocale = Locale.getDefault();
+
+        MetricsBackendType backendType;
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            backendType = MetricsBackendType.fromProviderType("mimir");
+        } finally {
+            Locale.setDefault(originalLocale);
+        }
+
+        assertThat(backendType).isEqualTo(MetricsBackendType.MIMIR);
     }
 
     @Test
