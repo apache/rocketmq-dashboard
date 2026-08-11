@@ -161,7 +161,7 @@ describe('MessagePage async request ownership', () => {
       ],
     });
     const user = userEvent.setup();
-    renderPage();
+    const view = renderPage();
     await selectTopic(user);
 
     await user.click(screen.getByRole('button', { name: /^search查询$/ }));
@@ -172,12 +172,21 @@ describe('MessagePage async request ownership', () => {
     await user.click(screen.getAllByRole('combobox')[0]!);
     const instanceOptions = await screen.findAllByText('Instance B');
     await user.click(instanceOptions[instanceOptions.length - 1]!);
+    instanceFilterMocks.useInstanceFilter.mockReturnValue({
+      selectedInstanceId: 'instance-b',
+      selectInstance,
+      instanceOptions: [
+        { value: 'instance-a', label: 'Instance A' },
+        { value: 'instance-b', label: 'Instance B' },
+      ],
+    });
+    view.rerender(<MessagePageWithProviders />);
 
     await waitFor(() => {
       expect(screen.queryByText('message-from-instance-a')).not.toBeInTheDocument();
       expect(screen.queryByRole('dialog', { name: '消息详情' })).not.toBeInTheDocument();
     });
-    expect(selectInstance).toHaveBeenCalledWith('instance-b');
+    expect(selectInstance.mock.calls[0]?.[0]).toBe('instance-b');
   });
   it('surfaces unavailable message provider errors from query requests', async () => {
     serviceMocks.queryMessages.mockRejectedValue(
