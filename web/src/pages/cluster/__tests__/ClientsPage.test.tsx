@@ -222,6 +222,48 @@ describe('Clients page', () => {
     expect(within(screen.getByTestId('connection-total')).getByText('0')).toBeInTheDocument();
   });
 
+  it('clears the previous instance data when the next instance connection request fails', async () => {
+    vi.mocked(instanceService.listInstances).mockResolvedValue([
+      {
+        id: 'instance-1',
+        name: 'Instance 1',
+        endpoint: 'namesrv-1:9876',
+        type: 'DIRECT',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        createdAt: '',
+        updatedAt: '',
+      },
+      {
+        id: 'instance-2',
+        name: 'Instance 2',
+        endpoint: 'namesrv-2:9876',
+        type: 'DIRECT',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        createdAt: '',
+        updatedAt: '',
+      },
+    ]);
+    vi.mocked(connectionsService.listConnections).mockImplementation((query) =>
+      query?.instanceId === 'instance-1'
+        ? Promise.resolve([connection])
+        : Promise.reject(new Error('Instance 2 is unavailable')),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<ClientsPage />);
+
+    await screen.findByText('order-svc-0@10.0.1.12:49152');
+    await user.click(screen.getByRole('combobox', { name: 'Instance' }));
+    await user.click(await screen.findByText('Instance 2', { selector: '.ant-select-item-option-content' }));
+
+    expect(await screen.findByText('Instance 2 is unavailable')).toBeInTheDocument();
+    expect(screen.queryByText('order-svc-0@10.0.1.12:49152')).not.toBeInTheDocument();
+    expect(within(screen.getByTestId('connection-total')).getByText('0')).toBeInTheDocument();
+  });
+
   it('surfaces instance discovery failures and allows retrying', async () => {
     vi.mocked(instanceService.listInstances)
       .mockRejectedValueOnce(new Error('Unable to load managed instances'))

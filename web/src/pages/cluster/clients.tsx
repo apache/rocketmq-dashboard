@@ -116,6 +116,15 @@ const ClientsPage = () => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [instanceLoadKey, setInstanceLoadKey] = useState(0);
 
+  const handleInstanceChange = (instanceId: string) => {
+    setSelectedInstanceId(instanceId);
+    setConnections([]);
+    setClusterFilter('ALL');
+    setSelectedConnection(null);
+    setLoadError(null);
+    setLoading(true);
+  };
+
   useEffect(() => {
     let cancelled = false;
 
@@ -159,6 +168,9 @@ const ClientsPage = () => {
       })
       .catch((error) => {
         if (!cancelled) {
+          setConnections([]);
+          setClusterFilter('ALL');
+          setSelectedConnection(null);
           setLoadError(getLoadErrorMessage(error));
         }
       })
@@ -403,7 +415,7 @@ const ClientsPage = () => {
           <Select
             aria-label="Instance"
             value={selectedInstanceId || undefined}
-            onChange={setSelectedInstanceId}
+            onChange={handleInstanceChange}
             placeholder="Select instance"
             style={{ width: 180 }}
             options={instances.map((instance) => ({ value: instance.id, label: instance.name }))}
