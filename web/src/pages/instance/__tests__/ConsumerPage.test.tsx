@@ -16,7 +16,7 @@
  */
 
 import { App } from 'antd';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { MemoryRouter } from 'react-router-dom';
@@ -353,7 +353,10 @@ describe('Consumer page', () => {
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
     await waitFor(() =>
-      expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith('remote-cg', 'instance-a'),
+      expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith(
+        'remote-cg',
+        'instance-a',
+      ),
     );
 
     await user.click(screen.getByText('Instance A'));
@@ -364,11 +367,94 @@ describe('Consumer page', () => {
     await user.click(await screen.findByRole('button', { name: /详情/ }));
 
     await waitFor(() =>
-      expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith('remote-cg', 'instance-b'),
+      expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith(
+        'remote-cg',
+        'instance-b',
+      ),
     );
     await waitFor(() =>
       expect(consumerService.getConsumerProgress).toHaveBeenCalledWith('remote-cg', 'instance-b'),
     );
+  });
+
+  it('keeps the latest client stack when an older request resolves last', async () => {
+    const firstStack = {
+      groupName: 'remote-cg',
+      clientId: 'client-1',
+      capturedAt: '2026-07-23T00:00:00Z',
+      threadCount: 1,
+      threads: [
+        {
+          threadName: 'OldClientThread',
+          threadId: 1,
+          state: 'RUNNABLE',
+          blockedTime: 0,
+          waitedTime: 0,
+          stackTrace: ['old.Stack.run(Old.java:1)'],
+        },
+      ],
+    };
+    const secondStack = {
+      ...firstStack,
+      clientId: 'client-2',
+      threads: [
+        {
+          ...firstStack.threads[0],
+          threadName: 'LatestClientThread',
+          stackTrace: ['latest.Stack.run(Latest.java:2)'],
+        },
+      ],
+    };
+    let resolveFirst!: (value: typeof firstStack) => void;
+    let resolveSecond!: (value: typeof secondStack) => void;
+    vi.mocked(consumerService.getConsumerStack)
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveFirst = resolve;
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveSecond = resolve;
+        }),
+      );
+    vi.mocked(consumerService.listConsumerGroups).mockResolvedValue([
+      {
+        ...group,
+        instances: [
+          {
+            clientId: 'client-1',
+            protocol: 'Remoting',
+            address: '10.0.0.1:1',
+            subscribedTopics: [],
+            lastHeartbeat: '',
+            topicLag: {},
+          },
+          {
+            clientId: 'client-2',
+            protocol: 'Remoting',
+            address: '10.0.0.2:2',
+            subscribedTopics: [],
+            lastHeartbeat: '',
+            topicLag: {},
+          },
+        ],
+      },
+    ]);
+    const user = userEvent.setup();
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /详情/ }));
+    await user.click(await screen.findByRole('tab', { name: /在线实例/ }));
+    const stackButtons = await screen.findAllByRole('button', { name: /线程栈/ });
+    await user.click(stackButtons[0]);
+    await user.click(stackButtons[1]);
+
+    await act(async () => resolveSecond(secondStack));
+    expect(await screen.findByText('LatestClientThread')).toBeInTheDocument();
+    await act(async () => resolveFirst(firstStack));
+    expect(screen.getByText('LatestClientThread')).toBeInTheDocument();
+    expect(screen.queryByText('OldClientThread')).not.toBeInTheDocument();
   });
 
   it('loads a consumer client stack trace from the selected instance', async () => {

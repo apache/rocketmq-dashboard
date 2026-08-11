@@ -231,8 +231,10 @@ const ConsumerPage = () => {
   const [importing, setImporting] = useState(false);
 
   const groupRequestIdRef = useRef(0);
+  const stackRequestIdRef = useRef(0);
 
   useEffect(() => {
+    stackRequestIdRef.current += 1;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- clear state owned by the previous instance
     setSelectedGroup(null);
     setModalOpen(false);
@@ -365,21 +367,25 @@ const ConsumerPage = () => {
 
   const openStackModal = async (consumerInstance: ConsumerInstance) => {
     if (!selectedGroup) return;
+    const requestId = ++stackRequestIdRef.current;
+    const groupName = selectedGroup.name;
     setSelectedStackClient(consumerInstance);
     setSelectedStack(null);
     setStackModalOpen(true);
     setStackLoading(true);
     try {
       const stack = await getConsumerStack(
-        selectedGroup.name,
+        groupName,
         consumerInstance.clientId,
         selectedInstanceId || undefined,
       );
-      setSelectedStack(stack);
+      if (requestId === stackRequestIdRef.current) setSelectedStack(stack);
     } catch {
-      message.error(`客户端 ${consumerInstance.clientId} 线程栈获取失败`);
+      if (requestId === stackRequestIdRef.current) {
+        message.error(`客户端 ${consumerInstance.clientId} 线程栈获取失败`);
+      }
     } finally {
-      setStackLoading(false);
+      if (requestId === stackRequestIdRef.current) setStackLoading(false);
     }
   };
 
@@ -974,7 +980,9 @@ const ConsumerPage = () => {
                     subscriptionsByGroup[diagnosticCacheKey(selectedInstanceId, record.name)] ?? []
                   }
                   rowKey="topic"
-                  loading={subscriptionLoadingByGroup[diagnosticCacheKey(selectedInstanceId, record.name)]}
+                  loading={
+                    subscriptionLoadingByGroup[diagnosticCacheKey(selectedInstanceId, record.name)]
+                  }
                   pagination={false}
                   size="small"
                 />
@@ -1299,6 +1307,7 @@ const ConsumerPage = () => {
         }
         open={stackModalOpen}
         onCancel={() => {
+          stackRequestIdRef.current += 1;
           setStackModalOpen(false);
           setSelectedStack(null);
           setSelectedStackClient(null);
@@ -1615,8 +1624,7 @@ const ConsumerPage = () => {
         }}
         confirmLoading={resetSubmitting}
         okButtonProps={{
-          disabled:
-            !resetTopic || Boolean(subscriptionLoadingByGroup[resetDiagnosticKey]),
+          disabled: !resetTopic || Boolean(subscriptionLoadingByGroup[resetDiagnosticKey]),
         }}
         okText="确认重置"
         cancelText="取消"
