@@ -20,6 +20,8 @@ import {
   createAclRule,
   createAclUser,
   createAndUpdatePlainAccessConfig,
+  deleteAclRule,
+  deleteAclUser,
   examineBrokerClusterAclConfig,
   listAclRules,
   listAclUsers,
@@ -144,5 +146,16 @@ describe('ACL service mock data', () => {
     await expect(createAndUpdatePlainAccessConfig({ accessKey: 'svc-no-secret' })).rejects.toThrow(
       'secretKey is required',
     );
+  });
+
+  it('rejects deletion of missing ACL records', async () => {
+    const rulesBefore = await listAclRules();
+    const usersBefore = await listAclUsers();
+
+    await expect(deleteAclRule('missing-rule')).rejects.toThrow('ACL rule not found: missing-rule');
+    await expect(deleteAclUser('missing-user')).rejects.toThrow('ACL user not found: missing-user');
+
+    await expect(listAclRules()).resolves.toEqual(rulesBefore);
+    await expect(listAclUsers()).resolves.toEqual(usersBefore);
   });
 });
