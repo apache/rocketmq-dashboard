@@ -380,6 +380,23 @@ class ClusterServiceTest {
     }
 
     @Test
+    void updateConfigShouldNotFallBackToPersistedClusterWhenLiveRefreshFails() {
+        when(clusterProvider.refreshClusterDetail("cluster-1"))
+                .thenThrow(new BusinessException(502, "NameServer unavailable"));
+
+        UpdateConfigDTO command = UpdateConfigDTO.builder()
+                .id("cluster-1")
+                .flushDiskType("SYNC_FLUSH")
+                .build();
+
+        assertThatThrownBy(() -> clusterService.updateClusterConfig(command))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("NameServer unavailable")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(502));
+        verify(clusterRepository, never()).findById("cluster-1");
+    }
+
+    @Test
     void updateConfigShouldRejectInvalidFlushDiskType() {
         when(clusterRepository.findById("cluster-1")).thenReturn(Optional.of(sampleCluster));
 
