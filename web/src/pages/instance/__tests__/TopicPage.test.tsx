@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { App } from 'antd';
@@ -152,6 +152,24 @@ describe('TopicPage', () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('ignores duplicate Topic creates while the first request is pending', async () => {
+    topicServiceMocks.createTopic.mockImplementation(() => new Promise(() => {}));
+    const user = userEvent.setup();
+    renderWithProviders();
+
+    expect(await screen.findByText('topic-01')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /创建 Topic/ }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByLabelText('Topic 名称'), 'new-topic');
+    const create = within(dialog).getByRole('button', { name: /创\s*建/ });
+
+    fireEvent.click(create);
+    fireEvent.click(create);
+
+    await waitFor(() => expect(topicServiceMocks.createTopic).toHaveBeenCalledTimes(1));
+    expect(create).toHaveClass('ant-btn-loading');
   });
 
   it('downloads the currently filtered topics when exporting', async () => {
@@ -422,7 +440,7 @@ describe('TopicPage', () => {
 
     expect(await screen.findByText('共 0 个 Topic')).toBeInTheDocument();
     expect(topicServiceMocks.listTopics).not.toHaveBeenCalled();
-    expect(document.querySelector('.ant-spin-spinning')).toBeNull();
+    await waitFor(() => expect(document.querySelector('.ant-spin-spinning')).toBeNull());
     expect(screen.getByRole('button', { name: /导入/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: /创建 Topic/ })).toBeDisabled();
   });

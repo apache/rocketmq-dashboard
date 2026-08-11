@@ -291,6 +291,7 @@ const TopicPage = () => {
   const [rebuilding, setRebuilding] = useState(false);
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [form] = Form.useForm();
   const [sendModalOpen, setSendModalOpen] = useState(false);
   const [sendTopic, setSendTopic] = useState<Topic | null>(null);
@@ -306,6 +307,7 @@ const TopicPage = () => {
   const [importing, setImporting] = useState(false);
 
   const topicRequestIdRef = useRef(0);
+  const createInFlightRef = useRef(false);
 
   useEffect(() => {
     if (!selectedInstanceId) {
@@ -682,10 +684,13 @@ const TopicPage = () => {
 
   // ─── Create modal submit ──────────────────────────────────────
   const handleCreate = async () => {
+    if (createInFlightRef.current) return;
     if (!selectedInstanceId) {
       message.error('请先选择实例');
       return;
     }
+    createInFlightRef.current = true;
+    setCreating(true);
     try {
       const values = await form.validateFields();
       const created = await createTopic({
@@ -696,8 +701,13 @@ const TopicPage = () => {
       message.success(`Topic「${created.name}」创建成功`);
       setModalOpen(false);
       form.resetFields();
-    } catch {
-      message.error('创建 Topic 失败，请稍后重试');
+    } catch (error) {
+      if (!(error && typeof error === 'object' && 'errorFields' in error)) {
+        message.error('创建 Topic 失败，请稍后重试');
+      }
+    } finally {
+      createInFlightRef.current = false;
+      setCreating(false);
     }
   };
 
@@ -1117,6 +1127,7 @@ const TopicPage = () => {
           form.resetFields();
         }}
         onOk={handleCreate}
+        confirmLoading={creating}
         okText="创建"
         cancelText="取消"
         width={560}
