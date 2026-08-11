@@ -462,6 +462,7 @@ class TencentInstanceProviderTest {
         assertThat(captor.getValue().getTopic()).isEqualTo("orders");
         assertThat(captor.getValue().getMsgKey()).isEqualTo("keyA");
         assertThat(captor.getValue().getTag()).isEqualTo("tagA");
+        assertThat(captor.getValue().getTaskRequestId()).isEqualTo("");
     }
 
     @Test

@@ -460,6 +460,10 @@ public class TencentInstanceProvider implements InstanceProvider {
         request.setTopic(topic);
         request.setStartTime(begin);
         request.setEndTime(end);
+        // DescribeMessageList is an async, task-based query: the first call uses an empty
+        // TaskRequestId to start the query, and later pages reuse the id returned by the
+        // previous response. We only fetch the first page here.
+        request.setTaskRequestId("");
         if (StringUtils.hasText(key)) {
             request.setMsgKey(key);
         }
