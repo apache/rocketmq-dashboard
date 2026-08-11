@@ -41,10 +41,12 @@ import java.util.Optional;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -594,6 +596,44 @@ class AclServiceTest {
 
         assertThat(result).isSameAs(config);
         verify(aclRepository).createAndUpdatePlainAccessConfig(config);
+    }
+
+    @Test
+    void createAndUpdatePlainAccessConfigShouldAuditWithoutSensitiveValues() {
+        PlainAccessConfigVO config = PlainAccessConfigVO.builder()
+                .accessKey("ak-sensitive")
+                .secretKey("secret-value")
+                .whiteRemoteAddress("10.0.0.0/8")
+                .admin(true)
+                .build();
+        when(aclRepository.createAndUpdatePlainAccessConfig(config)).thenReturn(config);
+
+        aclService.createAndUpdatePlainAccessConfig(config);
+
+        verify(operationAuditService).record(eq("UPSERT_PLAIN_ACCESS_CONFIG"), eq("ACL_USER"),
+                eq("ak-sensitive"), eq(null),
+                argThat(detail -> detail.equals("admin=true, whiteRemoteAddressConfigured=true")
+                        && !detail.contains("secret-value") && !detail.contains("10.0.0.0/8")),
+                eq("SUCCESS"), eq(null));
+    }
+
+    @Test
+    void createAndUpdatePlainAccessConfigShouldNotFailWhenAuditRecordingFails() {
+        PlainAccessConfigVO config = PlainAccessConfigVO.builder()
+                .accessKey("ak-1")
+                .admin(false)
+                .build();
+        when(aclRepository.createAndUpdatePlainAccessConfig(config)).thenReturn(config);
+        doThrow(new IllegalStateException("audit unavailable")).when(operationAuditService)
+                .record(any(), any(), any(), any(), any(), any(), any());
+
+        assertThatCode(() -> aclService.createAndUpdatePlainAccessConfig(config))
+                .doesNotThrowAnyException();
+
+        verify(operationAuditService).record(eq("UPSERT_PLAIN_ACCESS_CONFIG"), eq("ACL_USER"),
+                eq("ak-1"), eq(null),
+                eq("admin=false, whiteRemoteAddressConfigured=false"),
+                eq("SUCCESS"), eq(null));
     }
 
     private String mask(String credential) {

@@ -171,7 +171,13 @@ public class AclService {
             throw new BusinessException(400, "accessKey is required");
         }
         log.info("Creating/updating plain access config accessKey={}", config.getAccessKey());
-        return aclRepository.createAndUpdatePlainAccessConfig(config);
+        PlainAccessConfigVO saved = aclRepository.createAndUpdatePlainAccessConfig(config);
+        String auditDetail = "admin=" + saved.isAdmin()
+                + ", whiteRemoteAddressConfigured="
+                + StringUtils.hasText(saved.getWhiteRemoteAddress());
+        recordAudit("UPSERT_PLAIN_ACCESS_CONFIG", "ACL_USER", saved.getAccessKey(), null,
+                auditDetail);
+        return saved;
     }
 
     /**
