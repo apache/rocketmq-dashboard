@@ -29,6 +29,8 @@ import type { SystemAlert } from '../../api/ops';
 
 const { Text } = Typography;
 
+const normalizeAlertLevel = (level: string) => level.toLowerCase();
+
 const SystemAlertsPage = () => {
   const { t } = useLang();
 
@@ -63,7 +65,10 @@ const SystemAlertsPage = () => {
     };
   }, []);
 
-  const filtered = levelFilter === 'all' ? alerts : alerts.filter((a) => a.level === levelFilter);
+  const filtered =
+    levelFilter === 'all'
+      ? alerts
+      : alerts.filter((a) => normalizeAlertLevel(a.level) === levelFilter);
 
   const unackCount = alerts.filter((a) => !a.acknowledged).length;
 
@@ -125,7 +130,7 @@ const SystemAlertsPage = () => {
             {level === 'all' ? t('common.all') : alertLevelConfig[level]?.label}
             {level !== 'all' && (
               <Badge
-                count={alerts.filter((a) => a.level === level).length}
+                count={alerts.filter((a) => normalizeAlertLevel(a.level) === level).length}
                 style={{
                   marginLeft: 4,
                   backgroundColor:
@@ -142,7 +147,7 @@ const SystemAlertsPage = () => {
         {loading && <Card loading />}
         {!loading &&
           filtered.map((alert) => {
-            const normalizedLevel = alert.level.toLowerCase();
+            const normalizedLevel = normalizeAlertLevel(alert.level);
             const cfg = alertLevelConfig[normalizedLevel] ?? {
               color: '#8c8c8c',
               bg: '#fafafa',
