@@ -26,10 +26,8 @@ import java.util.Set;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.KVTable;
 import org.apache.rocketmq.remoting.protocol.body.SubscriptionGroupWrapper;
-import org.apache.rocketmq.remoting.protocol.body.TopicList;
+import org.apache.rocketmq.remoting.protocol.body.TopicConfigSerializeWrapper;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
-import org.apache.rocketmq.remoting.protocol.route.QueueData;
-import org.apache.rocketmq.remoting.protocol.route.TopicRouteData;
 import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
@@ -149,48 +147,36 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                 }
             }
 
-            // Count topics globally and per-cluster
-            Map<String, Integer> topicsByCluster = new HashMap<>();
-            try {
-                TopicList topicList = admin.fetchAllTopicList();
-                Set<String> topics = topicList == null || topicList.getTopicList() == null
-                        ? Set.of() : topicList.getTopicList();
-                totalTopics = (int) topics.stream()
-                        .filter(t -> !isSystemTopic(t))
-                        .count();
-                // For each non-system topic, determine its cluster via route data
-                for (String topicName : topics) {
-                    if (isSystemTopic(topicName)) {
-                        continue;
-                    }
-                    try {
-                        TopicRouteData route = admin.examineTopicRouteInfo(topicName);
-                        if (route != null && route.getQueueDatas() != null) {
-                            for (QueueData qd : route.getQueueDatas()) {
-                                BrokerData bd = brokerAddrTable.get(qd.getBrokerName());
-                                if (bd != null && bd.getBrokerAddrs() != null) {
-                                    String addr = bd.getBrokerAddrs().get(0L);
-                                    String cluster = brokerAddrToCluster.get(addr);
-                                    if (cluster != null) {
-                                        topicsByCluster.merge(cluster, 1, Integer::sum);
-                                    }
-                                    break; // one queue is enough to determine the cluster
-                                }
-                            }
-                        }
-                    } catch (Exception ignored) {
-                        // Skip topics whose route data is unavailable
-                    }
-                }
-            } catch (Exception e) {
-                log.warn("Failed to fetch topic list: {}", e.getMessage());
-            }
-
-            // Count subscription groups globally and per-cluster, and collect TPS from each master broker
+            // Count topics and subscription groups from each master broker. Topic metadata is
+            // available in the broker config response, so this remains bounded by broker count
+            // instead of resolving a NameServer route for every Topic.
+            Set<String> allTopics = new HashSet<>();
+            Map<String, Set<String>> topicsByCluster = new HashMap<>();
+            Set<String> topicCountsUnavailableClusters = new HashSet<>();
             Set<String> allGroups = new HashSet<>();
-            Map<String, Integer> groupsByCluster = new HashMap<>();
+            Map<String, Set<String>> groupsByCluster = new HashMap<>();
+            Set<String> groupCountsUnavailableClusters = new HashSet<>();
             for (String brokerAddr : masterAddrs) {
                 String clusterName = brokerAddrToCluster.get(brokerAddr);
+                try {
+                    TopicConfigSerializeWrapper topicConfig = admin.getAllTopicConfig(brokerAddr, 5000);
+                    if (topicConfig == null || topicConfig.getTopicConfigTable() == null) {
+                        markCountUnavailable(topicCountsUnavailableClusters, clusterName);
+                    } else {
+                        Set<String> clusterTopics = topicsByCluster.computeIfAbsent(
+                                clusterName, ignored -> new HashSet<>());
+                        topicConfig.getTopicConfigTable().keySet().stream()
+                                .filter(topic -> !isSystemTopic(topic))
+                                .forEach(topic -> {
+                                    allTopics.add(topic);
+                                    clusterTopics.add(topic);
+                                });
+                    }
+                } catch (Exception e) {
+                    markCountUnavailable(topicCountsUnavailableClusters, clusterName);
+                    log.warn("Failed to get topic config from broker {}: {}", brokerAddr, e.getMessage());
+                }
+
                 try {
                     SubscriptionGroupWrapper subscriptionGroupWrapper = admin.getAllSubscriptionGroup(brokerAddr, 5000);
                     if (subscriptionGroupWrapper != null && subscriptionGroupWrapper.getSubscriptionGroupTable() != null) {
@@ -200,12 +186,14 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                             if (!isSystemGroup(groupName)) {
                                 allGroups.add(groupName);
                                 if (clusterName != null) {
-                                    groupsByCluster.merge(clusterName, 1, Integer::sum);
+                                    groupsByCluster.computeIfAbsent(clusterName, ignored -> new HashSet<>())
+                                            .add(groupName);
                                 }
                             }
                         }
                     }
                 } catch (Exception e) {
+                    markCountUnavailable(groupCountsUnavailableClusters, clusterName);
                     log.warn("Failed to get subscription groups from broker {}: {}", brokerAddr, e.getMessage());
                 }
 
@@ -230,6 +218,7 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                     log.warn("Failed to get runtime info from broker {}: {}", brokerAddr, e.getMessage());
                 }
             }
+            totalTopics = allTopics.size();
             totalGroups = allGroups.size();
 
             // Build per-cluster overview
@@ -240,7 +229,8 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                 long clusterTpsIn = 0;
                 long clusterTpsOut = 0;
                 String version = "unknown";
-                boolean runtimeMetricsUnavailable = false;
+                boolean runtimeMetricsUnavailable = topicCountsUnavailableClusters.contains(clusterName)
+                        || groupCountsUnavailableClusters.contains(clusterName);
 
                 for (String brokerName : brokerNames) {
                     BrokerData brokerData = brokerAddrTable.get(brokerName);
@@ -273,8 +263,8 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                         .status(runtimeMetricsUnavailable ? ClusterStatus.warning : ClusterStatus.healthy)
                         .brokers(clusterBrokers)
                         .proxies(0)
-                        .topics(topicsByCluster.getOrDefault(clusterName, 0))
-                        .groups(groupsByCluster.getOrDefault(clusterName, 0))
+                        .topics(topicsByCluster.getOrDefault(clusterName, Set.of()).size())
+                        .groups(groupsByCluster.getOrDefault(clusterName, Set.of()).size())
                         .tpsIn(clusterTpsIn)
                         .tpsOut(clusterTpsOut)
                         .version(version)
@@ -368,5 +358,11 @@ public class RocketMQDashboardProvider implements DashboardProvider {
 
     private boolean isSystemGroup(String group) {
         return SystemGroupFilter.isSystem(group);
+    }
+
+    private void markCountUnavailable(Set<String> unavailableClusters, String clusterName) {
+        if (clusterName != null) {
+            unavailableClusters.add(clusterName);
+        }
     }
 }

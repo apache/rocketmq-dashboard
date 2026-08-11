@@ -20,11 +20,16 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
+import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.body.KVTable;
+import org.apache.rocketmq.remoting.protocol.body.SubscriptionGroupWrapper;
 import org.apache.rocketmq.remoting.protocol.body.TopicList;
+import org.apache.rocketmq.remoting.protocol.body.TopicConfigSerializeWrapper;
 import org.apache.rocketmq.remoting.protocol.route.BrokerData;
+import org.apache.rocketmq.remoting.protocol.subscription.SubscriptionGroupConfig;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -42,6 +47,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -53,6 +59,7 @@ class RocketMQDashboardProviderTest {
         DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
         when(adminExt.fetchAllTopicList()).thenReturn(topicList());
+        when(adminExt.getAllTopicConfig("10.0.0.11:10911", 5000)).thenReturn(topicConfig("order-topic"));
         when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
 
         RocketMQDashboardProvider provider = newProvider(adminExt);
@@ -64,6 +71,97 @@ class RocketMQDashboardProviderTest {
         assertThat(dashboard.getClusters().get(0).getType()).isEqualTo(ClusterType.V5_PROXY_CLUSTER);
         assertThat(dashboard.getStats().getHealthyClusters()).isEqualTo(1);
         verify(adminExt, times(1)).fetchBrokerRuntimeStats("10.0.0.11:10911");
+    }
+
+    @Test
+    void dashboardShouldCountTopicsFromBrokerConfigWithoutPerTopicRouteRequests() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        when(adminExt.getAllTopicConfig("10.0.0.11:10911", 5000))
+                .thenReturn(topicConfig("order-topic", "payments", "SCHEDULE_TOPIC_XXXX"));
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getStats().getTotalTopics()).isEqualTo(2);
+        assertThat(dashboard.getClusters()).singleElement().satisfies(cluster -> {
+            assertThat(cluster.getTopics()).isEqualTo(2);
+            assertThat(cluster.getStatus()).isEqualTo(ClusterStatus.healthy);
+        });
+        verify(adminExt).getAllTopicConfig("10.0.0.11:10911", 5000);
+        verify(adminExt, never()).examineTopicRouteInfo(anyString());
+    }
+
+    @Test
+    void dashboardShouldDeduplicateTopicsReportedByMultipleClusterBrokers() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());
+        when(adminExt.getAllTopicConfig("10.0.0.11:10911", 5000))
+                .thenReturn(topicConfig("orders", "payments"));
+        when(adminExt.getAllTopicConfig("10.0.0.12:10911", 5000))
+                .thenReturn(topicConfig("orders", "inventory"));
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.12:10911")).thenReturn(runtimeStats());
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getStats().getTotalTopics()).isEqualTo(3);
+        assertThat(dashboard.getClusters()).singleElement()
+                .extracting(cluster -> cluster.getTopics())
+                .isEqualTo(3);
+        verify(adminExt, never()).examineTopicRouteInfo(anyString());
+    }
+
+    @Test
+    void dashboardShouldDeduplicateGroupsReportedByMultipleClusterBrokers() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());
+        when(adminExt.getAllSubscriptionGroup("10.0.0.11:10911", 5000))
+                .thenReturn(subscriptionGroups("cg-orders", "cg-payments"));
+        when(adminExt.getAllSubscriptionGroup("10.0.0.12:10911", 5000))
+                .thenReturn(subscriptionGroups("cg-orders", "cg-inventory"));
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.12:10911")).thenReturn(runtimeStats());
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getStats().getTotalConsumerGroups()).isEqualTo(3);
+        assertThat(dashboard.getClusters()).singleElement()
+                .extracting(cluster -> cluster.getGroups())
+                .isEqualTo(3);
+    }
+
+    @Test
+    void dashboardShouldMarkClusterWarningWhenTopicCountsAreUnavailable() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        when(adminExt.getAllTopicConfig("10.0.0.11:10911", 5000))
+                .thenThrow(new RuntimeException("broker unavailable"));
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getClusters()).singleElement()
+                .extracting(cluster -> cluster.getStatus())
+                .isEqualTo(ClusterStatus.warning);
+        assertThat(dashboard.getStats().getHealthyClusters()).isZero();
+    }
+
+    @Test
+    void dashboardShouldMarkClusterWarningWhenGroupCountsAreUnavailable() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        when(adminExt.getAllTopicConfig("10.0.0.11:10911", 5000)).thenReturn(topicConfig("orders"));
+        when(adminExt.getAllSubscriptionGroup("10.0.0.11:10911", 5000))
+                .thenThrow(new RuntimeException("broker unavailable"));
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getClusters()).singleElement()
+                .extracting(cluster -> cluster.getStatus())
+                .isEqualTo(ClusterStatus.warning);
+        assertThat(dashboard.getStats().getHealthyClusters()).isZero();
     }
 
     @Test
@@ -258,10 +356,49 @@ class RocketMQDashboardProviderTest {
         return info;
     }
 
+    private ClusterInfo clusterInfoWithTwoMasters() {
+        ClusterInfo info = new ClusterInfo();
+        HashMap<String, BrokerData> brokerAddrTable = new HashMap<>();
+        brokerAddrTable.put("broker-a", brokerData("broker-a", "10.0.0.11:10911"));
+        brokerAddrTable.put("broker-b", brokerData("broker-b", "10.0.0.12:10911"));
+        info.setBrokerAddrTable(brokerAddrTable);
+
+        HashMap<String, Set<String>> clusterAddrTable = new HashMap<>();
+        clusterAddrTable.put("DefaultCluster", Set.of("broker-a", "broker-b"));
+        info.setClusterAddrTable(clusterAddrTable);
+        return info;
+    }
+
+    private BrokerData brokerData(String name, String address) {
+        HashMap<Long, String> addresses = new HashMap<>();
+        addresses.put(0L, address);
+        return new BrokerData("DefaultCluster", name, addresses);
+    }
+
     private TopicList topicList() {
         TopicList topicList = new TopicList();
         topicList.setTopicList(Set.of("order-topic"));
         return topicList;
+    }
+
+    private TopicConfigSerializeWrapper topicConfig(String... names) {
+        TopicConfigSerializeWrapper wrapper = new TopicConfigSerializeWrapper();
+        ConcurrentHashMap<String, TopicConfig> configs = new ConcurrentHashMap<>();
+        for (String name : names) {
+            configs.put(name, new TopicConfig(name));
+        }
+        wrapper.setTopicConfigTable(configs);
+        return wrapper;
+    }
+
+    private SubscriptionGroupWrapper subscriptionGroups(String... names) {
+        SubscriptionGroupWrapper wrapper = new SubscriptionGroupWrapper();
+        ConcurrentHashMap<String, SubscriptionGroupConfig> groups = new ConcurrentHashMap<>();
+        for (String name : names) {
+            groups.put(name, new SubscriptionGroupConfig());
+        }
+        wrapper.setSubscriptionGroupTable(groups);
+        return wrapper;
     }
 
     private KVTable runtimeStats() {
