@@ -670,6 +670,28 @@ class InstanceServiceTest {
     }
 
     @Test
+    void deleteInstanceShouldRejectWhenProviderCannotCountManagedResources() {
+        InstanceVO existing = InstanceVO.builder()
+                .name("tencent-instance")
+                .vendor(InstanceVendor.TENCENT)
+                .build();
+        existing.setId("inst-tencent");
+        when(instanceRepository.findById("inst-tencent")).thenReturn(Optional.of(existing));
+        when(providerRegistry.forVendor(InstanceVendor.TENCENT)).thenReturn(instanceProvider);
+        when(instanceProvider.vendor()).thenReturn(InstanceVendor.TENCENT);
+        when(instanceProvider.countTopics("inst-tencent")).thenReturn(0);
+        when(instanceProvider.countGroups("inst-tencent"))
+                .thenThrow(new UnsupportedOperationException("Tencent groups are unavailable"));
+
+        assertThatThrownBy(() -> instanceService.deleteInstance("inst-tencent"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Cannot delete instance because managed resource counts are unavailable for TENCENT")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(501));
+
+        verify(instanceRepository, never()).deleteById("inst-tencent");
+    }
+
+    @Test
     void deleteInstanceShouldReleaseUnusedEndpoint() {
         InstanceVO existing = InstanceVO.builder()
                 .name("to-delete")

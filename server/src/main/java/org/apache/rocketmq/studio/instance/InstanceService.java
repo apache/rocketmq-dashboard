@@ -239,8 +239,16 @@ public class InstanceService {
 
         InstanceProvider provider = providerRegistry.forVendor(
                 existing.getVendor() == null ? InstanceVendor.APACHE : existing.getVendor());
-        int topicCount = provider.countTopics(id);
-        int consumerGroupCount = provider.countGroups(id);
+        int topicCount;
+        int consumerGroupCount;
+        try {
+            topicCount = provider.countTopics(id);
+            consumerGroupCount = provider.countGroups(id);
+        } catch (UnsupportedOperationException ex) {
+            throw new BusinessException(501,
+                    "Cannot delete instance because managed resource counts are unavailable for "
+                            + provider.vendor());
+        }
         if (topicCount > 0 || consumerGroupCount > 0) {
             throw new BusinessException(409, String.format(
                     "Cannot delete instance with managed resources: topics=%d, consumerGroups=%d",
