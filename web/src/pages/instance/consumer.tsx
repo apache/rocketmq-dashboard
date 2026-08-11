@@ -232,22 +232,24 @@ const ConsumerPage = () => {
   const groupRequestIdRef = useRef(0);
 
   useEffect(() => {
-    setSelectedGroup(null);
-    setModalOpen(false);
-    setResetGroup(null);
-    setResetModalOpen(false);
+    const timer = window.setTimeout(() => {
+      setSelectedGroup(null);
+      setModalOpen(false);
+      setResetGroup(null);
+      setResetModalOpen(false);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [selectedInstanceId]);
 
   useEffect(() => {
-    if (!selectedInstanceId) {
-      groupRequestIdRef.current += 1;
-      setGroups([]);
-      setSelectedRowKeys([]);
-      setLoading(false);
-      return;
-    }
     const requestId = ++groupRequestIdRef.current;
     const timer = window.setTimeout(() => {
+      if (!selectedInstanceId) {
+        setGroups([]);
+        setSelectedRowKeys([]);
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       void listConsumerGroups({ instanceId: selectedInstanceId })
         .then((nextGroups) => {
@@ -934,7 +936,7 @@ const ConsumerPage = () => {
         <Table
           columns={columns}
           dataSource={filtered}
-          loading={loading}
+          loading={Boolean(selectedInstanceId) && loading}
           rowKey="name"
           rowSelection={{
             selectedRowKeys,
@@ -958,7 +960,9 @@ const ConsumerPage = () => {
                     subscriptionsByGroup[diagnosticCacheKey(selectedInstanceId, record.name)] ?? []
                   }
                   rowKey="topic"
-                  loading={subscriptionLoadingByGroup[diagnosticCacheKey(selectedInstanceId, record.name)]}
+                  loading={
+                    subscriptionLoadingByGroup[diagnosticCacheKey(selectedInstanceId, record.name)]
+                  }
                   pagination={false}
                   size="small"
                 />

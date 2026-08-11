@@ -119,27 +119,30 @@ const ClientsPage = () => {
   useEffect(() => {
     let cancelled = false;
 
-    setLoading(true);
-    void listInstances()
-      .then((nextInstances) => {
-        if (cancelled) return;
-        setInstances(nextInstances);
-        setSelectedInstanceId((current) => current || nextInstances[0]?.id || '');
-        setLoadError(null);
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        setInstances([]);
-        setSelectedInstanceId('');
-        setConnections([]);
-        setLoadError(getLoadErrorMessage(error));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    const timer = window.setTimeout(() => {
+      setLoading(true);
+      void listInstances()
+        .then((nextInstances) => {
+          if (cancelled) return;
+          setInstances(nextInstances);
+          setSelectedInstanceId((current) => current || nextInstances[0]?.id || '');
+          setLoadError(null);
+        })
+        .catch((error) => {
+          if (cancelled) return;
+          setInstances([]);
+          setSelectedInstanceId('');
+          setConnections([]);
+          setLoadError(getLoadErrorMessage(error));
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    }, 0);
 
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
   }, [instanceLoadKey]);
 

@@ -125,52 +125,50 @@ const DLQPage = () => {
   useEffect(() => {
     let cancelled = false;
 
-    // The retry dialog owns a group name that is meaningful only for the
-    // currently selected instance. Clear all instance-scoped state before
-    // starting the next request so an old group cannot be retried on a new
-    // instance while that request is in flight.
-    setGroups([]);
-    setSelectedGroupNames([]);
-    setDetailGroup(null);
-    setRetryModalOpen(false);
-    setRetryGroup(null);
-    setRetryTargetTopic('');
-    setRetryError(null);
-    setLoadError(null);
+    const timer = window.setTimeout(() => {
+      // The retry dialog owns a group name that is meaningful only for the
+      // currently selected instance. Clear all instance-scoped state before
+      // starting the next request so an old group cannot be retried on a new
+      // instance while that request is in flight.
+      setGroups([]);
+      setSelectedGroupNames([]);
+      setDetailGroup(null);
+      setRetryModalOpen(false);
+      setRetryGroup(null);
+      setRetryTargetTopic('');
+      setRetryError(null);
+      setLoadError(null);
 
-    if (!selectedInstanceId) {
-      void Promise.resolve().then(() => {
-        if (cancelled) return;
+      if (!selectedInstanceId) {
         setLoading(false);
-      });
-      return () => {
-        cancelled = true;
-      };
-    }
+        return;
+      }
 
-    setLoading(true);
-    void listDLQGroups(selectedInstanceId)
-      .then((nextGroups) => {
-        if (!cancelled) {
-          setGroups(nextGroups);
-          setLoadError(null);
-          const availableGroups = new Set(
-            nextGroups.filter((group) => group.messageCount > 0).map((group) => group.groupName),
-          );
-          setSelectedGroupNames((selected) =>
-            selected.filter((groupName) => availableGroups.has(groupName)),
-          );
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) setLoadError(getErrorMessage(error, DEFAULT_LOAD_ERROR));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+      setLoading(true);
+      void listDLQGroups(selectedInstanceId)
+        .then((nextGroups) => {
+          if (!cancelled) {
+            setGroups(nextGroups);
+            setLoadError(null);
+            const availableGroups = new Set(
+              nextGroups.filter((group) => group.messageCount > 0).map((group) => group.groupName),
+            );
+            setSelectedGroupNames((selected) =>
+              selected.filter((groupName) => availableGroups.has(groupName)),
+            );
+          }
+        })
+        .catch((error) => {
+          if (!cancelled) setLoadError(getErrorMessage(error, DEFAULT_LOAD_ERROR));
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    }, 0);
 
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
   }, [refreshKey, selectedInstanceId]);
 
