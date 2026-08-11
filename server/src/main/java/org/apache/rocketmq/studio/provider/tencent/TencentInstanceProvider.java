@@ -64,6 +64,7 @@ import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -87,6 +88,7 @@ import java.util.Map;
  * DescribeMessageList (list), DescribeMessage (detail) and DescribeMessageTrace (trace).</p>
  */
 @RequiredArgsConstructor
+@Slf4j
 @Component
 public class TencentInstanceProvider implements InstanceProvider {
 
@@ -99,6 +101,12 @@ public class TencentInstanceProvider implements InstanceProvider {
     static final int DEFAULT_MAX_RETRY_TIMES = 16;
     static final int MESSAGE_LIMIT = 100;
     private static final DateTimeFormatter TENCENT_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss[,SSS][,SS]");
+    private static final DateTimeFormatter[] TENCENT_TIME_FORMATTERS = {
+        TENCENT_TIME_FORMATTER,
+        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"),
+        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS"),
+        DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSZ")
+    };
     private static final long ONE_HOUR_MILLIS = 60L * 60L * 1000L;
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -656,18 +664,24 @@ public class TencentInstanceProvider implements InstanceProvider {
 
     private static long parseTraceTime(String value) {
         if (!StringUtils.hasText(value)) {
+            log.warn("Tencent message query: empty ProduceTime, storeTime=0");
             return 0L;
         }
-        try {
-            LocalDateTime parsed = LocalDateTime.parse(value, TENCENT_TIME_FORMATTER);
-            return parsed.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
-        } catch (Exception e) {
+        String trimmed = value.trim();
+        for (DateTimeFormatter formatter : TENCENT_TIME_FORMATTERS) {
             try {
-                return Long.parseLong(value.trim());
-            } catch (NumberFormatException ignored) {
-                return 0L;
+                return LocalDateTime.parse(trimmed, formatter)
+                        .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+            } catch (Exception ignored) {
+                // try next format
             }
         }
+        try {
+            return Long.parseLong(trimmed);
+        } catch (NumberFormatException ignored) {
+            log.warn("Tencent message query: unparseable ProduceTime={}, storeTime=0", value);
+        }
+        return 0L;
     }
 
     private static String toTraceStatus(int status) {
