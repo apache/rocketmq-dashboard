@@ -364,7 +364,7 @@ const AlertsPage = () => {
       />
 
       {/* ─── Table ─── */}
-      <Card bodyStyle={{ padding: 0 }}>
+      <Card styles={{ body: { padding: 0 } }}>
         <Flex
           align="center"
           justify="space-between"
