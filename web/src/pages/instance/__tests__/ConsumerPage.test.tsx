@@ -280,6 +280,46 @@ describe('Consumer page', () => {
     );
   });
 
+  it('requires and submits a target topic when resetting consumer offsets', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ConsumerPage />);
+
+    await user.click(await screen.findByRole('button', { name: /重置位点/ }));
+
+    await waitFor(() =>
+      expect(consumerService.getConsumerSubscriptions).toHaveBeenCalledWith(
+        'remote-cg',
+        'instance-1',
+      ),
+    );
+    const confirm = screen.getByRole('button', { name: '确认重置' });
+    expect(confirm).toBeDisabled();
+
+    const topicSelect = screen.getByRole('combobox', { name: '目标 Topic' });
+    await user.click(topicSelect);
+    const option = await waitFor(() => {
+      const element = screen
+        .getAllByText('remote-topic')
+        .find((candidate) => candidate.classList.contains('ant-select-item-option-content'));
+      if (!element) throw new Error('Missing target Topic option');
+      return element;
+    });
+    await user.click(option);
+    await waitFor(() => expect(confirm).toBeEnabled());
+    await user.click(confirm);
+
+    await waitFor(() =>
+      expect(consumerService.resetConsumerOffset).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'remote-cg',
+          instanceId: 'instance-1',
+          topic: 'remote-topic',
+          timestamp: expect.any(Number),
+        }),
+      ),
+    );
+  });
+
   it('reloads same-named group diagnostics after changing the selected instance', async () => {
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       {

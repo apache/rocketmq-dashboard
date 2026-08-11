@@ -206,6 +206,7 @@ const ConsumerPage = () => {
   const [dataTypeValue, setDataTypeValue] = useState<string | undefined>(undefined);
   const [resetModalOpen, setResetModalOpen] = useState(false);
   const [resetGroup, setResetGroup] = useState<ConsumerGroup | null>(null);
+  const [resetTopic, setResetTopic] = useState<string>();
   const [resetTime, setResetTime] = useState<Dayjs>(dayjs().subtract(3, 'hour'));
   const [subscriptionsByGroup, setSubscriptionsByGroup] = useState<
     Record<string, SubscriptionEntry[]>
@@ -236,6 +237,7 @@ const ConsumerPage = () => {
     setSelectedGroup(null);
     setModalOpen(false);
     setResetGroup(null);
+    setResetTopic(undefined);
     setResetModalOpen(false);
   }, [selectedInstanceId]);
 
@@ -338,6 +340,16 @@ const ConsumerPage = () => {
   const selectedDiagnosticKey = selectedGroup
     ? diagnosticCacheKey(selectedInstanceId, selectedGroup.name)
     : '';
+  const resetDiagnosticKey = resetGroup
+    ? diagnosticCacheKey(selectedInstanceId, resetGroup.name)
+    : '';
+  const resetTopicOptions = useMemo(() => {
+    const topics = new Set(resetGroup?.subscribedTopics ?? []);
+    for (const subscription of subscriptionsByGroup[resetDiagnosticKey] ?? []) {
+      if (subscription.topic) topics.add(subscription.topic);
+    }
+    return Array.from(topics).map((topic) => ({ label: topic, value: topic }));
+  }, [resetDiagnosticKey, resetGroup, subscriptionsByGroup]);
   const selectedSubscriptions = selectedGroup
     ? (subscriptionsByGroup[selectedDiagnosticKey] ?? [])
     : [];
@@ -574,8 +586,10 @@ const ConsumerPage = () => {
             onClick={(e) => {
               e.stopPropagation();
               setResetGroup(record);
+              setResetTopic(undefined);
               setResetTime(dayjs().subtract(3, 'hour'));
               setResetModalOpen(true);
+              void loadSubscriptions(record.name);
             }}
           >
             重置位点
@@ -1574,30 +1588,36 @@ const ConsumerPage = () => {
         onCancel={() => {
           setResetModalOpen(false);
           setResetGroup(null);
+          setResetTopic(undefined);
         }}
         onOk={async () => {
-          if (resetGroup) {
-            setResetSubmitting(true);
-            try {
-              await resetConsumerOffset({
-                name: resetGroup.name,
-                instanceId: selectedInstanceId || undefined,
-                timestamp: resetTime.valueOf(),
-              });
-              message.success(
-                `${resetGroup.name} 消费位点已重置到 ${resetTime.format('YYYY-MM-DD HH:mm:ss')}`,
-              );
-            } catch {
-              message.error(t('consumer.resetFailed'));
-              return;
-            } finally {
-              setResetSubmitting(false);
-            }
+          if (!resetGroup || !resetTopic) return;
+          setResetSubmitting(true);
+          try {
+            await resetConsumerOffset({
+              name: resetGroup.name,
+              instanceId: selectedInstanceId || undefined,
+              topic: resetTopic,
+              timestamp: resetTime.valueOf(),
+            });
+            message.success(
+              `${resetGroup.name} 在 ${resetTopic} 的消费位点已重置到 ${resetTime.format('YYYY-MM-DD HH:mm:ss')}`,
+            );
+          } catch {
+            message.error(t('consumer.resetFailed'));
+            return;
+          } finally {
+            setResetSubmitting(false);
           }
           setResetModalOpen(false);
           setResetGroup(null);
+          setResetTopic(undefined);
         }}
         confirmLoading={resetSubmitting}
+        okButtonProps={{
+          disabled:
+            !resetTopic || Boolean(subscriptionLoadingByGroup[resetDiagnosticKey]),
+        }}
         okText="确认重置"
         cancelText="取消"
         width={480}
@@ -1625,6 +1645,27 @@ const ConsumerPage = () => {
               <Text strong style={{ fontSize: 14 }}>
                 {resetGroup.name}
               </Text>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 8 }}>
+                目标 Topic
+              </Text>
+              <Select
+                aria-label="目标 Topic"
+                showSearch
+                optionFilterProp="label"
+                style={{ width: '100%' }}
+                value={resetTopic}
+                options={resetTopicOptions}
+                loading={subscriptionLoadingByGroup[resetDiagnosticKey]}
+                placeholder="选择要重置消费位点的 Topic"
+                onChange={setResetTopic}
+                notFoundContent={
+                  subscriptionErrorByGroup[resetDiagnosticKey]
+                    ? '订阅 Topic 加载失败'
+                    : '该 Group 暂无订阅 Topic'
+                }
+              />
             </div>
             <div style={{ marginBottom: 16 }}>
               <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 8 }}>
