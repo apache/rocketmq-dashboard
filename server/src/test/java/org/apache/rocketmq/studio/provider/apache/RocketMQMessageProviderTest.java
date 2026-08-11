@@ -494,6 +494,28 @@ class RocketMQMessageProviderTest {
     }
 
     @Test
+    void getMessageTraceParsesRecallState() throws Exception {
+        String body = traceBody(traceContext("Recall", "2500", "cn", "producer-group", "TopicA",
+                "msg-recall", "false"));
+        MessageExt traceMessage = new MessageExt();
+        traceMessage.setBody(body.getBytes(StandardCharsets.UTF_8));
+        QueryResult queryResult = new QueryResult(0L, List.of(traceMessage));
+        when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
+                .thenReturn(queryResult);
+
+        TraceRecordVO record = provider.getMessageTrace("instance-a", "msg-recall", "TopicA");
+
+        assertThat(record.getNodes()).hasSize(1);
+        TraceNodeVO recall = record.getNodes().get(0);
+        assertThat(recall.getTitle()).isEqualTo("recall");
+        assertThat(recall.getTimestamp()).isEqualTo(2500L);
+        assertThat(recall.getStatus()).isEqualTo("failed");
+        assertThat(recall.getCostTime()).isZero();
+        assertThat(recall.getDescription()).contains("producer-group").contains("TopicA");
+        assertThat(record.getConsumerStatus()).isEmpty();
+    }
+
+    @Test
     void getMessageTraceSurfacesAdminFailure() throws Exception {
         when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
                 .thenThrow(new IllegalStateException("broker unavailable"));

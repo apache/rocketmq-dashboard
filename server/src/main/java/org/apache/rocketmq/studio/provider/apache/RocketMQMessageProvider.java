@@ -397,6 +397,9 @@ public class RocketMQMessageProvider implements MessageProvider {
                     case "EndTransaction":
                         nodes.add(buildTransactionNode(fields));
                         break;
+                    case "Recall":
+                        nodes.add(buildRecallNode(fields));
+                        break;
                     default:
                         // SubBefore and unknown types are not surfaced as timeline nodes.
                         break;
@@ -454,6 +457,18 @@ public class RocketMQMessageProvider implements MessageProvider {
                 .status("finish")
                 .costTime(0L)
                 .description("group=" + field(f, 3) + ", transactionState=" + field(f, 11))
+                .build();
+    }
+
+    // Recall layout (RocketMQ 5.5.0 TraceDataEncoder):
+    //               type, time, region, group, topic, msgId, isSuccess
+    private TraceNodeVO buildRecallNode(String[] f) {
+        return TraceNodeVO.builder()
+                .title("recall")
+                .timestamp(parseLong(field(f, 1)))
+                .status(parseBoolean(field(f, 6)) ? "finish" : "failed")
+                .costTime(0L)
+                .description("group=" + field(f, 3) + ", topic=" + field(f, 4))
                 .build();
     }
 
