@@ -20,6 +20,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.google.common.base.Throwables;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.dashboard.config.RMQConfigure;
 import org.apache.rocketmq.dashboard.model.ConsumerMonitorConfig;
@@ -33,6 +34,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
+@Slf4j
 public class MonitorServiceImpl implements MonitorService {
 
 
@@ -88,15 +90,30 @@ public class MonitorServiceImpl implements MonitorService {
     }
 
     @PostConstruct
-    private void loadData() throws IOException {
-        String content = MixAll.file2String(getConsumerMonitorConfigDataPath());
-        if (content == null) {
-            content = MixAll.file2String(getConsumerMonitorConfigDataPathBackUp());
+    private void loadData() {
+        Map<String, ConsumerMonitorConfig> loadedConfig = loadConfig(getConsumerMonitorConfigDataPath());
+        if (loadedConfig == null) {
+            loadedConfig = loadConfig(getConsumerMonitorConfigDataPathBackUp());
         }
-        if (content == null) {
-            return;
+        configMap = loadedConfig == null ? new ConcurrentHashMap<>() : loadedConfig;
+    }
+
+    private Map<String, ConsumerMonitorConfig> loadConfig(String path) {
+        try {
+            String content = MixAll.file2String(path);
+            if (content == null) {
+                return null;
+            }
+            Map<String, ConsumerMonitorConfig> result = JsonUtil.string2Obj(content,
+                    new TypeReference<ConcurrentHashMap<String, ConsumerMonitorConfig>>() {
+                    });
+            if (result == null) {
+                log.warn("Failed to parse consumer monitor config file: {}", path);
+            }
+            return result;
+        } catch (IOException e) {
+            log.warn("Failed to read consumer monitor config file: {}", path, e);
+            return null;
         }
-        configMap = JsonUtil.string2Obj(content, new TypeReference<ConcurrentHashMap<String, ConsumerMonitorConfig>>() {
-        });
     }
 }
