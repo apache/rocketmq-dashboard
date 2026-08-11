@@ -16,19 +16,15 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { App, Modal } from 'antd';
+import { App } from 'antd';
 import type { K8sCertInfo } from '../../../api/cluster';
-import { listK8sCerts, renewK8sCert } from '../../../services/clusterService';
+import { listK8sCerts } from '../../../services/clusterService';
 import K8sCertsPage from '../certs';
 
 vi.mock('../../../services/clusterService', () => ({
-  createK8sCert: vi.fn(),
-  deleteK8sCert: vi.fn(),
   listK8sCerts: vi.fn(),
-  renewK8sCert: vi.fn(),
-  updateK8sCert: vi.fn(),
 }));
 
 const certs: K8sCertInfo[] = [
@@ -146,27 +142,15 @@ describe('K8sCertsPage', () => {
     expect(screen.queryByText('rocketmq-prod-tls')).not.toBeInTheDocument();
   });
 
-  it('tracks simultaneous certificate renewals independently', async () => {
-    vi.mocked(renewK8sCert).mockImplementation(() => new Promise(() => {}));
-    const confirmSpy = vi.spyOn(Modal, 'confirm');
+  it('does not expose local metadata mutations as Kubernetes certificate operations', async () => {
     renderPage();
 
     await screen.findByText('rocketmq-prod-tls');
-    const renewButtons = screen.getAllByRole('button', { name: /续期/ });
-    fireEvent.click(renewButtons[0]);
-    fireEvent.click(renewButtons[1]);
-    expect(confirmSpy).toHaveBeenCalledTimes(2);
 
-    void confirmSpy.mock.calls[0][0].onOk?.(() => {});
-    void confirmSpy.mock.calls[1][0].onOk?.(() => {});
-
-    await waitFor(() => {
-      expect(renewK8sCert).toHaveBeenCalledWith('cert-prod');
-      expect(renewK8sCert).toHaveBeenCalledWith('cert-staging');
-      expect(renewButtons[0]).toHaveClass('ant-btn-loading');
-      expect(renewButtons[1]).toHaveClass('ant-btn-loading');
-    });
-    confirmSpy.mockRestore();
+    expect(screen.queryByRole('button', { name: '添加证书' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '编辑' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '续期' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '删除' })).not.toBeInTheDocument();
   });
 
   it('trims certificate search text before filtering', async () => {

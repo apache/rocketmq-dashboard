@@ -19,11 +19,8 @@ import { useEffect, useState } from 'react';
 import {
   Table,
   Tag,
-  Button,
   Input,
   Select,
-  Modal,
-  Form,
   Flex,
   Space,
   Typography,
@@ -32,16 +29,9 @@ import {
   message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { EditOutlined, DeleteOutlined, PlusOutlined, SyncOutlined } from '@ant-design/icons';
 import PageHeader from '../../components/PageHeader';
 import type { K8sCertInfo } from '../../api/cluster';
-import {
-  createK8sCert,
-  deleteK8sCert,
-  listK8sCerts,
-  renewK8sCert,
-  updateK8sCert,
-} from '../../services/clusterService';
+import { listK8sCerts } from '../../services/clusterService';
 
 const { Text } = Typography;
 
@@ -57,14 +47,9 @@ const getErrorMessage = (error: unknown): string =>
 const K8sCertsPage = () => {
   const [certs, setCerts] = useState<K8sCertInfo[]>([]);
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [renewingIds, setRenewingIds] = useState<Set<string>>(() => new Set());
   const [certSearch, setCertSearch] = useState('');
   const [certTypeFilter, setCertTypeFilter] = useState<string>('');
   const [certNamespaceFilter, setCertNamespaceFilter] = useState<string>('');
-  const [editModalOpen, setEditModalOpen] = useState(false);
-  const [editingCert, setEditingCert] = useState<K8sCertInfo | null>(null);
-  const [editForm] = Form.useForm();
 
   useEffect(() => {
     let active = true;
@@ -83,54 +68,6 @@ const K8sCertsPage = () => {
     };
   }, []);
 
-  const openCreateModal = () => {
-    setEditingCert(null);
-    editForm.resetFields();
-    editForm.setFieldsValue({ type: 'TLS', namespace: 'default' });
-    setEditModalOpen(true);
-  };
-
-  const closeEditModal = () => {
-    setEditModalOpen(false);
-    setEditingCert(null);
-    editForm.resetFields();
-  };
-
-  const saveCert = async () => {
-    const values = await editForm.validateFields();
-    const data = {
-      name: values.name,
-      namespace: values.namespace,
-      cluster: values.cluster,
-      type: values.type,
-      issuer: values.issuer,
-      san: values.san
-        ? String(values.san)
-            .split(',')
-            .map((value) => value.trim())
-            .filter(Boolean)
-        : [],
-    };
-
-    setSubmitting(true);
-    try {
-      if (editingCert) {
-        const updated = await updateK8sCert({ id: editingCert.id, ...data });
-        setCerts((prev) => prev.map((cert) => (cert.id === updated.id ? updated : cert)));
-        message.success(`证书「${updated.name}」已更新`);
-      } else {
-        const created = await createK8sCert(data);
-        setCerts((prev) => [...prev, created]);
-        message.success(`证书「${created.name}」已创建`);
-      }
-      closeEditModal();
-    } catch (error) {
-      message.error(getErrorMessage(error));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   const normalizedCertSearch = certSearch.trim().toLowerCase();
   const namespaceOptions = Array.from(new Set(certs.map((cert) => cert.namespace)))
     .sort((a, b) => a.localeCompare(b))
@@ -145,24 +82,6 @@ const K8sCertsPage = () => {
     const matchNamespace = !certNamespaceFilter || cert.namespace === certNamespaceFilter;
     return matchSearch && matchType && matchNamespace;
   });
-
-  const renewCert = async (cert: K8sCertInfo) => {
-    setRenewingIds((current) => new Set(current).add(cert.id));
-    try {
-      const renewed = await renewK8sCert(cert.id);
-      setCerts((prev) => prev.map((item) => (item.id === renewed.id ? renewed : item)));
-      message.success(`证书「${renewed.name}」已续期`);
-    } catch (error) {
-      message.error(getErrorMessage(error));
-      throw error;
-    } finally {
-      setRenewingIds((current) => {
-        const next = new Set(current);
-        next.delete(cert.id);
-        return next;
-      });
-    }
-  };
 
   const certColumns: ColumnsType<K8sCertInfo> = [
     {
@@ -274,76 +193,6 @@ const K8sCertsPage = () => {
         return <Tag color={cfg.color}>{cfg.label}</Tag>;
       },
     },
-    {
-      title: '操作',
-      key: 'action',
-      width: 270,
-      render: (_: unknown, record: K8sCertInfo) => (
-        <Flex gap={6}>
-          <Button
-            size="small"
-            icon={<EditOutlined />}
-            style={{ borderColor: '#1677ff', color: '#1677ff' }}
-            onClick={() => {
-              setEditingCert(record);
-              editForm.setFieldsValue({
-                name: record.name,
-                type: record.type,
-                issuer: record.issuer,
-                namespace: record.namespace,
-                cluster: record.cluster,
-                san: record.san?.join(', ') ?? '',
-              });
-              setEditModalOpen(true);
-            }}
-          >
-            编辑
-          </Button>
-          <Button
-            size="small"
-            icon={<SyncOutlined />}
-            loading={renewingIds.has(record.id)}
-            onClick={() => {
-              Modal.confirm({
-                title: '确认续期',
-                content: `确定要为证书 "${record.name}" 续期一年吗？`,
-                okText: '续期',
-                cancelText: '取消',
-                onOk: () => renewCert(record),
-              });
-            }}
-          >
-            续期
-          </Button>
-          <Button
-            size="small"
-            icon={<DeleteOutlined />}
-            style={{ borderColor: '#ff4d4f', color: '#ff4d4f' }}
-            onClick={() => {
-              Modal.confirm({
-                title: '确认删除',
-                content: `确定要删除证书 "${record.name}" 吗？`,
-                okText: '确认',
-                cancelText: '取消',
-                okButtonProps: { danger: true },
-                onOk: async () => {
-                  try {
-                    await deleteK8sCert(record.id);
-                    setCerts((prev) => prev.filter((c) => c.id !== record.id));
-                    message.success(`证书已删除: ${record.name}`);
-                  } catch (error) {
-                    message.error(getErrorMessage(error));
-                    throw error;
-                  }
-                },
-              });
-            }}
-          >
-            删除
-          </Button>
-        </Flex>
-      ),
-    },
   ];
 
   return (
@@ -351,11 +200,6 @@ const K8sCertsPage = () => {
       <PageHeader
         title="K8s 证书管理"
         subtitle={`共 ${filteredCerts.length} 个证书`}
-        extra={
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
-            添加证书
-          </Button>
-        }
       />
       <Alert
         data-testid="k8s-cert-local-metadata-notice"
@@ -406,64 +250,6 @@ const K8sCertsPage = () => {
         />
       </Card>
 
-      {/* Edit Cert Modal */}
-      <Modal
-        title={editingCert ? `编辑证书 — ${editingCert.name}` : '添加证书'}
-        open={editModalOpen}
-        onCancel={closeEditModal}
-        onOk={saveCert}
-        confirmLoading={submitting}
-        okText="保存"
-        cancelText="取消"
-        width={520}
-      >
-        <Form form={editForm} layout="vertical" style={{ marginTop: 16 }}>
-          <Form.Item
-            label="证书名称"
-            name="name"
-            rules={[{ required: true, message: '请输入证书名称' }]}
-          >
-            <Input placeholder="例：rocketmq-tls" disabled={Boolean(editingCert)} />
-          </Form.Item>
-          <Form.Item
-            label="K8s 集群名称"
-            name="cluster"
-            rules={[{ required: true, message: '请输入集群名称' }]}
-          >
-            <Input placeholder="例：prod-cluster" />
-          </Form.Item>
-          <Form.Item
-            label="类型"
-            name="type"
-            rules={[{ required: true, message: '请选择证书类型' }]}
-          >
-            <Select
-              options={[
-                { value: 'TLS', label: 'TLS' },
-                { value: 'mTLS', label: 'mTLS' },
-                { value: 'ServiceAccount', label: 'ServiceAccount' },
-              ]}
-            />
-          </Form.Item>
-          <Form.Item
-            label="签发者"
-            name="issuer"
-            rules={[{ required: true, message: '请输入签发者' }]}
-          >
-            <Input placeholder="例：kubernetes-ca" />
-          </Form.Item>
-          <Form.Item
-            label="命名空间"
-            name="namespace"
-            rules={[{ required: true, message: '请输入命名空间' }]}
-          >
-            <Input placeholder="例：kube-system" />
-          </Form.Item>
-          <Form.Item label="SAN" name="san" tooltip="多个域名或 IP 使用英文逗号分隔">
-            <Input placeholder="例：broker.example.com, *.rocketmq.example.com" />
-          </Form.Item>
-        </Form>
-      </Modal>
     </div>
   );
 };
