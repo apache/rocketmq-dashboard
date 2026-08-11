@@ -46,8 +46,15 @@ public class ClusterInfoService {
 
     @PostConstruct
     public void init() {
-        scheduler.scheduleAtFixedRate(this::refresh,
+        scheduler.scheduleAtFixedRate(this::refreshSafely,
                 0, cacheExpireMs / 2, TimeUnit.MILLISECONDS);
+    }
+
+    void refreshSafely() {
+        try {
+            refresh();
+        } catch (RuntimeException ignored) {
+        }
     }
 
     public ClusterInfo get() {
