@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.provider.tencent;
 
 import com.tencentcloudapi.trocket.v20230308.models.CreateTopicRequest;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicListResponse;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicRequest;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicResponse;
 import com.tencentcloudapi.trocket.v20230308.models.ModifyTopicRequest;
 import com.tencentcloudapi.trocket.v20230308.models.SubscriptionData;
@@ -38,10 +39,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -165,11 +168,46 @@ class TencentInstanceProviderTest {
         assertThat(consumers.get(0).getDiffTotal()).isEqualTo(42L);
     }
 
+    @Test
+    void getTopicConsumersShouldReadEverySubscriptionPageTest() throws Exception {
+        DescribeTopicResponse firstPage = new DescribeTopicResponse();
+        firstPage.setSubscriptionCount(101L);
+        firstPage.setSubscriptionData(IntStream.range(0, 100)
+                .mapToObj(index -> subscription("GID_" + index))
+                .toArray(SubscriptionData[]::new));
+        DescribeTopicResponse secondPage = new DescribeTopicResponse();
+        secondPage.setSubscriptionCount(101L);
+        secondPage.setSubscriptionData(new SubscriptionData[]{subscription("GID_100")});
+        when(client.DescribeTopic(any())).thenReturn(firstPage, secondPage);
+
+        List<TopicConsumerVO> consumers = provider.getTopicConsumers(STUDIO_INSTANCE_ID, "orders");
+
+        assertThat(consumers).hasSize(101);
+        assertThat(consumers.get(0).getGroup()).isEqualTo("GID_0");
+        assertThat(consumers.get(100).getGroup()).isEqualTo("GID_100");
+        ArgumentCaptor<DescribeTopicRequest> captor = ArgumentCaptor.forClass(DescribeTopicRequest.class);
+        verify(client, times(2)).DescribeTopic(captor.capture());
+        assertThat(captor.getAllValues())
+                .extracting(DescribeTopicRequest::getOffset)
+                .containsExactly(0L, 100L);
+        assertThat(captor.getAllValues())
+                .extracting(DescribeTopicRequest::getLimit)
+                .containsOnly(100L);
+    }
+
     private static TopicItem topicItem(String name, String type, long queueNum) {
         TopicItem item = new TopicItem();
         item.setTopic(name);
         item.setTopicType(type);
         item.setQueueNum(queueNum);
         return item;
+    }
+
+    private static SubscriptionData subscription(String group) {
+        SubscriptionData subscription = new SubscriptionData();
+        subscription.setConsumerGroup(group);
+        subscription.setConsumeType("CLUSTERING");
+        subscription.setMessageModel("CLUSTERING");
+        return subscription;
     }
 }
