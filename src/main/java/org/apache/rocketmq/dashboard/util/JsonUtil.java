@@ -90,7 +90,6 @@ public class JsonUtil {
         if (Strings.isNullOrEmpty(str) || clazz == null) {
             return null;
         }
-        str = escapesSpecialChar(str);
         try {
             return clazz.equals(String.class) ? (T) str : objectMapper.readValue(str, clazz);
         } catch (Exception e) {
@@ -115,7 +114,6 @@ public class JsonUtil {
         if (Strings.isNullOrEmpty(str) || typeReference == null) {
             return null;
         }
-        str = escapesSpecialChar(str);
         try {
             return (T) (typeReference.getType().equals(String.class) ? str : objectMapper.readValue(str, typeReference));
         } catch (Exception e) {
@@ -142,9 +140,5 @@ public class JsonUtil {
     public static <T> T map2Obj(Map<String, String> map, Class<T> clazz) {
         String str = obj2String(map);
         return string2Obj(str, clazz);
-    }
-
-    private static String escapesSpecialChar(String str) {
-        return str.replace("\n", "\\n").replace("\r", "\\r");
     }
 }
