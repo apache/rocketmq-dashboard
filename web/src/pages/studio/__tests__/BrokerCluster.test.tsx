@@ -174,6 +174,15 @@ describe('BrokerCluster Page', () => {
     expect(listClusters).toHaveBeenCalledWith('instance-1');
   });
 
+  it('does not fall back to an unscoped cluster query when instance discovery fails', async () => {
+    vi.mocked(listInstances).mockRejectedValueOnce(new Error('instance discovery failed'));
+    renderWithProviders(<BrokerCluster />);
+
+    await waitFor(() => expect(listInstances).toHaveBeenCalledTimes(1));
+    expect(listClusters).not.toHaveBeenCalled();
+    expect(screen.queryByText('broker-api-a')).not.toBeInTheDocument();
+  });
+
   it('should display broker status tags', async () => {
     renderWithProviders(<BrokerCluster />);
     await screen.findAllByText('broker-api-a');
