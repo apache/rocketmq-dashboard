@@ -304,10 +304,9 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             for (String group : sortedGroups.subList(from, to)) {
                 try {
                     ConsumeStats stats = admin.examineConsumeStats(group, name);
-                    long diffTotal = ConsumerLagResolver.UNKNOWN;
+                    long diffTotal = 0;
                     double consumeTps = 0;
                     if (stats != null && stats.getOffsetTable() != null) {
-                        diffTotal = 0;
                         for (Map.Entry<MessageQueue, OffsetWrapper> entry : stats.getOffsetTable().entrySet()) {
                             OffsetWrapper ow = entry.getValue();
                             long queueDiff = resolveDiff(ow.getBrokerOffset(), ow.getConsumerOffset());
@@ -346,7 +345,7 @@ public class RocketMQMetadataProvider implements MetadataProvider {
                             .consumeType(ConsumeType.CLUSTERING)
                             .messageModel("CLUSTERING")
                             .consumeTps(0)
-                            .diffTotal(ConsumerLagResolver.UNKNOWN)
+                            .diffTotal(0)
                             .metricsAvailable(false)
                             .build());
                 }

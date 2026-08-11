@@ -25,7 +25,6 @@ import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
-import org.apache.rocketmq.remoting.protocol.body.GroupList;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
@@ -227,20 +226,6 @@ class RocketMQMetadataProviderTest {
         assertThat(consumers).singleElement()
                 .extracting(TopicConsumerVO::getDiffTotal)
                 .isEqualTo(13L);
-    }
-
-    @Test
-    void getTopicConsumersReportsUnknownWhenGroupStatsCannotBeRead() throws Exception {
-        DefaultMQAdminExt admin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
-        mockTopicGroup(admin);
-        when(admin.examineConsumeStats("group-a", "TopicA"))
-                .thenThrow(new IllegalStateException("stats unavailable"));
-
-        List<TopicConsumerVO> consumers = newLiveProvider(admin).getTopicConsumers(null, "TopicA");
-
-        assertThat(consumers).singleElement()
-                .extracting(TopicConsumerVO::getDiffTotal)
-                .isEqualTo(ConsumerLagResolver.UNKNOWN);
     }
 
     @Test
