@@ -16,54 +16,160 @@
  */
 package org.apache.rocketmq.studio.provider.tencent;
 
+import com.tencentcloudapi.trocket.v20230308.models.CreateTopicRequest;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicListResponse;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicResponse;
+import com.tencentcloudapi.trocket.v20230308.models.ModifyTopicRequest;
+import com.tencentcloudapi.trocket.v20230308.models.SubscriptionData;
+import com.tencentcloudapi.trocket.v20230308.models.TopicItem;
+import com.tencentcloudapi.trocket.v20230308.TrocketClient;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
-import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
+import org.apache.rocketmq.studio.common.domain.enums.TopicType;
+import org.apache.rocketmq.studio.instance.InstanceRepository;
+import org.apache.rocketmq.studio.instance.InstanceVO;
+import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+@ExtendWith(MockitoExtension.class)
 class TencentInstanceProviderTest {
 
-    private final TencentInstanceProvider provider = new TencentInstanceProvider();
+    private static final String STUDIO_INSTANCE_ID = "inst-1";
+    private static final String CLOUD_INSTANCE_ID = "rmq-abc";
+    private static final String REGION = "ap-chengdu";
+    private static final String CREDENTIAL_ID = "cred-1";
 
-    @Test
-    void vendorShouldBeTencentTest() {
-        assertThat(provider.vendor()).isEqualTo(InstanceVendor.TENCENT);
+    @Mock
+    private TencentClientFactory clientFactory;
+
+    @Mock
+    private InstanceRepository instanceRepository;
+
+    @Mock
+    private TrocketClient client;
+
+    private TencentInstanceProvider provider;
+
+    @BeforeEach
+    void setUp() {
+        provider = new TencentInstanceProvider(clientFactory, instanceRepository);
+        when(instanceRepository.findById(STUDIO_INSTANCE_ID)).thenReturn(Optional.of(InstanceVO.builder()
+                .name("tencent-prod")
+                .vendor(InstanceVendor.TENCENT)
+                .cloudInstanceId(CLOUD_INSTANCE_ID)
+                .regionId(REGION)
+                .credentialId(CREDENTIAL_ID)
+                .build()));
+        when(clientFactory.call(anyString(), anyString(), any())).thenAnswer(invocation -> {
+            TencentClientFactory.TencentCall<Object> action = invocation.getArgument(2);
+            return action.execute(client);
+        });
     }
 
     @Test
-    void allOperationsShouldThrowUnsupportedTest() {
-        assertThatThrownBy(() -> provider.countTopics("inst"))
-                .isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> provider.countGroups("inst"))
-                .isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> provider.listTopics("inst", null, null))
-                .isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> provider.createTopic("inst", new TopicVO()))
-                .isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> provider.updateTopic("inst", new TopicVO()))
-                .isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> provider.deleteTopic("inst", "topic"))
-                .isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> provider.getTopicConsumers("inst", "topic"))
-                .isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> provider.listConsumerGroups("inst", null))
-                .isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> provider.createConsumerGroup("inst", new ConsumerGroupVO()))
-                .isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> provider.deleteConsumerGroup("inst", "group"))
-                .isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> provider.getGroupProgress("inst", "group"))
-                .isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> provider.getGroupSubscriptions("inst", "group"))
-                .isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> provider.resetOffset("inst", "group", 1L, "topic"))
-                .isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> provider.queryMessages("inst", "topic", null, null, null, null, null))
-                .isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> provider.getMessageTrace("inst", "msg"))
-                .isInstanceOf(UnsupportedOperationException.class);
+    void listTopicsShouldMapAndFilterAndEnrichTimesTest() throws Exception {
+        TopicItem normal = topicItem("orders", "NORMAL", 8L);
+        TopicItem fifo = topicItem("orders-fifo", "FIFO", 4L);
+        DescribeTopicListResponse response = new DescribeTopicListResponse();
+        response.setData(new TopicItem[]{normal, fifo});
+        when(client.DescribeTopicList(any())).thenReturn(response);
+        DescribeTopicResponse detail = new DescribeTopicResponse();
+        detail.setCreatedTime(1600000000000L);
+        detail.setLastUpdateTime(1600000100000L);
+        when(client.DescribeTopic(any())).thenReturn(detail);
+
+        List<TopicVO> topics = provider.listTopics(STUDIO_INSTANCE_ID, "FIFO", "fifo");
+
+        assertThat(topics).hasSize(1);
+        assertThat(topics.get(0).getName()).isEqualTo("orders-fifo");
+        assertThat(topics.get(0).getType()).isEqualTo(TopicType.FIFO);
+        assertThat(topics.get(0).getWriteQueues()).isEqualTo(4);
+        assertThat(topics.get(0).getReadQueues()).isEqualTo(4);
+        assertThat(topics.get(0).getInstanceId()).isEqualTo(STUDIO_INSTANCE_ID);
+        assertThat(topics.get(0).getCreatedAt())
+                .isEqualTo(java.time.Instant.ofEpochMilli(1600000000000L)
+                        .atZone(java.time.ZoneId.systemDefault()).toLocalDateTime());
+        assertThat(topics.get(0).getUpdatedAt())
+                .isEqualTo(java.time.Instant.ofEpochMilli(1600000100000L)
+                        .atZone(java.time.ZoneId.systemDefault()).toLocalDateTime());
+    }
+
+    @Test
+    void createTopicShouldCallTencentOpenApiTest() throws Exception {
+        when(client.CreateTopic(any())).thenReturn(null);
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+        topic.setType(TopicType.NORMAL);
+        topic.setWriteQueues(12);
+        topic.setRemark("business orders");
+
+        TopicVO created = provider.createTopic(STUDIO_INSTANCE_ID, topic);
+
+        ArgumentCaptor<CreateTopicRequest> captor = ArgumentCaptor.forClass(CreateTopicRequest.class);
+        verify(client).CreateTopic(captor.capture());
+        assertThat(captor.getValue().getInstanceId()).isEqualTo(CLOUD_INSTANCE_ID);
+        assertThat(captor.getValue().getTopic()).isEqualTo("orders");
+        assertThat(captor.getValue().getTopicType()).isEqualTo("NORMAL");
+        assertThat(captor.getValue().getQueueNum()).isEqualTo(12L);
+        assertThat(created.getInstanceId()).isEqualTo(STUDIO_INSTANCE_ID);
+    }
+
+    @Test
+    void updateAndDeleteTopicShouldCallTencentOpenApiTest() throws Exception {
+        when(client.ModifyTopic(any())).thenReturn(null);
+        when(client.DeleteTopic(any())).thenReturn(null);
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+        topic.setType(TopicType.NORMAL);
+        topic.setRemark("updated");
+
+        provider.updateTopic(STUDIO_INSTANCE_ID, topic);
+        provider.deleteTopic(STUDIO_INSTANCE_ID, "orders");
+
+        ArgumentCaptor<ModifyTopicRequest> updateCaptor = ArgumentCaptor.forClass(ModifyTopicRequest.class);
+        verify(client).ModifyTopic(updateCaptor.capture());
+        assertThat(updateCaptor.getValue().getInstanceId()).isEqualTo(CLOUD_INSTANCE_ID);
+        assertThat(updateCaptor.getValue().getTopic()).isEqualTo("orders");
+        assertThat(updateCaptor.getValue().getRemark()).isEqualTo("updated");
+    }
+
+    @Test
+    void getTopicConsumersShouldMapSubscriptionsTest() throws Exception {
+        SubscriptionData subscription = new SubscriptionData();
+        subscription.setConsumerGroup("GID_orders");
+        subscription.setConsumeType("CLUSTERING");
+        subscription.setMessageModel("CLUSTERING");
+        subscription.setConsumerLag(42L);
+        DescribeTopicResponse response = new DescribeTopicResponse();
+        response.setSubscriptionData(new SubscriptionData[]{subscription});
+        when(client.DescribeTopic(any())).thenReturn(response);
+
+        List<TopicConsumerVO> consumers = provider.getTopicConsumers(STUDIO_INSTANCE_ID, "orders");
+
+        assertThat(consumers).hasSize(1);
+        assertThat(consumers.get(0).getGroup()).isEqualTo("GID_orders");
+        assertThat(consumers.get(0).getDiffTotal()).isEqualTo(42L);
+    }
+
+    private static TopicItem topicItem(String name, String type, long queueNum) {
+        TopicItem item = new TopicItem();
+        item.setTopic(name);
+        item.setTopicType(type);
+        item.setQueueNum(queueNum);
+        return item;
     }
 }
