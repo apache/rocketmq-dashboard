@@ -36,6 +36,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -789,6 +790,41 @@ class InstanceServiceTest {
         assertThat(created.getName()).isEqualTo("prod-mq");
         assertThat(created.getEndpoint()).isEqualTo("vpc:8080");
         assertThat(created.getType()).isEqualTo(InstanceType.PROXY);
+    }
+
+    @Test
+    void createInstanceShouldPrioritizeEndpointsIndependentlyOfDefaultLocaleTest() {
+        InstanceVO instance = InstanceVO.builder()
+                .vendor(InstanceVendor.ALIYUN)
+                .credentialId("cred-1")
+                .cloudInstanceId("rmq-cn-xxx")
+                .regionId("cn-hangzhou")
+                .build();
+        CloudCredentialVO credential = new CloudCredentialVO();
+        credential.setId("cred-1");
+        credential.setVendor(InstanceVendor.ALIYUN);
+        when(cloudCredentialRepository.findById("cred-1")).thenReturn(Optional.of(credential));
+        CloudCatalogProvider catalog = org.mockito.Mockito.mock(CloudCatalogProvider.class);
+        CloudInstanceDetailVO detail = new CloudInstanceDetailVO();
+        detail.setInstanceId("rmq-cn-xxx");
+        detail.setInstanceName("prod-mq");
+        detail.setEndpoints(List.of(
+                new CloudInstanceDetailVO.CloudEndpoint("unknown", "fallback:8080"),
+                new CloudInstanceDetailVO.CloudEndpoint("tcp_internet", "public:8080")));
+        when(providerRegistry.catalogFor(InstanceVendor.ALIYUN)).thenReturn(catalog);
+        when(catalog.getCloudInstance("cred-1", "cn-hangzhou", "rmq-cn-xxx")).thenReturn(detail);
+        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        Locale originalLocale = Locale.getDefault();
+
+        InstanceVO created;
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+            created = instanceService.createInstance(instance);
+        } finally {
+            Locale.setDefault(originalLocale);
+        }
+
+        assertThat(created.getEndpoint()).isEqualTo("public:8080");
     }
 
     @Test
