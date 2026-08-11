@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Button,
   Checkbox,
@@ -108,10 +108,11 @@ const withoutSecrets = (values: DataSourceFormValues): Partial<DataSource> => {
 
 // ─── General Settings Tab ───────────────────────────────────────────────────
 
-const GeneralSettingsTab = () => {
+export const GeneralSettingsTab = () => {
   const [form] = Form.useForm<GeneralSettingsUpdate>();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const saveInFlightRef = useRef(false);
   const [apiKeyConfigured, setApiKeyConfigured] = useState(false);
   const clearApiKey = Form.useWatch('clearApiKey', form);
 
@@ -137,6 +138,8 @@ const GeneralSettingsTab = () => {
   }, [form]);
 
   const handleFinish = async (values: GeneralSettingsUpdate) => {
+    if (saveInFlightRef.current) return;
+    saveInFlightRef.current = true;
     setSaving(true);
     try {
       await saveGeneralSettings(values);
@@ -148,6 +151,7 @@ const GeneralSettingsTab = () => {
     } catch {
       message.error('设置保存失败，请稍后重试');
     } finally {
+      saveInFlightRef.current = false;
       setSaving(false);
     }
   };
