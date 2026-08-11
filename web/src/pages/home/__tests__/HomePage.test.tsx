@@ -94,6 +94,7 @@ describe('HomePage LLM models', () => {
           prompt: '查看集群状态',
           model: 'qwen3.8-max',
           engine: 'claude-code',
+          mode: 'chat',
         },
       });
     });

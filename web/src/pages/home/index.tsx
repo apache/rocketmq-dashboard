@@ -192,6 +192,7 @@ const HomePage = () => {
             prompt,
             ...(selectedModel ? { model: selectedModel } : {}),
             engine,
+            mode: activeMode,
             ...(promoteOn ? { enhance: true } : {}),
           }
         : null,

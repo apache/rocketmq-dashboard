@@ -21,7 +21,7 @@ import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { MemoryRouter } from 'react-router-dom';
 import { LangProvider } from '../../../i18n/LangContext';
-import { executeTool, listTools } from '../../../api/ai';
+import { chatStream, executeTool, listTools } from '../../../api/ai';
 import { listClusters, type ClusterInfo } from '../../../api/cluster';
 import { getLlmConfig, getLlmModels } from '../../../api/llm';
 import AiPage from '../index';
@@ -59,11 +59,11 @@ beforeAll(() => {
   Element.prototype.scrollIntoView = vi.fn();
 });
 
-const renderPage = () =>
+const renderPage = (state?: unknown) =>
   render(
     <App>
       <LangProvider>
-        <MemoryRouter initialEntries={['/ai']}>
+        <MemoryRouter initialEntries={[state === undefined ? '/ai' : { pathname: '/ai', state }]}>
           <AiPage />
         </MemoryRouter>
       </LangProvider>
@@ -103,6 +103,20 @@ describe('AiPage tool runner', () => {
         permission: 'cluster:read',
       },
     ]);
+  });
+
+  it('uses the mode carried from the home-page draft', async () => {
+    vi.mocked(chatStream).mockResolvedValue(undefined);
+    renderPage({ prompt: '检查集群状态', mode: 'diagnose' });
+
+    await waitFor(() => {
+      expect(chatStream).toHaveBeenCalledWith(
+        expect.objectContaining({ message: '检查集群状态', mode: 'diagnose' }),
+        expect.any(Function),
+        expect.any(AbortSignal),
+        expect.any(Function),
+      );
+    });
   });
 
   it('loads the catalog, creates a schema template, and renders structured output', async () => {
