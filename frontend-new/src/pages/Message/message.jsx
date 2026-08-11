@@ -22,6 +22,7 @@ import {SearchOutlined} from '@ant-design/icons';
 import {useLanguage} from '../../i18n/LanguageContext';
 import MessageDetailViewDialog from "../../components/MessageDetailViewDialog"; // Keep this path
 import {remoteApi} from '../../api/remoteApi/remoteApi'; // Keep this path
+import {validateMessageTimeRange} from './messageQueryValidation';
 
 const {TabPane} = Tabs;
 const {Option} = Select;
@@ -102,8 +103,13 @@ const MessageQueryPage = () => {
             });
             return;
         }
-        if (timepickerEnd.valueOf() < timepickerBegin.valueOf()) {
-            notificationApi.error({message: t.ERROR, description: t.END_TIME_EARLIER_THAN_BEGIN_TIME});
+        const timeRangeError = validateMessageTimeRange(timepickerBegin, timepickerEnd);
+        if (timeRangeError === 'required') {
+            notificationApi.warning({message: t.WARNING, description: t.PLEASE_SELECT_TIME_RANGE});
+            return;
+        }
+        if (timeRangeError === 'order') {
+            notificationApi.error({message: t.ERROR, description: t.END_TIME_LATER_THAN_BEGIN_TIME});
             return;
         }
 
