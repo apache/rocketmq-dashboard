@@ -649,6 +649,7 @@ class InstanceServiceTest {
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
         when(instanceProvider.countTopics("inst-1")).thenReturn(0);
         when(instanceProvider.countGroups("inst-1")).thenReturn(0);
+        when(instanceRepository.deleteById("inst-1")).thenReturn(true);
 
         instanceService.deleteInstance("inst-1");
 
@@ -707,11 +708,32 @@ class InstanceServiceTest {
         when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(existing));
         when(instanceRepository.findAll()).thenReturn(List.of());
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceRepository.deleteById("inst-1")).thenReturn(true);
 
         instanceService.deleteInstance("inst-1");
 
         verify(instanceRepository).deleteById("inst-1");
         verify(adminFactory).release("namesrv:9876");
+    }
+
+    @Test
+    void deleteInstanceShouldRejectConcurrentRemoval() {
+        InstanceVO existing = InstanceVO.builder()
+                .name("concurrently-removed")
+                .endpoint("namesrv:9876")
+                .build();
+        existing.setId("inst-1");
+        when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(existing));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceRepository.deleteById("inst-1")).thenReturn(false);
+
+        assertThatThrownBy(() -> instanceService.deleteInstance("inst-1"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("InstanceVO not found: inst-1")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
+
+        verify(adminFactory, never()).release(any());
+        verifyNoInteractions(operationAuditService);
     }
 
     @Test

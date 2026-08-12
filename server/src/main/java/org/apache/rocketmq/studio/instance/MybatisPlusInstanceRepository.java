@@ -107,8 +107,8 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
     }
 
     @Override
-    public void deleteById(String id) {
-        instanceMapper.deleteById(id);
+    public boolean deleteById(String id) {
+        return instanceMapper.deleteById(id) > 0;
     }
 
     @Override
