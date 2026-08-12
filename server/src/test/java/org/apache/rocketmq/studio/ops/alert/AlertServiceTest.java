@@ -35,6 +35,7 @@ import java.util.Locale;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -453,6 +454,34 @@ class AlertServiceTest {
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
 
         verify(alertRepository, never()).saveRule(any());
+    }
+
+    @Test
+    void createRuleShouldRejectBlankName() {
+        AlertRuleVO input = AlertRuleVO.builder().name(" ").metric("tps").build();
+
+        assertThatThrownBy(() -> alertService.createRule(input))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Alert rule name is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verify(alertRepository, never()).saveRule(any());
+        verify(operationAuditService, never()).record(anyString(), anyString(), anyString(),
+                any(), any(), anyString(), any());
+    }
+
+    @Test
+    void updateRuleShouldRejectBlankNameBeforeRepositoryUpdate() {
+        AlertRuleVO update = AlertRuleVO.builder().id("rule-1").name(" ").metric("tps").build();
+
+        assertThatThrownBy(() -> alertService.updateRule(update))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Alert rule name is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verify(alertRepository, never()).replaceRule(any());
+        verify(operationAuditService, never()).record(anyString(), anyString(), anyString(),
+                any(), any(), anyString(), any());
     }
 
     @Test
