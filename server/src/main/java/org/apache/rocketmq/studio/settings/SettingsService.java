@@ -104,6 +104,7 @@ public class SettingsService {
 
     public synchronized void saveGeneralSettings(GeneralSettingsVO settings) {
         log.info("Saving general settings");
+        validateLlmBaseUrl(settings.getBaseUrl());
         GeneralSettingsVO currentSettings = settingsRepository.loadGeneralSettings();
         if (settings.isClearApiKey()) {
             settings.setApiKey("");
@@ -113,6 +114,17 @@ public class SettingsService {
         settings.setClearApiKey(false);
         settingsRepository.saveGeneralSettings(settings);
         recordSettingsAudit();
+    }
+
+    private void validateLlmBaseUrl(String baseUrl) {
+        if (!StringUtils.hasText(baseUrl)) {
+            return;
+        }
+        try {
+            UrlHostGuard.check(baseUrl, true);
+        } catch (IllegalArgumentException exception) {
+            throw new BusinessException(400, "Invalid LLM base URL: " + exception.getMessage());
+        }
     }
 
     private void recordSettingsAudit() {

@@ -132,6 +132,30 @@ class SettingsServiceTest {
     }
 
     @Test
+    void saveGeneralSettingsShouldRejectMetadataLlmBaseUrlBeforePersisting() {
+        GeneralSettingsVO update = GeneralSettingsVO.builder()
+                .baseUrl("http://169.254.169.254/latest/meta-data")
+                .build();
+
+        assertThatThrownBy(() -> settingsService.saveGeneralSettings(update))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("LLM base URL")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+        verify(settingsRepository, never()).saveGeneralSettings(any());
+    }
+
+    @Test
+    void saveGeneralSettingsShouldAllowLoopbackForLocalLlmGateways() {
+        GeneralSettingsVO update = GeneralSettingsVO.builder()
+                .baseUrl("http://localhost:11434/v1")
+                .build();
+
+        settingsService.saveGeneralSettings(update);
+
+        verify(settingsRepository).saveGeneralSettings(update);
+    }
+
+    @Test
     void saveGeneralSettingsShouldReplaceExistingApiKey() {
         GeneralSettingsVO existing = GeneralSettingsVO.builder()
                 .apiKey("sk-existing")
