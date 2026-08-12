@@ -361,6 +361,22 @@ class AliyunInstanceProviderTest {
     }
 
     @Test
+    void getMessageTraceShouldReturnEmptyTraceWhenAliyunDataIsNullTest() {
+        stubInstance();
+        stubCallThrough();
+        GetTraceResponse response = GetTraceResponse.create().toBuilder()
+                .statusCode(200)
+                .body(GetTraceResponseBody.builder().data(null).build())
+                .build();
+        when(asyncClient.getTrace(any())).thenReturn(CompletableFuture.completedFuture(response));
+
+        TraceRecordVO trace = provider.getMessageTrace(STUDIO_INSTANCE_ID, "msg-without-trace");
+
+        assertThat(trace.getNodes()).isEmpty();
+        assertThat(trace.getConsumerStatus()).isEmpty();
+    }
+
+    @Test
     void mappedBusinessExceptionShouldPropagateTest() {
         stubInstance();
         when(clientFactory.call(anyString(), anyString(), any()))

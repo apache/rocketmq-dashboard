@@ -61,6 +61,7 @@ import org.springframework.stereotype.Component;
 import lombok.RequiredArgsConstructor;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -442,8 +443,8 @@ public class AliyunInstanceProvider implements InstanceProvider {
         GetTraceResponseBody.Data data = body == null ? null : body.getData();
         if (data == null) {
             return TraceRecordVO.builder()
-                    .nodes(java.util.Collections.emptyList())
-                    .consumerStatus(java.util.Collections.emptyList())
+                    .nodes(Collections.emptyList())
+                    .consumerStatus(Collections.emptyList())
                     .build();
         }
         return AliyunConverters.toTraceRecord(data);
