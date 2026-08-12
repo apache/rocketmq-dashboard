@@ -137,6 +137,7 @@ const DashboardPage = () => {
   }
 
   const { stats, clusters } = visibleDashboard;
+  const topologyCount = (value: number | null) => value ?? t('common.na');
 
   const statCards = [
     {
@@ -145,7 +146,7 @@ const DashboardPage = () => {
       icon: <ClusterOutlined style={{ fontSize: 22, color: '#52c41a' }} />,
       color: '#52c41a',
       suffix: '',
-      detail: `${stats.totalBrokers} Brokers · ${stats.totalProxies} Proxy`,
+      detail: `${stats.totalBrokers} Brokers · ${topologyCount(stats.totalProxies)} Proxy · ${topologyCount(stats.totalNameServers)} NameServer`,
     },
     {
       title: t('dashboard.topics'),
@@ -218,7 +219,7 @@ const DashboardPage = () => {
       key: 'proxies',
       width: 80,
       align: 'center' as const,
-      render: (v: number) => Math.max(0, v),
+      render: (v: number | null) => (v === null ? t('common.na') : Math.max(0, v)),
     },
     {
       title: t('dashboard.topic'),

@@ -36,7 +36,7 @@ public class ClusterOverviewVO {
     private ClusterType type;
     private ClusterStatus status;
     private int brokers;
-    private int proxies;
+    private Integer proxies;
     private int topics;
     private int groups;
     private long tpsIn;

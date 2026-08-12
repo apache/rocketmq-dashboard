@@ -30,8 +30,8 @@ public class DashboardStatsVO {
     private int totalClusters;
     private int healthyClusters;
     private int totalBrokers;
-    private int totalProxies;
-    private int totalNameServers;
+    private Integer totalProxies;
+    private Integer totalNameServers;
     private int totalTopics;
     private int totalConsumerGroups;
     private long totalMessagesToday;

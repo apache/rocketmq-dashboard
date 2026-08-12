@@ -69,7 +69,10 @@ class RocketMQDashboardProviderTest {
         assertThat(dashboard.getClusters()).hasSize(1);
         assertThat(dashboard.getClusters().get(0).getVersion()).isEqualTo("V5_3_3");
         assertThat(dashboard.getClusters().get(0).getType()).isEqualTo(ClusterType.V5_PROXY_CLUSTER);
+        assertThat(dashboard.getClusters().get(0).getProxies()).isNull();
         assertThat(dashboard.getStats().getHealthyClusters()).isEqualTo(1);
+        assertThat(dashboard.getStats().getTotalProxies()).isNull();
+        assertThat(dashboard.getStats().getTotalNameServers()).isEqualTo(1);
         verify(adminExt, times(1)).fetchBrokerRuntimeStats("10.0.0.11:10911");
     }
 
@@ -259,7 +262,7 @@ class RocketMQDashboardProviderTest {
         RuntimeAdminClientResolver resolver = mock(RuntimeAdminClientResolver.class);
         InstanceVO instance = InstanceVO.builder()
                 .type(InstanceType.DIRECT)
-                .endpoint("namesrv-direct:9876")
+                .endpoint("namesrv-a:9876; namesrv-b:9876,namesrv-a:9876")
                 .build();
         instance.setId("instance-direct");
         when(resolver.resolveInstance("instance-direct")).thenReturn(instance);
@@ -273,7 +276,34 @@ class RocketMQDashboardProviderTest {
 
         assertThat(dashboard.getClusters()).hasSize(1);
         assertThat(dashboard.getClusters().get(0).getType()).isEqualTo(ClusterType.V4_DIRECT);
+        assertThat(dashboard.getClusters().get(0).getProxies()).isZero();
+        assertThat(dashboard.getStats().getTotalProxies()).isZero();
+        assertThat(dashboard.getStats().getTotalNameServers()).isEqualTo(2);
         verify(resolver).execute(eq(instance), any());
+    }
+
+    @Test
+    void dashboardShouldNotReportUnknownProxyTopologyAsZero() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RuntimeAdminClientResolver resolver = mock(RuntimeAdminClientResolver.class);
+        InstanceVO instance = InstanceVO.builder()
+                .type(InstanceType.PROXY)
+                .endpoint("proxy.example.com:8081")
+                .build();
+        instance.setId("instance-proxy");
+        when(resolver.resolveInstance("instance-proxy")).thenReturn(instance);
+        when(resolver.execute(eq(instance), any())).thenAnswer(invocation ->
+                invocation.<MqAdminExtFactory.AdminAction<DashboardDataVO>>getArgument(1).apply(adminExt));
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
+
+        DashboardDataVO dashboard = newProvider(adminExt, resolver).getDashboardData("instance-proxy");
+
+        assertThat(dashboard.getStats().getTotalProxies()).isNull();
+        assertThat(dashboard.getStats().getTotalNameServers()).isNull();
+        assertThat(dashboard.getClusters()).singleElement()
+                .extracting(cluster -> cluster.getProxies())
+                .isNull();
     }
 
     @Test

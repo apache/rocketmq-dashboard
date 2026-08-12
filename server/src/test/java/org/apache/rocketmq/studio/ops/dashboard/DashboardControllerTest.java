@@ -118,6 +118,28 @@ class DashboardControllerTest {
     }
 
     @Test
+    void getDashboardShouldPreserveUnavailableTopologyCountsAsNull() throws Exception {
+        DashboardDataVO data = DashboardDataVO.builder()
+                .stats(DashboardStatsVO.builder()
+                        .totalClusters(1)
+                        .totalProxies(null)
+                        .totalNameServers(null)
+                        .build())
+                .clusters(List.of(ClusterOverviewVO.builder()
+                        .id("proxy-cluster")
+                        .proxies(null)
+                        .build()))
+                .build();
+        when(dashboardService.getDashboard(isNull())).thenReturn(data);
+
+        mockMvc.perform(get("/api/dashboard"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.stats.totalProxies").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.data.stats.totalNameServers").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.data.clusters[0].proxies").value(org.hamcrest.Matchers.nullValue()));
+    }
+
+    @Test
     void getDashboardShouldForwardSelectedInstance() throws Exception {
         DashboardDataVO data = DashboardDataVO.builder()
                 .stats(DashboardStatsVO.builder().totalClusters(1).build())

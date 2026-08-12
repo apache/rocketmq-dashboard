@@ -189,4 +189,18 @@ describe('DashboardPage', () => {
 
     expect(screen.getByTestId('location')).toHaveTextContent('/cluster?instanceId=instance-b');
   });
+
+  it('renders unavailable topology counts as N/A instead of zero', async () => {
+    const unavailable = dashboard('proxy-cluster');
+    unavailable.stats.totalProxies = null;
+    unavailable.stats.totalNameServers = null;
+    unavailable.clusters[0].proxies = null;
+    vi.mocked(dashboardService.getDashboard).mockResolvedValue(unavailable);
+
+    renderWithProviders(<DashboardPage />);
+
+    await screen.findByText('proxy-cluster');
+    expect(screen.getByText('1 Brokers · N/A Proxy · N/A NameServer')).toBeInTheDocument();
+    expect(screen.getAllByText('N/A')).not.toHaveLength(0);
+  });
 });
