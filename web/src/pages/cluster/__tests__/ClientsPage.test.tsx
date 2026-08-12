@@ -101,6 +101,21 @@ beforeAll(() => {
 
 beforeEach(() => {
   vi.mocked(connectionsService.listConnections).mockResolvedValue([connection]);
+  vi.mocked(instanceService.listInstances)
+    .mockReset()
+    .mockResolvedValue([
+      {
+        id: 'instance-1',
+        name: 'Instance 1',
+        endpoint: 'namesrv-1:9876',
+        type: 'DIRECT',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        createdAt: '',
+        updatedAt: '',
+      },
+    ]);
 });
 
 afterEach(() => {
@@ -115,6 +130,42 @@ const renderWithProviders = (ui: React.ReactElement) =>
   );
 
 describe('Clients page', () => {
+  it('selects an Apache instance instead of a cloud instance for runtime diagnostics', async () => {
+    vi.mocked(instanceService.listInstances).mockResolvedValue([
+      {
+        id: 'cloud-instance',
+        name: 'Cloud instance',
+        endpoint: 'cloud:9876',
+        type: 'DIRECT',
+        vendor: 'TENCENT',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        createdAt: '',
+        updatedAt: '',
+      },
+      {
+        id: 'apache-instance',
+        name: 'Apache instance',
+        endpoint: 'apache:9876',
+        type: 'DIRECT',
+        vendor: 'APACHE',
+        remark: '',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        createdAt: '',
+        updatedAt: '',
+      },
+    ]);
+    renderWithProviders(<ClientsPage />);
+
+    await screen.findByText('order-svc-0@10.0.1.12:49152');
+    expect(connectionsService.listConnections).toHaveBeenCalledWith({
+      instanceId: 'apache-instance',
+    });
+    expect(screen.queryByText('Cloud instance')).not.toBeInTheDocument();
+  });
+
   it('loads connections for the selected instance', async () => {
     renderWithProviders(<ClientsPage />);
 

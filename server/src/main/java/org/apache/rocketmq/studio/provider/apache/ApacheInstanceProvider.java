@@ -28,11 +28,13 @@ import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
+import org.apache.rocketmq.studio.provider.InstanceCapability;
 import org.springframework.stereotype.Component;
 import lombok.RequiredArgsConstructor;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Open-source Apache RocketMQ implementation: pure delegation to the existing admin-client
@@ -50,6 +52,17 @@ public class ApacheInstanceProvider implements InstanceProvider {
     @Override
     public InstanceVendor vendor() {
         return InstanceVendor.APACHE;
+    }
+
+    @Override
+    public Set<InstanceCapability> capabilities() {
+        return Set.of(
+                InstanceCapability.TOPIC_MANAGEMENT,
+                InstanceCapability.CONSUMER_GROUP_MANAGEMENT,
+                InstanceCapability.MESSAGE_QUERY,
+                InstanceCapability.MESSAGE_TRACE,
+                InstanceCapability.ACL_MANAGEMENT,
+                InstanceCapability.DLQ_MANAGEMENT);
     }
 
     @Override

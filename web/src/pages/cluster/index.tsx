@@ -39,13 +39,7 @@ import {
   message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import {
-  ReloadOutlined,
-  SettingOutlined,
-  EyeOutlined,
-  EditOutlined,
-  PlusOutlined,
-} from '@ant-design/icons';
+import { ReloadOutlined, SettingOutlined, EyeOutlined, PlusOutlined } from '@ant-design/icons';
 import { Cpu, HardDrives, Globe } from '@phosphor-icons/react';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
@@ -59,15 +53,12 @@ import type {
   ClusterProbeResult,
 } from '../../api/cluster';
 import {
-  createNameServer,
   listClusters,
-  restartProxy,
   testClusterConnection,
   updateClusterConfig,
-  updateNameServer,
 } from '../../services/clusterService';
 import { listInstances } from '../../services/instanceService';
-import type { Instance } from '../../api/instance';
+import { supportsApacheRuntime, type Instance } from '../../api/instance';
 
 const { Text } = Typography;
 
@@ -101,10 +92,7 @@ const ClusterPage = () => {
 
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [selectedCluster, setSelectedCluster] = useState<ClusterInfo | null>(null);
-  const [nsModalOpen, setNsModalOpen] = useState(false);
-  const [nsModalMode, setNsModalMode] = useState<'create' | 'edit'>('create');
   const [selectedProxy, setSelectedProxy] = useState<ProxyDetail | null>(null);
-  const [nsForm] = Form.useForm();
   const [configForm] = Form.useForm();
 
   // ─── Connection test ──────────────────────────────────────────────────────
@@ -165,7 +153,7 @@ const ClusterPage = () => {
     void listInstances()
       .then((nextInstances) => {
         if (cancelled) return;
-        const apacheInstances = nextInstances.filter((instance) => instance.vendor === 'APACHE');
+        const apacheInstances = nextInstances.filter(supportsApacheRuntime);
         setInstances(apacheInstances);
         const initialInstanceId = apacheInstances.some(
           (instance) => instance.name === requestedInstanceId,
@@ -670,7 +658,7 @@ const ClusterPage = () => {
       })
       .filter((c) => c.filteredNameServers.length > 0);
 
-    const getNsSubColumns = (clusterId: string): ColumnsType<NameServerInfo> => [
+    const getNsSubColumns = (): ColumnsType<NameServerInfo> => [
       {
         title: t('common.address'),
         dataIndex: 'addr',
@@ -698,27 +686,6 @@ const ClusterPage = () => {
           const cfg = map[status] ?? { color: 'default', label: status };
           return <Tag color={cfg.color}>{cfg.label}</Tag>;
         },
-      },
-      {
-        title: t('common.actions'),
-        key: 'action',
-        width: 100,
-        render: (_: unknown, record: NameServerInfo) => (
-          <Flex gap={6}>
-            <Button
-              size="small"
-              icon={<EditOutlined />}
-              style={{ borderColor: '#722ed1', color: '#722ed1' }}
-              onClick={() => {
-                setNsModalMode('edit');
-                nsForm.setFieldsValue({ clusterId, addr: record.addr, newAddr: '' });
-                setNsModalOpen(true);
-              }}
-            >
-              {t('common.edit')}
-            </Button>
-          </Flex>
-        ),
       },
     ];
 
@@ -804,17 +771,6 @@ const ClusterPage = () => {
               style={{ width: 240 }}
             />
           </Space>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => {
-              setNsModalMode('create');
-              nsForm.resetFields();
-              setNsModalOpen(true);
-            }}
-          >
-            {t('cluster.createNameServer')}
-          </Button>
         </Flex>
         <Card styles={{ body: { padding: 0 } }}>
           <Table
@@ -828,7 +784,7 @@ const ClusterPage = () => {
               expandedRowRender: (record) => (
                 <div style={{ padding: '8px 0' }}>
                   <Table
-                    columns={getNsSubColumns(record.id)}
+                    columns={getNsSubColumns()}
                     dataSource={record.filteredNameServers}
                     rowKey="addr"
                     pagination={false}
@@ -945,26 +901,6 @@ const ClusterPage = () => {
               onClick={() => setSelectedProxy(record)}
             >
               {t('common.detail')}
-            </Button>
-            <Button
-              size="small"
-              icon={<ReloadOutlined />}
-              style={{ borderColor: '#faad14', color: '#faad14' }}
-              onClick={() => {
-                Modal.confirm({
-                  title: t('cluster.confirmRestart'),
-                  content: t('cluster.restartProxyConfirm', { addr: record.addr }),
-                  okText: t('common.confirm'),
-                  cancelText: t('common.cancel'),
-                  onOk: async () => {
-                    await restartProxy({ clusterId: record.clusterId, addr: record.addr });
-                    await requestRefresh('operation');
-                    message.success(t('cluster.restartProxySubmitted', { addr: record.addr }));
-                  },
-                });
-              }}
-            >
-              {t('cluster.restart')}
             </Button>
           </Flex>
         ),

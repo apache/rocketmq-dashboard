@@ -22,7 +22,13 @@ vi.mock('../config', () => ({
   API_BASE_URL: '/api',
 }));
 
-import { createInstance, deleteInstance, listInstances, updateInstance } from './instanceService';
+import {
+  createInstance,
+  deleteInstance,
+  getInstanceCapabilities,
+  listInstances,
+  updateInstance,
+} from './instanceService';
 
 describe('instanceService mock instances', () => {
   it('returns defensive copies from list reads', async () => {
@@ -91,5 +97,14 @@ describe('instanceService mock instances', () => {
     );
 
     await expect(listInstances()).resolves.toEqual(before);
+  });
+
+  it('returns provider-specific mock capabilities without sharing mutable arrays', async () => {
+    const first = await getInstanceCapabilities('instance-direct-1');
+    first.capabilities.length = 0;
+
+    const second = await getInstanceCapabilities('instance-direct-1');
+
+    expect(second.capabilities).toContain('DLQ_MANAGEMENT');
   });
 });

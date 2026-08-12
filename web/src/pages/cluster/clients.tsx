@@ -38,9 +38,9 @@ import type { ColumnsType } from 'antd/es/table';
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import type { ClientConnection } from '../../api/connections';
+import { supportsApacheRuntime, type Instance } from '../../api/instance';
 import { listConnections } from '../../services/connectionsService';
 import { listInstances } from '../../services/instanceService';
-import type { Instance } from '../../api/instance';
 import { formatDateTime } from '../../utils/format';
 
 const { Text } = Typography;
@@ -132,8 +132,13 @@ const ClientsPage = () => {
     void listInstances()
       .then((nextInstances) => {
         if (cancelled) return;
-        setInstances(nextInstances);
-        setSelectedInstanceId((current) => current || nextInstances[0]?.name || '');
+        const apacheInstances = nextInstances.filter(supportsApacheRuntime);
+        setInstances(apacheInstances);
+        setSelectedInstanceId((current) =>
+          apacheInstances.some((instance) => instance.name === current)
+            ? current
+            : (apacheInstances[0]?.name ?? ''),
+        );
         setLoadError(null);
       })
       .catch((error) => {

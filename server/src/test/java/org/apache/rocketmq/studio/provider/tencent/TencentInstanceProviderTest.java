@@ -56,6 +56,7 @@ import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
+import org.apache.rocketmq.studio.provider.InstanceCapability;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -149,6 +150,15 @@ class TencentInstanceProviderTest {
 
         assertThat(provider.countTopics(STUDIO_INSTANCE_ID)).isEqualTo(501);
         verify(client, times(1)).DescribeTopicList(any());
+    }
+
+    @Test
+    void capabilitiesShouldExcludeUnsupportedDlqOperations() {
+        assertThat(provider.capabilities())
+                .contains(InstanceCapability.TOPIC_MANAGEMENT,
+                        InstanceCapability.MESSAGE_QUERY,
+                        InstanceCapability.ACL_MANAGEMENT)
+                .doesNotContain(InstanceCapability.DLQ_MANAGEMENT);
     }
 
     @Test

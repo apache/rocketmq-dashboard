@@ -48,6 +48,7 @@ import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
+import org.apache.rocketmq.studio.provider.InstanceCapability;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -93,6 +94,15 @@ class AliyunInstanceProviderTest {
     @BeforeEach
     void setUp() {
         provider = new AliyunInstanceProvider(clientFactory, instanceRepository);
+    }
+
+    @Test
+    void capabilitiesShouldExcludeUnsupportedDlqOperations() {
+        assertThat(provider.capabilities())
+                .contains(InstanceCapability.TOPIC_MANAGEMENT,
+                        InstanceCapability.MESSAGE_QUERY,
+                        InstanceCapability.ACL_MANAGEMENT)
+                .doesNotContain(InstanceCapability.DLQ_MANAGEMENT);
     }
 
     @Test

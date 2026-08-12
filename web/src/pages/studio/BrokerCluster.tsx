@@ -19,6 +19,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Table, Button, Tag, Tabs, Card, Space, Switch, Progress, Spin, App, Select } from 'antd';
 import { ArrowClockwise, Cloud, ChartBar, PlugsConnected } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
+import { supportsApacheRuntime, type Instance } from '../../api/instance';
 import { listClusters } from '../../services/clusterService';
 import type { ClusterInfo } from '../../api/cluster';
 import { listInstances } from '../../services/instanceService';
@@ -191,8 +192,9 @@ const BrokerClusterPage = () => {
     void listInstances()
       .then((nextInstances) => {
         if (!active) return;
-        setInstances(nextInstances);
-        setSelectedInstanceId(nextInstances[0]?.name ?? '');
+        const apacheInstances = nextInstances.filter(supportsApacheRuntime);
+        setInstances(apacheInstances);
+        setSelectedInstanceId(apacheInstances[0]?.name ?? '');
       })
       .catch(() => {
         if (!active) return;

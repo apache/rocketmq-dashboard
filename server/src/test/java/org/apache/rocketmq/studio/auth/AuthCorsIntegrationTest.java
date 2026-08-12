@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.auth;
 
 import org.apache.rocketmq.studio.common.config.CorsConfig;
 import org.apache.rocketmq.studio.instance.InstanceController;
+import org.apache.rocketmq.studio.instance.InstanceCapabilityService;
 import org.apache.rocketmq.studio.instance.InstanceService;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -54,6 +55,9 @@ class AuthCorsIntegrationTest {
 
     @MockBean
     private InstanceService instanceService;
+
+    @MockBean
+    private InstanceCapabilityService instanceCapabilityService;
 
     @MockBean
     private AuthProperties authProperties;

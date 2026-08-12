@@ -27,6 +27,7 @@ import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
 import org.apache.rocketmq.studio.instance.topic.TopicVO;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * Unified instance-scoped operations SPI. Every method takes the Studio instance id as its
@@ -36,6 +37,10 @@ import java.util.List;
 public interface InstanceProvider {
 
     InstanceVendor vendor();
+
+    default Set<InstanceCapability> capabilities() {
+        return Set.of();
+    }
 
     int countTopics(String instanceId);
 

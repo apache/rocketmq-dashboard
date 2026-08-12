@@ -18,7 +18,14 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { createInstance, deleteInstance, listInstances, updateInstance } from './instance';
+import {
+  createInstance,
+  deleteInstance,
+  getInstanceCapabilities,
+  listInstances,
+  supportsApacheRuntime,
+  updateInstance,
+} from './instance';
 
 const mock = new MockAdapter(client);
 const instance = {
@@ -83,5 +90,27 @@ describe('instance API', () => {
     });
 
     await expect(deleteInstance(instance.id)).resolves.toBeUndefined();
+  });
+
+  it('loads the capability contract for an encoded instance id', async () => {
+    const capabilities = {
+      instanceId: 'instance/proxy',
+      vendor: 'APACHE' as const,
+      accessType: 'PROXY' as const,
+      capabilities: ['TOPIC_MANAGEMENT', 'DLQ_MANAGEMENT'] as const,
+    };
+    mock.onGet('/instances/instance%2Fproxy/capabilities').reply(200, {
+      code: 200,
+      data: capabilities,
+    });
+
+    await expect(getInstanceCapabilities('instance/proxy')).resolves.toEqual(capabilities);
+  });
+
+  it('identifies instances supported by Apache MQAdmin runtime APIs', () => {
+    expect(supportsApacheRuntime({ vendor: 'APACHE' })).toBe(true);
+    expect(supportsApacheRuntime({})).toBe(true);
+    expect(supportsApacheRuntime({ vendor: 'ALIYUN' })).toBe(false);
+    expect(supportsApacheRuntime({ vendor: 'TENCENT' })).toBe(false);
   });
 });

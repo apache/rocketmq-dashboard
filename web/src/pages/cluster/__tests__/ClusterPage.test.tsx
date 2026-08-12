@@ -25,12 +25,9 @@ import type { ClusterInfo } from '../../../api/cluster';
 import { LangProvider } from '../../../i18n/LangContext';
 
 const clusterServiceMocks = vi.hoisted(() => ({
-  createNameServer: vi.fn(),
   listClusters: vi.fn(),
-  restartProxy: vi.fn(),
   testClusterConnection: vi.fn(),
   updateClusterConfig: vi.fn(),
-  updateNameServer: vi.fn(),
 }));
 
 const instanceServiceMocks = vi.hoisted(() => ({
@@ -197,9 +194,7 @@ describe('Cluster page', () => {
         updatedAt: '',
       },
     ]);
-    clusterServiceMocks.createNameServer.mockReset().mockResolvedValue(undefined);
     clusterServiceMocks.listClusters.mockReset().mockResolvedValue([buildCluster()]);
-    clusterServiceMocks.restartProxy.mockReset().mockResolvedValue(undefined);
     clusterServiceMocks.testClusterConnection.mockReset();
     clusterServiceMocks.updateClusterConfig.mockReset().mockImplementation(async () => {
       const cluster = buildCluster();
@@ -210,7 +205,6 @@ describe('Cluster page', () => {
         failedBrokers: [],
       };
     });
-    clusterServiceMocks.updateNameServer.mockReset().mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -262,6 +256,20 @@ describe('Cluster page', () => {
     expect(within(dialog).getByText('1,842')).toBeInTheDocument();
     expect(within(dialog).getByText('8081')).toBeInTheDocument();
     expect(within(dialog).getByText('8080')).toBeInTheDocument();
+  });
+
+  it('keeps topology read-only when runtime actions are unsupported', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ClusterPage />);
+
+    await user.click(screen.getByRole('tab', { name: /NameServer 管理/ }));
+    expect(screen.getAllByText('rocketmq-prod').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: /新建 NameServer|编辑/ })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: /Proxy 管理/ }));
+    const proxyRow = await screen.findByRole('row', { name: /10\.101\.2\.21:8081/ });
+    expect(within(proxyRow).getByRole('button', { name: /详情/ })).toBeInTheDocument();
+    expect(within(proxyRow).queryByRole('button', { name: /重启/ })).not.toBeInTheDocument();
   });
 
   it('keeps cluster tabs usable when address fields are missing', async () => {
@@ -437,72 +445,6 @@ describe('Cluster page', () => {
 
     expect(clusterServiceMocks.listClusters).toHaveBeenCalledTimes(2);
     expect(screen.getByRole('row', { name: /10\.101\.2\.11:10911/ })).toHaveTextContent('202');
-  });
-
-  it('queues an operation refresh behind an in-flight background request', async () => {
-    vi.useFakeTimers();
-    const successSpy = vi.spyOn(message, 'success').mockImplementation(vi.fn());
-    const backgroundRequest = deferred<ClusterInfo[]>();
-    const operationRequest = deferred<void>();
-    let backgroundSettled = false;
-    void backgroundRequest.promise.then(() => {
-      backgroundSettled = true;
-    });
-    clusterServiceMocks.restartProxy.mockReturnValueOnce(operationRequest.promise);
-    clusterServiceMocks.listClusters
-      .mockResolvedValueOnce([buildCluster({ connections: 601 })])
-      .mockReturnValueOnce(backgroundRequest.promise)
-      .mockResolvedValueOnce([buildCluster({ connections: 603 })]);
-
-    renderWithProviders(<ClusterPage />);
-    await flushPromises();
-    fireEvent.click(screen.getByRole('tab', { name: /Proxy 管理/ }));
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2000);
-    });
-
-    const proxyRow = screen.getByRole('row', { name: /10\.101\.2\.21:8081/ });
-    fireEvent.click(within(proxyRow).getByRole('button', { name: /重启/ }));
-    await flushPromises();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
-    const dialog = screen.getAllByText('确认重启')[0].closest('.ant-modal');
-    expect(dialog).not.toBeNull();
-    fireEvent.click(within(dialog as HTMLElement).getByRole('button', { name: /确\s*认/ }));
-    await flushPromises();
-
-    expect(clusterServiceMocks.restartProxy).toHaveBeenCalledWith({
-      clusterId: 'cluster-prod',
-      addr: '10.101.2.21:8081',
-    });
-    expect(clusterServiceMocks.listClusters).toHaveBeenCalledTimes(2);
-
-    await act(async () => {
-      operationRequest.resolve();
-      await operationRequest.promise;
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(backgroundSettled).toBe(false);
-    expect(clusterServiceMocks.listClusters).toHaveBeenCalledTimes(2);
-    expect(successSpy).not.toHaveBeenCalled();
-
-    await act(async () => {
-      backgroundRequest.resolve([buildCluster({ connections: 602 })]);
-      await backgroundRequest.promise;
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    await flushPromises();
-
-    expect(clusterServiceMocks.listClusters).toHaveBeenCalledTimes(3);
-    const proxyTabPanel = screen.getByRole('tabpanel', { name: /Proxy 管理/ });
-    const proxyTable = within(proxyTabPanel).getByRole('table');
-    expect(within(proxyTable).getByRole('row', { name: /10\.101\.2\.21:8081/ })).toHaveTextContent(
-      '603',
-    );
-    expect(successSpy).toHaveBeenCalledTimes(1);
   });
 
   it('keeps the last snapshot and silently retries after a background failure', async () => {
