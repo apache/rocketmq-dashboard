@@ -56,9 +56,11 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.TimeZone;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
@@ -358,6 +360,22 @@ class AliyunInstanceProviderTest {
         TraceNodeVO consumer = trace.getNodes().get(2);
         assertThat(consumer.getTitle()).isEqualTo("Consumer GID_test");
         assertThat(consumer.getStatus()).isEqualTo("CONSUME_OK");
+    }
+
+    @Test
+    void aliyunTimeConversionShouldUseShanghaiZoneIndependentOfJvmDefaultTest() {
+        long expected = Instant.parse("2023-03-22T04:17:08Z").toEpochMilli();
+        TimeZone original = TimeZone.getDefault();
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("America/Los_Angeles"));
+
+            assertThat(AliyunConverters.parseTimeMillis("2023-03-22 12:17:08"))
+                    .isEqualTo(expected);
+            assertThat(AliyunConverters.formatTimeMillis(expected))
+                    .isEqualTo("2023-03-22 12:17:08");
+        } finally {
+            TimeZone.setDefault(original);
+        }
     }
 
     @Test
