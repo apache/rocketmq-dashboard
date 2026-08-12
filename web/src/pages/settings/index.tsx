@@ -27,10 +27,8 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
-  Radio,
   Select,
   Space,
-  Switch,
   Table,
   Tabs,
   Tag,
@@ -165,44 +163,11 @@ export const GeneralSettingsTab = () => {
       onFinish={handleFinish}
       style={{ maxWidth: 800 }}
     >
-      {/* ── 外观 ── */}
-      <Divider orientation="left">
-        <Title level={5} style={{ margin: 0 }}>
-          外观
-        </Title>
-      </Divider>
-
-      <Form.Item label="主题模式" name="theme">
-        <Radio.Group>
-          <Radio value="light">浅色</Radio>
-          <Radio value="dark">深色</Radio>
-          <Radio value="system">跟随系统</Radio>
-        </Radio.Group>
-      </Form.Item>
-
-      <Form.Item label="紧凑模式" name="compact" valuePropName="checked">
-        <Switch />
-      </Form.Item>
-
-      {/* ── 通知 ── */}
-      <Divider orientation="left">
-        <Title level={5} style={{ margin: 0 }}>
-          通知
-        </Title>
-      </Divider>
-
-      <Form.Item
-        label="桌面通知"
-        name="desktopNotify"
-        valuePropName="checked"
-        extra="启用后将通过浏览器推送告警通知"
-      >
-        <Switch />
-      </Form.Item>
-
-      <Form.Item label="通知声音" name="notifySound" valuePropName="checked">
-        <Switch />
-      </Form.Item>
+      {(['theme', 'compact', 'desktopNotify', 'notifySound'] as const).map((name) => (
+        <Form.Item key={name} name={name} hidden>
+          <Input type="hidden" />
+        </Form.Item>
+      ))}
 
       {/* ── 安全 ── */}
       <Divider orientation="left">
