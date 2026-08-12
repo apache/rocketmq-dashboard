@@ -135,6 +135,18 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void resetOffsetShouldRejectBlankTopicBeforeResolvingAdmin() {
+        assertThatThrownBy(() -> adminClient.resetOffset("instance-a", "cg-orders", 1784246400000L, " "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("topic is required for offset reset")
+                .satisfies(exception -> assertThat(((BusinessException) exception).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(runtimeAdminClientResolver);
+        verify(adminFactory, never()).execute(anyString(), any(), any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
     void getConsumerGroupSurfacesAdminTimeout() throws Exception {
         when(adminExt.examineConsumerConnectionInfo("orders"))
                 .thenThrow(new RemotingTimeoutException("broker-0", 3_000));
