@@ -118,6 +118,7 @@ const InstancePage = () => {
   const [submitting, setSubmitting] = useState(false);
   const requestIdRef = useRef(0);
   const mutationInFlightRef = useRef(false);
+  const listQueryRef = useRef<InstanceQuery>({});
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
@@ -126,10 +127,7 @@ const InstancePage = () => {
 
   const loadInstances = useCallback(async () => {
     const requestId = ++requestIdRef.current;
-    const query: InstanceQuery = {
-      ...(typeFilter === 'ALL' ? {} : { type: typeFilter }),
-      ...(debouncedSearch ? { search: debouncedSearch } : {}),
-    };
+    const query = listQueryRef.current;
 
     setLoading(true);
     try {
@@ -146,16 +144,20 @@ const InstancePage = () => {
         setLoading(false);
       }
     }
-  }, [debouncedSearch, typeFilter]);
+  }, []);
 
   useEffect(() => {
+    listQueryRef.current = {
+      ...(typeFilter === 'ALL' ? {} : { type: typeFilter }),
+      ...(debouncedSearch ? { search: debouncedSearch } : {}),
+    };
     const timer = window.setTimeout(() => void loadInstances(), 0);
 
     return () => {
       window.clearTimeout(timer);
       requestIdRef.current += 1;
     };
-  }, [loadInstances]);
+  }, [debouncedSearch, loadInstances, typeFilter]);
 
   const cloudVendor = vendor === 'ALIYUN' || vendor === 'TENCENT';
 
@@ -436,8 +438,7 @@ const InstancePage = () => {
       key: 'consumerGroupCount',
       width: 80,
       align: 'center' as const,
-      sorter: (a, b, sortOrder) =>
-        compareResourceCounts(a, b, 'consumerGroupCount', sortOrder),
+      sorter: (a, b, sortOrder) => compareResourceCounts(a, b, 'consumerGroupCount', sortOrder),
       render: (count: number, record: Instance) =>
         record.resourceCountsAvailable === false ? '不可用' : count,
     },

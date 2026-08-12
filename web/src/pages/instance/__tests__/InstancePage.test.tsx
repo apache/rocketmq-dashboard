@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { App } from 'antd';
+import { App, Modal } from 'antd';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
@@ -149,7 +149,11 @@ describe('InstancePage', () => {
 
   it('keeps unavailable resource counts after available values in both sort directions', async () => {
     vi.mocked(instanceService.listInstances).mockResolvedValue([
-      { ...instance('unavailable', 'unavailable-instance'), topicCount: 0, resourceCountsAvailable: false },
+      {
+        ...instance('unavailable', 'unavailable-instance'),
+        topicCount: 0,
+        resourceCountsAvailable: false,
+      },
       { ...instance('zero', 'zero-instance'), topicCount: 0 },
       { ...instance('many', 'many-instance'), topicCount: 10 },
     ]);
@@ -271,6 +275,36 @@ describe('InstancePage', () => {
       }),
     );
     expect(instanceService.listInstances).toHaveBeenLastCalledWith({ type: 'DIRECT' });
+  });
+
+  it('reloads the latest filters after a pending instance deletion completes', async () => {
+    const user = userEvent.setup();
+    const pendingDelete = deferred<void>();
+    vi.mocked(instanceService.deleteInstance).mockReturnValue(pendingDelete.promise);
+    const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
+      void config.onOk?.();
+      return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
+    });
+    renderPage();
+
+    const proxyName = await screen.findByText('production-proxy');
+    await user.click(within(proxyName.closest('tr')!).getByRole('button', { name: /删除/ }));
+    await waitFor(() => expect(instanceService.deleteInstance).toHaveBeenCalledWith('proxy-1'));
+
+    const typeSelect = screen.getByRole('combobox');
+    fireEvent.mouseDown(typeSelect.parentElement!);
+    await user.click(
+      await screen.findByText('Direct 模式', { selector: '.ant-select-item-option-content' }),
+    );
+    await waitFor(() =>
+      expect(instanceService.listInstances).toHaveBeenLastCalledWith({ type: 'DIRECT' }),
+    );
+
+    await act(async () => pendingDelete.resolve());
+
+    await waitFor(() => expect(instanceService.listInstances).toHaveBeenCalledTimes(3));
+    expect(instanceService.listInstances).toHaveBeenLastCalledWith({ type: 'DIRECT' });
+    confirmSpy.mockRestore();
   });
 
   it('shows vendor tabs in the add instance modal and switches description', async () => {
