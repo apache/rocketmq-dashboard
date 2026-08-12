@@ -1,11 +1,17 @@
 import { defineConfig } from 'vitest/config';
 import { loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
+import packageMetadata from './package.json';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
+  const buildTime = env.VITE_BUILD_TIME?.trim() || new Date().toISOString();
   return {
     plugins: [react()],
+    define: {
+      __STUDIO_VERSION__: JSON.stringify(packageMetadata.version),
+      __STUDIO_BUILD_TIME__: JSON.stringify(buildTime),
+    },
     build: {
       // Ant Design is shared by the application shell and most route components. Keep it
       // cacheable as one vendor chunk rather than splitting its cyclic internals.

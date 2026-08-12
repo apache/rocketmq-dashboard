@@ -602,11 +602,11 @@ export const DataSourceTab = () => {
 
 // ─── About Tab ──────────────────────────────────────────────────────────────
 
-const AboutTab = () => (
+export const AboutTab = () => (
   <div style={{ maxWidth: 800 }}>
     <Descriptions column={1} bordered size="small">
-      <Descriptions.Item label="版本">0.1.0</Descriptions.Item>
-      <Descriptions.Item label="构建时间">2024-01-15 14:30:00</Descriptions.Item>
+      <Descriptions.Item label="版本">{__STUDIO_VERSION__}</Descriptions.Item>
+      <Descriptions.Item label="构建时间">{__STUDIO_BUILD_TIME__}</Descriptions.Item>
       <Descriptions.Item label="RocketMQ 支持版本">4.x / 5.x</Descriptions.Item>
       <Descriptions.Item label="前端框架">React 18 + Ant Design 5</Descriptions.Item>
       <Descriptions.Item label="后端框架">Spring Boot 3 + RocketMQ MCP Server</Descriptions.Item>
