@@ -52,6 +52,16 @@ const sources: DataSource[] = [
   },
 ];
 
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+};
+
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
@@ -72,6 +82,28 @@ describe('DataSourceTab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(listDataSources).mockResolvedValue(sources);
+  });
+
+  it('keeps data source creation disabled until the initial list is ready', async () => {
+    const initialList = deferred<DataSource[]>();
+    vi.mocked(listDataSources).mockReturnValue(initialList.promise);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <App>
+        <DataSourceTab />
+      </App>,
+    );
+
+    const addButton = screen.getByRole('button', { name: /添加数据源/ });
+    expect(addButton).toBeDisabled();
+    await user.click(addButton);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    initialList.resolve(sources);
+
+    await waitFor(() => expect(addButton).toBeEnabled());
+    await user.click(addButton);
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
   });
 
   it('shows connection test loading only on the clicked row', async () => {
