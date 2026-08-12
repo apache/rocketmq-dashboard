@@ -118,6 +118,7 @@ const InstancePage = () => {
   const [submitting, setSubmitting] = useState(false);
   const requestIdRef = useRef(0);
   const mutationInFlightRef = useRef(false);
+  const [reloadVersion, setReloadVersion] = useState(0);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
@@ -155,7 +156,7 @@ const InstancePage = () => {
       window.clearTimeout(timer);
       requestIdRef.current += 1;
     };
-  }, [loadInstances]);
+  }, [loadInstances, reloadVersion]);
 
   const cloudVendor = vendor === 'ALIYUN' || vendor === 'TENCENT';
 
@@ -312,7 +313,7 @@ const InstancePage = () => {
           }
         : values;
       const created = await createInstance(payload);
-      await loadInstances();
+      setReloadVersion((v) => v + 1);
       message.success(`实例「${created.name}」添加成功`);
       setAddModalOpen(false);
       addForm.resetFields();
@@ -339,7 +340,7 @@ const InstancePage = () => {
         remark: values.remark || '',
         adminCredentialRef: values.adminCredentialRef,
       });
-      await loadInstances();
+      setReloadVersion((v) => v + 1);
       message.success(`实例「${updated.name}」备注已更新`);
       setEditModalOpen(false);
       editForm.resetFields();
@@ -357,7 +358,7 @@ const InstancePage = () => {
   const handleDelete = async (instance: Instance) => {
     try {
       await deleteInstance(instance.id);
-      await loadInstances();
+      setReloadVersion((v) => v + 1);
       message.success('已删除');
     } catch {
       message.error('删除实例失败，请稍后重试');
@@ -436,8 +437,7 @@ const InstancePage = () => {
       key: 'consumerGroupCount',
       width: 80,
       align: 'center' as const,
-      sorter: (a, b, sortOrder) =>
-        compareResourceCounts(a, b, 'consumerGroupCount', sortOrder),
+      sorter: (a, b, sortOrder) => compareResourceCounts(a, b, 'consumerGroupCount', sortOrder),
       render: (count: number, record: Instance) =>
         record.resourceCountsAvailable === false ? '不可用' : count,
     },
