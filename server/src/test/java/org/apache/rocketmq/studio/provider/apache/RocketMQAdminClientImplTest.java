@@ -48,6 +48,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -284,6 +285,39 @@ class RocketMQAdminClientImplTest {
         assertThat(captor.getValue().getSqlSegment()).contains("cluster_id", "name");
     }
 
+
+    @Test
+    void deleteTopicScopesBrokerDeletionToSelectedClusterOnly() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoClusters());
+        doNothing().when(adminExt).deleteTopicInBroker(any(), anyString());
+        doNothing().when(adminExt).deleteTopicInNameServer(any(), anyString(), anyString());
+
+        adminClient.deleteTopic(null, "orders");
+
+        verify(adminExt).deleteTopicInBroker(Set.of("10.0.0.1:10911"), "orders");
+        verify(adminExt).deleteTopicInNameServer(Set.of("10.0.0.1:9876"), "cluster-1", "orders");
+        ArgumentCaptor<LambdaQueryWrapper<RmqTopic>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(topicMapper).delete(captor.capture());
+        assertThat(captor.getValue().getSqlSegment()).contains("cluster_id", "name");
+    }
+
+    @Test
+    void deleteConsumerGroupScopesBrokerDeletionToSelectedClusterOnly() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoClusters());
+        doNothing().when(adminExt)
+                .deleteSubscriptionGroup(anyString(), anyString(), org.mockito.ArgumentMatchers.anyBoolean());
+
+        adminClient.deleteConsumerGroup(null, "cg-orders");
+
+        verify(adminExt).deleteSubscriptionGroup("10.0.0.1:10911", "cg-orders", true);
+        verify(adminExt, never()).deleteSubscriptionGroup("10.0.0.2:10911", "cg-orders", true);
+        ArgumentCaptor<LambdaQueryWrapper<RmqGroup>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(groupMapper).delete(captor.capture());
+        assertThat(captor.getValue().getSqlSegment()).contains("cluster_id", "name");
+    }
+
     @Test
     void createTopicSucceedsWhenAuditRecordingFails() throws Exception {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
@@ -326,6 +360,28 @@ class RocketMQAdminClientImplTest {
         brokerData.setBrokerName("broker-1");
         brokerData.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.1:10911")));
         brokerAddrTable.put("broker-1", brokerData);
+        clusterInfo.setBrokerAddrTable(brokerAddrTable);
+        return clusterInfo;
+    }
+
+
+    private ClusterInfo clusterInfoWithTwoClusters() {
+        ClusterInfo clusterInfo = new ClusterInfo();
+        Map<String, Set<String>> clusterAddrTable = new LinkedHashMap<>();
+        clusterAddrTable.put("cluster-1", new HashSet<>(List.of("broker-1")));
+        clusterAddrTable.put("cluster-2", new HashSet<>(List.of("broker-2")));
+        clusterInfo.setClusterAddrTable(clusterAddrTable);
+
+        BrokerData brokerOne = new BrokerData();
+        brokerOne.setBrokerName("broker-1");
+        brokerOne.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.1:10911")));
+        BrokerData brokerTwo = new BrokerData();
+        brokerTwo.setBrokerName("broker-2");
+        brokerTwo.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.2:10911")));
+
+        Map<String, BrokerData> brokerAddrTable = new HashMap<>();
+        brokerAddrTable.put("broker-1", brokerOne);
+        brokerAddrTable.put("broker-2", brokerTwo);
         clusterInfo.setBrokerAddrTable(brokerAddrTable);
         return clusterInfo;
     }

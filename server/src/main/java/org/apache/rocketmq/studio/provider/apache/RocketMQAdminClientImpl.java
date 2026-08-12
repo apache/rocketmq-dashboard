@@ -283,7 +283,8 @@ public class RocketMQAdminClientImpl implements AdminClient {
         String namesrvAddr = namesrvAddr(instanceId);
         executeForInstance(instanceId, admin -> {
             try {
-                Set<String> brokerAddrs = getMasterBrokerAddrsForCluster(admin, getClusterName(admin));
+                String clusterName = getClusterName(admin);
+                Set<String> brokerAddrs = getMasterBrokerAddrsForCluster(admin, clusterName);
 
                 // Delete from brokers
                 if (!brokerAddrs.isEmpty()) {
@@ -298,11 +299,11 @@ public class RocketMQAdminClientImpl implements AdminClient {
                         nsAddrs.add(trimmed);
                     }
                 }
-                admin.deleteTopicInNameServer(nsAddrs, getClusterName(admin), name);
+                admin.deleteTopicInNameServer(nsAddrs, clusterName, name);
 
                 // Topic names may be shared by several clusters managed by this Studio instance.
                 topicMapper.delete(new LambdaQueryWrapper<RmqTopic>()
-                        .eq(RmqTopic::getClusterId, getClusterName(admin))
+                        .eq(RmqTopic::getClusterId, clusterName)
                         .eq(RmqTopic::getName, name));
 
                 recordAudit("DELETE_TOPIC", name, "", "SUCCESS");
@@ -465,7 +466,8 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
     private void doDeleteConsumerGroup(MQAdminExt admin, String name) {
         try {
-            Set<String> brokerAddrs = getMasterBrokerAddrsForCluster(admin, getClusterName(admin));
+            String clusterName = getClusterName(admin);
+            Set<String> brokerAddrs = getMasterBrokerAddrsForCluster(admin, clusterName);
 
             for (String addr : brokerAddrs) {
                 admin.deleteSubscriptionGroup(addr, name, true);
@@ -473,7 +475,7 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
             // Consumer group names may be shared by several clusters managed by this Studio instance.
             groupMapper.delete(new LambdaQueryWrapper<RmqGroup>()
-                    .eq(RmqGroup::getClusterId, getClusterName(admin))
+                    .eq(RmqGroup::getClusterId, clusterName)
                     .eq(RmqGroup::getName, name));
 
             recordAudit("DELETE_GROUP", name, "", "SUCCESS");
