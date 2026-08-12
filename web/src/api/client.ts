@@ -81,6 +81,14 @@ client.interceptors.response.use(
       clearAiChatHistories();
       clearAuthSession();
       window.location.href = '/';
+      return Promise.reject(error);
+    }
+    const errorMessage = getBusinessError(error.response?.data);
+    if (errorMessage) {
+      message.error(errorMessage);
+      if (error instanceof Error) {
+        error.message = errorMessage;
+      }
     }
     return Promise.reject(error);
   },
