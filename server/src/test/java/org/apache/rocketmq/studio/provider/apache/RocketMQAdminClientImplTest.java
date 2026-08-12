@@ -268,6 +268,45 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void topicWritesSendMessageTypeAttributeToBroker() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        when(topicMapper.selectOne(any())).thenReturn(null);
+        doNothing().when(adminExt).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+        topic.setType(TopicType.FIFO);
+
+        adminClient.createTopic(topic);
+        adminClient.updateTopic(topic);
+
+        ArgumentCaptor<TopicConfig> captor = ArgumentCaptor.forClass(TopicConfig.class);
+        verify(adminExt, times(2)).createAndUpdateTopicConfig(anyString(), captor.capture());
+        assertThat(captor.getAllValues()).allSatisfy(config ->
+                assertThat(config.getAttributes()).containsEntry("+message.type", TopicType.FIFO.name()));
+    }
+
+    @Test
+    void updateTopicWithoutTypePreservesExistingType() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        RmqTopic existing = new RmqTopic();
+        existing.setTopicType(TopicType.TRANSACTION.name());
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        when(topicMapper.selectOne(any())).thenReturn(existing);
+
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+
+        adminClient.updateTopic(topic);
+
+        ArgumentCaptor<TopicConfig> captor = ArgumentCaptor.forClass(TopicConfig.class);
+        verify(adminExt).createAndUpdateTopicConfig(anyString(), captor.capture());
+        assertThat(captor.getValue().getAttributes()).doesNotContainKey("+message.type");
+        assertThat(existing.getTopicType()).isEqualTo(TopicType.TRANSACTION.name());
+    }
+
+    @Test
     void updateTopicPersistsTypeAndRemark() throws Exception {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
         RmqTopic existing = new RmqTopic();
