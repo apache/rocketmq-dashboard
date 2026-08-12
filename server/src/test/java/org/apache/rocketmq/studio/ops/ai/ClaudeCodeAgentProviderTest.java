@@ -51,6 +51,42 @@ class ClaudeCodeAgentProviderTest {
                         .isEqualTo(504));
     }
 
+    @Test
+    void streamShouldRejectOversizedStdoutTest() {
+        TestClaudeCodeAgentProvider provider = new TestClaudeCodeAgentProvider(
+                List.of("sh", "-c", "head -c 6291456 /dev/zero | tr '\\0' x"), 5);
+
+        assertOutputTooLarge(provider);
+    }
+
+    @Test
+    void streamShouldRejectOversizedStderrTest() {
+        TestClaudeCodeAgentProvider provider = new TestClaudeCodeAgentProvider(
+                List.of("sh", "-c", "head -c 6291456 /dev/zero >&2"), 5);
+
+        assertOutputTooLarge(provider);
+    }
+
+    @Test
+    void streamShouldApplyLimitAcrossStdoutAndStderrTest() {
+        TestClaudeCodeAgentProvider provider = new TestClaudeCodeAgentProvider(List.of(
+                "sh", "-c", "head -c 3145728 /dev/zero | tr '\\0' x; "
+                        + "head -c 3145728 /dev/zero >&2"), 5);
+
+        assertOutputTooLarge(provider);
+    }
+
+    private void assertOutputTooLarge(TestClaudeCodeAgentProvider provider) {
+        assertThatThrownBy(() -> provider.stream(
+                LlmConfigVO.builder().build(), "prompt", null, ignored -> { }))
+                .isInstanceOf(LlmGatewayException.class)
+                .satisfies(exception -> {
+                    LlmGatewayException gatewayException = (LlmGatewayException) exception;
+                    assertThat(gatewayException.getStatusCode()).isEqualTo(502);
+                    assertThat(gatewayException.getCode()).isEqualTo("llm.provider.output_too_large");
+                });
+    }
+
     private static class TestClaudeCodeAgentProvider extends ClaudeCodeAgentProvider {
 
         private final List<String> command;
