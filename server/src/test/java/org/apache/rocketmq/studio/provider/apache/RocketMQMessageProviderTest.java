@@ -111,6 +111,36 @@ class RocketMQMessageProviderTest {
     }
 
     @Test
+    void queryMessagesShouldRejectInvertedTimeRangeBeforeAdminLookup() throws Exception {
+        assertThatThrownBy(() -> provider.queryMessages(
+                "instance-a", "TopicA", null, null, null, 200L, 100L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Message query start time must be before end time")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        verify(runtimeAdminClientResolver).resolveEndpoint("instance-a");
+        verify(runtimeAdminClientResolver).execute(eq("instance-a"), any());
+        verify(adminExt, never()).queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong());
+        verify(queryHistoryService, never()).recordMessageQuery(anyString(), anyString(), anyString(),
+                anyString(), anyString(), anyString(), any(), any(), anyInt());
+    }
+
+    @Test
+    void queryMessagesShouldRejectEqualTimeRangeBeforeAdminLookup() throws Exception {
+        assertThatThrownBy(() -> provider.queryMessages(
+                "instance-a", "TopicA", null, null, null, 100L, 100L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Message query start time must be before end time")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        verify(runtimeAdminClientResolver).resolveEndpoint("instance-a");
+        verify(runtimeAdminClientResolver).execute(eq("instance-a"), any());
+        verify(adminExt, never()).queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong());
+        verify(queryHistoryService, never()).recordMessageQuery(anyString(), anyString(), anyString(),
+                anyString(), anyString(), anyString(), any(), any(), anyInt());
+    }
+
+    @Test
     void queryByKeySurfacesAdminFailure() throws Exception {
         when(adminExt.queryMessage("TopicA", "order-1", 64, 100L, 200L))
                 .thenThrow(new IllegalStateException("broker unavailable"));

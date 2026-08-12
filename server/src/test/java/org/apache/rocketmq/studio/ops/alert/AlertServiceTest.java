@@ -351,6 +351,51 @@ class AlertServiceTest {
     }
 
     @Test
+    void exportPrometheusRulesYamlShouldPrefixAlertNamesStartingWithDigit() throws Exception {
+        AlertRuleVO rule = AlertRuleVO.builder()
+                .name("5xx spike")
+                .metric("rocketmq_consumer_lag_messages")
+                .operator(">")
+                .threshold(1)
+                .enabled(true)
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+
+        String result = alertService.exportPrometheusRulesYaml();
+
+        JsonNode exportedRule = new ObjectMapper(new YAMLFactory()).readTree(result)
+                .path("groups").get(0).path("rules").get(0);
+        assertThat(exportedRule.path("alert").asText()).isEqualTo("A_5xxspike");
+        assertThat(result).contains("# Rule 1: A_5xxspike");
+    }
+
+    @Test
+    void exportPrometheusRulesYamlShouldReplaceNonFiniteThresholds() throws Exception {
+        AlertRuleVO nanRule = AlertRuleVO.builder()
+                .name("Bad Threshold A")
+                .metric("rocketmq_consumer_lag_messages")
+                .operator(">")
+                .threshold(Double.NaN)
+                .enabled(true)
+                .build();
+        AlertRuleVO infinityRule = AlertRuleVO.builder()
+                .name("Bad Threshold B")
+                .metric("rocketmq_consumer_lag_messages")
+                .operator("<")
+                .threshold(Double.POSITIVE_INFINITY)
+                .enabled(true)
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(nanRule, infinityRule));
+
+        String result = alertService.exportPrometheusRulesYaml();
+
+        JsonNode rules = new ObjectMapper(new YAMLFactory()).readTree(result).path("groups").get(0).path("rules");
+        assertThat(rules.get(0).path("expr").asText()).isEqualTo("rocketmq_consumer_lag_messages > 0");
+        assertThat(rules.get(1).path("expr").asText()).isEqualTo("rocketmq_consumer_lag_messages < 0");
+        assertThat(result).doesNotContain("NaN", "Infinity");
+    }
+
+    @Test
     void exportPrometheusRulesYamlShouldExcludeDisabledRules() {
         AlertRuleVO enabled = AlertRuleVO.builder()
                 .name("Enabled Lag Alert")
