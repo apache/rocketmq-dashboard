@@ -183,7 +183,7 @@ describe('AlertManagementPage', () => {
     expect(within(brokerRow!).getAllByRole('button')[0]).toBeDisabled();
   });
 
-  it('exports the server-side YAML verbatim when rows are selected', async () => {
+  it('exports only the selected server-side rules when rows are selected', async () => {
     const user = userEvent.setup();
     renderWithProviders(<AlertManagementPage />);
 
@@ -196,7 +196,7 @@ describe('AlertManagementPage', () => {
     await user.click(screen.getByRole('button', { name: '导出 YAML' }));
 
     await waitFor(() => {
-      expect(exportAlertRulesYaml).toHaveBeenCalledTimes(1);
+      expect(exportAlertRulesYaml).toHaveBeenCalledWith(['rule-broker-down']);
     });
     expect(createObjectURL).toHaveBeenCalledTimes(1);
     const blob = createObjectURL.mock.calls[0][0] as Blob;
@@ -213,10 +213,33 @@ describe('AlertManagementPage', () => {
     await screen.findByText('BrokerDown');
     await user.click(screen.getByRole('button', { name: '导出 YAML' }));
 
+    expect(exportAlertRulesYaml).toHaveBeenCalledWith(undefined);
+
     const blob = createObjectURL.mock.calls[0][0] as Blob;
     const yaml = await blob.text();
     expect(yaml).toContain('alert: BrokerDown');
     expect(yaml).toContain('alert: ConsumerLagHigh');
+  });
+
+  it('classifies persisted Proxy metrics under the Proxy team and group', async () => {
+    vi.mocked(listAlertRules).mockResolvedValue([
+      {
+        id: 'rule-proxy-down',
+        name: 'ProxyDown',
+        metric: 'rocketmq_proxy_up',
+        operator: '==',
+        threshold: 0,
+        duration: '5m',
+        severity: 'critical',
+        enabled: true,
+      },
+    ]);
+    renderWithProviders(<AlertManagementPage />);
+
+    const proxyRule = await screen.findByText('ProxyDown');
+    const proxyRow = proxyRule.closest('tr');
+    expect(proxyRow).not.toBeNull();
+    expect(within(proxyRow!).getAllByText('proxy')).toHaveLength(2);
   });
 
   it('persists rule status changes through the alert rule API', async () => {

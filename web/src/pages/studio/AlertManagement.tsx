@@ -108,6 +108,7 @@ const EXPRESSION_PATTERN = /^\s*(.+?)\s*(>=|<=|==|!=|>|<)\s*(-?\d+(?:\.\d+)?)\s*
 
 function inferTeam(metric?: string): string {
   const value = metric || '';
+  if (value.startsWith('rocketmq_proxy_')) return 'proxy';
   if (value.includes('replication') || value.includes('fall_behind') || value.includes('slave')) {
     return 'broker';
   }
@@ -479,7 +480,12 @@ const AlertManagementPage: React.FC = () => {
 
   const handleExportYaml = async () => {
     try {
-      const data = await exportAlertRulesYaml();
+      const selectedRuleIds = selectedRules
+        .map((rule) => rule.id)
+        .filter((id): id is string => Boolean(id));
+      const data = await exportAlertRulesYaml(
+        selectedRuleIds.length > 0 ? selectedRuleIds : undefined,
+      );
       downloadBlob(new Blob([data.rules], { type: 'text/yaml' }), 'rocketmq-alert-rules.yaml');
       message.success(t('alertMgmt.exportSuccess'));
     } catch {

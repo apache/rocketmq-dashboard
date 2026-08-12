@@ -58,6 +58,17 @@ describe('AlertManagement API', () => {
     expect(result.rules).toBe('');
   });
 
+  it('exports only the selected persisted alert rules', async () => {
+    mock.onGet('/alert-rules/export').reply((config) => {
+      expect(config.params).toEqual({ ids: 'rule-1,rule-2' });
+      return [200, { code: 200, data: { rules: 'groups:\n' } }];
+    });
+
+    await expect(exportAlertRulesYaml(['rule-1', 'rule-2'])).resolves.toEqual({
+      rules: 'groups:\n',
+    });
+  });
+
   it('lists persisted alert rules', async () => {
     mock.onGet('/alert-rules').reply(200, {
       code: 200,

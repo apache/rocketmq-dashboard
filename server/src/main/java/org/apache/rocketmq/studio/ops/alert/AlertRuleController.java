@@ -24,8 +24,10 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Arrays;
 import java.util.List;
 
 @RestController
@@ -41,8 +43,11 @@ public class AlertRuleController {
     }
 
     @GetMapping("/export")
-    public Result<AlertRulesYamlVO> exportRules() {
-        return Result.ok(new AlertRulesYamlVO(alertService.exportPrometheusRulesYaml()));
+    public Result<AlertRulesYamlVO> exportRules(@RequestParam(name = "ids", required = false) String ids) {
+        String rules = ids == null
+                ? alertService.exportPrometheusRulesYaml()
+                : alertService.exportPrometheusRulesYaml(parseRuleIds(ids));
+        return Result.ok(new AlertRulesYamlVO(rules));
     }
 
     @PostMapping("/create")
@@ -87,5 +92,18 @@ public class AlertRuleController {
             throw new BusinessException(400, "Alert rule request is required");
         }
         return rule;
+    }
+
+    private List<String> parseRuleIds(String ids) {
+        if (ids.isBlank()) {
+            throw new BusinessException(400, "Selected alert rule IDs must not be blank");
+        }
+        List<String> ruleIds = Arrays.stream(ids.split(",", -1))
+                .map(String::trim)
+                .toList();
+        if (ruleIds.stream().anyMatch(String::isBlank)) {
+            throw new BusinessException(400, "Selected alert rule IDs must not be blank");
+        }
+        return ruleIds;
     }
 }
