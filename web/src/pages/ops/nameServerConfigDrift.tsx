@@ -35,7 +35,8 @@ const { Text, Title } = Typography;
 const NameServerConfigDriftPage = () => {
   const { t } = useLang();
   const { message } = App.useApp();
-  const requestSequence = useRef(0);
+  const clusterRequestSequence = useRef(0);
+  const checkRequestSequence = useRef(0);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [selectedInstanceId, setSelectedInstanceId] = useState<string>();
   const [clusters, setClusters] = useState<ClusterInfo[]>([]);
@@ -46,18 +47,18 @@ const NameServerConfigDriftPage = () => {
 
   const runCheck = useCallback(
     async (clusterId: string, instanceId: string) => {
-      const sequence = ++requestSequence.current;
+      const sequence = ++checkRequestSequence.current;
       setChecking(true);
       try {
         const nextResult = await getNameServerConfigDiff(clusterId, instanceId);
-        if (sequence === requestSequence.current) setResult(nextResult);
+        if (sequence === checkRequestSequence.current) setResult(nextResult);
       } catch {
-        if (sequence === requestSequence.current) {
+        if (sequence === checkRequestSequence.current) {
           setResult(undefined);
           message.error(t('nameServerDrift.checkFailed'));
         }
       } finally {
-        if (sequence === requestSequence.current) setChecking(false);
+        if (sequence === checkRequestSequence.current) setChecking(false);
       }
     },
     [message, t],
@@ -65,10 +66,10 @@ const NameServerConfigDriftPage = () => {
 
   useEffect(() => {
     let cancelled = false;
-    const sequence = ++requestSequence.current;
+    const sequence = ++clusterRequestSequence.current;
     void listInstances()
       .then(async (items) => {
-        if (cancelled) return;
+        if (cancelled || sequence !== clusterRequestSequence.current) return;
         const apacheInstances = items.filter((instance) => instance.vendor === 'APACHE');
         setInstances(apacheInstances);
         const firstInstanceId = apacheInstances[0]?.id;
@@ -78,45 +79,51 @@ const NameServerConfigDriftPage = () => {
           return;
         }
         const clustersForInstance = await listClusters(firstInstanceId);
-        if (cancelled || sequence !== requestSequence.current) return;
+        if (cancelled || sequence !== clusterRequestSequence.current) return;
         setClusters(clustersForInstance);
         const firstClusterId = clustersForInstance[0]?.id;
         setSelectedClusterId(firstClusterId);
         if (firstClusterId) void runCheck(firstClusterId, firstInstanceId);
       })
       .catch(() => {
-        if (!cancelled && sequence === requestSequence.current) {
+        if (!cancelled && sequence === clusterRequestSequence.current) {
           message.error(t('nameServerDrift.loadClustersFailed'));
         }
       })
       .finally(() => {
-        if (!cancelled && sequence === requestSequence.current) setClustersLoading(false);
+        if (!cancelled && sequence === clusterRequestSequence.current) {
+          setClustersLoading(false);
+        }
       });
     return () => {
       cancelled = true;
-      requestSequence.current += 1;
+      clusterRequestSequence.current += 1;
+      checkRequestSequence.current += 1;
     };
   }, [message, runCheck, t]);
 
   const selectInstance = async (instanceId: string) => {
-    const sequence = ++requestSequence.current;
+    const sequence = ++clusterRequestSequence.current;
+    checkRequestSequence.current += 1;
     setSelectedInstanceId(instanceId);
     setSelectedClusterId(undefined);
     setClusters([]);
     setResult(undefined);
     setClustersLoading(true);
+    setChecking(false);
     try {
       const nextClusters = await listClusters(instanceId);
-      if (sequence !== requestSequence.current) return;
+      if (sequence !== clusterRequestSequence.current) return;
       setClusters(nextClusters);
       const firstClusterId = nextClusters[0]?.id;
       setSelectedClusterId(firstClusterId);
       if (firstClusterId) void runCheck(firstClusterId, instanceId);
     } catch {
-      if (sequence === requestSequence.current)
+      if (sequence === clusterRequestSequence.current) {
         message.error(t('nameServerDrift.loadClustersFailed'));
+      }
     } finally {
-      if (sequence === requestSequence.current) setClustersLoading(false);
+      if (sequence === clusterRequestSequence.current) setClustersLoading(false);
     }
   };
 
