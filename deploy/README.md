@@ -39,6 +39,15 @@ cd deploy && docker compose up -d --build
 
 默认访问地址为 `http://127.0.0.1:6789`。
 
+后端提供两个独立的编排探针，前端 Nginx 仅透出这两个探针与 Actuator health：
+
+- `GET /livez`：仅检查 Studio 进程存活状态，不依赖数据库、RocketMQ、Prometheus 或云 API。
+- `GET /readyz`：检查 Studio 是否可接收控制面请求，包含数据库连接状态。Docker Compose
+  使用该端点决定何时启动前端。
+
+RocketMQ、Prometheus 和云 API 故障由 Studio 的运行态诊断页面展示，不纳入 liveness，避免下游
+故障触发 Studio 容器反复重启。
+
 默认 schema 只创建 Studio 所需的表，不会写入实例、Topic、消费组或 ACL 示例数据。需要演示数据时，
 请在开发环境中显式导入 `deploy/mysql/upgrade-demo-instance.sql` 和
 `deploy/mysql/upgrade-demo-acl.sql`，不要在生产环境导入这些脚本。

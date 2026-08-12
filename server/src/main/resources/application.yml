@@ -28,6 +28,18 @@ springdoc:
   swagger-ui:
     path: /swagger-ui.html
 
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+        add-additional-paths: true
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState,db
+
 studio:
   auth:
     login-required: ${STUDIO_AUTH_LOGIN_REQUIRED:true}
