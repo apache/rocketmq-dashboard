@@ -649,6 +649,7 @@ class InstanceServiceTest {
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
         when(instanceProvider.countTopics("inst-1")).thenReturn(0);
         when(instanceProvider.countGroups("inst-1")).thenReturn(0);
+        when(instanceRepository.deleteById("inst-1")).thenReturn(true);
 
         instanceService.deleteInstance("inst-1");
 
@@ -706,7 +707,10 @@ class InstanceServiceTest {
         existing.setId("inst-1");
         when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(existing));
         when(instanceRepository.findAll()).thenReturn(List.of());
+        when(instanceRepository.deleteById("inst-1")).thenReturn(true);
         when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceProvider.countTopics("inst-1")).thenReturn(0);
+        when(instanceProvider.countGroups("inst-1")).thenReturn(0);
 
         instanceService.deleteInstance("inst-1");
 
