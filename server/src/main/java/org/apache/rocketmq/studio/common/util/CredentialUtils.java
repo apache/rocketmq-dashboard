@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.common.util;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.Objects;
 
 /**
  * Shared credential helpers: secrets are stored base64-encoded (never plain text) and only
@@ -44,7 +45,14 @@ public final class CredentialUtils {
             return null;
         }
         try {
-            return new String(Base64.getDecoder().decode(stored), StandardCharsets.UTF_8);
+            String decoded = new String(Base64.getDecoder().decode(stored), StandardCharsets.UTF_8);
+            // A legacy plain-text value that happens to be valid base64 would decode into
+            // garbage here; re-encoding must round-trip exactly for a value that was really
+            // produced by encodeBase64. Otherwise treat it as legacy plain text.
+            if (!Objects.equals(encodeBase64(decoded), stored)) {
+                return stored;
+            }
+            return decoded;
         } catch (IllegalArgumentException ex) {
             // tolerate legacy values that were stored without encoding
             return stored;
