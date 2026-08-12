@@ -474,7 +474,7 @@ export const DataSourceTab = () => {
   return (
     <>
       <Flex justify="flex-end" style={{ marginBottom: 16 }}>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal} disabled={loading}>
           添加数据源
         </Button>
       </Flex>
