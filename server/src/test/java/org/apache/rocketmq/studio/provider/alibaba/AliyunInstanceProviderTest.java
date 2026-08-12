@@ -555,4 +555,15 @@ class AliyunInstanceProviderTest {
         org.junit.jupiter.api.Assertions.assertEquals("Concurrently",
                 AliyunInstanceProvider.normalizeDeliveryOrderType("Concurrently"));
     }
+
+    @Test
+    void timeConversionUsesAliyunUtc8Zone() {
+        // "2024-01-01 00:00:00" is 2023-12-31T16:00:00Z in UTC+8 regardless of server zone.
+        long expectedUtc8 = java.time.LocalDateTime.of(2024, 1, 1, 0, 0)
+                .atZone(java.time.ZoneId.of("Asia/Shanghai")).toInstant().toEpochMilli();
+        assertThat(AliyunConverters.parseTimeMillis("2024-01-01 00:00:00")).isEqualTo(expectedUtc8);
+
+        // Round-trip formatting must restore the same calendar time in UTC+8.
+        assertThat(AliyunConverters.formatTimeMillis(expectedUtc8)).isEqualTo("2024-01-01 00:00:00");
+    }
 }

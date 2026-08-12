@@ -66,6 +66,9 @@ final class AliyunConverters {
     static final int MESSAGE_MAX_PAGES = 5;
 
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    // Aliyun RocketMQ OpenAPI timestamps are unzoned "yyyy-MM-dd HH:mm:ss" strings interpreted as
+    // UTC+8 (Asia/Shanghai), regardless of the server's default zone.
+    private static final ZoneId ALIYUN_TIME_ZONE = ZoneId.of("Asia/Shanghai");
 
     private AliyunConverters() {
     }
@@ -289,7 +292,7 @@ final class AliyunConverters {
         }
         try {
             LocalDateTime dateTime = LocalDateTime.parse(value, TIME_FORMATTER);
-            return dateTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+            return dateTime.atZone(ALIYUN_TIME_ZONE).toInstant().toEpochMilli();
         } catch (RuntimeException ignored) {
             return 0L;
         }
@@ -297,7 +300,7 @@ final class AliyunConverters {
 
     static String formatTimeMillis(long epochMillis) {
         return TIME_FORMATTER.format(
-                LocalDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), ZoneId.systemDefault()));
+                LocalDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), ALIYUN_TIME_ZONE));
     }
 
     static String tryBase64Decode(String raw) {
