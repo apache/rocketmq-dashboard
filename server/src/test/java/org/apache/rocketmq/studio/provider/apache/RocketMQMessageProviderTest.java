@@ -188,6 +188,41 @@ class RocketMQMessageProviderTest {
     }
 
     @Test
+    void queryByTopicRetriesFromCorrectedOffsetAfterOffsetIllegal() throws Exception {
+        MessageQueue queue = new MessageQueue("TopicA", "broker-a", 0);
+        MessageExt message = new MessageExt();
+        message.setMsgId("msg-after-correction");
+        message.setTopic("TopicA");
+        message.setBody("payload".getBytes(StandardCharsets.UTF_8));
+        message.setStoreTimestamp(150L);
+        PullResult illegalOffset = new PullResult(PullStatus.OFFSET_ILLEGAL, 20L, 0L, 30L, null);
+        PullResult foundAfterCorrection = new PullResult(PullStatus.FOUND, 40L, 20L, 30L, List.of(message));
+        PullResult endOfQueue = new PullResult(PullStatus.NO_NEW_MSG, 50L, 40L, 40L, List.of());
+        try (MockedConstruction<DefaultMQPullConsumer> mockedConsumers =
+                     mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
+                         doNothing().when(consumer).start();
+                         when(consumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
+                         when(consumer.searchOffset(queue, 100L)).thenReturn(10L);
+                         when(consumer.searchOffset(queue, 200L)).thenReturn(50L);
+                         when(consumer.pull(eq(queue), eq("*"), eq(10L), eq(32))).thenReturn(illegalOffset);
+                         when(consumer.pull(eq(queue), eq("*"), eq(20L), eq(32))).thenReturn(foundAfterCorrection);
+                         when(consumer.pull(eq(queue), eq("*"), eq(40L), eq(32))).thenReturn(endOfQueue);
+                         doNothing().when(consumer).shutdown();
+                     })) {
+            List<MessageRecordVO> messages = provider.queryMessages(
+                    "instance-a", "TopicA", null, null, null, 100L, 200L);
+
+            assertThat(messages).extracting(MessageRecordVO::getMsgId).containsExactly("msg-after-correction");
+            DefaultMQPullConsumer consumer = mockedConsumers.constructed().get(0);
+            verify(consumer).pull(queue, "*", 10L, 32);
+            verify(consumer).pull(queue, "*", 20L, 32);
+            verify(consumer).pull(queue, "*", 40L, 32);
+        }
+        verify(queryHistoryService).recordMessageQuery("instance-a", "TOPIC", "TopicA", null, null, null,
+                100L, 200L, 1);
+    }
+
+    @Test
     void toRecordVOBoundsMessageBodyAndProperties() {
         MessageExt message = new MessageExt();
         message.setMsgId("msg-1");
