@@ -283,7 +283,9 @@ public class RocketMQAdminClientImpl implements AdminClient {
         String namesrvAddr = namesrvAddr(instanceId);
         executeForInstance(instanceId, admin -> {
             try {
-                Set<String> brokerAddrs = getAllMasterBrokerAddrs(admin);
+                // Scope broker deletes to the current cluster; topic names may be shared by
+                // several clusters managed by this Studio instance (see the comment below).
+                Set<String> brokerAddrs = getMasterBrokerAddrsForCluster(admin, getClusterName(admin));
 
                 // Delete from brokers
                 if (!brokerAddrs.isEmpty()) {
@@ -467,7 +469,9 @@ public class RocketMQAdminClientImpl implements AdminClient {
 
     private void doDeleteConsumerGroup(MQAdminExt admin, String name) {
         try {
-            Set<String> brokerAddrs = getAllMasterBrokerAddrs(admin);
+            // Scope broker deletes to the current cluster; consumer group names may be shared by
+            // several clusters managed by this Studio instance (see the comment below).
+            Set<String> brokerAddrs = getMasterBrokerAddrsForCluster(admin, getClusterName(admin));
 
             for (String addr : brokerAddrs) {
                 admin.deleteSubscriptionGroup(addr, name, true);

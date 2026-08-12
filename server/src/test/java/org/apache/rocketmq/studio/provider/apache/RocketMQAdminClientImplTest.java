@@ -49,6 +49,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -305,6 +306,72 @@ class RocketMQAdminClientImplTest {
         ArgumentCaptor<LambdaQueryWrapper<RmqGroup>> captor = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(groupMapper).delete(captor.capture());
         assertThat(captor.getValue().getSqlSegment()).contains("cluster_id", "name");
+    }
+
+    @Test
+    void deleteTopicScopesBrokerDeleteToOwningCluster() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        ClusterInfo clusterInfo = new ClusterInfo();
+        // LinkedHashMap keeps cluster-1 first so getClusterName() resolves to it.
+        Map<String, Set<String>> clusterAddrTable = new LinkedHashMap<>();
+        clusterAddrTable.put("cluster-1", new HashSet<>(List.of("broker-1")));
+        clusterAddrTable.put("cluster-2", new HashSet<>(List.of("broker-2")));
+        clusterInfo.setClusterAddrTable(clusterAddrTable);
+        Map<String, BrokerData> brokerAddrTable = new HashMap<>();
+        BrokerData broker1 = new BrokerData();
+        broker1.setBrokerName("broker-1");
+        broker1.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.1:10911")));
+        BrokerData broker2 = new BrokerData();
+        broker2.setBrokerName("broker-2");
+        broker2.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.2:10911")));
+        brokerAddrTable.put("broker-1", broker1);
+        brokerAddrTable.put("broker-2", broker2);
+        clusterInfo.setBrokerAddrTable(brokerAddrTable);
+        when(selectedAdmin.examineBrokerClusterInfo()).thenReturn(clusterInfo);
+        doNothing().when(selectedAdmin).deleteTopicInBroker(any(), anyString());
+        doNothing().when(selectedAdmin).deleteTopicInNameServer(any(), anyString(), anyString());
+        when(runtimeAdminClientResolver.resolveEndpoint("instance-a")).thenReturn("10.0.0.2:9876");
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
+                .thenAnswer(invocation -> invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1)
+                        .apply(selectedAdmin));
+
+        adminClient.deleteTopic("instance-a", "orders");
+
+        // Only the owning cluster's broker is touched; the other cluster's broker is untouched.
+        verify(selectedAdmin).deleteTopicInBroker(Set.of("10.0.0.1:10911"), "orders");
+        verify(selectedAdmin, never()).deleteTopicInBroker(Set.of("10.0.0.2:10911"), "orders");
+    }
+
+    @Test
+    void deleteConsumerGroupScopesBrokerDeleteToOwningCluster() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
+        ClusterInfo clusterInfo = new ClusterInfo();
+        Map<String, Set<String>> clusterAddrTable = new LinkedHashMap<>();
+        clusterAddrTable.put("cluster-1", new HashSet<>(List.of("broker-1")));
+        clusterAddrTable.put("cluster-2", new HashSet<>(List.of("broker-2")));
+        clusterInfo.setClusterAddrTable(clusterAddrTable);
+        Map<String, BrokerData> brokerAddrTable = new HashMap<>();
+        BrokerData broker1 = new BrokerData();
+        broker1.setBrokerName("broker-1");
+        broker1.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.1:10911")));
+        BrokerData broker2 = new BrokerData();
+        broker2.setBrokerName("broker-2");
+        broker2.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.2:10911")));
+        brokerAddrTable.put("broker-1", broker1);
+        brokerAddrTable.put("broker-2", broker2);
+        clusterInfo.setBrokerAddrTable(brokerAddrTable);
+        when(selectedAdmin.examineBrokerClusterInfo()).thenReturn(clusterInfo);
+        doNothing().when(selectedAdmin).deleteSubscriptionGroup(anyString(), anyString(), org.mockito.ArgumentMatchers.anyBoolean());
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
+                .thenAnswer(invocation -> invocation.<MqAdminExtFactory.AdminAction<Object>>getArgument(1)
+                        .apply(selectedAdmin));
+
+        adminClient.deleteConsumerGroup("instance-a", "cg-orders");
+
+        verify(selectedAdmin).deleteSubscriptionGroup("10.0.0.1:10911", "cg-orders", true);
+        verify(selectedAdmin, never()).deleteSubscriptionGroup("10.0.0.2:10911", "cg-orders", true);
     }
 
     @Test
