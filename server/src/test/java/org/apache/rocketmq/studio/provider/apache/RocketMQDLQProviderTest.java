@@ -120,6 +120,28 @@ class RocketMQDLQProviderTest {
     }
 
     @Test
+    void resendMessagesShouldRejectBlankGroupNameBeforeResolvingEndpoint() {
+        assertThatThrownBy(() -> provider.resendMessages("instance-a", " ", 100L, 200L, "target-topic"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("groupName is required for DLQ resend")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        verify(runtimeAdminClientResolver, never()).resolveEndpoint(anyString());
+        verify(auditService, never()).record(anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void resendMessagesShouldRejectNullGroupNameBeforeResolvingEndpoint() {
+        assertThatThrownBy(() -> provider.resendMessages("instance-a", null, 100L, 200L, "target-topic"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("groupName is required for DLQ resend")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        verify(runtimeAdminClientResolver, never()).resolveEndpoint(anyString());
+        verify(auditService, never()).record(anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
     void resendMessagesDoesNotPullWhenDlqQueueSetIsNull() throws Exception {
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
         try (MockedConstruction<DefaultMQPullConsumer> mockedConsumers =
