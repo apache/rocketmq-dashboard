@@ -93,6 +93,22 @@ class RocketMQDashboardProviderTest {
     }
 
     @Test
+    void dashboardShouldExcludeBrokerNamedStatsTopics() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        // "broker-a" matches the broker name and is a self-named stats topic, not a user topic.
+        when(adminExt.getAllTopicConfig("10.0.0.11:10911", 5000))
+                .thenReturn(topicConfig("order-topic", "broker-a"));
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getStats().getTotalTopics()).isEqualTo(1);
+        assertThat(dashboard.getClusters()).singleElement().satisfies(cluster ->
+                assertThat(cluster.getTopics()).isEqualTo(1));
+    }
+
+    @Test
     void dashboardShouldDeduplicateTopicsReportedByMultipleClusterBrokers() throws Exception {
         DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());

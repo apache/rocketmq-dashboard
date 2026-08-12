@@ -165,8 +165,13 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                     } else {
                         Set<String> clusterTopics = topicsByCluster.computeIfAbsent(
                                 clusterName, ignored -> new HashSet<>());
+                        // A broker's self-named stats topic (e.g. "broker-a") is not a user topic;
+                        // pass the owning cluster's broker names so SystemTopicFilter can rule it out.
+                        Set<String> owningBrokerNames = clusterName == null
+                                ? Set.of()
+                                : clusterAddrTable.getOrDefault(clusterName, Set.of());
                         topicConfig.getTopicConfigTable().keySet().stream()
-                                .filter(topic -> !isSystemTopic(topic))
+                                .filter(topic -> !isSystemTopic(topic, owningBrokerNames))
                                 .forEach(topic -> {
                                     allTopics.add(topic);
                                     clusterTopics.add(topic);
@@ -354,6 +359,10 @@ public class RocketMQDashboardProvider implements DashboardProvider {
 
     private boolean isSystemTopic(String topic) {
         return SystemTopicFilter.isSystem(topic);
+    }
+
+    private boolean isSystemTopic(String topic, Set<String> brokerNames) {
+        return SystemTopicFilter.isSystem(topic, brokerNames);
     }
 
     private boolean isSystemGroup(String group) {
