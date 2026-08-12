@@ -134,6 +134,7 @@ const AclPage = () => {
   const [revealedKeys, setRevealedKeys] = useState<Set<string>>(new Set());
   const [adminUpdatingIds, setAdminUpdatingIds] = useState<Set<string>>(() => new Set());
   const adminUpdateInFlightRef = useRef<Set<string>>(new Set());
+  const revealRequestGenerationRef = useRef<Record<string, number>>({});
   const [credentialsByUser, setCredentialsByUser] = useState<
     Record<string, { accessKey: string; secretKey: string }>
   >({});
@@ -142,6 +143,7 @@ const AclPage = () => {
   const [clusterConfig, setClusterConfig] = useState<AclClusterConfig | null>(null);
   const [configLoading, setConfigLoading] = useState(false);
   const [clusterIdInput, setClusterIdInput] = useState('DefaultCluster');
+  const examineRequestGenerationRef = useRef(0);
 
   // Plain access config modal
   const [plainModalOpen, setPlainModalOpen] = useState(false);
@@ -272,6 +274,8 @@ const AclPage = () => {
   /* ─── User helpers ─── */
   const toggleRevealKey = async (userId: string) => {
     const revealing = !revealedKeys.has(userId);
+    const revealGeneration = (revealRequestGenerationRef.current[userId] ?? 0) + 1;
+    revealRequestGenerationRef.current[userId] = revealGeneration;
     setRevealedKeys((prev) => {
       const next = new Set(prev);
       if (next.has(userId)) {
@@ -284,6 +288,7 @@ const AclPage = () => {
     if (!revealing || credentialsByUser[userId]) return;
     try {
       const credentials = await getAclUserCredentials(userId);
+      if (revealRequestGenerationRef.current[userId] !== revealGeneration) return;
       setCredentialsByUser((prev) => ({
         ...prev,
         [userId]: {
@@ -292,6 +297,7 @@ const AclPage = () => {
         },
       }));
     } catch {
+      if (revealRequestGenerationRef.current[userId] !== revealGeneration) return;
       setRevealedKeys((prev) => {
         const next = new Set(prev);
         next.delete(userId);
@@ -393,15 +399,21 @@ const AclPage = () => {
       message.warning(t('acl.inputRequired', { field: t('acl.examineCluster') }));
       return;
     }
+    const requestGeneration = examineRequestGenerationRef.current + 1;
+    examineRequestGenerationRef.current = requestGeneration;
     try {
       setConfigLoading(true);
       const config = await examineBrokerClusterAclConfig(clusterId);
+      if (examineRequestGenerationRef.current !== requestGeneration) return;
       setClusterConfig(config);
       message.success(t('acl.configExamined'));
     } catch {
+      if (examineRequestGenerationRef.current !== requestGeneration) return;
       message.error(t('common.operationFailed'));
     } finally {
-      setConfigLoading(false);
+      if (examineRequestGenerationRef.current === requestGeneration) {
+        setConfigLoading(false);
+      }
     }
   };
 
