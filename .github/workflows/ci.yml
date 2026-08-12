@@ -9,6 +9,10 @@ on:
     branches:
       - rocketmq-studio
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend-build:
     name: Backend Build (Java 21)
@@ -60,5 +64,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build frontend Docker image
-        run: docker build -t rocketmq-studio-web-ci ./web
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build frontend Docker image (cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./web
+          push: false
+          tags: rocketmq-studio-web-ci:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
