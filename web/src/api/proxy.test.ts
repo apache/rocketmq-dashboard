@@ -18,7 +18,7 @@
 import MockAdapter from 'axios-mock-adapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import client from './client';
-import { queryProxyHomePage } from './proxy';
+import { queryProxyHomePage, reloadProxyConfig } from './proxy';
 
 const mock = new MockAdapter(client);
 
@@ -38,20 +38,32 @@ describe('Proxy API', () => {
       proxyAddrList: ['192.168.1.1:8081', '192.168.1.2:8081'],
       currentProxyAddr: '192.168.1.1:8081',
     };
-    mock.onGet('/proxy/homePage.query').reply(200, { code: 200, data });
+    mock.onGet('/proxy/homePage.query', { params: { instanceId: 'instance-a' } }).reply(200, {
+      code: 200,
+      data,
+    });
 
-    const result = await queryProxyHomePage();
+    const result = await queryProxyHomePage('instance-a');
     expect(result.proxyAddrList).toHaveLength(2);
     expect(result.currentProxyAddr).toBe('192.168.1.1:8081');
   });
 
   it('handles empty proxy address list', async () => {
     mock
-      .onGet('/proxy/homePage.query')
+      .onGet('/proxy/homePage.query', { params: { instanceId: 'instance-a' } })
       .reply(200, { code: 200, data: { proxyAddrList: [], currentProxyAddr: '' } });
 
-    const result = await queryProxyHomePage();
+    const result = await queryProxyHomePage('instance-a');
     expect(result.proxyAddrList).toHaveLength(0);
     expect(result.currentProxyAddr).toBe('');
+  });
+
+  it('reloads proxy configuration without an unused cluster identifier', async () => {
+    mock.onPost('/proxies/config/reload').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({ addr: '192.168.1.1:8081' });
+      return [200, { code: 200, data: { success: true } }];
+    });
+
+    await expect(reloadProxyConfig('192.168.1.1:8081')).resolves.toEqual({ success: true });
   });
 });

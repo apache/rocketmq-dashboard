@@ -18,6 +18,9 @@
 package org.apache.rocketmq.studio.cluster.proxy;
 
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
+import org.apache.rocketmq.studio.instance.InstanceRepository;
+import org.apache.rocketmq.studio.instance.InstanceVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
@@ -29,11 +32,7 @@ import org.springframework.web.client.RestTemplate;
 
 import java.io.IOException;
 import java.time.Duration;
-
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -48,11 +47,11 @@ public class ProxyAddressService {
 
     private static final String RELOAD_PATH = "/admin/reloadConfig";
 
-    private final Set<String> proxyAddrs = new LinkedHashSet<>(List.of("127.0.0.1:8081"));
-    private String currentProxyAddr = "127.0.0.1:8081";
+    private final InstanceRepository instanceRepository;
     private final RestTemplate restTemplate;
 
-    public ProxyAddressService() {
+    public ProxyAddressService(InstanceRepository instanceRepository) {
+        this.instanceRepository = instanceRepository;
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory() {
             @Override
             protected void prepareConnection(java.net.HttpURLConnection connection, String httpMethod) throws IOException {
@@ -65,31 +64,40 @@ public class ProxyAddressService {
         this.restTemplate = new RestTemplate(factory);
     }
 
-    public synchronized ProxyHomeVO getHomePage() {
+    public ProxyHomeVO getHomePage() {
+        List<String> proxyAddrs = listConfiguredProxyEndpoints();
         return ProxyHomeVO.builder()
-                .proxyAddrList(new ArrayList<>(proxyAddrs))
-                .currentProxyAddr(currentProxyAddr)
+                .proxyAddrList(proxyAddrs)
+                .currentProxyAddr(proxyAddrs.isEmpty() ? "" : proxyAddrs.get(0))
                 .build();
     }
 
-    public synchronized void addProxyAddr(String newProxyAddr) {
-        String normalized = normalizeProxyAddr(newProxyAddr, "newProxyAddr");
-        proxyAddrs.add(normalized);
-        if (currentProxyAddr == null || currentProxyAddr.isBlank()) {
-            currentProxyAddr = normalized;
+    /**
+     * A managed Proxy instance owns its access endpoint. This compat surface returns the selected
+     * instance endpoint without inventing additional cluster-global proxy addresses.
+     */
+    public ProxyHomeVO getHomePage(String instanceId) {
+        if (instanceId == null || instanceId.isBlank()) {
+            throw new BusinessException(400, "instanceId is required");
         }
-        log.info("Added Proxy address {}", normalized);
+        InstanceVO instance = instanceRepository.findById(instanceId)
+                .orElseThrow(() -> new BusinessException(404, "Instance not found: " + instanceId));
+        if (instance.getType() != InstanceType.PROXY) {
+            throw new BusinessException(400, "Instance is not a Proxy instance: " + instanceId);
+        }
+        String endpoint = normalizeConfiguredEndpoint(instance.getEndpoint(), instanceId);
+        return ProxyHomeVO.builder()
+                .proxyAddrList(List.of(endpoint))
+                .currentProxyAddr(endpoint)
+                .build();
     }
 
-    public synchronized void removeProxyAddr(String proxyAddr) {
-        String normalized = normalizeProxyAddr(proxyAddr, "proxyAddr");
-        if (!proxyAddrs.remove(normalized)) {
-            throw new BusinessException(404, "Proxy address not found: " + normalized);
-        }
-        if (normalized.equals(currentProxyAddr)) {
-            currentProxyAddr = proxyAddrs.stream().findFirst().orElse("");
-        }
-        log.info("Removed Proxy address {}", normalized);
+    public void addProxyAddr(String newProxyAddr) {
+        throw new UnsupportedOperationException("Update the managed instance endpoint instead");
+    }
+
+    public void removeProxyAddr(String proxyAddr) {
+        throw new UnsupportedOperationException("Update the managed instance endpoint instead");
     }
 
     /**
@@ -99,10 +107,8 @@ public class ProxyAddressService {
      */
     public void reloadConfig(String addr) {
         String normalized = normalizeProxyAddr(addr, "addr");
-        synchronized (this) {
-            if (!proxyAddrs.contains(normalized)) {
-                throw new BusinessException(400, "addr is not a registered proxy address");
-            }
+        if (listConfiguredProxyEndpoints().stream().noneMatch(normalized::equals)) {
+            throw new BusinessException(400, "addr is not a configured proxy endpoint");
         }
         String url = "http://" + normalized + RELOAD_PATH;
         try {
@@ -123,6 +129,22 @@ public class ProxyAddressService {
             log.warn("Proxy config reload via {} failed: {}", url, ex.getMessage());
             throw new BusinessException(500, "Config reload failed: " + ex.getMessage());
         }
+    }
+
+    private List<String> listConfiguredProxyEndpoints() {
+        return instanceRepository.findByType(InstanceType.PROXY).stream()
+                .map(InstanceVO::getEndpoint)
+                .filter(endpoint -> endpoint != null && !endpoint.isBlank())
+                .map(String::trim)
+                .distinct()
+                .toList();
+    }
+
+    private String normalizeConfiguredEndpoint(String endpoint, String instanceId) {
+        if (endpoint == null || endpoint.isBlank()) {
+            throw new BusinessException(409, "Proxy instance has no configured endpoint: " + instanceId);
+        }
+        return normalizeProxyAddr(endpoint, "endpoint");
     }
 
     private String normalizeProxyAddr(String proxyAddr, String fieldName) {

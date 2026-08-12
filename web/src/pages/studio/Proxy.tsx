@@ -31,8 +31,8 @@ import {
   Descriptions,
   Tooltip,
   App,
+  Select,
   Typography,
-  Input,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -46,6 +46,8 @@ import {
 import PageHeader from '../../components/PageHeader';
 import { useLang } from '../../i18n/LangContext';
 import { queryProxyHomePage, reloadProxyConfig, type ProxyNode } from '../../api/proxy';
+import type { Instance } from '../../api/instance';
+import { listInstances } from '../../services/instanceService';
 
 const { Text } = Typography;
 
@@ -57,9 +59,8 @@ const ProxyPage: React.FC = () => {
   const [proxyNodes, setProxyNodes] = useState<ProxyNode[]>([]);
   const [selectedNode, setSelectedNode] = useState<ProxyNode | null>(null);
   const [configModalOpen, setConfigModalOpen] = useState(false);
-  const [clusterId, setClusterId] = useState<string>(
-    localStorage.getItem('clusterId') || 'DefaultCluster',
-  );
+  const [instances, setInstances] = useState<Instance[]>([]);
+  const [selectedInstanceId, setSelectedInstanceId] = useState('');
   const loadRequestId = useRef(0);
 
   const [clusterStats, setClusterStats] = useState({
@@ -69,11 +70,43 @@ const ProxyPage: React.FC = () => {
     totalTPS: null as number | null,
   });
 
+  useEffect(() => {
+    let cancelled = false;
+    void listInstances({ type: 'PROXY' })
+      .then((nextInstances) => {
+        if (cancelled) return;
+        setInstances(nextInstances);
+        setSelectedInstanceId((current) =>
+          nextInstances.some((instance) => instance.id === current)
+            ? current
+            : (nextInstances[0]?.id ?? ''),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) {
+          message.error(t('proxy.fetchListFailed'));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [message, t]);
+
   const loadProxyNodes = useCallback(async () => {
+    if (!selectedInstanceId) {
+      setProxyNodes([]);
+      setClusterStats({
+        totalNodes: 0,
+        healthyNodes: null,
+        totalConnections: null,
+        totalTPS: null,
+      });
+      return false;
+    }
     const requestId = ++loadRequestId.current;
     setLoading(true);
     try {
-      const { proxyAddrList, currentProxyAddr } = await queryProxyHomePage();
+      const { proxyAddrList, currentProxyAddr } = await queryProxyHomePage(selectedInstanceId);
       if (requestId !== loadRequestId.current) return false;
       const nodes: ProxyNode[] = (proxyAddrList || []).map((addr) => ({
         key: addr,
@@ -96,12 +129,6 @@ const ProxyPage: React.FC = () => {
         totalTPS: null,
       });
 
-      if (currentProxyAddr) {
-        localStorage.setItem('proxyAddr', currentProxyAddr);
-      } else if (proxyAddrList && proxyAddrList.length > 0) {
-        localStorage.setItem('proxyAddr', proxyAddrList[0]);
-      }
-
       return true;
     } catch {
       if (requestId !== loadRequestId.current) return false;
@@ -112,7 +139,7 @@ const ProxyPage: React.FC = () => {
         setLoading(false);
       }
     }
-  }, [message, t]);
+  }, [message, selectedInstanceId, t]);
 
   useEffect(() => {
     const requestId = loadRequestId.current;
@@ -135,16 +162,9 @@ const ProxyPage: React.FC = () => {
     }
   };
 
-  const handleClusterIdChange = (value: string) => {
-    setClusterId(value);
-    if (value) {
-      localStorage.setItem('clusterId', value);
-    }
-  };
-
   const handleReloadConfig = async (node: ProxyNode) => {
     try {
-      const result = await reloadProxyConfig(clusterId, node.address);
+      const result = await reloadProxyConfig(node.address);
       if (result.success) {
         message.success(t('proxy.reloadSuccess'));
       } else {
@@ -318,15 +338,16 @@ const ProxyPage: React.FC = () => {
     <div style={{ padding: 0 }}>
       <PageHeader
         title={t('proxy.title')}
-
         extra={
           <Space>
-            <Input
-              placeholder={t('proxy.clusterIdPlaceholder')}
-              value={clusterId}
-              onChange={(e) => handleClusterIdChange(e.target.value)}
-              style={{ width: 200 }}
-              aria-label={t('proxy.clusterId')}
+            <Select
+              aria-label="Proxy instance"
+              placeholder="选择 Proxy 实例"
+              value={selectedInstanceId || undefined}
+              onChange={setSelectedInstanceId}
+              options={instances.map((instance) => ({ value: instance.id, label: instance.name }))}
+              style={{ width: 220 }}
+              notFoundContent="暂无 Proxy 实例"
             />
             <Button type="primary" icon={<ArrowClockwise size={14} />} onClick={handleRefresh}>
               {t('common.refresh')}

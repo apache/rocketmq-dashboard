@@ -39,21 +39,16 @@ export interface ProxyNode {
 
 // ─── API Functions ───────────────────────────────────────────────
 
-export async function queryProxyHomePage(): Promise<ProxyHomePageData> {
-  const res = await client.get<{ data: ProxyHomePageData }>('/proxy/homePage.query');
+export async function queryProxyHomePage(instanceId: string): Promise<ProxyHomePageData> {
+  const res = await client.get<{ data: ProxyHomePageData }>('/proxy/homePage.query', {
+    params: { instanceId },
+  });
   return res.data.data;
 }
 
-/**
- * Trigger a configuration hot-reload for a proxy.
- * Uses the same DTO as restartProxy ({ clusterId, addr }).
- */
-export async function reloadProxyConfig(
-  clusterId: string,
-  addr: string,
-): Promise<{ success: boolean }> {
+/** Trigger a configuration hot-reload for a registered proxy address. */
+export async function reloadProxyConfig(addr: string): Promise<{ success: boolean }> {
   const res = await client.post<{ data: { success: boolean } }>('/proxies/config/reload', {
-    clusterId,
     addr,
   });
   return res.data.data;

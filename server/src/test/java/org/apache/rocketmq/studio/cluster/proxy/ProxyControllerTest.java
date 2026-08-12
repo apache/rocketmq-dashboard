@@ -104,14 +104,14 @@ class ProxyControllerTest {
     }
 
     @Test
-    void listProxiesShouldReturnProxiesForCluster() throws Exception {
+    void listProxiesShouldReturnRegisteredProxies() throws Exception {
         when(proxyAddressService.getHomePage())
                 .thenReturn(ProxyHomeVO.builder()
                         .proxyAddrList(List.of("127.0.0.1:8081"))
                         .currentProxyAddr("127.0.0.1:8081")
                         .build());
 
-        mockMvc.perform(get("/api/proxies").param("clusterId", "cluster-1"))
+        mockMvc.perform(get("/api/proxies"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data[0].addr").value("127.0.0.1:8081"));
@@ -120,17 +120,8 @@ class ProxyControllerTest {
     }
 
     @Test
-    void listProxiesShouldRejectMissingClusterId() throws Exception {
-        mockMvc.perform(get("/api/proxies"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value(400))
-                .andExpect(jsonPath("$.message").value("clusterId is required"));
-    }
-
-    @Test
     void reloadProxyConfigShouldReturnSuccess() throws Exception {
-        RestartProxyDTO request = RestartProxyDTO.builder()
-                .clusterId("cluster-1")
+        ProxyConfigReloadDTO request = ProxyConfigReloadDTO.builder()
                 .addr("127.0.0.1:8081")
                 .build();
 
@@ -146,9 +137,7 @@ class ProxyControllerTest {
 
     @Test
     void reloadProxyConfigShouldRejectMissingAddr() throws Exception {
-        RestartProxyDTO request = RestartProxyDTO.builder()
-                .clusterId("cluster-1")
-                .build();
+        ProxyConfigReloadDTO request = ProxyConfigReloadDTO.builder().build();
 
         mockMvc.perform(post("/api/proxies/config/reload")
                         .contentType(MediaType.APPLICATION_JSON)

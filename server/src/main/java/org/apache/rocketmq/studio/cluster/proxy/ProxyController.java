@@ -25,7 +25,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -40,8 +39,7 @@ public class ProxyController {
     private final ProxyAddressService proxyAddressService;
 
     @GetMapping
-    public Result<List<ProxyVO>> listProxies(@RequestParam(required = false) String clusterId) {
-        requireClusterId(clusterId);
+    public Result<List<ProxyVO>> listProxies() {
         List<ProxyVO> proxies = proxyAddressService.getHomePage().getProxyAddrList().stream()
                 .map(addr -> ProxyVO.builder().addr(addr).build())
                 .toList();
@@ -49,7 +47,7 @@ public class ProxyController {
     }
 
     @PostMapping("/config/reload")
-    public Result<Map<String, Boolean>> reloadProxyConfig(@Valid @RequestBody RestartProxyDTO command) {
+    public Result<Map<String, Boolean>> reloadProxyConfig(@Valid @RequestBody ProxyConfigReloadDTO command) {
         proxyAddressService.reloadConfig(command.getAddr());
         return Result.ok(Map.of("success", true));
     }
@@ -61,11 +59,5 @@ public class ProxyController {
             throw new BusinessException(500, "Failed to restart proxy");
         }
         return Result.ok();
-    }
-
-    private void requireClusterId(String clusterId) {
-        if (clusterId == null || clusterId.isBlank()) {
-            throw new BusinessException(400, "clusterId is required");
-        }
     }
 }
