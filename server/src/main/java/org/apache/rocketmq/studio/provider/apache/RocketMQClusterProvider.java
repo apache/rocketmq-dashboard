@@ -28,6 +28,7 @@ import org.apache.rocketmq.studio.cluster.nameserver.NameServerVO;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.BrokerStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
+import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
@@ -149,6 +150,7 @@ public class RocketMQClusterProvider implements ClusterProvider {
                                      List<NameServerVO> nameServers) {
         ClusterVO cluster = ClusterVO.builder()
                 .name(clusterName)
+                .type(ClusterType.V4_DIRECT)
                 .status(hasUnavailableRuntimeStats(brokers) ? ClusterStatus.warning : ClusterStatus.healthy)
                 .brokers(brokers != null ? brokers : Collections.emptyList())
                 .proxies(Collections.emptyList())

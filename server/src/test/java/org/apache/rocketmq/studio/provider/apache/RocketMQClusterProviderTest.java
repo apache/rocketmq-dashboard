@@ -70,6 +70,8 @@ class RocketMQClusterProviderTest {
         assertThat(clusters).hasSize(1);
         ClusterVO cluster = clusters.get(0);
         assertThat(cluster.getName()).isEqualTo("DefaultCluster");
+        // A concrete type is required by AI tool projections (rmq.cluster.list) and must not be null.
+        assertThat(cluster.getType()).isNotNull();
         // Real cluster has no proxies configured - must never be null for the web UI
         assertThat(cluster.getProxies()).isNotNull().isEmpty();
         assertThat(cluster.getTpsHistory()).isNotNull().isEmpty();
