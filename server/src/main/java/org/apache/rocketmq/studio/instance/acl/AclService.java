@@ -134,7 +134,8 @@ public class AclService {
                 .clusters(user.getClusters() == null ? existing.getClusters() : user.getClusters())
                 .createdAt(existing.getCreatedAt())
                 .build();
-        AclUserVO saved = aclRepository.saveUser(merged);
+        AclUserVO saved = aclRepository.replaceUser(merged)
+                .orElseThrow(() -> new BusinessException(404, "ACL user not found: " + user.getId()));
         auditUser("UPDATE_ACL_USER", saved);
         return maskCredentials(saved);
     }

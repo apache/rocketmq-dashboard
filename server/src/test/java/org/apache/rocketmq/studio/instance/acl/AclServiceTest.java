@@ -411,7 +411,8 @@ class AclServiceTest {
 
         ArgumentCaptor<AclUserVO> captor = ArgumentCaptor.forClass(AclUserVO.class);
         when(aclRepository.findUserById("user-1")).thenReturn(Optional.of(existingUser));
-        when(aclRepository.saveUser(any(AclUserVO.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(aclRepository.replaceUser(any(AclUserVO.class)))
+                .thenAnswer(inv -> Optional.of(inv.getArgument(0)));
 
         AclUserVO result = aclService.updateUser(input);
 
@@ -420,7 +421,7 @@ class AclServiceTest {
         assertThat(result.getAccessKey()).isEqualTo("acce****3456");
         assertThat(result.getSecretKey()).isEqualTo("secr****7654");
         assertThat(result.isAdmin()).isTrue();
-        verify(aclRepository).saveUser(captor.capture());
+        verify(aclRepository).replaceUser(captor.capture());
         assertThat(captor.getValue().getAccessKey()).isEqualTo("access-key-123456");
         assertThat(captor.getValue().getSecretKey()).isEqualTo("secret-key-987654");
         verify(operationAuditService).record(eq("UPDATE_ACL_USER"), eq("ACL_USER"), eq("user-1"), eq(null),
@@ -444,13 +445,14 @@ class AclServiceTest {
 
         ArgumentCaptor<AclUserVO> captor = ArgumentCaptor.forClass(AclUserVO.class);
         when(aclRepository.findUserById("user-1")).thenReturn(Optional.of(adminUser));
-        when(aclRepository.saveUser(any(AclUserVO.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(aclRepository.replaceUser(any(AclUserVO.class)))
+                .thenAnswer(inv -> Optional.of(inv.getArgument(0)));
 
         AclUserVO result = aclService.updateUser(input);
 
         assertThat(result.getUsername()).isEqualTo("renamed");
         assertThat(result.isAdmin()).isTrue();
-        verify(aclRepository).saveUser(captor.capture());
+        verify(aclRepository).replaceUser(captor.capture());
         assertThat(captor.getValue().isAdmin()).isTrue();
     }
 
@@ -466,7 +468,23 @@ class AclServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("ACL user not found: missing")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
-        verify(aclRepository, never()).saveUser(any(AclUserVO.class));
+        verify(aclRepository, never()).replaceUser(any(AclUserVO.class));
+    }
+
+    @Test
+    void updateUserShouldRejectConcurrentDeletion() {
+        UpdateAclUserDTO input = new UpdateAclUserDTO();
+        input.setId("user-1");
+        input.setUsername("renamed");
+        when(aclRepository.findUserById("user-1")).thenReturn(Optional.of(existingUser));
+        when(aclRepository.replaceUser(any(AclUserVO.class))).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> aclService.updateUser(input))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("ACL user not found: user-1")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
+
+        verify(operationAuditService, never()).record(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -517,6 +535,10 @@ class AclServiceTest {
         when(aclRepository.saveUser(any(AclUserVO.class))).thenAnswer(invocation -> {
             stored.set(invocation.getArgument(0));
             return invocation.getArgument(0);
+        });
+        when(aclRepository.replaceUser(any(AclUserVO.class))).thenAnswer(invocation -> {
+            stored.set(invocation.getArgument(0));
+            return Optional.of(invocation.getArgument(0));
         });
         when(aclRepository.findUserById(any())).thenAnswer(invocation -> Optional.ofNullable(stored.get()));
         when(aclRepository.findUsers()).thenAnswer(invocation -> List.of(stored.get()));

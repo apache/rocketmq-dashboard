@@ -39,6 +39,11 @@ public interface AclRepository {
 
     AclUserVO saveUser(AclUserVO user);
 
+    /**
+     * Replaces an existing user without recreating a concurrently deleted identity.
+     */
+    Optional<AclUserVO> replaceUser(AclUserVO user);
+
     boolean deleteUser(String id);
 
     /**

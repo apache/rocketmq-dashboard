@@ -58,6 +58,25 @@ class MybatisPlusAclRepositoryTest {
     private MybatisPlusAclRepository repository;
 
     @Test
+    void replaceUserShouldNotRecreateAConcurrentlyDeletedUser() {
+        RmqAclUser existing = new RmqAclUser();
+        existing.setId("user-1");
+        existing.setCreatedAt(LocalDateTime.of(2026, 1, 1, 0, 0));
+        when(userMapper.selectById("user-1")).thenReturn(existing);
+        when(userMapper.updateById(any(RmqAclUser.class))).thenReturn(0);
+        AclUserVO replacement = AclUserVO.builder()
+                .id("user-1")
+                .username("renamed")
+                .accessKey("access-key")
+                .secretKey("secret-key")
+                .build();
+
+        assertThat(repository.replaceUser(replacement)).isEmpty();
+
+        verify(userMapper, never()).insert(any(RmqAclUser.class));
+    }
+
+    @Test
     void upsertShouldAssignUniqueRuleIdPerPermission() {
         when(userMapper.selectOne(any(QueryWrapper.class))).thenReturn(null);
         when(userMapper.insert(any(RmqAclUser.class))).thenReturn(1);
