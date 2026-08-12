@@ -142,6 +142,7 @@ const AclPage = () => {
   const [clusterConfig, setClusterConfig] = useState<AclClusterConfig | null>(null);
   const [configLoading, setConfigLoading] = useState(false);
   const [clusterIdInput, setClusterIdInput] = useState('DefaultCluster');
+  const examineSequenceRef = useRef(0);
 
   // Plain access config modal
   const [plainModalOpen, setPlainModalOpen] = useState(false);
@@ -393,15 +394,17 @@ const AclPage = () => {
       message.warning(t('acl.inputRequired', { field: t('acl.examineCluster') }));
       return;
     }
+    const sequence = ++examineSequenceRef.current;
     try {
       setConfigLoading(true);
       const config = await examineBrokerClusterAclConfig(clusterId);
+      if (sequence !== examineSequenceRef.current) return;
       setClusterConfig(config);
       message.success(t('acl.configExamined'));
     } catch {
       message.error(t('common.operationFailed'));
     } finally {
-      setConfigLoading(false);
+      if (sequence === examineSequenceRef.current) setConfigLoading(false);
     }
   };
 
