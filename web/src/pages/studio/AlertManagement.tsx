@@ -105,6 +105,8 @@ const TEAM_COLORS: Record<string, string> = {
 // ─── Mapping helpers ──────────────────────────────────────────────
 const DESCRIPTION_SEPARATOR = ' - ';
 const EXPRESSION_PATTERN = /^\s*(.+?)\s*(>=|<=|==|!=|>|<)\s*(-?\d+(?:\.\d+)?)\s*$/;
+const METRIC_NAME_PATTERN = /^[a-zA-Z_:][a-zA-Z0-9_:]*$/;
+const SCOPE_LABEL_PATTERN = /\s*(cluster|broker)\s*=\s*"((?:\\["\\]|[^"\\])*)"\s*(,|$)/y;
 
 function inferTeam(metric?: string): string {
   const value = metric || '';
@@ -236,48 +238,72 @@ function toUiRule(rule: PersistedAlertRule, index: number): AlertRule {
 
 function parseExpression(
   expr: string,
-): Pick<AlertRuleRequest, 'metric' | 'operator' | 'threshold'> {
+): Pick<AlertRuleRequest, 'metric' | 'operator' | 'threshold' | 'clusterName' | 'brokerName'> {
   const match = expr.match(EXPRESSION_PATTERN);
   if (!match) {
     throw new Error('Expression must look like: metric{labels} > 100');
   }
+  const scope = parseMetricScope(match[1].trim());
   return {
-    metric: match[1].trim(),
+    ...scope,
     operator: match[2],
     threshold: Number(match[3]),
   };
 }
 
-function parseScopeLabels(metric: string): {
-  metric: string;
-  clusterName?: string;
-  brokerName?: string;
-} {
-  const open = metric.indexOf('{');
-  if (open < 0) return { metric };
-  const metricName = metric.slice(0, open).trim();
-  const inner = metric.slice(open + 1, metric.lastIndexOf('}'));
-  let clusterName: string | undefined;
-  let brokerName: string | undefined;
-  const remaining: string[] = [];
-  for (const part of inner.split(',')) {
-    const eq = part.indexOf('=');
-    if (eq < 0) continue;
-    const key = part.slice(0, eq).trim();
-    const raw = part.slice(eq + 1).trim();
-    const value = raw.replace(/^"|"$/g, '').replace(/\\\\/g, '\\').replace(/\\"/g, '"');
-    if (key === 'cluster') clusterName = value;
-    else if (key === 'broker') brokerName = value;
-    else remaining.push(part.trim());
+function parseMetricScope(
+  scopedMetricValue: string,
+): Pick<AlertRuleRequest, 'metric' | 'clusterName' | 'brokerName'> {
+  const selectorStart = scopedMetricValue.indexOf('{');
+  if (selectorStart < 0) {
+    if (!METRIC_NAME_PATTERN.test(scopedMetricValue)) {
+      throw new Error('Expression metric must be a valid Prometheus metric name');
+    }
+    return { metric: scopedMetricValue };
   }
-  // Rebuild the metric expression preserving every non-scope label.
-  const metricExpr =
-    remaining.length > 0
-      ? `${metricName}{${remaining.join(',')}}`
-      : clusterName || brokerName
-        ? metricName
-        : metric;
-  return { metric: metricExpr, clusterName, brokerName };
+
+  if (!scopedMetricValue.endsWith('}') || scopedMetricValue.indexOf('{', selectorStart + 1) >= 0) {
+    throw new Error('Expression selector must use one balanced label block');
+  }
+  const metric = scopedMetricValue.slice(0, selectorStart).trim();
+  if (!METRIC_NAME_PATTERN.test(metric)) {
+    throw new Error('Expression metric must be a valid Prometheus metric name');
+  }
+
+  const selector = scopedMetricValue.slice(selectorStart + 1, -1);
+  const scope: Pick<AlertRuleRequest, 'metric' | 'clusterName' | 'brokerName'> = { metric };
+  const seenLabels = new Set<string>();
+  let offset = 0;
+  while (offset < selector.length) {
+    SCOPE_LABEL_PATTERN.lastIndex = offset;
+    const label = SCOPE_LABEL_PATTERN.exec(selector);
+    if (!label) {
+      throw new Error('Expression supports only exact cluster="..." and broker="..." selectors');
+    }
+    const labelName = label[1] as 'cluster' | 'broker';
+    if (seenLabels.has(labelName)) {
+      throw new Error(`Expression selector repeats ${labelName}`);
+    }
+    const value = unescapeScopeValue(label[2]);
+    if (!value || value === '*') {
+      throw new Error(`Expression ${labelName} selector must identify one resource`);
+    }
+    seenLabels.add(labelName);
+    if (labelName === 'cluster') scope.clusterName = value;
+    if (labelName === 'broker') scope.brokerName = value;
+    offset = SCOPE_LABEL_PATTERN.lastIndex;
+    if (label[3] === ',' && offset === selector.length) {
+      throw new Error('Expression selector must not end with a comma');
+    }
+  }
+  if (seenLabels.size === 0) {
+    throw new Error('Expression selector must include cluster or broker');
+  }
+  return scope;
+}
+
+function unescapeScopeValue(value: string): string {
+  return value.replace(/\\(["\\])/g, '$1');
 }
 
 function toAlertRuleRequest(
@@ -285,14 +311,10 @@ function toAlertRuleRequest(
   editingRule: AlertRule | null,
 ): AlertRuleRequest {
   const expression = parseExpression(values.expr);
-  const scope = parseScopeLabels(expression.metric ?? '');
   return {
     id: editingRule?.id,
     name: values.alert.trim(),
     ...expression,
-    metric: scope.metric,
-    clusterName: scope.clusterName,
-    brokerName: scope.brokerName,
     duration: values.for,
     enabled: values.enabled ?? true,
     description: combineDescription(values.summary, values.description),
@@ -463,7 +485,7 @@ const AlertManagementPage: React.FC = () => {
       setModalVisible(false);
       form.resetFields();
     } catch (error) {
-      if (error instanceof Error && error.message.startsWith('Expression must')) {
+      if (error instanceof Error && error.message.startsWith('Expression ')) {
         message.error(error.message);
         return;
       }
@@ -820,7 +842,10 @@ const AlertManagementPage: React.FC = () => {
               },
             ]}
           >
-            <TextArea rows={2} placeholder={'e.g. up{job=~"rocketmq.*broker.*"} == 0'} />
+            <TextArea
+              rows={2}
+              placeholder={'e.g. rocketmq_consumer_lag_messages{cluster="DefaultCluster"} > 1000'}
+            />
           </Form.Item>
           <Row gutter={16}>
             <Col span={12}>

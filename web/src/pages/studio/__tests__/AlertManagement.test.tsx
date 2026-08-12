@@ -17,7 +17,7 @@
 
 import type { ReactElement } from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
@@ -270,9 +270,15 @@ describe('AlertManagementPage', () => {
       within(dialog).getByPlaceholderText('e.g. RocketMQ_Broker_Down'),
       'TopicBacklogHigh',
     );
-    await user.type(
-      within(dialog).getByPlaceholderText('e.g. up{job=~"rocketmq.*broker.*"} == 0'),
-      'rocketmq_topic_messages > 500',
+    fireEvent.change(
+      within(dialog).getByPlaceholderText(
+        'e.g. rocketmq_consumer_lag_messages{cluster="DefaultCluster"} > 1000',
+      ),
+      {
+        target: {
+          value: 'rocketmq_topic_messages{cluster="DefaultCluster",broker="broker-a"} > 500',
+        },
+      },
     );
     await user.type(
       within(dialog).getByPlaceholderText('Brief description of the alert'),
@@ -285,6 +291,8 @@ describe('AlertManagementPage', () => {
         expect.objectContaining({
           name: 'TopicBacklogHigh',
           metric: 'rocketmq_topic_messages',
+          clusterName: 'DefaultCluster',
+          brokerName: 'broker-a',
           operator: '>',
           threshold: 500,
           duration: '5m',
@@ -301,30 +309,61 @@ describe('AlertManagementPage', () => {
     const user = userEvent.setup();
     renderWithProviders(<AlertManagementPage />);
 
-    const brokerRule = await screen.findByText('BrokerDown');
-    const brokerRow = brokerRule.closest('tr');
-    expect(brokerRow).not.toBeNull();
-    await user.click(within(brokerRow!).getAllByRole('button')[0]);
+    const consumerRule = await screen.findByText('ConsumerLagHigh');
+    const consumerRow = consumerRule.closest('tr');
+    expect(consumerRow).not.toBeNull();
+    await user.click(within(consumerRow!).getAllByRole('button')[0]);
 
     const dialog = await screen.findByRole('dialog', { name: '编辑规则' });
     const summaryInput = within(dialog).getByPlaceholderText('Brief description of the alert');
     await user.clear(summaryInput);
-    await user.type(summaryInput, 'Broker unavailable updated');
+    await user.type(summaryInput, 'Consumer lag updated');
     await user.click(within(dialog).getByRole('button', { name: /OK|确/ }));
 
     await waitFor(() => {
       expect(updateAlertRule).toHaveBeenCalledWith(
         expect.objectContaining({
-          id: 'rule-broker-down',
-          name: 'BrokerDown',
-          metric: 'up{job="rocketmq-broker"}',
-          operator: '==',
-          threshold: 0,
-          description: 'Broker unavailable updated - Broker has been unavailable for five minutes',
+          id: 'rule-consumer-lag',
+          name: 'ConsumerLagHigh',
+          metric: 'rocketmq_consumer_lag_messages',
+          clusterName: 'DefaultCluster',
+          brokerName: 'broker-a',
+          operator: '>',
+          threshold: 100000,
+          description: 'Consumer lag updated - Consumer lag has exceeded the threshold',
         }),
       );
     });
     expect(await screen.findByText('告警规则已更新')).toBeInTheDocument();
+  });
+
+  it('rejects selectors that the persisted alert contract cannot represent', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<AlertManagementPage />);
+
+    await screen.findByText('BrokerDown');
+    await user.click(screen.getByRole('button', { name: '添加规则' }));
+
+    const dialog = await screen.findByRole('dialog', { name: '添加规则' });
+    await user.type(
+      within(dialog).getByPlaceholderText('e.g. RocketMQ_Broker_Down'),
+      'UnsupportedSelector',
+    );
+    fireEvent.change(
+      within(dialog).getByPlaceholderText(
+        'e.g. rocketmq_consumer_lag_messages{cluster="DefaultCluster"} > 1000',
+      ),
+      { target: { value: 'up{job=~"rocketmq.*broker.*"} == 0' } },
+    );
+    await user.type(
+      within(dialog).getByPlaceholderText('Brief description of the alert'),
+      'Unsupported selector',
+    );
+    await user.click(within(dialog).getByRole('button', { name: /OK|确/ }));
+
+    await waitFor(() => expect(createAlertRule).not.toHaveBeenCalled());
+    expect(dialog).toBeInTheDocument();
+    expect(await screen.findByText(/Expression supports only/)).toBeInTheDocument();
   });
 
   it('deletes a persisted alert rule', async () => {
