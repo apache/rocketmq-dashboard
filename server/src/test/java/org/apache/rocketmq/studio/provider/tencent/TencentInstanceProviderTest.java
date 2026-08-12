@@ -512,6 +512,38 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void messageQueryReusesTaskRequestIdReturnedByPreviousPage() throws Exception {
+        MessageItem[] page1Items = new MessageItem[TencentInstanceProvider.MESSAGE_LIMIT];
+        for (int i = 0; i < TencentInstanceProvider.MESSAGE_LIMIT; i++) {
+            MessageItem item = new MessageItem();
+            item.setMsgId("MSG-" + (i + 1));
+            item.setProduceTime("2024-09-12 14:06:55,591");
+            page1Items[i] = item;
+        }
+        MessageItem last = new MessageItem();
+        last.setMsgId("MSG-LAST");
+        last.setProduceTime("2024-09-12 14:06:56,591");
+        DescribeMessageListResponse page1 = new DescribeMessageListResponse();
+        page1.setData(page1Items);
+        page1.setTaskRequestId("task-abc");
+        DescribeMessageListResponse page2 = new DescribeMessageListResponse();
+        page2.setData(new MessageItem[]{last});
+        page2.setTaskRequestId("task-abc");
+        when(client.DescribeMessageList(any()))
+                .thenReturn(page1)
+                .thenReturn(page2);
+
+        provider.queryMessages(STUDIO_INSTANCE_ID, "orders", null, null, null,
+                1600000000000L, 1600001000000L);
+
+        ArgumentCaptor<DescribeMessageListRequest> captor = ArgumentCaptor.forClass(DescribeMessageListRequest.class);
+        verify(client, org.mockito.Mockito.times(2)).DescribeMessageList(captor.capture());
+        java.util.List<DescribeMessageListRequest> requests = captor.getAllValues();
+        // The second page must carry the task id returned by the first page, not a fresh random id.
+        assertThat(requests.get(1).getTaskRequestId()).isEqualTo("task-abc");
+    }
+
+    @Test
     void getMessageTraceShouldMapStagesTest() throws Exception {
         MessageTraceItem produce = new MessageTraceItem();
         produce.setStage("produce");

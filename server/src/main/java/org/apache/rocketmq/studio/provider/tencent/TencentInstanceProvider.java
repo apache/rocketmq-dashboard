@@ -476,6 +476,8 @@ public class TencentInstanceProvider implements InstanceProvider {
             request.setTopic(topic);
             request.setStartTime(begin);
             request.setEndTime(end);
+            // Reuse the task id returned by the previous page so paging continues the same
+            // logical query; fall back to the initial random id when the API omits it.
             request.setTaskRequestId(taskRequestId);
             if (StringUtils.hasText(key)) {
                 request.setMsgKey(key);
@@ -489,6 +491,9 @@ public class TencentInstanceProvider implements InstanceProvider {
                     client -> client.DescribeMessageList(request));
             MessageItem[] data = response == null ? null : response.getData();
             long total = response == null ? 0L : (response.getTotalCount() == null ? 0L : response.getTotalCount());
+            if (response != null && StringUtils.hasText(response.getTaskRequestId())) {
+                taskRequestId = response.getTaskRequestId();
+            }
             if (data != null) {
                 for (MessageItem item : data) {
                     if (item != null) {
