@@ -40,6 +40,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -199,6 +200,42 @@ class K8sCertServiceTest {
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
 
         verifyNoInteractions(k8sCertRepository);
+    }
+
+    @Test
+    void createCertShouldRejectInvalidTypeBeforeSave() {
+        CreateCertDTO command = CreateCertDTO.builder()
+                .name("bad-cert")
+                .namespace("default")
+                .cluster("test-cluster")
+                .type("INVALID")
+                .issuer("test-issuer")
+                .build();
+
+        assertThatThrownBy(() -> k8sCertService.createCert(command))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Invalid certificate type: INVALID. Valid types: TLS, mTLS, ServiceAccount")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verify(k8sCertRepository, never()).save(any());
+        verify(operationAuditService, never()).record(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void updateCertShouldRejectInvalidTypeBeforeSave() {
+        when(k8sCertRepository.findById("cert-1")).thenReturn(Optional.of(sampleCert));
+        UpdateCertDTO command = UpdateCertDTO.builder()
+                .id("cert-1")
+                .type("INVALID")
+                .build();
+
+        assertThatThrownBy(() -> k8sCertService.updateCert(command))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Invalid certificate type: INVALID. Valid types: TLS, mTLS, ServiceAccount")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verify(k8sCertRepository, never()).save(any());
+        verify(operationAuditService, never()).record(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
