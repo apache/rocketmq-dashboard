@@ -23,7 +23,6 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.util.StringUtils;
@@ -68,14 +67,7 @@ public abstract class AbstractPrometheusCompatibleMetricsSource implements Metri
     protected AbstractPrometheusCompatibleMetricsSource(RestClient.Builder restClientBuilder,
                                                          ObjectMapper objectMapper,
                                                          MetricsSourceSettings settings) {
-        // Disable redirect following to prevent SSRF bypass via HTTP redirect
-        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory() {
-            @Override
-            protected void prepareConnection(java.net.HttpURLConnection connection, String httpMethod) throws IOException {
-                super.prepareConnection(connection, httpMethod);
-                connection.setInstanceFollowRedirects(false);
-            }
-        };
+        NoRedirectClientHttpRequestFactory requestFactory = new NoRedirectClientHttpRequestFactory();
         requestFactory.setConnectTimeout(settings.getConnectTimeout());
         requestFactory.setReadTimeout(settings.getReadTimeout());
         this.restClient = restClientBuilder.requestFactory(requestFactory).build();
