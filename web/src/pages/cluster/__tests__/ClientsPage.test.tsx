@@ -220,6 +220,50 @@ describe('Clients page', () => {
     expect(screen.queryByText('audit-svc-0@10.0.2.10:49154')).toBeNull();
   });
 
+  it('exports the currently filtered client connections as CSV', async () => {
+    const createObjectURL = vi.fn((blob: Blob | MediaSource) => {
+      expect(blob).toBeInstanceOf(Blob);
+      return 'blob:client-connections';
+    });
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, 'createObjectURL', {
+      writable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      writable: true,
+      value: revokeObjectURL,
+    });
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const user = userEvent.setup();
+    vi.mocked(connectionsService.listConnections).mockResolvedValue([
+      {
+        ...connection,
+        clientId: '=risky-client',
+        groupOrTopic: 'order-create',
+      },
+      connections[2],
+    ]);
+    renderWithProviders(<ClientsPage />);
+
+    await screen.findByText('=risky-client');
+    await user.type(screen.getByPlaceholderText('搜索 Client ID 或地址'), 'risky');
+    await user.click(screen.getByRole('button', { name: /导出/ }));
+
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    const blob = createObjectURL.mock.calls[0][0] as Blob;
+    await expect(blob.text()).resolves.toBe(
+      [
+        '"Cluster","Client ID","Type","Group/Topic","Protocol","Address","Language","Version","Connected At","Partial"',
+        '"ns-prod","\'=risky-client","Producer","order-create","gRPC","10.0.1.12:49152","Java","5.0.7","2026-07-01 08:30:00","false"',
+      ].join('\n'),
+    );
+    expect(
+      document.querySelector('a[download^="rocketmq-client-connections-"]'),
+    ).not.toBeInTheDocument();
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:client-connections');
+  });
+
   it('renders empty distributions when no connections are available', async () => {
     vi.mocked(connectionsService.listConnections).mockResolvedValue([]);
     renderWithProviders(<ClientsPage />);
@@ -235,6 +279,7 @@ describe('Clients page', () => {
     expect(
       within(screen.getByTestId('language-version-distribution')).getByText('暂无数据'),
     ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /导出/ })).toBeDisabled();
   });
 
   it('surfaces unavailable provider errors from the client API', async () => {

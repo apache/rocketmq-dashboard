@@ -32,7 +32,7 @@ import {
   Typography,
   theme,
 } from 'antd';
-import { Eye, MagnifyingGlass } from '@phosphor-icons/react';
+import { DownloadSimple, Eye, MagnifyingGlass } from '@phosphor-icons/react';
 import type { ColumnsType } from 'antd/es/table';
 
 import PageHeader from '../../components/PageHeader';
@@ -42,6 +42,7 @@ import { listConnections } from '../../services/connectionsService';
 import { listRegistryClusters } from '../../services/clusterService';
 import type { ClusterInfo } from '../../api/cluster';
 import { formatDateTime } from '../../utils/format';
+import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 
 const { Text } = Typography;
 const DEFAULT_LOAD_ERROR = '客户端连接加载失败，请稍后重试';
@@ -68,6 +69,19 @@ const languageConfig: Record<string, { color: string; label: string }> = {
   NodeJS: { color: 'lime', label: 'Node.js' },
   PHP: { color: 'gold', label: 'PHP' },
 };
+
+const CLIENT_CONNECTION_EXPORT_COLUMNS: CsvColumn<ClientConnection>[] = [
+  { header: 'Cluster', value: (connection) => connection.clusterName },
+  { header: 'Client ID', value: (connection) => connection.clientId },
+  { header: 'Type', value: (connection) => connection.type },
+  { header: 'Group/Topic', value: (connection) => connection.groupOrTopic },
+  { header: 'Protocol', value: (connection) => connection.protocol },
+  { header: 'Address', value: (connection) => connection.address },
+  { header: 'Language', value: (connection) => connection.language },
+  { header: 'Version', value: (connection) => connection.version },
+  { header: 'Connected At', value: (connection) => connection.connectedAt },
+  { header: 'Partial', value: (connection) => (connection.partial ? 'true' : 'false') },
+];
 
 const countBy = (values: string[]) =>
   [
@@ -248,6 +262,12 @@ const ClientsPage = () => {
         connection.address?.toLowerCase().includes(normalizedSearch),
     );
   }, [clusterConnections, search]);
+
+  const handleExport = () => {
+    const filename = `rocketmq-client-connections-${new Date().toISOString().slice(0, 10)}.csv`;
+    const csv = buildCsv(CLIENT_CONNECTION_EXPORT_COLUMNS, filtered);
+    downloadCsv(filename, csv);
+  };
 
   /* ═══════════════════════════════════════════
      Table Columns (with built-in filters)
@@ -454,6 +474,13 @@ const ClientsPage = () => {
             prefix={<MagnifyingGlass size={14} color="#9CA3AF" />}
           />
         </Space>
+        <Button
+          icon={<DownloadSimple size={16} />}
+          disabled={filtered.length === 0}
+          onClick={handleExport}
+        >
+          {t('common.export')}
+        </Button>
       </Flex>
 
       <Flex

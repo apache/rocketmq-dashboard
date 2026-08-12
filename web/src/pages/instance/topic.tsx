@@ -75,6 +75,7 @@ import {
   validateTopicCsvImport,
   type ResourceImportRow,
 } from '../../utils/resourceCsvImport';
+import { buildCsv, downloadCsv, type CsvColumn } from '../../utils/download';
 
 const { Text } = Typography;
 
@@ -113,7 +114,7 @@ const TOPIC_TYPE_CARDS = [
 // ─── Perm label ───────────────────────────────────────────────────
 const PERM_LABEL: Record<string, string> = { RW: '读写', RO: '只读', WO: '只写' };
 
-const TOPIC_EXPORT_COLUMNS: Array<{ header: string; value: (topic: Topic) => unknown }> = [
+const TOPIC_EXPORT_COLUMNS: CsvColumn<Topic>[] = [
   { header: 'Name', value: (topic) => topic.name },
   { header: 'Namespace', value: (topic) => topic.namespace },
   { header: 'Type', value: (topic) => topic.type },
@@ -129,32 +130,7 @@ const TOPIC_EXPORT_COLUMNS: Array<{ header: string; value: (topic: Topic) => unk
   { header: 'Updated At', value: (topic) => topic.gmtModified },
 ];
 
-const escapeCsvCell = (value: unknown) => {
-  const text = value == null ? '' : String(value);
-  const formulaSafeText = /^[=+\-@\t\r\n]/.test(text) ? `'${text}` : text;
-  return `"${formulaSafeText.replace(/"/g, '""')}"`;
-};
-
-const buildTopicCsv = (topics: Topic[]) =>
-  [
-    TOPIC_EXPORT_COLUMNS.map((column) => escapeCsvCell(column.header)).join(','),
-    ...topics.map((topic) =>
-      TOPIC_EXPORT_COLUMNS.map((column) => escapeCsvCell(column.value(topic))).join(','),
-    ),
-  ].join('\n');
-
-const downloadCsv = (filename: string, csv: string) => {
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.style.display = 'none';
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
-};
+const buildTopicCsv = (topics: Topic[]) => buildCsv(TOPIC_EXPORT_COLUMNS, topics);
 
 // ─── Random message body generators ──────────────────────────────
 const randomOrderBody = () =>
