@@ -487,6 +487,7 @@ POST /api/nameservers/create
 |------|------|------|------|
 | `clusterId` | `string` | 是 | 所属集群 ID |
 | `addr` | `string` | 是 | NameServer 地址，如 `10.0.1.1:9876` |
+| `version` | `string` | 否 | NameServer 版本 |
 
 **Response `data`:** `NameServerInfo`
 
@@ -501,10 +502,10 @@ POST /api/nameservers/update
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `clusterId` | `string` | 是 | 所属集群 ID |
-| `addr` | `string` | 是 | 原地址 |
-| `newAddr` | `string` | 否 | 新地址（不传则不修改） |
+| `addr` | `string` | 是 | NameServer 地址 |
+| `version` | `string` | 否 | 更新后的 NameServer 版本 |
 
-**Response `data`:** `NameServerInfo`
+**Response `data`:** `null`
 
 ### 4.7 重启 NameServer
 
@@ -516,9 +517,10 @@ POST /api/nameservers/restart
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
+| `clusterId` | `string` | 是 | 所属集群 ID |
 | `addr` | `string` | 是 | NameServer 地址 |
 
-**Response `data`:** `{ success: boolean }`
+**Response `data`:** `null`
 
 ### 4.8 升级 NameServer
 
@@ -530,9 +532,11 @@ POST /api/nameservers/upgrade
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
+| `clusterId` | `string` | 是 | 所属集群 ID |
 | `addr` | `string` | 是 | NameServer 地址 |
+| `targetVersion` | `string` | 是 | 目标 NameServer 版本 |
 
-**Response `data`:** `{ success: boolean }`
+**Response `data`:** `null`
 
 ### 4.9 删除 NameServer
 
@@ -544,14 +548,15 @@ POST /api/nameservers/delete
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
+| `clusterId` | `string` | 是 | 所属集群 ID |
 | `addr` | `string` | 是 | NameServer 地址 |
 
-**Response `data`:** `{ success: boolean }`
+**Response `data`:** `null`
 
 ### 4.10 检查 NameServer 配置漂移
 
 ```
-GET /api/nameservers/config-diff?clusterId={clusterId}
+GET /api/nameservers/config-diff?clusterId={clusterId}&instanceId={instanceId}
 ```
 
 **Query Parameters:**
@@ -559,6 +564,7 @@ GET /api/nameservers/config-diff?clusterId={clusterId}
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `clusterId` | `string` | 是 | 要检查的集群 ID |
+| `instanceId` | `string` | 否 | 所选实例 ID；提供时从该实例的运行时端点读取配置 |
 
 该接口逐个读取集群内的 NameServer 配置，只比较服务端白名单中的非敏感运行参数。完整配置、路径、密码和凭据不会返回；单个节点读取失败时仍返回其他节点的结果，并将 `complete` 标记为 `false`。
 
@@ -1223,18 +1229,22 @@ GET /api/acl/users/:id/credentials
 ### 8.1 查询消息列表
 
 ```
-GET /api/messages?topic={topic}&msgId={msgId}&key={key}&startTime={startTime}&endTime={endTime}
+GET /api/messages?instanceId={instanceId}&topic={topic}&msgId={msgId}&tag={tag}&key={key}&startTime={startTime}&endTime={endTime}
 ```
 
 **Query Parameters:**
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `topic` | `string` | 否 | Topic 名称 |
+| `instanceId` | `string` | 是 | 所选实例 ID，决定消息查询使用的运行时端点 |
+| `topic` | `string` | 是 | Topic 名称；按消息 ID 或 Key 查询时同样必须提供 |
 | `msgId` | `string` | 否 | 消息 ID（精确查询） |
+| `tag` | `string` | 否 | 消息 Tag |
 | `key` | `string` | 否 | 消息 Key |
-| `startTime` | `string` | 否 | 开始时间 (ISO 8601) |
-| `endTime` | `string` | 否 | 结束时间 (ISO 8601) |
+| `startTime` | `number` | 否 | 开始时间（Unix epoch 毫秒） |
+| `endTime` | `number` | 否 | 结束时间（Unix epoch 毫秒） |
+
+按 Topic 扫描且未指定时间范围时，默认查询最近 1 小时；显式时间范围不得超过 7 天。`startTime` 和 `endTime` 对按消息 ID / Key 的精确查询不生效。
 
 **Response `data`:** `MessageRecord[]`
 
@@ -1244,18 +1254,28 @@ GET /api/messages?topic={topic}&msgId={msgId}&key={key}&startTime={startTime}&en
 | `topic` | `string` | Topic 名称 |
 | `tag` | `string` | 消息 Tag |
 | `key` | `string` | 消息 Key |
-| `body` | `string` | 消息体（JSON 字符串） |
-| `storeTime` | `string` | 存储时间 (ISO 8601) |
+| `body` | `string` | 消息体 |
+| `bodyEncoding` | `string` | 消息体编码 |
+| `bodyTruncated` | `boolean` | 消息体是否因响应大小限制被截断 |
+| `storeTime` | `number` | 存储时间（Unix epoch 毫秒） |
 | `bornHost` | `string` | 发送方地址 |
 | `storeHost` | `string` | 存储 Broker 地址 |
 | `properties` | `Record<string, string>` | 消息属性键值对 |
+| `propertiesTruncated` | `boolean` | 消息属性是否因响应大小限制被截断 |
 | `size` | `number` | 消息大小（字节） |
 
 ### 8.2 获取消息轨迹
 
 ```
-GET /api/messages/:msgId/trace
+GET /api/messages/:msgId/trace?instanceId={instanceId}&topic={topic}
 ```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 所选实例 ID，决定轨迹查询使用的运行时端点 |
+| `topic` | `string` | 否 | 消息所属 Topic；部分云厂商 Provider 要求提供 |
 
 **Response `data`:** `TraceRecord`
 
@@ -1264,21 +1284,21 @@ GET /api/messages/:msgId/trace
   "nodes": [
     {
       "title": "Producer 发送",
-      "timestamp": "2026-07-01T10:23:45.100Z",
+      "timestamp": 1782901425100,
       "status": "finish",
       "costTime": 3,
       "description": "order-service (10.0.1.12:54321) → broker-hz-01"
     },
     {
       "title": "Broker 存储",
-      "timestamp": "2026-07-01T10:23:45.115Z",
+      "timestamp": 1782901425115,
       "status": "finish",
       "costTime": 8,
       "description": "broker-hz-01 (10.0.2.3:10911) CommitLog 写入成功"
     },
     {
       "title": "Consumer 消费",
-      "timestamp": "2026-07-01T10:23:45.230Z",
+      "timestamp": 1782901425230,
       "status": "finish",
       "costTime": 107,
       "description": "cg-order-processor → 消费成功 (23ms)"
@@ -1288,7 +1308,7 @@ GET /api/messages/:msgId/trace
     {
       "group": "cg-order-processor",
       "deliveryStatus": "success",
-      "consumeTime": "2026-07-01T10:23:45.230Z",
+      "consumeTime": 1782901425230,
       "retryCount": 0
     }
   ]
@@ -1300,7 +1320,7 @@ GET /api/messages/:msgId/trace
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `title` | `string` | 节点标题: `Producer 发送` / `Broker 存储` / `Consumer 消费` |
-| `timestamp` | `string` | 时间戳 (ISO 8601) |
+| `timestamp` | `number` | 时间戳（Unix epoch 毫秒） |
 | `status` | `string` | 状态: `finish` / `process` / `wait` |
 | `costTime` | `number` | 耗时（毫秒） |
 | `description` | `string` | 详细描述 |
@@ -1311,7 +1331,7 @@ GET /api/messages/:msgId/trace
 |------|------|------|
 | `group` | `string` | 消费组名称 |
 | `deliveryStatus` | `string` | 投递状态: `success` / `failed` / `pending` |
-| `consumeTime` | `string` | 消费时间（`-` 表示未消费） |
+| `consumeTime` | `number` | 消费时间（Unix epoch 毫秒） |
 | `retryCount` | `number` | 重试次数 |
 
 ---
@@ -1321,8 +1341,14 @@ GET /api/messages/:msgId/trace
 ### 9.1 获取 DLQ 列表
 
 ```
-GET /api/dlq?clusterId={clusterId}
+GET /api/dlq?instanceId={instanceId}
 ```
+
+**Query Parameters:**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `instanceId` | `string` | 是 | 所选 Apache RocketMQ 实例 ID |
 
 **Response `data`:** `DLQGroup[]`
 
@@ -1334,6 +1360,7 @@ GET /api/dlq?clusterId={clusterId}
 | `lastEnqueueTime` | `string` | 最后入队时间 (ISO 8601) |
 | `retryCount` | `number` | 已重试次数 |
 | `status` | `string` | 状态: `active` / `empty` |
+| `statsAvailable` | `boolean` | DLQ 运行时统计是否可用 |
 
 ### 9.2 重发死信消息
 
@@ -1345,12 +1372,24 @@ POST /api/dlq/resend
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
+| `instanceId` | `string` | 是 | 所选 Apache RocketMQ 实例 ID |
 | `groupName` | `string` | 是 | 消费组名称 |
-| `startTime` | `string` | 是 | 重投时间范围起始 (ISO 8601) |
-| `endTime` | `string` | 是 | 重投时间范围结束 (ISO 8601) |
+| `startTime` | `number` | 否 | 重投时间范围起始（Unix epoch 毫秒） |
+| `endTime` | `number` | 否 | 重投时间范围结束（Unix epoch 毫秒） |
 | `targetTopic` | `string` | 否 | 目标 Topic，不传则重投回原 Topic |
 
-**Response `data`:** `null`
+`startTime` 与 `endTime` 必须同时提供；都不提供时扫描该消费组当前可用的死信消息。
+
+**Response `data`:** `DLQResendResult`
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `matched` | `number` | 时间范围内匹配的死信消息数 |
+| `resent` | `number` | 成功重投的消息数 |
+| `failed` | `number` | 重投失败的消息数 |
+| `outcome` | `string` | 重投结果摘要 |
+| `scanIncomplete` | `boolean` | 队列扫描是否未完整完成 |
+| `failedQueueCount` | `number` | 扫描失败的队列数 |
 
 ---
 
@@ -1359,13 +1398,14 @@ POST /api/dlq/resend
 ### 10.1 获取客户端连接列表
 
 ```
-GET /api/clients?clusterId={clusterId}&type={type}
+GET /api/clients?instanceId={instanceId}&clusterId={clusterId}&type={type}
 ```
 
 **Query Parameters:**
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
+| `instanceId` | `string` | 是 | 所选实例 ID，决定客户端连接查询使用的运行时端点 |
 | `clusterId` | `string` | 否 | 按集群过滤 |
 | `type` | `string` | 否 | 按类型过滤: `Producer` / `Consumer` |
 
@@ -1376,11 +1416,13 @@ GET /api/clients?clusterId={clusterId}&type={type}
 | `clientId` | `string` | 客户端 ID |
 | `type` | `string` | 类型: `Producer` / `Consumer` |
 | `groupOrTopic` | `string` | 消费组名或 Topic 名 |
+| `producerGroup` | `string` | Producer Group；非 Producer 连接可为空 |
 | `protocol` | `string` | 协议: `gRPC` / `Remoting` |
 | `address` | `string` | 客户端地址 |
-| `language` | `string` | 客户端语言: `Java` / `Go` / `Python` / `Rust` / `C++` / `C#` / `Node.js` / `PHP` |
+| `language` | `string` | 客户端语言: `Java` / `Go` / `Python` / `Rust` / `Cpp` / `CSharp` / `NodeJS` / `PHP` |
 | `version` | `string` | SDK 版本号 |
 | `connectedAt` | `string` | 连接时间 |
+| `partial` | `boolean` | 连接信息是否因部分运行时节点不可用而不完整 |
 | `clusterName` | `string` | 所属集群名称（显示在第一列） |
 
 ---
