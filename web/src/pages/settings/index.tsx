@@ -86,6 +86,10 @@ const DATA_SOURCE_TYPE_OPTIONS = [
 ];
 
 type DataSourceFormValues = Partial<DataSource>;
+type CompatibilitySettings = Pick<
+  GeneralSettingsUpdate,
+  'theme' | 'compact' | 'desktopNotify' | 'notifySound'
+>;
 
 const secretFieldNames = ['username', 'password', 'bearerToken'] as const;
 const authNeedsSecret = (auth?: string) => auth === 'Basic Auth' || auth === 'Bearer Token';
@@ -111,6 +115,12 @@ export const GeneralSettingsTab = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const saveInFlightRef = useRef(false);
+  const compatibilitySettingsRef = useRef<CompatibilitySettings>({
+    theme: 'system',
+    compact: false,
+    desktopNotify: false,
+    notifySound: false,
+  });
   const [apiKeyConfigured, setApiKeyConfigured] = useState(false);
   const clearApiKey = Form.useWatch('clearApiKey', form);
 
@@ -120,6 +130,12 @@ export const GeneralSettingsTab = () => {
       .then((settings) => {
         if (!cancelled) {
           setApiKeyConfigured(settings.apiKeyConfigured);
+          compatibilitySettingsRef.current = {
+            theme: settings.theme,
+            compact: settings.compact,
+            desktopNotify: settings.desktopNotify,
+            notifySound: settings.notifySound,
+          };
           form.setFieldsValue({ ...settings, apiKey: undefined, clearApiKey: false });
         }
       })
@@ -140,7 +156,7 @@ export const GeneralSettingsTab = () => {
     saveInFlightRef.current = true;
     setSaving(true);
     try {
-      await saveGeneralSettings(values);
+      await saveGeneralSettings({ ...values, ...compatibilitySettingsRef.current });
       setApiKeyConfigured(
         values.clearApiKey ? false : apiKeyConfigured || Boolean(values.apiKey?.trim()),
       );
@@ -163,12 +179,6 @@ export const GeneralSettingsTab = () => {
       onFinish={handleFinish}
       style={{ maxWidth: 800 }}
     >
-      {(['theme', 'compact', 'desktopNotify', 'notifySound'] as const).map((name) => (
-        <Form.Item key={name} name={name} hidden>
-          <Input type="hidden" />
-        </Form.Item>
-      ))}
-
       {/* ── 安全 ── */}
       <Divider orientation="left">
         <Title level={5} style={{ margin: 0 }}>
