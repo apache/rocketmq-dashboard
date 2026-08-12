@@ -99,12 +99,17 @@ public final class UrlHostGuard {
             return allowLoopback;
         }
         try {
-            InetAddress address = InetAddress.getByName(normalized);
-            if (address.isAnyLocalAddress() || address.isLinkLocalAddress()) {
-                return false;
-            }
-            if (address.isLoopbackAddress()) {
-                return allowLoopback;
+            // getByName only resolves the first record; a host with multiple A/AAAA records can
+            // point both at a public address and at loopback/link-local/metadata. Reject the host
+            // when any resolved address is restricted, matching SettingsService behaviour.
+            InetAddress[] addresses = InetAddress.getAllByName(normalized);
+            for (InetAddress address : addresses) {
+                if (address.isAnyLocalAddress() || address.isLinkLocalAddress()) {
+                    return false;
+                }
+                if (address.isLoopbackAddress() && !allowLoopback) {
+                    return false;
+                }
             }
             return true;
         } catch (UnknownHostException exception) {
