@@ -155,10 +155,12 @@ public class AlertService {
                 .findFirst()
                 .orElseThrow(() -> new org.apache.rocketmq.studio.common.exception.BusinessException(404, "System alert not found: " + id));
         alert.setAcknowledged(true);
-        SystemAlertVO saved = alertRepository.saveAlert(alert);
-        recordAudit("ACKNOWLEDGE_SYSTEM_ALERT", "SYSTEM_ALERT", saved.getId(), null,
+        if (!alertRepository.acknowledgeAlert(alert)) {
+            throw new BusinessException(404, "System alert not found: " + id);
+        }
+        recordAudit("ACKNOWLEDGE_SYSTEM_ALERT", "SYSTEM_ALERT", alert.getId(), null,
                 "acknowledged=true");
-        return saved;
+        return alert;
     }
 
 

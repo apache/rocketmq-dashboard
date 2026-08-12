@@ -565,12 +565,12 @@ class AlertServiceTest {
         SystemAlertVO existing = SystemAlertVO.builder().id("a1").level(AlertLevel.error)
                 .title("Broker Down").acknowledged(false).build();
         when(alertRepository.findAlerts(null)).thenReturn(List.of(existing));
-        when(alertRepository.saveAlert(any(SystemAlertVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(alertRepository.acknowledgeAlert(any(SystemAlertVO.class))).thenReturn(true);
 
         SystemAlertVO result = alertService.acknowledgeAlert("a1");
 
         assertThat(result.isAcknowledged()).isTrue();
-        verify(alertRepository).saveAlert(result);
+        verify(alertRepository).acknowledgeAlert(result);
         verify(operationAuditService).record(eq("ACKNOWLEDGE_SYSTEM_ALERT"), eq("SYSTEM_ALERT"), eq("a1"),
                 eq(null), eq("acknowledged=true"), eq("SUCCESS"), eq(null));
     }
@@ -582,6 +582,21 @@ class AlertServiceTest {
         assertThatThrownBy(() -> alertService.acknowledgeAlert("non-existent"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("System alert not found: non-existent");
+    }
+
+    @Test
+    void acknowledgeAlertShouldRejectConcurrentRemoval() {
+        SystemAlertVO existing = SystemAlertVO.builder().id("a1").level(AlertLevel.error)
+                .title("Broker Down").acknowledged(false).build();
+        when(alertRepository.findAlerts(null)).thenReturn(List.of(existing));
+        when(alertRepository.acknowledgeAlert(any(SystemAlertVO.class))).thenReturn(false);
+
+        assertThatThrownBy(() -> alertService.acknowledgeAlert("a1"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("System alert not found: a1")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
+
+        verify(operationAuditService, never()).record(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
