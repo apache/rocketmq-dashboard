@@ -507,6 +507,9 @@ public class RocketMQAdminClientImpl implements AdminClient {
             }
             recordAudit("RESET_OFFSET", name,
                     "instanceId=" + instanceId + ", topic=" + topic + ", timestamp=" + timestamp, "SUCCESS");
+        } catch (BusinessException e) {
+            recordAudit("RESET_OFFSET", name, e.getMessage(), "FAILED");
+            throw e;
         } catch (Exception e) {
             recordAudit("RESET_OFFSET", name, e.getMessage(), "FAILED");
             throw new BusinessException(500, "Failed to reset offset: " + e.getMessage());
