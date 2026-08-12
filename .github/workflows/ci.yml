@@ -10,6 +10,16 @@ on:
       - rocketmq-studio
 
 jobs:
+  deploy-script-test:
+    name: Deploy Script Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate remote deployment contract
+        run: bash deploy/deploy_test.sh
+
   backend-build:
     name: Backend Build (Java 21)
     runs-on: ubuntu-latest

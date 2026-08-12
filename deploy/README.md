@@ -21,12 +21,22 @@ REMOTE_USER=root
 REMOTE_PATH=/opt/rocketmq-studio
 PUBLIC_PORT=8080
 
+# deploy.sh server/all 必填：数据库需可从远程 Podman 网络访问
+SPRING_DATASOURCE_URL=jdbc:mysql://database-host:3306/rocketmq?useSSL=false&serverTimezone=UTC
+SPRING_DATASOURCE_USERNAME=rocketmq
+SPRING_DATASOURCE_PASSWORD=change-me
+
+# 可选：Apache RocketMQ 默认 NameServer 地址
+STUDIO_ROCKETMQ_NAMESRV_ADDR=nameserver.example.com:9876
+
 # 可选：自定义宿主机 Maven 缓存和构建镜像
 MAVEN_CACHE_DIR=/home/your-user/.m2
 MAVEN_IMAGE=maven:3.9.9-eclipse-temurin-21
 ```
 
 `MAVEN_CACHE_DIR` 默认为当前用户的 `~/.m2`。如果其中存在 `settings.xml`，构建容器也会自动使用该配置。
+远程后端固定使用 `prod` profile；脚本会在构建前校验数据库配置，避免容器退回开发环境的
+内存 H2。首次使用前请先在目标数据库执行 `server/src/main/resources/db/schema.sql`。
 
 ## 本地 Docker Compose
 
