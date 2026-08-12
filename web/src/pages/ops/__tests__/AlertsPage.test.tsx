@@ -22,7 +22,7 @@ import { App } from 'antd';
 import type { AlertRule } from '../../../api/ops';
 import { LangProvider } from '../../../i18n/LangContext';
 import AlertsPage from '../alerts';
-import { listAlertRules, toggleAlertRule } from '../../../services/opsService';
+import { createAlertRule, listAlertRules, toggleAlertRule } from '../../../services/opsService';
 
 vi.mock('../../../services/opsService', () => ({
   createAlertRule: vi.fn(),
@@ -36,11 +36,11 @@ const alertRules: AlertRule[] = [
   {
     id: 'alert-a',
     name: 'Broker disk usage',
-    metric: '磁盘使用率',
+    metric: 'rocketmq_disk_use_ratio',
     operator: '>',
     threshold: 85,
     thresholdUnit: '%',
-    duration: '5分钟',
+    duration: '5m',
     channels: ['email'],
     enabled: false,
     lastTriggered: null,
@@ -49,11 +49,11 @@ const alertRules: AlertRule[] = [
   {
     id: 'alert-b',
     name: 'Consumer lag',
-    metric: '消费堆积量',
+    metric: 'rocketmq_consumer_lag_messages',
     operator: '>',
     threshold: 1000,
     thresholdUnit: '条',
-    duration: '15分钟',
+    duration: '15m',
     channels: ['dingtalk'],
     enabled: false,
     lastTriggered: null,
@@ -108,6 +108,56 @@ describe('AlertsPage', () => {
       const rule = alertRules.find((item) => item.id === id);
       if (!rule) throw new Error(`Rule not found: ${id}`);
       return { ...cloneRule(rule), enabled };
+    });
+  });
+
+  it('submits backend-compatible metric and duration values when creating a rule', async () => {
+    vi.mocked(createAlertRule).mockImplementation(async (rule) => ({
+      id: 'alert-created',
+      name: rule.name ?? '',
+      metric: rule.metric ?? '',
+      operator: rule.operator ?? '>',
+      threshold: rule.threshold ?? 0,
+      thresholdUnit: rule.thresholdUnit ?? '',
+      duration: rule.duration ?? '',
+      channels: rule.channels ?? [],
+      enabled: rule.enabled ?? false,
+      lastTriggered: null,
+      description: rule.description ?? '',
+    }));
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('Broker disk usage');
+    await user.click(screen.getByRole('button', { name: '新建规则' }));
+
+    const dialog = screen.getByRole('dialog');
+    await user.type(within(dialog).getByRole('textbox', { name: '规则名称' }), 'Disk high');
+
+    const selects = within(dialog).getAllByRole('combobox');
+    await user.click(selects[0]);
+    const metricLabels = await screen.findAllByText('磁盘使用率');
+    await user.click(metricLabels[metricLabels.length - 1]);
+    await user.click(selects[1]);
+    const operatorLabels = await screen.findAllByText('>');
+    await user.click(operatorLabels[operatorLabels.length - 1]);
+    await user.type(within(dialog).getByRole('spinbutton'), '85');
+    await user.click(selects[2]);
+    const durationLabels = await screen.findAllByText('5分钟');
+    await user.click(durationLabels[durationLabels.length - 1]);
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Email' }));
+    await user.click(within(dialog).getByRole('button', { name: '新 建' }));
+
+    await waitFor(() => {
+      expect(createAlertRule).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Disk high',
+          metric: 'rocketmq_disk_use_ratio',
+          duration: '5m',
+          thresholdUnit: '%',
+        }),
+      );
     });
   });
 

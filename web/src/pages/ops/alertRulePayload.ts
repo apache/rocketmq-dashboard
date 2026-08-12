@@ -16,18 +16,18 @@
  */
 
 export const thresholdUnits: Record<string, string> = {
-  磁盘使用率: '%',
-  消费堆积量: '条',
-  'TPS 异常': 'TPS',
-  'Broker 离线': '个',
-  'Proxy 连接数': '个',
+  rocketmq_disk_use_ratio: '%',
+  rocketmq_consumer_lag_messages: '条',
+  rocketmq_broker_tps: 'TPS',
+  up: '个',
+  rocketmq_connection_count: '个',
 };
 
-export function attachThresholdUnit<T extends { metric: string }>(
+export function attachThresholdUnit<T extends { metric: string; thresholdUnit?: string }>(
   values: T,
 ): T & { thresholdUnit: string } {
   return {
     ...values,
-    thresholdUnit: thresholdUnits[values.metric] ?? '',
+    thresholdUnit: thresholdUnits[values.metric] ?? values.thresholdUnit ?? '',
   };
 }
