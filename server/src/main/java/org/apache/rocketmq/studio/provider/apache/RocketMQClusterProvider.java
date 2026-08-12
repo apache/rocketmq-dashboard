@@ -70,7 +70,7 @@ public class RocketMQClusterProvider implements ClusterProvider {
         }
 
         try {
-            return adminFactory.execute(namesrvAddr, null, admin -> {
+            return executeAdmin(instanceId, namesrvAddr, admin -> {
                 ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
                 if (clusterInfo == null || clusterInfo.getClusterAddrTable() == null) {
                     return Collections.<ClusterVO>emptyList();
@@ -113,7 +113,7 @@ public class RocketMQClusterProvider implements ClusterProvider {
         }
 
         try {
-            return adminFactory.execute(namesrvAddr, null, admin -> {
+            return executeAdmin(instanceId, namesrvAddr, admin -> {
                 ClusterInfo clusterInfo = admin.examineBrokerClusterInfo();
                 if (clusterInfo == null || clusterInfo.getClusterAddrTable() == null) {
                     return null;
@@ -279,6 +279,14 @@ public class RocketMQClusterProvider implements ClusterProvider {
             return runtimeAdminClientResolver.resolveEndpoint(instanceId);
         }
         return properties.getNamesrvAddr();
+    }
+
+    private <T> T executeAdmin(String instanceId, String namesrvAddr,
+                               MqAdminExtFactory.AdminAction<T> action) {
+        if (StringUtils.hasText(instanceId)) {
+            return runtimeAdminClientResolver.execute(instanceId, action);
+        }
+        return adminFactory.execute(namesrvAddr, null, action);
     }
 
     private List<NameServerVO> buildNameServerList(String namesrvAddr) {
