@@ -60,6 +60,9 @@ class SettingsServiceTest {
 
     private static final String PROMETHEUS_BASE_URL = "http://192.0.2.1:9090";
     private static final String PROMETHEUS_QUERY_URL = PROMETHEUS_BASE_URL + "/api/v1/query?query=up";
+    private static final String VICTORIA_METRICS_QUERY_URL =
+            PROMETHEUS_BASE_URL + "/select/0/prometheus/api/v1/query?query=up";
+    private static final String MIMIR_QUERY_URL = PROMETHEUS_BASE_URL + "/prometheus/api/v1/query?query=up";
     private static final String PROMETHEUS_SUCCESS_BODY =
             "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[]}}";
 
@@ -416,7 +419,7 @@ class SettingsServiceTest {
     void testConnectionShouldNormalizeIdentifiersIndependentlyOfDefaultLocale() {
         String expectedAuthorization = "Basic "
                 + Base64.getEncoder().encodeToString("prom:secret".getBytes(StandardCharsets.UTF_8));
-        prometheusServer.expect(requestTo(PROMETHEUS_QUERY_URL))
+        prometheusServer.expect(requestTo(MIMIR_QUERY_URL))
                 .andExpect(method(HttpMethod.GET))
                 .andExpect(header(HttpHeaders.AUTHORIZATION, expectedAuthorization))
                 .andRespond(withSuccess(PROMETHEUS_SUCCESS_BODY, MediaType.APPLICATION_JSON));
@@ -572,7 +575,7 @@ class SettingsServiceTest {
 
     @Test
     void testConnectionShouldReturnPrometheusErrorDetails() {
-        prometheusServer.expect(requestTo(PROMETHEUS_QUERY_URL))
+        prometheusServer.expect(requestTo(VICTORIA_METRICS_QUERY_URL))
                 .andExpect(method(HttpMethod.GET))
                 .andRespond(withStatus(HttpStatus.UNPROCESSABLE_ENTITY)
                         .contentType(MediaType.APPLICATION_JSON)

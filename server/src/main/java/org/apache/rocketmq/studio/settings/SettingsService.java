@@ -20,6 +20,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
+import org.apache.rocketmq.studio.cluster.metrics.MetricsBackendType;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.UrlHostGuard;
 import java.net.InetAddress;
@@ -219,7 +220,7 @@ public class SettingsService {
 
         try {
             JsonNode response = restClient.get()
-                    .uri(prometheusQueryUri(request.getUrl()))
+                    .uri(prometheusQueryUri(request.getUrl(), request.getType()))
                     .accept(MediaType.APPLICATION_JSON)
                     .headers(headers -> applyAuthentication(headers, request))
                     .retrieve()
@@ -284,7 +285,7 @@ public class SettingsService {
         return auth.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
     }
 
-    private URI prometheusQueryUri(String baseUrl) throws URISyntaxException {
+    private URI prometheusQueryUri(String baseUrl, String providerType) throws URISyntaxException {
         if (!StringUtils.hasText(baseUrl)) {
             throw new IllegalArgumentException("Data source URL is required");
         }
@@ -301,7 +302,8 @@ public class SettingsService {
             throw new IllegalArgumentException(
                     "Data source URL must not point to a local or private address");
         }
-        return UriComponentsBuilder.fromUriString(normalized + "/api/v1/query")
+        String queryPath = MetricsBackendType.fromProviderType(providerType).getInstantQueryPath();
+        return UriComponentsBuilder.fromUriString(normalized + queryPath)
                 .queryParam("query", PROMETHEUS_TEST_QUERY)
                 .build()
                 .toUri();

@@ -70,4 +70,15 @@ class MetricsBackendTypeTest {
         assertThat(MetricsBackendType.CORTEX.getQueryPath()).isEqualTo("/api/v1/query_range");
         assertThat(MetricsBackendType.ARMS.getQueryPath()).isEqualTo("/api/v1/query_range");
     }
+
+    @Test
+    void shouldExposeDistinctInstantQueryPathsForBackends() {
+        assertThat(MetricsBackendType.PROMETHEUS.getInstantQueryPath()).isEqualTo("/api/v1/query");
+        assertThat(MetricsBackendType.VICTORIA_METRICS.getInstantQueryPath())
+                .isEqualTo("/select/0/prometheus/api/v1/query");
+        assertThat(MetricsBackendType.MIMIR.getInstantQueryPath()).isEqualTo("/prometheus/api/v1/query");
+        assertThat(MetricsBackendType.THANOS.getInstantQueryPath()).isEqualTo("/api/v1/query");
+        assertThat(MetricsBackendType.CORTEX.getInstantQueryPath()).isEqualTo("/api/v1/query");
+        assertThat(MetricsBackendType.ARMS.getInstantQueryPath()).isEqualTo("/api/v1/query");
+    }
 }
