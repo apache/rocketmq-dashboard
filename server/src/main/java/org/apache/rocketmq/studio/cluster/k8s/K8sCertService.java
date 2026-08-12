@@ -98,18 +98,22 @@ public class K8sCertService {
 
         K8sCertVO updated = copyOf(existing);
         if (command.getName() != null) {
+            requireText(command.getName(), "name");
             updated.setName(command.getName());
         }
         if (command.getNamespace() != null) {
+            requireText(command.getNamespace(), "namespace");
             updated.setNamespace(command.getNamespace());
         }
         if (command.getCluster() != null) {
+            requireText(command.getCluster(), "cluster");
             updated.setCluster(command.getCluster());
         }
         if (command.getType() != null) {
             updated.setType(CertType.valueOf(command.getType()));
         }
         if (command.getIssuer() != null) {
+            requireText(command.getIssuer(), "issuer");
             updated.setIssuer(command.getIssuer());
         }
         if (command.getSan() != null) {
@@ -160,6 +164,12 @@ public class K8sCertService {
     private void requireCommand(Object command) {
         if (command == null) {
             throw new BusinessException(400, "K8s certificate request is required");
+        }
+    }
+
+    private void requireText(String value, String field) {
+        if (value == null || value.trim().isEmpty()) {
+            throw new BusinessException(400, "K8s certificate " + field + " is required");
         }
     }
 
