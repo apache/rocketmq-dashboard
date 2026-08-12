@@ -88,7 +88,8 @@ const SystemAlertsPage = () => {
     setClearing(true);
     try {
       await clearAcknowledgedAlerts();
-      setAlerts((prev) => prev.filter((a) => !a.acknowledged));
+      const fresh = await listSystemAlerts();
+      setAlerts(fresh);
       message.success(t('sysAlerts.cleared'));
     } catch {
       message.error('清理已确认告警失败，请稍后重试');
