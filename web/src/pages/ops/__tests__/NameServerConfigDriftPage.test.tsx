@@ -39,6 +39,16 @@ vi.mock('../../../services/instanceService', () => ({
 const createObjectURL = vi.fn(() => 'blob:nameserver-config-drift');
 const revokeObjectURL = vi.fn();
 
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+};
+
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
@@ -186,5 +196,59 @@ describe('NameServerConfigDriftPage', () => {
 
     expect(await screen.findByText('暂无可检查的集群')).toBeInTheDocument();
     expect(getNameServerConfigDiff).not.toHaveBeenCalled();
+  });
+
+  it('ignores a stale bootstrap cluster response after the user selects another instance', async () => {
+    const user = userEvent.setup();
+    const instanceB = {
+      ...instance,
+      id: 'instance-b',
+      name: 'Backup instance',
+    };
+    const clusterB = {
+      ...cluster,
+      id: 'cluster-b',
+      name: 'Backup cluster',
+    };
+    const bootstrapClusters = deferred<ClusterInfo[]>();
+    vi.mocked(listInstances).mockResolvedValue([instance, instanceB]);
+    vi.mocked(listClusters).mockImplementation((instanceId) =>
+      instanceId === 'instance-a' ? bootstrapClusters.promise : Promise.resolve([clusterB]),
+    );
+    vi.mocked(getNameServerConfigDiff).mockResolvedValue({
+      ...driftResult,
+      cluster: 'cluster-b',
+      nodes: [
+        { address: 'ns-b:9876', reachable: true },
+        { address: 'ns-c:9876', reachable: true },
+      ],
+      differences: [
+        {
+          key: 'listenPort',
+          values: [
+            { address: 'ns-b:9876', configured: true, value: '29876' },
+            { address: 'ns-c:9876', configured: true, value: '39876' },
+          ],
+        },
+      ],
+    });
+
+    renderWithProviders(<NameServerConfigDriftPage />);
+
+    await user.click(await screen.findByRole('combobox', { name: 'NameServer drift instance' }));
+    await user.click(await screen.findByText('Backup instance'));
+
+    await waitFor(() => {
+      expect(listClusters).toHaveBeenCalledWith('instance-b');
+      expect(getNameServerConfigDiff).toHaveBeenCalledWith('cluster-b', 'instance-b');
+    });
+    expect(await screen.findByText('39876')).toBeInTheDocument();
+
+    bootstrapClusters.resolve([cluster]);
+
+    await waitFor(() => expect(listClusters).toHaveBeenCalledTimes(2));
+    expect(getNameServerConfigDiff).not.toHaveBeenCalledWith('cluster-a', 'instance-a');
+    expect(screen.getByText('39876')).toBeInTheDocument();
+    expect(screen.queryByText('19876')).not.toBeInTheDocument();
   });
 });
