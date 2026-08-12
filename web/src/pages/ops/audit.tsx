@@ -187,7 +187,7 @@ const AuditPage: React.FC = () => {
     try {
       const csv = await exportAuditLogs(
         buildAuditFilter(
-          searchText,
+          debouncedSearchText,
           selectedType,
           selectedResourceType,
           selectedClusterId,

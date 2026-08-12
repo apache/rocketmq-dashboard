@@ -106,12 +106,18 @@ describe('Audit page', () => {
     vi.clearAllMocks();
   });
 
-  it('exports all audit records matching the current filters', async () => {
+  it('exports audit records with the search already applied to the table', async () => {
     const user = userEvent.setup();
     renderWithProviders(<AuditPage />);
 
     expect(await screen.findByText('topic-a')).toBeInTheDocument();
     await user.type(screen.getByPlaceholderText('搜索操作人或操作对象'), 'topic-a');
+
+    await waitFor(() =>
+      expect(opsService.listAuditRecords).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: 'topic-a' }),
+      ),
+    );
     await user.click(screen.getByRole('button', { name: /导出/ }));
 
     await waitFor(() =>
@@ -130,6 +136,27 @@ describe('Audit page', () => {
     await expect(blob.text()).resolves.toContain('"2026-08-01 10:00:00","admin"');
     expect(clickSpy).toHaveBeenCalledTimes(1);
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:audit');
+  });
+
+  it('does not export a pending search before the table applies it', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<AuditPage />);
+
+    expect(await screen.findByText('topic-a')).toBeInTheDocument();
+    await user.type(screen.getByPlaceholderText('搜索操作人或操作对象'), 'pending');
+    await user.click(screen.getByRole('button', { name: /导出/ }));
+
+    await waitFor(() =>
+      expect(opsService.exportAuditLogs).toHaveBeenCalledWith({
+        search: undefined,
+        operationType: undefined,
+        resourceType: undefined,
+        clusterId: undefined,
+        startDate: undefined,
+        endDate: undefined,
+        result: undefined,
+      }),
+    );
   });
 
   it('loads persisted filter values and forwards their original codes', async () => {
