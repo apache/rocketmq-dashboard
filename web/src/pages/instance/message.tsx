@@ -269,6 +269,7 @@ const MessagePageContent = ({
 }: InstanceFilterProps) => {
   const { t } = useLang();
   const [topicOptions, setTopicOptions] = useState<string[]>([]);
+  const [topicError, setTopicError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!selectedInstanceId) {
@@ -278,10 +279,13 @@ const MessagePageContent = ({
     void listTopics({ instanceId: selectedInstanceId })
       .then((nextTopics) => {
         if (cancelled) return;
+        setTopicError(null);
         setTopicOptions(nextTopics.map((topic) => topic.name));
       })
-      .catch(() => {
-        if (!cancelled) setTopicOptions([]);
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setTopicOptions([]);
+        setTopicError(error instanceof Error ? error.message : '加载 Topic 列表失败');
       });
     return () => {
       cancelled = true;
@@ -869,6 +873,10 @@ const MessagePageContent = ({
           </Space>
         </Space>
       </Card>
+
+      {topicError && (
+        <Alert showIcon type="error" message={topicError} style={{ marginBottom: 16 }} />
+      )}
 
       {queryError && (
         <Alert showIcon type="warning" message={queryError} style={{ marginBottom: 16 }} />
