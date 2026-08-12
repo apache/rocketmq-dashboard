@@ -405,6 +405,69 @@ describe('TopicPage', () => {
     await waitFor(() => expect(findTopicDetailDialog()).toBeUndefined());
   });
 
+  it('clears pending Topic writes when switching instances', async () => {
+    const user = userEvent.setup();
+    const base = buildTopics(1)[0];
+    instanceServiceMocks.listInstances.mockResolvedValue([
+      {
+        ...selectedInstance,
+        id: 'instance-a',
+        name: 'Instance A',
+        type: 'DIRECT',
+      },
+      {
+        ...selectedInstance,
+        id: 'instance-b',
+        name: 'Instance B',
+        type: 'DIRECT',
+        endpoint: '127.0.0.2:9876',
+      },
+    ]);
+    topicServiceMocks.listTopics.mockImplementation(async (params) => [
+      {
+        ...base,
+        name: params?.instanceId === 'instance-b' ? 'topic-b' : 'topic-a',
+        instanceId: params?.instanceId ?? 'instance-a',
+      },
+    ]);
+    renderWithProviders('/instance/instance-a/topic');
+
+    expect(await screen.findByText('topic-a')).toBeInTheDocument();
+    await user.click(screen.getAllByRole('checkbox')[1]);
+    expect(screen.getByRole('button', { name: /删除 \(1\)$/ })).toBeInTheDocument();
+
+    const csv = [
+      '"Name","Type","Write Queues","Read Queues","Permission"',
+      '"imported-topic","NORMAL","8","8","RW"',
+    ].join('\n');
+    await user.upload(screen.getByTestId('topic-import-file'), new File([csv], 'topics.csv'));
+    expect(await screen.findByText('检测到 1 个 Topic，将按顺序调用创建接口')).toBeInTheDocument();
+
+    await user.click(screen.getAllByRole('combobox')[0]);
+    await user.click(
+      await screen.findByText('Instance B', { selector: '.ant-select-item-option-content' }),
+    );
+
+    expect(await screen.findByText('topic-b')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText('检测到 1 个 Topic，将按顺序调用创建接口')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /删除 \(1\)$/ })).not.toBeInTheDocument();
+    });
+    expect(topicServiceMocks.batchDeleteTopics).not.toHaveBeenCalled();
+    expect(topicServiceMocks.createTopic).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: /发送/ }));
+    expect(await screen.findByText('发送消息到 topic-b')).toBeInTheDocument();
+    await user.click(screen.getAllByRole('combobox')[0]);
+    await user.click(
+      await screen.findByText('Instance A', { selector: '.ant-select-item-option-content' }),
+    );
+
+    expect(await screen.findByText('topic-a')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('发送消息到 topic-b')).not.toBeInTheDocument());
+    expect(topicServiceMocks.sendTopicMessage).not.toHaveBeenCalled();
+  });
+
   it('imports valid topic CSV rows through the create service with the selected instance', async () => {
     const user = userEvent.setup();
     topicServiceMocks.listTopics.mockResolvedValue([]);
