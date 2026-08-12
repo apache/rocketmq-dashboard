@@ -498,7 +498,23 @@ class AclServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("ACL user not found: 999")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
-        verify(aclRepository, never()).saveUser(any(AclUserVO.class));
+        verify(aclRepository, never()).replaceUser(any(AclUserVO.class));
+    }
+
+    @Test
+    void updateUserShouldRejectConcurrentDeletion() {
+        UpdateAclUserDTO input = new UpdateAclUserDTO();
+        input.setId(1L);
+        input.setUsername("renamed");
+        when(aclRepository.findUserById(1L)).thenReturn(Optional.of(existingUser));
+        when(aclRepository.replaceUser(any(AclUserVO.class))).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> aclService.updateUser(input, null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("ACL user not found: 1")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
+
+        verify(operationAuditService, never()).record(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test

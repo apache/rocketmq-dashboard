@@ -103,15 +103,24 @@ const isFormValidationError = (error: unknown) =>
 /* ═══════════════════════════════════════════
    ACL Management Page
    ═══════════════════════════════════════════ */
-const AclPage = () => {
+type AclPageContentProps = Pick<
+  ReturnType<typeof useInstanceFilter>,
+  'selectedInstanceId' | 'selectInstance' | 'instanceOptions'
+>;
+
+const AclPageContent = ({
+  selectedInstanceId,
+  selectInstance,
+  instanceOptions,
+}: AclPageContentProps) => {
   const { t } = useLang();
-  const { selectedInstanceId, selectInstance, instanceOptions, instances } = useInstanceFilter();
+  const hasSelectedInstance = Boolean(selectedInstanceId);
 
   /* ─── State ─── */
   const [rules, setRules] = useState<AclRule[]>([]);
   const [users, setUsers] = useState<AclUser[]>([]);
-  const [rulesLoading, setRulesLoading] = useState(true);
-  const [usersLoading, setUsersLoading] = useState(true);
+  const [rulesLoading, setRulesLoading] = useState(hasSelectedInstance);
+  const [usersLoading, setUsersLoading] = useState(hasSelectedInstance);
   const [ruleSubmitting, setRuleSubmitting] = useState(false);
   const [userSubmitting, setUserSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState('rules');
@@ -135,6 +144,7 @@ const AclPage = () => {
   const [revealedKeys, setRevealedKeys] = useState<Set<number>>(new Set());
   const [adminUpdatingIds, setAdminUpdatingIds] = useState<Set<number>>(() => new Set());
   const adminUpdateInFlightRef = useRef<Set<number>>(new Set());
+  const revealRequestGenerationRef = useRef<Record<number, number>>({});
   const [credentialsByUser, setCredentialsByUser] = useState<
     Record<number, { accessKey: string; secretKey: string }>
   >({});
@@ -143,6 +153,7 @@ const AclPage = () => {
   const [clusterConfig, setClusterConfig] = useState<AclClusterConfig | null>(null);
   const [configLoading, setConfigLoading] = useState(false);
   const [clusterIdInput, setClusterIdInput] = useState('DefaultCluster');
+  const examineRequestGenerationRef = useRef(0);
 
   // Plain access config modal
   const [plainModalOpen, setPlainModalOpen] = useState(false);
@@ -178,7 +189,7 @@ const AclPage = () => {
     return () => {
       mounted = false;
     };
-  }, [t, selectedInstanceId]);
+  }, [selectedInstanceId, t]);
 
   /* ─── Filtered rules ─── */
   const filteredRules = rules.filter((r) => {
@@ -278,6 +289,8 @@ const AclPage = () => {
   /* ─── User helpers ─── */
   const toggleRevealKey = async (userId: number) => {
     const revealing = !revealedKeys.has(userId);
+    const revealGeneration = (revealRequestGenerationRef.current[userId] ?? 0) + 1;
+    revealRequestGenerationRef.current[userId] = revealGeneration;
     setRevealedKeys((prev) => {
       const next = new Set(prev);
       if (next.has(userId)) {
@@ -290,6 +303,7 @@ const AclPage = () => {
     if (!revealing || credentialsByUser[userId]) return;
     try {
       const credentials = await getAclUserCredentials(userId, selectedInstanceId);
+      if (revealRequestGenerationRef.current[userId] !== revealGeneration) return;
       setCredentialsByUser((prev) => ({
         ...prev,
         [userId]: {
@@ -298,6 +312,7 @@ const AclPage = () => {
         },
       }));
     } catch {
+      if (revealRequestGenerationRef.current[userId] !== revealGeneration) return;
       setRevealedKeys((prev) => {
         const next = new Set(prev);
         next.delete(userId);
@@ -402,15 +417,21 @@ const AclPage = () => {
       message.warning(t('acl.inputRequired', { field: t('acl.examineCluster') }));
       return;
     }
+    const requestGeneration = examineRequestGenerationRef.current + 1;
+    examineRequestGenerationRef.current = requestGeneration;
     try {
       setConfigLoading(true);
       const config = await examineBrokerClusterAclConfig(clusterId);
+      if (examineRequestGenerationRef.current !== requestGeneration) return;
       setClusterConfig(config);
       message.success(t('acl.configExamined'));
     } catch {
+      if (examineRequestGenerationRef.current !== requestGeneration) return;
       message.error(t('common.operationFailed'));
     } finally {
-      setConfigLoading(false);
+      if (examineRequestGenerationRef.current === requestGeneration) {
+        setConfigLoading(false);
+      }
     }
   };
 
@@ -1331,6 +1352,16 @@ const AclPage = () => {
         </Form>
       </Modal>
     </div>
+  );
+};
+
+const AclPage = () => {
+  const instanceFilter = useInstanceFilter();
+  return (
+    <AclPageContent
+      key={instanceFilter.selectedInstanceId || 'no-selected-instance'}
+      {...instanceFilter}
+    />
   );
 };
 

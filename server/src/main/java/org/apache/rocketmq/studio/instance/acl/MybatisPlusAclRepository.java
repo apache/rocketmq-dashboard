@@ -126,7 +126,9 @@ public class MybatisPlusAclRepository implements AclRepository {
         }
         RmqAclUser entity = toUserEntity(user);
         entity.setGmtCreate(existing.getGmtCreate());
-        userMapper.updateById(entity);
+        if (userMapper.updateById(entity) == 0) {
+            return Optional.empty();
+        }
         user.setGmtCreate(existing.getGmtCreate());
         return Optional.of(user);
     }
