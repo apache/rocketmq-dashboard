@@ -52,9 +52,18 @@ public class AlertService {
     }
 
     public String exportPrometheusRulesYaml() {
+        return exportPrometheusRulesYaml(List.of());
+    }
+
+    public String exportPrometheusRulesYaml(List<String> selectedRuleIds) {
+        Set<String> selectedIds = validateSelectedRuleIds(selectedRuleIds);
         List<AlertRuleVO> rules = alertRepository.findAllRules().stream()
                 .filter(AlertRuleVO::isEnabled)
+                .filter(rule -> selectedIds.isEmpty() || selectedIds.contains(rule.getId()))
                 .toList();
+        if (!selectedIds.isEmpty() && rules.size() != selectedIds.size()) {
+            throw new BusinessException(400, "Selected alert rules are unavailable or disabled");
+        }
         List<PrometheusAlertRule> prometheusRules = rules.isEmpty()
                 ? defaultPrometheusRules()
                 : rules.stream().map(this::toPrometheusRule).toList();
@@ -269,6 +278,9 @@ public class AlertService {
     }
 
     private String groupName(String team) {
+        if ("proxy".equals(team)) {
+            return "rocketmq-proxy.rules";
+        }
         if ("client".equals(team)) {
             return "rocketmq-client.rules";
         }
@@ -372,6 +384,9 @@ public class AlertService {
             return "broker";
         }
         String normalizedMetric = metric.toLowerCase(Locale.ROOT);
+        if (normalizedMetric.startsWith("rocketmq_proxy_")) {
+            return "proxy";
+        }
         if (normalizedMetric.contains("replication") || normalizedMetric.contains("fall_behind")
                 || normalizedMetric.contains("slave")) {
             return "broker";
@@ -387,6 +402,20 @@ public class AlertService {
             return "topic";
         }
         return "broker";
+    }
+
+    private Set<String> validateSelectedRuleIds(List<String> selectedRuleIds) {
+        if (selectedRuleIds == null || selectedRuleIds.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> selectedIds = new HashSet<>();
+        for (String ruleId : selectedRuleIds) {
+            if (!hasText(ruleId)) {
+                throw new BusinessException(400, "Selected alert rule IDs must not be blank");
+            }
+            selectedIds.add(ruleId.trim());
+        }
+        return selectedIds;
     }
 
     private String summary(AlertRuleVO rule) {

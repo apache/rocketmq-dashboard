@@ -57,9 +57,23 @@ const channelColors: Record<string, string> = {
   sms: 'orange',
 };
 
-const metricOptions = ['磁盘使用率', '消费堆积量', 'TPS 异常', 'Broker 离线', 'Proxy 连接数'];
+const metricOptions = [
+  { label: '磁盘使用率', value: 'rocketmq_disk_use_ratio' },
+  { label: '消费堆积量', value: 'rocketmq_consumer_lag_messages' },
+  { label: 'TPS 异常', value: 'rocketmq_broker_tps' },
+  { label: 'Broker 离线', value: 'up' },
+  { label: 'Proxy 连接数', value: 'rocketmq_connection_count' },
+];
 
-const durationOptions = ['1分钟', '5分钟', '15分钟', '30分钟'];
+const durationOptions = [
+  { label: '1分钟', value: '1m' },
+  { label: '5分钟', value: '5m' },
+  { label: '15分钟', value: '15m' },
+  { label: '30分钟', value: '30m' },
+];
+
+const metricLabels = new Map(metricOptions.map(({ label, value }) => [value, label]));
+const durationLabels = new Map(durationOptions.map(({ label, value }) => [value, label]));
 
 const AlertsPage = () => {
   const { t } = useLang();
@@ -241,20 +255,22 @@ const AlertsPage = () => {
       dataIndex: 'name',
       sorter: (a, b) => (a.name ?? '').localeCompare(b.name ?? ''),
     },
-    {
-      title: t('alerts.metric'),
-      dataIndex: 'metric',
-      sorter: (a, b) => (a.metric ?? '').localeCompare(b.metric ?? ''),
+      {
+        title: t('alerts.metric'),
+        dataIndex: 'metric',
+        sorter: (a, b) => (a.metric ?? '').localeCompare(b.metric ?? ''),
+        render: (metric: string) => metricLabels.get(metric) ?? metric,
     },
     {
       title: t('alerts.threshold'),
       sorter: (a, b) => (a.threshold ?? 0) - (b.threshold ?? 0),
       render: (_, record) => `${record.operator} ${record.threshold}${record.thresholdUnit}`,
     },
-    {
-      title: t('alerts.duration'),
-      dataIndex: 'duration',
-      sorter: (a, b) => (a.duration ?? '').localeCompare(b.duration ?? ''),
+      {
+        title: t('alerts.duration'),
+        dataIndex: 'duration',
+        sorter: (a, b) => (a.duration ?? '').localeCompare(b.duration ?? ''),
+        render: (duration: string) => durationLabels.get(duration) ?? duration,
     },
     {
       title: t('alerts.channels'),
@@ -470,10 +486,7 @@ const AlertsPage = () => {
             label={t('alerts.metric')}
             rules={[{ required: true, message: '请选择监控指标' }]}
           >
-            <Select
-              placeholder="请选择监控指标"
-              options={metricOptions.map((m) => ({ label: m, value: m }))}
-            />
+            <Select placeholder="请选择监控指标" options={metricOptions} />
           </Form.Item>
 
           <Form.Item label={t('alerts.threshold')}>
@@ -509,10 +522,7 @@ const AlertsPage = () => {
             label={t('alerts.duration')}
             rules={[{ required: true, message: '请选择持续时间' }]}
           >
-            <Select
-              placeholder="请选择持续时间"
-              options={durationOptions.map((d) => ({ label: d, value: d }))}
-            />
+            <Select placeholder="请选择持续时间" options={durationOptions} />
           </Form.Item>
 
           <Form.Item

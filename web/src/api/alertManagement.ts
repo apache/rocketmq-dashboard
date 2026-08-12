@@ -45,8 +45,9 @@ export async function listAlertRules(): Promise<AlertRule[]> {
   return res.data.data;
 }
 
-export async function exportAlertRulesYaml(): Promise<AlertRuleData> {
-  const res = await client.get<{ data: AlertRuleData }>('/alert-rules/export');
+export async function exportAlertRulesYaml(ruleIds?: string[]): Promise<AlertRuleData> {
+  const params = ruleIds?.length ? { ids: ruleIds.join(',') } : undefined;
+  const res = await client.get<{ data: AlertRuleData }>('/alert-rules/export', { params });
   return res.data.data;
 }
 

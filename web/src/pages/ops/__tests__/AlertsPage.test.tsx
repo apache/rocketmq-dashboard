@@ -22,45 +22,38 @@ import { App } from 'antd';
 import type { AlertRule } from '../../../api/ops';
 import { LangProvider } from '../../../i18n/LangContext';
 import AlertsPage from '../alerts';
-import {
-  bulkDeleteAlertRules,
-  bulkToggleAlertRules,
-  listAlertRules,
-  toggleAlertRule,
-} from '../../../services/opsService';
+import { createAlertRule, listAlertRules, toggleAlertRule } from '../../../services/opsService';
 
 vi.mock('../../../services/opsService', () => ({
   createAlertRule: vi.fn(),
   deleteAlertRule: vi.fn(),
   listAlertRules: vi.fn(),
   toggleAlertRule: vi.fn(),
-  bulkToggleAlertRules: vi.fn(),
-  bulkDeleteAlertRules: vi.fn(),
   updateAlertRule: vi.fn(),
 }));
 
 const alertRules: AlertRule[] = [
   {
-    id: 1,
+    id: 'alert-a',
     name: 'Broker disk usage',
-    metric: '磁盘使用率',
+    metric: 'rocketmq_disk_use_ratio',
     operator: '>',
     threshold: 85,
     thresholdUnit: '%',
-    duration: '5分钟',
+    duration: '5m',
     channels: ['email'],
     enabled: false,
     lastTriggered: null,
     description: 'disk usage',
   },
   {
-    id: 2,
+    id: 'alert-b',
     name: 'Consumer lag',
-    metric: '消费堆积量',
+    metric: 'rocketmq_consumer_lag_messages',
     operator: '>',
     threshold: 1000,
     thresholdUnit: '条',
-    duration: '15分钟',
+    duration: '15m',
     channels: ['dingtalk'],
     enabled: false,
     lastTriggered: null,
@@ -116,18 +109,55 @@ describe('AlertsPage', () => {
       if (!rule) throw new Error(`Rule not found: ${id}`);
       return { ...cloneRule(rule), enabled };
     });
-    vi.mocked(bulkToggleAlertRules).mockImplementation(async (ids, enabled) => ({
-      succeededIds: ids,
-      failures: {},
-      updatedRules: ids.map((id) => ({
-        ...cloneRule(alertRules.find((item) => item.id === id)!),
-        enabled,
-      })),
+  });
+
+  it('submits backend-compatible metric and duration values when creating a rule', async () => {
+    vi.mocked(createAlertRule).mockImplementation(async (rule) => ({
+      id: 'alert-created',
+      name: rule.name ?? '',
+      metric: rule.metric ?? '',
+      operator: rule.operator ?? '>',
+      threshold: rule.threshold ?? 0,
+      thresholdUnit: rule.thresholdUnit ?? '',
+      duration: rule.duration ?? '',
+      channels: rule.channels ?? [],
+      enabled: rule.enabled ?? false,
+      lastTriggered: null,
+      description: rule.description ?? '',
     }));
-    vi.mocked(bulkDeleteAlertRules).mockResolvedValue({
-      succeededIds: [],
-      failures: {},
-      updatedRules: [],
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('Broker disk usage');
+    await user.click(screen.getByRole('button', { name: '新建规则' }));
+
+    const dialog = screen.getByRole('dialog');
+    await user.type(within(dialog).getByRole('textbox', { name: '规则名称' }), 'Disk high');
+
+    const selects = within(dialog).getAllByRole('combobox');
+    await user.click(selects[0]);
+    const metricLabels = await screen.findAllByText('磁盘使用率');
+    await user.click(metricLabels[metricLabels.length - 1]);
+    await user.click(selects[1]);
+    const operatorLabels = await screen.findAllByText('>');
+    await user.click(operatorLabels[operatorLabels.length - 1]);
+    await user.type(within(dialog).getByRole('spinbutton'), '85');
+    await user.click(selects[2]);
+    const durationLabels = await screen.findAllByText('5分钟');
+    await user.click(durationLabels[durationLabels.length - 1]);
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Email' }));
+    await user.click(within(dialog).getByRole('button', { name: '新 建' }));
+
+    await waitFor(() => {
+      expect(createAlertRule).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Disk high',
+          metric: 'rocketmq_disk_use_ratio',
+          duration: '5m',
+          thresholdUnit: '%',
+        }),
+      );
     });
   });
 
@@ -142,9 +172,10 @@ describe('AlertsPage', () => {
     await user.click(screen.getByRole('button', { name: '批量启用' }));
 
     await waitFor(() => {
-      expect(bulkToggleAlertRules).toHaveBeenCalledTimes(1);
+      expect(toggleAlertRule).toHaveBeenCalledTimes(2);
     });
-    expect(bulkToggleAlertRules).toHaveBeenCalledWith([1, 2], true);
+    expect(toggleAlertRule).toHaveBeenCalledWith('alert-a', true);
+    expect(toggleAlertRule).toHaveBeenCalledWith('alert-b', true);
     expect(await screen.findByText('已启用 2 条告警规则')).toBeInTheDocument();
     expect(within(getRuleRow('Broker disk usage')).getByRole('switch')).toHaveAttribute(
       'aria-checked',
@@ -162,10 +193,11 @@ describe('AlertsPage', () => {
     vi.mocked(listAlertRules).mockResolvedValue(
       alertRules.map((rule) => ({ ...cloneRule(rule), enabled: true })),
     );
-    vi.mocked(bulkToggleAlertRules).mockResolvedValue({
-      succeededIds: [1],
-      failures: { '2': 'network error' },
-      updatedRules: [{ ...cloneRule(alertRules[0]), enabled: false }],
+    vi.mocked(toggleAlertRule).mockImplementation(async (id, enabled) => {
+      if (id === 'alert-b') throw new Error('network error');
+      const rule = alertRules.find((item) => item.id === id);
+      if (!rule) throw new Error(`Rule not found: ${id}`);
+      return { ...cloneRule(rule), enabled };
     });
 
     const user = userEvent.setup();
@@ -178,7 +210,7 @@ describe('AlertsPage', () => {
     await user.click(screen.getByRole('button', { name: '批量禁用' }));
 
     await waitFor(() => {
-      expect(bulkToggleAlertRules).toHaveBeenCalledTimes(1);
+      expect(toggleAlertRule).toHaveBeenCalledTimes(2);
     });
     expect(await screen.findByText('已禁用 1 条告警规则，1 条失败')).toBeInTheDocument();
     expect(within(getRuleRow('Broker disk usage')).getByRole('switch')).toHaveAttribute(
@@ -194,7 +226,7 @@ describe('AlertsPage', () => {
   });
 
   it('keeps all selected alert rules selected when the bulk action fails', async () => {
-    vi.mocked(bulkToggleAlertRules).mockRejectedValue(new Error('network error'));
+    vi.mocked(toggleAlertRule).mockRejectedValue(new Error('network error'));
 
     const user = userEvent.setup();
     renderPage();
@@ -219,15 +251,9 @@ describe('AlertsPage', () => {
   });
 
   it('disables other alert rule mutations while a bulk action is running', async () => {
-    let resolveToggle:
-      | ((result: {
-          succeededIds: number[];
-          failures: Record<string, string>;
-          updatedRules: AlertRule[];
-        }) => void)
-      | undefined;
-    vi.mocked(bulkToggleAlertRules).mockReturnValue(
-      new Promise((resolve) => {
+    let resolveToggle: ((rule: AlertRule) => void) | undefined;
+    vi.mocked(toggleAlertRule).mockReturnValue(
+      new Promise<AlertRule>((resolve) => {
         resolveToggle = resolve;
       }),
     );
@@ -240,7 +266,7 @@ describe('AlertsPage', () => {
     await user.click(screen.getByRole('button', { name: '批量启用' }));
 
     await waitFor(() => {
-      expect(bulkToggleAlertRules).toHaveBeenCalledWith([1], true);
+      expect(toggleAlertRule).toHaveBeenCalledWith('alert-a', true);
     });
     expect(screen.getByRole('button', { name: '新建规则' })).toBeDisabled();
     expect(within(getRuleRow('Broker disk usage')).getByRole('switch')).toBeDisabled();
@@ -251,30 +277,7 @@ describe('AlertsPage', () => {
       within(getRuleRow('Broker disk usage')).getByRole('button', { name: '删除' }),
     ).toBeDisabled();
 
-    resolveToggle?.({
-      succeededIds: [1],
-      failures: {},
-      updatedRules: [{ ...cloneRule(alertRules[0]), enabled: true }],
-    });
+    resolveToggle?.({ ...cloneRule(alertRules[0]), enabled: true });
     expect(await screen.findByText('已启用 1 条告警规则')).toBeInTheDocument();
-  });
-
-  it('bulk deletes selected rules after confirmation', async () => {
-    vi.mocked(bulkDeleteAlertRules).mockResolvedValue({
-      succeededIds: [1, 2],
-      failures: {},
-      updatedRules: [],
-    });
-    const user = userEvent.setup();
-    renderPage();
-    await screen.findByText('Broker disk usage');
-    await user.click(within(getRuleRow('Broker disk usage')).getByRole('checkbox'));
-    await user.click(within(getRuleRow('Consumer lag')).getByRole('checkbox'));
-    await user.click(screen.getByRole('button', { name: '批量删除' }));
-    await user.click(await screen.findByRole('button', { name: 'OK' }));
-
-    await waitFor(() => expect(bulkDeleteAlertRules).toHaveBeenCalledWith([1, 2]));
-    expect(screen.queryByText('Broker disk usage')).not.toBeInTheDocument();
-    expect(await screen.findByText('所选告警规则已删除')).toBeInTheDocument();
   });
 });

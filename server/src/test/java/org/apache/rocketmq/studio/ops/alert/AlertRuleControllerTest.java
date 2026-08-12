@@ -79,6 +79,19 @@ class AlertRuleControllerTest {
     }
 
     @Test
+    void exportRulesShouldForwardSelectedRuleIds() throws Exception {
+        when(alertService.exportPrometheusRulesYaml(List.of("rule-1", "rule-2")))
+                .thenReturn("groups:\n");
+
+        mockMvc.perform(get("/api/alert-rules/export")
+                        .param("ids", "rule-1,rule-2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.rules").value("groups:\n"));
+
+        verify(alertService).exportPrometheusRulesYaml(List.of("rule-1", "rule-2"));
+    }
+
+    @Test
     void createRuleShouldReturnCreatedRule() throws Exception {
         AlertRuleVO request = AlertRuleVO.builder()
                 .name("High Lag")
