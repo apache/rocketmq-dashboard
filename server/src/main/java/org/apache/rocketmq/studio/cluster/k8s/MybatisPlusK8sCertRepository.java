@@ -72,8 +72,8 @@ public class MybatisPlusK8sCertRepository implements K8sCertRepository {
     }
 
     @Override
-    public void deleteById(String id) {
-        certMapper.deleteById(id);
+    public boolean deleteById(String id) {
+        return certMapper.deleteById(id) > 0;
     }
 
     private K8sCertVO toVO(RmqK8sCertificate entity) {

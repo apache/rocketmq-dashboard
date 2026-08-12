@@ -22,11 +22,24 @@ import org.apache.rocketmq.studio.persistence.entity.RmqK8sCertificate;
 import org.apache.rocketmq.studio.persistence.mapper.RmqK8sCertificateMapper;
 import org.junit.jupiter.api.Test;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class MybatisPlusK8sCertRepositoryTest {
+
+    @Test
+    void deleteByIdShouldReportWhetherARowWasRemoved() {
+        RmqK8sCertificateMapper mapper = mock(RmqK8sCertificateMapper.class);
+        when(mapper.deleteById("deleted")).thenReturn(1);
+        when(mapper.deleteById("missing")).thenReturn(0);
+
+        MybatisPlusK8sCertRepository repository = repository(mapper);
+
+        assertThat(repository.deleteById("deleted")).isTrue();
+        assertThat(repository.deleteById("missing")).isFalse();
+    }
 
     @Test
     void findByIdSurfacesInvalidPersistedCertificateType() {

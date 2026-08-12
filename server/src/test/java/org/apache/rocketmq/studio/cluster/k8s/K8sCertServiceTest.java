@@ -34,13 +34,16 @@ import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -301,6 +304,28 @@ class K8sCertServiceTest {
     }
 
     @Test
+    void updateCertShouldRejectBlankIdentityFields() {
+        when(k8sCertRepository.findById("cert-1")).thenReturn(Optional.of(sampleCert));
+        List<Map.Entry<String, Consumer<UpdateCertDTO>>> invalidUpdates = List.of(
+                Map.entry("name", command -> command.setName(" ")),
+                Map.entry("namespace", command -> command.setNamespace("\t")),
+                Map.entry("cluster", command -> command.setCluster("\n")),
+                Map.entry("issuer", command -> command.setIssuer("  ")));
+
+        for (Map.Entry<String, Consumer<UpdateCertDTO>> invalidUpdate : invalidUpdates) {
+            UpdateCertDTO command = UpdateCertDTO.builder().id("cert-1").build();
+            invalidUpdate.getValue().accept(command);
+
+            assertThatThrownBy(() -> k8sCertService.updateCert(command))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("Certificate " + invalidUpdate.getKey() + " cannot be blank")
+                    .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+        }
+
+        verify(k8sCertRepository, never()).save(any(K8sCertVO.class));
+    }
+
+    @Test
     void updateCertShouldThrowWhenNotFound() {
         when(k8sCertRepository.findById("nonexistent")).thenReturn(Optional.empty());
 
@@ -404,6 +429,7 @@ class K8sCertServiceTest {
     @Test
     void deleteCertShouldDeleteWhenFound() {
         when(k8sCertRepository.findById("cert-1")).thenReturn(Optional.of(sampleCert));
+        when(k8sCertRepository.deleteById("cert-1")).thenReturn(true);
 
         DeleteCertDTO command = DeleteCertDTO.builder().id("cert-1").build();
 
@@ -412,6 +438,20 @@ class K8sCertServiceTest {
         verify(k8sCertRepository).deleteById("cert-1");
         verify(operationAuditService).record(eq("DELETE_K8S_CERTIFICATE"), eq("K8S_CERTIFICATE"),
                 eq("cert-1"), eq(null), eq(null), eq("SUCCESS"), eq(null));
+    }
+
+    @Test
+    void deleteCertShouldRejectConcurrentRemoval() {
+        when(k8sCertRepository.findById("cert-1")).thenReturn(Optional.of(sampleCert));
+        when(k8sCertRepository.deleteById("cert-1")).thenReturn(false);
+
+        DeleteCertDTO command = DeleteCertDTO.builder().id("cert-1").build();
+
+        assertThatThrownBy(() -> k8sCertService.deleteCert(command))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Certificate not found: cert-1")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
+        verifyNoInteractions(operationAuditService);
     }
 
     @Test

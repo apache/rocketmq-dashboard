@@ -28,5 +28,5 @@ public interface K8sCertRepository {
 
     K8sCertVO save(K8sCertVO cert);
 
-    void deleteById(String id);
+    boolean deleteById(String id);
 }
