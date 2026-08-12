@@ -52,6 +52,16 @@ describe('instanceService mock instances', () => {
 
     const combined = await listInstances({ type: 'DIRECT', search: 'instance-direct-2' });
     expect(combined.map((instance) => instance.id)).toEqual(['instance-direct-2']);
+
+    const allProxy = await listInstances({ type: 'PROXY' });
+    expect(allProxy.map((instance) => instance.type)).toEqual([
+      'PROXY_CLUSTER',
+      'PROXY_CLUSTER',
+      'PROXY_LOCAL',
+    ]);
+    await expect(listInstances({ type: 'PROXY_LOCAL' })).resolves.toEqual([
+      expect.objectContaining({ id: 'instance-proxy-3', type: 'PROXY_LOCAL' }),
+    ]);
   });
 
   it('does not expose created or updated store records by reference', async () => {
@@ -69,6 +79,7 @@ describe('instanceService mock instances', () => {
     const storedCreated = afterCreate.find((instance) => instance.id === created.id);
     expect(storedCreated).toMatchObject({
       name: 'rocketmq-copy-test',
+      type: 'PROXY_CLUSTER',
       remark: 'created',
     });
 

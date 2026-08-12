@@ -227,7 +227,7 @@ describe('InstancePage', () => {
     await user.type(within(dialog).getByLabelText('实例 ID'), 'new-proxy');
     const createTypeSelect = within(dialog).getByRole('combobox');
     fireEvent.mouseDown(createTypeSelect.parentElement!);
-    const proxyOptions = await screen.findAllByText('Proxy 模式', {
+    const proxyOptions = await screen.findAllByText('Proxy Cluster 模式', {
       selector: '.ant-select-item-option-content',
     });
     await user.click(proxyOptions[proxyOptions.length - 1]);
@@ -260,7 +260,7 @@ describe('InstancePage', () => {
     await user.type(within(dialog).getByLabelText('实例 ID'), 'new-proxy');
     const createTypeSelect = within(dialog).getByRole('combobox');
     fireEvent.mouseDown(createTypeSelect.parentElement!);
-    const proxyOptions = await screen.findAllByText('Proxy 模式', {
+    const proxyOptions = await screen.findAllByText('Proxy Cluster 模式', {
       selector: '.ant-select-item-option-content',
     });
     await user.click(proxyOptions[proxyOptions.length - 1]);
@@ -270,7 +270,7 @@ describe('InstancePage', () => {
     await waitFor(() =>
       expect(instanceService.createInstance).toHaveBeenCalledWith({
         name: 'new-proxy',
-        type: 'PROXY',
+        type: 'PROXY_CLUSTER',
         endpoint: 'proxy-new:8080',
       }),
     );
@@ -305,6 +305,36 @@ describe('InstancePage', () => {
     await waitFor(() => expect(instanceService.listInstances).toHaveBeenCalledTimes(3));
     expect(instanceService.listInstances).toHaveBeenLastCalledWith({ type: 'DIRECT' });
     confirmSpy.mockRestore();
+  });
+
+  it('creates an Apache instance with an explicit Proxy Local deployment type', async () => {
+    const user = userEvent.setup();
+    vi.mocked(instanceService.createInstance).mockResolvedValue(
+      instance('created-local', 'local-proxy', 'PROXY_LOCAL'),
+    );
+    renderPage();
+
+    expect(await screen.findByText('production-proxy')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /添加实例/ }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByLabelText('实例 ID'), 'local-proxy');
+    const createTypeSelect = within(dialog).getByRole('combobox');
+    fireEvent.mouseDown(createTypeSelect.parentElement!);
+    await user.click(
+      await screen.findByText('Proxy Local 模式', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+    await user.type(within(dialog).getByLabelText('接入地址'), 'broker-proxy:8080');
+    await user.click(within(dialog).getByRole('button', { name: /连\s*接/ }));
+
+    await waitFor(() =>
+      expect(instanceService.createInstance).toHaveBeenCalledWith({
+        name: 'local-proxy',
+        type: 'PROXY_LOCAL',
+        endpoint: 'broker-proxy:8080',
+      }),
+    );
   });
 
   it('shows vendor tabs in the add instance modal and switches description', async () => {

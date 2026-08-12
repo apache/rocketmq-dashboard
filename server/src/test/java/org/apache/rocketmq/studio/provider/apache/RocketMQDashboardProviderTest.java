@@ -379,6 +379,28 @@ class RocketMQDashboardProviderTest {
     }
 
     @Test
+    void dashboardShouldReportSelectedProxyLocalInstanceType() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        RuntimeAdminClientResolver resolver = mock(RuntimeAdminClientResolver.class);
+        InstanceVO instance = InstanceVO.builder()
+                .type(InstanceType.PROXY_LOCAL)
+                .endpoint("local-proxy:8080")
+                .build();
+        instance.setId("instance-local");
+        when(resolver.resolveInstance("instance-local")).thenReturn(instance);
+        when(resolver.execute(eq(instance), any())).thenAnswer(invocation ->
+                invocation.<MqAdminExtFactory.AdminAction<DashboardDataVO>>getArgument(1).apply(adminExt));
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
+
+        DashboardDataVO dashboard = newProvider(adminExt, resolver).getDashboardData("instance-local");
+
+        assertThat(dashboard.getClusters()).singleElement()
+                .extracting(cluster -> cluster.getType())
+                .isEqualTo(ClusterType.V5_PROXY_LOCAL);
+    }
+
+    @Test
     void dashboardShouldMarkClusterWarningWhenBrokerRuntimeStatsFail() throws Exception {
         DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());

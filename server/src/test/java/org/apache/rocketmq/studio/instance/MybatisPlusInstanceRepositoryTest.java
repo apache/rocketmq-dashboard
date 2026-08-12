@@ -81,6 +81,38 @@ class MybatisPlusInstanceRepositoryTest {
     }
 
     @Test
+    void findByTypeShouldTreatLegacyProxyAsAllProxyAccessTypes() {
+        when(instanceMapper.selectList(any(QueryWrapper.class)))
+                .thenReturn(List.of(
+                        entity("legacy", InstanceType.PROXY),
+                        entity("local", InstanceType.PROXY_LOCAL),
+                        entity("cluster", InstanceType.PROXY_CLUSTER)));
+
+        List<InstanceVO> result = repository.findByType(InstanceType.PROXY);
+
+        assertThat(result).extracting(InstanceVO::getType)
+                .containsExactly(InstanceType.PROXY, InstanceType.PROXY_LOCAL, InstanceType.PROXY_CLUSTER);
+        ArgumentCaptor<QueryWrapper<RmqInstance>> query = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(instanceMapper).selectList(query.capture());
+        assertThat(query.getValue().getSqlSegment()).contains("type IN");
+        assertThat(query.getValue().getParamNameValuePairs().values())
+                .contains(InstanceType.PROXY.name(), InstanceType.PROXY_LOCAL.name(), InstanceType.PROXY_CLUSTER.name());
+    }
+
+    @Test
+    void findByTypeShouldFilterExplicitProxyLocalTypeOnly() {
+        when(instanceMapper.selectList(any(QueryWrapper.class)))
+                .thenReturn(List.of(entity("local", InstanceType.PROXY_LOCAL)));
+
+        assertThat(repository.findByType(InstanceType.PROXY_LOCAL)).singleElement()
+                .extracting(InstanceVO::getType)
+                .isEqualTo(InstanceType.PROXY_LOCAL);
+        ArgumentCaptor<QueryWrapper<RmqInstance>> query = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(instanceMapper).selectList(query.capture());
+        assertThat(query.getValue().getSqlSegment()).contains("type IN");
+    }
+
+    @Test
     void constructorShouldNotSeedDemoInstances() {
         when(instanceMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of());
 

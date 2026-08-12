@@ -33,6 +33,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 @RequiredArgsConstructor
 @Repository
@@ -54,7 +55,7 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
     public List<InstanceVO> findByType(InstanceType type) {
         return instanceMapper.selectList(
                 new QueryWrapper<RmqInstance>()
-                        .eq("type", type.name())
+                        .in("type", typeNamesForFilter(type))
                         .orderByAsc("id")).stream()
                 .map(this::toVO)
                 .toList();
@@ -76,13 +77,23 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
     public List<InstanceVO> findByTypeAndSearch(InstanceType type, String keyword) {
         return instanceMapper.selectList(
                 new QueryWrapper<RmqInstance>()
-                        .eq("type", type.name())
+                        .in("type", typeNamesForFilter(type))
                         .and(w -> w.like("name", keyword)
                                 .or().like("endpoint", keyword)
                                 .or().like("remark", keyword))
                         .orderByAsc("id")).stream()
                 .map(this::toVO)
                 .toList();
+    }
+
+    private List<String> typeNamesForFilter(InstanceType type) {
+        if (type == InstanceType.PROXY) {
+            return Stream.of(InstanceType.values())
+                    .filter(InstanceType::isProxy)
+                    .map(Enum::name)
+                    .toList();
+        }
+        return List.of(type.name());
     }
 
     @Override

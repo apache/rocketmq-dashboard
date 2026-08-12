@@ -14,11 +14,16 @@ function copyInstance(instance: Instance): Instance {
   return { ...instance };
 }
 
+function matchesType(instance: Instance, type?: Instance['type']) {
+  if (!type) return true;
+  return type === 'PROXY' ? instance.type !== 'DIRECT' : instance.type === type;
+}
+
 export async function listInstances(query: InstanceQuery = {}): Promise<Instance[]> {
   if (isMockMode()) {
     const search = query.search?.trim().toLowerCase();
     return mockInstances
-      .filter((instance) => !query.type || instance.type === query.type)
+      .filter((instance) => matchesType(instance, query.type))
       .filter(
         (instance) =>
           !search ||
@@ -33,11 +38,16 @@ export async function listInstances(query: InstanceQuery = {}): Promise<Instance
 
 export async function createInstance(data: CreateInstanceRequest): Promise<Instance> {
   if (isMockMode()) {
+    const cloudManaged = data.vendor === 'ALIYUN' || data.vendor === 'TENCENT';
     const instance: Instance = {
       id: String(Date.now()),
       ...data,
       name: data.name || '',
-      type: data.type || 'PROXY',
+      type: cloudManaged
+        ? 'PROXY'
+        : data.type === 'PROXY'
+          ? 'PROXY_CLUSTER'
+          : data.type || 'PROXY_CLUSTER',
       endpoint: data.endpoint || '',
       vendor: data.vendor || 'APACHE',
       remark: data.remark || '',

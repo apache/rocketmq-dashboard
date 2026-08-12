@@ -34,7 +34,6 @@ import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterStatus;
 import org.apache.rocketmq.studio.common.domain.enums.ClusterType;
-import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.instance.InstanceVO;
 import org.apache.rocketmq.studio.ops.dashboard.ClusterOverviewVO;
 import org.apache.rocketmq.studio.ops.dashboard.DashboardDataVO;
@@ -320,8 +319,11 @@ public class RocketMQDashboardProvider implements DashboardProvider {
     }
 
     private ClusterType clusterTypeFor(InstanceVO instance) {
-        return instance.getType() == InstanceType.DIRECT
-                ? ClusterType.V4_DIRECT : ClusterType.V5_PROXY_CLUSTER;
+        return switch (instance.getType()) {
+            case DIRECT -> ClusterType.V4_DIRECT;
+            case PROXY_LOCAL -> ClusterType.V5_PROXY_LOCAL;
+            case PROXY, PROXY_CLUSTER -> ClusterType.V5_PROXY_CLUSTER;
+        };
     }
 
     private DashboardDataVO emptyDashboard() {

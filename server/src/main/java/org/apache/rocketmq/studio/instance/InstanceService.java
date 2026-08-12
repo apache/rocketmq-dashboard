@@ -124,6 +124,7 @@ public class InstanceService {
         if (instance.getType() == null) {
             throw new BusinessException(400, "InstanceVO type is required");
         }
+        instance.setType(instance.getType().normalizeApacheType());
     }
 
     /**
@@ -239,7 +240,7 @@ public class InstanceService {
         }
         if (!cloudInstance) {
             if (instance.getType() != null) {
-                updated.setType(instance.getType());
+                updated.setType(instance.getType().normalizeApacheType());
             }
             if (instance.getEndpoint() != null) {
                 updated.setEndpoint(requireValidEndpoint(instance.getEndpoint()));
