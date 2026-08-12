@@ -10,7 +10,11 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LangProvider } from '../../../i18n/LangContext';
-import { acknowledgeAlert, listSystemAlerts } from '../../../services/opsService';
+import {
+  acknowledgeAlert,
+  clearAcknowledgedAlerts,
+  listSystemAlerts,
+} from '../../../services/opsService';
 import SystemAlertsPage from '../systemAlerts';
 
 vi.mock('../../../services/opsService', () => ({
@@ -102,5 +106,39 @@ describe('SystemAlertsPage', () => {
       expect(acknowledgeButtons[0]).toHaveClass('ant-btn-loading');
       expect(acknowledgeButtons[1]).toHaveClass('ant-btn-loading');
     });
+  });
+
+  it('reloads canonical alerts after clearing a stale local acknowledgement snapshot', async () => {
+    vi.mocked(listSystemAlerts)
+      .mockResolvedValueOnce([
+        {
+          id: 'alert-a',
+          level: 'error',
+          title: 'Broker unavailable',
+          description: 'broker a',
+          time: '2026-08-10 01:00',
+          acknowledged: true,
+        },
+        {
+          id: 'alert-b',
+          level: 'warning',
+          title: 'Consumer lag',
+          description: 'consumer b',
+          time: '2026-08-10 01:01',
+          acknowledged: false,
+        },
+      ])
+      .mockResolvedValueOnce([]);
+    vi.mocked(clearAcknowledgedAlerts).mockResolvedValue(2);
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(await screen.findByText('Consumer lag')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /清除已确认/ }));
+
+    await waitFor(() => expect(listSystemAlerts).toHaveBeenCalledTimes(2));
+    expect(clearAcknowledgedAlerts).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('Broker unavailable')).not.toBeInTheDocument();
+    expect(screen.queryByText('Consumer lag')).not.toBeInTheDocument();
   });
 });

@@ -90,6 +90,11 @@ const SystemAlertsPage = () => {
       await clearAcknowledgedAlerts();
       setAlerts((prev) => prev.filter((a) => !a.acknowledged));
       message.success(t('sysAlerts.cleared'));
+      try {
+        setAlerts(await listSystemAlerts());
+      } catch {
+        message.warning('已清理告警，但刷新列表失败，请重新加载页面');
+      }
     } catch {
       message.error('清理已确认告警失败，请稍后重试');
     } finally {
@@ -197,6 +202,7 @@ const SystemAlertsPage = () => {
                       icon={<CheckCircle size={14} />}
                       onClick={() => handleAck(alert.id)}
                       loading={acknowledgingIds.has(alert.id)}
+                      disabled={clearing}
                     >
                       {t('sysAlerts.acknowledge')}
                     </Button>
