@@ -119,6 +119,27 @@ class RocketMQDLQProviderTest {
         });
     }
 
+
+    @Test
+    void resendMessagesShouldRejectInvertedTimeRangeBeforeCreatingConsumers() {
+        assertThatThrownBy(() -> provider.resendMessages("instance-a", "group-a", 200L, 100L, "target-topic"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("DLQ resend start time must be before end time")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        verify(runtimeAdminClientResolver).resolveEndpoint("instance-a");
+    }
+
+    @Test
+    void resendMessagesShouldRejectEqualStartAndEndTimeBeforeCreatingConsumers() {
+        assertThatThrownBy(() -> provider.resendMessages("instance-a", "group-a", 100L, 100L, "target-topic"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("DLQ resend start time must be before end time")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        verify(runtimeAdminClientResolver).resolveEndpoint("instance-a");
+    }
+
     @Test
     void resendMessagesDoesNotPullWhenDlqQueueSetIsNull() throws Exception {
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
