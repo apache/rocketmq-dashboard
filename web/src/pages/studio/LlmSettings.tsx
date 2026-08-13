@@ -73,6 +73,7 @@ const LlmSettingsPage: React.FC = () => {
   const { t } = useLang();
   const { message } = App.useApp();
   const [form] = Form.useForm();
+  const selectedProvider = Form.useWatch('provider', form);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -106,6 +107,8 @@ const LlmSettingsPage: React.FC = () => {
       provider: nextProvider,
       model: config.model || undefined,
       apiBase: config.apiBase || DEFAULT_BASE_URL[nextProvider] || '',
+      deploymentName: config.deploymentName || undefined,
+      apiVersion: config.apiVersion || undefined,
       maxTokens: config.maxTokens || 4096,
       temperature: config.temperature ?? 0.7,
       apiKey: undefined,
@@ -157,7 +160,7 @@ const LlmSettingsPage: React.FC = () => {
       return null;
     }
     const apiKey = (values.apiKey as string | undefined)?.trim();
-    return {
+    const payload: LlmConfig = {
       provider: values.provider,
       engine: values.engine || 'claude-code',
       apiBase: values.apiBase,
@@ -168,6 +171,11 @@ const LlmSettingsPage: React.FC = () => {
       // 留空表示保留服务端已配置的密钥（含环境变量注入的 token）
       ...(apiKey ? { apiKey } : {}),
     };
+    if (values.provider === 'azure') {
+      payload.deploymentName = (values.deploymentName as string | undefined)?.trim();
+      payload.apiVersion = (values.apiVersion as string | undefined)?.trim();
+    }
+    return payload;
   };
 
   const applyTestResult = (result: LlmTestResult) => {
@@ -296,6 +304,25 @@ const LlmSettingsPage: React.FC = () => {
           >
             <Input placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1" />
           </Form.Item>
+
+          {selectedProvider === 'azure' && (
+            <>
+              <Form.Item
+                label={t('llm.deploymentName')}
+                name="deploymentName"
+                rules={[{ required: true, message: t('llm.deploymentNameRequired') }]}
+              >
+                <Input placeholder="my-gpt4-deployment" />
+              </Form.Item>
+              <Form.Item
+                label={t('llm.apiVersion')}
+                name="apiVersion"
+                rules={[{ required: true, message: t('llm.apiVersionRequired') }]}
+              >
+                <Input placeholder="2024-02-15-preview" />
+              </Form.Item>
+            </>
+          )}
 
           <Form.Item label="Temperature" name="temperature">
             <Slider min={0} max={2} step={0.1} marks={{ 0: '0', 0.7: '0.7', 2: '2' }} />
