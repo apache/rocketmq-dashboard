@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import {
   Alert,
   Table,
@@ -326,6 +326,7 @@ const TopicPage = () => {
   const [importing, setImporting] = useState(false);
 
   const topicRequestIdRef = useRef(0);
+  const detailRequestIdRef = useRef(0);
   const createInFlightRef = useRef(false);
 
   useEffect(() => {
@@ -393,22 +394,30 @@ const TopicPage = () => {
   };
 
   // ─── Open detail modal ────────────────────────────────────────
-  const openDetail = async (topic: Topic) => {
-    setSelectedTopic(topic);
-    setDetailModalOpen(true);
-    setDetailLoading(true);
-    try {
-      await loadTopicConsumers(topic);
-      if (!isCloudInstance) {
-        const routes = await getTopicRoutes(topic.name, selectedInstanceId || undefined);
-        setRoutesByTopic((previous) => ({ ...previous, [topic.name]: routes }));
+  const openDetail = useCallback(
+    async (topic: Topic) => {
+      const requestId = detailRequestIdRef.current + 1;
+      detailRequestIdRef.current = requestId;
+      setSelectedTopic(topic);
+      setDetailModalOpen(true);
+      setDetailLoading(true);
+      try {
+        await loadTopicConsumers(topic);
+        if (requestId !== detailRequestIdRef.current) return;
+        if (!isCloudInstance) {
+          const routes = await getTopicRoutes(topic.name, selectedInstanceId || undefined);
+          if (requestId !== detailRequestIdRef.current) return;
+          setRoutesByTopic((previous) => ({ ...previous, [topic.name]: routes }));
+        }
+      } catch {
+        if (requestId === detailRequestIdRef.current)
+          message.error('Topic 详情加载失败，请稍后重试');
+      } finally {
+        if (requestId === detailRequestIdRef.current) setDetailLoading(false);
       }
-    } catch {
-      message.error('Topic 详情加载失败，请稍后重试');
-    } finally {
-      setDetailLoading(false);
-    }
-  };
+    },
+    [loadTopicConsumers, isCloudInstance, selectedInstanceId],
+  );
 
   // Metadata lives in the database, so a record can exist without a broker route.
   const rebuildTopic = async (topic: Topic) => {
@@ -872,8 +881,8 @@ const TopicPage = () => {
       });
       // Keep the modal open for consecutive sends
       message.success(`消息发送成功！MsgId: ${result.msgId}`);
-    } catch {
-      message.error('消息发送失败，请稍后重试');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '消息发送失败，请稍后重试');
     } finally {
       setSending(false);
     }
