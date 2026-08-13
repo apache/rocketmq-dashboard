@@ -455,6 +455,21 @@ class AclServiceTest {
     }
 
     @Test
+    void updateUserShouldRejectBlankUsernameWithoutSaving() {
+        UpdateAclUserDTO input = new UpdateAclUserDTO();
+        input.setId("user-1");
+        input.setUsername("   ");
+
+        when(aclRepository.findUserById("user-1")).thenReturn(Optional.of(existingUser));
+
+        assertThatThrownBy(() -> aclService.updateUser(input))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("ACL username is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+        verify(aclRepository, never()).saveUser(any(AclUserVO.class));
+    }
+
+    @Test
     void updateUserShouldThrowWhenUserDoesNotExist() {
         UpdateAclUserDTO input = new UpdateAclUserDTO();
         input.setId("missing");
