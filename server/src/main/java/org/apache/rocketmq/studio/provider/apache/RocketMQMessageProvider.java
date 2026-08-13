@@ -33,7 +33,6 @@ import org.apache.rocketmq.studio.instance.message.MessageProvider;
 import org.apache.rocketmq.studio.instance.message.MessageRecordVO;
 import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
-import org.apache.rocketmq.studio.instance.message.QueryHistoryService;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.apache.rocketmq.tools.admin.api.MessageTrack;
 import org.apache.rocketmq.tools.admin.api.TrackType;
@@ -83,7 +82,6 @@ public class RocketMQMessageProvider implements MessageProvider {
     private static final int MAX_CONSECUTIVE_OFFSET_ILLEGAL = 3;
 
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
-    private final QueryHistoryService queryHistoryService;
 
     @Override
     public List<MessageRecordVO> queryMessages(String instanceId, String topic, String msgId, String tag, String key,
@@ -105,22 +103,17 @@ public class RocketMQMessageProvider implements MessageProvider {
         }
 
         List<MessageRecordVO> result;
-        String queryType;
         if (StringUtils.hasText(msgId)) {
-            queryType = "MSG_ID";
             result = queryByMsgId(adminExt, topic, msgId);
         } else if (StringUtils.hasText(topic) && StringUtils.hasText(key)) {
-            queryType = "KEY";
             result = queryByKey(adminExt, topic, key, tag, begin, end);
         } else if (StringUtils.hasText(topic)) {
-            queryType = "TOPIC";
             result = queryByTopic(endpoint, topic, tag, begin, end, DEFAULT_TOPIC_LIMIT);
         } else {
             log.warn("queryMessages requires at least one of msgId/topic, returning empty list");
             return Collections.emptyList();
         }
 
-        recordMessageQuery(instanceId, queryType, topic, msgId, tag, key, startTime, endTime, result.size());
         return result;
     }
 
@@ -308,7 +301,6 @@ public class RocketMQMessageProvider implements MessageProvider {
             throw new BusinessException(502, "Failed to query message trace: " + e.getMessage());
         }
 
-        recordTraceQuery(instanceId, msgId, null, nodes.size(), consumerStatus.size());
         return TraceRecordVO.builder()
                 .nodes(nodes)
                 .consumerStatus(consumerStatus)
@@ -561,24 +553,6 @@ public class RocketMQMessageProvider implements MessageProvider {
         consumer.setInstanceName(ShortLivedClientName.next(groupPrefix));
         consumer.setNamesrvAddr(endpoint);
         return consumer;
-    }
-
-    private void recordMessageQuery(String instanceId, String queryType, String topic, String msgId, String tag, String key,
-                                    Long startTime, Long endTime, int resultCount) {
-        try {
-            queryHistoryService.recordMessageQuery(instanceId, queryType, topic, msgId, tag, key,
-                    startTime, endTime, resultCount);
-        } catch (Exception e) {
-            log.warn("Failed to record message query history: {}", e.getMessage());
-        }
-    }
-
-    private void recordTraceQuery(String instanceId, String msgId, String topic, int nodeCount, int consumerCount) {
-        try {
-            queryHistoryService.recordTraceQuery(instanceId, msgId, topic, nodeCount, consumerCount);
-        } catch (Exception e) {
-            log.warn("Failed to record trace query history: {}", e.getMessage());
-        }
     }
 
     private static TraceRecordVO emptyTrace() {
