@@ -51,6 +51,12 @@ check_prereqs() {
   log "前置条件通过"
 }
 
+validate_server_config() {
+  [[ -n "${SPRING_DATASOURCE_URL:-}" ]] || err "SPRING_DATASOURCE_URL 未配置，远程后端必须使用持久化数据库"
+  [[ -n "${SPRING_DATASOURCE_USERNAME:-}" ]] || err "SPRING_DATASOURCE_USERNAME 未配置"
+  [[ -n "${SPRING_DATASOURCE_PASSWORD:-}" ]] || err "SPRING_DATASOURCE_PASSWORD 未配置"
+}
+
 # ─── 构建镜像 ───
 build_server() {
   info "在 Maven 容器中构建 server（复用宿主机缓存: $MAVEN_CACHE_DIR）..."
@@ -135,6 +141,11 @@ deploy_remote() {
         --name rocketmq-server \
         --network $NETWORK \
         --restart unless-stopped \
+        -e SPRING_PROFILES_ACTIVE=prod \
+        -e SPRING_DATASOURCE_URL="${SPRING_DATASOURCE_URL}" \
+        -e SPRING_DATASOURCE_USERNAME="${SPRING_DATASOURCE_USERNAME}" \
+        -e SPRING_DATASOURCE_PASSWORD="${SPRING_DATASOURCE_PASSWORD}" \
+        -e STUDIO_ROCKETMQ_NAMESRV_ADDR="${STUDIO_ROCKETMQ_NAMESRV_ADDR:-}" \
         -e STUDIO_AUTH_LOGIN_REQUIRED=\"${STUDIO_AUTH_LOGIN_REQUIRED:-true}\" \
         -e STUDIO_AUTH_ADMIN_USERNAME=\"${STUDIO_AUTH_ADMIN_USERNAME:-}\" \
         -e STUDIO_AUTH_ADMIN_PASSWORD=\"${STUDIO_AUTH_ADMIN_PASSWORD:-}\" \
@@ -197,6 +208,10 @@ main() {
   echo "═══════════════════════════════════════════"
   echo ""
 
+  if [[ "$TARGET" == "all" || "$TARGET" == "server" ]]; then
+    validate_server_config
+  fi
+
   check_prereqs
 
   case "$TARGET" in
@@ -212,5 +227,7 @@ main() {
   cleanup
 }
 
-trap cleanup EXIT
-main
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  trap cleanup EXIT
+  main "$@"
+fi
