@@ -79,6 +79,11 @@ public class MybatisPlusCloudCredentialRepository implements CloudCredentialRepo
     }
 
     @Override
+    public boolean replace(CloudCredentialVO credential) {
+        return credentialMapper.updateById(toEntity(credential)) > 0;
+    }
+
+    @Override
     public boolean deleteById(String id) {
         return credentialMapper.deleteById(id) > 0;
     }
