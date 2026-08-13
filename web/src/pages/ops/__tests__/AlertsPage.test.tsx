@@ -22,13 +22,20 @@ import { App } from 'antd';
 import type { AlertRule } from '../../../api/ops';
 import { LangProvider } from '../../../i18n/LangContext';
 import AlertsPage from '../alerts';
-import { listAlertRules, toggleAlertRule } from '../../../services/opsService';
+import {
+  bulkDeleteAlertRules,
+  bulkToggleAlertRules,
+  listAlertRules,
+  toggleAlertRule,
+} from '../../../services/opsService';
 
 vi.mock('../../../services/opsService', () => ({
   createAlertRule: vi.fn(),
   deleteAlertRule: vi.fn(),
   listAlertRules: vi.fn(),
   toggleAlertRule: vi.fn(),
+  bulkToggleAlertRules: vi.fn(),
+  bulkDeleteAlertRules: vi.fn(),
   updateAlertRule: vi.fn(),
 }));
 
@@ -109,6 +116,19 @@ describe('AlertsPage', () => {
       if (!rule) throw new Error(`Rule not found: ${id}`);
       return { ...cloneRule(rule), enabled };
     });
+    vi.mocked(bulkToggleAlertRules).mockImplementation(async (ids, enabled) => ({
+      succeededIds: ids,
+      failures: {},
+      updatedRules: ids.map((id) => ({
+        ...cloneRule(alertRules.find((item) => item.id === id)!),
+        enabled,
+      })),
+    }));
+    vi.mocked(bulkDeleteAlertRules).mockResolvedValue({
+      succeededIds: [],
+      failures: {},
+      updatedRules: [],
+    });
   });
 
   it('bulk enables selected alert rules and clears the selection after success', async () => {
@@ -122,10 +142,9 @@ describe('AlertsPage', () => {
     await user.click(screen.getByRole('button', { name: '批量启用' }));
 
     await waitFor(() => {
-      expect(toggleAlertRule).toHaveBeenCalledTimes(2);
+      expect(bulkToggleAlertRules).toHaveBeenCalledTimes(1);
     });
-    expect(toggleAlertRule).toHaveBeenCalledWith('alert-a', true);
-    expect(toggleAlertRule).toHaveBeenCalledWith('alert-b', true);
+    expect(bulkToggleAlertRules).toHaveBeenCalledWith(['alert-a', 'alert-b'], true);
     expect(await screen.findByText('已启用 2 条告警规则')).toBeInTheDocument();
     expect(within(getRuleRow('Broker disk usage')).getByRole('switch')).toHaveAttribute(
       'aria-checked',
@@ -143,11 +162,10 @@ describe('AlertsPage', () => {
     vi.mocked(listAlertRules).mockResolvedValue(
       alertRules.map((rule) => ({ ...cloneRule(rule), enabled: true })),
     );
-    vi.mocked(toggleAlertRule).mockImplementation(async (id, enabled) => {
-      if (id === 'alert-b') throw new Error('network error');
-      const rule = alertRules.find((item) => item.id === id);
-      if (!rule) throw new Error(`Rule not found: ${id}`);
-      return { ...cloneRule(rule), enabled };
+    vi.mocked(bulkToggleAlertRules).mockResolvedValue({
+      succeededIds: ['alert-a'],
+      failures: { 'alert-b': 'network error' },
+      updatedRules: [{ ...cloneRule(alertRules[0]), enabled: false }],
     });
 
     const user = userEvent.setup();
@@ -160,7 +178,7 @@ describe('AlertsPage', () => {
     await user.click(screen.getByRole('button', { name: '批量禁用' }));
 
     await waitFor(() => {
-      expect(toggleAlertRule).toHaveBeenCalledTimes(2);
+      expect(bulkToggleAlertRules).toHaveBeenCalledTimes(1);
     });
     expect(await screen.findByText('已禁用 1 条告警规则，1 条失败')).toBeInTheDocument();
     expect(within(getRuleRow('Broker disk usage')).getByRole('switch')).toHaveAttribute(
@@ -176,7 +194,7 @@ describe('AlertsPage', () => {
   });
 
   it('keeps all selected alert rules selected when the bulk action fails', async () => {
-    vi.mocked(toggleAlertRule).mockRejectedValue(new Error('network error'));
+    vi.mocked(bulkToggleAlertRules).mockRejectedValue(new Error('network error'));
 
     const user = userEvent.setup();
     renderPage();
@@ -201,9 +219,15 @@ describe('AlertsPage', () => {
   });
 
   it('disables other alert rule mutations while a bulk action is running', async () => {
-    let resolveToggle: ((rule: AlertRule) => void) | undefined;
-    vi.mocked(toggleAlertRule).mockReturnValue(
-      new Promise<AlertRule>((resolve) => {
+    let resolveToggle:
+      | ((result: {
+          succeededIds: string[];
+          failures: Record<string, string>;
+          updatedRules: AlertRule[];
+        }) => void)
+      | undefined;
+    vi.mocked(bulkToggleAlertRules).mockReturnValue(
+      new Promise((resolve) => {
         resolveToggle = resolve;
       }),
     );
@@ -216,7 +240,7 @@ describe('AlertsPage', () => {
     await user.click(screen.getByRole('button', { name: '批量启用' }));
 
     await waitFor(() => {
-      expect(toggleAlertRule).toHaveBeenCalledWith('alert-a', true);
+      expect(bulkToggleAlertRules).toHaveBeenCalledWith(['alert-a'], true);
     });
     expect(screen.getByRole('button', { name: '新建规则' })).toBeDisabled();
     expect(within(getRuleRow('Broker disk usage')).getByRole('switch')).toBeDisabled();
@@ -227,7 +251,30 @@ describe('AlertsPage', () => {
       within(getRuleRow('Broker disk usage')).getByRole('button', { name: '删除' }),
     ).toBeDisabled();
 
-    resolveToggle?.({ ...cloneRule(alertRules[0]), enabled: true });
+    resolveToggle?.({
+      succeededIds: ['alert-a'],
+      failures: {},
+      updatedRules: [{ ...cloneRule(alertRules[0]), enabled: true }],
+    });
     expect(await screen.findByText('已启用 1 条告警规则')).toBeInTheDocument();
+  });
+
+  it('bulk deletes selected rules after confirmation', async () => {
+    vi.mocked(bulkDeleteAlertRules).mockResolvedValue({
+      succeededIds: ['alert-a', 'alert-b'],
+      failures: {},
+      updatedRules: [],
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Broker disk usage');
+    await user.click(within(getRuleRow('Broker disk usage')).getByRole('checkbox'));
+    await user.click(within(getRuleRow('Consumer lag')).getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: '批量删除' }));
+    await user.click(await screen.findByRole('button', { name: 'OK' }));
+
+    await waitFor(() => expect(bulkDeleteAlertRules).toHaveBeenCalledWith(['alert-a', 'alert-b']));
+    expect(screen.queryByText('Broker disk usage')).not.toBeInTheDocument();
+    expect(await screen.findByText('所选告警规则已删除')).toBeInTheDocument();
   });
 });

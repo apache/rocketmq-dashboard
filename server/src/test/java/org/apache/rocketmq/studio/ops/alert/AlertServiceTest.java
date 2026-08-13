@@ -598,6 +598,40 @@ class AlertServiceTest {
     }
 
     @Test
+    void bulkToggleShouldDeduplicateIdsAndReportMissingRules() {
+        AlertRuleVO rule = AlertRuleVO.builder().id("rule-1").name("High CPU").enabled(false).build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+        when(alertRepository.saveRule(any(AlertRuleVO.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        AlertRuleBulkResultVO result = alertService.bulkToggleRules(
+                List.of("rule-1", "missing", "rule-1"), true);
+
+        assertThat(result.getSucceededIds()).containsExactly("rule-1");
+        assertThat(result.getFailures()).containsEntry("missing", "Alert rule not found");
+        assertThat(result.getUpdatedRules()).singleElement()
+                .extracting(AlertRuleVO::isEnabled).isEqualTo(true);
+        verify(alertRepository).saveRule(rule);
+    }
+
+    @Test
+    void bulkDeleteShouldPreservePartialFailureDetails() {
+        when(alertRepository.deleteRule("rule-1")).thenReturn(true);
+        when(alertRepository.deleteRule("missing")).thenReturn(false);
+        when(alertRepository.deleteRule("rule-2"))
+                .thenThrow(new IllegalStateException("database unavailable"));
+
+        AlertRuleBulkResultVO result = alertService.bulkDeleteRules(
+                List.of("rule-1", "missing", "rule-2"));
+
+        assertThat(result.getSucceededIds()).containsExactly("rule-1");
+        assertThat(result.getFailures())
+                .containsEntry("missing", "Alert rule not found")
+                .containsEntry("rule-2", "database unavailable");
+        assertThat(result.getUpdatedRules()).isEmpty();
+    }
+
+    @Test
     void listAlertsShouldReturnAlertsForLevel() {
         SystemAlertVO alert1 = SystemAlertVO.builder().id("a1").level(AlertLevel.error)
                 .title("Broker Down").acknowledged(false).build();

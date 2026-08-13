@@ -215,6 +215,16 @@ const translations: Record<string, Record<Lang, string>> = {
   'alerts.selectedRules': { zh: '已选择 {count} 条告警规则', en: 'Selected alert rules: {count}' },
   'alerts.bulkEnable': { zh: '批量启用', en: 'Enable Selected' },
   'alerts.bulkDisable': { zh: '批量禁用', en: 'Disable Selected' },
+  'alerts.bulkDelete': { zh: '批量删除', en: 'Delete Selected' },
+  'alerts.bulkDeleteConfirm': {
+    zh: '确认删除选中的 {count} 条规则？',
+    en: 'Delete {count} selected rules?',
+  },
+  'alerts.bulkDeleteSuccess': { zh: '所选告警规则已删除', en: 'Selected alert rules deleted' },
+  'alerts.bulkDeletePartial': {
+    zh: '删除完成：成功 {success}，失败 {failed}',
+    en: 'Delete completed: {success} succeeded, {failed} failed',
+  },
   'alerts.bulkEnableSuccess': {
     zh: '已启用 {count} 条告警规则',
     en: 'Enabled {count} alert rules',
