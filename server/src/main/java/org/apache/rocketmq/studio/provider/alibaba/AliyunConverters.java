@@ -66,6 +66,9 @@ final class AliyunConverters {
     static final int MESSAGE_MAX_PAGES = 5;
 
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    // Aliyun RocketMQ OpenAPI timestamps are unzoned "yyyy-MM-dd HH:mm:ss" strings interpreted as
+    // UTC+8 (Asia/Shanghai), regardless of the server's default zone.
+    private static final ZoneId ALIYUN_TIME_ZONE = ZoneId.of("Asia/Shanghai");
 
     private AliyunConverters() {
     }
@@ -96,6 +99,9 @@ final class AliyunConverters {
         List<CloudInstanceDetailVO.CloudEndpoint> endpoints = new ArrayList<>();
         if (data.getNetworkInfo() != null && data.getNetworkInfo().getEndpoints() != null) {
             for (GetInstanceResponseBody.Endpoints endpoint : data.getNetworkInfo().getEndpoints()) {
+                if (endpoint == null) {
+                    continue;
+                }
                 endpoints.add(new CloudInstanceDetailVO.CloudEndpoint(
                         endpoint.getEndpointType(), endpoint.getEndpointUrl()));
             }
@@ -211,7 +217,7 @@ final class AliyunConverters {
                 .msgId(data.getMessageId())
                 .topic(data.getTopicName())
                 .tag(data.getMessageTag())
-                .key(data.getMessageKeys() == null ? null : String.join(" ", data.getMessageKeys()))
+                .key(joinMessageKeys(data.getMessageKeys()))
                 .bornHost(data.getBornHost())
                 .storeHost(data.getStoreHost())
                 .storeTime(parseTimeMillis(data.getStoreTime()))
@@ -229,6 +235,9 @@ final class AliyunConverters {
         List<TraceNodeVO> nodes = new ArrayList<>();
         if (data.getProducerInfo() != null && data.getProducerInfo().getRecords() != null) {
             for (GetTraceResponseBody.ProducerInfoRecords record : data.getProducerInfo().getRecords()) {
+                if (record == null) {
+                    continue;
+                }
                 nodes.add(TraceNodeVO.builder()
                         .title("Producer")
                         .timestamp(parseTimeMillis(record.getProduceTime()))
@@ -240,6 +249,9 @@ final class AliyunConverters {
         }
         if (data.getBrokerInfo() != null && data.getBrokerInfo().getOperations() != null) {
             for (GetTraceResponseBody.Operations operation : data.getBrokerInfo().getOperations()) {
+                if (operation == null) {
+                    continue;
+                }
                 nodes.add(TraceNodeVO.builder()
                         .title("Broker " + operation.getOperateType())
                         .timestamp(parseTimeMillis(operation.getOperateTime()))
@@ -248,6 +260,9 @@ final class AliyunConverters {
         }
         if (data.getConsumerInfos() != null) {
             for (GetTraceResponseBody.ConsumerInfos consumerInfo : data.getConsumerInfos()) {
+                if (consumerInfo == null) {
+                    continue;
+                }
                 if (consumerInfo.getRecords() == null || consumerInfo.getRecords().isEmpty()) {
                     nodes.add(TraceNodeVO.builder()
                             .title("Consumer " + consumerInfo.getConsumerGroupId())
@@ -256,6 +271,9 @@ final class AliyunConverters {
                     continue;
                 }
                 for (GetTraceResponseBody.Records record : consumerInfo.getRecords()) {
+                    if (record == null) {
+                        continue;
+                    }
                     String operateTime = null;
                     if (record.getOperations() != null && !record.getOperations().isEmpty()) {
                         operateTime = record.getOperations().get(0).getOperateTime();
@@ -289,7 +307,7 @@ final class AliyunConverters {
         }
         try {
             LocalDateTime dateTime = LocalDateTime.parse(value, TIME_FORMATTER);
-            return dateTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+            return dateTime.atZone(ALIYUN_TIME_ZONE).toInstant().toEpochMilli();
         } catch (RuntimeException ignored) {
             return 0L;
         }
@@ -297,7 +315,7 @@ final class AliyunConverters {
 
     static String formatTimeMillis(long epochMillis) {
         return TIME_FORMATTER.format(
-                LocalDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), ZoneId.systemDefault()));
+                LocalDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), ALIYUN_TIME_ZONE));
     }
 
     static String tryBase64Decode(String raw) {
@@ -321,6 +339,10 @@ final class AliyunConverters {
         }
     }
 
+    private static String joinMessageKeys(List<String> keys) {
+        return keys == null ? null : joinParts(" ", keys.toArray(String[]::new));
+    }
+
     private static String joinParts(String separator, String... parts) {
         StringBuilder sb = new StringBuilder();
         for (String part : parts) {
@@ -336,6 +358,15 @@ final class AliyunConverters {
     }
 
     private static Integer toInteger(Long value) {
-        return value == null ? null : value.intValue();
+        if (value == null) {
+            return null;
+        }
+        if (value > Integer.MAX_VALUE) {
+            return Integer.MAX_VALUE;
+        }
+        if (value < 0) {
+            return 0;
+        }
+        return value.intValue();
     }
 }

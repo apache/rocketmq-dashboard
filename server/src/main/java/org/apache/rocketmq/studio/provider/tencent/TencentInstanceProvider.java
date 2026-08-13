@@ -137,7 +137,13 @@ public class TencentInstanceProvider implements InstanceProvider {
         }
         // Use the response total count if available; otherwise fall back to full scan
         Long total = response.getTotalCount();
-        return total != null ? Math.toIntExact(total) : listTopics(instanceId, null, null, false).size();
+        if (total == null) {
+            return listTopics(instanceId, null, null, false).size();
+        }
+        if (total <= 0L) {
+            return 0;
+        }
+        return total > Integer.MAX_VALUE ? Integer.MAX_VALUE : total.intValue();
     }
 
     @Override
@@ -476,6 +482,8 @@ public class TencentInstanceProvider implements InstanceProvider {
             request.setTopic(topic);
             request.setStartTime(begin);
             request.setEndTime(end);
+            // Reuse the task id returned by the previous page so paging continues the same
+            // logical query; fall back to the initial random id when the API omits it.
             request.setTaskRequestId(taskRequestId);
             if (StringUtils.hasText(key)) {
                 request.setMsgKey(key);
@@ -489,6 +497,9 @@ public class TencentInstanceProvider implements InstanceProvider {
                     client -> client.DescribeMessageList(request));
             MessageItem[] data = response == null ? null : response.getData();
             long total = response == null ? 0L : (response.getTotalCount() == null ? 0L : response.getTotalCount());
+            if (response != null && StringUtils.hasText(response.getTaskRequestId())) {
+                taskRequestId = response.getTaskRequestId();
+            }
             if (data != null) {
                 for (MessageItem item : data) {
                     if (item != null) {
@@ -673,7 +684,12 @@ public class TencentInstanceProvider implements InstanceProvider {
                 return Collections.emptyMap();
             }
             Map<String, String> properties = new LinkedHashMap<>();
-            root.fields().forEachRemaining(entry -> properties.put(entry.getKey(), entry.getValue().asText("")));
+            root.fields().forEachRemaining(entry -> {
+                JsonNode value = entry.getValue();
+                if (value != null && value.isValueNode() && !value.isNull()) {
+                    properties.put(entry.getKey(), value.asText());
+                }
+            });
             return properties;
         } catch (Exception e) {
             return Collections.emptyMap();
@@ -715,8 +731,16 @@ public class TencentInstanceProvider implements InstanceProvider {
     }
 
     private static String toConsumeTraceStatus(int status) {
-        // Tencent consume log Status uses the RocketMQ convention where 2 means consumed.
-        return status == 2 ? "finish" : "failed";
+        // Tencent consume log Status uses the RocketMQ convention where 0/1 are in-flight and
+        // 2 means consumed; keep the trace status consistent with toDeliveryStatus and with the
+        // frontend TraceNode.status values ('error' | 'wait' | 'process' | 'finish').
+        if (status == 2) {
+            return "finish";
+        }
+        if (status == 0 || status == 1) {
+            return "process";
+        }
+        return "error";
     }
 
     private static DeliveryStatus toDeliveryStatus(int status) {
@@ -859,7 +883,10 @@ public class TencentInstanceProvider implements InstanceProvider {
     }
 
     private static int toInt(Long value) {
-        return value == null ? 0 : Math.toIntExact(value);
+        if (value == null || value <= 0L) {
+            return 0;
+        }
+        return value > Integer.MAX_VALUE ? Integer.MAX_VALUE : value.intValue();
     }
 
     private static ConsumeType toConsumeType(Boolean consumeMessageOrderly) {
