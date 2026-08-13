@@ -154,7 +154,7 @@ const NameServerConfigDriftPage = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `nameserver-config-drift-${result.cluster.replace(/[^a-zA-Z0-9._-]/g, '_')}.json`;
+    link.download = `nameserver-config-drift-${(result.cluster || 'unknown').replace(/[^a-zA-Z0-9._-]/g, '_')}.json`;
     link.click();
     URL.revokeObjectURL(url);
   };
