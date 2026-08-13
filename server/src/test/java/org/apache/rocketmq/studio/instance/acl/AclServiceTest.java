@@ -629,6 +629,36 @@ class AclServiceTest {
     }
 
     @Test
+    void createAndUpdatePlainAccessConfigShouldNormalizeWhiteRemoteAddressBeforePersistence() {
+        PlainAccessConfigVO config = PlainAccessConfigVO.builder()
+                .accessKey("ak-1")
+                .whiteRemoteAddress(" 192.168.1.10 ")
+                .build();
+        when(aclRepository.createAndUpdatePlainAccessConfig(config)).thenReturn(config);
+
+        PlainAccessConfigVO result = aclService.createAndUpdatePlainAccessConfig(config);
+
+        assertThat(result.getWhiteRemoteAddress()).isEqualTo("192.168.1.10");
+        verify(aclRepository).createAndUpdatePlainAccessConfig(argThat(saved ->
+                "192.168.1.10".equals(saved.getWhiteRemoteAddress())));
+    }
+
+    @Test
+    void createAndUpdatePlainAccessConfigShouldNormalizeBlankWhiteRemoteAddressToNull() {
+        PlainAccessConfigVO config = PlainAccessConfigVO.builder()
+                .accessKey("ak-1")
+                .whiteRemoteAddress("   ")
+                .build();
+        when(aclRepository.createAndUpdatePlainAccessConfig(config)).thenReturn(config);
+
+        PlainAccessConfigVO result = aclService.createAndUpdatePlainAccessConfig(config);
+
+        assertThat(result.getWhiteRemoteAddress()).isNull();
+        verify(aclRepository).createAndUpdatePlainAccessConfig(argThat(saved ->
+                saved.getWhiteRemoteAddress() == null));
+    }
+
+    @Test
     void createAndUpdatePlainAccessConfigShouldDelegateToRepository() {
         PlainAccessConfigVO config = PlainAccessConfigVO.builder()
                 .accessKey("ak-1")
