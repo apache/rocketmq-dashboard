@@ -261,7 +261,7 @@ class InstanceServiceTest {
 
         InstanceVO result = instanceService.createInstance(input);
 
-        assertThat(result.getId()).isNotBlank();
+        assertThat(result.getId()).isEqualTo("new-instance");
         assertThat(result.getCreatedAt()).isNotNull();
         assertThat(result.getUpdatedAt()).isNotNull();
         assertThat(result.getName()).isEqualTo("new-instance");
@@ -391,7 +391,7 @@ class InstanceServiceTest {
         existing.setUpdatedAt(originalUpdatedAt);
 
         InstanceVO update = InstanceVO.builder()
-                .name("new-name")
+                .name("old-name")
                 .remark("new remark")
                 .build();
         update.setId("inst-1");
@@ -401,7 +401,7 @@ class InstanceServiceTest {
 
         InstanceVO result = instanceService.updateInstance(update);
 
-        assertThat(result.getName()).isEqualTo("new-name");
+        assertThat(result.getName()).isEqualTo("old-name");
         assertThat(result.getEndpoint()).isEqualTo("10.0.1.1:8080");
         assertThat(result.getType()).isEqualTo(InstanceType.PROXY);
         assertThat(result.getRemark()).isEqualTo("new remark");
@@ -415,19 +415,21 @@ class InstanceServiceTest {
         assertThat(existing.getRemark()).isEqualTo("old remark");
         assertThat(existing.getUpdatedAt()).isEqualTo(originalUpdatedAt);
         verify(operationAuditService).record(eq("UPDATE_INSTANCE"), eq("INSTANCE"), eq("inst-1"), eq(null),
-                eq("name=new-name, vendor=APACHE, type=PROXY"), eq("SUCCESS"), eq(null));
+                eq("name=old-name, vendor=APACHE, type=PROXY"), eq("SUCCESS"), eq(null));
     }
 
     @Test
-    void updateInstanceShouldTrimNameBeforeSaving() {
+    void updateInstanceShouldRejectInstanceIdChangeTest() {
         InstanceVO existing = InstanceVO.builder().name("old-name").endpoint("namesrv:9876").build();
-        existing.setId("inst-1");
-        InstanceVO update = InstanceVO.builder().name("  production  ").build();
-        update.setId("inst-1");
-        when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(existing));
-        when(instanceRepository.save(any(InstanceVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        existing.setId("old-name");
+        InstanceVO update = InstanceVO.builder().name("new-name").build();
+        update.setId("old-name");
+        when(instanceRepository.findById("old-name")).thenReturn(Optional.of(existing));
 
-        assertThat(instanceService.updateInstance(update).getName()).isEqualTo("production");
+        assertThatThrownBy(() -> instanceService.updateInstance(update))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Instance ID cannot be changed after creation");
+        verify(instanceRepository, never()).save(any(InstanceVO.class));
     }
 
     @Test
@@ -447,7 +449,7 @@ class InstanceServiceTest {
         stored.setUpdatedAt(originalUpdatedAt);
 
         InstanceVO update = InstanceVO.builder()
-                .name("new-name")
+                .name("old-name")
                 .remark("new remark")
                 .type(InstanceType.DIRECT)
                 .endpoint("10.0.2.2:10911")
@@ -610,7 +612,7 @@ class InstanceServiceTest {
                 .build();
         existing.setId("inst-1");
         InstanceVO update = InstanceVO.builder()
-                .name("new-name")
+                .name("existing-name")
                 .endpoint("   ")
                 .build();
         update.setId("inst-1");

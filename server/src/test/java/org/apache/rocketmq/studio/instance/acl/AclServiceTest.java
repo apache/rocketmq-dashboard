@@ -104,7 +104,7 @@ class AclServiceTest {
                 .type(InstanceType.DIRECT)
                 .build();
         instance.setId("instance-1");
-        when(instanceRepository.findById("instance-1")).thenReturn(Optional.of(instance));
+        when(instanceRepository.findByIdentifier("instance-1")).thenReturn(Optional.of(instance));
 
         AclCapabilitiesVO capabilities = aclService.capabilities("instance-1");
 
@@ -118,7 +118,7 @@ class AclServiceTest {
 
     @Test
     void capabilitiesShouldRejectUnknownInstance() {
-        when(instanceRepository.findById("missing")).thenReturn(Optional.empty());
+        when(instanceRepository.findByIdentifier("missing")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> aclService.capabilities("missing"))
                 .isInstanceOf(BusinessException.class)

@@ -380,7 +380,7 @@ class AliyunInstanceProviderTest {
                 .cloudInstanceId(CLOUD_INSTANCE_ID)
                 .regionId(REGION)
                 .build();
-        when(instanceRepository.findById(STUDIO_INSTANCE_ID)).thenReturn(Optional.of(instance));
+        when(instanceRepository.findByIdentifier(STUDIO_INSTANCE_ID)).thenReturn(Optional.of(instance));
 
         assertThatThrownBy(() -> provider.listTopics(STUDIO_INSTANCE_ID, null, null))
                 .isInstanceOf(BusinessException.class)
@@ -396,7 +396,7 @@ class AliyunInstanceProviderTest {
                 .regionId(REGION)
                 .credentialId(CREDENTIAL_ID)
                 .build();
-        when(instanceRepository.findById(STUDIO_INSTANCE_ID)).thenReturn(Optional.of(instance));
+        when(instanceRepository.findByIdentifier(STUDIO_INSTANCE_ID)).thenReturn(Optional.of(instance));
     }
 
     private void stubCallThrough() {
@@ -438,7 +438,7 @@ class AliyunInstanceProviderTest {
                         .data(ListTopicsResponseBody.Data.builder()
                                 .list(List.of(topicRow("topic-a", "NORMAL")))
                                 .pageNumber(1L)
-                                .pageSize(1L)
+                                .pageSize(10L)
                                 .totalCount(321L)
                                 .build())
                         .build())
@@ -450,7 +450,7 @@ class AliyunInstanceProviderTest {
         ArgumentCaptor<ListTopicsRequest> captor = ArgumentCaptor.forClass(ListTopicsRequest.class);
         verify(asyncClient).listTopics(captor.capture());
         assertThat(captor.getValue().getPageNumber()).isEqualTo(1L);
-        assertThat(captor.getValue().getPageSize()).isEqualTo(1L);
+        assertThat(captor.getValue().getPageSize()).isEqualTo(10L);
     }
 
     @Test
@@ -465,7 +465,7 @@ class AliyunInstanceProviderTest {
                                         .consumerGroupId("GID_one")
                                         .build()))
                                 .pageNumber(1L)
-                                .pageSize(1L)
+                                .pageSize(10L)
                                 .totalCount(654L)
                                 .build())
                         .build())
@@ -478,7 +478,7 @@ class AliyunInstanceProviderTest {
                 ArgumentCaptor.forClass(ListConsumerGroupsRequest.class);
         verify(asyncClient).listConsumerGroups(captor.capture());
         assertThat(captor.getValue().getPageNumber()).isEqualTo(1L);
-        assertThat(captor.getValue().getPageSize()).isEqualTo(1L);
+        assertThat(captor.getValue().getPageSize()).isEqualTo(10L);
     }
 
     @Test
@@ -491,7 +491,7 @@ class AliyunInstanceProviderTest {
                         .data(ListTopicsResponseBody.Data.builder()
                                 .list(List.of(topicRow("topic-a", "NORMAL")))
                                 .pageNumber(1L)
-                                .pageSize(1L)
+                                .pageSize(10L)
                                 .build())
                         .build())
                 .build();
@@ -505,7 +505,7 @@ class AliyunInstanceProviderTest {
         ArgumentCaptor<ListTopicsRequest> captor = ArgumentCaptor.forClass(ListTopicsRequest.class);
         verify(asyncClient, times(2)).listTopics(captor.capture());
         assertThat(captor.getAllValues()).extracting(ListTopicsRequest::getPageSize)
-                .containsExactly(1, AliyunConverters.PAGE_SIZE);
+                .containsExactly(10, AliyunConverters.PAGE_SIZE);
     }
 
     @Test
@@ -523,7 +523,7 @@ class AliyunInstanceProviderTest {
                 ArgumentCaptor.forClass(ListConsumerGroupsRequest.class);
         verify(asyncClient, times(2)).listConsumerGroups(captor.capture());
         assertThat(captor.getAllValues()).extracting(ListConsumerGroupsRequest::getPageSize)
-                .containsExactly(1, AliyunConverters.PAGE_SIZE);
+                .containsExactly(10, AliyunConverters.PAGE_SIZE);
     }
 
     private static ListConsumerGroupsResponse groupsResponse(Long totalCount, String... groupIds) {

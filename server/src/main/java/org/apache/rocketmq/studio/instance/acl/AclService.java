@@ -47,7 +47,7 @@ public class AclService {
         if (!StringUtils.hasText(instanceId)) {
             throw new BusinessException(400, "instanceId is required");
         }
-        InstanceVO instance = instanceRepository.findById(instanceId)
+        InstanceVO instance = instanceRepository.findByIdentifier(instanceId)
                 .orElseThrow(() -> new BusinessException(404, "Instance not found: " + instanceId));
         boolean apacheInstance = instance.getVendor() == null || instance.getVendor() == InstanceVendor.APACHE;
         return new AclCapabilitiesVO(instance.getId(), instance.getVendor(), instance.getType(),

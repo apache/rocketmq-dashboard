@@ -97,7 +97,7 @@ class TencentInstanceProviderTest {
     @BeforeEach
     void setUp() {
         provider = new TencentInstanceProvider(clientFactory, instanceRepository);
-        when(instanceRepository.findById(STUDIO_INSTANCE_ID)).thenReturn(Optional.of(InstanceVO.builder()
+        when(instanceRepository.findByIdentifier(STUDIO_INSTANCE_ID)).thenReturn(Optional.of(InstanceVO.builder()
                 .name("tencent-prod")
                 .vendor(InstanceVendor.TENCENT)
                 .cloudInstanceId(CLOUD_INSTANCE_ID)

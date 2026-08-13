@@ -93,6 +93,18 @@ org.apache.rocketmq.studio
   云厂商实现放 `provider/<vendor>/` 保持高内聚
 - **敏感字段**：VO 上 `@ToString.Exclude`；存储 base64（见 `CredentialUtils`）；
   列表打码、reveal 接口 admin-only
+- **实例标识：禁用 UUID**。系统不使用 UUID（或任何随机代理键）作为实例标识；
+  实例 ID（用户输入、人类可读、全局唯一、≤64 字符）是实例的唯一标识，
+  直接作为 `rmq_instance` 主键（`InstanceService.createInstance` 中 `id = name`），
+  创建后不可变（更新传入不同名称直接 400 `Instance ID cannot be changed after creation`）。
+  REST 参数（`instanceId`）与关联表外键列（`rmq_topic.instance_id`、`rmq_group.instance_id`、
+  ACL scope、数据源绑定等）一律使用实例 ID；不存在"实例名称"概念，
+  实例只有**实例 ID** 与 **备注（remark）** 两个文本属性。
+  解析实例统一走 `InstanceRepository#findByIdentifier`（优先实例 ID，兜底历史主键引用），
+  不要直接 `findById`；存量 UUID 数据经 `deploy/mysql/upgrade-instance-id-pk.sql` 迁移，
+  新功能不得新增随机 ID 作为对外标识
+- **测试命名**：Test 方法名以 `Test` 结尾（如 `syncProxyClusterAddsNewInstanceTest`）
+- **checkstyle**：validate 阶段强制，禁止中文字符，Java 代码注释一律用英文
 
 ## 构建与测试
 

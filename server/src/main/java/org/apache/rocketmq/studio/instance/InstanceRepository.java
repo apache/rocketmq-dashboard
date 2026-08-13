@@ -33,6 +33,19 @@ public interface InstanceRepository {
 
     Optional<InstanceVO> findById(String id);
 
+    Optional<InstanceVO> findByName(String name);
+
+    /**
+     * Resolves an instance by the external instance identifier: matches the unique name
+     * first, falling back to the internal primary key for legacy references.
+     */
+    default Optional<InstanceVO> findByIdentifier(String identifier) {
+        if (identifier == null || identifier.isBlank()) {
+            return Optional.empty();
+        }
+        return findByName(identifier).or(() -> findById(identifier));
+    }
+
     InstanceVO save(InstanceVO instance);
 
     void deleteById(String id);

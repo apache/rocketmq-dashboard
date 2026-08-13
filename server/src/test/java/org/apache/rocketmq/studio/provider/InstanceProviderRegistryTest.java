@@ -71,7 +71,7 @@ class InstanceProviderRegistryTest {
 
     @Test
     void byInstanceIdShouldThrowWhenInstanceMissingTest() {
-        when(instanceRepository.findById("missing")).thenReturn(Optional.empty());
+        when(instanceRepository.findByIdentifier("missing")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> registry.byInstanceId("missing"))
                 .isInstanceOf(BusinessException.class)
@@ -81,7 +81,7 @@ class InstanceProviderRegistryTest {
     @Test
     void byInstanceIdShouldResolveVendorProviderTest() {
         InstanceVO instance = InstanceVO.builder().vendor(InstanceVendor.ALIYUN).build();
-        when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(instance));
+        when(instanceRepository.findByIdentifier("inst-1")).thenReturn(Optional.of(instance));
 
         assertThat(registry.byInstanceId("inst-1")).containsSame(aliyunProvider);
     }
@@ -89,7 +89,7 @@ class InstanceProviderRegistryTest {
     @Test
     void byInstanceIdShouldDefaultToApacheWhenVendorNullTest() {
         InstanceVO instance = InstanceVO.builder().build();
-        when(instanceRepository.findById("inst-2")).thenReturn(Optional.of(instance));
+        when(instanceRepository.findByIdentifier("inst-2")).thenReturn(Optional.of(instance));
 
         assertThat(registry.byInstanceId("inst-2")).containsSame(apacheProvider);
     }
