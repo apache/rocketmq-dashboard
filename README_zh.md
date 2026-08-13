@@ -14,7 +14,7 @@ cd .. && docker compose up -d --build
 ```
 
 第一条命令会启动内置 RocketMQ 拓扑，并创建 Studio 服务所需的
-`rocketmq_default` Docker 网络。启动 Studio 前，可在 `deploy/rocketmq` 目录执行
+`rocketmq_net` Docker 网络。启动 Studio 前，可在 `deploy/rocketmq` 目录执行
 `docker compose ps` 确认 RocketMQ 已就绪。
 
 启动后访问 **http://127.0.0.1:6789** 即可使用。

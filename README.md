@@ -16,7 +16,7 @@ cd .. && docker compose up -d --build
 Visit **http://127.0.0.1:6789** after startup.
 
 The first command starts the bundled RocketMQ topology and creates the
-`rocketmq_default` Docker network used by the Studio services. Check that it
+`rocketmq_net` Docker network used by the Studio services. Check that it
 is healthy before starting Studio with `docker compose ps` from `deploy/rocketmq`.
 The default schema creates only Studio tables. It does not seed instances, topics, consumer groups, or ACL
 records. Development-only sample data can be imported explicitly from `deploy/mysql/`; it is not part of the

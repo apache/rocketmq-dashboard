@@ -49,10 +49,6 @@ services:
       RMQ_ANTHROPIC_BASE_URL: ${RMQ_ANTHROPIC_BASE_URL:-}
     expose:
       - "8888"
-    extra_hosts:
-      - "nameserver:10.89.2.10"
-      - "broker-0:10.89.2.11"
-      - "broker-1:10.89.2.12"
     networks:
       - studio-net
       - rocketmq
@@ -70,6 +66,8 @@ services:
     build:
       context: ../web
       dockerfile: Dockerfile
+      args:
+        VITE_GIT_COMMIT: ${STUDIO_BUILD_COMMIT:-dev}
     image: rocketmq-web:latest
     container_name: rocketmq-web
     restart: unless-stopped
@@ -86,7 +84,7 @@ networks:
     driver: bridge
   rocketmq:
     external: true
-    name: rocketmq_default
+    name: rocketmq_net
 
 volumes:
   mysql-data:
