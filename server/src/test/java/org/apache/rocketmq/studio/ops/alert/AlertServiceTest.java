@@ -518,12 +518,12 @@ class AlertServiceTest {
     void toggleRuleShouldEnableRule() {
         AlertRuleVO existing = AlertRuleVO.builder().id("rule-1").name("CPU Alert").enabled(false).build();
         when(alertRepository.findAllRules()).thenReturn(List.of(existing));
-        when(alertRepository.saveRule(any(AlertRuleVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(alertRepository.replaceRule(any(AlertRuleVO.class))).thenReturn(true);
 
         AlertRuleVO result = alertService.toggleRule("rule-1", true);
 
         assertThat(result.isEnabled()).isTrue();
-        verify(alertRepository).saveRule(result);
+        verify(alertRepository).replaceRule(result);
         verify(operationAuditService).record(eq("TOGGLE_ALERT_RULE"), eq("ALERT_RULE"), eq("rule-1"),
                 eq(null), eq("enabled=true"), eq("SUCCESS"), eq(null));
     }
@@ -532,11 +532,24 @@ class AlertServiceTest {
     void toggleRuleShouldDisableRule() {
         AlertRuleVO existing = AlertRuleVO.builder().id("rule-1").name("CPU Alert").enabled(true).build();
         when(alertRepository.findAllRules()).thenReturn(List.of(existing));
-        when(alertRepository.saveRule(any(AlertRuleVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(alertRepository.replaceRule(any(AlertRuleVO.class))).thenReturn(true);
 
         AlertRuleVO result = alertService.toggleRule("rule-1", false);
 
         assertThat(result.isEnabled()).isFalse();
+    }
+
+    @Test
+    void toggleRuleShouldNotRecreateConcurrentlyDeletedRule() {
+        AlertRuleVO existing = AlertRuleVO.builder().id("rule-1").enabled(false).build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(existing));
+        when(alertRepository.replaceRule(existing)).thenReturn(false);
+
+        assertThatThrownBy(() -> alertService.toggleRule("rule-1", true))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Alert rule not found: rule-1");
+
+        verify(alertRepository, never()).saveRule(any());
     }
 
     @Test
@@ -678,12 +691,12 @@ class AlertServiceTest {
         SystemAlertVO existing = SystemAlertVO.builder().id("a1").level(AlertLevel.error)
                 .title("Broker Down").acknowledged(false).build();
         when(alertRepository.findAlerts(null)).thenReturn(List.of(existing));
-        when(alertRepository.saveAlert(any(SystemAlertVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(alertRepository.replaceAlert(any(SystemAlertVO.class))).thenReturn(true);
 
         SystemAlertVO result = alertService.acknowledgeAlert("a1");
 
         assertThat(result.isAcknowledged()).isTrue();
-        verify(alertRepository).saveAlert(result);
+        verify(alertRepository).replaceAlert(result);
         verify(operationAuditService).record(eq("ACKNOWLEDGE_SYSTEM_ALERT"), eq("SYSTEM_ALERT"), eq("a1"),
                 eq(null), eq("acknowledged=true"), eq("SUCCESS"), eq(null));
     }

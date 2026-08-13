@@ -128,9 +128,11 @@ public class AlertService {
                 .findFirst()
                 .orElseThrow(() -> new org.apache.rocketmq.studio.common.exception.BusinessException(404, "Alert rule not found: " + id));
         rule.setEnabled(enabled);
-        AlertRuleVO saved = alertRepository.saveRule(rule);
-        auditRule("TOGGLE_ALERT_RULE", saved, "enabled=" + enabled);
-        return saved;
+        if (!alertRepository.replaceRule(rule)) {
+            throw ruleNotFound(id);
+        }
+        auditRule("TOGGLE_ALERT_RULE", rule, "enabled=" + enabled);
+        return rule;
     }
 
 
@@ -231,10 +233,12 @@ public class AlertService {
                 .findFirst()
                 .orElseThrow(() -> new org.apache.rocketmq.studio.common.exception.BusinessException(404, "System alert not found: " + id));
         alert.setAcknowledged(true);
-        SystemAlertVO saved = alertRepository.saveAlert(alert);
-        recordAudit("ACKNOWLEDGE_SYSTEM_ALERT", "SYSTEM_ALERT", saved.getId(), null,
+        if (!alertRepository.replaceAlert(alert)) {
+            throw new BusinessException(404, "System alert not found: " + id);
+        }
+        recordAudit("ACKNOWLEDGE_SYSTEM_ALERT", "SYSTEM_ALERT", alert.getId(), null,
                 "acknowledged=true");
-        return saved;
+        return alert;
     }
 
 

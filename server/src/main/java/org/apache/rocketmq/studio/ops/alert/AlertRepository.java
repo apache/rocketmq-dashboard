@@ -32,5 +32,7 @@ public interface AlertRepository {
 
     SystemAlertVO saveAlert(SystemAlertVO alert);
 
+    boolean replaceAlert(SystemAlertVO alert);
+
     int deleteAcknowledgedAlerts();
 }

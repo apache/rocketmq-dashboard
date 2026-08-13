@@ -97,6 +97,11 @@ public class MybatisPlusAlertRepository implements AlertRepository {
     }
 
     @Override
+    public boolean replaceAlert(SystemAlertVO alert) {
+        return alertMapper.updateById(toAlertEntity(alert)) > 0;
+    }
+
+    @Override
     public int deleteAcknowledgedAlerts() {
         return Math.toIntExact(alertMapper.delete(
                 new QueryWrapper<RmqSystemAlert>().eq("acknowledged", true)));
