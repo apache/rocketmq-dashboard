@@ -183,7 +183,7 @@ describe('AlertManagementPage', () => {
     expect(within(brokerRow!).getAllByRole('button')[0]).toBeDisabled();
   });
 
-  it('exports the server-side YAML verbatim when rows are selected', async () => {
+  it('exports only the selected rows as YAML', async () => {
     const user = userEvent.setup();
     renderWithProviders(<AlertManagementPage />);
 
@@ -196,12 +196,13 @@ describe('AlertManagementPage', () => {
     await user.click(screen.getByRole('button', { name: '导出 YAML' }));
 
     await waitFor(() => {
-      expect(exportAlertRulesYaml).toHaveBeenCalledTimes(1);
+      expect(createObjectURL).toHaveBeenCalledTimes(1);
     });
-    expect(createObjectURL).toHaveBeenCalledTimes(1);
     const blob = createObjectURL.mock.calls[0][0] as Blob;
     const yaml = await blob.text();
-    expect(yaml).toBe(rulesYaml);
+    expect(yaml).toContain('alert: BrokerDown');
+    expect(yaml).not.toContain('ConsumerLagHigh');
+    expect(exportAlertRulesYaml).not.toHaveBeenCalled();
     expect(clickSpy).toHaveBeenCalledTimes(1);
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:alert-rules');
   });
@@ -320,7 +321,7 @@ describe('AlertManagementPage', () => {
     expect(screen.queryByText('BrokerDown')).not.toBeInTheDocument();
   });
 
-  it('preserves selected rules while filtering the table', async () => {
+  it('exports the selected rows even when filtered out of the table', async () => {
     const user = userEvent.setup();
     renderWithProviders(<AlertManagementPage />);
 
@@ -338,6 +339,6 @@ describe('AlertManagementPage', () => {
     const blob = createObjectURL.mock.calls[0][0] as Blob;
     const yaml = await blob.text();
     expect(yaml).toContain('alert: BrokerDown');
-    expect(yaml).toContain('alert: ConsumerLagHigh');
+    expect(yaml).not.toContain('ConsumerLagHigh');
   });
 });

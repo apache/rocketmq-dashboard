@@ -290,6 +290,9 @@ public class AlertService {
         if (!hasText(metric)) {
             return "broker";
         }
+        if (metric.contains("rocketmq_proxy") || metric.contains("proxy")) {
+            return "proxy";
+        }
         if (metric.contains("replication") || metric.contains("fall_behind") || metric.contains("slave")) {
             return "broker";
         }

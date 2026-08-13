@@ -168,6 +168,44 @@ function parseYamlRules(yamlStr: string): AlertRule[] {
   return rules;
 }
 
+function escapeYamlText(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+/** Builds a Prometheus-format YAML string for a specific set of alert rules. */
+function buildSelectedRulesYaml(rules: AlertRule[]): string {
+  if (rules.length === 0) return '';
+  const groups = new Map<string, AlertRule[]>();
+  for (const rule of rules) {
+    const group = rule.group || 'rules';
+    const list = groups.get(group) ?? [];
+    list.push(rule);
+    groups.set(group, list);
+  }
+  const lines: string[] = [];
+  let index = 0;
+  for (const [group, groupRules] of groups) {
+    lines.push('- name: ' + group);
+    lines.push('  rules:');
+    for (const rule of groupRules) {
+      index += 1;
+      lines.push(`    # Rule ${index}:`);
+      lines.push(`    - alert: ${rule.alert}`);
+      lines.push(`      expr: ${rule.expr}`);
+      lines.push(`      for: ${rule.for}`);
+      lines.push(`      labels:`);
+      lines.push(`        severity: ${rule.severity}`);
+      lines.push(`        team: ${rule.team}`);
+      lines.push(`      annotations:`);
+      lines.push(`        summary: "${escapeYamlText(rule.summary || rule.alert)}"`);
+      if (rule.description) {
+        lines.push(`        description: "${escapeYamlText(rule.description)}"`);
+      }
+    }
+  }
+  return lines.join('\n') + '\n';
+}
+
 function buildExpression(rule: PersistedAlertRule): string {
   const metric = scopedMetric(rule);
   const operator = rule.operator || '>';
@@ -443,6 +481,12 @@ const AlertManagementPage: React.FC = () => {
 
   const handleExportYaml = async () => {
     try {
+      if (selectedRuleKeys.length > 0) {
+        const rulesYaml = buildSelectedRulesYaml(selectedRules);
+        downloadBlob(new Blob([rulesYaml], { type: 'text/yaml' }), 'rocketmq-alert-rules.yaml');
+        message.success(t('alertMgmt.exportSuccess'));
+        return;
+      }
       const data = await exportAlertRulesYaml();
       downloadBlob(new Blob([data.rules], { type: 'text/yaml' }), 'rocketmq-alert-rules.yaml');
       message.success(t('alertMgmt.exportSuccess'));
