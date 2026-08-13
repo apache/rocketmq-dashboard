@@ -29,7 +29,7 @@ public class RuntimeAdminClientResolver {
         if (!StringUtils.hasText(instanceId)) {
             throw new BusinessException(400, "instanceId is required");
         }
-        return instanceRepository.findById(instanceId)
+        return instanceRepository.findByIdentifier(instanceId)
                 .orElseThrow(() -> new BusinessException(404, "Instance not found: " + instanceId));
     }
 

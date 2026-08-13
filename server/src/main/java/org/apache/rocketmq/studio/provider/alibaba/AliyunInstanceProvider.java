@@ -77,7 +77,7 @@ public class AliyunInstanceProvider implements InstanceProvider {
     private static final String FIXED_RETRY_POLICY = "FixedRetryPolicy";
     private static final int DEFAULT_MAX_RETRY_TIMES = 16;
     private static final int DEFAULT_FIXED_RETRY_INTERVAL_SECONDS = 10;
-    private static final int COUNT_PAGE_SIZE = 1;
+    private static final int COUNT_PAGE_SIZE = 10;
     private static final String RESET_TYPE_SPECIFIED_TIME = "SPECIFIED_TIME";
     private static final String RESET_TYPE_LATEST_OFFSET = "LATEST_OFFSET";
 
@@ -450,7 +450,7 @@ public class AliyunInstanceProvider implements InstanceProvider {
         if (!StringUtils.hasText(instanceId)) {
             throw new BusinessException(400, "instanceId is required");
         }
-        InstanceVO instance = instanceRepository.findById(instanceId)
+        InstanceVO instance = instanceRepository.findByIdentifier(instanceId)
                 .orElseThrow(() -> new BusinessException(404, "Instance not found: " + instanceId));
         if (!StringUtils.hasText(instance.getCloudInstanceId()) || !StringUtils.hasText(instance.getRegionId())
                 || !StringUtils.hasText(instance.getCredentialId())) {

@@ -58,7 +58,7 @@ public class InstanceProviderRegistry {
         if (instanceId == null || instanceId.isBlank()) {
             return Optional.empty();
         }
-        InstanceVO instance = instanceRepository.findById(instanceId)
+        InstanceVO instance = instanceRepository.findByIdentifier(instanceId)
                 .orElseThrow(() -> new BusinessException(404, "Instance not found: " + instanceId));
         InstanceVendor vendor = instance.getVendor() == null ? InstanceVendor.APACHE : instance.getVendor();
         return Optional.of(forVendor(vendor));
