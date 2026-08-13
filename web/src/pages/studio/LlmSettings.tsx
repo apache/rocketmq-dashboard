@@ -73,6 +73,7 @@ const LlmSettingsPage: React.FC = () => {
   const { t } = useLang();
   const { message } = App.useApp();
   const [form] = Form.useForm();
+  const selectedProvider = Form.useWatch('provider', form);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -109,6 +110,9 @@ const LlmSettingsPage: React.FC = () => {
       maxTokens: config.maxTokens || 4096,
       temperature: config.temperature ?? 0.7,
       apiKey: undefined,
+      deploymentName: config.deploymentName || undefined,
+      apiVersion: config.apiVersion || '2024-02-15-preview',
+      awsRegion: config.awsRegion || 'us-east-1',
     });
   };
 
@@ -145,7 +149,16 @@ const LlmSettingsPage: React.FC = () => {
     form.setFieldsValue({
       provider: nextProvider,
       model: fallbackModel,
-      apiBase: DEFAULT_BASE_URL[nextProvider] || form.getFieldValue('apiBase'),
+      apiBase: DEFAULT_BASE_URL[nextProvider] || '',
+      deploymentName: nextProvider === 'azure' ? undefined : form.getFieldValue('deploymentName'),
+      apiVersion:
+        nextProvider === 'azure'
+          ? form.getFieldValue('apiVersion') || '2024-02-15-preview'
+          : form.getFieldValue('apiVersion'),
+      awsRegion:
+        nextProvider === 'bedrock'
+          ? form.getFieldValue('awsRegion') || 'us-east-1'
+          : form.getFieldValue('awsRegion'),
     });
   };
 
@@ -165,6 +178,10 @@ const LlmSettingsPage: React.FC = () => {
       maxTokens: values.maxTokens,
       temperature: values.temperature,
       enabled: true,
+      ...(values.provider === 'azure'
+        ? { deploymentName: values.deploymentName, apiVersion: values.apiVersion }
+        : {}),
+      ...(values.provider === 'bedrock' ? { awsRegion: values.awsRegion } : {}),
       // 留空表示保留服务端已配置的密钥（含环境变量注入的 token）
       ...(apiKey ? { apiKey } : {}),
     };
@@ -296,6 +313,35 @@ const LlmSettingsPage: React.FC = () => {
           >
             <Input placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1" />
           </Form.Item>
+
+          {selectedProvider === 'azure' && (
+            <>
+              <Form.Item
+                label="Azure Deployment Name"
+                name="deploymentName"
+                rules={[{ required: true, message: 'Enter the Azure OpenAI deployment name' }]}
+              >
+                <Input placeholder="my-gpt-deployment" />
+              </Form.Item>
+              <Form.Item
+                label="Azure API Version"
+                name="apiVersion"
+                rules={[{ required: true, message: 'Enter the Azure OpenAI API version' }]}
+              >
+                <Input placeholder="2024-02-15-preview" />
+              </Form.Item>
+            </>
+          )}
+
+          {selectedProvider === 'bedrock' && (
+            <Form.Item
+              label="AWS Region"
+              name="awsRegion"
+              rules={[{ required: true, message: 'Enter the AWS Bedrock region' }]}
+            >
+              <Input placeholder="us-east-1" />
+            </Form.Item>
+          )}
 
           <Form.Item label="Temperature" name="temperature">
             <Slider min={0} max={2} step={0.1} marks={{ 0: '0', 0.7: '0.7', 2: '2' }} />

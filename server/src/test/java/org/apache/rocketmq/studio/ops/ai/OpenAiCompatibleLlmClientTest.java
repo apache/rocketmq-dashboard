@@ -301,6 +301,55 @@ class OpenAiCompatibleLlmClientTest {
     }
 
     @Test
+    void completeShouldRejectOversizedProviderResponse() {
+        client = clientWithLimit(1024);
+        String body = completionBody(1025);
+        server.createContext("/v1/chat/completions",
+                exchange -> respond(exchange, 200, body, "application/json"));
+
+        assertThatThrownBy(() -> client.complete(config("openai", "sk-test"), "hello", null))
+                .isInstanceOfSatisfying(LlmGatewayException.class, exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(502);
+                    assertThat(exception.getCode()).isEqualTo("llm.provider.response_too_large");
+                    assertThat(exception.getMessage()).contains("1024 bytes");
+                });
+    }
+
+    @Test
+    void completeShouldAllowProviderResponseAtConfiguredLimit() {
+        client = clientWithLimit(1024);
+        String body = completionBody(1024);
+        server.createContext("/v1/chat/completions",
+                exchange -> respond(exchange, 200, body, "application/json"));
+
+        String result = client.complete(config("openai", "sk-test"), "hello", null);
+
+        assertThat(result).isNotEmpty();
+    }
+
+    @Test
+    void listModelsShouldRejectOversizedProviderResponse() {
+        client = clientWithLimit(1024);
+        server.createContext("/v1/models",
+                exchange -> respond(exchange, 200, "x".repeat(1025), "application/json"));
+
+        assertThatThrownBy(() -> client.listModels(config("openai", "sk-test")))
+                .isInstanceOfSatisfying(LlmGatewayException.class, exception ->
+                        assertThat(exception.getCode()).isEqualTo("llm.provider.response_too_large"));
+    }
+
+    @Test
+    void streamShouldRejectOversizedUpstreamErrorResponse() {
+        client = clientWithLimit(1024);
+        server.createContext("/v1/chat/completions",
+                exchange -> respond(exchange, 500, "x".repeat(1025), "application/json"));
+
+        assertThatThrownBy(() -> client.stream(config("openai", "sk-test"), "hello", null, token -> { }))
+                .isInstanceOfSatisfying(LlmGatewayException.class, exception ->
+                        assertThat(exception.getCode()).isEqualTo("llm.provider.response_too_large"));
+    }
+
+    @Test
     void completeShouldExposeTimeoutAsGatewayTimeout() {
         OpenAiCompatibleLlmClient timeoutClient = new OpenAiCompatibleLlmClient(
                 objectMapper,
@@ -338,6 +387,21 @@ class OpenAiCompatibleLlmClientTest {
                 .temperature(0.2)
                 .enabled(true)
                 .build();
+    }
+
+    private OpenAiCompatibleLlmClient clientWithLimit(int limitBytes) {
+        return new OpenAiCompatibleLlmClient(objectMapper) {
+            @Override
+            int responseBodyLimitBytes() {
+                return limitBytes;
+            }
+        };
+    }
+
+    private String completionBody(int length) {
+        String prefix = "{\"choices\":[{\"message\":{\"content\":\"";
+        String suffix = "\"}}]}";
+        return prefix + "x".repeat(length - prefix.length() - suffix.length()) + suffix;
     }
 
     private void respond(HttpExchange exchange, int status, String body, String contentType) throws IOException {

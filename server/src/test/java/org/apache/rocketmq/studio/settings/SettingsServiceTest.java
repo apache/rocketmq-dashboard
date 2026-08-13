@@ -132,6 +132,49 @@ class SettingsServiceTest {
     }
 
     @Test
+    void saveGeneralSettingsShouldPreserveProviderSpecificLlmFieldsWhenOmitted() {
+        GeneralSettingsVO existing = GeneralSettingsVO.builder()
+                .deploymentName("production-gpt")
+                .apiVersion("2024-06-01")
+                .awsRegion("eu-west-1")
+                .build();
+        GeneralSettingsVO update = GeneralSettingsVO.builder()
+                .theme("light")
+                .build();
+        when(settingsRepository.loadGeneralSettings()).thenReturn(existing);
+
+        settingsService.saveGeneralSettings(update);
+
+        assertThat(update.getDeploymentName()).isEqualTo("production-gpt");
+        assertThat(update.getApiVersion()).isEqualTo("2024-06-01");
+        assertThat(update.getAwsRegion()).isEqualTo("eu-west-1");
+    }
+
+    @Test
+    void saveGeneralSettingsShouldRejectMetadataLlmBaseUrlBeforePersisting() {
+        GeneralSettingsVO update = GeneralSettingsVO.builder()
+                .baseUrl("http://169.254.169.254/latest/meta-data")
+                .build();
+
+        assertThatThrownBy(() -> settingsService.saveGeneralSettings(update))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("LLM base URL")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+        verify(settingsRepository, never()).saveGeneralSettings(any());
+    }
+
+    @Test
+    void saveGeneralSettingsShouldAllowLoopbackForLocalLlmGateways() {
+        GeneralSettingsVO update = GeneralSettingsVO.builder()
+                .baseUrl("http://localhost:11434/v1")
+                .build();
+
+        settingsService.saveGeneralSettings(update);
+
+        verify(settingsRepository).saveGeneralSettings(update);
+    }
+
+    @Test
     void saveGeneralSettingsShouldReplaceExistingApiKey() {
         GeneralSettingsVO existing = GeneralSettingsVO.builder()
                 .apiKey("sk-existing")
