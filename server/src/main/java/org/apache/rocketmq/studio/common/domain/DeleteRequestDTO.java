@@ -27,4 +27,7 @@ public class DeleteRequestDTO {
 
     @NotBlank(message = "id is required")
     private String id;
+
+    /** Optional instance id used to route the delete to a cloud-vendor ACL backend. */
+    private String instanceId;
 }
