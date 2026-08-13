@@ -162,29 +162,34 @@ const BrokerClusterPage = () => {
     setProxyData([]);
   }, []);
 
-  const loadData = useCallback(async () => {
-    if (!selectedInstanceId) {
-      clearData();
-      return;
-    }
-    const requestId = ++loadRequestId.current;
-    setLoading(true);
-    try {
-      const clusters = await listClusters(selectedInstanceId);
-      if (!mountedRef.current || requestId !== loadRequestId.current) return;
-      const mapped = mapClusters(clusters);
-      setBrokerData(mapped.brokers);
-      setNameServerData(mapped.nameServers);
-      setProxyData(mapped.proxies);
-    } catch {
-      if (!mountedRef.current || requestId !== loadRequestId.current) return;
-      message.error(t('common.refreshFailed'));
-    } finally {
-      if (mountedRef.current && requestId === loadRequestId.current) {
-        setLoading(false);
+  const loadData = useCallback(
+    async (clearExisting = false) => {
+      if (!selectedInstanceId) {
+        clearData();
+        return;
       }
-    }
-  }, [clearData, message, selectedInstanceId, t]);
+      const requestId = ++loadRequestId.current;
+      if (clearExisting) clearData();
+      setLoading(true);
+      try {
+        const clusters = await listClusters(selectedInstanceId);
+        if (!mountedRef.current || requestId !== loadRequestId.current) return;
+        const mapped = mapClusters(clusters);
+        setBrokerData(mapped.brokers);
+        setNameServerData(mapped.nameServers);
+        setProxyData(mapped.proxies);
+      } catch {
+        if (!mountedRef.current || requestId !== loadRequestId.current) return;
+        clearData();
+        message.error(t('common.refreshFailed'));
+      } finally {
+        if (mountedRef.current && requestId === loadRequestId.current) {
+          setLoading(false);
+        }
+      }
+    },
+    [clearData, message, selectedInstanceId, t],
+  );
 
   useEffect(() => {
     let active = true;
@@ -207,7 +212,7 @@ const BrokerClusterPage = () => {
   useEffect(() => {
     mountedRef.current = true;
     const requestId = loadRequestId.current;
-    const timeoutId = window.setTimeout(() => void loadData());
+    const timeoutId = window.setTimeout(() => void loadData(true));
     return () => {
       window.clearTimeout(timeoutId);
       loadRequestId.current = requestId + 1;
