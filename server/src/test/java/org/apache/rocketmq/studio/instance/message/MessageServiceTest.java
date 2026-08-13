@@ -67,7 +67,7 @@ class MessageServiceTest {
 
         assertThatThrownBy(() -> service.queryMessages("instance-a", "TopicA", null, null, null, 200L, 100L))
                 .isInstanceOf(BusinessException.class)
-                .hasMessage("startTime must not be after endTime");
+                .hasMessage("startTime must be before endTime");
 
         verifyNoInteractions(provider);
     }
@@ -84,5 +84,19 @@ class MessageServiceTest {
                 .hasMessage("topic query time range must not exceed 7 days");
 
         verifyNoInteractions(provider);
+    }
+
+    @Test
+    void rejectsOverflowingTopicQueryWindowBeforeCallingProvider() {
+        MessageProvider provider = mock(MessageProvider.class);
+        InstanceProviderRegistry registry = mock(InstanceProviderRegistry.class);
+        MessageService service = new MessageService(provider, registry);
+
+        assertThatThrownBy(() -> service.queryMessages("instance-a", "TopicA", null, null, null,
+                0L, Long.MAX_VALUE))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("topic query time range must not exceed 7 days");
+
+        verifyNoInteractions(provider, registry);
     }
 }
