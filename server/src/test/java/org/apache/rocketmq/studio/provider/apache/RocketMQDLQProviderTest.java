@@ -142,6 +142,27 @@ class RocketMQDLQProviderTest {
     }
 
     @Test
+    void resendMessagesShouldNormalizeGroupNameBeforeBuildingDlqTopicAndAuditing() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        try (MockedConstruction<DefaultMQPullConsumer> mockedConsumers =
+                     mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
+                         doNothing().when(consumer).start();
+                         when(consumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(null);
+                         doNothing().when(consumer).shutdown();
+                     });
+             MockedConstruction<DefaultMQProducer> mockedProducers =
+                     mockConstruction(DefaultMQProducer.class)) {
+            provider.resendMessages("instance-a", " group-a ", 100L, 200L, "target-topic");
+
+            assertThat(mockedConsumers.constructed()).hasSize(1);
+            verify(mockedConsumers.constructed().get(0)).fetchSubscribeMessageQueues(dlqTopic);
+            assertThat(mockedProducers.constructed()).isEmpty();
+        }
+        verify(auditService).record(eq("RESEND_DLQ"), eq("group-a"),
+                contains("group=group-a, dlqTopic=%DLQ%group-a"), eq("NO_MESSAGES"));
+    }
+
+    @Test
     void resendMessagesDoesNotPullWhenDlqQueueSetIsNull() throws Exception {
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
         try (MockedConstruction<DefaultMQPullConsumer> mockedConsumers =
