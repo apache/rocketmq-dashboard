@@ -184,6 +184,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'dlq.title': { zh: '死信队列', en: 'Dead Letter Queue' },
 
   // ─── Client Connections ───
+  'clients.sampledWarning': {
+    zh: '由于达到 Topic 扫描上限，Producer 连接为采样展示',
+    en: 'Producer connections are sampled because the topic scan limit was reached.',
+  },
   'clients.title': { zh: '客户端连接', en: 'Client Connections' },
   'clients.clientId': { zh: 'Client ID', en: 'Client ID' },
   'clients.groupOrTopic': { zh: 'Group/Topic', en: 'Group/Topic' },
