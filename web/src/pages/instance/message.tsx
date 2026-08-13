@@ -611,7 +611,7 @@ const MessagePageContent = ({
       dataIndex: 'deliveryStatus',
       key: 'deliveryStatus',
       render: (status: string) => {
-        const s = DELIVERY_STATUS_MAP[status.toLowerCase()] || {
+        const s = DELIVERY_STATUS_MAP[(status ?? '').toLowerCase()] || {
           label: status,
           color: 'default',
         };
