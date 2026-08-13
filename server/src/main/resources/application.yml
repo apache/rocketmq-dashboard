@@ -17,6 +17,7 @@ mybatis-plus:
     map-underscore-to-camel-case: true
     log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
   global-config:
+    banner: false
     db-config:
       table-prefix: rmq_
       id-type: auto

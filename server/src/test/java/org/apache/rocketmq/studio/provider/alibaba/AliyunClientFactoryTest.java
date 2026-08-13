@@ -185,7 +185,7 @@ class AliyunClientFactoryTest {
     }
 
     @Test
-    void callShouldMapInvalidAccessKeyTo401Test() {
+    void callShouldMapInvalidAccessKeyTo422Test() {
         AliyunClientFactory spy = Mockito.spy(factory);
         doReturn(asyncClient).when(spy).client(anyString(), anyString());
         PopServerException error = new PopServerException("bad key");
@@ -198,7 +198,7 @@ class AliyunClientFactoryTest {
                 ListRegionsRequest.builder().build())))
                 .isInstanceOf(BusinessException.class)
                 .extracting("code")
-                .isEqualTo(401);
+                .isEqualTo(422);
     }
 
     @Test

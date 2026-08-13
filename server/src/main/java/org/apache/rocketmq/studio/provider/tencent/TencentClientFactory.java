@@ -103,7 +103,9 @@ public class TencentClientFactory {
         }
         if (code != null && (code.contains("AuthFailure") || code.contains("InvalidCredential")
                 || code.contains("InvalidSecretId") || code.contains("SignatureFailure"))) {
-            return new BusinessException(401, "Cloud credential is invalid");
+            // 422, not 401: HTTP 401 is reserved for Studio session auth; the frontend logs the
+            // user out and redirects on any 401, so a cloud-rejected credential must use another code.
+            return new BusinessException(422, "Cloud credential is invalid");
         }
         if (code != null && (code.contains("NotFound") || code.contains("ResourceNotFound"))) {
             return new BusinessException(404, defaultIfBlank(message, "Tencent Cloud resource not found"));
