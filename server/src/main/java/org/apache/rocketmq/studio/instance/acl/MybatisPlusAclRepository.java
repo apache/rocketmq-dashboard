@@ -112,6 +112,19 @@ public class MybatisPlusAclRepository implements AclRepository {
     }
 
     @Override
+    public Optional<AclUserVO> replaceUser(AclUserVO user) {
+        RmqAclUser existing = userMapper.selectById(user.getId());
+        if (existing == null) {
+            return Optional.empty();
+        }
+        RmqAclUser entity = toUserEntity(user);
+        entity.setCreatedAt(existing.getCreatedAt());
+        userMapper.updateById(entity);
+        user.setCreatedAt(existing.getCreatedAt());
+        return Optional.of(user);
+    }
+
+    @Override
     public boolean deleteUser(String id) {
         return userMapper.deleteById(id) > 0;
     }

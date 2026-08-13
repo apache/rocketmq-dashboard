@@ -411,7 +411,7 @@ class AclServiceTest {
 
         ArgumentCaptor<AclUserVO> captor = ArgumentCaptor.forClass(AclUserVO.class);
         when(aclRepository.findUserById("user-1")).thenReturn(Optional.of(existingUser));
-        when(aclRepository.saveUser(any(AclUserVO.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(aclRepository.replaceUser(any(AclUserVO.class))).thenAnswer(inv -> Optional.of(inv.getArgument(0)));
 
         AclUserVO result = aclService.updateUser(input);
 
@@ -420,7 +420,7 @@ class AclServiceTest {
         assertThat(result.getAccessKey()).isEqualTo("acce****3456");
         assertThat(result.getSecretKey()).isEqualTo("secr****7654");
         assertThat(result.isAdmin()).isTrue();
-        verify(aclRepository).saveUser(captor.capture());
+        verify(aclRepository).replaceUser(captor.capture());
         assertThat(captor.getValue().getAccessKey()).isEqualTo("access-key-123456");
         assertThat(captor.getValue().getSecretKey()).isEqualTo("secret-key-987654");
         verify(operationAuditService).record(eq("UPDATE_ACL_USER"), eq("ACL_USER"), eq("user-1"), eq(null),
@@ -444,13 +444,13 @@ class AclServiceTest {
 
         ArgumentCaptor<AclUserVO> captor = ArgumentCaptor.forClass(AclUserVO.class);
         when(aclRepository.findUserById("user-1")).thenReturn(Optional.of(adminUser));
-        when(aclRepository.saveUser(any(AclUserVO.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(aclRepository.replaceUser(any(AclUserVO.class))).thenAnswer(inv -> Optional.of(inv.getArgument(0)));
 
         AclUserVO result = aclService.updateUser(input);
 
         assertThat(result.getUsername()).isEqualTo("renamed");
         assertThat(result.isAdmin()).isTrue();
-        verify(aclRepository).saveUser(captor.capture());
+        verify(aclRepository).replaceUser(captor.capture());
         assertThat(captor.getValue().isAdmin()).isTrue();
     }
 
@@ -519,6 +519,11 @@ class AclServiceTest {
             return invocation.getArgument(0);
         });
         when(aclRepository.findUserById(any())).thenAnswer(invocation -> Optional.ofNullable(stored.get()));
+        when(aclRepository.replaceUser(any(AclUserVO.class))).thenAnswer(invocation -> {
+            AclUserVO incoming = invocation.getArgument(0);
+            stored.set(incoming);
+            return Optional.of(incoming);
+        });
         when(aclRepository.findUsers()).thenAnswer(invocation -> List.of(stored.get()));
 
         AclUserVO created = aclService.createUser(AclUserVO.builder()
