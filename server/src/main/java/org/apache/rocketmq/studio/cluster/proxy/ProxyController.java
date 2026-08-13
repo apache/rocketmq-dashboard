@@ -48,6 +48,11 @@ public class ProxyController {
         return Result.ok(proxies);
     }
 
+    @GetMapping("/topology")
+    public Result<List<ProxyTopologyVO>> getProxyTopology() {
+        return Result.ok(proxyAddressService.buildTopology());
+    }
+
     @PostMapping("/config/reload")
     public Result<Map<String, Boolean>> reloadProxyConfig(@Valid @RequestBody RestartProxyDTO command) {
         proxyAddressService.reloadConfig(command.getAddr());

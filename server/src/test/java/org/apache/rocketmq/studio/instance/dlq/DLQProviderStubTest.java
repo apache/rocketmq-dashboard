@@ -43,4 +43,13 @@ class DLQProviderStubTest {
                 .extracting("code")
                 .isEqualTo(501);
     }
+
+    @Test
+    void exportMessagesShouldFailExplicitlyWhenRealProviderIsMissing() {
+        assertThatThrownBy(() -> provider.exportMessages("instance-1", "group-1", 1000L, 2000L, 100))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("DLQ provider is not configured")
+                .extracting("code")
+                .isEqualTo(501);
+    }
 }

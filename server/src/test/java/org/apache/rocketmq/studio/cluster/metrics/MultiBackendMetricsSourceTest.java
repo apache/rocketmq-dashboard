@@ -165,6 +165,7 @@ class MultiBackendMetricsSourceTest {
     }
 
     private static java.net.InetAddress findSiteLocalAddress() throws java.net.SocketException {
+        InetAddress fallback = null;
         Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
         while (interfaces.hasMoreElements()) {
             NetworkInterface iface = interfaces.nextElement();
@@ -174,12 +175,22 @@ class MultiBackendMetricsSourceTest {
             for (InterfaceAddress address : iface.getInterfaceAddresses()) {
                 InetAddress inet = address.getAddress();
                 if (inet instanceof java.net.Inet4Address
-                        && inet.isSiteLocalAddress()
                         && !inet.isLoopbackAddress()
                         && !inet.isLinkLocalAddress()) {
-                    return inet;
+                    if (inet.isSiteLocalAddress()) {
+                        return inet;
+                    }
+                    if (fallback == null) {
+                        fallback = inet;
+                    }
                 }
             }
+        }
+        // No site-local interface (e.g. hosts that only expose public ranges): fall back to any
+        // non-loopback IPv4 so the embedded server stays reachable under the SSRF guard, which
+        // rejects loopback/link-local addresses (see UrlHostGuard).
+        if (fallback != null) {
+            return fallback;
         }
         return java.net.InetAddress.getLoopbackAddress();
     }

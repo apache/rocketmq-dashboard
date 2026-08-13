@@ -107,3 +107,14 @@ export async function resendDLQ(data: {
   const res = await client.post<{ data: DLQResendResult }>('/dlq/resend', data);
   return res.data.data;
 }
+
+export async function exportDLQMessages(params: {
+  instanceId: string;
+  groupName: string;
+  startTime?: number;
+  endTime?: number;
+  maxCount?: number;
+}): Promise<Blob> {
+  const res = await client.get<Blob>('/dlq/export', { params, responseType: 'blob' });
+  return res.data;
+}

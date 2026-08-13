@@ -75,3 +75,14 @@ export async function resendDLQ(data: {
   if (isMockMode()) return { matched: 0, resent: 0, failed: 0, outcome: 'SUCCESS' };
   return messageApi.resendDLQ(data);
 }
+
+export async function exportDLQMessages(params: {
+  instanceId: string;
+  groupName: string;
+  startTime?: number;
+  endTime?: number;
+  maxCount?: number;
+}): Promise<Blob> {
+  if (isMockMode()) return new Blob(['[]'], { type: 'application/json' });
+  return messageApi.exportDLQMessages(params);
+}
