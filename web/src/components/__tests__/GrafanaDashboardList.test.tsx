@@ -76,9 +76,10 @@ beforeEach(() => {
   vi.mocked(exportGrafanaDashboard).mockResolvedValue(
     new Blob([JSON.stringify(dashboardModel, null, 2)], { type: 'application/json' }),
   );
-  vi.mocked(exportGrafanaDashboards).mockResolvedValue(
-    new Blob(['zip-content'], { type: 'application/zip' }),
-  );
+  vi.mocked(exportGrafanaDashboards).mockResolvedValue({
+    blob: new Blob(['zip-content'], { type: 'application/zip' }),
+    filename: 'rocketmq-grafana-dashboards.zip',
+  });
 });
 
 afterEach(() => {
@@ -235,5 +236,38 @@ describe('GrafanaDashboardList', () => {
     expect(clickSpy).toHaveBeenCalled();
 
     clickSpy.mockRestore();
+  });
+
+  it('uses the JSON filename returned by mock bulk export', async () => {
+    vi.mocked(exportGrafanaDashboards).mockResolvedValue({
+      blob: new Blob(['json-content'], { type: 'application/json' }),
+      filename: 'rocketmq-grafana-dashboards.json',
+    });
+    const user = userEvent.setup();
+    let downloadedFilename = '';
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      downloadedFilename = this.download;
+    });
+    Object.defineProperty(URL, 'createObjectURL', {
+      writable: true,
+      value: vi.fn().mockReturnValue('blob:grafana-all-json'),
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', { writable: true, value: vi.fn() });
+
+    render(
+      <App>
+        <LangProvider>
+          <GrafanaDashboardList />
+        </LangProvider>
+      </App>,
+    );
+
+    await screen.findByText('RocketMQ Cluster Overview');
+    await user.click(screen.getByRole('button', { name: /Export all|导出全部/ }));
+
+    await waitFor(() => expect(exportGrafanaDashboards).toHaveBeenCalledTimes(1));
+    expect(downloadedFilename).toBe('rocketmq-grafana-dashboards.json');
   });
 });

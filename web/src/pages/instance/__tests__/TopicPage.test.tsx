@@ -480,6 +480,12 @@ describe('TopicPage', () => {
 
     await user.click(await screen.findByRole('button', { name: /详情/ }));
 
+    expect(topicServiceMocks.getTopicConsumerPage).toHaveBeenCalledWith(
+      'topic-01',
+      'instance-proxy-1',
+      1,
+      20,
+    );
     expect(await screen.findAllByText('不可用')).not.toHaveLength(0);
   });
 });

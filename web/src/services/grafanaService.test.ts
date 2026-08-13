@@ -45,11 +45,12 @@ describe('grafanaService', () => {
     await expect(blob.text()).resolves.toContain('rocketmq-overview');
   });
 
-  it('exports all dashboards as a blob in mock mode', async () => {
-    const blob = await exportGrafanaDashboards();
-    expect(blob).toBeInstanceOf(Blob);
-    expect(blob.type).toBe('application/zip');
-    await expect(blob.text()).resolves.toContain('rocketmq-overview.json');
+  it('exports all mock dashboards as a JSON download', async () => {
+    const download = await exportGrafanaDashboards();
+    expect(download.filename).toBe('rocketmq-grafana-dashboards.json');
+    expect(download.blob).toBeInstanceOf(Blob);
+    expect(download.blob.type).toBe('application/json');
+    await expect(download.blob.text()).resolves.toContain('rocketmq-overview.json');
   });
 
   it('delegates to the api in real mode', async () => {
@@ -73,6 +74,7 @@ describe('grafanaService', () => {
 
     const result = await exportGrafanaDashboards();
     expect(exportSpy).toHaveBeenCalledTimes(1);
-    expect(result.type).toBe('application/zip');
+    expect(result.filename).toBe('rocketmq-grafana-dashboards.zip');
+    expect(result.blob.type).toBe('application/zip');
   });
 });
