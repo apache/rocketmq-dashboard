@@ -737,7 +737,7 @@ const AlertManagementPage: React.FC = () => {
           form.resetFields();
         }}
         width={720}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Row gutter={16}>

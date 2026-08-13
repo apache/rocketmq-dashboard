@@ -563,7 +563,7 @@ const InstancePage = () => {
       </Flex>
 
       {/* Table */}
-      <Card bodyStyle={{ padding: 0 }}>
+      <Card styles={{ body: { padding: 0 } }}>
         <Table
           className="instance-table"
           columns={columns}
