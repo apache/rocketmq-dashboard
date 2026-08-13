@@ -38,13 +38,24 @@ export async function exportGrafanaDashboard(uid: string): Promise<Blob> {
   return metricsApi.exportGrafanaDashboard(uid);
 }
 
-export async function exportGrafanaDashboards(): Promise<Blob> {
+export interface GrafanaDashboardDownload {
+  blob: Blob;
+  filename: string;
+}
+
+export async function exportGrafanaDashboards(): Promise<GrafanaDashboardDownload> {
   if (isMockMode()) {
     const bundle = mockGrafanaDashboards.map(({ uid, model }) => ({
       filename: `${uid}.json`,
       model,
     }));
-    return new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/zip' });
+    return {
+      blob: new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' }),
+      filename: 'rocketmq-grafana-dashboards.json',
+    };
   }
-  return metricsApi.exportGrafanaDashboards();
+  return {
+    blob: await metricsApi.exportGrafanaDashboards(),
+    filename: 'rocketmq-grafana-dashboards.zip',
+  };
 }

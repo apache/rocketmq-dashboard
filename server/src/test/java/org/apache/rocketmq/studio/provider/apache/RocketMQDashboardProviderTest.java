@@ -60,6 +60,7 @@ class RocketMQDashboardProviderTest {
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
         when(adminExt.fetchAllTopicList()).thenReturn(topicList());
         when(adminExt.getAllTopicConfig("10.0.0.11:10911", 5000)).thenReturn(topicConfig("order-topic"));
+        when(adminExt.getAllSubscriptionGroup("10.0.0.11:10911", 5000)).thenReturn(subscriptionGroups());
         when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
 
         RocketMQDashboardProvider provider = newProvider(adminExt);
@@ -79,6 +80,7 @@ class RocketMQDashboardProviderTest {
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
         when(adminExt.getAllTopicConfig("10.0.0.11:10911", 5000))
                 .thenReturn(topicConfig("order-topic", "payments", "SCHEDULE_TOPIC_XXXX"));
+        when(adminExt.getAllSubscriptionGroup("10.0.0.11:10911", 5000)).thenReturn(subscriptionGroups());
         when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
 
         DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
@@ -162,6 +164,59 @@ class RocketMQDashboardProviderTest {
                 .extracting(cluster -> cluster.getStatus())
                 .isEqualTo(ClusterStatus.warning);
         assertThat(dashboard.getStats().getHealthyClusters()).isZero();
+    }
+
+    @Test
+    void dashboardShouldMarkClusterWarningWhenGroupResponseIsNull() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        when(adminExt.getAllTopicConfig("10.0.0.11:10911", 5000)).thenReturn(topicConfig("orders"));
+        when(adminExt.getAllSubscriptionGroup("10.0.0.11:10911", 5000)).thenReturn(null);
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getStats().getTotalConsumerGroups()).isZero();
+        assertThat(dashboard.getStats().getHealthyClusters()).isZero();
+        assertThat(dashboard.getClusters()).singleElement().satisfies(cluster -> {
+            assertThat(cluster.getGroups()).isZero();
+            assertThat(cluster.getStatus()).isEqualTo(ClusterStatus.warning);
+        });
+    }
+
+    @Test
+    void dashboardShouldMarkClusterWarningWhenGroupTableIsNull() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        SubscriptionGroupWrapper nullTable = new SubscriptionGroupWrapper();
+        nullTable.setSubscriptionGroupTable(null);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        when(adminExt.getAllTopicConfig("10.0.0.11:10911", 5000)).thenReturn(topicConfig("orders"));
+        when(adminExt.getAllSubscriptionGroup("10.0.0.11:10911", 5000)).thenReturn(nullTable);
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getClusters()).singleElement()
+                .extracting(cluster -> cluster.getStatus())
+                .isEqualTo(ClusterStatus.warning);
+        assertThat(dashboard.getStats().getHealthyClusters()).isZero();
+    }
+
+    @Test
+    void dashboardShouldKeepClusterHealthyForValidEmptyGroupTable() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        when(adminExt.getAllTopicConfig("10.0.0.11:10911", 5000)).thenReturn(topicConfig("orders"));
+        when(adminExt.getAllSubscriptionGroup("10.0.0.11:10911", 5000)).thenReturn(subscriptionGroups());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getClusters()).singleElement().satisfies(cluster -> {
+            assertThat(cluster.getGroups()).isZero();
+            assertThat(cluster.getStatus()).isEqualTo(ClusterStatus.healthy);
+        });
+        assertThat(dashboard.getStats().getHealthyClusters()).isEqualTo(1);
     }
 
     @Test
