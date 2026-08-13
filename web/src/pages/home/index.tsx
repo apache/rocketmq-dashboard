@@ -515,6 +515,10 @@ const HomePage = () => {
             </a>
             <span style={{ margin: '0 4px' }}>｜</span>
             <span>RocketMQ Studio 出品</span>
+            <span style={{ margin: '0 4px' }}>｜</span>
+            <span>
+              当前版本 {__BUILD_TIME__} build({__BUILD_COMMIT__})
+            </span>
           </span>
         </footer>
       </div>

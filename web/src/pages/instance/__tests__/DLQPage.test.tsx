@@ -34,7 +34,7 @@ vi.mock('../../../services/instanceService', () => ({
   listInstances: vi.fn().mockResolvedValue([
     {
       id: 'instance-1',
-      name: 'Instance 1',
+      name: 'instance-1',
       endpoint: 'namesrv-1:9876',
       type: 'DIRECT',
       remark: '',
@@ -45,7 +45,7 @@ vi.mock('../../../services/instanceService', () => ({
     },
     {
       id: 'instance-2',
-      name: 'Instance 2',
+      name: 'instance-2',
       endpoint: 'namesrv-2:9876',
       type: 'DIRECT',
       remark: '',
@@ -336,7 +336,7 @@ describe('DLQ page', () => {
 
     await user.click(screen.getAllByRole('combobox')[0]);
     await user.click(
-      await screen.findByText('Instance 2', { selector: '.ant-select-item-option-content' }),
+      await screen.findByText('instance-2', { selector: '.ant-select-item-option-content' }),
     );
 
     await waitFor(() => {

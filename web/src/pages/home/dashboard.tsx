@@ -82,8 +82,7 @@ const DashboardPage = () => {
     void Promise.resolve().then(loadDashboard);
   }, [loadDashboard]);
 
-  const visibleDashboard =
-    dashboardInstanceId === selectedInstanceId ? dashboard : null;
+  const visibleDashboard = dashboardInstanceId === selectedInstanceId ? dashboard : null;
 
   const dashboardHeader = (
     <PageHeader
@@ -97,7 +96,7 @@ const DashboardPage = () => {
             placeholder="All configured instances"
             value={selectedInstanceId}
             onChange={setSelectedInstanceId}
-            options={instances.map((instance) => ({ value: instance.id, label: instance.name }))}
+            options={instances.map((instance) => ({ value: instance.name, label: instance.name }))}
             style={{ width: 220 }}
           />
           <Button onClick={() => void loadDashboard()} loading={loading}>

@@ -110,7 +110,8 @@ const NameServerConfigDriftPage = () => {
       setSelectedClusterId(firstClusterId);
       if (firstClusterId) void runCheck(firstClusterId, instanceId);
     } catch {
-      if (sequence === requestSequence.current) message.error(t('nameServerDrift.loadClustersFailed'));
+      if (sequence === requestSequence.current)
+        message.error(t('nameServerDrift.loadClustersFailed'));
     } finally {
       if (sequence === requestSequence.current) setClustersLoading(false);
     }
@@ -199,7 +200,7 @@ const NameServerConfigDriftPage = () => {
           value={selectedInstanceId}
           onChange={(instanceId) => void selectInstance(instanceId)}
           placeholder={t('common.selectInstance')}
-          options={instances.map((instance) => ({ label: instance.name, value: instance.id }))}
+          options={instances.map((instance) => ({ label: instance.name, value: instance.name }))}
           style={{ width: 'min(100%, 280px)' }}
         />
         <Select
@@ -221,7 +222,9 @@ const NameServerConfigDriftPage = () => {
             loading={checking}
             disabled={!selectedClusterId || !selectedInstanceId}
             onClick={() =>
-              selectedClusterId && selectedInstanceId && void runCheck(selectedClusterId, selectedInstanceId)
+              selectedClusterId &&
+              selectedInstanceId &&
+              void runCheck(selectedClusterId, selectedInstanceId)
             }
           />
         </Tooltip>

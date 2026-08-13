@@ -36,8 +36,8 @@ describe('useInstanceFilter', () => {
   it('replaces an unknown route instance with the first available instance', async () => {
     instanceServiceMocks.listInstances.mockResolvedValue([
       {
-        id: 'instance-a',
-        name: 'Instance A',
+        id: 'uuid-a',
+        name: 'instance-a',
         remark: '',
         type: 'PROXY',
         endpoint: '127.0.0.1:8080',
@@ -64,8 +64,8 @@ describe('useInstanceFilter', () => {
   it('keeps the resource-plan section when normalizing instance scoped routes', async () => {
     instanceServiceMocks.listInstances.mockResolvedValue([
       {
-        id: 'instance-a',
-        name: 'Instance A',
+        id: 'uuid-a',
+        name: 'instance-a',
         remark: '',
         type: 'PROXY',
         endpoint: '127.0.0.1:8080',

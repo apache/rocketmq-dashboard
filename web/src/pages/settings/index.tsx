@@ -418,7 +418,9 @@ export const DataSourceTab = () => {
         return instanceIds
           .map(
             (instanceId) =>
-              instances.find((instance) => instance.id === instanceId)?.name ?? instanceId,
+              instances.find(
+                (instance) => instance.name === instanceId || instance.id === instanceId,
+              )?.name ?? instanceId,
           )
           .join('、');
       },
@@ -530,7 +532,10 @@ export const DataSourceTab = () => {
               mode="multiple"
               allowClear
               placeholder="选择此数据源对应的实例"
-              options={instances.map((instance) => ({ value: instance.id, label: instance.name }))}
+              options={instances.map((instance) => ({
+                value: instance.name,
+                label: instance.name,
+              }))}
             />
           </Form.Item>
 

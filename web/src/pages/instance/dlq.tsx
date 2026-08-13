@@ -27,7 +27,6 @@ import {
   Modal,
   DatePicker,
   Typography,
-  Select,
   message,
 } from 'antd';
 import { MagnifyingGlass, Eye, ArrowsCounterClockwise, Download } from '@phosphor-icons/react';
@@ -35,6 +34,7 @@ import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import PageHeader from '../../components/PageHeader';
+import { InstanceSelect } from '../../components/InstanceSelect';
 import { useLang } from '../../i18n/LangContext';
 import type { DLQGroup } from '../../api/message';
 import { listDLQGroups, resendDLQ } from '../../services/messageService';
@@ -362,13 +362,11 @@ const DLQPage = () => {
       {/* ── Filter Bar ── */}
       <Flex justify="space-between" align="center" style={{ marginBottom: 16 }}>
         <Space size={12} wrap>
-          <Select
-            placeholder="选择实例"
+          <InstanceSelect
             value={selectedInstanceId || undefined}
             onChange={selectInstance}
             options={instanceOptions}
             style={{ width: 220 }}
-            notFoundContent="暂无实例"
           />
           <Input.Search
             placeholder="搜索 Group 名称或 DLQ Topic"

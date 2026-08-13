@@ -1,5 +1,7 @@
 # Stage 1: Build
 FROM node:20-alpine AS build
+ARG VITE_GIT_COMMIT
+ENV VITE_GIT_COMMIT=${VITE_GIT_COMMIT}
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci

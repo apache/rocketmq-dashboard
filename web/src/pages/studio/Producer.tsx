@@ -72,7 +72,7 @@ const ProducerPage = () => {
       .then((nextInstances) => {
         if (cancelled) return;
         setInstances(nextInstances);
-        setSelectedInstanceId((current) => current || nextInstances[0]?.id || '');
+        setSelectedInstanceId((current) => current || nextInstances[0]?.name || '');
       })
       .catch(() => {
         if (!cancelled) {
@@ -246,7 +246,10 @@ const ProducerPage = () => {
               onChange={handleInstanceChange}
               placeholder="Select instance"
               style={{ width: 220 }}
-              options={instances.map((instance) => ({ value: instance.id, label: instance.name }))}
+              options={instances.map((instance) => ({
+                value: instance.name,
+                label: instance.name,
+              }))}
             />
           </Form.Item>
           <Form.Item

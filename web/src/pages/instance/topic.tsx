@@ -53,6 +53,7 @@ import {
   MinusCircleOutlined,
 } from '@ant-design/icons';
 import PageHeader from '../../components/PageHeader';
+import { InstanceSelect } from '../../components/InstanceSelect';
 import { useLang } from '../../i18n/LangContext';
 import { TOPIC_TYPE_MAP, CLUSTER_TYPE_MAP } from '../../constants/theme';
 import type { Topic, BrokerRoute, ConsumerGroupInfo, TopicConsumerPage } from '../../api/metadata';
@@ -87,6 +88,23 @@ const TYPE_OPTIONS = [
   { label: '延迟', value: 'DELAY' },
   { label: '事务', value: 'TRANSACTION' },
   { label: 'LiteTopic', value: 'LITE' },
+];
+
+// Topic 类型选项（描述参考阿里云 RocketMQ 消息类型语义），创建弹窗用 Segmented 展示
+const TOPIC_TYPE_CARDS = [
+  { value: 'NORMAL', label: '普通消息', desc: '适用于无特殊顺序要求的常规消息收发场景。' },
+  { value: 'FIFO', label: '顺序消息', desc: '严格按照消息发送顺序消费，适用于顺序敏感的业务。' },
+  { value: 'DELAY', label: '延迟消息', desc: '消息在指定的延迟时间或定时后才投递给消费者。' },
+  {
+    value: 'TRANSACTION',
+    label: '事务消息',
+    desc: '支持分布式事务，保证本地事务与消息发送的最终一致性。',
+  },
+  {
+    value: 'LITE',
+    label: 'LiteTopic',
+    desc: '轻量级主题，资源开销更低，适用于大规模轻量消息场景。',
+  },
 ];
 
 // ─── Perm label ───────────────────────────────────────────────────
@@ -293,6 +311,7 @@ const TopicPage = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [form] = Form.useForm();
+  const createTopicType = Form.useWatch('type', form);
   const [sendModalOpen, setSendModalOpen] = useState(false);
   const [sendTopic, setSendTopic] = useState<Topic | null>(null);
   const [sending, setSending] = useState(false);
@@ -868,19 +887,46 @@ const TopicPage = () => {
       {/* ── Header ────────────────────────────────────────────── */}
       <PageHeader title={t('topic.title')} subtitle={`共 ${filteredTopics.length} 个 Topic`} />
 
-      {/* ── Endpoint hint ─────────────────────────────────────── */}
+      {/* ── Current instance banner ───────────────────────────── */}
       {selectedInstance && (
-        <div style={{ marginBottom: 16, fontSize: 13, lineHeight: 1.8 }}>
-          <Space wrap size={8}>
-            <Text strong>
-              当前实例：{selectedInstance.name}（
-              {selectedInstance.type === 'DIRECT' ? 'Direct 模式' : 'Proxy 模式'}）
-            </Text>
-            <Text code copyable>
-              {selectedInstance.endpoint}
-            </Text>
-          </Space>
-          <div style={{ color: '#8c8c8c' }}>
+        <div
+          style={{
+            marginBottom: 16,
+            padding: '12px 16px',
+            borderRadius: 8,
+            border: '1px solid var(--bolt-elements-border-color, #f0f0f0)',
+            background: 'var(--bolt-elements-bg-depth-2, #fafafa)',
+          }}
+        >
+          <Flex align="center" wrap="wrap" gap="8px 28px" style={{ fontSize: 14 }}>
+            <span>
+              <span style={{ color: '#8c8c8c', marginRight: 6 }}>当前实例</span>
+              <span>{selectedInstance.name}</span>
+            </span>
+            <span>
+              <span style={{ color: '#8c8c8c', marginRight: 6 }}>接入模式</span>
+              <span>{selectedInstance.type === 'DIRECT' ? 'Direct 模式' : 'Proxy 模式'}</span>
+            </span>
+            {selectedInstance.vendor === 'ALIYUN' && (
+              <span>
+                <span style={{ color: '#8c8c8c', marginRight: 6 }}>厂商</span>
+                <span>阿里云</span>
+              </span>
+            )}
+            {selectedInstance.vendor === 'TENCENT' && (
+              <span>
+                <span style={{ color: '#8c8c8c', marginRight: 6 }}>厂商</span>
+                <span>腾讯云</span>
+              </span>
+            )}
+            <span>
+              <span style={{ color: '#8c8c8c', marginRight: 6 }}>接入点</span>
+              <Text code copyable style={{ fontSize: 16 }}>
+                {selectedInstance.endpoint}
+              </Text>
+            </span>
+          </Flex>
+          <div style={{ marginTop: 10, fontSize: 14, lineHeight: 1.6, color: '#8c8c8c' }}>
             {selectedInstance.type === 'DIRECT'
               ? '接入点为 NameServer SLB 地址（K8s 场景下一般为 NameServer Service 地址），Direct 模式客户端通过该地址发现 Broker。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。'
               : '接入点为 Proxy SLB 内网地址，gRPC/Remoting 客户端直接连接该地址收发消息。若客户端环境无法解析该地址，请自行配置 DNS 解析或在客户端 hosts 中映射。'}
@@ -897,8 +943,7 @@ const TopicPage = () => {
         justify="space-between"
       >
         <Space size={12} wrap>
-          <Select
-            placeholder="选择实例"
+          <InstanceSelect
             value={selectedInstanceId || undefined}
             onChange={(value) => {
               resetTablePage();
@@ -906,7 +951,6 @@ const TopicPage = () => {
             }}
             options={instanceOptions}
             style={{ width: 220 }}
-            notFoundContent="暂无实例"
           />
           <Input.Search
             placeholder="搜索 Topic 名称"
@@ -1183,10 +1227,15 @@ const TopicPage = () => {
             <Input placeholder="请输入 Topic 名称" />
           </Form.Item>
 
-          <Form.Item label="类型" name="type" rules={[{ required: true }]}>
-            <Select
-              options={TYPE_OPTIONS.filter(
-                (o) => o.value && (!isCloudInstance || o.value !== 'LITE'),
+          <Form.Item
+            label="类型"
+            name="type"
+            rules={[{ required: true }]}
+            extra={TOPIC_TYPE_CARDS.find((c) => c.value === createTopicType)?.desc}
+          >
+            <Segmented
+              options={TOPIC_TYPE_CARDS.filter((c) => !isCloudInstance || c.value !== 'LITE').map(
+                ({ value, label }) => ({ value, label }),
               )}
             />
           </Form.Item>

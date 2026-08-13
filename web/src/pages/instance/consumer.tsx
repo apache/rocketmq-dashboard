@@ -59,6 +59,7 @@ import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 
 import PageHeader from '../../components/PageHeader';
+import { InstanceSelect } from '../../components/InstanceSelect';
 import { useLang } from '../../i18n/LangContext';
 import { TOPIC_TYPE_MAP, PROTOCOL_MAP } from '../../constants/theme';
 import { formatDateTime } from '../../utils/format';
@@ -829,13 +830,11 @@ const ConsumerPageContent = ({
       {/* ─── Filter Bar ─── */}
       <Flex justify="space-between" align="center" style={{ marginBottom: 16 }}>
         <Space size={12} wrap>
-          <Select
-            placeholder="选择实例"
+          <InstanceSelect
             value={selectedInstanceId || undefined}
             onChange={selectInstance}
             options={instanceOptions}
             style={{ width: 220 }}
-            notFoundContent="暂无实例"
           />
           <Input.Search
             placeholder="搜索 Group 名称或 Topic"

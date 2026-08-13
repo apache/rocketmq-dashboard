@@ -227,7 +227,7 @@ describe('TopicPage', () => {
     instanceServiceMocks.listInstances.mockResolvedValue([
       {
         id: 'instance-a',
-        name: 'Instance A',
+        name: 'instance-a',
         type: 'DIRECT',
         endpoint: '127.0.0.1:9876',
         remark: '',
@@ -277,7 +277,7 @@ describe('TopicPage', () => {
       {
         ...selectedInstance,
         id: 'instance-a',
-        name: 'Instance A',
+        name: 'instance-a',
         type: 'DIRECT',
       },
     ]);
