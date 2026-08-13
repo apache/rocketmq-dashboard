@@ -52,6 +52,11 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
     private static final String ANTHROPIC_APP_SUFFIX = "/apps/anthropic";
     private static final long STREAM_TIMEOUT_SECONDS = 300;
     private static final long OUTPUT_DRAIN_TIMEOUT_SECONDS = 10;
+    /** Hard cap for a single stream-json line and the collected stderr, in bytes. */
+    private static final long MAX_STREAM_LINE_BYTES = 1_048_576;
+    private static final long MAX_STDERR_BYTES = 1_048_576;
+    /** Cap for the retained fallback result text. */
+    private static final int MAX_RESULT_TEXT_CHARS = 262_144;
 
     private final LlmProperties llmProperties;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -144,8 +149,12 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
             try (BufferedReader reader = new BufferedReader(
                     new InputStreamReader(stdout, StandardCharsets.UTF_8))) {
                 String line;
-                while ((line = reader.readLine()) != null) {
-                    parseStreamLine(line, tokenConsumer, emitted, resultText);
+                while ((line = readLineBounded(reader, MAX_STREAM_LINE_BYTES)) != null) {
+                    if (resultText.length() < MAX_RESULT_TEXT_CHARS) {
+                        parseStreamLine(line, tokenConsumer, emitted, resultText);
+                    } else {
+                        parseStreamLine(line, tokenConsumer, emitted, resultText, true);
+                    }
                 }
                 result.complete(null);
             } catch (Exception exception) {
@@ -155,11 +164,34 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
         return result;
     }
 
+    /** Reads a line but never retains more than {@code maxBytes} of it. */
+    private static String readLineBounded(BufferedReader reader, long maxBytes) throws IOException {
+        StringBuilder builder = new StringBuilder(256);
+        int total = 0;
+        int next;
+        while ((next = reader.read()) != -1) {
+            if (next == '\n') {
+                break;
+            }
+            if (total < maxBytes) {
+                builder.append((char) next);
+            }
+            total++;
+        }
+        if (total == 0 && next == -1) {
+            return null;
+        }
+        return builder.toString();
+    }
+
     private CompletableFuture<String> readAsync(InputStream stream) {
         CompletableFuture<String> result = new CompletableFuture<>();
         Thread.ofVirtual().start(() -> {
             try (stream) {
-                result.complete(new String(stream.readAllBytes(), StandardCharsets.UTF_8));
+                byte[] all = stream.readNBytes((int) MAX_STDERR_BYTES + 1);
+                String text = new String(all, StandardCharsets.UTF_8);
+                result.complete(text.length() > MAX_RESULT_TEXT_CHARS
+                        ? text.substring(0, MAX_RESULT_TEXT_CHARS) : text);
             } catch (Exception exception) {
                 result.completeExceptionally(exception);
             }
@@ -180,6 +212,13 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
     /** Parses one stream-json line: emits text deltas, records the final result. */
     private void parseStreamLine(String line, Consumer<String> tokenConsumer,
                                  AtomicBoolean emitted, StringBuilder resultText) {
+        parseStreamLine(line, tokenConsumer, emitted, resultText, false);
+    }
+
+    /** Parses one stream-json line; when {@code ignoreFallback} is set, deltas are still
+     *  emitted but the full assistant/result text is not retained. */
+    private void parseStreamLine(String line, Consumer<String> tokenConsumer,
+                                 AtomicBoolean emitted, StringBuilder resultText, boolean ignoreFallback) {
         if (!StringUtils.hasText(line)) {
             return;
         }
@@ -196,6 +235,9 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
                     }
                 }
             } else if ("assistant".equals(type)) {
+                if (ignoreFallback) {
+                    return;
+                }
                 for (JsonNode block : node.path("message").path("content")) {
                     if ("text".equals(block.path("type").asText(""))) {
                         String text = block.path("text").asText("");
@@ -207,6 +249,9 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
                     }
                 }
             } else if ("result".equals(type)) {
+                if (ignoreFallback) {
+                    return;
+                }
                 String result = node.path("result").asText("");
                 if (!result.isEmpty() && !emitted.get()) {
                     resultText.setLength(0);
