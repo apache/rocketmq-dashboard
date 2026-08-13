@@ -401,6 +401,7 @@ const AiPage = () => {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const chatInFlightRef = useRef(false);
   const conversationIdRef = useRef<string | null>(null);
   const toolLoadRequestRef = useRef(0);
   const consumedDraftRef = useRef(false);
@@ -503,11 +504,12 @@ const AiPage = () => {
     ) => {
       const text = (textOverride ?? inputValue).trim();
       const model = modelOverride ?? selectedModel;
-      if (!text || loading) return;
+      if (!text || loading || chatInFlightRef.current) return;
       if (!llmReady) {
         message.warning('请先配置并启用 LLM Provider');
         return;
       }
+      chatInFlightRef.current = true;
 
       if (!conversationIdRef.current) {
         conversationIdRef.current = `conversation-${Date.now()}`;
@@ -580,6 +582,7 @@ const AiPage = () => {
           message.error(errorMessage);
         }
       } finally {
+        chatInFlightRef.current = false;
         if (abortControllerRef.current === controller) abortControllerRef.current = null;
         setMessages((prev) =>
           prev.map((item) => (item.id === responseId ? { ...item, pending: false } : item)),
@@ -604,6 +607,7 @@ const AiPage = () => {
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.nativeEvent.isComposing) return;
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         handleSend();
