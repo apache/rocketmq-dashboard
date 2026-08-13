@@ -32,5 +32,8 @@ public interface AlertRepository {
 
     SystemAlertVO saveAlert(SystemAlertVO alert);
 
+    /** Updates an existing system alert without re-inserting a deleted one. */
+    boolean replaceAlert(SystemAlertVO alert);
+
     int deleteAcknowledgedAlerts();
 }

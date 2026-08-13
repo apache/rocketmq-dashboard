@@ -565,12 +565,12 @@ class AlertServiceTest {
         SystemAlertVO existing = SystemAlertVO.builder().id("a1").level(AlertLevel.error)
                 .title("Broker Down").acknowledged(false).build();
         when(alertRepository.findAlerts(null)).thenReturn(List.of(existing));
-        when(alertRepository.saveAlert(any(SystemAlertVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(alertRepository.replaceAlert(any(SystemAlertVO.class))).thenReturn(true);
 
         SystemAlertVO result = alertService.acknowledgeAlert("a1");
 
         assertThat(result.isAcknowledged()).isTrue();
-        verify(alertRepository).saveAlert(result);
+        verify(alertRepository).replaceAlert(result);
         verify(operationAuditService).record(eq("ACKNOWLEDGE_SYSTEM_ALERT"), eq("SYSTEM_ALERT"), eq("a1"),
                 eq(null), eq("acknowledged=true"), eq("SUCCESS"), eq(null));
     }
