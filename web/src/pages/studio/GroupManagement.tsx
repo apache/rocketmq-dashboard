@@ -396,7 +396,7 @@ const GroupManagementPage = () => {
                             {t('groupMgmt.subscribedTopics')}
                           </div>
                           <div style={{ fontSize: 24, fontWeight: 600 }}>
-                            {selectedGroup.subscribedTopics.length}
+                            {(selectedGroup.subscribedTopics ?? []).length}
                           </div>
                         </Card>
                       </Col>
@@ -431,7 +431,7 @@ const GroupManagementPage = () => {
                         {selectedGroup.createdAt}
                       </Descriptions.Item>
                       <Descriptions.Item label={t('groupMgmt.subscribedTopics')} span={2}>
-                        {selectedGroup.subscribedTopics.join(', ')}
+                        {(selectedGroup.subscribedTopics ?? []).join(', ')}
                       </Descriptions.Item>
                     </Descriptions>
                     <h4 style={{ marginTop: 20, marginBottom: 12 }}>
