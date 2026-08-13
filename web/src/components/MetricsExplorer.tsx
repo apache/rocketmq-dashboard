@@ -59,8 +59,10 @@ interface NumericSample {
 
 const toNumericSamples = (series: MetricSeries): NumericSample[] =>
   series.values
-    .map((sample) => ({ timestamp: sample.timestamp, value: Number(sample.value) }))
-    .filter((sample) => Number.isFinite(sample.timestamp) && Number.isFinite(sample.value));
+    .map((sample, index) => ({ timestamp: sample.timestamp, value: Number(sample.value), index }))
+    .filter((sample) => Number.isFinite(sample.timestamp) && Number.isFinite(sample.value))
+    .sort((left, right) => left.timestamp - right.timestamp || left.index - right.index)
+    .map(({ timestamp, value }) => ({ timestamp, value }));
 
 const seriesLabel = (series: MetricSeries, fallback: string) => {
   const labels = Object.entries(series.labels)

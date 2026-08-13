@@ -147,6 +147,29 @@ describe('MetricsExplorer', () => {
     expect(screen.getByText('42 messages/s')).toBeInTheDocument();
   });
 
+  it('sorts provider samples before drawing and selecting the latest value', async () => {
+    vi.mocked(queryMetrics).mockResolvedValue({
+      ...metricData,
+      series: [
+        {
+          ...metricData.series[0],
+          values: [
+            { timestamp: 1_800_000_000, value: '42' },
+            { timestamp: 1_799_996_400, value: '40' },
+          ],
+        },
+      ],
+    });
+
+    renderWithProviders(<MetricsExplorer />);
+
+    expect(await screen.findByText('42 messages/s')).toBeInTheDocument();
+    const chart = screen.getByRole('img', { name: 'Message In TPS time series' });
+    const points = chart.querySelector('polyline')?.getAttribute('points')?.split(' ') ?? [];
+    const xCoordinates = points.map((point) => Number(point.split(',')[0]));
+    expect(xCoordinates).toEqual([...xCoordinates].sort((left, right) => left - right));
+  });
+
   it('updates the query window when the range changes', async () => {
     const user = userEvent.setup();
     renderWithProviders(<MetricsExplorer />);
