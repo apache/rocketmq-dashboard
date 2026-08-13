@@ -31,12 +31,13 @@ import {
 const mock = new MockAdapter(client);
 const encoder = new TextEncoder();
 
-function streamResponse(chunks: string[]): Response {
+function streamResponse(chunks: string[], onCancel?: () => void): Response {
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
       chunks.forEach((chunk) => controller.enqueue(encoder.encode(chunk)));
-      controller.close();
+      if (!onCancel) controller.close();
     },
+    cancel: onCancel,
   });
   return new Response(body, { status: 200 });
 }
@@ -133,6 +134,34 @@ describe('AI API', () => {
       );
 
       expect(chunks).toEqual(['hello', 'raw text']);
+    });
+
+    it('cancels the reader after the done event', async () => {
+      const onCancel = vi.fn();
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(streamResponse(['data: [DONE]\n\n'], onCancel)),
+      );
+
+      await chatStream({ message: 'hello', mode: 'chat', model: 'stub' }, vi.fn());
+
+      expect(onCancel).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects an unbounded SSE event and cancels the reader', async () => {
+      const onCancel = vi.fn();
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(streamResponse(['data: ' + 'x'.repeat(1024 * 1024)], onCancel)),
+      );
+
+      await expect(
+        chatStream({ message: 'hello', mode: 'chat', model: 'stub' }, vi.fn()),
+      ).rejects.toMatchObject({
+        message: 'AI stream event exceeds 1 MiB',
+        code: 'llm.stream.event_too_large',
+      });
+      expect(onCancel).toHaveBeenCalledTimes(1);
     });
 
     it('throws structured errors from SSE error events', async () => {

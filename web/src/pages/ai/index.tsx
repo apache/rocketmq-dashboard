@@ -46,7 +46,7 @@ import { AiStreamError, chatStream, executeTool, listTools, type McpTool } from 
 import { listClusters } from '../../api/cluster';
 import { getLlmConfig, getLlmModels, type LlmConfig } from '../../api/llm';
 import { useEngineStore } from '../../stores/engineStore';
-import { getChatDraft } from './chatDraft';
+import { getChatDraft, type ChatMode } from './chatDraft';
 
 const { Text } = Typography;
 
@@ -404,9 +404,12 @@ const AiPage = () => {
   const conversationIdRef = useRef<string | null>(null);
   const toolLoadRequestRef = useRef(0);
   const consumedDraftRef = useRef(false);
-  const pendingAutoSendRef = useRef<{ prompt: string; model?: string; enhance?: boolean } | null>(
-    null,
-  );
+  const pendingAutoSendRef = useRef<{
+    prompt: string;
+    model?: string;
+    mode?: ChatMode;
+    enhance?: boolean;
+  } | null>(null);
 
   const scrollToBottom = useCallback(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -466,6 +469,7 @@ const AiPage = () => {
       pendingAutoSendRef.current = {
         prompt: draft.prompt,
         model: draft.model,
+        mode: draft.mode,
         enhance: draft.enhance,
       };
       navigate('/ai', { replace: true, state: null });
@@ -491,7 +495,12 @@ const AiPage = () => {
   const llmReady = Boolean((llmConfig?.ready ?? llmConfig?.enabled) && selectedModel);
 
   const handleSend = useCallback(
-    async (textOverride?: string, modelOverride?: string, enhance?: boolean) => {
+    async (
+      textOverride?: string,
+      modelOverride?: string,
+      enhance?: boolean,
+      modeOverride: ChatMode = 'chat',
+    ) => {
       const text = (textOverride ?? inputValue).trim();
       const model = modelOverride ?? selectedModel;
       if (!text || loading) return;
@@ -528,7 +537,7 @@ const AiPage = () => {
         await chatStream(
           {
             message: text,
-            mode: 'chat',
+            mode: modeOverride,
             model,
             engine: useEngineStore.getState().engine,
             enhance,
@@ -586,7 +595,7 @@ const AiPage = () => {
     const pending = pendingAutoSendRef.current;
     if (!pending || loading || !llmReady) return;
     pendingAutoSendRef.current = null;
-    void handleSend(pending.prompt, pending.model, pending.enhance);
+    void handleSend(pending.prompt, pending.model, pending.enhance, pending.mode);
   }, [llmReady, loading, handleSend]);
 
   const handleStop = useCallback(() => {

@@ -148,4 +148,13 @@ describe('API client response contract', () => {
     expect(localStorage.getItem('rocketmq-studio-user')).toBeNull();
     expect(localStorage.getItem('rocketmq-studio-user-admin')).toBeNull();
   });
+
+  it('preserves the original 401 error when the request URL is malformed', async () => {
+    localStorage.setItem('token', 'expired-token');
+    mock.onGet('http://[').reply(401, { code: 401, message: 'Unauthorized', data: null });
+
+    await expect(client.get('http://[')).rejects.toMatchObject({ response: { status: 401 } });
+
+    expect(localStorage.getItem('token')).toBeNull();
+  });
 });
