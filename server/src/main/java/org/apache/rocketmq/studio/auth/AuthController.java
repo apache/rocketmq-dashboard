@@ -21,6 +21,7 @@ import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
@@ -62,7 +63,7 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public Result<LoginVO> login(@RequestBody(required = false) LoginDTO request) {
+    public Result<LoginVO> login(@Valid @RequestBody(required = false) LoginDTO request) {
         if (request == null) {
             throw new BusinessException(400, "Login request is required");
         }
