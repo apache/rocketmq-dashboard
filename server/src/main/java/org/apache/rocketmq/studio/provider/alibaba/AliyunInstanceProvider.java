@@ -442,12 +442,16 @@ public class AliyunInstanceProvider implements InstanceProvider {
         GetTraceResponseBody body = response == null ? null : response.getBody();
         GetTraceResponseBody.Data data = body == null ? null : body.getData();
         if (data == null) {
-            return TraceRecordVO.builder()
-                    .nodes(Collections.emptyList())
-                    .consumerStatus(Collections.emptyList())
-                    .build();
+            return emptyTraceRecord();
         }
         return AliyunConverters.toTraceRecord(data);
+    }
+
+    private static TraceRecordVO emptyTraceRecord() {
+        return TraceRecordVO.builder()
+                .nodes(Collections.emptyList())
+                .consumerStatus(Collections.emptyList())
+                .build();
     }
 
     private Context resolve(String instanceId) {
