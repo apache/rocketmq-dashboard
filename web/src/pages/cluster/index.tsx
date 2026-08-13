@@ -336,7 +336,7 @@ const ClusterPage = () => {
       flushDiskType: cfg.flushDiskType ?? 'ASYNC_FLUSH',
       autoCreateTopicEnable: cfg.autoCreateTopicEnable ?? false,
       autoCreateSubscriptionGroup: cfg.autoCreateSubscriptionGroup ?? false,
-      maxMessageSizeMB: Math.round((cfg.maxMessageSize ?? 4194304) / 1048576),
+      maxMessageSizeMB: (cfg.maxMessageSize ?? 4194304) / 1048576,
       fileReservedTime: cfg.fileReservedTime ?? 72,
       writeQueueNums: cfg.writeQueueNums ?? 8,
       readQueueNums: cfg.readQueueNums ?? 8,
@@ -570,42 +570,45 @@ const ClusterPage = () => {
             open={configModalOpen}
             onCancel={() => setConfigModalOpen(false)}
             onOk={() => {
-              configForm.validateFields().then(async (values) => {
-                if (!selectedCluster) return;
-                try {
-                  const { maxMessageSizeMB, ...configValues } = values;
-                  const nextConfig: ClusterConfig = {
-                    ...(selectedCluster.config ?? {}),
-                    ...configValues,
-                    maxMessageSize: maxMessageSizeMB * 1048576,
-                  };
-                  const result = await updateClusterConfig({
-                    id: selectedCluster.id,
-                    instanceId: selectedInstanceIdRef.current || undefined,
-                    ...nextConfig,
-                  });
-                  if (result.status === 'SUCCESS') {
-                    await requestRefresh('operation');
-                    message.success(t('cluster.configUpdated'));
-                    setConfigModalOpen(false);
-                    return;
-                  }
+              void configForm.validateFields().then(
+                async (values) => {
+                  if (!selectedCluster) return;
+                  try {
+                    const { maxMessageSizeMB, ...configValues } = values;
+                    const nextConfig: ClusterConfig = {
+                      ...(selectedCluster.config ?? {}),
+                      ...configValues,
+                      maxMessageSize: Math.round(maxMessageSizeMB * 1048576),
+                    };
+                    const result = await updateClusterConfig({
+                      id: selectedCluster.id,
+                      instanceId: selectedInstanceIdRef.current || undefined,
+                      ...nextConfig,
+                    });
+                    if (result.status === 'SUCCESS') {
+                      await requestRefresh('operation');
+                      message.success(t('cluster.configUpdated'));
+                      setConfigModalOpen(false);
+                      return;
+                    }
 
-                  const failedAddresses = result.failedBrokers
-                    .map((failure) => failure.address)
-                    .join(', ');
-                  if (result.status === 'PARTIAL') {
-                    await requestRefresh('operation');
-                    message.warning(
-                      t('cluster.configPartiallyUpdated', { brokers: failedAddresses }),
-                    );
-                    return;
+                    const failedAddresses = result.failedBrokers
+                      .map((failure) => failure.address)
+                      .join(', ');
+                    if (result.status === 'PARTIAL') {
+                      await requestRefresh('operation');
+                      message.warning(
+                        t('cluster.configPartiallyUpdated', { brokers: failedAddresses }),
+                      );
+                      return;
+                    }
+                    message.error(t('cluster.configUpdateFailed', { brokers: failedAddresses }));
+                  } catch {
+                    message.error(t('cluster.configUpdateFailed', { brokers: '' }));
                   }
-                  message.error(t('cluster.configUpdateFailed', { brokers: failedAddresses }));
-                } catch {
-                  message.error(t('cluster.configUpdateFailed', { brokers: '' }));
-                }
-              });
+                },
+                () => undefined,
+              );
             }}
             width={560}
           >
@@ -631,23 +634,35 @@ const ClusterPage = () => {
                 <Switch />
               </Form.Item>
               <Form.Item label={t('cluster.maxMessageSize')} name="maxMessageSizeMB">
-                <InputNumber min={1} max={128} style={{ width: '100%' }} />
+                <InputNumber min={1} max={128} step={0.5} style={{ width: '100%' }} />
               </Form.Item>
               <Form.Item label={t('cluster.fileReservedTime')} name="fileReservedTime">
-                <InputNumber min={1} max={720} style={{ width: '100%' }} />
+                <InputNumber min={1} max={720} step={1} precision={0} style={{ width: '100%' }} />
               </Form.Item>
               <Form.Item label={t('cluster.writeQueues')} name="writeQueueNums">
-                <InputNumber min={1} max={256} style={{ width: '100%' }} />
+                <InputNumber min={1} max={256} step={1} precision={0} style={{ width: '100%' }} />
               </Form.Item>
-              <Form.Item label={t('cluster.readQueues')} name="readQueueNums">
-                <InputNumber min={1} max={256} style={{ width: '100%' }} />
+              <Form.Item
+                label={t('cluster.readQueues')}
+                name="readQueueNums"
+                dependencies={['writeQueueNums']}
+                rules={[
+                  ({ getFieldValue }) => ({
+                    validator(_, value) {
+                      if (value === getFieldValue('writeQueueNums')) return Promise.resolve();
+                      return Promise.reject(new Error('读写队列数必须相等'));
+                    },
+                  }),
+                ]}
+              >
+                <InputNumber min={1} max={256} step={1} precision={0} style={{ width: '100%' }} />
               </Form.Item>
               <Text type="secondary" style={{ display: 'block', marginTop: -16, marginBottom: 16 }}>
                 RocketMQ Broker uses one default Topic queue count; read and write values must
                 match.
               </Text>
               <Form.Item label={t('cluster.brokerPermission')} name="brokerPermission">
-                <InputNumber min={0} max={7} style={{ width: '100%' }} />
+                <InputNumber min={0} max={7} step={1} precision={0} style={{ width: '100%' }} />
               </Form.Item>
             </Form>
           </Modal>
