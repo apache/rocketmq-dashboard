@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.instance;
 
+import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
@@ -23,6 +24,7 @@ import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
 @Data
 public class CreateInstanceDTO {
 
+    @NotBlank(message = "name is required")
     private String name;
 
     private InstanceType type;
