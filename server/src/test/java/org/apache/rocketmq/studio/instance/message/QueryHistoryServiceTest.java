@@ -17,6 +17,8 @@
 package org.apache.rocketmq.studio.instance.message;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import org.apache.rocketmq.studio.common.domain.PageResult;
 import org.apache.rocketmq.studio.auth.AuthenticatedUserContext;
 import org.apache.rocketmq.studio.persistence.entity.RmqMessageQuery;
 import org.apache.rocketmq.studio.persistence.entity.RmqTraceQuery;
@@ -101,5 +103,52 @@ class QueryHistoryServiceTest {
 
         verify(messageQueryMapper, never()).delete(any());
         verify(traceQueryMapper, never()).delete(any());
+    }
+
+    @Test
+    void listsMessageHistoryAsNewestFirstPage() {
+        RmqMessageQuery entity = new RmqMessageQuery();
+        entity.setId(9L);
+        entity.setQueryType("KEY");
+        entity.setTopic("orders");
+        entity.setMessageKey("order-1");
+        entity.setResultCount(3);
+        entity.setClusterId("cluster-a");
+        entity.setQueriedBy("alice");
+        entity.setQueriedAt(LocalDateTime.of(2026, 8, 5, 12, 0));
+        when(messageQueryMapper.selectPage(any(Page.class), any(Wrapper.class)))
+                .thenAnswer(invocation -> {
+                    Page<RmqMessageQuery> result = invocation.getArgument(0);
+                    result.setRecords(java.util.List.of(entity));
+                    result.setTotal(1);
+                    return result;
+                });
+
+        PageResult<MessageQueryHistoryVO> result = service.listMessageQueries(
+                "cluster-a", "KEY", "order", 1, 20);
+
+        assertThat(result.getTotal()).isEqualTo(1);
+        assertThat(result.getItems()).singleElement().satisfies(item -> {
+            assertThat(item.getMessageKey()).isEqualTo("order-1");
+            assertThat(item.getQueriedBy()).isEqualTo("alice");
+        });
+    }
+
+    @Test
+    void summarizesBothHistoryStreams() {
+        RmqMessageQuery message = new RmqMessageQuery();
+        message.setQueriedAt(LocalDateTime.of(2026, 8, 5, 10, 0));
+        RmqTraceQuery trace = new RmqTraceQuery();
+        trace.setQueriedAt(LocalDateTime.of(2026, 8, 5, 12, 0));
+        when(messageQueryMapper.selectCount(any())).thenReturn(7L);
+        when(traceQueryMapper.selectCount(any())).thenReturn(4L);
+        when(messageQueryMapper.selectOne(any())).thenReturn(message);
+        when(traceQueryMapper.selectOne(any())).thenReturn(trace);
+
+        QueryHistorySummaryVO summary = service.summarize("cluster-a");
+
+        assertThat(summary.getMessageQueries()).isEqualTo(7);
+        assertThat(summary.getTraceQueries()).isEqualTo(4);
+        assertThat(summary.getLatestQueryAt()).isEqualTo(LocalDateTime.of(2026, 8, 5, 12, 0));
     }
 }
