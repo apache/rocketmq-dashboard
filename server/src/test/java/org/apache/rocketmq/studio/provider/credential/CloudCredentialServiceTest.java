@@ -182,6 +182,7 @@ class CloudCredentialServiceTest {
         stored.setVendor(InstanceVendor.ALIYUN);
         when(credentialRepository.findById("cred-1")).thenReturn(Optional.of(stored));
         when(instanceRepository.existsByCredentialId("cred-1")).thenReturn(false);
+        when(credentialRepository.deleteById("cred-1")).thenReturn(true);
 
         service.delete("cred-1");
 
@@ -189,6 +190,22 @@ class CloudCredentialServiceTest {
         verify(aliyunClientFactory).invalidateCredential("cred-1");
         verify(operationAuditService).record(eq("DELETE_CLOUD_CREDENTIAL"), eq("CLOUD_CREDENTIAL"),
                 eq("cred-1"), eq(null), eq("name=null, vendor=ALIYUN"), eq("SUCCESS"), eq(null));
+    }
+
+    @Test
+    void deleteShouldRejectConcurrentRemovalBeforeInvalidatingClientsTest() {
+        CloudCredentialVO stored = new CloudCredentialVO();
+        stored.setId("cred-1");
+        stored.setVendor(InstanceVendor.ALIYUN);
+        when(credentialRepository.findById("cred-1")).thenReturn(Optional.of(stored));
+        when(instanceRepository.existsByCredentialId("cred-1")).thenReturn(false);
+        when(credentialRepository.deleteById("cred-1")).thenReturn(false);
+
+        assertThatThrownBy(() -> service.delete("cred-1"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Cloud credential not found: cred-1");
+
+        verify(aliyunClientFactory, never()).invalidateCredential(any());
     }
 
     @Test

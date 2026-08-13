@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.ops.alert;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import org.apache.rocketmq.studio.persistence.entity.RmqAlertRule;
 import org.apache.rocketmq.studio.persistence.entity.RmqSystemAlert;
 import org.apache.rocketmq.studio.persistence.mapper.RmqAlertRuleMapper;
 import org.apache.rocketmq.studio.persistence.mapper.RmqSystemAlertMapper;
@@ -30,6 +31,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 import java.util.Locale;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.verify;
@@ -46,6 +48,26 @@ class MybatisPlusAlertRepositoryTest {
 
     @InjectMocks
     private MybatisPlusAlertRepository repository;
+
+    @Test
+    void replaceRuleShouldReportAConcurrentDelete() {
+        AlertRuleVO rule = AlertRuleVO.builder().id("rule-1").name("Lag").build();
+        when(ruleMapper.selectById("rule-1")).thenReturn(new RmqAlertRule());
+        when(ruleMapper.updateById(any(RmqAlertRule.class))).thenReturn(0);
+
+        assertThat(repository.replaceRule(rule)).isFalse();
+    }
+
+    @Test
+    void findAlertsShouldNormalizeStoredLevelValues() {
+        RmqSystemAlert entity = new RmqSystemAlert();
+        entity.setLevel(" WARNING ");
+        when(alertMapper.selectList(any())).thenReturn(List.of(entity));
+
+        assertThat(repository.findAlerts(null)).singleElement()
+                .satisfies(alert -> assertThat(alert.getLevel()).isEqualTo(
+                        org.apache.rocketmq.studio.common.domain.enums.AlertLevel.warning));
+    }
 
     @Test
     void findAlertsShouldNormalizeLevelIndependentlyOfDefaultLocale() {

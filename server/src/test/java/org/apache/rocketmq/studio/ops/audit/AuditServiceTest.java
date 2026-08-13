@@ -182,4 +182,11 @@ class AuditServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("beforeDays must be greater than 0");
     }
+
+    @Test
+    void cleanupLogsRejectsRetentionBeyondMaximum() {
+        assertThatThrownBy(() -> auditService.cleanupLogs(366))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("beforeDays must not exceed 365");
+    }
 }

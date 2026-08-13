@@ -20,7 +20,9 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
+import org.springframework.core.io.support.ResourcePatternResolver;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
@@ -28,6 +30,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class AlertRuleAssetServiceTest {
 
@@ -74,6 +79,18 @@ class AlertRuleAssetServiceTest {
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> service.getAssetYaml("no-such-asset"));
         assertEquals(404, exception.getCode());
+    }
+
+    @Test
+    void listAssetsShouldSurfaceResourceDiscoveryFailures() throws IOException {
+        ResourcePatternResolver resolver = mock(ResourcePatternResolver.class);
+        when(resolver.getResources(anyString())).thenThrow(new IOException("classpath unavailable"));
+        AlertRuleAssetService failingService = new AlertRuleAssetService(resolver);
+
+        BusinessException exception = assertThrows(BusinessException.class, failingService::listAssets);
+
+        assertEquals(500, exception.getCode());
+        assertEquals("Failed to resolve bundled alert rule assets", exception.getMessage());
     }
 
     @Test

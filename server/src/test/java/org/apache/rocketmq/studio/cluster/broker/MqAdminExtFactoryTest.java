@@ -177,4 +177,17 @@ class MqAdminExtFactoryTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("shutting down");
     }
+
+    @Test
+    void executeShouldNotCreateConnectionAfterShutdown() {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        RecordingFactory factory = new RecordingFactory(admin);
+        factory.shutdown();
+
+        assertThatThrownBy(() -> factory.execute("10.0.0.1:9876", null, a -> "unused"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("shutting down");
+        // No fresh admin connection may be established while the factory is shut down.
+        assertThat(factory.created.get()).isZero();
+    }
 }

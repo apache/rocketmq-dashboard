@@ -121,9 +121,10 @@ public class MetricsService {
             return "none";
         }
         return switch (auth.trim().toLowerCase(Locale.ROOT)) {
+            case "none" -> "none";
             case "basic auth", "basic" -> "basic";
             case "bearer token", "bearer" -> "bearer";
-            default -> "none";
+            default -> throw badRequest("Unsupported data source authentication mode: " + auth.trim());
         };
     }
 

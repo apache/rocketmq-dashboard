@@ -14,21 +14,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.ops.audit;
+package org.apache.rocketmq.studio.common.util;
 
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Positive;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import org.junit.jupiter.api.Test;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class AuditCleanupDTO {
-    @Positive(message = "beforeDays must be greater than 0")
-    @Max(value = 365, message = "beforeDays must not exceed 365")
-    private Integer beforeDays;
+import java.util.Base64;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class CredentialUtilsTest {
+
+    @Test
+    void decodeBase64ShouldPreserveLegacyTextWhenDecodedBytesAreNotUtf8() {
+        String legacyValue = Base64.getEncoder().encodeToString(new byte[]{(byte) 0xC3, 0x28});
+
+        assertThat(CredentialUtils.decodeBase64(legacyValue)).isEqualTo(legacyValue);
+    }
 }
