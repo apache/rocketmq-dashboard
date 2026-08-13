@@ -24,9 +24,17 @@ PUBLIC_PORT=8080
 # 可选：自定义宿主机 Maven 缓存和构建镜像
 MAVEN_CACHE_DIR=/home/your-user/.m2
 MAVEN_IMAGE=maven:3.9.9-eclipse-temurin-21
+
+# Required for remote server deployment: use a persistent database.
+SPRING_DATASOURCE_URL=jdbc:mysql://mysql-host:3306/rocketmq?useSSL=false&serverTimezone=UTC
+SPRING_DATASOURCE_USERNAME=rocketmq
+SPRING_DATASOURCE_PASSWORD=change-me
+STUDIO_ROCKETMQ_NAMESRV_ADDR=nameserver-host:9876
 ```
 
 `MAVEN_CACHE_DIR` 默认为当前用户的 `~/.m2`。如果其中存在 `settings.xml`，构建容器也会自动使用该配置。
+`server` 与 `all` 远程部署会强制启用 `prod` profile，并在构建前校验数据库配置，避免容器误用
+开发环境的内存数据库。仅部署 `web` 时不要求数据库变量。
 
 ## 本地 Docker Compose
 
