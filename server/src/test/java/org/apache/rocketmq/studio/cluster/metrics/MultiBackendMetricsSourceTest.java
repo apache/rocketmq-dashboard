@@ -44,6 +44,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 class MultiBackendMetricsSourceTest {
 
@@ -137,6 +138,71 @@ class MultiBackendMetricsSourceTest {
         config.setProviderType("does-not-exist");
         config.setUrl(baseUrl);
         assertThat(factory.create(config)).isInstanceOf(PrometheusMetricsSource.class);
+    }
+
+    @Test
+    void noneAuthenticationShouldIgnoreConfiguredCredentials() {
+        assertAuthorization("none", "user", "password", "token", null);
+    }
+
+    @Test
+    void basicAuthenticationShouldTakePrecedenceOverAnUnrelatedBearerToken() {
+        assertAuthorization("basic", "user", "password", "token", "Basic dXNlcjpwYXNzd29yZA==");
+    }
+
+    @Test
+    void bearerAuthenticationShouldIgnoreConfiguredBasicCredentials() {
+        assertAuthorization("bearer", "user", "password", "token", "Bearer token");
+    }
+
+    @Test
+    void authenticationModeShouldRejectMissingRequiredCredentials() {
+        assertAuthenticationFailure("basic", "user", null, null,
+                "Prometheus basic authentication is incomplete");
+        assertAuthenticationFailure("bearer", null, null, null,
+                "Prometheus bearer authentication is incomplete");
+    }
+
+    @Test
+    void unsupportedAuthenticationModeShouldBeRejected() {
+        assertAuthenticationFailure("digest", "user", "password", "token",
+                "Unsupported Prometheus authentication mode: digest");
+    }
+
+    private void assertAuthorization(String authType, String username, String password,
+                                     String bearerToken, String expectedAuthorization) {
+        AtomicReference<String> authorization = new AtomicReference<>();
+        server.createContext(MetricsBackendType.PROMETHEUS.getQueryPath(), exchange -> {
+            authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            respond(exchange, 200, """
+                    {"status":"success","data":{"resultType":"matrix","result":[]}}
+                    """);
+        });
+
+        factory.create(configWithAuth(authType, username, password, bearerToken)).query(query());
+
+        assertThat(authorization.get()).isEqualTo(expectedAuthorization);
+    }
+
+    private void assertAuthenticationFailure(String authType, String username, String password,
+                                             String bearerToken, String message) {
+        assertThatExceptionOfType(PrometheusException.class)
+                .isThrownBy(() -> factory.create(configWithAuth(authType, username, password, bearerToken))
+                        .query(query()))
+                .satisfies(exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(503);
+                    assertThat(exception.getMessage()).isEqualTo(message);
+                });
+    }
+
+    private MetricsDataSourceConfig configWithAuth(String authType, String username,
+                                                   String password, String bearerToken) {
+        MetricsDataSourceConfig config = configFor(MetricsBackendType.PROMETHEUS);
+        config.setAuthType(authType);
+        config.setUsername(username);
+        config.setPassword(password);
+        config.setBearerToken(bearerToken);
+        return config;
     }
 
     private MetricsDataSourceConfig configFor(MetricsBackendType backendType) {
