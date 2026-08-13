@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.cluster.nameserver;
 import org.apache.rocketmq.studio.cluster.broker.ClusterService;
 import org.apache.rocketmq.studio.cluster.broker.ClusterVO;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
+import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,6 +37,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
@@ -50,18 +52,34 @@ class NameServerConfigDiffServiceTest {
     private MqAdminExtFactory adminFactory;
 
     @Mock
+    private RuntimeAdminClientResolver adminClientResolver;
+
+    @Mock
     private MQAdminExt admin;
 
     private NameServerConfigDiffService service;
 
     @BeforeEach
     void setUp() {
-        service = new NameServerConfigDiffService(clusterService, adminFactory);
+        service = new NameServerConfigDiffService(clusterService, adminFactory, adminClientResolver);
     }
 
     private void stubAdminFactory() {
         when(adminFactory.execute(anyString(), isNull(), any())).thenAnswer(invocation -> {
             MqAdminExtFactory.AdminAction<Object> action = invocation.getArgument(2);
+            try {
+                return action.apply(admin);
+            } catch (BusinessException exception) {
+                throw exception;
+            } catch (Exception exception) {
+                throw new BusinessException(502, "RocketMQ admin call failed");
+            }
+        });
+    }
+
+    private void stubAdminResolver() {
+        when(adminClientResolver.execute(anyString(), any())).thenAnswer(invocation -> {
+            MqAdminExtFactory.AdminAction<Object> action = invocation.getArgument(1);
             try {
                 return action.apply(admin);
             } catch (BusinessException exception) {
@@ -111,7 +129,7 @@ class NameServerConfigDiffServiceTest {
 
     @Test
     void compareShouldResolveClusterThroughSelectedInstance() throws Exception {
-        stubAdminFactory();
+        stubAdminResolver();
         when(clusterService.getCluster("cluster-a", "instance-a")).thenReturn(cluster(
                 "ns-a:9876;ns-b:9876",
                 List.of(nameServer("ns-a:9876"), nameServer("ns-b:9876"))));
@@ -124,6 +142,7 @@ class NameServerConfigDiffServiceTest {
 
         assertThat(result.isComplete()).isTrue();
         verify(clusterService).getCluster("cluster-a", "instance-a");
+        verify(adminClientResolver, org.mockito.Mockito.times(2)).execute(eq("instance-a"), any());
     }
 
     @Test
