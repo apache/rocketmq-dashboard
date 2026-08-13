@@ -49,6 +49,15 @@ import { queryProxyHomePage, reloadProxyConfig, type ProxyNode } from '../../api
 
 const { Text } = Typography;
 
+const persistProxyAddress = (address?: string) => {
+  if (!address) return;
+  try {
+    localStorage.setItem('proxyAddr', address);
+  } catch {
+    // Proxy discovery remains usable when browser storage is unavailable.
+  }
+};
+
 const ProxyPage: React.FC = () => {
   const { t } = useLang();
   const { message } = App.useApp();
@@ -96,12 +105,7 @@ const ProxyPage: React.FC = () => {
         totalTPS: null,
       });
 
-      if (currentProxyAddr) {
-        localStorage.setItem('proxyAddr', currentProxyAddr);
-      } else if (proxyAddrList && proxyAddrList.length > 0) {
-        localStorage.setItem('proxyAddr', proxyAddrList[0]);
-      }
-
+      persistProxyAddress(currentProxyAddr || proxyAddrList?.[0]);
       return true;
     } catch {
       if (requestId !== loadRequestId.current) return false;
@@ -383,7 +387,7 @@ const ProxyPage: React.FC = () => {
         {/* Node Table */}
         <Card
           title={t('proxy.nodes')}
-          bordered={false}
+          variant="borderless"
           style={{ borderRadius: 8, marginBottom: 24 }}
         >
           <Table columns={columns} dataSource={proxyNodes} pagination={false} size="middle" />

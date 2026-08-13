@@ -108,10 +108,10 @@ describe('message API', () => {
       ],
     };
     mock
-      .onGet('/messages/msg-1/trace', { params: { instanceId: 'instance-a' } })
+      .onGet('/messages/msg-1/trace', { params: { instanceId: 'instance-a', topic: 'orders' } })
       .reply(200, { code: 200, data: trace });
 
-    await expect(getMessageTrace('msg-1', 'instance-a')).resolves.toEqual(trace);
+    await expect(getMessageTrace('msg-1', 'instance-a', 'orders')).resolves.toEqual(trace);
   });
 
   it('encodes message IDs before requesting trace records', async () => {
@@ -120,9 +120,13 @@ describe('message API', () => {
       consumerStatus: [],
     };
     mock
-      .onGet('/messages/AC1E0A64%2F0000%202A9F%3A1/trace', { params: { instanceId: 'instance-a' } })
+      .onGet('/messages/AC1E0A64%2F0000%202A9F%3A1/trace', {
+        params: { instanceId: 'instance-a', topic: 'orders' },
+      })
       .reply(200, { code: 200, data: trace });
 
-    await expect(getMessageTrace('AC1E0A64/0000 2A9F:1', 'instance-a')).resolves.toEqual(trace);
+    await expect(getMessageTrace('AC1E0A64/0000 2A9F:1', 'instance-a', 'orders')).resolves.toEqual(
+      trace,
+    );
   });
 });

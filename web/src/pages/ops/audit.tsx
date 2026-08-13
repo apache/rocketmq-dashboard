@@ -125,6 +125,9 @@ const AuditPage: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (!cancelled) setLoading(true);
+    });
 
     void listAuditRecords({
       page,

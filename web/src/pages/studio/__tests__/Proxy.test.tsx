@@ -76,6 +76,19 @@ describe('ProxyPage', () => {
     });
   });
 
+  it('keeps discovered nodes when browser storage is unavailable', async () => {
+    const storageSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('storage disabled', 'SecurityError');
+    });
+
+    renderPage();
+
+    expect(await screen.findByText('127.0.0.1:8081')).toBeInTheDocument();
+    expect(screen.queryByText('获取代理列表失败')).not.toBeInTheDocument();
+    expect(queryProxyHomePage).toHaveBeenCalledTimes(1);
+    storageSpy.mockRestore();
+  });
+
   it('loads Proxy nodes once after the page mounts', async () => {
     renderPage();
 

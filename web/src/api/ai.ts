@@ -18,6 +18,8 @@
 import client from './client';
 import { readAuthSession } from '../stores/authStorage';
 
+const MAX_SSE_EVENT_CHARS = 1024 * 1024;
+
 // ─── Types ──────────────────────────────────────────────────────
 export interface McpTool {
   name: string;
@@ -178,22 +180,35 @@ export async function chatStream(
   const decoder = new TextDecoder();
   let buffer = '';
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    buffer += decoder.decode(value, { stream: true });
-    let boundary = getEventBoundary(buffer);
-    while (boundary) {
-      const event = buffer.slice(0, boundary.index);
-      buffer = buffer.slice(boundary.index + boundary.length);
-      if (emitEvent(event, onChunk, onEnhance)) return;
-      boundary = getEventBoundary(buffer);
+      buffer += decoder.decode(value, { stream: true });
+      if (buffer.length > MAX_SSE_EVENT_CHARS && !getEventBoundary(buffer)) {
+        throw new AiStreamError('AI stream event exceeds 1 MiB', 'llm.stream.event_too_large');
+      }
+      let boundary = getEventBoundary(buffer);
+      while (boundary) {
+        const event = buffer.slice(0, boundary.index);
+        buffer = buffer.slice(boundary.index + boundary.length);
+        if (event.length > MAX_SSE_EVENT_CHARS) {
+          throw new AiStreamError('AI stream event exceeds 1 MiB', 'llm.stream.event_too_large');
+        }
+        if (emitEvent(event, onChunk, onEnhance)) return;
+        boundary = getEventBoundary(buffer);
+      }
     }
-  }
 
-  buffer += decoder.decode();
-  if (buffer && emitEvent(buffer, onChunk, onEnhance)) return;
+    buffer += decoder.decode();
+    if (buffer.length > MAX_SSE_EVENT_CHARS) {
+      throw new AiStreamError('AI stream event exceeds 1 MiB', 'llm.stream.event_too_large');
+    }
+    if (buffer && emitEvent(buffer, onChunk, onEnhance)) return;
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
 }
 
 export async function executeAiCommand(data: AiExecuteRequest) {

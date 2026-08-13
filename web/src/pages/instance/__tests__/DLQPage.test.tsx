@@ -16,12 +16,12 @@
  */
 
 import { App } from 'antd';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { DLQGroup } from '../../../api/message';
+import type { DLQGroup, DLQResendResult } from '../../../api/message';
 import { LangProvider } from '../../../i18n/LangContext';
 import * as messageService from '../../../services/messageService';
 import DLQPage from '../dlq';
@@ -348,5 +348,46 @@ describe('DLQ page', () => {
 
     resolveSecondInstance([secondDlqGroup]);
     expect(await screen.findByText('-cg-"payment"')).toBeInTheDocument();
+  });
+
+  it('ignores a retry completion from the previously selected instance', async () => {
+    let resolveRetry!: (result: DLQResendResult) => void;
+    vi.mocked(messageService.resendDLQ).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveRetry = resolve;
+        }),
+    );
+    vi.mocked(messageService.listDLQGroups)
+      .mockResolvedValueOnce([dlqGroup])
+      .mockResolvedValueOnce([secondDlqGroup]);
+    const user = userEvent.setup();
+    renderWithProviders(<DLQPage />);
+
+    const firstRow = (await screen.findByText('cg-order')).closest('tr');
+    if (!firstRow) throw new Error('DLQ group row not found');
+    await user.click(within(firstRow).getByRole('button', { name: '重投消息' }));
+    await user.type(screen.getByPlaceholderText('输入目标 Topic 名称'), 'orders-retry');
+    await user.click(screen.getByRole('button', { name: '确认重投' }));
+
+    await user.click(screen.getAllByRole('combobox')[0]);
+    await user.click(
+      await screen.findByText('instance-2', { selector: '.ant-select-item-option-content' }),
+    );
+    const secondRow = (await screen.findByText('-cg-"payment"')).closest('tr');
+    if (!secondRow) throw new Error('second DLQ group row not found');
+    await user.click(within(secondRow).getByRole('button', { name: '重投消息' }));
+    let retryDialog = screen.getByText('重投死信消息').closest('.ant-modal');
+    if (!retryDialog) throw new Error('retry dialog not found');
+    expect(within(retryDialog as HTMLElement).getByText('-cg-"payment"')).toBeInTheDocument();
+
+    await act(async () =>
+      resolveRetry({ matched: 7, resent: 7, failed: 0, outcome: 'SUCCESS' }),
+    );
+
+    retryDialog = screen.getByText('重投死信消息').closest('.ant-modal');
+    if (!retryDialog) throw new Error('retry dialog was closed by the stale request');
+    expect(within(retryDialog as HTMLElement).getByText('-cg-"payment"')).toBeInTheDocument();
+    expect(messageService.listDLQGroups).toHaveBeenCalledTimes(2);
   });
 });

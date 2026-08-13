@@ -26,6 +26,16 @@ describe('AI chat draft navigation state', () => {
     });
   });
 
+  it('preserves supported home modes and drops unknown modes', () => {
+    expect(getChatDraft({ prompt: '检查集群状态', mode: 'diagnose' })).toEqual({
+      prompt: '检查集群状态',
+      mode: 'diagnose',
+    });
+    expect(getChatDraft({ prompt: '检查集群状态', mode: 'unknown' })).toEqual({
+      prompt: '检查集群状态',
+    });
+  });
+
   it('rejects invalid or empty navigation state', () => {
     expect(getChatDraft(null)).toBeNull();
     expect(getChatDraft({ prompt: '   ' })).toBeNull();
