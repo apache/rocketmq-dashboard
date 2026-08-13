@@ -22,6 +22,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
 import type { Topic } from '../../../api/metadata';
+import { parseMessageProperties } from '../../../utils/messageProperties';
 import TopicPage from '../topic';
 
 const topicServiceMocks = vi.hoisted(() => ({
@@ -456,6 +457,20 @@ describe('TopicPage', () => {
     await waitFor(() => expect(document.querySelector('.ant-spin-spinning')).toBeNull());
     expect(screen.getByRole('button', { name: /导入/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: /创建 Topic/ })).toBeDisabled();
+  });
+
+  it('rejects malformed or duplicate batch message properties without sending', () => {
+    expect(parseMessageProperties('traceId=abc\ntenant\ntraceId=duplicate')).toEqual({
+      properties: { traceId: 'abc' },
+      errors: ['“tenant”应使用 key=value 格式', '属性名“traceId”重复'],
+    });
+  });
+
+  it('preserves equals signs in valid batch message property values', () => {
+    expect(parseMessageProperties('signature=part-a=part-b')).toEqual({
+      properties: { signature: 'part-a=part-b' },
+      errors: [],
+    });
   });
 
   it('renders unavailable Topic consumer metrics distinctly from zero', async () => {
