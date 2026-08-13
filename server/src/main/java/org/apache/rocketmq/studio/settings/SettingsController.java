@@ -52,13 +52,13 @@ public class SettingsController {
     }
 
     @PostMapping("/ssl/save")
-    public Result<SslSettingsVO> saveSslSettings(@RequestBody(required = false) SslSettingsUpdateDTO request) {
+    public Result<SslSettingsVO> saveSslSettings(@Valid @RequestBody SslSettingsUpdateDTO request) {
         return Result.ok(settingsService.saveSslSettings(request));
     }
 
     @PostMapping("/ssl/validate")
     public Result<SslSettingsValidationResultVO> validateSslSettings(
-            @RequestBody(required = false) SslSettingsUpdateDTO request) {
+            @Valid @RequestBody SslSettingsUpdateDTO request) {
         return Result.ok(settingsService.validateSslSettings(request));
     }
 

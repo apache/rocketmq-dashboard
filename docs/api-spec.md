@@ -1700,7 +1700,7 @@ GET /api/settings/ssl
 | `trustStoreType` | `string` | TrustStore 类型: `PKCS12` / `JKS` |
 | `trustStorePath` | `string` | TrustStore 文件路径 |
 | `trustStorePasswordConfigured` | `boolean` | 是否已保存 TrustStore 密码；响应不会返回密码内容 |
-| `restartRequired` | `boolean` | 保存后是否需要重启服务才能生效 |
+| `restartRequired` | `boolean` | 保存的 SSL/TLS 参数需要同步到部署配置并重启服务才能生效 |
 
 ### 14.4 保存 SSL/TLS 设置
 
@@ -1712,16 +1712,16 @@ POST /api/settings/ssl/save
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `enabled` | `boolean` | 否 | 是否启用 SSL/TLS |
+| `enabled` | `boolean` | 是 | 是否启用 SSL/TLS |
 | `protocol` | `string` | 否 | 协议: `TLSv1.3` / `TLSv1.2` |
 | `clientAuth` | `string` | 否 | 客户端认证: `none` / `want` / `need` |
 | `keyStoreType` | `string` | 否 | KeyStore 类型: `PKCS12` / `JKS` |
 | `keyStorePath` | `string` | 否 | KeyStore 文件路径；启用 SSL/TLS 时必填 |
-| `keyStorePassword` | `string` | 否 | 新 KeyStore 密码；省略或传空值时保留现有密码 |
+| `keyStorePassword` | `string` | 否 | 新 KeyStore 密码；省略或传空值时保留现有密码；服务端以 base64 编码形式持久化 |
 | `clearKeyStorePassword` | `boolean` | 否 | 传 `true` 时显式清除现有 KeyStore 密码 |
 | `trustStoreType` | `string` | 否 | TrustStore 类型: `PKCS12` / `JKS` |
 | `trustStorePath` | `string` | 否 | TrustStore 文件路径；启用客户端认证时必填 |
-| `trustStorePassword` | `string` | 否 | 新 TrustStore 密码；省略或传空值时保留现有密码 |
+| `trustStorePassword` | `string` | 否 | 新 TrustStore 密码；省略或传空值时保留现有密码；服务端以 base64 编码形式持久化 |
 | `clearTrustStorePassword` | `boolean` | 否 | 传 `true` 时显式清除现有 TrustStore 密码 |
 
 **Response `data`:** `SslSettings`
@@ -1735,6 +1735,10 @@ POST /api/settings/ssl/validate
 ```
 
 **Request Body:** 同 `POST /api/settings/ssl/save`
+
+验证接口会读取 KeyStore/TrustStore 文件。为避免任意文件探测，文件路径必须位于
+`studio.settings.ssl.store-base-dir`（默认 `${user.dir}/config/tls`，可通过
+`STUDIO_SSL_STORE_BASE_DIR` 覆盖）目录内。
 
 **Response `data`:**
 

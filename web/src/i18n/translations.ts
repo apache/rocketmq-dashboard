@@ -1201,6 +1201,14 @@ const translations: Record<string, Record<Lang, string>> = {
     zh: '已保存密码；留空将继续保留现有密码',
     en: 'Password is saved; leave blank to keep it unchanged',
   },
+  'ssl.clearKeystorePassword': {
+    zh: '清除已保存的 KeyStore 密码',
+    en: 'Clear the saved KeyStore password',
+  },
+  'ssl.clearTruststorePassword': {
+    zh: '清除已保存的 TrustStore 密码',
+    en: 'Clear the saved TrustStore password',
+  },
   'ssl.passwordPreservePlaceholder': {
     zh: '留空保留现有密码',
     en: 'Leave blank to keep the existing password',

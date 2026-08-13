@@ -8,6 +8,7 @@ package org.apache.rocketmq.studio.persistence;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
+import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.persistence.entity.RmqDataSource;
 import org.apache.rocketmq.studio.persistence.entity.RmqSettings;
 import org.apache.rocketmq.studio.persistence.mapper.RmqDataSourceMapper;
@@ -94,6 +95,48 @@ class MybatisPlusSettingsRepositoryTest {
                   "clientAuth": "need",
                   "keyStoreType": "PKCS12",
                   "keyStorePath": "/etc/server.p12",
+                  "keyStorePassword": "%s"
+                }
+                """.formatted(CredentialUtils.encodeBase64("secret")));
+        when(settingsMapper.selectById("ssl")).thenReturn(settings);
+
+        SslSettingsRecord loaded = repository.loadSslSettings();
+
+        assertThat(loaded.isEnabled()).isTrue();
+        assertThat(loaded.getProtocol()).isEqualTo("TLSv1.2");
+        assertThat(loaded.getKeyStorePassword()).isEqualTo("secret");
+    }
+
+    @Test
+    void shouldTolerateLegacyPlainTextSslPasswords() {
+        RmqSettings settings = new RmqSettings();
+        settings.setJson("""
+                {
+                  "enabled": true,
+                  "protocol": "TLSv1.2",
+                  "clientAuth": "none",
+                  "keyStoreType": "PKCS12",
+                  "keyStorePath": "/etc/server.p12",
+                  "keyStorePassword": "legacy-secret"
+                }
+                """);
+        when(settingsMapper.selectById("ssl")).thenReturn(settings);
+
+        SslSettingsRecord loaded = repository.loadSslSettings();
+
+        assertThat(loaded.getKeyStorePassword()).isEqualTo("legacy-secret");
+    }
+
+    @Test
+    void shouldTolerateLegacyPlainTextSslPasswordThatLooksBase64Decodable() {
+        RmqSettings settings = new RmqSettings();
+        settings.setJson("""
+                {
+                  "enabled": true,
+                  "protocol": "TLSv1.2",
+                  "clientAuth": "none",
+                  "keyStoreType": "PKCS12",
+                  "keyStorePath": "/etc/server.p12",
                   "keyStorePassword": "secret"
                 }
                 """);
@@ -101,8 +144,6 @@ class MybatisPlusSettingsRepositoryTest {
 
         SslSettingsRecord loaded = repository.loadSslSettings();
 
-        assertThat(loaded.isEnabled()).isTrue();
-        assertThat(loaded.getProtocol()).isEqualTo("TLSv1.2");
         assertThat(loaded.getKeyStorePassword()).isEqualTo("secret");
     }
 
@@ -119,7 +160,8 @@ class MybatisPlusSettingsRepositoryTest {
         verify(settingsMapper).insert(argThat((RmqSettings entity) ->
                 "ssl".equals(entity.getId())
                         && entity.getJson().contains("/etc/server.p12")
-                        && entity.getJson().contains("secret")));
+                        && entity.getJson().contains(CredentialUtils.encodeBase64("secret"))
+                        && !entity.getJson().contains("\"keyStorePassword\":\"secret\"")));
     }
 
     @Test

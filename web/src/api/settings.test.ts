@@ -136,6 +136,36 @@ describe('SSL settings API', () => {
     ).resolves.toEqual(sslSettings);
   });
 
+  it('keeps explicit SSL password clear flags when saving', async () => {
+    mock.onPost('/settings/ssl/save').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({
+        enabled: true,
+        protocol: 'TLSv1.3',
+        clientAuth: 'none',
+        keyStoreType: 'PKCS12',
+        keyStorePath: '/etc/rocketmq/server.p12',
+        clearKeyStorePassword: true,
+        trustStoreType: 'PKCS12',
+        trustStorePath: '',
+      });
+      return [200, { code: 200, data: { ...sslSettings, keyStorePasswordConfigured: false } }];
+    });
+
+    await expect(
+      saveSslSettings({
+        enabled: true,
+        protocol: 'TLSv1.3',
+        clientAuth: 'none',
+        keyStoreType: 'PKCS12',
+        keyStorePath: '/etc/rocketmq/server.p12',
+        keyStorePassword: ' ',
+        clearKeyStorePassword: true,
+        trustStoreType: 'PKCS12',
+        trustStorePath: '',
+      }),
+    ).resolves.toMatchObject({ keyStorePasswordConfigured: false });
+  });
+
   it('validates SSL settings through the backend validation endpoint', async () => {
     mock.onPost('/settings/ssl/validate').reply((config) => {
       expect(JSON.parse(config.data)).toMatchObject({

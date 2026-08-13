@@ -49,6 +49,9 @@ studio:
   query-history:
     retention-days: ${STUDIO_QUERY_HISTORY_RETENTION_DAYS:90}
     cleanup-interval: ${STUDIO_QUERY_HISTORY_CLEANUP_INTERVAL:PT24H}
+  settings:
+    ssl:
+      store-base-dir: ${STUDIO_SSL_STORE_BASE_DIR:${user.dir}/config/tls}
   llm:
     token: ${RMQ_LLM_TOKEN:}
     anthropic-base-url: ${RMQ_ANTHROPIC_BASE_URL:}

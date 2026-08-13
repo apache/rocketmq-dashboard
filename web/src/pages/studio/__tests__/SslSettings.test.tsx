@@ -80,6 +80,7 @@ describe('SslSettings Page', () => {
     expect(screen.getByText('SSL/TLS 配置用于重启前校验')).toBeInTheDocument();
     expect(screen.getByDisplayValue('/etc/rocketmq/server.p12')).toBeInTheDocument();
     expect(screen.getByText('已保存密码；留空将继续保留现有密码')).toBeInTheDocument();
+    expect(screen.getByText('清除已保存的 KeyStore 密码')).toBeInTheDocument();
     expect(screen.queryByTestId('ssl-settings-unavailable')).not.toBeInTheDocument();
   });
 
@@ -118,5 +119,20 @@ describe('SslSettings Page', () => {
       ),
     );
     expect(screen.getAllByPlaceholderText('留空保留现有密码')[0]).toHaveValue('');
+  });
+
+  it('sends clear flags when an operator chooses to remove stored passwords', async () => {
+    renderWithProviders();
+
+    fireEvent.click(await screen.findByLabelText('清除已保存的 KeyStore 密码'));
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() =>
+      expect(saveSslSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clearKeyStorePassword: true,
+        }),
+      ),
+    );
   });
 });

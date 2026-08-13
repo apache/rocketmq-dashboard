@@ -16,7 +16,19 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Alert, Button, Card, Form, Input, Select, Space, Switch, Typography, message } from 'antd';
+import {
+  Alert,
+  Button,
+  Card,
+  Checkbox,
+  Form,
+  Input,
+  Select,
+  Space,
+  Switch,
+  Typography,
+  message,
+} from 'antd';
 import { ShieldCheck } from '@phosphor-icons/react';
 import {
   getSslSettings,
@@ -199,7 +211,12 @@ const SslSettingsPage = () => {
               <Input.Password placeholder={t('ssl.passwordPreservePlaceholder')} />
             </Form.Item>
             {settings?.keyStorePasswordConfigured && (
-              <Text type="secondary">{t('ssl.passwordConfigured')}</Text>
+              <Space direction="vertical" size={4}>
+                <Text type="secondary">{t('ssl.passwordConfigured')}</Text>
+                <Form.Item name="clearKeyStorePassword" valuePropName="checked" noStyle>
+                  <Checkbox>{t('ssl.clearKeystorePassword')}</Checkbox>
+                </Form.Item>
+              </Space>
             )}
           </Card>
 
@@ -218,7 +235,12 @@ const SslSettingsPage = () => {
               <Input.Password placeholder={t('ssl.passwordPreservePlaceholder')} />
             </Form.Item>
             {settings?.trustStorePasswordConfigured && (
-              <Text type="secondary">{t('ssl.passwordConfigured')}</Text>
+              <Space direction="vertical" size={4}>
+                <Text type="secondary">{t('ssl.passwordConfigured')}</Text>
+                <Form.Item name="clearTrustStorePassword" valuePropName="checked" noStyle>
+                  <Checkbox>{t('ssl.clearTruststorePassword')}</Checkbox>
+                </Form.Item>
+              </Space>
             )}
           </Card>
 

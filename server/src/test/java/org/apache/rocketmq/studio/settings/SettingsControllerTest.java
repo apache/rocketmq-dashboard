@@ -237,6 +237,24 @@ class SettingsControllerTest {
     }
 
     @Test
+    void saveSslSettingsShouldRejectInvalidProtocolBeforeServiceCall() throws Exception {
+        mockMvc.perform(post("/api/settings/ssl/save")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "enabled": true,
+                                  "protocol": "SSLv3",
+                                  "clientAuth": "none",
+                                  "keyStoreType": "PKCS12",
+                                  "keyStorePath": "/etc/rocketmq/server.p12"
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(settingsService);
+    }
+
+    @Test
     void validateSslSettingsShouldReturnValidationResult() throws Exception {
         when(settingsService.validateSslSettings(any(SslSettingsUpdateDTO.class))).thenReturn(
                 SslSettingsValidationResultVO.builder()

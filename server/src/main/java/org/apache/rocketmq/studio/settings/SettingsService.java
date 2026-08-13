@@ -22,6 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.util.UrlHostGuard;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -80,18 +81,29 @@ public class SettingsService {
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
     private final OperationAuditService operationAuditService;
+    private final Path sslStoreBaseDir;
 
     public SettingsService(SettingsRepository settingsRepository, RestClient.Builder restClientBuilder,
-                           ObjectMapper objectMapper, OperationAuditService operationAuditService) {
-        this(settingsRepository, buildDataSourceRestClient(restClientBuilder), objectMapper, operationAuditService);
+                           ObjectMapper objectMapper, OperationAuditService operationAuditService,
+                           @Value("${studio.settings.ssl.store-base-dir:${user.dir}/config/tls}")
+                           String sslStoreBaseDir) {
+        this(settingsRepository, buildDataSourceRestClient(restClientBuilder), objectMapper, operationAuditService,
+                sslStoreBaseDir);
     }
 
     SettingsService(SettingsRepository settingsRepository, RestClient restClient,
                     ObjectMapper objectMapper, OperationAuditService operationAuditService) {
+        this(settingsRepository, restClient, objectMapper, operationAuditService, "config/tls");
+    }
+
+    SettingsService(SettingsRepository settingsRepository, RestClient restClient,
+                    ObjectMapper objectMapper, OperationAuditService operationAuditService,
+                    String sslStoreBaseDir) {
         this.settingsRepository = settingsRepository;
         this.restClient = restClient;
         this.objectMapper = objectMapper;
         this.operationAuditService = operationAuditService;
+        this.sslStoreBaseDir = Path.of(defaultIfBlank(sslStoreBaseDir, "config/tls")).toAbsolutePath().normalize();
     }
 
     private static RestClient buildDataSourceRestClient(RestClient.Builder restClientBuilder) {
@@ -207,7 +219,7 @@ public class SettingsService {
                 .trustStoreType(defaultIfBlank(normalized.getTrustStoreType(), "PKCS12"))
                 .trustStorePath(defaultIfBlank(normalized.getTrustStorePath(), ""))
                 .trustStorePasswordConfigured(StringUtils.hasText(normalized.getTrustStorePassword()))
-                .restartRequired(normalized.isEnabled())
+                .restartRequired(true)
                 .build();
     }
 
@@ -259,7 +271,10 @@ public class SettingsService {
         if (!StringUtils.hasText(rawPath)) {
             throw new IllegalArgumentException(label + " path is required");
         }
-        Path path = Path.of(rawPath.trim()).normalize();
+        Path path = Path.of(rawPath.trim()).toAbsolutePath().normalize();
+        if (!path.startsWith(sslStoreBaseDir)) {
+            throw new IllegalArgumentException(label + " path must be under " + sslStoreBaseDir);
+        }
         if (!Files.isRegularFile(path)) {
             throw new IllegalArgumentException(label + " file does not exist: " + path);
         }

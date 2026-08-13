@@ -79,12 +79,15 @@ class SettingsServiceTest {
 
     private MockRestServiceServer prometheusServer;
 
+    @TempDir
+    private Path sslStoreBaseDir;
+
     @BeforeEach
     void setUp() {
         RestClient.Builder restClientBuilder = RestClient.builder();
         prometheusServer = MockRestServiceServer.bindTo(restClientBuilder).build();
         settingsService = new SettingsService(settingsRepository, restClientBuilder.build(),
-                new ObjectMapper(), operationAuditService);
+                new ObjectMapper(), operationAuditService, sslStoreBaseDir.toString());
     }
 
 
@@ -272,8 +275,8 @@ class SettingsServiceTest {
     }
 
     @Test
-    void validateSslSettingsShouldLoadConfiguredKeyStore(@TempDir Path tempDir) throws Exception {
-        Path keyStore = tempDir.resolve("server.p12");
+    void validateSslSettingsShouldLoadConfiguredKeyStore() throws Exception {
+        Path keyStore = sslStoreBaseDir.resolve("server.p12");
         writePkcs12Store(keyStore, "secret");
         SslSettingsUpdateDTO request = new SslSettingsUpdateDTO();
         request.setEnabled(true);
@@ -298,13 +301,32 @@ class SettingsServiceTest {
         request.setProtocol("TLSv1.3");
         request.setClientAuth("none");
         request.setKeyStoreType("PKCS12");
-        request.setKeyStorePath("/path/not-found/server.p12");
+        request.setKeyStorePath(sslStoreBaseDir.resolve("not-found/server.p12").toString());
         request.setTrustStoreType("PKCS12");
 
         SslSettingsValidationResultVO result = settingsService.validateSslSettings(request);
 
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.getMessage()).contains("KeyStore file does not exist");
+    }
+
+    @Test
+    void validateSslSettingsShouldRejectKeyStoreOutsideAllowedDirectory(@TempDir Path otherDir) throws Exception {
+        Path keyStore = otherDir.resolve("server.p12");
+        writePkcs12Store(keyStore, "secret");
+        SslSettingsUpdateDTO request = new SslSettingsUpdateDTO();
+        request.setEnabled(true);
+        request.setProtocol("TLSv1.3");
+        request.setClientAuth("none");
+        request.setKeyStoreType("PKCS12");
+        request.setKeyStorePath(keyStore.toString());
+        request.setKeyStorePassword("secret");
+        request.setTrustStoreType("PKCS12");
+
+        SslSettingsValidationResultVO result = settingsService.validateSslSettings(request);
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getMessage()).contains("KeyStore path must be under");
     }
 
     private void writePkcs12Store(Path path, String password) throws Exception {
@@ -435,31 +457,28 @@ class SettingsServiceTest {
 
     @Test
     void updateDataSourceShouldRejectUnknownKey() {
-        SettingsService service = new SettingsService(settingsRepository, RestClient.builder(), new ObjectMapper(), operationAuditService);
         DataSourceVO input = DataSourceVO.builder().key("missing").name("Unexpected DS").type("rocketmq")
                 .url("http://10.1.2.3").build();
 
-        assertThatThrownBy(() -> service.updateDataSource(input))
+        assertThatThrownBy(() -> settingsService.updateDataSource(input))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Data source not found: missing")
                 .extracting("code")
                 .isEqualTo(404);
-        assertThat(service.listDataSources()).isEmpty();
+        assertThat(settingsService.listDataSources()).isEmpty();
     }
 
     @Test
     void updateDataSourceShouldRejectBlankKey() {
-        SettingsService service = new SettingsService(settingsRepository, RestClient.builder(), new ObjectMapper(),
-                operationAuditService);
         DataSourceVO input = DataSourceVO.builder().key(" ").name("Unexpected DS").type("rocketmq")
                 .url("http://10.1.2.3").build();
 
-        assertThatThrownBy(() -> service.updateDataSource(input))
+        assertThatThrownBy(() -> settingsService.updateDataSource(input))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Data source key is required")
                 .extracting("code")
                 .isEqualTo(400);
-        assertThat(service.listDataSources()).isEmpty();
+        assertThat(settingsService.listDataSources()).isEmpty();
     }
 
     @Test
@@ -475,10 +494,7 @@ class SettingsServiceTest {
 
     @Test
     void deleteDataSourceShouldRejectUnknownKey() {
-        SettingsService service = new SettingsService(settingsRepository, RestClient.builder(), new ObjectMapper(),
-                operationAuditService);
-
-        assertThatThrownBy(() -> service.deleteDataSource("missing"))
+        assertThatThrownBy(() -> settingsService.deleteDataSource("missing"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Data source not found: missing")
                 .extracting("code")

@@ -16,22 +16,47 @@
  */
 package org.apache.rocketmq.studio.settings;
 
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
 import lombok.ToString;
 
 @Data
 public class SslSettingsUpdateDTO {
+    @NotNull(message = "enabled is required")
     private Boolean enabled;
+
+    @Pattern(regexp = "TLSv1\\.2|TLSv1\\.3", message = "SSL protocol must be one of TLSv1.2, TLSv1.3")
     private String protocol;
+
+    @Pattern(regexp = "none|want|need", flags = Pattern.Flag.CASE_INSENSITIVE,
+            message = "SSL client authentication must be one of none, want, need")
     private String clientAuth;
+
+    @Pattern(regexp = "JKS|PKCS12", flags = Pattern.Flag.CASE_INSENSITIVE,
+            message = "SSL store type must be one of JKS, PKCS12")
     private String keyStoreType;
+
+    @Size(max = 1024, message = "KeyStore path is too long")
     private String keyStorePath;
+
+    @Size(max = 4096, message = "KeyStore password is too long")
     @ToString.Exclude
     private String keyStorePassword;
+
     private boolean clearKeyStorePassword;
+
+    @Pattern(regexp = "JKS|PKCS12", flags = Pattern.Flag.CASE_INSENSITIVE,
+            message = "SSL store type must be one of JKS, PKCS12")
     private String trustStoreType;
+
+    @Size(max = 1024, message = "TrustStore path is too long")
     private String trustStorePath;
+
+    @Size(max = 4096, message = "TrustStore password is too long")
     @ToString.Exclude
     private String trustStorePassword;
+
     private boolean clearTrustStorePassword;
 }

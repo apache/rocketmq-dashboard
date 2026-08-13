@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.persistence;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.studio.common.util.CredentialUtils;
 import org.apache.rocketmq.studio.persistence.entity.RmqDataSource;
 import org.apache.rocketmq.studio.persistence.entity.RmqSettings;
 import org.apache.rocketmq.studio.persistence.mapper.RmqDataSourceMapper;
@@ -31,7 +32,9 @@ import org.apache.rocketmq.studio.settings.SslSettingsRecord;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -93,7 +96,7 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
             return SslSettingsRecord.defaults();
         }
         try {
-            return objectMapper.readValue(entity.getJson(), SslSettingsRecord.class);
+            return withDecodedSslPasswords(objectMapper.readValue(entity.getJson(), SslSettingsRecord.class));
         } catch (JsonProcessingException e) {
             log.error("Failed to deserialize SSL settings", e);
             throw new BusinessException(500, "Persisted SSL settings are invalid");
@@ -103,7 +106,53 @@ public class MybatisPlusSettingsRepository implements SettingsRepository {
     @Override
     @Transactional
     public void saveSslSettings(SslSettingsRecord settings) {
-        saveSettingsJson(SSL_SETTINGS_ID, settings);
+        saveSettingsJson(SSL_SETTINGS_ID, withEncodedSslPasswords(settings));
+    }
+
+    private SslSettingsRecord withDecodedSslPasswords(SslSettingsRecord settings) {
+        if (settings == null) {
+            return null;
+        }
+        return copySslSettings(settings, decodeStoredSslPassword(settings.getKeyStorePassword()),
+                decodeStoredSslPassword(settings.getTrustStorePassword()));
+    }
+
+    private SslSettingsRecord withEncodedSslPasswords(SslSettingsRecord settings) {
+        if (settings == null) {
+            return null;
+        }
+        return copySslSettings(settings, CredentialUtils.encodeBase64(settings.getKeyStorePassword()),
+                CredentialUtils.encodeBase64(settings.getTrustStorePassword()));
+    }
+
+    private String decodeStoredSslPassword(String stored) {
+        if (stored == null || stored.isEmpty()) {
+            return stored;
+        }
+        try {
+            String decoded = new String(Base64.getDecoder().decode(stored), StandardCharsets.UTF_8);
+            if (stored.equals(CredentialUtils.encodeBase64(decoded))) {
+                return decoded;
+            }
+        } catch (IllegalArgumentException ignored) {
+            // Legacy values written by early SSL settings builds were stored without encoding.
+        }
+        return stored;
+    }
+
+    private SslSettingsRecord copySslSettings(SslSettingsRecord source, String keyStorePassword,
+                                              String trustStorePassword) {
+        return SslSettingsRecord.builder()
+                .enabled(source.isEnabled())
+                .protocol(source.getProtocol())
+                .clientAuth(source.getClientAuth())
+                .keyStoreType(source.getKeyStoreType())
+                .keyStorePath(source.getKeyStorePath())
+                .keyStorePassword(keyStorePassword)
+                .trustStoreType(source.getTrustStoreType())
+                .trustStorePath(source.getTrustStorePath())
+                .trustStorePassword(trustStorePassword)
+                .build();
     }
 
     private void saveSettingsJson(String id, Object settings) {
