@@ -159,6 +159,35 @@ class RocketMQMessageProviderTest {
     }
 
     @Test
+    void queryByTopicReturnsNewestMessagesFirst() throws Exception {
+        MessageQueue queue = new MessageQueue("TopicA", "broker-a", 0);
+        MessageExt older = new MessageExt();
+        older.setMsgId("older");
+        older.setTopic("TopicA");
+        older.setStoreTimestamp(150L);
+        MessageExt newer = new MessageExt();
+        newer.setMsgId("newer");
+        newer.setTopic("TopicA");
+        newer.setStoreTimestamp(250L);
+        PullResult pullResult = new PullResult(PullStatus.FOUND, 11L, 10L, 11L,
+                List.of(older, newer));
+        try (MockedConstruction<DefaultMQPullConsumer> ignored =
+                     mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
+                         doNothing().when(consumer).start();
+                         when(consumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
+                         when(consumer.searchOffset(eq(queue), anyLong())).thenReturn(10L);
+                         when(consumer.pull(queue, "*", 10L, 32)).thenReturn(pullResult);
+                         doNothing().when(consumer).shutdown();
+                     })) {
+            List<MessageRecordVO> messages = provider.queryMessages(
+                    "instance-a", "TopicA", null, null, null, 100L, 300L);
+
+            assertThat(messages).extracting(MessageRecordVO::getMsgId)
+                    .containsExactly("newer", "older");
+        }
+    }
+
+    @Test
     void toRecordVOBoundsMessageBodyAndProperties() {
         MessageExt message = new MessageExt();
         message.setMsgId("msg-1");

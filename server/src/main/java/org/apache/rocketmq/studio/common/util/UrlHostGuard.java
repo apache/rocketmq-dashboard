@@ -99,17 +99,26 @@ public final class UrlHostGuard {
             return allowLoopback;
         }
         try {
-            InetAddress address = InetAddress.getByName(normalized);
-            if (address.isAnyLocalAddress() || address.isLinkLocalAddress()) {
-                return false;
-            }
-            if (address.isLoopbackAddress()) {
-                return allowLoopback;
-            }
-            return true;
+            return areAllowed(InetAddress.getAllByName(normalized), allowLoopback);
         } catch (UnknownHostException exception) {
             // Fail closed: an unresolvable host must not be handed to the connection layer.
             return false;
         }
+    }
+
+    static boolean areAllowed(InetAddress[] addresses, boolean allowLoopback) {
+        if (addresses == null || addresses.length == 0) {
+            return false;
+        }
+        for (InetAddress address : addresses) {
+            if (address == null || address.isAnyLocalAddress() || address.isLinkLocalAddress()
+                    || address.isMulticastAddress()) {
+                return false;
+            }
+            if (address.isLoopbackAddress() && !allowLoopback) {
+                return false;
+            }
+        }
+        return true;
     }
 }

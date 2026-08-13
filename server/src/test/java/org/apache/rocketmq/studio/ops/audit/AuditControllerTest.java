@@ -135,6 +135,18 @@ class AuditControllerTest {
     }
 
     @Test
+    void cleanupLogsShouldRejectRetentionBeyondMaximum() throws Exception {
+        mockMvc.perform(post("/api/audit-logs/cleanup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("beforeDays", 366))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("beforeDays must not exceed 365"));
+
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
     void cleanupLogsShouldRejectInvalidRetentionType() throws Exception {
         mockMvc.perform(post("/api/audit-logs/cleanup")
                         .contentType(MediaType.APPLICATION_JSON)

@@ -18,6 +18,7 @@ package org.apache.rocketmq.studio.cluster.client;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -31,6 +32,15 @@ class ProducerConnectionSummaryVOTest {
         assertThat(summary.getTotalConnections()).isZero();
         assertThat(summary.getReadiness()).isEqualTo(ProducerConnectionSummaryVO.UNAVAILABLE);
         assertThat(summary.getWarnings()).containsExactly(ProducerConnectionSummaryVO.NO_CONNECTIONS);
+    }
+
+    @Test
+    void fromShouldSkipNullConnectionEntries() {
+        ProducerConnectionSummaryVO summary = ProducerConnectionSummaryVO.from(Arrays.asList(
+                null, connection("producer-a", "10.0.0.1:38888", "Java", "5.1.0")));
+
+        assertThat(summary.getTotalConnections()).isEqualTo(1);
+        assertThat(summary.getReadiness()).isEqualTo(ProducerConnectionSummaryVO.READY);
     }
 
     @Test

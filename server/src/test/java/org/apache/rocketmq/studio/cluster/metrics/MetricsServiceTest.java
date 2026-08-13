@@ -423,6 +423,28 @@ class MetricsServiceTest {
     }
 
     @Test
+    void queryByDataSourceShouldRejectUnsupportedStoredAuthMode() {
+        MetricsDataSourceQueryRequest request = dataSourceRequest(null);
+        DataSourceVO dataSource = DataSourceVO.builder()
+                .key("ds-1")
+                .name("prometheus-a")
+                .type("prometheus")
+                .url("http://prometheus:9090")
+                .auth("digest")
+                .build();
+        when(settingsService.getDataSource("ds-1")).thenReturn(dataSource);
+
+        assertThatExceptionOfType(PrometheusException.class)
+                .isThrownBy(() -> metricsService.queryByDataSource("ds-1", request))
+                .satisfies(exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(400);
+                    assertThat(exception.getMessage())
+                            .isEqualTo("Unsupported data source authentication mode: digest");
+                });
+        verifyNoInteractions(metricsSourceFactory, metricsSource);
+    }
+
+    @Test
     void queryByDataSourceShouldNormalizeAuthIndependentlyOfDefaultLocale() {
         MetricQueryDTO query = MetricQueryDTO.builder()
                 .metric("cpu")

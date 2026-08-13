@@ -14,21 +14,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.ops.audit;
+package org.apache.rocketmq.studio.provider.alibaba;
 
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Positive;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import com.aliyun.sdk.service.rocketmq20220801.models.ListMessagesResponseBody;
+import org.junit.jupiter.api.Test;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class AuditCleanupDTO {
-    @Positive(message = "beforeDays must be greater than 0")
-    @Max(value = 365, message = "beforeDays must not exceed 365")
-    private Integer beforeDays;
+import java.util.Arrays;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class AliyunConvertersMessageKeysTest {
+
+    @Test
+    void toMessageRecordShouldSkipNullAndBlankMessageKeys() {
+        ListMessagesResponseBody.List data = ListMessagesResponseBody.List.builder()
+                .messageKeys(Arrays.asList("key-a", null, " ", "key-b"))
+                .build();
+
+        assertThat(AliyunConverters.toMessageRecord(data).getKey()).isEqualTo("key-a key-b");
+    }
 }
