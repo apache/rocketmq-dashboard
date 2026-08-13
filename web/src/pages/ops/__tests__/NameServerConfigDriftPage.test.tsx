@@ -118,6 +118,36 @@ describe('NameServerConfigDriftPage', () => {
     expect(screen.getByText('listenPort')).toBeInTheDocument();
     expect(screen.getByText('19876')).toBeInTheDocument();
     expect(screen.getByText('ns-a:9876 · 可达')).toBeInTheDocument();
+    expect(screen.getByText('Production instance')).toBeInTheDocument();
+    expect(screen.queryByText('instance-a')).not.toBeInTheDocument();
+  });
+
+  it('keeps instance identifiers stable when selecting another instance', async () => {
+    const secondInstance = {
+      id: 'instance-b',
+      name: 'Staging instance',
+      vendor: 'APACHE',
+    } as Instance;
+    vi.mocked(listInstances).mockResolvedValue([instance, secondInstance]);
+    const stagingCluster = { id: 'cluster-b', name: 'Staging' } as ClusterInfo;
+    vi.mocked(listClusters).mockImplementation(async (instanceId) =>
+      instanceId === 'instance-b' ? [stagingCluster] : [cluster],
+    );
+    const user = userEvent.setup();
+
+    renderWithProviders(<NameServerConfigDriftPage />);
+    const selector = await screen.findByRole('combobox', { name: 'NameServer drift instance' });
+    await user.click(selector);
+    await user.click(
+      await screen.findByText('Staging instance', {
+        selector: '.ant-select-item-option-content',
+      }),
+    );
+
+    await waitFor(() => {
+      expect(listClusters).toHaveBeenCalledWith('instance-b');
+      expect(getNameServerConfigDiff).toHaveBeenCalledWith('cluster-b', 'instance-b');
+    });
   });
 
   it('reports a consistent result when no safe configuration differs', async () => {
