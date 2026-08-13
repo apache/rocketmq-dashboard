@@ -148,7 +148,22 @@ public class TencentInstanceProvider implements InstanceProvider {
 
     @Override
     public int countGroups(String instanceId) {
-        return listConsumerGroups(instanceId, null, false).size();
+        Context context = resolve(instanceId);
+        DescribeConsumerGroupListRequest request = new DescribeConsumerGroupListRequest();
+        request.setInstanceId(context.cloudInstanceId());
+        request.setOffset(0L);
+        request.setLimit(1L);
+        DescribeConsumerGroupListResponse response = clientFactory.call(
+                context.credentialId(), context.regionId(), client -> client.DescribeConsumerGroupList(request));
+        Long totalCount = response == null ? null : response.getTotalCount();
+        if (totalCount == null) {
+            return 0;
+        }
+        if (totalCount < 0L || totalCount > Integer.MAX_VALUE) {
+            throw new BusinessException(502,
+                    "Tencent Cloud returned an invalid consumer group count: " + totalCount);
+        }
+        return totalCount.intValue();
     }
 
     @Override

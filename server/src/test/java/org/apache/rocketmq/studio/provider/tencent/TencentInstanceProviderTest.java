@@ -31,6 +31,7 @@ import com.tencentcloudapi.trocket.v20230308.models.DescribeMessageTraceResponse
 import com.tencentcloudapi.trocket.v20230308.models.MessageItem;
 import com.tencentcloudapi.trocket.v20230308.models.MessageTraceItem;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicListByGroupResponse;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeConsumerGroupListRequest;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicListResponse;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicRequest;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicResponse;
@@ -146,6 +147,57 @@ class TencentInstanceProviderTest {
         assertThat(topics.get(0).getUpdatedAt())
                 .isEqualTo(java.time.Instant.ofEpochMilli(1600000100000L)
                         .atZone(java.time.ZoneId.systemDefault()).toLocalDateTime());
+    }
+
+    @Test
+    void countGroupsShouldUseTencentTotalCountTest() throws Exception {
+        DescribeConsumerGroupListResponse response = new DescribeConsumerGroupListResponse();
+        response.setTotalCount(37L);
+        when(client.DescribeConsumerGroupList(any())).thenReturn(response);
+
+        int count = provider.countGroups(STUDIO_INSTANCE_ID);
+
+        ArgumentCaptor<DescribeConsumerGroupListRequest> captor =
+                ArgumentCaptor.forClass(DescribeConsumerGroupListRequest.class);
+        verify(client).DescribeConsumerGroupList(captor.capture());
+        assertThat(captor.getValue().getInstanceId()).isEqualTo(CLOUD_INSTANCE_ID);
+        assertThat(captor.getValue().getOffset()).isZero();
+        assertThat(captor.getValue().getLimit()).isEqualTo(1L);
+        assertThat(count).isEqualTo(37);
+    }
+
+    @Test
+    void countGroupsShouldTreatMissingTotalCountAsZeroTest() throws Exception {
+        when(client.DescribeConsumerGroupList(any())).thenReturn(new DescribeConsumerGroupListResponse());
+
+        assertThat(provider.countGroups(STUDIO_INSTANCE_ID)).isZero();
+    }
+
+    @Test
+    void countGroupsShouldTreatNullResponseAsZeroTest() throws Exception {
+        when(client.DescribeConsumerGroupList(any())).thenReturn(null);
+
+        assertThat(provider.countGroups(STUDIO_INSTANCE_ID)).isZero();
+    }
+
+    @Test
+    void countGroupsShouldRejectCountsOutsideIntegerRangeTest() throws Exception {
+        DescribeConsumerGroupListResponse response = new DescribeConsumerGroupListResponse();
+        response.setTotalCount((long) Integer.MAX_VALUE + 1L);
+        when(client.DescribeConsumerGroupList(any())).thenReturn(response);
+
+        assertThatThrownBy(() -> provider.countGroups(STUDIO_INSTANCE_ID))
+                .hasMessage("Tencent Cloud returned an invalid consumer group count: 2147483648");
+    }
+
+    @Test
+    void countGroupsShouldRejectNegativeCountsTest() throws Exception {
+        DescribeConsumerGroupListResponse response = new DescribeConsumerGroupListResponse();
+        response.setTotalCount(-1L);
+        when(client.DescribeConsumerGroupList(any())).thenReturn(response);
+
+        assertThatThrownBy(() -> provider.countGroups(STUDIO_INSTANCE_ID))
+                .hasMessage("Tencent Cloud returned an invalid consumer group count: -1");
     }
 
     @Test
