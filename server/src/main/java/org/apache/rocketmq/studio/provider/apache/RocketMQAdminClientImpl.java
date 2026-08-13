@@ -22,6 +22,7 @@ import org.apache.rocketmq.client.producer.DefaultMQProducer;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.common.TopicConfig;
+import org.apache.rocketmq.common.attribute.TopicMessageType;
 import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.remoting.protocol.body.ClusterInfo;
 import org.apache.rocketmq.remoting.protocol.ResponseCode;
@@ -31,6 +32,7 @@ import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
+import org.apache.rocketmq.studio.common.domain.enums.TopicType;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageDTO;
 import org.apache.rocketmq.studio.instance.topic.SendMessageVO;
@@ -160,6 +162,9 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 topicConfig.setWriteQueueNums(writeQueues);
                 topicConfig.setReadQueueNums(readQueues);
                 topicConfig.setPerm(toRocketMQPerm(effectivePerm));
+                if (topic.getType() != null) {
+                    applyTopicMessageType(topicConfig, topic.getType());
+                }
 
                 for (String addr : brokerAddrs) {
                     admin.createAndUpdateTopicConfig(addr, topicConfig);
@@ -241,6 +246,9 @@ public class RocketMQAdminClientImpl implements AdminClient {
                 topicConfig.setWriteQueueNums(writeQueues);
                 topicConfig.setReadQueueNums(readQueues);
                 topicConfig.setPerm(toRocketMQPerm(effectivePerm));
+                if (topic.getType() != null) {
+                    applyTopicMessageType(topicConfig, topic.getType());
+                }
 
                 for (String addr : brokerAddrs) {
                     admin.createAndUpdateTopicConfig(addr, topicConfig);
@@ -644,6 +652,33 @@ public class RocketMQAdminClientImpl implements AdminClient {
             return 2;
         }
         return 6;
+    }
+
+    /**
+     * Persists the Studio topic type to the broker as the {@code message.type}
+     * TopicConfig attribute so typed topics (FIFO, DELAY, TRANSACTION, LITE)
+     * are honoured by the broker instead of being stored only in the DB.
+     */
+    private void applyTopicMessageType(TopicConfig topicConfig, TopicType topicType) {
+        TopicMessageType messageType;
+        switch (topicType) {
+            case FIFO:
+                messageType = TopicMessageType.FIFO;
+                break;
+            case DELAY:
+                messageType = TopicMessageType.DELAY;
+                break;
+            case TRANSACTION:
+                messageType = TopicMessageType.TRANSACTION;
+                break;
+            case LITE:
+                messageType = TopicMessageType.LITE;
+                break;
+            default:
+                messageType = TopicMessageType.NORMAL;
+                break;
+        }
+        topicConfig.setTopicMessageType(messageType);
     }
 
     private TopicPerm fromRocketMQPerm(Integer perm) {
