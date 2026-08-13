@@ -331,6 +331,7 @@ class RocketMQDashboardProviderTest {
         assertThat(dashboard.getStats()).isNotNull();
         assertThat(dashboard.getClusters()).hasSize(1);
         assertThat(dashboard.getClusters().get(0).getBrokers()).isZero();
+        assertThat(dashboard.getClusters().get(0).getStatus()).isEqualTo(ClusterStatus.warning);
     }
 
     @Test
@@ -353,6 +354,7 @@ class RocketMQDashboardProviderTest {
         assertThat(dashboard.getClusters().get(0).getBrokers()).isZero();
         assertThat(dashboard.getStats().getTotalClusters()).isEqualTo(1);
         assertThat(dashboard.getStats().getTotalBrokers()).isZero();
+        assertThat(dashboard.getStats().getHealthyClusters()).isZero();
     }
 
     @Test
@@ -428,6 +430,7 @@ class RocketMQDashboardProviderTest {
         assertThat(dashboard.getClusters()).singleElement().satisfies(cluster -> {
             assertThat(cluster.getName()).isEqualTo("cluster-without-members");
             assertThat(cluster.getBrokers()).isZero();
+            assertThat(cluster.getStatus()).isEqualTo(ClusterStatus.warning);
         });
     }
 
