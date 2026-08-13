@@ -142,7 +142,7 @@ const SystemAlertsPage = () => {
         {loading && <Card loading />}
         {!loading &&
           filtered.map((alert) => {
-            const normalizedLevel = alert.level.toLowerCase();
+            const normalizedLevel = (alert.level ?? '').toLowerCase();
             const cfg = alertLevelConfig[normalizedLevel] ?? {
               color: '#8c8c8c',
               bg: '#fafafa',
