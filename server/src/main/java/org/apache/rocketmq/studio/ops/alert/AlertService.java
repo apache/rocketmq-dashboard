@@ -160,10 +160,15 @@ public class AlertService {
             }
             try {
                 rule.setEnabled(enabled);
-                AlertRuleVO saved = alertRepository.saveRule(rule);
-                auditRule("TOGGLE_ALERT_RULE", saved, "enabled=" + enabled + ", bulk=true");
+                // replaceRule performs an existence-checked update; a rule deleted between the
+                // snapshot load and this call is reported as a failure instead of being recreated.
+                if (!alertRepository.replaceRule(rule)) {
+                    failures.put(id, "Alert rule not found");
+                    continue;
+                }
+                auditRule("TOGGLE_ALERT_RULE", rule, "enabled=" + enabled + ", bulk=true");
                 succeeded.add(id);
-                updated.add(saved);
+                updated.add(rule);
             } catch (RuntimeException failure) {
                 failures.put(id, failure.getMessage() == null ? "Update failed" : failure.getMessage());
             }

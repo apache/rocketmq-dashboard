@@ -601,8 +601,7 @@ class AlertServiceTest {
     void bulkToggleShouldDeduplicateIdsAndReportMissingRules() {
         AlertRuleVO rule = AlertRuleVO.builder().id("rule-1").name("High CPU").enabled(false).build();
         when(alertRepository.findAllRules()).thenReturn(List.of(rule));
-        when(alertRepository.saveRule(any(AlertRuleVO.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(alertRepository.replaceRule(any(AlertRuleVO.class))).thenReturn(true);
 
         AlertRuleBulkResultVO result = alertService.bulkToggleRules(
                 List.of("rule-1", "missing", "rule-1"), true);
@@ -611,7 +610,21 @@ class AlertServiceTest {
         assertThat(result.getFailures()).containsEntry("missing", "Alert rule not found");
         assertThat(result.getUpdatedRules()).singleElement()
                 .extracting(AlertRuleVO::isEnabled).isEqualTo(true);
-        verify(alertRepository).saveRule(rule);
+        verify(alertRepository).replaceRule(rule);
+    }
+
+    @Test
+    void bulkToggleShouldReportRulesDeletedConcurrentlyInsteadOfRecreatingThem() {
+        AlertRuleVO rule = AlertRuleVO.builder().id("rule-1").name("High CPU").enabled(false).build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+        when(alertRepository.replaceRule(any(AlertRuleVO.class))).thenReturn(false);
+
+        AlertRuleBulkResultVO result = alertService.bulkToggleRules(List.of("rule-1"), true);
+
+        assertThat(result.getSucceededIds()).isEmpty();
+        assertThat(result.getFailures()).containsEntry("rule-1", "Alert rule not found");
+        assertThat(result.getUpdatedRules()).isEmpty();
+        verify(alertRepository, never()).saveRule(any(AlertRuleVO.class));
     }
 
     @Test
