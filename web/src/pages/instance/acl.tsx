@@ -185,8 +185,8 @@ const AclPage = () => {
     const aclVersion = String(r.aclVersion);
     const matchSearch =
       !ruleSearch ||
-      r.principal.toLowerCase().includes(ruleSearch.toLowerCase()) ||
-      r.resource.toLowerCase().includes(ruleSearch.toLowerCase());
+      r.principal?.toLowerCase().includes(ruleSearch.toLowerCase()) ||
+      r.resource?.toLowerCase().includes(ruleSearch.toLowerCase());
     const matchVersion = ruleVersionFilter === 'all' || aclVersion === ruleVersionFilter;
     const matchDecision = ruleDecisionFilter === 'all' || r.decision === ruleDecisionFilter;
     return matchSearch && matchVersion && matchDecision;
