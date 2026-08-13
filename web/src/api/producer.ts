@@ -76,7 +76,13 @@ const normalizeDimension = (value?: string | null) => (hasText(value) ? value!.t
 const countDistinct = (
   connections: ProducerConnection[],
   extractor: (connection: ProducerConnection) => string,
-) => new Set(connections.map(extractor).filter(hasText)).size;
+) =>
+  new Set(
+    connections
+      .map(extractor)
+      .filter(hasText)
+      .map((value) => value.trim()),
+  ).size;
 
 const distribution = (
   connections: ProducerConnection[],
