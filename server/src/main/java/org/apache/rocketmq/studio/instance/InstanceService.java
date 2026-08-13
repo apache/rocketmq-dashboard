@@ -29,9 +29,12 @@ import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.provider.CloudInstanceDetailVO;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
+import org.apache.rocketmq.studio.settings.DataSourceVO;
+import org.apache.rocketmq.studio.settings.SettingsRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -48,6 +51,7 @@ public class InstanceService {
     private final InstanceProviderRegistry providerRegistry;
     private final MqAdminExtFactory adminFactory;
     private final OperationAuditService operationAuditService;
+    private final SettingsRepository settingsRepository;
 
     public List<InstanceVO> listInstances(InstanceType type, String search) {
         log.debug("Listing instances, type={}, search={}", type, search);
@@ -260,6 +264,7 @@ public class InstanceService {
         return saved;
     }
 
+    @Transactional
     public void deleteInstance(String id) {
         log.info("Deleting instance: {}", id);
 
@@ -280,9 +285,26 @@ public class InstanceService {
                     topicCount, consumerGroupCount));
         }
         instanceRepository.deleteById(id);
+        removeDataSourceBindings(id);
         releaseApacheEndpointIfUnused(existing, null);
         recordAudit("DELETE_INSTANCE", "INSTANCE", id, null,
                 instanceAuditDetail(existing));
+    }
+
+    private void removeDataSourceBindings(String instanceId) {
+        for (DataSourceVO dataSource : settingsRepository.findAllDataSources()) {
+            List<String> instanceIds = dataSource.getInstanceIds();
+            if (instanceIds == null || !instanceIds.contains(instanceId)) {
+                continue;
+            }
+            dataSource.setInstanceIds(instanceIds.stream()
+                    .filter(candidate -> !instanceId.equals(candidate))
+                    .toList());
+            if (!settingsRepository.replaceDataSource(dataSource)) {
+                log.warn("Metrics data source {} disappeared while removing instance binding {}",
+                        dataSource.getKey(), instanceId);
+            }
+        }
     }
 
     private void requireInstance(InstanceVO instance) {

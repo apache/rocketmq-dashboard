@@ -28,6 +28,8 @@ import org.apache.rocketmq.studio.provider.CloudCatalogProvider;
 import org.apache.rocketmq.studio.provider.CloudInstanceDetailVO;
 import org.apache.rocketmq.studio.provider.InstanceProviderRegistry;
 import org.apache.rocketmq.studio.provider.InstanceProvider;
+import org.apache.rocketmq.studio.settings.DataSourceVO;
+import org.apache.rocketmq.studio.settings.SettingsRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -70,6 +72,9 @@ class InstanceServiceTest {
 
     @Mock
     private OperationAuditService operationAuditService;
+
+    @Mock
+    private SettingsRepository settingsRepository;
 
     @InjectMocks
     private InstanceService instanceService;
@@ -715,6 +720,23 @@ class InstanceServiceTest {
 
         verify(instanceRepository).deleteById("inst-1");
         verify(adminFactory).release("namesrv:9876");
+    }
+
+    @Test
+    void deleteInstanceShouldRemoveMetricsDataSourceBinding() {
+        InstanceVO existing = InstanceVO.builder().name("to-delete").build();
+        existing.setId("inst-1");
+        DataSourceVO dataSource = DataSourceVO.builder().key("prometheus")
+                .instanceIds(List.of("inst-1", "inst-2")).build();
+        when(instanceRepository.findById("inst-1")).thenReturn(Optional.of(existing));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(settingsRepository.findAllDataSources()).thenReturn(List.of(dataSource));
+        when(settingsRepository.replaceDataSource(dataSource)).thenReturn(true);
+
+        instanceService.deleteInstance("inst-1");
+
+        assertThat(dataSource.getInstanceIds()).containsExactly("inst-2");
+        verify(settingsRepository).replaceDataSource(dataSource);
     }
 
     @Test
