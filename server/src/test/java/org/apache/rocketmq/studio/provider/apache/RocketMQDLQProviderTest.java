@@ -45,6 +45,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -267,6 +268,52 @@ class RocketMQDLQProviderTest {
                 eq("group-a"),
                 contains("matched=1, resent=0, failed=1"),
                 eq("FAILED"));
+    }
+
+    @Test
+    void resendMessagesMarksAResultPartialWhenScanReachesHardCap() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
+        List<MessageExt> deadLetters = IntStream.range(0, 5001)
+                .mapToObj(index -> {
+                    MessageExt deadLetter = new MessageExt();
+                    deadLetter.setMsgId("msg-" + index);
+                    deadLetter.setTopic(dlqTopic);
+                    deadLetter.setBody(new byte[] {1});
+                    deadLetter.setStoreTimestamp(150L);
+                    return deadLetter;
+                })
+                .toList();
+        PullResult pullResult = new PullResult(PullStatus.FOUND, 5001L, 0L, 5000L, deadLetters);
+        SendResult sendResult = new SendResult();
+        sendResult.setSendStatus(SendStatus.SEND_OK);
+
+        try (MockedConstruction<DefaultMQPullConsumer> mockedConsumers =
+                     mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
+                         doNothing().when(consumer).start();
+                         when(consumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
+                         when(consumer.searchOffset(queue, 100L)).thenReturn(0L);
+                         when(consumer.searchOffset(queue, 200L)).thenReturn(5001L);
+                         when(consumer.pull(queue, "*", 0L, 32)).thenReturn(pullResult);
+                         doNothing().when(consumer).shutdown();
+                     });
+             MockedConstruction<DefaultMQProducer> mockedProducers =
+                     mockConstruction(DefaultMQProducer.class, (producer, context) -> {
+                         doNothing().when(producer).start();
+                         when(producer.send(any(Message.class))).thenReturn(sendResult);
+                         doNothing().when(producer).shutdown();
+                     })) {
+            assertThat(provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic"))
+                    .extracting("matched", "resent", "failed", "outcome", "scanIncomplete", "failedQueueCount")
+                    .containsExactly(5000, 5000, 0, "PARTIAL", true, 0);
+
+            verify(mockedProducers.constructed().get(0), times(5000)).send(any(Message.class));
+        }
+        verify(auditService).record(
+                eq("RESEND_DLQ"),
+                eq("group-a"),
+                contains("scanTruncated=true"),
+                eq("PARTIAL"));
     }
 
     @Test

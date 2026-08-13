@@ -178,9 +178,10 @@ public class RocketMQDLQProvider implements DLQProvider {
 
         String outcome = classifyOutcome(deadLetters.size(), resent, failed, scanResult.scanIncomplete());
         String detail = String.format("instanceId=%s, group=%s, dlqTopic=%s, targetTopic=%s, matched=%d, resent=%d, "
-                        + "failed=%d, scanIncomplete=%s, scanFailedQueues=%d",
+                        + "failed=%d, scanIncomplete=%s, scanTruncated=%s, scanFailedQueues=%d",
                 instanceId, groupName, dlqTopic, StringUtils.hasText(targetTopic) ? targetTopic : "<original>",
-                deadLetters.size(), resent, failed, scanResult.scanIncomplete(), scanResult.failedQueueCount());
+                deadLetters.size(), resent, failed, scanResult.scanIncomplete(), scanResult.truncated(),
+                scanResult.failedQueueCount());
         recordAudit(groupName, detail, outcome);
         log.info("DLQ resend completed: {}", detail);
         return DLQResendResultVO.builder()
@@ -197,11 +198,12 @@ public class RocketMQDLQProvider implements DLQProvider {
         DefaultMQPullConsumer consumer = newPullConsumer(endpoint);
         List<MessageExt> result = new ArrayList<>();
         int failedQueueCount = 0;
+        boolean truncated = false;
         try {
             consumer.start();
             Set<MessageQueue> queues = consumer.fetchSubscribeMessageQueues(dlqTopic);
             if (queues == null || queues.isEmpty()) {
-                return new DeadLetterScanResult(result, 0);
+                return new DeadLetterScanResult(result, 0, false);
             }
             outer:
             for (MessageQueue queue : queues) {
@@ -213,6 +215,7 @@ public class RocketMQDLQProvider implements DLQProvider {
                     int consecutiveIllegalOffsets = 0;
                     for (long offset = minOffset; offset <= maxOffset; ) {
                         if (result.size() >= RESEND_HARD_CAP) {
+                            truncated = true;
                             break outer;
                         }
                         PullResult pullResult = consumer.pull(queue, "*", offset, 32);
@@ -255,6 +258,7 @@ public class RocketMQDLQProvider implements DLQProvider {
                                     && messageExt.getStoreTimestamp() <= end) {
                                 result.add(messageExt);
                                 if (result.size() >= RESEND_HARD_CAP) {
+                                    truncated = true;
                                     break outer;
                                 }
                             }
@@ -277,7 +281,7 @@ public class RocketMQDLQProvider implements DLQProvider {
         } finally {
             consumer.shutdown();
         }
-        return new DeadLetterScanResult(result, failedQueueCount);
+        return new DeadLetterScanResult(result, failedQueueCount, truncated);
     }
 
     private boolean resendOne(DefaultMQProducer producer, MessageExt deadLetter, String targetTopic) {
@@ -385,9 +389,9 @@ public class RocketMQDLQProvider implements DLQProvider {
         }
     }
 
-    private record DeadLetterScanResult(List<MessageExt> messages, int failedQueueCount) {
+    private record DeadLetterScanResult(List<MessageExt> messages, int failedQueueCount, boolean truncated) {
         boolean scanIncomplete() {
-            return failedQueueCount > 0;
+            return failedQueueCount > 0 || truncated;
         }
     }
 }
