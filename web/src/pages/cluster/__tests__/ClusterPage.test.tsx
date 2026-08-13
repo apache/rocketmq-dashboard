@@ -16,7 +16,7 @@
  */
 
 import { App, message, Modal } from 'antd';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { MemoryRouter } from 'react-router-dom';
@@ -262,6 +262,52 @@ describe('Cluster page', () => {
     expect(within(dialog).getByText('1,842')).toBeInTheDocument();
     expect(within(dialog).getByText('8081')).toBeInTheDocument();
     expect(within(dialog).getByText('8080')).toBeInTheDocument();
+  });
+
+  it('preserves a fractional MiB message size when another config field changes', async () => {
+    const cluster = buildCluster();
+    cluster.config.maxMessageSize = 4.5 * 1024 * 1024;
+    clusterServiceMocks.listClusters.mockResolvedValue([cluster]);
+    const user = userEvent.setup();
+    renderWithProviders(<ClusterPage />);
+
+    const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    await user.click(within(brokerRow).getByRole('button', { name: /配置/ }));
+    const dialog = await screen.findByRole('dialog', { name: /配置 - rocketmq-prod/ });
+    expect(within(dialog).getByRole('spinbutton', { name: '最大消息大小 (MB)' })).toHaveValue(
+      '4.5',
+    );
+
+    await user.click(within(dialog).getByRole('radio', { name: '异步刷盘' }));
+    await user.click(within(dialog).getByRole('button', { name: 'OK' }));
+
+    await waitFor(() => expect(clusterServiceMocks.updateClusterConfig).toHaveBeenCalledTimes(1));
+    expect(clusterServiceMocks.updateClusterConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        flushDiskType: 'ASYNC_FLUSH',
+        maxMessageSize: 4.5 * 1024 * 1024,
+      }),
+    );
+  });
+
+  it('requires equal integer read and write queue counts before updating config', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ClusterPage />);
+
+    const brokerRow = await screen.findByRole('row', { name: /10\.101\.2\.11:10911/ });
+    await user.click(within(brokerRow).getByRole('button', { name: /配置/ }));
+    const dialog = await screen.findByRole('dialog', { name: /配置 - rocketmq-prod/ });
+    const writeQueues = within(dialog).getByRole('spinbutton', { name: '写队列数' });
+    const readQueues = within(dialog).getByRole('spinbutton', { name: '读队列数' });
+
+    expect(writeQueues).toHaveAttribute('step', '1');
+    expect(readQueues).toHaveAttribute('step', '1');
+    await user.clear(readQueues);
+    await user.type(readQueues, '4');
+    await user.click(within(dialog).getByRole('button', { name: 'OK' }));
+
+    expect(await within(dialog).findByText('读写队列数必须相等')).toBeInTheDocument();
+    expect(clusterServiceMocks.updateClusterConfig).not.toHaveBeenCalled();
   });
 
   it('keeps cluster tabs usable when address fields are missing', async () => {
