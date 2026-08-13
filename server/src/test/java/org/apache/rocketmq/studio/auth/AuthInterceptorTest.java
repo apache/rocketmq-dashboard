@@ -21,6 +21,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -217,6 +219,36 @@ class AuthInterceptorTest {
         assertThat(allowed).isTrue();
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "/api/cloud/aliyun/regions",
+        "/api/cloud/aliyun/instances",
+        "/api/cloud/tencent/regions",
+        "/api/cloud/tencent/instances"
+    })
+    void shouldRejectCloudCatalogReadsForNonAdminUser(String path) throws Exception {
+        TestSession session = login(false);
+        MockHttpServletRequest request = authenticatedRequest("GET", path, session.token());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        boolean allowed = session.interceptor().preHandle(request, response, new Object());
+
+        assertThat(allowed).isFalse();
+        assertThat(response.getStatus()).isEqualTo(403);
+    }
+
+    @Test
+    void shouldAllowCloudCatalogReadsForAdminUser() throws Exception {
+        TestSession session = login(true);
+        MockHttpServletRequest request = authenticatedRequest(
+                "GET", "/api/cloud/aliyun/instances", session.token());
+
+        boolean allowed = session.interceptor().preHandle(
+                request, new MockHttpServletResponse(), new Object());
+
+        assertThat(allowed).isTrue();
+    }
+
     @Test
     void shouldRejectLlmModelDiscoveryForNonAdminUser() throws Exception {
         TestSession session = login(false);
@@ -375,6 +407,48 @@ class AuthInterceptorTest {
         TestSession session = login(true);
         MockHttpServletRequest request = authenticatedRequest(
                 "GET", "/api/acl/users/user-1/credentials", session.token());
+
+        boolean allowed = session.interceptor().preHandle(
+                request, new MockHttpServletResponse(), new Object());
+
+        assertThat(allowed).isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "/api/acl/remote/rules",
+        "/api/acl/remote/rules/",
+        "/api/acl;source=remote/remote;view=all/rules;format=json"
+    })
+    void shouldRejectRemoteAclPolicyDiscoveryForNonAdminUser(String path) throws Exception {
+        TestSession session = login(false);
+        MockHttpServletRequest request = authenticatedRequest("GET", path, session.token());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        boolean allowed = session.interceptor().preHandle(request, response, new Object());
+
+        assertThat(allowed).isFalse();
+        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(response.getContentAsString()).contains("Admin permission required");
+    }
+
+    @Test
+    void shouldAllowRemoteAclPolicyDiscoveryForAdminUser() throws Exception {
+        TestSession session = login(true);
+        MockHttpServletRequest request = authenticatedRequest(
+                "GET", "/api/acl/remote/rules", session.token());
+
+        boolean allowed = session.interceptor().preHandle(
+                request, new MockHttpServletResponse(), new Object());
+
+        assertThat(allowed).isTrue();
+    }
+
+    @Test
+    void shouldKeepLocalAclRulesReadableForNonAdminUser() throws Exception {
+        TestSession session = login(false);
+        MockHttpServletRequest request = authenticatedRequest(
+                "GET", "/api/acl/rules", session.token());
 
         boolean allowed = session.interceptor().preHandle(
                 request, new MockHttpServletResponse(), new Object());
