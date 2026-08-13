@@ -16,14 +16,21 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class CliAgentProviderTest {
 
     private static final class FakeCli extends CliAgentProvider {
         private final String script;
+        private final int outputLimitBytes;
 
         FakeCli(String script) {
+            this(script, Integer.MAX_VALUE);
+        }
+
+        FakeCli(String script, int outputLimitBytes) {
             this.script = script;
+            this.outputLimitBytes = outputLimitBytes;
         }
 
         @Override
@@ -45,6 +52,11 @@ class CliAgentProviderTest {
         protected String binaryName() {
             return "sh";
         }
+
+        @Override
+        int outputLimitBytes() {
+            return outputLimitBytes;
+        }
     }
 
     @Test
@@ -62,5 +74,24 @@ class CliAgentProviderTest {
         // All stderr bytes were drained as well (merged into the single output stream),
         // well past the 64 KiB pipe buffer that used to deadlock the sequential reads.
         assertThat(result.length()).isGreaterThan(500_000);
+    }
+
+    @Test
+    void completeRejectsOutputBeyondConfiguredLimit() {
+        FakeCli cli = new FakeCli("yes 0123456789abcdef | head -c 4096", 1024);
+
+        assertThatThrownBy(() -> cli.complete(null, "prompt", null))
+                .isInstanceOfSatisfying(LlmGatewayException.class, exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(502);
+                    assertThat(exception.getCode()).isEqualTo("llm.provider.output_too_large");
+                    assertThat(exception.getMessage()).contains("1024 bytes");
+                });
+    }
+
+    @Test
+    void completeAllowsOutputAtConfiguredLimit() {
+        FakeCli cli = new FakeCli("yes x | head -c 1024", 1024);
+
+        assertThat(cli.complete(null, "prompt", null)).isNotEmpty();
     }
 }

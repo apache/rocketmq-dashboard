@@ -19,12 +19,17 @@ package org.apache.rocketmq.studio.ops.ai;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Base class for CLI-based agent providers: spawns the vendor CLI in a
@@ -35,6 +40,7 @@ import java.util.concurrent.TimeUnit;
 public abstract class CliAgentProvider implements AgentProvider {
 
     private static final long TIMEOUT_SECONDS = 180;
+    private static final int MAX_OUTPUT_BYTES = 5 * 1024 * 1024;
 
     protected abstract List<String> buildCommand(LlmConfigVO config, String prompt, String modelOverride);
 
@@ -84,10 +90,10 @@ public abstract class CliAgentProvider implements AgentProvider {
                     "Check that the CLI binary is installed and executable.", exception);
         }
         CompletableFuture<String> outputFuture = CompletableFuture.supplyAsync(() -> {
-            try (java.io.InputStream in = process.getInputStream()) {
-                return new String(in.readAllBytes(), StandardCharsets.UTF_8);
-            } catch (IOException ignored) {
-                return "";
+            try {
+                return readOutput(process);
+            } catch (IOException exception) {
+                throw new CompletionException(exception);
             }
         });
         boolean finished;
@@ -102,7 +108,20 @@ public abstract class CliAgentProvider implements AgentProvider {
         String output;
         try {
             output = outputFuture.get(10, TimeUnit.SECONDS);
-        } catch (Exception exception) {
+        } catch (ExecutionException exception) {
+            if (exception.getCause() instanceof OutputLimitException outputLimitException) {
+                throw new LlmGatewayException(502, "llm.provider.output_too_large",
+                        binaryName() + " CLI output exceeded the maximum of "
+                                + outputLimitException.limitBytes() + " bytes",
+                        "Retry with a shorter prompt or reduce the provider response size.", exception);
+            }
+            output = "";
+        } catch (InterruptedException exception) {
+            process.destroyForcibly();
+            Thread.currentThread().interrupt();
+            throw new LlmGatewayException(502, "llm.provider.interrupted",
+                    binaryName() + " CLI output collection was interrupted", "Retry the request.", exception);
+        } catch (TimeoutException exception) {
             output = "";
         }
         if (!finished) {
@@ -126,11 +145,45 @@ public abstract class CliAgentProvider implements AgentProvider {
         return result;
     }
 
+    private String readOutput(Process process) throws IOException {
+        int limitBytes = outputLimitBytes();
+        try (InputStream input = process.getInputStream();
+             ByteArrayOutputStream output = new ByteArrayOutputStream(Math.min(limitBytes, 8192))) {
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                if (read > limitBytes - output.size()) {
+                    process.destroyForcibly();
+                    throw new OutputLimitException(limitBytes);
+                }
+                output.write(buffer, 0, read);
+            }
+            return output.toString(StandardCharsets.UTF_8);
+        }
+    }
+
+    int outputLimitBytes() {
+        return MAX_OUTPUT_BYTES;
+    }
+
     private String abbreviate(String value) {
         if (value == null) {
             return "";
         }
         String trimmed = value.trim();
         return trimmed.length() <= 500 ? trimmed : trimmed.substring(0, 500) + "...";
+    }
+
+    private static final class OutputLimitException extends IOException {
+        private final int limitBytes;
+
+        private OutputLimitException(int limitBytes) {
+            super("CLI output exceeds " + limitBytes + " bytes");
+            this.limitBytes = limitBytes;
+        }
+
+        private int limitBytes() {
+            return limitBytes;
+        }
     }
 }
