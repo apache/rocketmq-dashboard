@@ -123,10 +123,12 @@ const renderWithProviders = (ui: React.ReactElement) => {
 
 const createDeferred = <T,>() => {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => {
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
+    reject = rejectPromise;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 };
 
 describe('BrokerCluster Page', () => {
@@ -229,6 +231,49 @@ describe('BrokerCluster Page', () => {
     expect(screen.queryByText('broker-b')).not.toBeInTheDocument();
     expect(screen.queryByText('nameserver-a')).not.toBeInTheDocument();
     expect(screen.queryByText('proxy-a')).not.toBeInTheDocument();
+  });
+
+  it('clears the previous topology while a newly selected instance loads or fails', async () => {
+    const nextInstance = createDeferred<ClusterInfo[]>();
+    vi.mocked(listInstances).mockResolvedValue([
+      {
+        id: 'instance-1',
+        name: 'instance-1',
+        remark: '',
+        type: 'DIRECT',
+        endpoint: '10.0.1.20:9876',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        createdAt: '',
+        updatedAt: '',
+      },
+      {
+        id: 'instance-2',
+        name: 'instance-2',
+        remark: '',
+        type: 'DIRECT',
+        endpoint: '10.0.2.20:9876',
+        topicCount: 0,
+        consumerGroupCount: 0,
+        createdAt: '',
+        updatedAt: '',
+      },
+    ]);
+    vi.mocked(listClusters)
+      .mockResolvedValueOnce(clusterFixture)
+      .mockReturnValueOnce(nextInstance.promise);
+    const user = userEvent.setup();
+    renderWithProviders(<BrokerCluster />);
+    await screen.findByText('broker-api-a');
+
+    await user.click(screen.getByRole('combobox', { name: '选择实例' }));
+    const instanceTwoOptions = await screen.findAllByText('instance-2');
+    await user.click(instanceTwoOptions[instanceTwoOptions.length - 1]);
+
+    await waitFor(() => expect(screen.queryByText('broker-api-a')).not.toBeInTheDocument());
+    await act(async () => nextInstance.reject(new Error('instance-2 unavailable')));
+    expect(screen.queryByText('broker-api-a')).not.toBeInTheDocument();
+    expect(listClusters).toHaveBeenLastCalledWith('instance-2');
   });
 
   it('polls only while live refresh is enabled', async () => {

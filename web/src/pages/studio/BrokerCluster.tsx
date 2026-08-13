@@ -160,29 +160,34 @@ const BrokerClusterPage = () => {
     setProxyData([]);
   }, []);
 
-  const loadData = useCallback(async () => {
-    if (!selectedInstanceId) {
-      clearData();
-      return;
-    }
-    const requestId = ++loadRequestId.current;
-    setLoading(true);
-    try {
-      const clusters = await listClusters(selectedInstanceId);
-      if (requestId !== loadRequestId.current) return;
-      const mapped = mapClusters(clusters);
-      setBrokerData(mapped.brokers);
-      setNameServerData(mapped.nameServers);
-      setProxyData(mapped.proxies);
-    } catch {
-      if (requestId !== loadRequestId.current) return;
-      message.error(t('common.refreshFailed'));
-    } finally {
-      if (requestId === loadRequestId.current) {
-        setLoading(false);
+  const loadData = useCallback(
+    async (clearExisting = false) => {
+      if (!selectedInstanceId) {
+        clearData();
+        return;
       }
-    }
-  }, [clearData, message, selectedInstanceId, t]);
+      const requestId = ++loadRequestId.current;
+      if (clearExisting) clearData();
+      setLoading(true);
+      try {
+        const clusters = await listClusters(selectedInstanceId);
+        if (requestId !== loadRequestId.current) return;
+        const mapped = mapClusters(clusters);
+        setBrokerData(mapped.brokers);
+        setNameServerData(mapped.nameServers);
+        setProxyData(mapped.proxies);
+      } catch {
+        if (requestId !== loadRequestId.current) return;
+        clearData();
+        message.error(t('common.refreshFailed'));
+      } finally {
+        if (requestId === loadRequestId.current) {
+          setLoading(false);
+        }
+      }
+    },
+    [clearData, message, selectedInstanceId, t],
+  );
 
   useEffect(() => {
     let active = true;
@@ -206,7 +211,7 @@ const BrokerClusterPage = () => {
     const requestId = loadRequestId.current;
     // The state updates are performed by the asynchronous cluster API request, not by this effect itself.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadData();
+    void loadData(true);
     return () => {
       loadRequestId.current = requestId + 1;
     };
