@@ -45,13 +45,18 @@ export function formatDate(date: string | Date | null | undefined): string {
  * e.g. 1536 → '1.5 KB', 1048576 → '1 MB'
  */
 export function formatBytes(bytes: number, decimals = 1): string {
+  if (!Number.isFinite(bytes)) return '-';
   if (bytes === 0) return '0 B';
   if (bytes < 0) return `-${formatBytes(-bytes, decimals)}`;
 
   const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
   const k = 1024;
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  const value = bytes / Math.pow(k, i);
+  let i = 0;
+  let value = Math.abs(bytes);
+  while (value >= k && i < units.length - 1) {
+    value /= k;
+    i += 1;
+  }
   return `${value.toFixed(decimals)} ${units[i]}`;
 }
 
