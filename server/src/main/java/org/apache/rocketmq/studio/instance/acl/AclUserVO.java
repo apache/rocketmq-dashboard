@@ -38,6 +38,10 @@ public class AclUserVO {
     private String secretKey;
     private boolean admin;
     private List<String> clusters;
+    /** Tencent Cloud role read permission (null when not applicable). */
+    private Boolean permRead;
+    /** Tencent Cloud role write permission (null when not applicable). */
+    private Boolean permWrite;
     /** IP whitelist pattern for plain access accounts; empty means no restriction. */
     private String whiteRemoteAddress;
     private LocalDateTime createdAt;

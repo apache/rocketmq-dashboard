@@ -17,6 +17,13 @@ export interface AclRule {
 export interface AclRuleQuery {
   clusterId?: string;
   principal?: string;
+  instanceId?: string;
+}
+
+// Users list query
+interface AclUserQuery {
+  keyword?: string;
+  instanceId?: string;
 }
 
 export interface AclUser {
@@ -26,6 +33,8 @@ export interface AclUser {
   secretKey: string;
   admin: boolean;
   clusters: string[];
+  permRead?: boolean;
+  permWrite?: boolean;
   createdAt?: string | null;
 }
 
@@ -34,44 +43,45 @@ export async function listAclRules(params?: AclRuleQuery) {
   return res.data.data;
 }
 
-export async function createAclRule(data: Partial<AclRule>) {
+export async function createAclRule(data: Partial<AclRule> & { instanceId?: string }) {
   const res = await client.post<{ data: AclRule }>('/acl/rules/create', data);
   return res.data.data;
 }
 
-export async function updateAclRule(data: Partial<AclRule>) {
+export async function updateAclRule(data: Partial<AclRule> & { instanceId?: string }) {
   const res = await client.post<{ data: AclRule }>('/acl/rules/update', data);
   return res.data.data;
 }
 
-export async function deleteAclRule(id: string) {
-  await client.post('/acl/rules/delete', { id });
+export async function deleteAclRule(id: string, instanceId?: string) {
+  await client.post('/acl/rules/delete', { id, instanceId });
 }
 
-export async function listAclUsers(params?: { keyword?: string }) {
+export async function listAclUsers(params?: AclUserQuery) {
   const res = await client.get<{ data: AclUser[] }>('/acl/users', { params });
   return res.data.data;
 }
 
-export async function getAclUserCredentials(id: string) {
+export async function getAclUserCredentials(id: string, instanceId?: string) {
   const res = await client.get<{ data: AclUser }>(
     `/acl/users/${encodeURIComponent(id)}/credentials`,
+    { params: { instanceId } },
   );
   return res.data.data;
 }
 
-export async function createAclUser(data: Partial<AclUser>) {
+export async function createAclUser(data: Partial<AclUser> & { instanceId?: string }) {
   const res = await client.post<{ data: AclUser }>('/acl/users/create', data);
   return res.data.data;
 }
 
-export async function updateAclUser(data: Partial<AclUser>) {
+export async function updateAclUser(data: Partial<AclUser> & { instanceId?: string }) {
   const res = await client.post<{ data: AclUser }>('/acl/users/update', data);
   return res.data.data;
 }
 
-export async function deleteAclUser(id: string) {
-  await client.post('/acl/users/delete', { id });
+export async function deleteAclUser(id: string, instanceId?: string) {
+  await client.post('/acl/users/delete', { id, instanceId });
 }
 
 // ============ ACL 2.0: cluster config & plain access ============

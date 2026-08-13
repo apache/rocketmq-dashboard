@@ -102,7 +102,7 @@ class AclControllerTest {
         rule.setId("rule-1");
         rule.setCreatedAt(LocalDateTime.of(2026, 1, 1, 0, 0));
 
-        when(aclService.listRules(isNull(), isNull())).thenReturn(List.of(rule));
+        when(aclService.listRules(isNull(), isNull(), isNull())).thenReturn(List.of(rule));
 
         mockMvc.perform(get("/api/acl/rules"))
                 .andExpect(status().isOk())
@@ -115,7 +115,7 @@ class AclControllerTest {
 
     @Test
     void listRulesShouldPassQueryParams() throws Exception {
-        when(aclService.listRules(eq("cluster-1"), eq("user1"))).thenReturn(List.of());
+        when(aclService.listRules(eq("cluster-1"), eq("user1"), isNull())).thenReturn(List.of());
 
         mockMvc.perform(get("/api/acl/rules")
                         .param("clusterId", "cluster-1")
@@ -123,7 +123,7 @@ class AclControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray());
 
-        verify(aclService).listRules(eq("cluster-1"), eq("user1"));
+        verify(aclService).listRules(eq("cluster-1"), eq("user1"), isNull());
     }
 
     @Test
@@ -144,7 +144,7 @@ class AclControllerTest {
         created.setId("new-rule-id");
         created.setCreatedAt(LocalDateTime.of(2026, 7, 8, 12, 0));
 
-        when(aclService.createRule(any(AclRuleVO.class))).thenReturn(created);
+        when(aclService.createRule(any(AclRuleVO.class), isNull())).thenReturn(created);
 
         mockMvc.perform(post("/api/acl/rules/create")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -177,7 +177,7 @@ class AclControllerTest {
                 .decision("DENY")
                 .build();
 
-        when(aclService.updateRule(any(AclRuleVO.class))).thenReturn(input);
+        when(aclService.updateRule(any(AclRuleVO.class), isNull())).thenReturn(input);
 
         mockMvc.perform(post("/api/acl/rules/update")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -196,7 +196,7 @@ class AclControllerTest {
                 .resource("topic-1")
                 .decision("DENY")
                 .build();
-        when(aclService.updateRule(any(AclRuleVO.class)))
+        when(aclService.updateRule(any(AclRuleVO.class), isNull()))
                 .thenThrow(new BusinessException(404, "ACL rule not found: missing-rule"));
 
         mockMvc.perform(post("/api/acl/rules/update")
@@ -228,7 +228,7 @@ class AclControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.message").value("success"));
 
-        verify(aclService).deleteRule("rule-1");
+        verify(aclService).deleteRule(eq("rule-1"), isNull());
     }
 
     @Test
@@ -254,7 +254,7 @@ class AclControllerTest {
         user.setId("user-1");
         user.setCreatedAt(LocalDateTime.of(2026, 1, 1, 0, 0));
 
-        when(aclService.listUsers()).thenReturn(List.of(user));
+        when(aclService.listUsers(isNull())).thenReturn(List.of(user));
 
         mockMvc.perform(get("/api/acl/users"))
                 .andExpect(status().isOk())
@@ -274,7 +274,7 @@ class AclControllerTest {
                 .accessKey("access-key")
                 .secretKey("secret-key")
                 .build();
-        when(aclService.getUserCredentials("user-1")).thenReturn(credentials);
+        when(aclService.getUserCredentials(eq("user-1"), isNull())).thenReturn(credentials);
 
         mockMvc.perform(get("/api/acl/users/user-1/credentials"))
                 .andExpect(status().isOk())
@@ -291,7 +291,7 @@ class AclControllerTest {
                 .admin(false)
                 .build();
 
-        when(aclService.createUser(any(AclUserVO.class))).thenReturn(created);
+        when(aclService.createUser(any(AclUserVO.class), isNull())).thenReturn(created);
 
         mockMvc.perform(post("/api/acl/users/create")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -308,7 +308,7 @@ class AclControllerTest {
                 .andExpect(jsonPath("$.data.secretKey").value("secret-key-987654"));
 
         ArgumentCaptor<AclUserVO> captor = ArgumentCaptor.forClass(AclUserVO.class);
-        verify(aclService).createUser(captor.capture());
+        verify(aclService).createUser(captor.capture(), isNull());
         assertThat(captor.getValue().getUsername()).isEqualTo("new-user");
         assertThat(captor.getValue().isAdmin()).isTrue();
         assertThat(captor.getValue().getClusters()).containsExactly("cluster-a");
@@ -344,7 +344,7 @@ class AclControllerTest {
                 .admin(false)
                 .build();
 
-        when(aclService.updateUser(any(UpdateAclUserDTO.class))).thenReturn(updated);
+        when(aclService.updateUser(any(UpdateAclUserDTO.class), isNull())).thenReturn(updated);
 
         mockMvc.perform(post("/api/acl/users/update")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -378,7 +378,7 @@ class AclControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.message").value("success"));
 
-        verify(aclService).deleteUser("user-1");
+        verify(aclService).deleteUser(eq("user-1"), isNull());
     }
 
     @Test
