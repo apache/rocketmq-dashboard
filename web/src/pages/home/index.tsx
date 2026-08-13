@@ -424,7 +424,7 @@ const HomePage = () => {
                   <textarea
                     ref={textareaRef}
                     className="chat-input"
-                    placeholder="向 RocketMQ Bot 提问，全程加密、安全、可信"
+                    placeholder={t('home.placeholder')}
                     value={inputValue}
                     onChange={(event) => setInputValue(event.target.value)}
                     onKeyDown={handleKeyDown}
@@ -516,7 +516,7 @@ const HomePage = () => {
               className="transition-colors hover:text-purple-500"
               style={{ textDecoration: 'none' }}
             >
-              文档中心
+              {t('home.docs')}
             </a>
             <span style={{ margin: '0 4px' }}>｜</span>
             <a
@@ -524,13 +524,13 @@ const HomePage = () => {
               className="transition-colors hover:text-purple-500"
               style={{ textDecoration: 'none' }}
             >
-              RocketMQ 社区
+              {t('home.community')}
             </a>
             <span style={{ margin: '0 4px' }}>｜</span>
-            <span>RocketMQ Studio 出品</span>
+            <span>{t('home.brand')}</span>
             <span style={{ margin: '0 4px' }}>｜</span>
             <span>
-              当前版本 {__BUILD_TIME__} build({__BUILD_COMMIT__})
+              {t('home.version')} {__BUILD_TIME__} build({__BUILD_COMMIT__})
             </span>
           </span>
         </footer>
