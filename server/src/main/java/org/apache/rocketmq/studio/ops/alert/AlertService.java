@@ -99,6 +99,7 @@ public class AlertService {
         if (!hasText(rule.getName())) {
             throw new BusinessException(400, "Alert rule name is required");
         }
+        rule.setName(rule.getName().trim());
         log.info("Creating alert rule: {}", rule.getName());
         rule.setId(UUID.randomUUID().toString());
         AlertRuleVO saved = alertRepository.saveRule(rule);
@@ -114,6 +115,7 @@ public class AlertService {
         if (!hasText(rule.getName())) {
             throw new BusinessException(400, "Alert rule name is required");
         }
+        rule.setName(rule.getName().trim());
         String id = rule.getId();
         log.info("Updating alert rule: {}", id);
         validateRuleId(id);
