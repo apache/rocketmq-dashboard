@@ -24,7 +24,6 @@ import {
   Col,
   Input,
   Row,
-  Select,
   Space,
   Statistic,
   Table,
@@ -34,6 +33,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import { PlayCircleOutlined } from '@ant-design/icons';
 import PageHeader from '../../components/PageHeader';
+import { InstanceSelect } from '../../components/InstanceSelect';
 import { useInstanceFilter } from '../../hooks/useInstanceFilter';
 import type { ResourcePlanEntry } from '../../services/resourcePlanService';
 import {
@@ -151,12 +151,11 @@ const ResourcePlanPage = () => {
         subtitle="导入前只读预检 Topic 与 Consumer Group 配置，先看差异再决定是否手动调整"
         extra={
           <Space>
-            <Select
+            <InstanceSelect
               value={selectedInstanceId || undefined}
-              placeholder="选择实例"
-              style={{ width: 220 }}
-              options={instanceOptions}
               onChange={selectInstance}
+              options={instanceOptions}
+              style={{ width: 220 }}
             />
             <Button onClick={() => setBundleText(RESOURCE_PLAN_SAMPLE)}>填充示例</Button>
             <Button

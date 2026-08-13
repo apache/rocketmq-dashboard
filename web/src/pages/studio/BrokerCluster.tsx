@@ -16,25 +16,8 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  Table,
-  Button,
-  Tag,
-  Tabs,
-  Card,
-  Space,
-  Switch,
-  Progress,
-  Spin,
-  App,
-  Select,
-} from 'antd';
-import {
-  ArrowClockwise,
-  Cloud,
-  ChartBar,
-  PlugsConnected,
-} from '@phosphor-icons/react';
+import { Table, Button, Tag, Tabs, Card, Space, Switch, Progress, Spin, App, Select } from 'antd';
+import { ArrowClockwise, Cloud, ChartBar, PlugsConnected } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
 import { listClusters } from '../../services/clusterService';
 import type { ClusterInfo } from '../../api/cluster';
@@ -207,7 +190,7 @@ const BrokerClusterPage = () => {
       .then((nextInstances) => {
         if (!active) return;
         setInstances(nextInstances);
-        setSelectedInstanceId(nextInstances[0]?.id ?? '');
+        setSelectedInstanceId(nextInstances[0]?.name ?? '');
       })
       .catch(() => {
         if (!active) return;
@@ -220,9 +203,12 @@ const BrokerClusterPage = () => {
   }, [clearData, message, t]);
 
   useEffect(() => {
+    const requestId = loadRequestId.current;
+    // The state updates are performed by the asynchronous cluster API request, not by this effect itself.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadData();
     return () => {
-      ++loadRequestId.current;
+      loadRequestId.current = requestId + 1;
     };
   }, [loadData]);
 
@@ -474,7 +460,7 @@ const BrokerClusterPage = () => {
             onChange={setSelectedInstanceId}
             placeholder="选择实例"
             style={{ minWidth: 180 }}
-            options={instances.map((instance) => ({ value: instance.id, label: instance.name }))}
+            options={instances.map((instance) => ({ value: instance.name, label: instance.name }))}
           />
           <Switch
             checked={autoRefresh}

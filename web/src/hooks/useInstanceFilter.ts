@@ -34,7 +34,7 @@ export function useInstanceFilter() {
 
   const scopedMatch = pathname.match(INSTANCE_SCOPED_PATH);
   const staticMatch = pathname.match(STATIC_SECTION_PATH);
-  const routeInstanceId = scopedMatch?.[1];
+  const routeInstanceId = scopedMatch ? decodeURIComponent(scopedMatch[1]) : undefined;
   const section = scopedMatch?.[2] ?? staticMatch?.[1] ?? 'topic';
 
   const [instances, setInstances] = useState<Instance[]>([]);
@@ -45,9 +45,11 @@ export function useInstanceFilter() {
       .then((nextInstances) => {
         if (cancelled) return;
         setInstances(nextInstances);
-        const isKnownInstance = nextInstances.some((instance) => instance.id === routeInstanceId);
+        const isKnownInstance = nextInstances.some((instance) => instance.name === routeInstanceId);
         if (nextInstances.length > 0 && !isKnownInstance) {
-          navigate(`/instance/${nextInstances[0].id}/${section}`, { replace: true });
+          navigate(`/instance/${encodeURIComponent(nextInstances[0].name)}/${section}`, {
+            replace: true,
+          });
         }
       })
       .catch(() => {
@@ -59,17 +61,17 @@ export function useInstanceFilter() {
   }, [navigate, routeInstanceId, section]);
 
   const selectedInstanceId =
-    routeInstanceId && instances.some((instance) => instance.id === routeInstanceId)
+    routeInstanceId && instances.some((instance) => instance.name === routeInstanceId)
       ? routeInstanceId
-      : (instances[0]?.id ?? '');
-  const selectedInstance = instances.find((instance) => instance.id === selectedInstanceId);
+      : (instances[0]?.name ?? '');
+  const selectedInstance = instances.find((instance) => instance.name === selectedInstanceId);
 
   const selectInstance = (id: string) => {
-    navigate(`/instance/${id}/${section}`);
+    navigate(`/instance/${encodeURIComponent(id)}/${section}`);
   };
 
   const instanceOptions = instances.map((instance) => ({
-    value: instance.id,
+    value: instance.name,
     label: instance.name,
   }));
 

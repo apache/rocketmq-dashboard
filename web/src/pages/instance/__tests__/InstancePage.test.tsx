@@ -121,7 +121,7 @@ describe('InstancePage', () => {
     expect(await screen.findByText('production-proxy')).toBeInTheDocument();
     expect(instanceService.listInstances).toHaveBeenCalledWith({});
 
-    fireEvent.change(screen.getByPlaceholderText('搜索实例名称或地址'), {
+    fireEvent.change(screen.getByPlaceholderText('搜索实例 ID 或地址'), {
       target: { value: 'proxy-hz' },
     });
     await waitFor(
@@ -129,7 +129,7 @@ describe('InstancePage', () => {
       { timeout: 1000 },
     );
 
-    fireEvent.change(screen.getByPlaceholderText('搜索实例名称或地址'), {
+    fireEvent.change(screen.getByPlaceholderText('搜索实例 ID 或地址'), {
       target: { value: '' },
     });
     await waitFor(() => expect(instanceService.listInstances).toHaveBeenLastCalledWith({}), {
@@ -149,7 +149,11 @@ describe('InstancePage', () => {
 
   it('keeps unavailable resource counts after available values in both sort directions', async () => {
     vi.mocked(instanceService.listInstances).mockResolvedValue([
-      { ...instance('unavailable', 'unavailable-instance'), topicCount: 0, resourceCountsAvailable: false },
+      {
+        ...instance('unavailable', 'unavailable-instance'),
+        topicCount: 0,
+        resourceCountsAvailable: false,
+      },
       { ...instance('zero', 'zero-instance'), topicCount: 0 },
       { ...instance('many', 'many-instance'), topicCount: 10 },
     ]);
@@ -189,7 +193,7 @@ describe('InstancePage', () => {
     renderPage();
 
     expect(await screen.findByText('initial-instance')).toBeInTheDocument();
-    const searchInput = screen.getByPlaceholderText('搜索实例名称或地址');
+    const searchInput = screen.getByPlaceholderText('搜索实例 ID 或地址');
     fireEvent.change(searchInput, { target: { value: 'old' } });
     await waitFor(
       () => expect(instanceService.listInstances).toHaveBeenCalledWith({ search: 'old' }),
@@ -220,7 +224,7 @@ describe('InstancePage', () => {
     expect(await screen.findByText('production-proxy')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /添加实例/ }));
     const dialog = await screen.findByRole('dialog');
-    await user.type(within(dialog).getByLabelText('实例名称'), 'new-proxy');
+    await user.type(within(dialog).getByLabelText('实例 ID'), 'new-proxy');
     const createTypeSelect = within(dialog).getByRole('combobox');
     fireEvent.mouseDown(createTypeSelect.parentElement!);
     const proxyOptions = await screen.findAllByText('Proxy 模式', {
@@ -253,7 +257,7 @@ describe('InstancePage', () => {
 
     await user.click(screen.getByRole('button', { name: /添加实例/ }));
     const dialog = await screen.findByRole('dialog');
-    await user.type(within(dialog).getByLabelText('实例名称'), 'new-proxy');
+    await user.type(within(dialog).getByLabelText('实例 ID'), 'new-proxy');
     const createTypeSelect = within(dialog).getByRole('combobox');
     fireEvent.mouseDown(createTypeSelect.parentElement!);
     const proxyOptions = await screen.findAllByText('Proxy 模式', {

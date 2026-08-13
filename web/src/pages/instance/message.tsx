@@ -52,6 +52,7 @@ import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import PageHeader from '../../components/PageHeader';
+import { InstanceSelect } from '../../components/InstanceSelect';
 import { useLang } from '../../i18n/LangContext';
 import type { MessageQuery, MessageRecord, TraceRecord } from '../../api/message';
 import { getMessageTrace, queryMessages } from '../../services/messageService';
@@ -751,13 +752,11 @@ const MessagePageContent = ({
       <Card style={{ marginBottom: 16 }}>
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
           <Space size={12}>
-            <Select
-              placeholder="选择实例"
+            <InstanceSelect
               value={selectedInstanceId || undefined}
               onChange={selectInstance}
               options={instanceOptions}
               style={{ width: 220 }}
-              notFoundContent="暂无实例"
             />
             <Segmented
               options={QUERY_OPTIONS}

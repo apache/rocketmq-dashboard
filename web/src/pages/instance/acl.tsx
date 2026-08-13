@@ -48,6 +48,7 @@ import {
 import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import PageHeader from '../../components/PageHeader';
+import { InstanceSelect } from '../../components/InstanceSelect';
 import { useLang } from '../../i18n/LangContext';
 import {
   createAclRule,
@@ -901,13 +902,11 @@ const AclPage = () => {
                       flexWrap: 'wrap',
                     }}
                   >
-                    <Select
-                      placeholder="选择实例"
+                    <InstanceSelect
                       value={selectedInstanceId || undefined}
                       onChange={selectInstance}
                       options={instanceOptions}
                       style={{ width: 220 }}
-                      notFoundContent="暂无实例"
                     />
                     <Input.Search
                       placeholder={t('acl.searchPrincipal')}

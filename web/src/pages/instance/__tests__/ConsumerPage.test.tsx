@@ -251,7 +251,7 @@ describe('Consumer page', () => {
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       {
         id: 'instance-a',
-        name: 'Instance A',
+        name: 'instance-a',
         remark: '',
         type: 'DIRECT',
         endpoint: '127.0.0.1:9876',
@@ -324,7 +324,7 @@ describe('Consumer page', () => {
     vi.mocked(instanceService.listInstances).mockResolvedValue([
       {
         id: 'instance-a',
-        name: 'Instance A',
+        name: 'instance-a',
         remark: '',
         type: 'DIRECT',
         endpoint: '127.0.0.1:9876',
@@ -335,7 +335,7 @@ describe('Consumer page', () => {
       },
       {
         id: 'instance-b',
-        name: 'Instance B',
+        name: 'instance-b',
         remark: '',
         type: 'DIRECT',
         endpoint: '127.0.0.2:9876',
@@ -359,8 +359,10 @@ describe('Consumer page', () => {
       ),
     );
 
-    await user.click(screen.getByText('Instance A'));
-    await user.click(await screen.findByText('Instance B'));
+    await user.click(screen.getByText('instance-a'));
+    await user.click(
+      await screen.findByText('instance-b', { selector: '.ant-select-item-option-content' }),
+    );
     await waitFor(() =>
       expect(consumerService.listConsumerGroups).toHaveBeenCalledWith({ instanceId: 'instance-b' }),
     );

@@ -293,3 +293,8 @@ body {
 .ant-table-cell .ant-typography {
   margin-bottom: 0;
 }
+
+/* Instance list: center the table header cells (body alignment stays per-column). */
+.instance-table .ant-table-thead > tr > th {
+  text-align: center;
+}

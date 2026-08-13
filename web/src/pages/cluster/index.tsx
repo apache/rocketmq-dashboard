@@ -168,10 +168,10 @@ const ClusterPage = () => {
         const apacheInstances = nextInstances.filter((instance) => instance.vendor === 'APACHE');
         setInstances(apacheInstances);
         const initialInstanceId = apacheInstances.some(
-          (instance) => instance.id === requestedInstanceId,
+          (instance) => instance.name === requestedInstanceId,
         )
           ? requestedInstanceId
-          : (apacheInstances[0]?.id ?? '');
+          : (apacheInstances[0]?.name ?? '');
         selectedInstanceIdRef.current = initialInstanceId;
         setSelectedInstanceId(initialInstanceId);
         setInstanceLoadError(null);
@@ -791,7 +791,10 @@ const ClusterPage = () => {
               }}
               placeholder="Select instance"
               style={{ width: 180 }}
-              options={instances.map((instance) => ({ value: instance.id, label: instance.name }))}
+              options={instances.map((instance) => ({
+                value: instance.name,
+                label: instance.name,
+              }))}
             />
             <Input.Search
               placeholder={t('cluster.searchNs')}
