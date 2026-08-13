@@ -104,6 +104,9 @@ public class SettingsService {
 
     public synchronized void saveGeneralSettings(GeneralSettingsVO settings) {
         log.info("Saving general settings");
+        if (StringUtils.hasText(settings.getBaseUrl())) {
+            validateDataSourceUrl(settings.getBaseUrl().trim());
+        }
         GeneralSettingsVO currentSettings = settingsRepository.loadGeneralSettings();
         if (settings.isClearApiKey()) {
             settings.setApiKey("");
