@@ -43,7 +43,7 @@ interface ParsedCsvRow {
   cells: string[];
 }
 
-const FORMULA_SAFE_PREFIX_PATTERN = /^'(?=[=+\-@])/;
+const FORMULA_SAFE_PREFIX_PATTERN = /^'(?=[=+\-@\t\r\n])/;
 const TOPIC_NAME_PATTERN = /^[a-zA-Z0-9_\-/*]+$/;
 const GROUP_NAME_PATTERN = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
 
@@ -122,7 +122,7 @@ const readCsvRows = (content: string): ParsedCsvRow[] => {
           quoteJustClosed = true;
         }
       } else {
-        if (char === '\n') lineNumber += 1;
+        if (char === '\n' || (char === '\r' && next !== '\n')) lineNumber += 1;
         cell += char;
       }
       continue;

@@ -67,6 +67,23 @@ describe('resourceCsvImport', () => {
     });
   });
 
+  it.each(['\t', '\r', '\n'])('restores exported control-prefixed cells for %j', (prefix) => {
+    const records = parseCsvTable(`"Name","Remark"\n"'${prefix}topic-a","ok"`);
+
+    expect(records[0].values.Name).toBe('topic-a');
+  });
+
+  it('tracks lone carriage returns inside quoted fields when reporting row errors', () => {
+    const content = [
+      '"Name","Remark"',
+      '"topic-a","line1\rline2"',
+      '"topic-b","ok"',
+      '"topic-c","too","many"',
+    ].join('\r\n');
+
+    expect(() => parseCsvTable(content)).toThrow('第 5 行字段数超过表头字段数');
+  });
+
   it('validates topic fields and duplicate names before import calls', () => {
     const records = parseCsvTable(
       [
