@@ -504,7 +504,7 @@ const ClientsPage = () => {
       </Flex>
 
       {/* ─── Table ─── */}
-      <Card bodyStyle={{ padding: 0 }}>
+      <Card styles={{ body: { padding: 0 } }}>
         <Table
           columns={columns}
           dataSource={filtered}
@@ -528,7 +528,7 @@ const ClientsPage = () => {
         onCancel={() => setSelectedConnection(null)}
         footer={<Button onClick={() => setSelectedConnection(null)}>{t('common.close')}</Button>}
         width={640}
-        destroyOnClose
+        destroyOnHidden
       >
         {selectedConnection && (
           <Descriptions column={1} bordered size="small">

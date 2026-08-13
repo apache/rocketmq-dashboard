@@ -430,7 +430,7 @@ const LiteTopicPage: React.FC = () => {
         : 0;
 
     return (
-      <Card bordered={false} style={{ marginBottom: 16, borderRadius: 8 }}>
+      <Card variant="borderless" style={{ marginBottom: 16, borderRadius: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
           <Gauge size={20} weight="bold" style={{ marginRight: 8, color: '#1677ff' }} />
           <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>
@@ -592,7 +592,7 @@ const LiteTopicPage: React.FC = () => {
         <Row gutter={16}>
           <Col span={8}>
             <Card
-              bordered={false}
+              variant="borderless"
               style={{ background: '#f6ffed', borderRadius: 8, textAlign: 'center', padding: 12 }}
             >
               <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>
@@ -603,7 +603,7 @@ const LiteTopicPage: React.FC = () => {
           </Col>
           <Col span={8}>
             <Card
-              bordered={false}
+              variant="borderless"
               style={{ background: '#f6ffed', borderRadius: 8, textAlign: 'center', padding: 12 }}
             >
               <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>
@@ -616,7 +616,7 @@ const LiteTopicPage: React.FC = () => {
           </Col>
           <Col span={8}>
             <Card
-              bordered={false}
+              variant="borderless"
               style={{ background: '#fffbe6', borderRadius: 8, textAlign: 'center', padding: 12 }}
             >
               <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>
@@ -724,7 +724,7 @@ const LiteTopicPage: React.FC = () => {
       {renderQuotaPanel()}
 
       {/* Search / Filter Bar */}
-      <Card bordered={false} style={{ marginBottom: 16, borderRadius: 8 }}>
+      <Card variant="borderless" style={{ marginBottom: 16, borderRadius: 8 }}>
         <Space size="middle" wrap>
           <Input
             placeholder={t('liteTopic.searchPlaceholder')}
@@ -770,7 +770,7 @@ const LiteTopicPage: React.FC = () => {
       </Card>
 
       {/* Main Table */}
-      <Card bordered={false} style={{ borderRadius: 8 }}>
+      <Card variant="borderless" style={{ borderRadius: 8 }}>
         <Table
           columns={columns}
           dataSource={filteredTopicList}
@@ -800,7 +800,7 @@ const LiteTopicPage: React.FC = () => {
           setSessionDrawerOpen(false);
           setSessionData(null);
         }}
-        destroyOnClose
+        destroyOnHidden
       >
         {renderSessionContent()}
       </Drawer>
@@ -814,7 +814,7 @@ const LiteTopicPage: React.FC = () => {
         confirmLoading={extendTTLLoading}
         okText={t('common.confirm')}
         cancelText={t('common.cancel')}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item label={t('liteTopic.pattern')}>
