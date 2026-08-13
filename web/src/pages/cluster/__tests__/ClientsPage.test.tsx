@@ -83,6 +83,11 @@ const connections: ClientConnection[] = [
   },
 ];
 
+const partialConnection: ClientConnection = {
+  ...connection,
+  partial: true,
+};
+
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
@@ -208,6 +213,18 @@ describe('Clients page', () => {
     expect(
       within(screen.getByTestId('language-version-distribution')).getByText('暂无数据'),
     ).toBeInTheDocument();
+  });
+
+  it('localizes the sampled producer connection warning', async () => {
+    vi.mocked(connectionsService.listConnections).mockResolvedValue([partialConnection]);
+    renderWithProviders(<ClientsPage />);
+
+    expect(
+      await screen.findByText('由于已达到 Topic 扫描上限，生产者连接结果为采样数据。'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Producer connections are sampled because the topic scan limit was reached.'),
+    ).not.toBeInTheDocument();
   });
 
   it('surfaces unavailable provider errors from the client API', async () => {

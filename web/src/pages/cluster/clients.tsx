@@ -407,7 +407,7 @@ const ClientsPage = () => {
         <Alert
           showIcon
           type="warning"
-          message="Producer connections are sampled because the topic scan limit was reached."
+          message={t('clients.sampledConnectionsWarning')}
           style={{ marginBottom: 16 }}
         />
       )}

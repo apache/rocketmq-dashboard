@@ -193,6 +193,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'clients.allClusters': { zh: '全部集群', en: 'All Clusters' },
   'clients.searchPlaceholder': { zh: '搜索 Client ID 或地址', en: 'Search Client ID or address' },
   'clients.detailTitle': { zh: '客户端详情 - {id}', en: 'Client Detail - {id}' },
+  'clients.sampledConnectionsWarning': {
+    zh: '由于已达到 Topic 扫描上限，生产者连接结果为采样数据。',
+    en: 'Producer connections are sampled because the topic scan limit was reached.',
+  },
 
   // ─── Alert Rules ───
   'alerts.title': { zh: '告警规则管理', en: 'Alert Rules' },
