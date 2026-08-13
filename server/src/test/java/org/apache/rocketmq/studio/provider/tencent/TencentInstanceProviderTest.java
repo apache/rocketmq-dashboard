@@ -111,6 +111,16 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void countTopicsShouldClampOversizedTotals() throws Exception {
+        DescribeTopicListResponse response = new DescribeTopicListResponse();
+        response.setData(new TopicItem[]{topicItem("orders", "NORMAL", 8L)});
+        response.setTotalCount(Long.MAX_VALUE);
+        when(client.DescribeTopicList(any())).thenReturn(response);
+
+        assertThat(provider.countTopics(STUDIO_INSTANCE_ID)).isEqualTo(Integer.MAX_VALUE);
+    }
+
+    @Test
     void listTopicsShouldMapAndFilterAndEnrichTimesTest() throws Exception {
         TopicItem normal = topicItem("orders", "NORMAL", 8L);
         TopicItem fifo = topicItem("orders-fifo", "FIFO", 4L);
@@ -294,6 +304,20 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void listConsumerGroupsShouldClampOversizedRetryCounts() throws Exception {
+        ConsumeGroupItem item = new ConsumeGroupItem();
+        item.setConsumerGroup("GID_test");
+        item.setMaxRetryTimes(Long.MAX_VALUE);
+        DescribeConsumerGroupListResponse response = new DescribeConsumerGroupListResponse();
+        response.setData(new ConsumeGroupItem[]{item});
+        when(client.DescribeConsumerGroupList(any())).thenReturn(response);
+
+        assertThat(provider.listConsumerGroups(STUDIO_INSTANCE_ID, null))
+                .singleElement()
+                .satisfies(group -> assertThat(group.getRetryMaxTimes()).isEqualTo(Integer.MAX_VALUE));
+    }
+
+    @Test
     void listConsumerGroupsShouldMapAndFilterTest() throws Exception {
         ConsumeGroupItem one = new ConsumeGroupItem();
         one.setConsumerGroup("GID_test");
@@ -437,6 +461,25 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void queryMessagesShouldSkipNullAndStructuredPropertyValues() throws Exception {
+        DescribeMessageResponse detail = new DescribeMessageResponse();
+        detail.setMessageId("MSG-1");
+        detail.setShowTopicName("orders");
+        detail.setProperties("{\"KEYS\":\"keyA\",\"TAGS\":null,"
+                + "\"nested\":{\"x\":1},\"retry\":3,\"enabled\":true}");
+        when(client.DescribeMessage(any())).thenReturn(detail);
+
+        MessageRecordVO record = provider.queryMessages(
+                STUDIO_INSTANCE_ID, "orders", "MSG-1", null, null, null, null).get(0);
+
+        assertThat(record.getProperties())
+                .containsEntry("KEYS", "keyA")
+                .containsEntry("retry", "3")
+                .containsEntry("enabled", "true")
+                .doesNotContainKeys("TAGS", "nested");
+    }
+
+    @Test
     void queryMessagesByTopicShouldUseMessageListTest() throws Exception {
         MessageItem one = new MessageItem();
         one.setMsgId("MSG-A");
@@ -512,6 +555,38 @@ class TencentInstanceProviderTest {
     }
 
     @Test
+    void messageQueryReusesTaskRequestIdReturnedByPreviousPage() throws Exception {
+        MessageItem[] page1Items = new MessageItem[TencentInstanceProvider.MESSAGE_LIMIT];
+        for (int i = 0; i < TencentInstanceProvider.MESSAGE_LIMIT; i++) {
+            MessageItem item = new MessageItem();
+            item.setMsgId("MSG-" + (i + 1));
+            item.setProduceTime("2024-09-12 14:06:55,591");
+            page1Items[i] = item;
+        }
+        MessageItem last = new MessageItem();
+        last.setMsgId("MSG-LAST");
+        last.setProduceTime("2024-09-12 14:06:56,591");
+        DescribeMessageListResponse page1 = new DescribeMessageListResponse();
+        page1.setData(page1Items);
+        page1.setTaskRequestId("task-abc");
+        DescribeMessageListResponse page2 = new DescribeMessageListResponse();
+        page2.setData(new MessageItem[]{last});
+        page2.setTaskRequestId("task-abc");
+        when(client.DescribeMessageList(any()))
+                .thenReturn(page1)
+                .thenReturn(page2);
+
+        provider.queryMessages(STUDIO_INSTANCE_ID, "orders", null, null, null,
+                1600000000000L, 1600001000000L);
+
+        ArgumentCaptor<DescribeMessageListRequest> captor = ArgumentCaptor.forClass(DescribeMessageListRequest.class);
+        verify(client, org.mockito.Mockito.times(2)).DescribeMessageList(captor.capture());
+        java.util.List<DescribeMessageListRequest> requests = captor.getAllValues();
+        // The second page must carry the task id returned by the first page, not a fresh random id.
+        assertThat(requests.get(1).getTaskRequestId()).isEqualTo("task-abc");
+    }
+
+    @Test
     void getMessageTraceShouldMapStagesTest() throws Exception {
         MessageTraceItem produce = new MessageTraceItem();
         produce.setStage("produce");
@@ -545,5 +620,25 @@ class TencentInstanceProviderTest {
         assertThat(captor.getValue().getInstanceId()).isEqualTo(CLOUD_INSTANCE_ID);
         assertThat(captor.getValue().getTopic()).isEqualTo("orders");
         assertThat(captor.getValue().getMsgId()).isEqualTo("MSG-1");
+    }
+
+    @Test
+    void getMessageTraceMarksInFlightConsumeAsProcessNotFailed() throws Exception {
+        MessageTraceItem consume = new MessageTraceItem();
+        consume.setStage("consume");
+        consume.setData("{\"TotalCount\":1,\"RocketMqConsumeLogs\":[{\"MsgId\":\"MSG-2\",\"Status\":1,"
+                + "\"PushTime\":\"2024-09-12 14:06:55,600\",\"ConsumerGroup\":\"GID_test\",\"RetryTimes\":0}]}");
+        DescribeMessageTraceResponse response = new DescribeMessageTraceResponse();
+        response.setData(new MessageTraceItem[]{consume});
+        when(client.DescribeMessageTrace(any())).thenReturn(response);
+
+        TraceRecordVO trace = provider.getMessageTrace(STUDIO_INSTANCE_ID, "MSG-2", "orders");
+
+        assertThat(trace.getNodes()).hasSize(1);
+        // In-flight (Status 1) must read "process", consistent with toDeliveryStatus and the
+        // frontend TraceNode status union, not "failed".
+        assertThat(trace.getNodes().get(0).getStatus()).isEqualTo("process");
+        assertThat(trace.getConsumerStatus().get(0).getDeliveryStatus())
+                .isEqualTo(DeliveryStatus.pending);
     }
 }
