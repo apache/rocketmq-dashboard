@@ -118,7 +118,7 @@ describe('Message page query history', () => {
     const queryButton = screen.getByRole('button', { name: /^search查询$/ });
 
     expect(queryButton).toBeDisabled();
-    expect(queryButton).toHaveAttribute('title', '请选择 Topic');
+    await waitFor(() => expect(queryButton).toHaveAttribute('title', '请选择 Topic'));
 
     await user.click(lastElement(screen.getAllByRole('combobox')));
     await user.click(lastElement(await screen.findAllByText('order-create')));
@@ -165,6 +165,23 @@ describe('Message page query history', () => {
         instanceId: 'instance-a',
       });
     });
+  });
+
+  it('surfaces Topic loading failures and retries without changing instance', async () => {
+    const user = userEvent.setup();
+    topicServiceMocks.listTopics
+      .mockReset()
+      .mockRejectedValueOnce(new Error('NameServer unavailable'))
+      .mockResolvedValueOnce([{ name: 'orders' }]);
+
+    renderWithProviders(<MessagePage />);
+
+    expect(await screen.findByText('Topic 列表加载失败')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^search查询$/ })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: /重\s*试/ }));
+    await waitFor(() => expect(topicServiceMocks.listTopics).toHaveBeenCalledTimes(2));
+    await user.click(lastElement(screen.getAllByRole('combobox')));
+    expect(await screen.findAllByText('orders')).not.toHaveLength(0);
   });
 
   it('requires a topic even when a key or message ID is present', async () => {
