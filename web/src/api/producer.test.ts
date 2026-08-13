@@ -169,4 +169,26 @@ describe('Producer API', () => {
     expect(result.duplicateClientIds).toEqual(['producer-a']);
     expect(result.warnings).toEqual(['DUPLICATE_CLIENT_ID', 'MIXED_CLIENT_VERSION']);
   });
+
+  it('normalizes client identifiers and addresses consistently in summary counts', () => {
+    const result = buildProducerConnectionSummary([
+      {
+        clientId: 'producer-a',
+        clientAddr: '10.0.0.1',
+        language: 'Java',
+        versionDesc: '5.1.0',
+      },
+      {
+        clientId: ' producer-a ',
+        clientAddr: ' 10.0.0.1 ',
+        language: 'Java',
+        versionDesc: '5.1.0',
+      },
+    ]);
+
+    expect(result.uniqueClientCount).toBe(1);
+    expect(result.uniqueAddressCount).toBe(1);
+    expect(result.duplicateClientIds).toEqual(['producer-a']);
+    expect(result.warnings).toContain('DUPLICATE_CLIENT_ID');
+  });
 });
