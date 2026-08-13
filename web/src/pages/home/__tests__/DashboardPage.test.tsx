@@ -95,7 +95,7 @@ beforeEach(() => {
   vi.mocked(instanceService.listInstances).mockResolvedValue([
     {
       id: 'instance-a',
-      name: 'Instance A',
+      name: 'instance-a',
       endpoint: 'a:9876',
       type: 'DIRECT',
       remark: '',
@@ -106,7 +106,7 @@ beforeEach(() => {
     },
     {
       id: 'instance-b',
-      name: 'Instance B',
+      name: 'instance-b',
       endpoint: 'b:9876',
       type: 'DIRECT',
       remark: '',
@@ -130,7 +130,9 @@ describe('DashboardPage', () => {
     await screen.findByText('initial-cluster');
     const selector = screen.getByRole('combobox', { name: 'Dashboard instance' });
     await user.click(selector);
-    await user.click(await screen.findByText('Instance A', { selector: '.ant-select-item-option-content' }));
+    await user.click(
+      await screen.findByText('instance-a', { selector: '.ant-select-item-option-content' }),
+    );
     await waitFor(() => expect(dashboardService.getDashboard).toHaveBeenCalledWith('instance-a'));
 
     expect(screen.queryByText('initial-cluster')).not.toBeInTheDocument();
@@ -152,11 +154,11 @@ describe('DashboardPage', () => {
     const selector = screen.getByRole('combobox', { name: 'Dashboard instance' });
     await user.click(selector);
     await user.click(
-      await screen.findByText('Instance A', { selector: '.ant-select-item-option-content' }),
+      await screen.findByText('instance-a', { selector: '.ant-select-item-option-content' }),
     );
     await user.click(selector);
     await user.click(
-      await screen.findByText('Instance B', { selector: '.ant-select-item-option-content' }),
+      await screen.findByText('instance-b', { selector: '.ant-select-item-option-content' }),
     );
 
     instanceB.resolve(dashboard('instance-b-cluster'));
@@ -183,7 +185,7 @@ describe('DashboardPage', () => {
     const selector = screen.getByRole('combobox', { name: 'Dashboard instance' });
     await user.click(selector);
     await user.click(
-      await screen.findByText('Instance B', { selector: '.ant-select-item-option-content' }),
+      await screen.findByText('instance-b', { selector: '.ant-select-item-option-content' }),
     );
     await user.click(screen.getByText('查看全部'));
 

@@ -31,7 +31,7 @@ public class PageResult<T> {
 
     public static <T> PageResult<T> of(List<T> items, long total, int page, int size) {
         PageResult<T> result = new PageResult<>();
-        result.items = items;
+        result.items = items == null ? Collections.emptyList() : items;
         result.total = total;
         result.page = page;
         result.size = size;

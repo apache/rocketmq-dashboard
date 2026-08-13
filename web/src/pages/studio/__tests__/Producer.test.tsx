@@ -86,7 +86,7 @@ describe('ProducerPage', () => {
     vi.mocked(listInstances).mockResolvedValue([
       {
         id: 'instance-1',
-        name: 'Primary instance',
+        name: 'instance-1',
         remark: '',
         type: 'DIRECT',
         endpoint: '127.0.0.1:9876',
@@ -262,7 +262,7 @@ describe('ProducerPage', () => {
     vi.mocked(listInstances).mockResolvedValue([
       {
         id: 'instance-1',
-        name: 'Primary instance',
+        name: 'instance-1',
         remark: '',
         type: 'DIRECT',
         endpoint: '127.0.0.1:9876',
@@ -273,7 +273,7 @@ describe('ProducerPage', () => {
       },
       {
         id: 'instance-2',
-        name: 'Secondary instance',
+        name: 'instance-2',
         remark: '',
         type: 'DIRECT',
         endpoint: '127.0.0.2:9876',
@@ -309,7 +309,7 @@ describe('ProducerPage', () => {
 
     fireEvent.mouseDown(instanceSelect.parentElement!);
     await user.click(
-      await screen.findByText('Secondary instance', {
+      await screen.findByText('instance-2', {
         selector: '.ant-select-item-option-content',
       }),
     );

@@ -55,6 +55,9 @@ public class GeneralSettingsUpdateDTO {
     private String model;
     @NotNull
     private String baseUrl;
+    private String deploymentName;
+    private String apiVersion;
+    private String awsRegion;
 
     public GeneralSettingsVO toSettings() {
         return GeneralSettingsVO.builder()
@@ -70,6 +73,9 @@ public class GeneralSettingsUpdateDTO {
                 .clearApiKey(clearApiKey)
                 .model(model)
                 .baseUrl(baseUrl)
+                .deploymentName(deploymentName)
+                .apiVersion(apiVersion)
+                .awsRegion(awsRegion)
                 .build();
     }
 }

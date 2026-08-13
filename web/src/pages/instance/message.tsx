@@ -52,6 +52,8 @@ import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import PageHeader from '../../components/PageHeader';
+import { InstanceSelect } from '../../components/InstanceSelect';
+import MessageQueryHistoryDrawer from '../../components/MessageQueryHistoryDrawer';
 import { useLang } from '../../i18n/LangContext';
 import type { MessageQuery, MessageRecord, TraceRecord } from '../../api/message';
 import { getMessageTrace, queryMessages } from '../../services/messageService';
@@ -269,6 +271,7 @@ const MessagePageContent = ({
 }: InstanceFilterProps) => {
   const { t } = useLang();
   const [topicOptions, setTopicOptions] = useState<string[]>([]);
+  const [topicError, setTopicError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!selectedInstanceId) {
@@ -278,10 +281,13 @@ const MessagePageContent = ({
     void listTopics({ instanceId: selectedInstanceId })
       .then((nextTopics) => {
         if (cancelled) return;
+        setTopicError(null);
         setTopicOptions(nextTopics.map((topic) => topic.name));
       })
-      .catch(() => {
-        if (!cancelled) setTopicOptions([]);
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setTopicOptions([]);
+        setTopicError(error instanceof Error ? error.message : '加载 Topic 列表失败');
       });
     return () => {
       cancelled = true;
@@ -302,6 +308,7 @@ const MessagePageContent = ({
   const [queryError, setQueryError] = useState<string | null>(null);
   const [traceError, setTraceError] = useState<string | null>(null);
   const [recentQueries, setRecentQueries] = useState<RecentQuery[]>(loadRecentQueries);
+  const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
   const queryGenerationRef = useRef(0);
   const traceGenerationRef = useRef(0);
 
@@ -751,13 +758,11 @@ const MessagePageContent = ({
       <Card style={{ marginBottom: 16 }}>
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
           <Space size={12}>
-            <Select
-              placeholder="选择实例"
+            <InstanceSelect
               value={selectedInstanceId || undefined}
               onChange={selectInstance}
               options={instanceOptions}
               style={{ width: 220 }}
-              notFoundContent="暂无实例"
             />
             <Segmented
               options={QUERY_OPTIONS}
@@ -866,16 +871,28 @@ const MessagePageContent = ({
             <Button icon={<ReloadOutlined />} onClick={handleReset}>
               重置
             </Button>
+            <Button icon={<HistoryOutlined />} onClick={() => setHistoryDrawerOpen(true)}>
+              服务端历史
+            </Button>
           </Space>
         </Space>
       </Card>
+
+      {topicError && (
+        <Alert showIcon type="error" message={topicError} style={{ marginBottom: 16 }} />
+      )}
+      <MessageQueryHistoryDrawer
+        open={historyDrawerOpen}
+        clusterId={selectedInstanceId || undefined}
+        onClose={() => setHistoryDrawerOpen(false)}
+      />
 
       {queryError && (
         <Alert showIcon type="warning" message={queryError} style={{ marginBottom: 16 }} />
       )}
 
       {/* ── Results Table ── */}
-      <Card bodyStyle={{ padding: 0 }}>
+      <Card styles={{ body: { padding: 0 } }}>
         <Table
           columns={columns}
           dataSource={messages}
@@ -896,7 +913,7 @@ const MessagePageContent = ({
         width={800}
         open={modalOpen}
         onCancel={closeDetail}
-        destroyOnClose
+        destroyOnHidden
         footer={
           <Flex justify="flex-end" gap={8}>
             <Button onClick={closeDetail}>关闭</Button>

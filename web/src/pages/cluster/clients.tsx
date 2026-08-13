@@ -133,7 +133,7 @@ const ClientsPage = () => {
       .then((nextInstances) => {
         if (cancelled) return;
         setInstances(nextInstances);
-        setSelectedInstanceId((current) => current || nextInstances[0]?.id || '');
+        setSelectedInstanceId((current) => current || nextInstances[0]?.name || '');
         setLoadError(null);
       })
       .catch((error) => {
@@ -421,7 +421,7 @@ const ClientsPage = () => {
             onChange={handleInstanceChange}
             placeholder="Select instance"
             style={{ width: 180 }}
-            options={instances.map((instance) => ({ value: instance.id, label: instance.name }))}
+            options={instances.map((instance) => ({ value: instance.name, label: instance.name }))}
           />
           <Select
             aria-label={t('clients.cluster')}
@@ -504,7 +504,7 @@ const ClientsPage = () => {
       </Flex>
 
       {/* ─── Table ─── */}
-      <Card bodyStyle={{ padding: 0 }}>
+      <Card styles={{ body: { padding: 0 } }}>
         <Table
           columns={columns}
           dataSource={filtered}
@@ -528,7 +528,7 @@ const ClientsPage = () => {
         onCancel={() => setSelectedConnection(null)}
         footer={<Button onClick={() => setSelectedConnection(null)}>{t('common.close')}</Button>}
         width={640}
-        destroyOnClose
+        destroyOnHidden
       >
         {selectedConnection && (
           <Descriptions column={1} bordered size="small">

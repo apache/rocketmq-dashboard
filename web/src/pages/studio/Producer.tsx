@@ -72,7 +72,7 @@ const ProducerPage = () => {
       .then((nextInstances) => {
         if (cancelled) return;
         setInstances(nextInstances);
-        setSelectedInstanceId((current) => current || nextInstances[0]?.id || '');
+        setSelectedInstanceId((current) => current || nextInstances[0]?.name || '');
       })
       .catch(() => {
         if (!cancelled) {
@@ -237,7 +237,10 @@ const ProducerPage = () => {
         <h2 style={{ fontSize: 20, fontWeight: 600, margin: 0 }}>{t('producer.title')}</h2>
       </div>
 
-      <Card bordered={false} style={{ borderRadius: 8, boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}>
+      <Card
+        variant="borderless"
+        style={{ borderRadius: 8, boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}
+      >
         <Form form={form} layout="inline" onFinish={onFinish} style={{ marginBottom: 20 }}>
           <Form.Item label="INSTANCE">
             <Select
@@ -246,7 +249,10 @@ const ProducerPage = () => {
               onChange={handleInstanceChange}
               placeholder="Select instance"
               style={{ width: 220 }}
-              options={instances.map((instance) => ({ value: instance.id, label: instance.name }))}
+              options={instances.map((instance) => ({
+                value: instance.name,
+                label: instance.name,
+              }))}
             />
           </Form.Item>
           <Form.Item

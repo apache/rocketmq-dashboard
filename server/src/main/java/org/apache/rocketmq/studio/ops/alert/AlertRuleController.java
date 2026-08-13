@@ -70,6 +70,18 @@ public class AlertRuleController {
         return Result.ok();
     }
 
+    @PostMapping("/bulk-toggle")
+    public Result<AlertRuleBulkResultVO> bulkToggle(
+            @Valid @RequestBody BulkToggleAlertRulesDTO request) {
+        return Result.ok(alertService.bulkToggleRules(request.getIds(), request.getEnabled()));
+    }
+
+    @PostMapping("/bulk-delete")
+    public Result<AlertRuleBulkResultVO> bulkDelete(
+            @Valid @RequestBody BulkDeleteAlertRulesDTO request) {
+        return Result.ok(alertService.bulkDeleteRules(request.getIds()));
+    }
+
     private AlertRuleRequestDTO requireAlertRule(AlertRuleRequestDTO rule) {
         if (rule == null) {
             throw new BusinessException(400, "Alert rule request is required");

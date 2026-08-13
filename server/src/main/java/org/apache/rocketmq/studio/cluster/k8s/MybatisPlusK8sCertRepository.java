@@ -32,6 +32,7 @@ import lombok.RequiredArgsConstructor;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -63,7 +64,10 @@ public class MybatisPlusK8sCertRepository implements K8sCertRepository {
     public K8sCertVO save(K8sCertVO cert) {
         RmqK8sCertificate entity = toEntity(cert);
         if (entity.getId() != null && certMapper.selectById(entity.getId()) != null) {
-            certMapper.updateById(entity);
+            if (certMapper.updateById(entity) == 0) {
+                throw new BusinessException(409,
+                        "Certificate update was not applied: " + entity.getId());
+            }
         } else {
             certMapper.insert(entity);
             cert.setId(entity.getId());
@@ -116,11 +120,13 @@ public class MybatisPlusK8sCertRepository implements K8sCertRepository {
         if (!StringUtils.hasText(value)) {
             return null;
         }
-        try {
-            return CertType.valueOf(value);
-        } catch (IllegalArgumentException exception) {
-            throw invalidPersistedValue(certificateId, "type", value);
+        String normalized = value.trim();
+        for (CertType type : CertType.values()) {
+            if (type.name().equalsIgnoreCase(normalized)) {
+                return type;
+            }
         }
+        throw invalidPersistedValue(certificateId, "type", value);
     }
 
     private CertStatus parseCertStatus(String certificateId, String value) {
@@ -128,7 +134,7 @@ public class MybatisPlusK8sCertRepository implements K8sCertRepository {
             return null;
         }
         try {
-            return CertStatus.valueOf(value);
+            return CertStatus.valueOf(value.trim().toLowerCase(Locale.ROOT));
         } catch (IllegalArgumentException exception) {
             throw invalidPersistedValue(certificateId, "status", value);
         }
@@ -139,8 +145,12 @@ public class MybatisPlusK8sCertRepository implements K8sCertRepository {
             return List.of();
         }
         try {
-            return objectMapper.readValue(json, new TypeReference<List<String>>() {
+            List<String> san = objectMapper.readValue(json, new TypeReference<List<String>>() {
             });
+            if (san == null) {
+                throw invalidPersistedValue(certificateId, "SAN JSON", json);
+            }
+            return san;
         } catch (JsonProcessingException exception) {
             throw invalidPersistedValue(certificateId, "SAN JSON", json);
         }

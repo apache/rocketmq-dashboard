@@ -2,7 +2,14 @@ import { exportAuditLogs as exportAuditLogsApi, fetchAuditFilterOptions } from '
 import type { AuditFilter, AuditFilterOptions } from '../api/audit';
 import { isMockMode } from './dataMode';
 import * as opsApi from '../api/ops';
-import type { AlertRule, SystemAlert, AuditQuery, AuditRecord, PageResult } from '../api/ops';
+import type {
+  AlertRule,
+  AlertRuleBulkResult,
+  SystemAlert,
+  AuditQuery,
+  AuditRecord,
+  PageResult,
+} from '../api/ops';
 import { mockAlertRules } from '../mock/alerts';
 import { mockAuditRecords } from '../mock/audit';
 import { systemAlerts as mockSystemAlerts } from '../mock/dashboard';
@@ -144,6 +151,43 @@ export async function deleteAlertRule(id: string): Promise<void> {
     return;
   }
   return opsApi.deleteAlertRule(id);
+}
+
+export async function bulkToggleAlertRules(
+  ids: string[],
+  enabled: boolean,
+): Promise<AlertRuleBulkResult> {
+  if (!isMockMode()) return opsApi.bulkToggleAlertRules(ids, enabled);
+  const succeededIds: string[] = [];
+  const failures: Record<string, string> = {};
+  const updatedRules: AlertRule[] = [];
+  for (const id of [...new Set(ids)]) {
+    const rule = alertRulesState.find((item) => item.id === id);
+    if (!rule) {
+      failures[id] = 'Alert rule not found';
+      continue;
+    }
+    rule.enabled = enabled;
+    succeededIds.push(id);
+    updatedRules.push(copyAlertRule(rule));
+  }
+  return { succeededIds, failures, updatedRules };
+}
+
+export async function bulkDeleteAlertRules(ids: string[]): Promise<AlertRuleBulkResult> {
+  if (!isMockMode()) return opsApi.bulkDeleteAlertRules(ids);
+  const succeededIds: string[] = [];
+  const failures: Record<string, string> = {};
+  for (const id of [...new Set(ids)]) {
+    const index = alertRulesState.findIndex((item) => item.id === id);
+    if (index < 0) {
+      failures[id] = 'Alert rule not found';
+      continue;
+    }
+    alertRulesState.splice(index, 1);
+    succeededIds.push(id);
+  }
+  return { succeededIds, failures, updatedRules: [] };
 }
 
 export async function listSystemAlerts(): Promise<SystemAlert[]> {

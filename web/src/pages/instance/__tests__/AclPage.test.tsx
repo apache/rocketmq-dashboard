@@ -208,6 +208,7 @@ describe('ACL page', () => {
       username: 'remote-admin',
       admin: true,
       clusters: ['cluster-a'],
+      instanceId: '',
     });
     expect(payload).not.toHaveProperty('accessKey');
     expect(payload).not.toHaveProperty('secretKey');
@@ -252,6 +253,7 @@ describe('ACL page', () => {
       username: 'remote-admin',
       admin: false,
       clusters: ['cluster-a'],
+      instanceId: '',
     });
     expect(payload).not.toHaveProperty('accessKey');
     expect(payload).not.toHaveProperty('secretKey');
@@ -288,6 +290,7 @@ describe('ACL page', () => {
       username: 'orders-service',
       admin: false,
       clusters: ['cluster-a', 'cluster-b'],
+      instanceId: '',
     });
   });
 
@@ -320,6 +323,7 @@ describe('ACL page', () => {
       username: 'remote-admin',
       admin: true,
       clusters: ['cluster-b'],
+      instanceId: '',
     });
   });
 

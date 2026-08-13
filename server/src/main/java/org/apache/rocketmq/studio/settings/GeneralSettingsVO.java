@@ -44,6 +44,9 @@ public class GeneralSettingsVO {
     private boolean clearApiKey;
     private String model;
     private String baseUrl;
+    private String deploymentName;
+    private String apiVersion;
+    private String awsRegion;
 
     @JsonProperty(value = "apiKeyConfigured", access = JsonProperty.Access.READ_ONLY)
     public boolean isApiKeyConfigured() {

@@ -179,6 +179,22 @@ class AlertServiceTest {
     }
 
     @Test
+    void exportPrometheusRulesYamlShouldInferTeamWithoutMetricCaseSensitivity() {
+        AlertRuleVO rule = AlertRuleVO.builder()
+                .name("Uppercase lag")
+                .metric("ROCKETMQ_CONSUMER_LAG_MESSAGES")
+                .operator(">")
+                .threshold(10)
+                .enabled(true)
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+
+        String result = alertService.exportPrometheusRulesYaml();
+
+        assertThat(result).contains("- name: rocketmq-consumer.rules");
+    }
+
+    @Test
     void exportPrometheusRulesYamlShouldRenderReplicationLagRuleWithScopeAndSeverity() {
         AlertRuleVO rule = AlertRuleVO.builder()
                 .name("Replication Lag High")
@@ -266,6 +282,27 @@ class AlertServiceTest {
         }
 
         assertThat(result).contains("severity: info");
+    }
+
+    @Test
+    void exportPrometheusRulesYamlShouldNotEmitABlankSummary() throws Exception {
+        AlertRuleVO rule = AlertRuleVO.builder()
+                .name("Lag alert")
+                .metric("rocketmq_consumer_lag_messages")
+                .operator(">")
+                .threshold(1)
+                .description(" - consumer is behind")
+                .enabled(true)
+                .build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+
+        JsonNode exportedRule = new ObjectMapper(new YAMLFactory())
+                .readTree(alertService.exportPrometheusRulesYaml())
+                .path("groups").get(0).path("rules").get(0);
+
+        assertThat(exportedRule.path("annotations").path("summary").asText()).isEqualTo("Lag alert");
+        assertThat(exportedRule.path("annotations").path("description").asText())
+                .isEqualTo("consumer is behind");
     }
 
     @Test
@@ -503,12 +540,41 @@ class AlertServiceTest {
     }
 
     @Test
+    void toggleRuleShouldRejectBlankIdBeforeLoadingRules() {
+        assertThatThrownBy(() -> alertService.toggleRule("  ", true))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Alert rule ID is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verify(alertRepository, never()).findAllRules();
+    }
+
+    @Test
+    void toggleRuleShouldIgnorePersistedRulesWithNullIds() {
+        when(alertRepository.findAllRules()).thenReturn(List.of(AlertRuleVO.builder().name("corrupt").build()));
+
+        assertThatThrownBy(() -> alertService.toggleRule("missing", true))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Alert rule not found: missing");
+    }
+
+    @Test
     void toggleRuleShouldThrowWhenRuleNotFound() {
         when(alertRepository.findAllRules()).thenReturn(Collections.emptyList());
 
         assertThatThrownBy(() -> alertService.toggleRule("non-existent", true))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("Alert rule not found: non-existent");
+    }
+
+    @Test
+    void deleteRuleShouldRejectBlankIdBeforeDeleting() {
+        assertThatThrownBy(() -> alertService.deleteRule(" "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Alert rule ID is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verify(alertRepository, never()).deleteRule(any());
     }
 
     @Test
@@ -529,6 +595,53 @@ class AlertServiceTest {
         assertThatThrownBy(() -> alertService.deleteRule("missing"))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(404));
+    }
+
+    @Test
+    void bulkToggleShouldDeduplicateIdsAndReportMissingRules() {
+        AlertRuleVO rule = AlertRuleVO.builder().id("rule-1").name("High CPU").enabled(false).build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+        when(alertRepository.replaceRule(any(AlertRuleVO.class))).thenReturn(true);
+
+        AlertRuleBulkResultVO result = alertService.bulkToggleRules(
+                List.of("rule-1", "missing", "rule-1"), true);
+
+        assertThat(result.getSucceededIds()).containsExactly("rule-1");
+        assertThat(result.getFailures()).containsEntry("missing", "Alert rule not found");
+        assertThat(result.getUpdatedRules()).singleElement()
+                .extracting(AlertRuleVO::isEnabled).isEqualTo(true);
+        verify(alertRepository).replaceRule(rule);
+    }
+
+    @Test
+    void bulkToggleShouldReportRulesDeletedConcurrentlyInsteadOfRecreatingThem() {
+        AlertRuleVO rule = AlertRuleVO.builder().id("rule-1").name("High CPU").enabled(false).build();
+        when(alertRepository.findAllRules()).thenReturn(List.of(rule));
+        when(alertRepository.replaceRule(any(AlertRuleVO.class))).thenReturn(false);
+
+        AlertRuleBulkResultVO result = alertService.bulkToggleRules(List.of("rule-1"), true);
+
+        assertThat(result.getSucceededIds()).isEmpty();
+        assertThat(result.getFailures()).containsEntry("rule-1", "Alert rule not found");
+        assertThat(result.getUpdatedRules()).isEmpty();
+        verify(alertRepository, never()).saveRule(any(AlertRuleVO.class));
+    }
+
+    @Test
+    void bulkDeleteShouldPreservePartialFailureDetails() {
+        when(alertRepository.deleteRule("rule-1")).thenReturn(true);
+        when(alertRepository.deleteRule("missing")).thenReturn(false);
+        when(alertRepository.deleteRule("rule-2"))
+                .thenThrow(new IllegalStateException("database unavailable"));
+
+        AlertRuleBulkResultVO result = alertService.bulkDeleteRules(
+                List.of("rule-1", "missing", "rule-2"));
+
+        assertThat(result.getSucceededIds()).containsExactly("rule-1");
+        assertThat(result.getFailures())
+                .containsEntry("missing", "Alert rule not found")
+                .containsEntry("rule-2", "database unavailable");
+        assertThat(result.getUpdatedRules()).isEmpty();
     }
 
     @Test
@@ -573,6 +686,25 @@ class AlertServiceTest {
         verify(alertRepository).saveAlert(result);
         verify(operationAuditService).record(eq("ACKNOWLEDGE_SYSTEM_ALERT"), eq("SYSTEM_ALERT"), eq("a1"),
                 eq(null), eq("acknowledged=true"), eq("SUCCESS"), eq(null));
+    }
+
+    @Test
+    void acknowledgeAlertShouldRejectBlankIdBeforeLoadingAlerts() {
+        assertThatThrownBy(() -> alertService.acknowledgeAlert(" "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("System alert ID is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verify(alertRepository, never()).findAlerts(any());
+    }
+
+    @Test
+    void acknowledgeAlertShouldIgnorePersistedAlertsWithNullIds() {
+        when(alertRepository.findAlerts(null)).thenReturn(List.of(SystemAlertVO.builder().title("corrupt").build()));
+
+        assertThatThrownBy(() -> alertService.acknowledgeAlert("missing"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("System alert not found: missing");
     }
 
     @Test

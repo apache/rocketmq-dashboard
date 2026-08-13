@@ -54,7 +54,7 @@ class RuntimeAdminClientResolverTest {
     void resolvesTrimmedEndpointFromSelectedInstance() {
         InstanceVO instance = InstanceVO.builder().endpoint(" namesrv-a:9876 ").build();
         instance.setId("instance-a");
-        when(instanceRepository.findById("instance-a")).thenReturn(Optional.of(instance));
+        when(instanceRepository.findByIdentifier("instance-a")).thenReturn(Optional.of(instance));
 
         RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(instanceRepository, adminFactory,
                 new MqAdminProperties());
@@ -66,9 +66,9 @@ class RuntimeAdminClientResolverTest {
     void rejectsUnknownOrUnconfiguredInstances() {
         RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(instanceRepository, adminFactory,
                 new MqAdminProperties());
-        when(instanceRepository.findById("missing")).thenReturn(Optional.empty());
+        when(instanceRepository.findByIdentifier("missing")).thenReturn(Optional.empty());
         InstanceVO noEndpoint = InstanceVO.builder().endpoint(" ").build();
-        when(instanceRepository.findById("no-endpoint")).thenReturn(Optional.of(noEndpoint));
+        when(instanceRepository.findByIdentifier("no-endpoint")).thenReturn(Optional.of(noEndpoint));
 
         assertThatThrownBy(() -> resolver.resolveEndpoint("missing"))
                 .isInstanceOf(BusinessException.class)
@@ -81,7 +81,7 @@ class RuntimeAdminClientResolverTest {
     @Test
     void executesAgainstTheSelectedInstanceEndpoint() {
         InstanceVO instance = InstanceVO.builder().endpoint("namesrv-b:9876").build();
-        when(instanceRepository.findById("instance-b")).thenReturn(Optional.of(instance));
+        when(instanceRepository.findByIdentifier("instance-b")).thenReturn(Optional.of(instance));
         when(adminFactory.execute(eq("namesrv-b:9876"), isNull(), isNull(), any())).thenReturn("done");
         RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(instanceRepository, adminFactory,
                 new MqAdminProperties());
@@ -98,7 +98,7 @@ class RuntimeAdminClientResolverTest {
                 .endpoint("cloud-endpoint:9876")
                 .build();
         instance.setId("cloud-instance");
-        when(instanceRepository.findById("cloud-instance")).thenReturn(Optional.of(instance));
+        when(instanceRepository.findByIdentifier("cloud-instance")).thenReturn(Optional.of(instance));
         RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(instanceRepository, adminFactory,
                 new MqAdminProperties());
 
@@ -123,7 +123,7 @@ class RuntimeAdminClientResolverTest {
         credential.setAccessKey("admin-ak");
         credential.setSecretKey("admin-sk");
         properties.getCredentials().put("production-admin", credential);
-        when(instanceRepository.findById("instance-b")).thenReturn(Optional.of(instance));
+        when(instanceRepository.findByIdentifier("instance-b")).thenReturn(Optional.of(instance));
         when(adminFactory.execute(eq("namesrv-b:9876"), any(), eq("production-admin"), any()))
                 .thenReturn("done");
         RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(instanceRepository, adminFactory,
@@ -154,7 +154,7 @@ class RuntimeAdminClientResolverTest {
         InstanceVO instance = InstanceVO.builder().endpoint("namesrv-b:9876")
                 .adminCredentialRef("missing").build();
         instance.setId("instance-b");
-        when(instanceRepository.findById("instance-b")).thenReturn(Optional.of(instance));
+        when(instanceRepository.findByIdentifier("instance-b")).thenReturn(Optional.of(instance));
         RuntimeAdminClientResolver resolver = new RuntimeAdminClientResolver(instanceRepository, adminFactory,
                 properties);
 

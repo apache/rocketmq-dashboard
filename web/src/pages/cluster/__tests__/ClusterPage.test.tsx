@@ -152,7 +152,7 @@ describe('Cluster page', () => {
     instanceServiceMocks.listInstances.mockResolvedValue([
       {
         id: 'instance-a',
-        name: 'Instance A',
+        name: 'instance-a',
         type: 'DIRECT',
         vendor: 'APACHE',
         endpoint: '127.0.0.1:9876',
@@ -164,7 +164,7 @@ describe('Cluster page', () => {
       },
       {
         id: 'instance-b',
-        name: 'Instance B',
+        name: 'instance-b',
         type: 'DIRECT',
         vendor: 'APACHE',
         endpoint: '127.0.0.2:9876',
@@ -186,7 +186,7 @@ describe('Cluster page', () => {
     instanceServiceMocks.listInstances.mockReset().mockResolvedValue([
       {
         id: 'instance-1',
-        name: 'Instance 1',
+        name: 'instance-1',
         endpoint: 'namesrv-1:9876',
         type: 'DIRECT',
         vendor: 'APACHE',
@@ -225,7 +225,7 @@ describe('Cluster page', () => {
       .mockResolvedValueOnce([
         {
           id: 'instance-1',
-          name: 'Instance 1',
+          name: 'instance-1',
           endpoint: 'namesrv-1:9876',
           type: 'DIRECT',
           vendor: 'APACHE',

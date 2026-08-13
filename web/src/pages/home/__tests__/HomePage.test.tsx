@@ -78,6 +78,18 @@ describe('HomePage LLM models', () => {
     expect(await screen.findByText('qwen3.8-max')).toBeInTheDocument();
   });
 
+  it('does not fetch LLM config in Mock mode', async () => {
+    const { useDataModeStore } = await import('../../../stores/dataModeStore');
+    useDataModeStore.getState().toggle();
+
+    renderHome();
+
+    expect(llmApiMocks.getLlmConfig).not.toHaveBeenCalled();
+    expect(await screen.findByText('qwen3.8-max')).toBeInTheDocument();
+
+    useDataModeStore.getState().toggle();
+  });
+
   it('submits the selected model and engine to the AI page', async () => {
     const user = userEvent.setup();
     renderHome();
@@ -94,6 +106,7 @@ describe('HomePage LLM models', () => {
           prompt: '查看集群状态',
           model: 'qwen3.8-max',
           engine: 'claude-code',
+          mode: 'chat',
         },
       });
     });

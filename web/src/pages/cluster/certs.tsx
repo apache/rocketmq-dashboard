@@ -16,18 +16,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import {
-  Table,
-  Tag,
-  Input,
-  Select,
-  Flex,
-  Space,
-  Typography,
-  Card,
-  Alert,
-  message,
-} from 'antd';
+import { Table, Tag, Input, Select, Flex, Space, Typography, Card, Alert, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import PageHeader from '../../components/PageHeader';
 import type { K8sCertInfo } from '../../api/cluster';
@@ -197,10 +186,7 @@ const K8sCertsPage = () => {
 
   return (
     <div style={{ padding: 24 }}>
-      <PageHeader
-        title="K8s 证书管理"
-        subtitle={`共 ${filteredCerts.length} 个证书`}
-      />
+      <PageHeader title="K8s 证书管理" subtitle={`共 ${filteredCerts.length} 个证书`} />
       <Alert
         data-testid="k8s-cert-local-metadata-notice"
         type="warning"
@@ -238,7 +224,7 @@ const K8sCertsPage = () => {
           />
         </Space>
       </Flex>
-      <Card bodyStyle={{ padding: 0 }}>
+      <Card styles={{ body: { padding: 0 } }}>
         <Table
           columns={certColumns}
           dataSource={filteredCerts}
@@ -249,7 +235,6 @@ const K8sCertsPage = () => {
           scroll={{ x: 1750 }}
         />
       </Card>
-
     </div>
   );
 };

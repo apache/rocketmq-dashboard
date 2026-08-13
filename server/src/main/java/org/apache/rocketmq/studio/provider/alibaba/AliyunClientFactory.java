@@ -170,7 +170,9 @@ public class AliyunClientFactory {
         int status = statusCode == null ? 0 : statusCode;
         log.warn("Aliyun OpenAPI failure: status={}, errCode={}, message={}", status, errCode, message);
         if (status == 401 || "InvalidAccessKeyId".equals(errCode) || "SignatureDoesNotMatch".equals(errCode)) {
-            return new BusinessException(401, "Cloud credential is invalid");
+            // 422, not 401: HTTP 401 is reserved for Studio session auth; the frontend logs the
+            // user out and redirects on any 401, so a cloud-rejected credential must use another code.
+            return new BusinessException(422, "Cloud credential is invalid");
         }
         if (status == 403) {
             return new BusinessException(403, defaultIfBlank(message, "Aliyun OpenAPI access denied"));

@@ -25,6 +25,7 @@ import org.apache.rocketmq.studio.common.util.UrlHostGuard;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -73,6 +74,7 @@ public class SettingsService {
     private final ObjectMapper objectMapper;
     private final OperationAuditService operationAuditService;
 
+    @Autowired
     public SettingsService(SettingsRepository settingsRepository, RestClient.Builder restClientBuilder,
                            ObjectMapper objectMapper, OperationAuditService operationAuditService) {
         this(settingsRepository, buildDataSourceRestClient(restClientBuilder), objectMapper, operationAuditService);
@@ -102,15 +104,38 @@ public class SettingsService {
 
     public synchronized void saveGeneralSettings(GeneralSettingsVO settings) {
         log.info("Saving general settings");
+        validateLlmBaseUrl(settings.getBaseUrl());
         GeneralSettingsVO currentSettings = settingsRepository.loadGeneralSettings();
         if (settings.isClearApiKey()) {
             settings.setApiKey("");
         } else if (!StringUtils.hasText(settings.getApiKey()) && currentSettings != null) {
             settings.setApiKey(currentSettings.getApiKey());
         }
+        if (currentSettings != null) {
+            if (!StringUtils.hasText(settings.getDeploymentName())) {
+                settings.setDeploymentName(currentSettings.getDeploymentName());
+            }
+            if (!StringUtils.hasText(settings.getApiVersion())) {
+                settings.setApiVersion(currentSettings.getApiVersion());
+            }
+            if (!StringUtils.hasText(settings.getAwsRegion())) {
+                settings.setAwsRegion(currentSettings.getAwsRegion());
+            }
+        }
         settings.setClearApiKey(false);
         settingsRepository.saveGeneralSettings(settings);
         recordSettingsAudit();
+    }
+
+    private void validateLlmBaseUrl(String baseUrl) {
+        if (!StringUtils.hasText(baseUrl)) {
+            return;
+        }
+        try {
+            UrlHostGuard.check(baseUrl, true);
+        } catch (IllegalArgumentException exception) {
+            throw new BusinessException(400, "Invalid LLM base URL: " + exception.getMessage());
+        }
     }
 
     private void recordSettingsAudit() {

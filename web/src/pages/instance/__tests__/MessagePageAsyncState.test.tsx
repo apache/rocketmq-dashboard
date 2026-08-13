@@ -151,17 +151,20 @@ describe('MessagePage async request ownership', () => {
 
   it('clears query results and message details when the selected instance changes', async () => {
     serviceMocks.queryMessages.mockResolvedValue([createMessage('message-from-instance-a')]);
-    const selectInstance = vi.fn();
-    instanceFilterMocks.useInstanceFilter.mockReturnValue({
-      selectedInstanceId: 'instance-a',
+    let currentInstanceId = 'instance-a';
+    const selectInstance = vi.fn((id: string) => {
+      currentInstanceId = id;
+    });
+    instanceFilterMocks.useInstanceFilter.mockImplementation(() => ({
+      selectedInstanceId: currentInstanceId,
       selectInstance,
       instanceOptions: [
         { value: 'instance-a', label: 'Instance A' },
         { value: 'instance-b', label: 'Instance B' },
       ],
-    });
+    }));
     const user = userEvent.setup();
-    renderPage();
+    const view = renderPage();
     await selectTopic(user);
 
     await user.click(screen.getByRole('button', { name: /^search查询$/ }));
@@ -172,12 +175,13 @@ describe('MessagePage async request ownership', () => {
     await user.click(screen.getAllByRole('combobox')[0]!);
     const instanceOptions = await screen.findAllByText('Instance B');
     await user.click(instanceOptions[instanceOptions.length - 1]!);
+    view.rerender(<MessagePageWithProviders />);
 
     await waitFor(() => {
       expect(screen.queryByText('message-from-instance-a')).not.toBeInTheDocument();
       expect(screen.queryByRole('dialog', { name: '消息详情' })).not.toBeInTheDocument();
     });
-    expect(selectInstance).toHaveBeenCalledWith('instance-b');
+    expect(selectInstance).toHaveBeenCalledWith('instance-b', expect.anything());
   });
   it('surfaces unavailable message provider errors from query requests', async () => {
     serviceMocks.queryMessages.mockRejectedValue(

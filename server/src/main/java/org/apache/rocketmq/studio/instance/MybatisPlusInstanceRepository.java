@@ -95,11 +95,27 @@ public class MybatisPlusInstanceRepository implements InstanceRepository {
     }
 
     @Override
+    public Optional<InstanceVO> findByName(String name) {
+        if (name == null || name.isBlank()) {
+            return Optional.empty();
+        }
+        RmqInstance entity = instanceMapper.selectOne(
+                new QueryWrapper<RmqInstance>().eq("name", name).last("LIMIT 1"));
+        if (entity == null) {
+            return Optional.empty();
+        }
+        return Optional.of(toVO(entity));
+    }
+
+    @Override
     @Transactional
     public InstanceVO save(InstanceVO instance) {
         RmqInstance entity = toEntity(instance);
         if (instanceMapper.selectById(entity.getId()) != null) {
-            instanceMapper.updateById(entity);
+            if (instanceMapper.updateById(entity) == 0) {
+                throw new BusinessException(409,
+                        "Instance update was not applied: " + entity.getId());
+            }
         } else {
             instanceMapper.insert(entity);
         }

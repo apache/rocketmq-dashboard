@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS rmq_instance (
   admin_credential_ref VARCHAR(128) COMMENT 'External Apache admin credential reference; no secret material',
   region_id VARCHAR(128),
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_instance_name (name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 3. Topic 管理记录（通过 Studio 创建/管理的 Topic 元数据）

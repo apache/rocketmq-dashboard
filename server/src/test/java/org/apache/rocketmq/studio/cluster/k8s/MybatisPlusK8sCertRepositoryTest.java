@@ -22,11 +22,45 @@ import org.apache.rocketmq.studio.persistence.entity.RmqK8sCertificate;
 import org.apache.rocketmq.studio.persistence.mapper.RmqK8sCertificateMapper;
 import org.junit.jupiter.api.Test;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 class MybatisPlusK8sCertRepositoryTest {
+
+    @Test
+    void findByIdNormalizesPersistedCertificateEnums() {
+        RmqK8sCertificateMapper mapper = mock(RmqK8sCertificateMapper.class);
+        RmqK8sCertificate entity = certificate();
+        entity.setCertType(" mtls ");
+        entity.setStatus(" EXPIRING ");
+        when(mapper.selectById("cert-1")).thenReturn(entity);
+
+        assertThat(repository(mapper).findById("cert-1")).get()
+                .satisfies(cert -> {
+                    assertThat(cert.getType()).isEqualTo(
+                            org.apache.rocketmq.studio.common.domain.enums.CertType.mTLS);
+                    assertThat(cert.getStatus()).isEqualTo(
+                            org.apache.rocketmq.studio.common.domain.enums.CertStatus.expiring);
+                });
+    }
+
+    @Test
+    void saveShouldReportALostConcurrentUpdate() {
+        RmqK8sCertificateMapper mapper = mock(RmqK8sCertificateMapper.class);
+        when(mapper.selectById("cert-1")).thenReturn(certificate());
+        when(mapper.updateById(any(RmqK8sCertificate.class))).thenReturn(0);
+        K8sCertVO cert = K8sCertVO.builder().name("broker").build();
+        cert.setId("cert-1");
+
+        assertThatThrownBy(() -> repository(mapper).save(cert))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Certificate update was not applied: cert-1")
+                .satisfies(error -> org.assertj.core.api.Assertions.assertThat(
+                        ((BusinessException) error).getCode()).isEqualTo(409));
+    }
 
     @Test
     void findByIdSurfacesInvalidPersistedCertificateType() {
@@ -45,6 +79,18 @@ class MybatisPlusK8sCertRepositoryTest {
         RmqK8sCertificateMapper mapper = mock(RmqK8sCertificateMapper.class);
         RmqK8sCertificate entity = certificate();
         entity.setSan("not-json");
+        when(mapper.selectById("cert-1")).thenReturn(entity);
+
+        assertThatThrownBy(() -> repository(mapper).findById("cert-1"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("SAN JSON");
+    }
+
+    @Test
+    void findByIdSurfacesNullPersistedSanJson() {
+        RmqK8sCertificateMapper mapper = mock(RmqK8sCertificateMapper.class);
+        RmqK8sCertificate entity = certificate();
+        entity.setSan("null");
         when(mapper.selectById("cert-1")).thenReturn(entity);
 
         assertThatThrownBy(() -> repository(mapper).findById("cert-1"))

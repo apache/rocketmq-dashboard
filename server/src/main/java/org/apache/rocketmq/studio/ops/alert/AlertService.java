@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -120,9 +121,10 @@ public class AlertService {
 
     public AlertRuleVO toggleRule(String id, boolean enabled) {
         log.info("Toggling alert rule id={}, enabled={}", id, enabled);
+        validateRuleId(id);
         List<AlertRuleVO> rules = alertRepository.findAllRules();
         AlertRuleVO rule = rules.stream()
-                .filter(r -> r.getId().equals(id))
+                .filter(r -> Objects.equals(r.getId(), id))
                 .findFirst()
                 .orElseThrow(() -> new org.apache.rocketmq.studio.common.exception.BusinessException(404, "Alert rule not found: " + id));
         rule.setEnabled(enabled);
@@ -134,10 +136,81 @@ public class AlertService {
 
     public void deleteRule(String id) {
         log.info("Deleting alert rule id={}", id);
+        validateRuleId(id);
         if (!alertRepository.deleteRule(id)) {
             throw ruleNotFound(id);
         }
         recordAudit("DELETE_ALERT_RULE", "ALERT_RULE", id, null, null);
+    }
+
+    public AlertRuleBulkResultVO bulkToggleRules(List<String> ids, boolean enabled) {
+        List<String> normalizedIds = normalizeBulkIds(ids);
+        Map<String, AlertRuleVO> rulesById = new LinkedHashMap<>();
+        for (AlertRuleVO rule : alertRepository.findAllRules()) {
+            rulesById.put(rule.getId(), rule);
+        }
+        List<String> succeeded = new ArrayList<>();
+        Map<String, String> failures = new LinkedHashMap<>();
+        List<AlertRuleVO> updated = new ArrayList<>();
+        for (String id : normalizedIds) {
+            AlertRuleVO rule = rulesById.get(id);
+            if (rule == null) {
+                failures.put(id, "Alert rule not found");
+                continue;
+            }
+            try {
+                rule.setEnabled(enabled);
+                // replaceRule performs an existence-checked update; a rule deleted between the
+                // snapshot load and this call is reported as a failure instead of being recreated.
+                if (!alertRepository.replaceRule(rule)) {
+                    failures.put(id, "Alert rule not found");
+                    continue;
+                }
+                auditRule("TOGGLE_ALERT_RULE", rule, "enabled=" + enabled + ", bulk=true");
+                succeeded.add(id);
+                updated.add(rule);
+            } catch (RuntimeException failure) {
+                failures.put(id, failure.getMessage() == null ? "Update failed" : failure.getMessage());
+            }
+        }
+        return AlertRuleBulkResultVO.builder()
+                .succeededIds(succeeded).failures(failures).updatedRules(updated).build();
+    }
+
+    public AlertRuleBulkResultVO bulkDeleteRules(List<String> ids) {
+        List<String> normalizedIds = normalizeBulkIds(ids);
+        List<String> succeeded = new ArrayList<>();
+        Map<String, String> failures = new LinkedHashMap<>();
+        for (String id : normalizedIds) {
+            try {
+                if (!alertRepository.deleteRule(id)) {
+                    failures.put(id, "Alert rule not found");
+                    continue;
+                }
+                recordAudit("DELETE_ALERT_RULE", "ALERT_RULE", id, null, "bulk=true");
+                succeeded.add(id);
+            } catch (RuntimeException failure) {
+                failures.put(id, failure.getMessage() == null ? "Delete failed" : failure.getMessage());
+            }
+        }
+        return AlertRuleBulkResultVO.builder()
+                .succeededIds(succeeded).failures(failures).updatedRules(List.of()).build();
+    }
+
+    private List<String> normalizeBulkIds(List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            throw new BusinessException(400, "ids are required");
+        }
+        Set<String> seen = new HashSet<>();
+        List<String> normalized = new ArrayList<>();
+        for (String id : ids) {
+            validateRuleId(id);
+            String trimmed = id.trim();
+            if (seen.add(trimmed)) {
+                normalized.add(trimmed);
+            }
+        }
+        return normalized;
     }
 
 
@@ -149,9 +222,12 @@ public class AlertService {
 
     public SystemAlertVO acknowledgeAlert(String id) {
         log.info("Acknowledging system alert id={}", id);
+        if (id == null || id.isBlank()) {
+            throw new BusinessException(400, "System alert ID is required");
+        }
         List<SystemAlertVO> alerts = alertRepository.findAlerts(null);
         SystemAlertVO alert = alerts.stream()
-                .filter(a -> a.getId().equals(id))
+                .filter(a -> Objects.equals(a.getId(), id))
                 .findFirst()
                 .orElseThrow(() -> new org.apache.rocketmq.studio.common.exception.BusinessException(404, "System alert not found: " + id));
         alert.setAcknowledged(true);
@@ -290,16 +366,19 @@ public class AlertService {
         if (!hasText(metric)) {
             return "broker";
         }
-        if (metric.contains("replication") || metric.contains("fall_behind") || metric.contains("slave")) {
+        String normalizedMetric = metric.toLowerCase(Locale.ROOT);
+        if (normalizedMetric.contains("replication") || normalizedMetric.contains("fall_behind")
+                || normalizedMetric.contains("slave")) {
             return "broker";
         }
-        if (metric.contains("consumer") || metric.contains("lag")) {
+        if (normalizedMetric.contains("consumer") || normalizedMetric.contains("lag")) {
             return "consumer";
         }
-        if (metric.contains("producer") || metric.contains("client")) {
+        if (normalizedMetric.contains("producer") || normalizedMetric.contains("client")) {
             return "client";
         }
-        if (metric.contains("topic") || metric.contains("messages_in") || metric.contains("messages_out")) {
+        if (normalizedMetric.contains("topic") || normalizedMetric.contains("messages_in")
+                || normalizedMetric.contains("messages_out")) {
             return "topic";
         }
         return "broker";
@@ -308,7 +387,10 @@ public class AlertService {
     private String summary(AlertRuleVO rule) {
         String description = rule.getDescription();
         if (hasText(description) && description.contains(" - ")) {
-            return description.substring(0, description.indexOf(" - "));
+            String candidate = description.substring(0, description.indexOf(" - "));
+            if (hasText(candidate)) {
+                return candidate;
+            }
         }
         return hasText(rule.getName()) ? rule.getName() : "RocketMQ alert";
     }

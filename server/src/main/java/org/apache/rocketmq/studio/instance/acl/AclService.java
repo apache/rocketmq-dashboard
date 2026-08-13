@@ -25,6 +25,7 @@ import org.apache.rocketmq.studio.audit.OperationAuditService;
 import org.apache.rocketmq.studio.model.Acl2PolicyContext;
 import org.apache.rocketmq.studio.instance.InstanceRepository;
 import org.apache.rocketmq.studio.instance.InstanceVO;
+import org.apache.rocketmq.studio.provider.tencent.TencentAclService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -42,26 +43,37 @@ public class AclService {
     private final AclRepository aclRepository;
     private final OperationAuditService operationAuditService;
     private final InstanceRepository instanceRepository;
+    private final TencentAclService tencentAclService;
 
     public AclCapabilitiesVO capabilities(String instanceId) {
         if (!StringUtils.hasText(instanceId)) {
             throw new BusinessException(400, "instanceId is required");
         }
-        InstanceVO instance = instanceRepository.findById(instanceId)
+        InstanceVO instance = instanceRepository.findByIdentifier(instanceId)
                 .orElseThrow(() -> new BusinessException(404, "Instance not found: " + instanceId));
+        if (instance.getVendor() == InstanceVendor.TENCENT) {
+            return new AclCapabilitiesVO(instance.getId(), instance.getVendor(), instance.getType(),
+                    "TENCENT_ROLE", true, true);
+        }
         boolean apacheInstance = instance.getVendor() == null || instance.getVendor() == InstanceVendor.APACHE;
         return new AclCapabilitiesVO(instance.getId(), instance.getVendor(), instance.getType(),
                 apacheInstance ? "APACHE_ACL2" : "STUDIO_LOCAL", apacheInstance, false);
     }
 
 
-    public List<AclRuleVO> listRules(String clusterId, String principal) {
+    public List<AclRuleVO> listRules(String clusterId, String principal, String instanceId) {
+        if (isTencentInstance(instanceId)) {
+            return tencentAclService.listRules(instanceId, principal);
+        }
         log.info("Listing ACL rules for clusterId={}, principal={}", clusterId, principal);
         return aclRepository.findRules(clusterId, principal);
     }
 
 
-    public AclRuleVO createRule(AclRuleVO rule) {
+    public AclRuleVO createRule(AclRuleVO rule, String instanceId) {
+        if (isTencentInstance(instanceId)) {
+            return tencentAclService.createRule(instanceId, rule);
+        }
         log.info("Creating ACL rule for principal={}", rule.getPrincipal());
         if (!StringUtils.hasText(rule.getPrincipal())) {
             throw new BusinessException(400, "ACL principal is required");
@@ -76,7 +88,10 @@ public class AclService {
         return saved;
     }
 
-    public AclRuleVO updateRule(AclRuleVO rule) {
+    public AclRuleVO updateRule(AclRuleVO rule, String instanceId) {
+        if (isTencentInstance(instanceId)) {
+            return tencentAclService.updateRule(instanceId, rule);
+        }
         if (!StringUtils.hasText(rule.getId())) {
             throw new BusinessException(400, "ACL rule id is required");
         }
@@ -87,7 +102,11 @@ public class AclService {
         return saved;
     }
 
-    public void deleteRule(String id) {
+    public void deleteRule(String id, String instanceId) {
+        if (isTencentInstance(instanceId)) {
+            tencentAclService.deleteRule(instanceId, id);
+            return;
+        }
         log.info("Deleting ACL rule id={}", id);
         if (!aclRepository.deleteRule(id)) {
             throw new BusinessException(404, "ACL rule not found: " + id);
@@ -96,7 +115,12 @@ public class AclService {
     }
 
 
-    public List<AclUserVO> listUsers() {
+    public List<AclUserVO> listUsers(String instanceId) {
+        if (isTencentInstance(instanceId)) {
+            return tencentAclService.listUsers(instanceId).stream()
+                    .map(this::maskCredentials)
+                    .toList();
+        }
         log.info("Listing ACL users");
         return aclRepository.findUsers().stream()
                 .map(this::maskCredentials)
@@ -104,7 +128,10 @@ public class AclService {
     }
 
 
-    public AclUserVO createUser(AclUserVO user) {
+    public AclUserVO createUser(AclUserVO user, String instanceId) {
+        if (isTencentInstance(instanceId)) {
+            return tencentAclService.createUser(instanceId, user);
+        }
         log.info("Creating ACL user username={}", user.getUsername());
         if (!StringUtils.hasText(user.getUsername())) {
             throw new BusinessException(400, "ACL username is required");
@@ -118,13 +145,19 @@ public class AclService {
         return saved;
     }
 
-    public AclUserVO updateUser(UpdateAclUserDTO user) {
+    public AclUserVO updateUser(UpdateAclUserDTO user, String instanceId) {
+        if (isTencentInstance(instanceId)) {
+            return tencentAclService.updateUser(instanceId, user.toAclUserVO());
+        }
         if (!StringUtils.hasText(user.getId())) {
             throw new BusinessException(400, "ACL user id is required");
         }
         log.info("Updating ACL user id={}, username={}", user.getId(), user.getUsername());
         AclUserVO existing = aclRepository.findUserById(user.getId())
                 .orElseThrow(() -> new BusinessException(404, "ACL user not found: " + user.getId()));
+        if (user.getUsername() != null && !StringUtils.hasText(user.getUsername())) {
+            throw new BusinessException(400, "ACL username is required");
+        }
         AclUserVO merged = AclUserVO.builder()
                 .id(existing.getId())
                 .username(user.getUsername() == null ? existing.getUsername() : user.getUsername())
@@ -139,7 +172,12 @@ public class AclService {
         return maskCredentials(saved);
     }
 
-    public void deleteUser(String id) {
+    public void deleteUser(String id, String instanceId) {
+        if (isTencentInstance(instanceId)) {
+            // For Tencent roles the id is the role name.
+            tencentAclService.deleteUser(instanceId, id);
+            return;
+        }
         log.info("Deleting ACL user id={}", id);
         if (!aclRepository.deleteUser(id)) {
             throw new BusinessException(404, "ACL user not found: " + id);
@@ -185,7 +223,10 @@ public class AclService {
      * Returns the plain-text credentials of a user for the "view password" action.
      * The secret is stored base64-encoded in the database and decoded here.
      */
-    public AclUserVO getUserCredentials(String id) {
+    public AclUserVO getUserCredentials(String id, String instanceId) {
+        if (isTencentInstance(instanceId)) {
+            return tencentAclService.getUserCredentials(instanceId, id);
+        }
         if (!StringUtils.hasText(id)) {
             throw new BusinessException(400, "ACL user id is required");
         }
@@ -231,6 +272,15 @@ public class AclService {
         }
     }
 
+    private boolean isTencentInstance(String instanceId) {
+        if (!StringUtils.hasText(instanceId)) {
+            return false;
+        }
+        return instanceRepository.findByIdentifier(instanceId)
+                .map(instance -> instance.getVendor() == InstanceVendor.TENCENT)
+                .orElse(false);
+    }
+
     private boolean isValidAcl2BoundType(String boundType) {
         return switch (boundType.trim().toUpperCase(Locale.ROOT)) {
             case "TOPIC", "GROUP", "*", "USER", "SERVICE_ACCOUNT" -> true;
@@ -245,6 +295,8 @@ public class AclService {
                 .accessKey(CredentialUtils.mask(user.getAccessKey()))
                 .secretKey(CredentialUtils.mask(user.getSecretKey()))
                 .admin(user.isAdmin())
+                .permRead(user.getPermRead())
+                .permWrite(user.getPermWrite())
                 .clusters(user.getClusters() == null ? null : List.copyOf(user.getClusters()))
                 .whiteRemoteAddress(user.getWhiteRemoteAddress())
                 .createdAt(user.getCreatedAt())

@@ -318,7 +318,10 @@ const GroupManagementPage = () => {
         </Space>
       </div>
 
-      <Card bordered={false} style={{ borderRadius: 8, boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}>
+      <Card
+        variant="borderless"
+        style={{ borderRadius: 8, boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}
+      >
         <Table
           columns={columns}
           dataSource={filteredGroupData}
@@ -344,7 +347,7 @@ const GroupManagementPage = () => {
         }}
         footer={null}
         width={720}
-        destroyOnClose
+        destroyOnHidden
       >
         <div style={{ marginBottom: 16 }}>
           <h3 style={{ margin: 0, display: 'flex', alignItems: 'center' }}>
@@ -363,7 +366,7 @@ const GroupManagementPage = () => {
                   <div>
                     <Row gutter={16} style={{ marginBottom: 20 }}>
                       <Col span={8}>
-                        <Card bordered={false} style={{ background: '#f6ffed' }}>
+                        <Card variant="borderless" style={{ background: '#f6ffed' }}>
                           <div style={{ color: '#666', fontSize: 12 }}>
                             {t('groupMgmt.onlineInstances')}
                           </div>
@@ -381,7 +384,7 @@ const GroupManagementPage = () => {
                         </Card>
                       </Col>
                       <Col span={8}>
-                        <Card bordered={false} style={{ background: '#fff2f0' }}>
+                        <Card variant="borderless" style={{ background: '#fff2f0' }}>
                           <div style={{ color: '#666', fontSize: 12 }}>
                             {t('groupMgmt.totalDiff')}
                           </div>
@@ -391,7 +394,7 @@ const GroupManagementPage = () => {
                         </Card>
                       </Col>
                       <Col span={8}>
-                        <Card bordered={false} style={{ background: '#f0f5ff' }}>
+                        <Card variant="borderless" style={{ background: '#f0f5ff' }}>
                           <div style={{ color: '#666', fontSize: 12 }}>
                             {t('groupMgmt.subscribedTopics')}
                           </div>

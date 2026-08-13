@@ -57,51 +57,57 @@ public class AclController {
     @GetMapping("/rules")
     public Result<List<AclRuleVO>> listRules(
             @RequestParam(required = false) String clusterId,
-            @RequestParam(required = false) String principal) {
-        return Result.ok(aclService.listRules(clusterId, principal));
+            @RequestParam(required = false) String principal,
+            @RequestParam(required = false) String instanceId) {
+        return Result.ok(aclService.listRules(clusterId, principal, instanceId));
     }
 
     @PostMapping("/rules/create")
     public Result<AclRuleVO> createRule(@Valid @RequestBody(required = false) CreateAclRuleDTO rule) {
-        return Result.ok(aclService.createRule(requireRequest(rule, "ACL rule request is required").toAclRuleVO()));
+        CreateAclRuleDTO request = requireRequest(rule, "ACL rule request is required");
+        return Result.ok(aclService.createRule(request.toAclRuleVO(), request.getInstanceId()));
     }
 
     @PostMapping("/rules/update")
     public Result<AclRuleVO> updateRule(@Valid @RequestBody(required = false) UpdateAclRuleDTO rule) {
-        return Result.ok(aclService.updateRule(requireRequest(rule, "ACL rule request is required").toAclRuleVO()));
+        UpdateAclRuleDTO request = requireRequest(rule, "ACL rule request is required");
+        return Result.ok(aclService.updateRule(request.toAclRuleVO(), request.getInstanceId()));
     }
 
     @PostMapping("/rules/delete")
     public Result<Void> deleteRule(@Valid @RequestBody DeleteRequestDTO request) {
-        aclService.deleteRule(request.getId());
+        aclService.deleteRule(request.getId(), request.getInstanceId());
         return Result.ok();
     }
 
     @GetMapping("/users")
-    public Result<List<AclUserVO>> listUsers() {
-        return Result.ok(aclService.listUsers());
+    public Result<List<AclUserVO>> listUsers(
+            @RequestParam(required = false) String instanceId) {
+        return Result.ok(aclService.listUsers(instanceId));
     }
 
     @GetMapping("/users/{id}/credentials")
-    public ResponseEntity<Result<AclUserVO>> getUserCredentials(@PathVariable String id) {
+    public ResponseEntity<Result<AclUserVO>> getUserCredentials(@PathVariable String id,
+            @RequestParam(required = false) String instanceId) {
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
-                .body(Result.ok(aclService.getUserCredentials(id)));
+                .body(Result.ok(aclService.getUserCredentials(id, instanceId)));
     }
 
     @PostMapping("/users/create")
     public Result<AclUserVO> createUser(@Valid @RequestBody CreateAclUserDTO user) {
-        return Result.ok(aclService.createUser(user.toAclUserVO()));
+        return Result.ok(aclService.createUser(user.toAclUserVO(), user.getInstanceId()));
     }
 
     @PostMapping("/users/update")
     public Result<AclUserVO> updateUser(@Valid @RequestBody(required = false) UpdateAclUserDTO user) {
-        return Result.ok(aclService.updateUser(requireRequest(user, "ACL user request is required")));
+        UpdateAclUserDTO request = requireRequest(user, "ACL user request is required");
+        return Result.ok(aclService.updateUser(request, request.getInstanceId()));
     }
 
     @PostMapping("/users/delete")
     public Result<Void> deleteUser(@Valid @RequestBody DeleteRequestDTO request) {
-        aclService.deleteUser(request.getId());
+        aclService.deleteUser(request.getId(), request.getInstanceId());
         return Result.ok();
     }
 

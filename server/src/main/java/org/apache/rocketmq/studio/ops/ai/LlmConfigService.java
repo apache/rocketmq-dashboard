@@ -75,6 +75,7 @@ public class LlmConfigService {
 
     private final SettingsService settingsService;
     private final OpenAiCompatibleLlmClient llmClient;
+    private final AgentProviderRegistry agentProviders;
     private final LlmProperties llmProperties;
     private LlmConfigVO overrides;
 
@@ -113,6 +114,9 @@ public class LlmConfigService {
                 .apiKey(persistedApiKey)
                 .model(normalized.getModel())
                 .baseUrl(normalized.getApiBase())
+                .deploymentName(normalized.getDeploymentName())
+                .apiVersion(normalized.getApiVersion())
+                .awsRegion(normalized.getAwsRegion())
                 .build();
         LlmConfigVO nextOverrides = copy(normalized);
         settingsService.saveGeneralSettings(updated);
@@ -125,6 +129,9 @@ public class LlmConfigService {
         if (validation.getStatus() != 0) {
             return validation;
         }
+        if (!LlmConfigVO.ENGINE_HTTP.equalsIgnoreCase(normalized.normalizeEngine())) {
+            return testCliEngine(normalized.normalizeEngine());
+        }
         if (llmClient.supports(normalized)) {
             try {
                 llmClient.listModels(normalized);
@@ -133,6 +140,22 @@ public class LlmConfigService {
             }
         }
         return LlmOperationResultVO.success("Connection successful");
+    }
+
+    private LlmOperationResultVO testCliEngine(String engine) {
+        try {
+            AgentProvider provider = agentProviders.forEngine(engine);
+            if (provider.available()) {
+                return LlmOperationResultVO.success("CLI is available");
+            }
+            return LlmOperationResultVO.failure(
+                    "llm.provider.cli_missing",
+                    "Agent CLI is not available for engine: " + engine,
+                    "Install the selected CLI in the server runtime or select the HTTP engine.");
+        } catch (LlmGatewayException exception) {
+            return LlmOperationResultVO.failure(
+                    exception.getCode(), exception.getMessage(), exception.getHint());
+        }
     }
 
     private LlmOperationResultVO validate(LlmConfigVO normalized) {
@@ -179,7 +202,7 @@ public class LlmConfigService {
         return LlmOperationResultVO.success("Configuration accepted");
     }
 
-    public synchronized LlmModelsResultVO listModels() {
+    public LlmModelsResultVO listModels() {
         LlmConfigVO config = getConfig();
         String provider = config.getProvider();
         // The token-plan gateway model set is curated locally; do not query the gateway.
@@ -219,8 +242,9 @@ public class LlmConfigService {
                 .maxTokens(DEFAULT_MAX_TOKENS)
                 .temperature(DEFAULT_TEMPERATURE)
                 .enabled(!requiresApiKey(provider) || !!StringUtils.hasText(apiKey))
-                .apiVersion("2024-02-15-preview")
-                .awsRegion("us-east-1")
+                .deploymentName(defaultString(settings.getDeploymentName(), ""))
+                .apiVersion(defaultString(settings.getApiVersion(), "2024-02-15-preview"))
+                .awsRegion(defaultString(settings.getAwsRegion(), "us-east-1"))
                 .build();
     }
 
@@ -257,13 +281,13 @@ public class LlmConfigService {
             return normalized;
         }
         if (!StringUtils.hasText(normalized.getApiKey())) {
-            // Fall back to the key stored in settings only; the env-injected token
-            // must never be persisted into the settings table.
-            String storedKey = settingsService.getGeneralSettings().getApiKey();
-            if (!!StringUtils.hasText(envToken())) {
-                storedKey = defaultString(storedKey, envToken());
+            // The env-injected token is authoritative at runtime but must never be persisted;
+            // otherwise fall back to the key stored in settings.
+            String effectiveKey = envToken();
+            if (!StringUtils.hasText(effectiveKey)) {
+                effectiveKey = settingsService.getGeneralSettings().getApiKey();
             }
-            normalized.setApiKey(defaultString(storedKey, ""));
+            normalized.setApiKey(defaultString(effectiveKey, ""));
         }
         return normalized;
     }

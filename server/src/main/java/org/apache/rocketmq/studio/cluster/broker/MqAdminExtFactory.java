@@ -91,7 +91,14 @@ public class MqAdminExtFactory {
         AdminClientCacheKey cacheKey = new AdminClientCacheKey(normalizedNamesrvAddr,
                 normalizeAuthenticationIdentity(authenticationIdentity));
         DefaultMQAdminExt admin = cache.computeIfAbsent(cacheKey,
-                key -> createAndStart(key.namesrvAddr(), rpcHook));
+                key -> {
+                    // Re-check under the cache lock so a request that passed the initial closed check
+                    // cannot create a fresh connection while the factory is shutting down.
+                    if (closed) {
+                        throw new BusinessException(503, "Admin factory is shutting down");
+                    }
+                    return createAndStart(key.namesrvAddr(), rpcHook);
+                });
         try {
             return action.apply(admin);
         } catch (BusinessException ex) {

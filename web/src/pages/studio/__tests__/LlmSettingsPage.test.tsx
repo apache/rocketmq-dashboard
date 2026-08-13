@@ -58,6 +58,7 @@ const renderPage = () =>
 
 describe('LlmSettingsPage', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     llmApiMocks.getLlmConfig.mockResolvedValue({
       provider: 'tongyi',
       apiBase: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
@@ -95,6 +96,34 @@ describe('LlmSettingsPage', () => {
     expect(payload.apiKey).toBeUndefined();
   });
 
+  it('submits the Azure deployment fields required by the backend', async () => {
+    const user = userEvent.setup();
+    const { container } = renderPage();
+
+    await waitFor(() => expect(llmApiMocks.getLlmConfig).toHaveBeenCalledTimes(1));
+    await user.click(screen.getAllByRole('combobox')[1]);
+    await user.click(
+      await screen.findByText('Azure OpenAI', { selector: '.ant-select-item-option-content' }),
+    );
+
+    const apiBase = await screen.findByLabelText('API Base URL');
+    await user.type(apiBase, 'https://example.openai.azure.com/openai');
+    await user.type(screen.getByLabelText('Azure Deployment Name'), 'production-gpt');
+    expect(screen.getByLabelText('Azure API Version')).toHaveValue('2024-02-15-preview');
+    const saveButton = container.querySelector('.ant-btn-primary');
+    expect(saveButton).not.toBeNull();
+    await user.click(saveButton as HTMLButtonElement);
+
+    await waitFor(() => expect(llmApiMocks.saveLlmConfig).toHaveBeenCalledTimes(1));
+    expect(llmApiMocks.saveLlmConfig.mock.calls[0][0]).toMatchObject({
+      provider: 'azure',
+      apiBase: 'https://example.openai.azure.com/openai',
+      deploymentName: 'production-gpt',
+      apiVersion: '2024-02-15-preview',
+    });
+    expect(llmApiMocks.saveLlmConfig.mock.calls[0][0].awsRegion).toBeUndefined();
+  });
+
   it('ignores a connection result after the tested configuration changes', async () => {
     let resolveTest!: (result: { status: number; msg: string }) => void;
     llmApiMocks.testLlmConnection.mockImplementationOnce(
@@ -111,7 +140,9 @@ describe('LlmSettingsPage', () => {
     await waitFor(() => expect(llmApiMocks.testLlmConnection).toHaveBeenCalledTimes(1));
 
     await user.click(screen.getAllByRole('combobox')[1]);
-    await user.click(await screen.findByText('OpenAI', { selector: '.ant-select-item-option-content' }));
+    await user.click(
+      await screen.findByText('OpenAI', { selector: '.ant-select-item-option-content' }),
+    );
     await act(async () => resolveTest({ status: 0, msg: 'old provider succeeded' }));
 
     expect(screen.queryByText('old provider succeeded')).not.toBeInTheDocument();

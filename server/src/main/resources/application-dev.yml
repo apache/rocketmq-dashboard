@@ -16,5 +16,5 @@ spring:
 
 logging:
   level:
-    org.apache.rocketmq.studio: DEBUG
-    org.springframework.web: DEBUG
+    org.apache.rocketmq.studio: INFO
+    org.springframework.web: INFO

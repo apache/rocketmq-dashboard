@@ -15,6 +15,12 @@ export interface AlertRule {
   description: string;
 }
 
+export interface AlertRuleBulkResult {
+  succeededIds: string[];
+  failures: Record<string, string>;
+  updatedRules: AlertRule[];
+}
+
 // Matches mock/dashboard.ts systemAlerts
 export interface SystemAlert {
   id: string;
@@ -81,6 +87,19 @@ export async function toggleAlertRule(id: string, enabled: boolean) {
 
 export async function deleteAlertRule(id: string) {
   await client.post('/alert-rules/delete', { id });
+}
+
+export async function bulkToggleAlertRules(ids: string[], enabled: boolean) {
+  const res = await client.post<{ data: AlertRuleBulkResult }>('/alert-rules/bulk-toggle', {
+    ids,
+    enabled,
+  });
+  return res.data.data;
+}
+
+export async function bulkDeleteAlertRules(ids: string[]) {
+  const res = await client.post<{ data: AlertRuleBulkResult }>('/alert-rules/bulk-delete', { ids });
+  return res.data.data;
 }
 
 // ─── System Alerts ──────────────────────────────────────────────

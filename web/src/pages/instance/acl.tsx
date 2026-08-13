@@ -48,6 +48,7 @@ import {
 import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import PageHeader from '../../components/PageHeader';
+import { InstanceSelect } from '../../components/InstanceSelect';
 import { useLang } from '../../i18n/LangContext';
 import {
   createAclRule,
@@ -104,7 +105,7 @@ const isFormValidationError = (error: unknown) =>
    ═══════════════════════════════════════════ */
 const AclPage = () => {
   const { t } = useLang();
-  const { selectedInstanceId, selectInstance, instanceOptions } = useInstanceFilter();
+  const { selectedInstanceId, selectInstance, instanceOptions, instances } = useInstanceFilter();
 
   /* ─── State ─── */
   const [rules, setRules] = useState<AclRule[]>([]);
@@ -152,7 +153,7 @@ const AclPage = () => {
   useEffect(() => {
     let mounted = true;
 
-    void listAclRules()
+    void listAclRules({ instanceId: selectedInstanceId })
       .then((nextRules) => {
         if (mounted) setRules(nextRules.map(normalizeRule));
       })
@@ -163,7 +164,7 @@ const AclPage = () => {
         if (mounted) setRulesLoading(false);
       });
 
-    void listAclUsers()
+    void listAclUsers({ instanceId: selectedInstanceId })
       .then((nextUsers) => {
         if (mounted) setUsers(nextUsers.map(normalizeUser));
       })
@@ -177,7 +178,7 @@ const AclPage = () => {
     return () => {
       mounted = false;
     };
-  }, [t]);
+  }, [t, selectedInstanceId]);
 
   /* ─── Filtered rules ─── */
   const filteredRules = rules.filter((r) => {
@@ -238,7 +239,11 @@ const AclPage = () => {
       const values = (await ruleForm.validateFields()) as AclRuleFormValues;
       setRuleSubmitting(true);
       if (editingRule) {
-        const updated = await updateAclRule({ ...editingRule, ...values });
+        const updated = await updateAclRule({
+          ...editingRule,
+          ...values,
+          instanceId: selectedInstanceId,
+        });
         const normalized = normalizeRule(updated);
         setRules((prev) => prev.map((r) => (r.id === editingRule.id ? normalized : r)));
         message.success(t('acl.ruleUpdated'));
@@ -246,6 +251,7 @@ const AclPage = () => {
         const created = await createAclRule({
           ...values,
           aclVersion: '2.0',
+          instanceId: selectedInstanceId,
         });
         setRules((prev) => [normalizeRule(created), ...prev]);
         message.success(t('acl.ruleAdded'));
@@ -261,7 +267,7 @@ const AclPage = () => {
 
   const handleDeleteRule = async (id: string) => {
     try {
-      await deleteAclRule(id);
+      await deleteAclRule(id, selectedInstanceId);
       setRules((prev) => prev.filter((r) => r.id !== id));
       message.success(t('acl.ruleDeleted'));
     } catch {
@@ -283,7 +289,7 @@ const AclPage = () => {
     });
     if (!revealing || credentialsByUser[userId]) return;
     try {
-      const credentials = await getAclUserCredentials(userId);
+      const credentials = await getAclUserCredentials(userId, selectedInstanceId);
       setCredentialsByUser((prev) => ({
         ...prev,
         [userId]: {
@@ -328,6 +334,7 @@ const AclPage = () => {
           username: values.username,
           admin: values.admin ?? false,
           clusters: values.clusters ?? [],
+          instanceId: selectedInstanceId,
         });
         const normalized = normalizeUser(updated);
         setUsers((prev) => prev.map((u) => (u.id === editingUser.id ? normalized : u)));
@@ -337,6 +344,7 @@ const AclPage = () => {
           username: values.username,
           admin: values.admin ?? false,
           clusters: values.clusters ?? [],
+          instanceId: selectedInstanceId,
         });
         setUsers((prev) => [normalizeUser(created), ...prev]);
         message.success(t('acl.userAdded'));
@@ -352,7 +360,7 @@ const AclPage = () => {
 
   const handleDeleteUser = async (id: string) => {
     try {
-      await deleteAclUser(id);
+      await deleteAclUser(id, selectedInstanceId);
       setUsers((prev) => prev.filter((u) => u.id !== id));
       message.success(t('acl.userDeleted'));
     } catch {
@@ -370,6 +378,7 @@ const AclPage = () => {
         username: user.username,
         admin: checked,
         clusters: user.clusters,
+        instanceId: selectedInstanceId,
       });
       const normalized = normalizeUser(updated);
       setUsers((prev) => prev.map((u) => (u.id === user.id ? normalized : u)));
@@ -876,7 +885,7 @@ const AclPage = () => {
         style={{ marginBottom: 16 }}
       />
 
-      <Card bordered={false} bodyStyle={{ padding: 0 }}>
+      <Card variant="borderless" styles={{ body: { padding: 0 } }}>
         <Tabs
           activeKey={activeTab}
           onChange={setActiveTab}
@@ -901,13 +910,11 @@ const AclPage = () => {
                       flexWrap: 'wrap',
                     }}
                   >
-                    <Select
-                      placeholder="选择实例"
+                    <InstanceSelect
                       value={selectedInstanceId || undefined}
                       onChange={selectInstance}
                       options={instanceOptions}
                       style={{ width: 220 }}
-                      notFoundContent="暂无实例"
                     />
                     <Input.Search
                       placeholder={t('acl.searchPrincipal')}
@@ -1102,7 +1109,7 @@ const AclPage = () => {
         cancelText={t('common.cancel')}
         confirmLoading={ruleSubmitting}
         width={560}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={ruleForm} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item
@@ -1201,7 +1208,7 @@ const AclPage = () => {
         cancelText={t('common.cancel')}
         confirmLoading={userSubmitting}
         width={520}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={userForm} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item
@@ -1223,7 +1230,15 @@ const AclPage = () => {
           </Form.Item>
 
           <Form.Item name="clusters" label={t('acl.associatedClusters')}>
-            <Select mode="tags" tokenSeparators={[',']} allowClear />
+            <Select
+              mode="tags"
+              tokenSeparators={[',']}
+              allowClear
+              options={instances.map((instance) => ({
+                value: instance.cloudInstanceId ?? instance.id,
+                label: instance.name,
+              }))}
+            />
           </Form.Item>
         </Form>
       </Modal>
@@ -1238,7 +1253,7 @@ const AclPage = () => {
         cancelText={t('common.cancel')}
         confirmLoading={plainSubmitting}
         width={560}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={plainForm} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item

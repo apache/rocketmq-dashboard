@@ -34,6 +34,7 @@ import {
 } from '@phosphor-icons/react';
 import { getLlmConfig } from '../../api/llm';
 import { useEngineStore } from '../../stores/engineStore';
+import { useDataModeStore } from '../../stores/dataModeStore';
 import { useLang } from '../../i18n/LangContext';
 
 /* ─── Time-aware greeting key ─── */
@@ -98,6 +99,17 @@ const HomePage = () => {
     let cancelled = false;
 
     const loadModels = async () => {
+      const useMock = useDataModeStore.getState().useMock;
+      if (useMock) {
+        if (cancelled) return;
+        setModelOptions(
+          HOME_MODELS.map((value) => ({ value, recommended: value === RECOMMENDED_MODEL })),
+        );
+        setSelectedModel((current) =>
+          current && HOME_MODELS.includes(current) ? current : HOME_MODELS[0] || '',
+        );
+        return;
+      }
       const config = await getLlmConfig().catch(() => null);
       if (cancelled) return;
 
@@ -192,6 +204,7 @@ const HomePage = () => {
             prompt,
             ...(selectedModel ? { model: selectedModel } : {}),
             engine,
+            mode: activeMode,
             ...(promoteOn ? { enhance: true } : {}),
           }
         : null,
@@ -515,6 +528,10 @@ const HomePage = () => {
             </a>
             <span style={{ margin: '0 4px' }}>｜</span>
             <span>RocketMQ Studio 出品</span>
+            <span style={{ margin: '0 4px' }}>｜</span>
+            <span>
+              当前版本 {__BUILD_TIME__} build({__BUILD_COMMIT__})
+            </span>
           </span>
         </footer>
       </div>

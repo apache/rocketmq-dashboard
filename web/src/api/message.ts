@@ -81,9 +81,12 @@ export async function queryMessages(params: MessageQuery) {
 }
 
 export async function getMessageTrace(msgId: string, instanceId?: string, topic?: string) {
+  const params: Record<string, string> = {};
+  if (instanceId !== undefined) params.instanceId = instanceId;
+  if (topic !== undefined) params.topic = topic;
   const res = await client.get<{ data: TraceRecord }>(
     `/messages/${encodeURIComponent(msgId)}/trace`,
-    { params: { instanceId, topic } },
+    { params },
   );
   return res.data.data;
 }

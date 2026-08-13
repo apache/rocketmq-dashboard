@@ -37,7 +37,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
-import java.util.UUID;
 
 @Slf4j
 @Service
@@ -96,13 +95,25 @@ public class InstanceService {
             case ALIYUN, TENCENT -> createCloudInstance(instance, vendor);
         }
 
-        instance.setId(UUID.randomUUID().toString());
+        requireUniqueInstanceName(instance.getName(), null);
+        instance.setId(instance.getName());
         instance.setCreatedAt(LocalDateTime.now());
         instance.setUpdatedAt(LocalDateTime.now());
         InstanceVO saved = instanceRepository.save(instance);
         recordAudit("CREATE_INSTANCE", "INSTANCE", saved.getId(), null,
                 instanceAuditDetail(saved));
         return saved;
+    }
+
+    private void requireUniqueInstanceName(String name, String excludeId) {
+        if (!StringUtils.hasText(name)) {
+            return;
+        }
+        instanceRepository.findByName(name).ifPresent(existing -> {
+            if (excludeId == null || !excludeId.equals(existing.getId())) {
+                throw new BusinessException(400, "Instance name already exists: " + name);
+            }
+        });
     }
 
     private void createApacheInstance(InstanceVO instance) {
@@ -137,6 +148,10 @@ public class InstanceService {
         }
         CloudInstanceDetailVO detail = providerRegistry.catalogFor(vendor)
                 .getCloudInstance(instance.getCredentialId(), instance.getRegionId(), instance.getCloudInstanceId());
+        if (detail == null) {
+            throw new BusinessException(502,
+                    "Cloud instance details unavailable: " + instance.getCloudInstanceId());
+        }
         if (!StringUtils.hasText(instance.getName())) {
             instance.setName(detail.getInstanceName() != null && !detail.getInstanceName().isBlank()
                     ? detail.getInstanceName() : detail.getInstanceId());
@@ -151,6 +166,7 @@ public class InstanceService {
             throw new BusinessException(502, "Cloud instance has no endpoint: " + detail.getInstanceId());
         }
         return detail.getEndpoints().stream()
+                .filter(Objects::nonNull)
                 .filter(endpoint -> endpoint.getEndpointUrl() != null && !endpoint.getEndpointUrl().isBlank())
                 .sorted((a, b) -> Integer.compare(endpointPriority(a.getEndpointType()), endpointPriority(b.getEndpointType())))
                 .map(CloudInstanceDetailVO.CloudEndpoint::getEndpointUrl)
@@ -187,7 +203,11 @@ public class InstanceService {
         if (!StringUtils.hasText(name)) {
             throw new BusinessException(400, "InstanceVO name is required");
         }
-        return name.trim();
+        String trimmed = name.trim();
+        if (trimmed.length() > 64) {
+            throw new BusinessException(400, "InstanceVO name must not exceed 64 characters");
+        }
+        return trimmed;
     }
 
     private String normalizeCredentialRef(String credentialRef) {
@@ -212,7 +232,10 @@ public class InstanceService {
         InstanceVO updated = copyOf(existing);
         boolean cloudInstance = existing.getVendor() != null && existing.getVendor() != InstanceVendor.APACHE;
         if (instance.getName() != null) {
-            updated.setName(requireInstanceName(instance.getName()));
+            String requestedName = requireInstanceName(instance.getName());
+            if (!requestedName.equals(existing.getName())) {
+                throw new BusinessException(400, "Instance ID cannot be changed after creation");
+            }
         }
         if (!cloudInstance) {
             if (instance.getType() != null) {

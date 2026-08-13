@@ -69,6 +69,12 @@ const typeLabel: Record<string, { text: string; color: string }> = {
   DIRECT: { text: 'Direct 模式', color: 'orange' },
 };
 
+function describeApiError(error: unknown, fallback: string): string {
+  const serverMessage = (error as { response?: { data?: { message?: unknown } } })?.response?.data
+    ?.message;
+  return typeof serverMessage === 'string' && serverMessage.trim() ? serverMessage : fallback;
+}
+
 type InstanceTypeFilter = 'ALL' | Instance['type'];
 
 function compareResourceCounts(
@@ -217,9 +223,9 @@ const InstancePage = () => {
             }
           }
         })
-        .catch(() => {
+        .catch((error) => {
           if (active) {
-            message.error('云地域列表加载失败');
+            message.error(describeApiError(error, '云地域列表加载失败'));
           }
         })
         .finally(() => {
@@ -252,9 +258,9 @@ const InstancePage = () => {
             setCloudInstances(items);
           }
         })
-        .catch(() => {
+        .catch((error) => {
           if (active) {
-            message.error('云实例列表加载失败');
+            message.error(describeApiError(error, '云实例列表加载失败'));
           }
         })
         .finally(() => {
@@ -368,7 +374,7 @@ const InstancePage = () => {
 
   const columns: ColumnsType<Instance> = [
     {
-      title: '实例名称',
+      title: '实例 ID',
       dataIndex: 'name',
       key: 'name',
       width: 180,
@@ -436,8 +442,7 @@ const InstancePage = () => {
       key: 'consumerGroupCount',
       width: 80,
       align: 'center' as const,
-      sorter: (a, b, sortOrder) =>
-        compareResourceCounts(a, b, 'consumerGroupCount', sortOrder),
+      sorter: (a, b, sortOrder) => compareResourceCounts(a, b, 'consumerGroupCount', sortOrder),
       render: (count: number, record: Instance) =>
         record.resourceCountsAvailable === false ? '不可用' : count,
     },
@@ -490,15 +495,18 @@ const InstancePage = () => {
             size="small"
             icon={<DeleteOutlined />}
             style={{ borderColor: '#ff4d4f', color: '#ff4d4f' }}
-            onClick={() =>
+            onClick={() => {
+              const isCloudInstance = record.vendor === 'ALIYUN' || record.vendor === 'TENCENT';
               Modal.confirm({
                 title: `确认删除 "${record.name}"？`,
-                content: '此操作不可恢复。',
+                content: isCloudInstance
+                  ? '仅从 Studio 移除该实例记录，不会释放云上的 RocketMQ 实例。'
+                  : '此操作不可恢复。',
                 okText: '删除',
                 okButtonProps: { danger: true },
                 onOk: () => handleDelete(record),
-              })
-            }
+              });
+            }}
           >
             删除
           </Button>
@@ -512,9 +520,9 @@ const InstancePage = () => {
       {/* Header */}
       <div style={{ marginBottom: 20 }}>
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>{t('instance.title')}</h2>
-        <span style={{ fontSize: 13, color: '#9CA3AF' }}>
-          管理 RocketMQ 集群连接，当前显示 {instances.length} 个实例
-        </span>
+        <div style={{ marginTop: 6, fontSize: 13, color: '#9CA3AF' }}>
+          接入并管理 RocketMQ 实例（开源自建 / 阿里云 / 腾讯云），当前显示 {instances.length} 个实例
+        </div>
       </div>
 
       {/* Filter bar */}
@@ -527,7 +535,7 @@ const InstancePage = () => {
       >
         <Space size={12} wrap>
           <Input
-            placeholder="搜索实例名称或地址"
+            placeholder="搜索实例 ID 或地址"
             prefix={<MagnifyingGlass size={14} color="#9CA3AF" />}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -555,8 +563,9 @@ const InstancePage = () => {
       </Flex>
 
       {/* Table */}
-      <Card bodyStyle={{ padding: 0 }}>
+      <Card styles={{ body: { padding: 0 } }}>
         <Table
+          className="instance-table"
           columns={columns}
           dataSource={sortedInstances}
           loading={loading}
@@ -565,7 +574,7 @@ const InstancePage = () => {
           size="small"
           onRow={(record) => ({
             style: { cursor: 'pointer' },
-            onClick: () => navigate(`/instance/${record.id}/topic`),
+            onClick: () => navigate(`/instance/${encodeURIComponent(record.name)}/topic`),
           })}
         />
       </Card>
@@ -657,18 +666,21 @@ const InstancePage = () => {
                 }))}
                 onChange={(value) => {
                   const selected = cloudInstances.find((item) => item.instanceId === value);
-                  if (selected?.instanceName) {
-                    addForm.setFieldsValue({ name: selected.instanceName });
+                  if (selected) {
+                    addForm.setFieldsValue({ name: selected.instanceId });
                   }
                 }}
               />
             </Form.Item>
             <Form.Item
-              label="实例名称"
+              label="实例 ID"
               name="name"
-              rules={[{ required: true, message: '请输入实例名称' }]}
+              rules={[
+                { required: true, message: '请输入实例 ID' },
+                { max: 64, message: '实例 ID 不能超过 64 个字符' },
+              ]}
             >
-              <Input placeholder="默认取云上实例名称" />
+              <Input placeholder="默认取云上实例 ID" />
             </Form.Item>
             <Form.Item label="备注" name="remark">
               <Input.TextArea rows={2} placeholder="可选，描述实例用途" />
@@ -677,9 +689,12 @@ const InstancePage = () => {
         ) : (
           <Form form={addForm} layout="vertical">
             <Form.Item
-              label="实例名称"
+              label="实例 ID"
               name="name"
-              rules={[{ required: true, message: '请输入实例名称' }]}
+              rules={[
+                { required: true, message: '请输入实例 ID' },
+                { max: 64, message: '实例 ID 不能超过 64 个字符' },
+              ]}
             >
               <Input placeholder="例：rocketmq-production" />
             </Form.Item>
@@ -752,7 +767,7 @@ const InstancePage = () => {
         width={520}
       >
         <Form form={editForm} layout="vertical" style={{ marginTop: 16 }}>
-          <Form.Item label="实例名称">
+          <Form.Item label="实例 ID">
             <Input value={editingInstance?.name} disabled />
           </Form.Item>
           <Form.Item label="接入方式">

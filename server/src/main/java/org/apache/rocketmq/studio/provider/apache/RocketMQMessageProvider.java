@@ -260,6 +260,7 @@ public class RocketMQMessageProvider implements MessageProvider {
         } finally {
             consumer.shutdown();
         }
+        result.sort(Comparator.comparingLong(MessageRecordVO::getStoreTime).reversed());
         return result;
     }
 

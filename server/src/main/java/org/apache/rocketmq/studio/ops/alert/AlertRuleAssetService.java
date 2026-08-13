@@ -46,7 +46,15 @@ public class AlertRuleAssetService {
     private static final String LOCATION_PATTERN = "classpath*:alerts/*.yaml";
 
     private final ObjectMapper yamlMapper = new ObjectMapper(new YAMLFactory());
-    private final ResourcePatternResolver resourceResolver = new PathMatchingResourcePatternResolver();
+    private final ResourcePatternResolver resourceResolver;
+
+    public AlertRuleAssetService() {
+        this(new PathMatchingResourcePatternResolver());
+    }
+
+    AlertRuleAssetService(ResourcePatternResolver resourceResolver) {
+        this.resourceResolver = resourceResolver;
+    }
 
     /**
      * Lists metadata for every bundled alert rule asset.
@@ -166,8 +174,8 @@ public class AlertRuleAssetService {
         try {
             return resourceResolver.getResources(LOCATION_PATTERN);
         } catch (IOException e) {
-            log.warn("Unable to resolve alert rule assets: {}", e.getMessage());
-            return new Resource[0];
+            log.error("Unable to resolve alert rule assets", e);
+            throw new BusinessException(500, "Failed to resolve bundled alert rule assets");
         }
     }
 

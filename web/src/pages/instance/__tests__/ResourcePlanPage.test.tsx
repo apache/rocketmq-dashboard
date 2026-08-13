@@ -74,7 +74,7 @@ describe('ResourcePlanPage', () => {
     instanceServiceMocks.listInstances.mockResolvedValue([
       {
         id: 'instance-proxy-1',
-        name: 'Instance Proxy 1',
+        name: 'instance-proxy-1',
         remark: '',
         type: 'PROXY',
         endpoint: '10.0.0.1:8080',

@@ -49,7 +49,9 @@ public class AuthInterceptor implements HandlerInterceptor {
                              Object handler) throws Exception {
         AuthenticatedUserContext.clear();
         if (!isLoginRequired() || CorsUtils.isPreFlightRequest(request)
-                || isPublicPath(requestPath(request))) {
+                || isPublicPath(requestPath(request)) || authService == null) {
+            // Slice tests and minimal contexts may not provide AuthService; fall back to no
+            // enforcement, matching the documented AuthWebConfig behaviour.
             return true;
         }
         String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
@@ -100,8 +102,15 @@ public class AuthInterceptor implements HandlerInterceptor {
     private boolean isAdminOnlyGetPath(String path) {
         String normalizedPath = normalizePath(stripPathParameters(path));
         return "/api/llm/models".equals(normalizedPath)
+                || isCloudCatalogPath(normalizedPath)
+                || "/api/acl/remote/rules".equals(normalizedPath)
                 || isCredentialRevealPath(normalizedPath, "/api/acl/users/")
                 || isCredentialRevealPath(normalizedPath, "/api/cloud-credentials/");
+    }
+
+    private boolean isCloudCatalogPath(String path) {
+        return path.startsWith("/api/cloud/aliyun/")
+                || path.startsWith("/api/cloud/tencent/");
     }
 
     private boolean isCredentialRevealPath(String path, String prefix) {

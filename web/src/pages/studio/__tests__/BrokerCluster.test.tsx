@@ -135,7 +135,7 @@ describe('BrokerCluster Page', () => {
     vi.mocked(listInstances).mockResolvedValue([
       {
         id: 'instance-1',
-        name: 'prod-cn',
+        name: 'instance-1',
         remark: '',
         type: 'DIRECT',
         endpoint: '10.0.1.20:9876',

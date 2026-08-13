@@ -31,6 +31,8 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -49,6 +51,9 @@ class AuthCredentialAuthorizationIntegrationTest {
 
     @MockBean
     private AclService aclService;
+
+    @MockBean
+    private org.apache.rocketmq.studio.instance.acl.ApacheAclReadService apacheAclReadService;
 
     @MockBean
     private CloudCredentialService cloudCredentialService;
@@ -98,7 +103,7 @@ class AuthCredentialAuthorizationIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, AUTHORIZATION))
                 .andExpect(status().isOk());
 
-        verify(aclService).getUserCredentials("user-1");
+        verify(aclService).getUserCredentials(eq("user-1"), isNull());
         verify(cloudCredentialService).reveal("credential-1");
     }
 }

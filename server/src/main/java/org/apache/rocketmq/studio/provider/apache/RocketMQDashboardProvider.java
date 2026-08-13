@@ -179,7 +179,10 @@ public class RocketMQDashboardProvider implements DashboardProvider {
 
                 try {
                     SubscriptionGroupWrapper subscriptionGroupWrapper = admin.getAllSubscriptionGroup(brokerAddr, 5000);
-                    if (subscriptionGroupWrapper != null && subscriptionGroupWrapper.getSubscriptionGroupTable() != null) {
+                    if (subscriptionGroupWrapper == null
+                            || subscriptionGroupWrapper.getSubscriptionGroupTable() == null) {
+                        markCountUnavailable(groupCountsUnavailableClusters, clusterName);
+                    } else {
                         for (Map.Entry<String, SubscriptionGroupConfig> entry :
                                 subscriptionGroupWrapper.getSubscriptionGroupTable().entrySet()) {
                             String groupName = entry.getKey();
