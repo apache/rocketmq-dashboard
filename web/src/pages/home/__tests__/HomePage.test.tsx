@@ -16,7 +16,7 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import { LangProvider } from '../../../i18n/LangContext';
@@ -110,5 +110,16 @@ describe('HomePage LLM models', () => {
         },
       });
     });
+  });
+
+  it('does not submit while an input method composition is being confirmed', async () => {
+    renderHome();
+    await screen.findByText('qwen3.8-max');
+    const input = screen.getByPlaceholderText('向 RocketMQ Bot 提问，全程加密、安全、可信');
+
+    fireEvent.change(input, { target: { value: '查看集群状态' } });
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true });
+
+    expect(navigateMock).not.toHaveBeenCalled();
   });
 });

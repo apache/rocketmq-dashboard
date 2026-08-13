@@ -462,6 +462,7 @@ const AiPage = () => {
   const streamRequestIdRef = useRef(0);
   const previousChatModeRef = useRef(chatMode);
   const conversationIdRef = useRef<string | null>(history.activeConversationId);
+  const chatInFlightRef = useRef(false);
   const toolLoadRequestRef = useRef(0);
   const consumedDraftRef = useRef(false);
   const pendingAutoSendRef = useRef<{
@@ -591,11 +592,12 @@ const AiPage = () => {
     ) => {
       const text = (textOverride ?? inputValue).trim();
       const model = modelOverride ?? selectedModel;
-      if (!text || loading) return;
+      if (!text || loading || chatInFlightRef.current) return;
       if (!llmReady) {
         message.warning(t('ai.providerRequired'));
         return;
       }
+      chatInFlightRef.current = true;
 
       if (!conversationIdRef.current) {
         conversationIdRef.current = newConversationId();
@@ -675,6 +677,7 @@ const AiPage = () => {
           message.error(errorMessage);
         }
       } finally {
+        chatInFlightRef.current = false;
         if (abortControllerRef.current === controller) abortControllerRef.current = null;
         updateMessages(chatMode, conversationId, (prev) =>
           prev.map((item) => (item.id === responseId ? { ...item, pending: false } : item)),
@@ -700,6 +703,7 @@ const AiPage = () => {
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.nativeEvent.isComposing) return;
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         handleSend();
