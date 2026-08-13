@@ -203,7 +203,7 @@ const NameServerConfigDriftPage = () => {
           value={selectedInstanceId}
           onChange={(instanceId) => void selectInstance(instanceId)}
           placeholder={t('common.selectInstance')}
-          options={instances.map((instance) => ({ label: instance.name, value: instance.name }))}
+          options={instances.map((instance) => ({ label: instance.name, value: instance.id }))}
           style={{ width: 'min(100%, 280px)' }}
         />
         <Select

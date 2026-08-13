@@ -278,9 +278,7 @@ describe('BrokerCluster Page', () => {
   });
 
   it('polls only while live refresh is enabled and the document is visible', async () => {
-    const visibilityState = vi
-      .spyOn(document, 'visibilityState', 'get')
-      .mockReturnValue('hidden');
+    const visibilityState = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
     renderWithProviders(<BrokerCluster />);
 
     await screen.findByText('broker-api-a');
