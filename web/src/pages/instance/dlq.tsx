@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Card,
@@ -121,6 +121,14 @@ const DLQPage = () => {
   const [selectedGroupNames, setSelectedGroupNames] = useState<string[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [retryError, setRetryError] = useState<string | null>(null);
+  const retryRequestIdRef = useRef(0);
+
+  useEffect(
+    () => () => {
+      retryRequestIdRef.current += 1;
+    },
+    [],
+  );
 
   // The retry dialog owns a group name that is meaningful only for the
   // currently selected instance. Clear all instance-scoped state before
@@ -197,6 +205,12 @@ const DLQPage = () => {
   }, [groups, selectedGroupNames]);
 
   /* ─── Handlers ─── */
+  const handleInstanceChange = (instanceId: string) => {
+    retryRequestIdRef.current += 1;
+    setRetrySubmitting(false);
+    selectInstance(instanceId);
+  };
+
   const openRetryModal = (group: DLQGroup) => {
     setRetryGroup(group);
     setRetryRange([dayjs().subtract(1, 'day'), dayjs()]);
@@ -212,16 +226,21 @@ const DLQPage = () => {
     }
     if (!retryGroup || !selectedInstanceId) return;
 
+    const requestId = retryRequestIdRef.current + 1;
+    retryRequestIdRef.current = requestId;
+    const groupName = retryGroup.groupName;
+    const targetTopic = retryTargetTopic;
     setRetrySubmitting(true);
     setRetryError(null);
     try {
       const result = await resendDLQ({
         instanceId: selectedInstanceId,
-        groupName: retryGroup.groupName,
+        groupName,
         startTime: retryRange[0].valueOf(),
         endTime: retryRange[1].valueOf(),
-        targetTopic: retryTargetTopic,
+        targetTopic,
       });
+      if (retryRequestIdRef.current !== requestId) return;
       setRefreshKey((key) => key + 1);
       if (result.scanIncomplete) {
         message.warning(
@@ -231,16 +250,20 @@ const DLQPage = () => {
         message.warning(`重投部分完成：成功 ${result.resent}，失败 ${result.failed}`);
       } else {
         message.success(
-          `重投完成：${retryGroup.groupName} → ${retryTargetTopic}（${result.resent} 条）`,
+          `重投完成：${groupName} → ${targetTopic}（${result.resent} 条）`,
         );
       }
       setRetryModalOpen(false);
       setRetryGroup(null);
       setRetryError(null);
     } catch (error) {
-      setRetryError(getErrorMessage(error, DEFAULT_RETRY_ERROR));
+      if (retryRequestIdRef.current === requestId) {
+        setRetryError(getErrorMessage(error, DEFAULT_RETRY_ERROR));
+      }
     } finally {
-      setRetrySubmitting(false);
+      if (retryRequestIdRef.current === requestId) {
+        setRetrySubmitting(false);
+      }
     }
   };
 
@@ -364,7 +387,7 @@ const DLQPage = () => {
         <Space size={12} wrap>
           <InstanceSelect
             value={selectedInstanceId || undefined}
-            onChange={selectInstance}
+            onChange={handleInstanceChange}
             options={instanceOptions}
             style={{ width: 220 }}
           />
@@ -393,7 +416,7 @@ const DLQPage = () => {
       )}
 
       {/* ── Table ── */}
-      <Card bodyStyle={{ padding: 0 }}>
+      <Card styles={{ body: { padding: 0 } }}>
         <Table
           columns={columns}
           dataSource={filtered}
@@ -437,7 +460,7 @@ const DLQPage = () => {
         okText="确认重投"
         cancelText="取消"
         width={520}
-        destroyOnClose
+        destroyOnHidden
       >
         {retryGroup && (
           <div style={{ marginTop: 16 }}>
@@ -514,7 +537,7 @@ const DLQPage = () => {
         onCancel={() => setDetailGroup(null)}
         footer={<Button onClick={() => setDetailGroup(null)}>关闭</Button>}
         width={560}
-        destroyOnClose
+        destroyOnHidden
       >
         {detailGroup && (
           <div style={{ marginTop: 8 }}>

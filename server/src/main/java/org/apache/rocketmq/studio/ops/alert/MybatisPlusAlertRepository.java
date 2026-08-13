@@ -67,8 +67,7 @@ public class MybatisPlusAlertRepository implements AlertRepository {
         if (ruleMapper.selectById(rule.getId()) == null) {
             return false;
         }
-        ruleMapper.updateById(toRuleEntity(rule));
-        return true;
+        return ruleMapper.updateById(toRuleEntity(rule)) > 0;
     }
 
     @Override
@@ -172,7 +171,7 @@ public class MybatisPlusAlertRepository implements AlertRepository {
             return AlertLevel.info;
         }
         try {
-            return AlertLevel.valueOf(level);
+            return AlertLevel.valueOf(level.trim().toLowerCase(Locale.ROOT));
         } catch (IllegalArgumentException exception) {
             return AlertLevel.info;
         }

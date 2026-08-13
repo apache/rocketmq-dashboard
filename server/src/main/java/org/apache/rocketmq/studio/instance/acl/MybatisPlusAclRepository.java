@@ -77,7 +77,9 @@ public class MybatisPlusAclRepository implements AclRepository {
         }
         RmqAclRule entity = toRuleEntity(rule);
         entity.setCreatedAt(existing.getCreatedAt());
-        ruleMapper.updateById(entity);
+        if (ruleMapper.updateById(entity) == 0) {
+            return Optional.empty();
+        }
         rule.setCreatedAt(existing.getCreatedAt());
         return Optional.of(rule);
     }

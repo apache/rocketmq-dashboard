@@ -116,7 +116,9 @@ public class CloudCredentialService {
         if (instanceRepository.existsByCredentialId(id)) {
             throw new BusinessException(400, "Cloud credential is referenced by existing instances");
         }
-        credentialRepository.deleteById(id);
+        if (!credentialRepository.deleteById(id)) {
+            throw new BusinessException(404, "Cloud credential not found: " + id);
+        }
         invalidateCloudClients(existing);
         recordAudit("DELETE_CLOUD_CREDENTIAL", "CLOUD_CREDENTIAL", id, null,
                 credentialAuditDetail(existing));

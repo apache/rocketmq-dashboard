@@ -21,7 +21,7 @@ const pad = (n: number, width = 2): string => String(n).padStart(width, '0');
  * Format a date string or Date object to 'YYYY-MM-DD HH:mm:ss'.
  */
 export function formatDateTime(date: string | Date | null | undefined): string {
-  if (date === null || date === undefined) return '-';
+  if (date === null || date === undefined || (typeof date === 'string' && !date.trim())) return '-';
   const d = typeof date === 'string' ? new Date(date) : date;
   if (isNaN(d.getTime())) return String(date);
   return (
@@ -34,7 +34,7 @@ export function formatDateTime(date: string | Date | null | undefined): string {
  * Format a date string or Date object to 'YYYY-MM-DD'.
  */
 export function formatDate(date: string | Date | null | undefined): string {
-  if (date === null || date === undefined) return '-';
+  if (date === null || date === undefined || (typeof date === 'string' && !date.trim())) return '-';
   const d = typeof date === 'string' ? new Date(date) : date;
   if (isNaN(d.getTime())) return String(date);
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;

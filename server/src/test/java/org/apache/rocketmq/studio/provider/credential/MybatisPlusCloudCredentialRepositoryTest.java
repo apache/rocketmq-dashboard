@@ -31,6 +31,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -41,6 +42,20 @@ class MybatisPlusCloudCredentialRepositoryTest {
 
     @InjectMocks
     private MybatisPlusCloudCredentialRepository repository;
+
+    @Test
+    void saveShouldReportALostConcurrentUpdate() {
+        CloudCredentialVO credential = new CloudCredentialVO();
+        credential.setId("cred-1");
+        credential.setVendor(InstanceVendor.ALIYUN);
+        when(credentialMapper.selectById("cred-1")).thenReturn(entity("cred-1", "ALIYUN"));
+        when(credentialMapper.updateById(any(RmqCloudCredential.class))).thenReturn(0);
+
+        assertThatThrownBy(() -> repository.save(credential))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Cloud credential update was not applied: cred-1")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(409));
+    }
 
     @Test
     void findByIdShouldMapValidPersistedVendor() {

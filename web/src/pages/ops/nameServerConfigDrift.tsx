@@ -65,6 +65,7 @@ const NameServerConfigDriftPage = () => {
 
   useEffect(() => {
     let cancelled = false;
+    const sequence = ++requestSequence.current;
     void listInstances()
       .then(async (items) => {
         if (cancelled) return;
@@ -77,17 +78,19 @@ const NameServerConfigDriftPage = () => {
           return;
         }
         const clustersForInstance = await listClusters(firstInstanceId);
-        if (cancelled) return;
+        if (cancelled || sequence !== requestSequence.current) return;
         setClusters(clustersForInstance);
         const firstClusterId = clustersForInstance[0]?.id;
         setSelectedClusterId(firstClusterId);
         if (firstClusterId) void runCheck(firstClusterId, firstInstanceId);
       })
       .catch(() => {
-        if (!cancelled) message.error(t('nameServerDrift.loadClustersFailed'));
+        if (!cancelled && sequence === requestSequence.current) {
+          message.error(t('nameServerDrift.loadClustersFailed'));
+        }
       })
       .finally(() => {
-        if (!cancelled) setClustersLoading(false);
+        if (!cancelled && sequence === requestSequence.current) setClustersLoading(false);
       });
     return () => {
       cancelled = true;

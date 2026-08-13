@@ -86,6 +86,35 @@ describe('SystemAlertsPage', () => {
     expect(screen.getByText('A newer backend emitted this level')).toBeInTheDocument();
   });
 
+  it('filters backend alert levels case-insensitively', async () => {
+    vi.mocked(listSystemAlerts).mockResolvedValue([
+      {
+        id: 'alert-error',
+        level: 'Error',
+        title: 'Mixed-case error',
+        description: 'error',
+        time: '2026-08-10 01:00',
+        acknowledged: false,
+      },
+      {
+        id: 'alert-warning',
+        level: 'WARNING',
+        title: 'Mixed-case warning',
+        description: 'warning',
+        time: '2026-08-10 01:01',
+        acknowledged: false,
+      },
+    ]);
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Mixed-case error');
+
+    await user.click(screen.getByRole('button', { name: /严重/ }));
+
+    expect(screen.getByText('Mixed-case error')).toBeInTheDocument();
+    expect(screen.queryByText('Mixed-case warning')).not.toBeInTheDocument();
+  });
+
   it('tracks simultaneous acknowledgements independently', async () => {
     vi.mocked(acknowledgeAlert).mockImplementation(() => new Promise(() => {}));
     const user = userEvent.setup();

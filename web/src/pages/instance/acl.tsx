@@ -877,7 +877,7 @@ const AclPage = () => {
         style={{ marginBottom: 16 }}
       />
 
-      <Card bordered={false} bodyStyle={{ padding: 0 }}>
+      <Card variant="borderless" styles={{ body: { padding: 0 } }}>
         <Tabs
           activeKey={activeTab}
           onChange={setActiveTab}
@@ -1101,7 +1101,7 @@ const AclPage = () => {
         cancelText={t('common.cancel')}
         confirmLoading={ruleSubmitting}
         width={560}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={ruleForm} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item
@@ -1200,7 +1200,7 @@ const AclPage = () => {
         cancelText={t('common.cancel')}
         confirmLoading={userSubmitting}
         width={520}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={userForm} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item
@@ -1237,7 +1237,7 @@ const AclPage = () => {
         cancelText={t('common.cancel')}
         confirmLoading={plainSubmitting}
         width={560}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={plainForm} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item

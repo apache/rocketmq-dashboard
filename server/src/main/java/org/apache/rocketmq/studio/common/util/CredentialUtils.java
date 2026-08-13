@@ -16,6 +16,9 @@
  */
 package org.apache.rocketmq.studio.common.util;
 
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
@@ -44,9 +47,15 @@ public final class CredentialUtils {
             return null;
         }
         try {
-            return new String(Base64.getDecoder().decode(stored), StandardCharsets.UTF_8);
-        } catch (IllegalArgumentException ex) {
-            // tolerate legacy values that were stored without encoding
+            byte[] decoded = Base64.getDecoder().decode(stored);
+            return StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(decoded))
+                    .toString();
+        } catch (IllegalArgumentException | CharacterCodingException ex) {
+            // Tolerate legacy plaintext, including text that is syntactically Base64 but does
+            // not decode to valid UTF-8. Returning replacement characters would corrupt it.
             return stored;
         }
     }

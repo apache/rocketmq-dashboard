@@ -148,6 +148,10 @@ public class InstanceService {
         }
         CloudInstanceDetailVO detail = providerRegistry.catalogFor(vendor)
                 .getCloudInstance(instance.getCredentialId(), instance.getRegionId(), instance.getCloudInstanceId());
+        if (detail == null) {
+            throw new BusinessException(502,
+                    "Cloud instance details unavailable: " + instance.getCloudInstanceId());
+        }
         if (!StringUtils.hasText(instance.getName())) {
             instance.setName(detail.getInstanceName() != null && !detail.getInstanceName().isBlank()
                     ? detail.getInstanceName() : detail.getInstanceId());
@@ -162,6 +166,7 @@ public class InstanceService {
             throw new BusinessException(502, "Cloud instance has no endpoint: " + detail.getInstanceId());
         }
         return detail.getEndpoints().stream()
+                .filter(Objects::nonNull)
                 .filter(endpoint -> endpoint.getEndpointUrl() != null && !endpoint.getEndpointUrl().isBlank())
                 .sorted((a, b) -> Integer.compare(endpointPriority(a.getEndpointType()), endpointPriority(b.getEndpointType())))
                 .map(CloudInstanceDetailVO.CloudEndpoint::getEndpointUrl)

@@ -172,11 +172,25 @@ class MybatisPlusInstanceRepositoryTest {
     void saveShouldUpdateWhenInstanceExists() {
         InstanceVO vo = vo("instance-proxy-2", InstanceType.PROXY);
         when(instanceMapper.selectById("instance-proxy-2")).thenReturn(entity("instance-proxy-2", InstanceType.PROXY));
+        when(instanceMapper.updateById(any(RmqInstance.class))).thenReturn(1);
 
         repository.save(vo);
 
         verify(instanceMapper).updateById(any(RmqInstance.class));
         verify(instanceMapper, never()).insert(any(RmqInstance.class));
+    }
+
+    @Test
+    void saveShouldReportALostConcurrentUpdate() {
+        InstanceVO vo = vo("instance-proxy-2", InstanceType.PROXY);
+        when(instanceMapper.selectById("instance-proxy-2"))
+                .thenReturn(entity("instance-proxy-2", InstanceType.PROXY));
+        when(instanceMapper.updateById(any(RmqInstance.class))).thenReturn(0);
+
+        assertThatThrownBy(() -> repository.save(vo))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Instance update was not applied: instance-proxy-2")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(409));
     }
 
     @Test

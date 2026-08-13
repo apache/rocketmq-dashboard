@@ -230,6 +230,32 @@ class PrometheusMetricsSourceTest {
     }
 
     @Test
+    void queryShouldRejectNonTextSampleValues() {
+        server.createContext("/api/v1/query_range", exchange -> respond(exchange, 200, """
+                {"status":"success","data":{"resultType":"matrix","result":[
+                  {"metric":{"topic":"orders"},"values":[[1784107658,1.25]]}
+                ]}}
+                """));
+
+        assertThatThrownBy(() -> source(Duration.ofSeconds(2)).query(query()))
+                .isInstanceOf(PrometheusException.class)
+                .hasMessage("Prometheus returned a malformed sample");
+    }
+
+    @Test
+    void queryShouldRejectNonTextSeriesLabels() {
+        server.createContext("/api/v1/query_range", exchange -> respond(exchange, 200, """
+                {"status":"success","data":{"resultType":"matrix","result":[
+                  {"metric":{"topic":{"name":"orders"}},"values":[[1784107658,"1.25"]]}
+                ]}}
+                """));
+
+        assertThatThrownBy(() -> source(Duration.ofSeconds(2)).query(query()))
+                .isInstanceOf(PrometheusException.class)
+                .hasMessage("Prometheus returned a malformed time-series label");
+    }
+
+    @Test
     void queryShouldRejectResponseWithTooManySeries() {
         server.createContext("/api/v1/query_range", exchange -> respond(exchange, 200, responseWithSeries(1_001)));
 

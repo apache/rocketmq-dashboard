@@ -25,6 +25,8 @@ import lombok.NoArgsConstructor;
 import lombok.ToString;
 import org.springframework.util.StringUtils;
 
+import java.util.Locale;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -67,6 +69,6 @@ public class LlmConfigVO {
     }
 
     public String normalizeEngine() {
-        return StringUtils.hasText(engine) ? engine.trim().toLowerCase() : ENGINE_HTTP;
+        return StringUtils.hasText(engine) ? engine.trim().toLowerCase(Locale.ROOT) : ENGINE_HTTP;
     }
 }

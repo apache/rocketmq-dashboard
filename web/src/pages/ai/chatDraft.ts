@@ -15,9 +15,14 @@
  * limitations under the License.
  */
 
+export type ChatMode = 'chat' | 'diagnose' | 'manage' | 'query';
+
+const CHAT_MODES = new Set<ChatMode>(['chat', 'diagnose', 'manage', 'query']);
+
 export interface ChatDraft {
   prompt: string;
   model?: string;
+  mode?: ChatMode;
   enhance?: boolean;
 }
 
@@ -26,10 +31,15 @@ export function getChatDraft(state: unknown): ChatDraft | null {
   const candidate = state as Record<string, unknown>;
   if (typeof candidate.prompt !== 'string' || !candidate.prompt.trim()) return null;
   const model = typeof candidate.model === 'string' ? candidate.model.trim() : '';
+  const mode =
+    typeof candidate.mode === 'string' && CHAT_MODES.has(candidate.mode as ChatMode)
+      ? (candidate.mode as ChatMode)
+      : undefined;
 
   return {
     prompt: candidate.prompt.trim(),
     ...(model ? { model } : {}),
+    ...(mode ? { mode } : {}),
     ...(candidate.enhance === true ? { enhance: true } : {}),
   };
 }

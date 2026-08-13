@@ -168,6 +168,41 @@ describe('Audit page', () => {
     );
   });
 
+  it('shows loading state while refreshed records are pending', async () => {
+    const user = userEvent.setup();
+    vi.mocked(opsService.listAuditRecords)
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 'audit-1',
+            timestamp: '2026-08-01 10:00:00',
+            operator: 'admin',
+            operationType: 'DELETE_TOPIC',
+            resourceType: 'TOPIC',
+            target: 'topic-a',
+            clusterId: 'prod-cn',
+            detail: 'removed topic-a',
+            result: 'SUCCESS',
+            errorMessage: '',
+          },
+        ],
+        total: 1,
+        page: 1,
+        size: 20,
+      })
+      .mockImplementationOnce(() => new Promise(() => {}));
+    const { container } = renderWithProviders(<AuditPage />);
+    expect(await screen.findByText('topic-a')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('combobox', { name: '操作类型' }));
+    await user.click(
+      await screen.findByText('CREATE TOPIC', { selector: '.ant-select-item-option-content' }),
+    );
+
+    await waitFor(() => expect(opsService.listAuditRecords).toHaveBeenCalledTimes(2));
+    expect(container.querySelector('.ant-spin-spinning')).not.toBeNull();
+  });
+
   it('still loads audit records when filter options cannot be loaded', async () => {
     vi.mocked(opsService.getAuditFilterOptions).mockRejectedValueOnce(new Error('unavailable'));
 
