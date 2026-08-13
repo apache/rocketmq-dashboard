@@ -321,7 +321,7 @@ public class InstanceService {
         if (vendor != InstanceVendor.APACHE) {
             return;
         }
-        releaseEndpointIfUnused(existing.getEndpoint(), currentEndpoint, existing.getId());
+        releaseOldClientIfUnused(existing, currentEndpoint, null, existing.getId());
     }
 
     private void releaseApacheClientIfChanged(InstanceVO existing, InstanceVO saved) {
@@ -329,25 +329,32 @@ public class InstanceService {
         if (vendor != InstanceVendor.APACHE) {
             return;
         }
-        if (!Objects.equals(normalizeCredentialRef(existing.getAdminCredentialRef()),
-                normalizeCredentialRef(saved.getAdminCredentialRef()))
-                && Objects.equals(normalizeEndpoint(existing.getEndpoint()), normalizeEndpoint(saved.getEndpoint()))) {
-            adminFactory.release(existing.getEndpoint());
-            return;
-        }
-        releaseEndpointIfUnused(existing.getEndpoint(), saved.getEndpoint(), existing.getId());
+        releaseOldClientIfUnused(existing, saved.getEndpoint(), saved.getAdminCredentialRef(), existing.getId());
     }
 
-    private void releaseEndpointIfUnused(String previousEndpoint, String currentEndpoint, String excludedInstanceId) {
-        String oldEndpoint = normalizeEndpoint(previousEndpoint);
-        if (oldEndpoint == null || oldEndpoint.equals(normalizeEndpoint(currentEndpoint))) {
+    private void releaseOldClientIfUnused(InstanceVO existing, String currentEndpoint,
+                                          String currentCredentialRef, String excludedInstanceId) {
+        String oldEndpoint = normalizeEndpoint(existing.getEndpoint());
+        String oldCredentialRef = normalizeCredentialRef(existing.getAdminCredentialRef());
+        if (oldEndpoint == null || (oldEndpoint.equals(normalizeEndpoint(currentEndpoint))
+                && Objects.equals(oldCredentialRef, normalizeCredentialRef(currentCredentialRef)))) {
             return;
         }
-        boolean stillReferenced = instanceRepository.findAll().stream()
-                .anyMatch(instance -> !excludedInstanceId.equals(instance.getId())
-                        && oldEndpoint.equals(normalizeEndpoint(instance.getEndpoint())));
-        if (!stillReferenced) {
+        List<InstanceVO> remaining = instanceRepository.findAll().stream()
+                .filter(instance -> !excludedInstanceId.equals(instance.getId()))
+                .toList();
+        boolean endpointReferenced = remaining.stream()
+                .anyMatch(instance -> oldEndpoint.equals(normalizeEndpoint(instance.getEndpoint())));
+        if (!endpointReferenced) {
             adminFactory.release(oldEndpoint);
+            return;
+        }
+        boolean identityReferenced = remaining.stream()
+                .anyMatch(instance -> !excludedInstanceId.equals(instance.getId())
+                        && oldEndpoint.equals(normalizeEndpoint(instance.getEndpoint()))
+                        && Objects.equals(oldCredentialRef, normalizeCredentialRef(instance.getAdminCredentialRef())));
+        if (!identityReferenced) {
+            adminFactory.release(oldEndpoint, oldCredentialRef);
         }
     }
 

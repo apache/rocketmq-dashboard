@@ -85,6 +85,22 @@ class MqAdminExtFactoryTest {
     }
 
     @Test
+    void releaseShouldEvictOnlyMatchingCredentialIdentity() throws Exception {
+        DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
+        RecordingFactory factory = new RecordingFactory(admin);
+
+        factory.execute("10.0.0.1:9876", null, "credential-a", ignored -> null);
+        factory.execute("10.0.0.1:9876", null, "credential-b", ignored -> null);
+        factory.release("10.0.0.1:9876", "credential-a");
+        factory.execute("10.0.0.1:9876", null, "credential-b", ignored -> null);
+        factory.execute("10.0.0.1:9876", null, "credential-a", ignored -> null);
+
+        assertThat(factory.created.get()).isEqualTo(3);
+        verify(admin, times(3)).start();
+        verify(admin).shutdown();
+    }
+
+    @Test
     void releaseShouldEvictClientUsingEquivalentNameServerAddressList() throws Exception {
         DefaultMQAdminExt admin = mock(DefaultMQAdminExt.class);
         RecordingFactory factory = new RecordingFactory(admin);
