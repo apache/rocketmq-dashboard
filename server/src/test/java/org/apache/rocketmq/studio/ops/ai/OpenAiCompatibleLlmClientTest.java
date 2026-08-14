@@ -153,6 +153,27 @@ class OpenAiCompatibleLlmClientTest {
     }
 
     @Test
+    void streamShouldExposeErrorEnvelopeFromSuccessfulResponse() {
+        server.createContext("/v1/chat/completions", exchange -> respond(exchange, 200, """
+                data: {"error":{"message":"quota exceeded"}}
+
+                data: [DONE]
+
+                """, "text/event-stream"));
+
+        assertThatThrownBy(() -> client.stream(
+                config("openai", "sk-test"), "hello", null, token -> { }))
+                .isInstanceOf(LlmGatewayException.class)
+                .hasMessage("LLM provider stream failed: quota exceeded")
+                .satisfies(exception -> {
+                    LlmGatewayException gatewayException = (LlmGatewayException) exception;
+                    assertThat(gatewayException.getStatusCode()).isEqualTo(502);
+                    assertThat(gatewayException.getCode()).isEqualTo("llm.provider.stream_error");
+                    assertThat(gatewayException.getHint()).contains("account quota");
+                });
+    }
+
+    @Test
     void streamShouldEnforceTimeoutWhileReadingResponseBody() {
         OpenAiCompatibleLlmClient timeoutClient = new OpenAiCompatibleLlmClient(
                 objectMapper,

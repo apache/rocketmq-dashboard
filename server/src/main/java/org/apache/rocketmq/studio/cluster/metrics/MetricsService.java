@@ -40,7 +40,7 @@ public class MetricsService {
     private static final long MAX_RANGE_SECONDS = 31L * 24 * 60 * 60;
     private static final long MAX_SAMPLE_POINTS = 11_000L;
     private static final Pattern NUMBER_PATTERN = Pattern.compile("\\d+(?:\\.\\d+)?");
-    private static final Pattern DURATION_PART_PATTERN = Pattern.compile("(\\d+(?:\\.\\d+)?)(ms|s|m|h|d|w|y)");
+    private static final Pattern DURATION_PART_PATTERN = Pattern.compile("(\\d+)(ms|s|m|h|d|w|y)");
     private static final Map<String, BigDecimal> UNIT_TO_MILLIS = Map.of(
             "ms", BigDecimal.ONE,
             "s", BigDecimal.valueOf(1_000L),
@@ -49,6 +49,15 @@ public class MetricsService {
             "d", BigDecimal.valueOf(86_400_000L),
             "w", BigDecimal.valueOf(604_800_000L),
             "y", BigDecimal.valueOf(31_536_000_000L)
+    );
+    private static final Map<String, Integer> UNIT_ORDER = Map.of(
+            "y", 0,
+            "w", 1,
+            "d", 2,
+            "h", 3,
+            "m", 4,
+            "s", 5,
+            "ms", 6
     );
 
     private final MetricsSource metricsSource;
@@ -188,13 +197,20 @@ public class MetricsService {
         Matcher matcher = DURATION_PART_PATTERN.matcher(value);
         BigDecimal millis = BigDecimal.ZERO;
         int position = 0;
+        int previousUnitOrder = -1;
         while (matcher.find()) {
             if (matcher.start() != position) {
                 throw badRequest("Metric query step is invalid");
             }
+            String unit = matcher.group(2);
+            int unitOrder = UNIT_ORDER.get(unit);
+            if (unitOrder <= previousUnitOrder) {
+                throw badRequest("Metric query step is invalid");
+            }
             BigDecimal amount = new BigDecimal(matcher.group(1));
-            millis = millis.add(amount.multiply(UNIT_TO_MILLIS.get(matcher.group(2))));
+            millis = millis.add(amount.multiply(UNIT_TO_MILLIS.get(unit)));
             position = matcher.end();
+            previousUnitOrder = unitOrder;
         }
         if (position != value.length()) {
             throw badRequest("Metric query step is invalid");
