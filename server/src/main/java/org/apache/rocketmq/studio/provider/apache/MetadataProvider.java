@@ -16,6 +16,7 @@
  */
 package org.apache.rocketmq.studio.provider.apache;
 
+import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerVO;
 import org.apache.rocketmq.studio.instance.topic.TopicConsumerPageVO;
 import org.apache.rocketmq.studio.instance.topic.BrokerRouteVO;
@@ -40,8 +41,9 @@ public interface MetadataProvider {
     default TopicConsumerPageVO getTopicConsumersPage(String instanceId, String name, int page, int pageSize) {
         List<TopicConsumerVO> consumers = getTopicConsumers(instanceId, name);
         int total = consumers.size();
-        int from = Math.min((page - 1) * pageSize, total);
-        int to = Math.min(from + pageSize, total);
+        long offset = Pagination.pageOffset(page, pageSize);
+        int from = (int) Math.min(offset, total);
+        int to = from + (int) Math.min(pageSize, total - from);
         return TopicConsumerPageVO.builder()
                 .items(consumers.subList(from, to))
                 .total(total)

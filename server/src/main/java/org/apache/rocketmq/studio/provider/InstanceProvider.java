@@ -17,6 +17,7 @@
 package org.apache.rocketmq.studio.provider;
 
 import org.apache.rocketmq.studio.common.domain.enums.InstanceVendor;
+import org.apache.rocketmq.studio.common.util.Pagination;
 import org.apache.rocketmq.studio.instance.group.ConsumerGroupVO;
 import org.apache.rocketmq.studio.instance.group.QueueProgressVO;
 import org.apache.rocketmq.studio.instance.group.SubscriptionEntryVO;
@@ -54,8 +55,9 @@ public interface InstanceProvider {
     default TopicConsumerPageVO getTopicConsumersPage(String instanceId, String topicName, int page, int pageSize) {
         List<TopicConsumerVO> consumers = getTopicConsumers(instanceId, topicName);
         int total = consumers.size();
-        int from = Math.min((page - 1) * pageSize, total);
-        int to = Math.min(from + pageSize, total);
+        long offset = Pagination.pageOffset(page, pageSize);
+        int from = (int) Math.min(offset, total);
+        int to = from + (int) Math.min(pageSize, total - from);
         return TopicConsumerPageVO.builder()
                 .items(consumers.subList(from, to))
                 .total(total)
