@@ -132,18 +132,22 @@ public class TencentInstanceProvider implements InstanceProvider {
         request.setLimit(1L);
         DescribeTopicListResponse response = clientFactory.call(context.credentialId(), context.regionId(),
                 client -> client.DescribeTopicList(request));
-        if (response == null || response.getData() == null || response.getData().length == 0) {
+        if (response == null) {
             return 0;
         }
-        // Use the response total count if available; otherwise fall back to full scan
+        // TotalCount is independent of the current page contents and remains authoritative
+        // when Tencent returns an empty Data array for the minimal count request.
         Long total = response.getTotalCount();
-        if (total == null) {
-            return listTopics(instanceId, null, null, false).size();
+        if (total != null) {
+            if (total <= 0L) {
+                return 0;
+            }
+            return total > Integer.MAX_VALUE ? Integer.MAX_VALUE : total.intValue();
         }
-        if (total <= 0L) {
+        if (response.getData() == null || response.getData().length == 0) {
             return 0;
         }
-        return total > Integer.MAX_VALUE ? Integer.MAX_VALUE : total.intValue();
+        return listTopics(instanceId, null, null, false).size();
     }
 
     @Override

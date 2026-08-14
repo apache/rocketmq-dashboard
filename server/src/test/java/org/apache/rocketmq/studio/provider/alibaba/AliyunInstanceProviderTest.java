@@ -361,6 +361,50 @@ class AliyunInstanceProviderTest {
     }
 
     @Test
+    void getMessageTraceShouldReturnEmptyTraceWhenAliyunDataIsNullTest() {
+        stubInstance();
+        stubCallThrough();
+        GetTraceResponse response = GetTraceResponse.create().toBuilder()
+                .statusCode(200)
+                .body(GetTraceResponseBody.builder().data(null).build())
+                .build();
+        when(asyncClient.getTrace(any())).thenReturn(CompletableFuture.completedFuture(response));
+
+        TraceRecordVO trace = provider.getMessageTrace(STUDIO_INSTANCE_ID, "msg-without-trace", "orders");
+
+        assertThat(trace.getNodes()).isEmpty();
+        assertThat(trace.getConsumerStatus()).isEmpty();
+    }
+
+    @Test
+    void getMessageTraceShouldReturnEmptyTraceWhenAliyunBodyIsNullTest() {
+        stubInstance();
+        stubCallThrough();
+        GetTraceResponse response = GetTraceResponse.create().toBuilder()
+                .statusCode(200)
+                .body(null)
+                .build();
+        when(asyncClient.getTrace(any())).thenReturn(CompletableFuture.completedFuture(response));
+
+        TraceRecordVO trace = provider.getMessageTrace(STUDIO_INSTANCE_ID, "msg-without-body", "orders");
+
+        assertThat(trace.getNodes()).isEmpty();
+        assertThat(trace.getConsumerStatus()).isEmpty();
+    }
+
+    @Test
+    void getMessageTraceShouldReturnEmptyTraceWhenAliyunResponseIsNullTest() {
+        stubInstance();
+        stubCallThrough();
+        when(asyncClient.getTrace(any())).thenReturn(CompletableFuture.completedFuture(null));
+
+        TraceRecordVO trace = provider.getMessageTrace(STUDIO_INSTANCE_ID, "msg-without-response", "orders");
+
+        assertThat(trace.getNodes()).isEmpty();
+        assertThat(trace.getConsumerStatus()).isEmpty();
+    }
+
+    @Test
     void mappedBusinessExceptionShouldPropagateTest() {
         stubInstance();
         when(clientFactory.call(anyString(), anyString(), any()))

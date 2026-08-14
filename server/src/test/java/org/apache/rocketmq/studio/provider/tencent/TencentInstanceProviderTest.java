@@ -32,6 +32,7 @@ import com.tencentcloudapi.trocket.v20230308.models.MessageItem;
 import com.tencentcloudapi.trocket.v20230308.models.MessageTraceItem;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicListByGroupResponse;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeConsumerGroupListRequest;
+import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicListRequest;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicListResponse;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicRequest;
 import com.tencentcloudapi.trocket.v20230308.models.DescribeTopicResponse;
@@ -119,6 +120,35 @@ class TencentInstanceProviderTest {
         when(client.DescribeTopicList(any())).thenReturn(response);
 
         assertThat(provider.countTopics(STUDIO_INSTANCE_ID)).isEqualTo(Integer.MAX_VALUE);
+    }
+
+    @Test
+    void countTopicsShouldUseTotalCountFromSingleItemRequestTest() throws Exception {
+        DescribeTopicListResponse response = new DescribeTopicListResponse();
+        response.setTotalCount(501L);
+        response.setData(new TopicItem[]{topicItem("orders", "NORMAL", 8L)});
+        when(client.DescribeTopicList(any())).thenReturn(response);
+
+        int count = provider.countTopics(STUDIO_INSTANCE_ID);
+
+        assertThat(count).isEqualTo(501);
+        ArgumentCaptor<DescribeTopicListRequest> captor =
+                ArgumentCaptor.forClass(DescribeTopicListRequest.class);
+        verify(client).DescribeTopicList(captor.capture());
+        assertThat(captor.getValue().getInstanceId()).isEqualTo(CLOUD_INSTANCE_ID);
+        assertThat(captor.getValue().getOffset()).isZero();
+        assertThat(captor.getValue().getLimit()).isEqualTo(1L);
+    }
+
+    @Test
+    void countTopicsShouldUseTotalCountEvenWhenDataIsEmptyTest() throws Exception {
+        DescribeTopicListResponse response = new DescribeTopicListResponse();
+        response.setTotalCount(501L);
+        response.setData(new TopicItem[0]);
+        when(client.DescribeTopicList(any())).thenReturn(response);
+
+        assertThat(provider.countTopics(STUDIO_INSTANCE_ID)).isEqualTo(501);
+        verify(client, times(1)).DescribeTopicList(any());
     }
 
     @Test
@@ -347,6 +377,34 @@ class TencentInstanceProviderTest {
         assertThat(consumers.get(100).getGroup()).isEqualTo("GID_100");
         ArgumentCaptor<DescribeTopicRequest> captor = ArgumentCaptor.forClass(DescribeTopicRequest.class);
         verify(client, org.mockito.Mockito.times(2)).DescribeTopic(captor.capture());
+        assertThat(captor.getAllValues())
+                .extracting(DescribeTopicRequest::getOffset)
+                .containsExactly(0L, 100L);
+        assertThat(captor.getAllValues())
+                .extracting(DescribeTopicRequest::getLimit)
+                .containsOnly(100L);
+    }
+
+    @Test
+    void getTopicConsumersShouldStopAfterSubscriptionCountReachedOnFullPageTest() throws Exception {
+        DescribeTopicResponse firstPage = new DescribeTopicResponse();
+        firstPage.setSubscriptionCount(200L);
+        firstPage.setSubscriptionData(IntStream.range(0, 100)
+                .mapToObj(index -> subscription("GID_" + index))
+                .toArray(SubscriptionData[]::new));
+        DescribeTopicResponse secondPage = new DescribeTopicResponse();
+        secondPage.setSubscriptionCount(200L);
+        secondPage.setSubscriptionData(IntStream.range(100, 200)
+                .mapToObj(index -> subscription("GID_" + index))
+                .toArray(SubscriptionData[]::new));
+        when(client.DescribeTopic(any())).thenReturn(firstPage, secondPage);
+
+        List<TopicConsumerVO> consumers = provider.getTopicConsumers(STUDIO_INSTANCE_ID, "orders");
+
+        assertThat(consumers).hasSize(200);
+        assertThat(consumers.get(199).getGroup()).isEqualTo("GID_199");
+        ArgumentCaptor<DescribeTopicRequest> captor = ArgumentCaptor.forClass(DescribeTopicRequest.class);
+        verify(client, times(2)).DescribeTopic(captor.capture());
         assertThat(captor.getAllValues())
                 .extracting(DescribeTopicRequest::getOffset)
                 .containsExactly(0L, 100L);
