@@ -41,6 +41,15 @@ public class RuntimeAdminClientResolver {
         return instance.getEndpoint().trim();
     }
 
+    /**
+     * Resolves the ACL hook for short-lived runtime clients that cannot be created by
+     * {@link MqAdminExtFactory}, such as a {@code DefaultMQPullConsumer}.
+     */
+    public RPCHook resolveCredentialHook(String instanceId) {
+        InstanceVO instance = requireApacheInstance(resolveInstance(instanceId));
+        return resolveCredential(credentialRef(instance));
+    }
+
     public <T> T execute(String instanceId, MqAdminExtFactory.AdminAction<T> action) {
         return execute(resolveInstance(instanceId), action);
     }
@@ -50,10 +59,14 @@ public class RuntimeAdminClientResolver {
         if (instance == null || !StringUtils.hasText(instance.getEndpoint())) {
             throw new BusinessException(400, "Instance endpoint is required");
         }
-        String credentialRef = StringUtils.hasText(instance.getAdminCredentialRef())
-                ? instance.getAdminCredentialRef().trim() : null;
+        String credentialRef = credentialRef(instance);
         return adminFactory.execute(instance.getEndpoint().trim(), resolveCredential(credentialRef),
                 credentialRef, action);
+    }
+
+    private String credentialRef(InstanceVO instance) {
+        return StringUtils.hasText(instance.getAdminCredentialRef())
+                ? instance.getAdminCredentialRef().trim() : null;
     }
 
     private RPCHook resolveCredential(String credentialRef) {
