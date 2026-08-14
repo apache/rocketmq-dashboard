@@ -71,3 +71,4 @@ studio:
   llm:
     token: ${RMQ_LLM_TOKEN:}
     anthropic-base-url: ${RMQ_ANTHROPIC_BASE_URL:}
+    cli-allowed-environment: ${RMQ_LLM_CLI_ALLOWED_ENVIRONMENT:}

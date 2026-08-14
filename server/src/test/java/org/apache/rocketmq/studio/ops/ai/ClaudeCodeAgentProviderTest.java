@@ -51,15 +51,56 @@ class ClaudeCodeAgentProviderTest {
                         .isEqualTo(504));
     }
 
+    @Test
+    void streamUsesTheIsolatedEnvironment() {
+        RecordingEnvironment processEnvironment = new RecordingEnvironment();
+        TestClaudeCodeAgentProvider provider = new TestClaudeCodeAgentProvider(
+                List.of("sh", "-c",
+                        "printf eyJ0eXBlIjoicmVzdWx0IiwicmVzdWx0IjoiZG9uZSJ9 | base64 -d"),
+                5,
+                processEnvironment,
+                Map.of("ANTHROPIC_AUTH_TOKEN", "request-token"));
+
+        provider.stream(LlmConfigVO.builder().build(), "prompt", null, ignored -> { });
+
+        assertThat(processEnvironment.childEnvironments).singleElement().satisfies(environment ->
+                assertThat(environment)
+                        .containsEntry("ANTHROPIC_AUTH_TOKEN", "request-token")
+                        .doesNotContainKey("SERVER_SECRET"));
+    }
+
+    private static final class RecordingEnvironment extends CliProcessEnvironment {
+        private final List<Map<String, String>> childEnvironments = new ArrayList<>();
+
+        RecordingEnvironment() {
+            super(List.of());
+        }
+
+        @Override
+        void apply(ProcessBuilder builder, Map<String, String> providerEnvironment) {
+            builder.environment().put("SERVER_SECRET", "must-not-cross-boundary");
+            super.apply(builder, providerEnvironment);
+            childEnvironments.add(Map.copyOf(builder.environment()));
+        }
+    }
+
     private static class TestClaudeCodeAgentProvider extends ClaudeCodeAgentProvider {
 
         private final List<String> command;
         private final long timeoutSeconds;
+        private final Map<String, String> environment;
 
         TestClaudeCodeAgentProvider(List<String> command, long timeoutSeconds) {
-            super(null);
+            this(command, timeoutSeconds, new CliProcessEnvironment(List.of()), Map.of());
+        }
+
+        TestClaudeCodeAgentProvider(List<String> command, long timeoutSeconds,
+                                    CliProcessEnvironment processEnvironment,
+                                    Map<String, String> environment) {
+            super(null, processEnvironment);
             this.command = command;
             this.timeoutSeconds = timeoutSeconds;
+            this.environment = environment;
         }
 
         @Override
@@ -74,7 +115,7 @@ class ClaudeCodeAgentProviderTest {
 
         @Override
         protected Map<String, String> childEnv(LlmConfigVO config) {
-            return Map.of();
+            return environment;
         }
 
         @Override
