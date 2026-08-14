@@ -702,8 +702,8 @@ const AiPage = () => {
     try {
       setToolResult(await executeTool(selectedToolName, parsedInput));
       message.success('工具执行成功');
-    } catch {
-      message.error('工具执行失败');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '工具执行失败');
     } finally {
       setToolExecuting(false);
     }

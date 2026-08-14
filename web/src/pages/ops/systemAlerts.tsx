@@ -29,7 +29,7 @@ import type { SystemAlert } from '../../api/ops';
 
 const { Text } = Typography;
 
-const normalizeAlertLevel = (level: string) => level.toLowerCase();
+const normalizeAlertLevel = (level?: string | null) => (level ?? '').toLowerCase();
 
 const SystemAlertsPage = () => {
   const { t } = useLang();
