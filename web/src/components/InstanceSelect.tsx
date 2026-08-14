@@ -16,7 +16,33 @@
  */
 
 import { Select } from 'antd';
+import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
+import { useLang } from '../i18n/LangContext';
+
+export const INSTANCE_RECENTS_STORAGE_KEY = 'rocketmq-studio-recent-instances';
+const RECENT_INSTANCE_LIMIT = 5;
+
+function readRecentInstances(): string[] {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(INSTANCE_RECENTS_STORAGE_KEY) ?? '[]');
+    if (!Array.isArray(parsed)) return [];
+    return [...new Set(parsed.filter((value): value is string => typeof value === 'string'))].slice(
+      0,
+      RECENT_INSTANCE_LIMIT,
+    );
+  } catch {
+    return [];
+  }
+}
+
+function writeRecentInstances(values: string[]): void {
+  try {
+    localStorage.setItem(INSTANCE_RECENTS_STORAGE_KEY, JSON.stringify(values));
+  } catch {
+    // Instance selection still works when browser storage is unavailable.
+  }
+}
 
 export interface InstanceOption {
   value: string;
@@ -42,6 +68,49 @@ export function InstanceSelect({
   style,
   placeholder = '选择实例',
 }: InstanceSelectProps) {
+  const { lang } = useLang();
+  const [recentValues, setRecentValues] = useState(readRecentInstances);
+
+  const validRecentValues = useMemo(() => {
+    const available = new Set(options.map((option) => option.value));
+    return recentValues.filter((recent) => available.has(recent));
+  }, [options, recentValues]);
+
+  useEffect(() => {
+    if (validRecentValues.length !== recentValues.length) {
+      writeRecentInstances(validRecentValues);
+    }
+  }, [recentValues.length, validRecentValues]);
+
+  const selectOptions = useMemo(() => {
+    const recentSet = new Set(validRecentValues);
+    const recent = validRecentValues
+      .map((recentValue) => options.find((option) => option.value === recentValue))
+      .filter((option): option is InstanceOption => Boolean(option));
+
+    if (recent.length === 0) return options;
+
+    return [
+      { label: lang === 'zh' ? '最近使用' : 'Recent', options: recent },
+      {
+        label: lang === 'zh' ? '全部实例' : 'All instances',
+        options: options.filter((option) => !recentSet.has(option.value)),
+      },
+    ];
+  }, [lang, options, validRecentValues]);
+
+  const remember = (selectedValue: string) => {
+    const available = new Set(options.map((option) => option.value));
+    setRecentValues((current) => {
+      const next = [
+        selectedValue,
+        ...current.filter((item) => item !== selectedValue && available.has(item)),
+      ].slice(0, RECENT_INSTANCE_LIMIT);
+      writeRecentInstances(next);
+      return next;
+    });
+  };
+
   return (
     <Select
       showSearch
@@ -52,13 +121,15 @@ export function InstanceSelect({
         if (next === undefined || next === null) {
           const first = options[0]?.value;
           if (first) {
+            remember(first);
             onChange(first);
           }
           return;
         }
+        remember(next);
         onChange(next, option);
       }}
-      options={options}
+      options={selectOptions}
       optionFilterProp="label"
       filterOption={(input, option) =>
         String(option?.label ?? '')
