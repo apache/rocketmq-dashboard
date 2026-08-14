@@ -34,6 +34,8 @@ interface MiniLineProps {
   animated?: boolean;
   /** Make SVG responsive (width=100%, preserves aspect ratio) */
   responsive?: boolean;
+  /** Optional context prepended to the accessible sample summary */
+  ariaLabel?: string;
 }
 
 const MiniLine = ({
@@ -46,6 +48,7 @@ const MiniLine = ({
   showDot = true,
   animated = true,
   responsive = false,
+  ariaLabel,
 }: MiniLineProps) => {
   const max = Math.max(...data, 1);
   const min = Math.min(...data, 0);
@@ -59,6 +62,9 @@ const MiniLine = ({
   const glowId = useMemo(() => `ml-glow-${++_lineId}`, []);
 
   if (data.length < 2) return null;
+
+  const sampleSummary = data.join(' → ');
+  const accessibleSummary = ariaLabel ? `${ariaLabel}: ${sampleSummary}` : sampleSummary;
 
   // Build smooth Catmull-Rom → Bezier control points
   const points = data.map((v, i) => ({
@@ -91,13 +97,15 @@ const MiniLine = ({
 
   return (
     <svg
+      role="img"
+      aria-label={accessibleSummary}
       width={responsive ? '100%' : width}
       height={height}
       viewBox={responsive ? `0 0 ${width} ${height}` : undefined}
       preserveAspectRatio={responsive ? 'none' : undefined}
       style={{ display: 'block', overflow: 'visible' }}
     >
-      {' '}
+      <title>{accessibleSummary}</title>
       <defs>
         <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={color} stopOpacity={0.3} />
