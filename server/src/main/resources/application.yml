@@ -33,7 +33,7 @@ studio:
     allowed-origins: ${STUDIO_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
   auth:
     login-required: ${STUDIO_AUTH_LOGIN_REQUIRED:true}
-    # Keep Secure enabled in production. Set STUDIO_AUTH_SESSION_COOKIE_SECURE=false only for local HTTP development.
+    # Production defaults. The dev profile disables Secure so local HTTP works without extra environment variables.
     session-cookie-name: ${STUDIO_AUTH_SESSION_COOKIE_NAME:rmq_studio_session}
     session-cookie-secure: ${STUDIO_AUTH_SESSION_COOKIE_SECURE:true}
     session-cookie-same-site: ${STUDIO_AUTH_SESSION_COOKIE_SAME_SITE:Strict}
