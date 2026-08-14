@@ -163,14 +163,24 @@ public class RocketMQDashboardProvider implements DashboardProvider {
                     if (topicConfig == null || topicConfig.getTopicConfigTable() == null) {
                         markCountUnavailable(topicCountsUnavailableClusters, clusterName);
                     } else {
-                        Set<String> clusterTopics = topicsByCluster.computeIfAbsent(
-                                clusterName, ignored -> new HashSet<>());
-                        topicConfig.getTopicConfigTable().keySet().stream()
-                                .filter(topic -> !isSystemTopic(topic))
-                                .forEach(topic -> {
-                                    allTopics.add(topic);
-                                    clusterTopics.add(topic);
-                                });
+                        // A broker's self-named stats topic (e.g. "broker-a") is not a user topic;
+                        // pass the owning cluster's broker names so SystemTopicFilter can rule it out.
+                        Set<String> owningBrokerNames = clusterName == null
+                                ? Set.of()
+                                : clusterAddrTable.getOrDefault(clusterName, Set.of());
+                        for (String topic : topicConfig.getTopicConfigTable().keySet()) {
+                            if (isSystemTopic(topic, owningBrokerNames)) {
+                                continue;
+                            }
+                            allTopics.add(topic);
+                            // A broker outside every cluster (registration/unregistration race)
+                            // has no cluster name; count it globally but not per-cluster, matching
+                            // the consumer group path below.
+                            if (clusterName != null) {
+                                topicsByCluster.computeIfAbsent(clusterName, ignored -> new HashSet<>())
+                                        .add(topic);
+                            }
+                        }
                     }
                 } catch (Exception e) {
                     markCountUnavailable(topicCountsUnavailableClusters, clusterName);
@@ -357,6 +367,10 @@ public class RocketMQDashboardProvider implements DashboardProvider {
 
     private boolean isSystemTopic(String topic) {
         return SystemTopicFilter.isSystem(topic);
+    }
+
+    private boolean isSystemTopic(String topic, Set<String> brokerNames) {
+        return SystemTopicFilter.isSystem(topic, brokerNames);
     }
 
     private boolean isSystemGroup(String group) {

@@ -53,6 +53,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -257,6 +259,33 @@ class RocketMQAdminClientImplTest {
         assertThat(existing.getTopicType()).isEqualTo(TopicType.FIFO.name());
         assertThat(existing.getRemark()).isEqualTo("updated remark");
         verify(topicMapper).updateById(existing);
+    }
+
+    @Test
+    void updateTopicPreservesQueueCountsWhenNotSpecified() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        RmqTopic existing = new RmqTopic();
+        existing.setWriteQueueNums(16);
+        existing.setReadQueueNums(16);
+        // RocketMQ perm int: 6 = RW, 4 = RO, 2 = WO.
+        existing.setPerm(6);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithMaster());
+        when(topicMapper.selectOne(any())).thenReturn(existing);
+        doNothing().when(adminExt).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+        topic.setPerm(TopicPerm.RO);
+
+        adminClient.updateTopic(topic);
+
+        // Partial update (perm only) must not reset queues to the default of 8.
+        ArgumentCaptor<TopicConfig> topicConfigCaptor = ArgumentCaptor.forClass(TopicConfig.class);
+        verify(adminExt).createAndUpdateTopicConfig(anyString(), topicConfigCaptor.capture());
+        assertThat(topicConfigCaptor.getValue().getWriteQueueNums()).isEqualTo(16);
+        assertThat(topicConfigCaptor.getValue().getReadQueueNums()).isEqualTo(16);
+        assertThat(existing.getWriteQueueNums()).isEqualTo(16);
+        assertThat(existing.getReadQueueNums()).isEqualTo(16);
     }
 
     @Test

@@ -39,6 +39,12 @@ public interface AclRepository {
 
     AclUserVO saveUser(AclUserVO user);
 
+    /**
+     * Replaces an existing user atomically without creating a missing user.
+     * Returns empty when the user no longer exists.
+     */
+    Optional<AclUserVO> replaceUser(AclUserVO user);
+
     boolean deleteUser(String id);
 
     /**

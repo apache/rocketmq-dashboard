@@ -330,6 +330,18 @@ class RocketMQClientProviderTest {
     }
 
     @Test
+    void consumerScanWithOnlySystemGroupsReturnsEmptyInsteadOf502() throws Exception {
+        SubscriptionGroupWrapper wrapper = subscriptionGroups("%RETRY%group-a", "%DLQ%group-b");
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo("127.0.0.1:10911"));
+        when(adminExt.getAllSubscriptionGroup("127.0.0.1:10911", 5000L)).thenReturn(wrapper);
+
+        List<ClientConnectionVO> connections = provider.findConnections("instance-a", "cluster-a", "Consumer");
+
+        assertThat(connections).isEmpty();
+        verify(adminExt, never()).examineConsumerConnectionInfo(anyString());
+    }
+
+    @Test
     void consumerScanReturnsPartialResultsWhenOneGroupQueryFails() throws Exception {
         SubscriptionGroupWrapper wrapper = subscriptionGroups("group-a", "group-b");
         ConsumerConnection consumerConnection = new ConsumerConnection();

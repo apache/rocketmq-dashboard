@@ -32,6 +32,7 @@ import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
+import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.domain.enums.TopicPerm;
 import org.apache.rocketmq.studio.common.util.SystemGroupFilter;
 import org.apache.rocketmq.studio.common.util.SystemTopicFilter;
@@ -187,6 +188,9 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             // consumeType stores the real ConsumeType ("CLUSTERING"/"BROADCASTING"); messageModel
             // holds the subscription mode ("Push"/"Pop") and is not a ConsumeType.
             vo.setConsumeType(parseConsumeType(entity.getConsumeType()));
+            // messageModel stores the subscription mode ("Push"/"Pop"); surface it so read paths
+            // (web detail, AI rmq.group.list) never see a null subscriptionMode.
+            vo.setSubscriptionMode(parseSubscriptionMode(entity.getMessageModel()));
             vo.setRetryMaxTimes(entity.getMaxRetry() == null ? 0 : entity.getMaxRetry());
             vo.setCreatedAt(entity.getCreatedAt());
             vo.setUpdatedAt(entity.getUpdatedAt());
@@ -209,6 +213,13 @@ public class RocketMQMetadataProvider implements MetadataProvider {
             log.debug("Unknown message model {}, falling back to CLUSTERING", messageModel);
             return ConsumeType.CLUSTERING;
         }
+    }
+
+    private SubscriptionMode parseSubscriptionMode(String messageModel) {
+        if ("Pop".equalsIgnoreCase(messageModel)) {
+            return SubscriptionMode.Pop;
+        }
+        return SubscriptionMode.Push;
     }
 
     @Override

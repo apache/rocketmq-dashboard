@@ -101,6 +101,9 @@ public class RealClusterProvider implements ClusterProvider {
     }
 
     private List<ClusterVO> toClusterVOs(String namesrvAddr, ClusterInfo clusterInfo) {
+        if (clusterInfo == null) {
+            return List.of();
+        }
         Map<String, BrokerData> brokerAddrTable =
                 clusterInfo.getBrokerAddrTable() == null ? Map.of() : clusterInfo.getBrokerAddrTable();
         Map<String, Set<String>> clusterAddrTable =
