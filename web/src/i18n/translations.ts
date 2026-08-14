@@ -322,6 +322,19 @@ const translations: Record<string, Record<Lang, string>> = {
   // ─── AI Page ───
   'ai.title': { zh: 'AI 交互', en: 'AI Chat' },
   'ai.commonCommands': { zh: '常用指令', en: 'Common Commands' },
+  'ai.mockProviderDisabled': { zh: 'Mock 模式已禁用 AI Provider 调用', en: 'Mock mode disables AI provider calls' },
+  'ai.mockProviderDisabledDescription': {
+    zh: '切换到真实数据模式并配置 LLM Provider 后，才会加载模型、工具目录和对话能力。',
+    en: 'Models, the tool catalog and chat capabilities are loaded only after you switch to real data mode and configure an LLM provider.',
+  },
+  'ai.mockToolsUnavailable': {
+    zh: 'Mock 模式不加载 AI 工具目录，请切换到真实数据模式后使用。',
+    en: 'The AI tool catalog is not loaded in mock mode; switch to real data mode to use it.',
+  },
+  'ai.modelsRefreshFailedAfterSave': {
+    zh: '配置已保存，但模型列表刷新失败；请稍后重试',
+    en: 'Configuration saved, but refreshing the model list failed; please retry later',
+  },
 
   // ─── Home Page ───
   'home.banner': {

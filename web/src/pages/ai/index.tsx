@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, type CSSProperties } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -45,6 +45,7 @@ import { useLang } from '../../i18n/LangContext';
 import { AiStreamError, chatStream, executeTool, listTools, type McpTool } from '../../api/ai';
 import { listClusters } from '../../api/cluster';
 import { getLlmConfig, getLlmModels, type LlmConfig } from '../../api/llm';
+import { useDataModeStore } from '../../stores/dataModeStore';
 import { useEngineStore } from '../../stores/engineStore';
 import { getChatDraft, type ChatMode } from './chatDraft';
 
@@ -149,32 +150,42 @@ const formatToolResult = (result: unknown): string =>
 
 /* ─── Sub-components ─── */
 
-const UserBubble = ({ text }: { text: string }) => (
-  <Flex justify="flex-end" style={{ marginBottom: 16 }}>
-    <div
-      style={{
-        maxWidth: '70%',
-        padding: '10px 16px',
-        background: '#e6f4ff',
-        borderRadius: 16,
-        borderTopRightRadius: 4,
-        lineHeight: 1.6,
-        fontSize: 14,
-      }}
-    >
-      {text}
-    </div>
-  </Flex>
-);
+const UserBubble = ({ text }: { text: string }) => {
+  const { token } = theme.useToken();
 
-export const AiMessage = ({ msg }: { msg: Message }) => (
-  <Flex gap={12} align="flex-start" style={{ marginBottom: 16 }}>
+  return (
+    <Flex justify="flex-end" style={{ marginBottom: 16 }}>
+      <div
+        className="ai-user-bubble"
+        style={{
+          maxWidth: '70%',
+          padding: '10px 16px',
+          background: token.colorPrimaryBg,
+          color: token.colorText,
+          border: `1px solid ${token.colorPrimaryBorder}`,
+          borderRadius: 16,
+          borderTopRightRadius: 4,
+          lineHeight: 1.6,
+          fontSize: 14,
+        }}
+      >
+        {text}
+      </div>
+    </Flex>
+  );
+};
+
+export const AiMessage = ({ msg }: { msg: Message }) => {
+  const { token } = theme.useToken();
+
+  return (
+    <Flex gap={12} align="flex-start" style={{ marginBottom: 16 }}>
     <div
       style={{
         width: 36,
         height: 36,
         borderRadius: '50%',
-        background: 'linear-gradient(135deg, #1677ff 0%, #722ed1 100%)',
+        background: `linear-gradient(135deg, ${token.colorPrimary} 0%, ${token.colorPrimaryHover} 100%)`,
         flexShrink: 0,
         display: 'flex',
         alignItems: 'center',
@@ -202,7 +213,9 @@ export const AiMessage = ({ msg }: { msg: Message }) => (
       size="small"
       style={{
         maxWidth: '75%',
-        boxShadow: '0 1px 4px rgba(0, 0, 0, 0.06)',
+        background: token.colorBgElevated,
+        borderColor: token.colorBorderSecondary,
+        boxShadow: `0 1px 4px ${token.colorTextQuaternary}`,
         borderRadius: 12,
         borderTopLeftRadius: 4,
       }}
@@ -216,8 +229,8 @@ export const AiMessage = ({ msg }: { msg: Message }) => (
             marginBottom: 12,
             borderRadius: 6,
             fontSize: 14,
-            background: '#f9f0ff',
-            borderColor: '#d3adf7',
+            background: token.colorPrimaryBg,
+            borderColor: token.colorPrimaryBorder,
           }}
         >
           {msg.toolCall.label}
@@ -283,7 +296,7 @@ export const AiMessage = ({ msg }: { msg: Message }) => (
           <summary
             style={{
               cursor: 'pointer',
-              color: '#722ed1',
+              color: token.colorPrimary,
               fontSize: 14,
               fontWeight: 500,
               userSelect: 'none',
@@ -295,12 +308,12 @@ export const AiMessage = ({ msg }: { msg: Message }) => (
             style={{
               marginTop: 8,
               padding: '8px 12px',
-              background: '#f9f0ff',
-              border: '1px solid #efdbff',
+              background: token.colorFillSecondary,
+              border: `1px solid ${token.colorBorderSecondary}`,
               borderRadius: 8,
               fontSize: 14,
               lineHeight: 1.7,
-              color: '#595959',
+              color: token.colorTextSecondary,
               whiteSpace: 'pre-wrap',
             }}
           >
@@ -318,7 +331,7 @@ export const AiMessage = ({ msg }: { msg: Message }) => (
               width: 6,
               height: 6,
               borderRadius: '50%',
-              background: '#722ed1',
+              background: token.colorPrimary,
               animation: 'dotPulse 1.4s infinite ease-in-out',
             }}
           />
@@ -328,7 +341,7 @@ export const AiMessage = ({ msg }: { msg: Message }) => (
               width: 6,
               height: 6,
               borderRadius: '50%',
-              background: '#722ed1',
+              background: token.colorPrimary,
               animation: 'dotPulse 1.4s infinite ease-in-out 0.2s',
             }}
           />
@@ -338,7 +351,7 @@ export const AiMessage = ({ msg }: { msg: Message }) => (
               width: 6,
               height: 6,
               borderRadius: '50%',
-              background: '#722ed1',
+              background: token.colorPrimary,
               animation: 'dotPulse 1.4s infinite ease-in-out 0.4s',
             }}
           />
@@ -369,8 +382,9 @@ export const AiMessage = ({ msg }: { msg: Message }) => (
         </>
       )}
     </Card>
-  </Flex>
-);
+    </Flex>
+  );
+};
 
 /* ═══════════════════════════════════════════
    AiPage
@@ -380,6 +394,7 @@ const AiPage = () => {
   const { t } = useLang();
   const location = useLocation();
   const navigate = useNavigate();
+  const useMock = useDataModeStore((state) => state.useMock);
   const { token } = theme.useToken();
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [inputValue, setInputValue] = useState('');
@@ -422,6 +437,13 @@ const AiPage = () => {
   }, [messages, scrollToBottom]);
 
   const loadLlmRuntime = useCallback(async () => {
+    if (useMock) {
+      setLlmConfig(null);
+      setModelOptions([]);
+      setSelectedModel('');
+      setModelsLoading(false);
+      return;
+    }
     setModelsLoading(true);
     try {
       const config = await getLlmConfig();
@@ -446,7 +468,7 @@ const AiPage = () => {
     } finally {
       setModelsLoading(false);
     }
-  }, []);
+  }, [useMock]);
 
   useEffect(() => {
     void Promise.resolve().then(loadLlmRuntime);
@@ -654,6 +676,10 @@ const AiPage = () => {
   );
 
   const handleOpenTools = useCallback(async () => {
+    if (useMock) {
+      message.info(t('ai.mockToolsUnavailable'));
+      return;
+    }
     setToolModalOpen(true);
     setToolResult(undefined);
     if (tools.length > 0 || toolsLoading || clustersLoading) return;
@@ -673,7 +699,7 @@ const AiPage = () => {
     }
 
     await loadTools(clusterId);
-  }, [clustersLoading, loadTools, tools.length, toolsLoading]);
+  }, [clustersLoading, loadTools, t, tools.length, toolsLoading, useMock]);
 
   const handleClusterChange = useCallback(
     async (scope: string) => {
@@ -714,7 +740,28 @@ const AiPage = () => {
   const selectedTool = tools.find((tool) => tool.name === selectedToolName);
 
   return (
-    <Flex vertical style={{ height: '100%', minHeight: 0, padding: 24, overflow: 'hidden' }}>
+    <Flex
+      vertical
+      className="ai-page"
+      style={{
+        height: '100%',
+        minHeight: 0,
+        padding: 24,
+        overflow: 'hidden',
+        '--ai-surface': token.colorBgContainer,
+        '--ai-surface-elevated': token.colorBgElevated,
+        '--ai-border': token.colorBorderSecondary,
+        '--ai-text': token.colorText,
+        '--ai-text-secondary': token.colorTextSecondary,
+        '--ai-text-tertiary': token.colorTextTertiary,
+        '--ai-primary': token.colorPrimary,
+        '--ai-primary-bg': token.colorPrimaryBg,
+        '--ai-primary-hover': token.colorPrimaryHover,
+        '--ai-fill-secondary': token.colorFillSecondary,
+        '--ai-code-bg': token.colorBgSpotlight,
+        '--ai-code-text': token.colorTextLightSolid,
+      } as CSSProperties}
+    >
       {!settingsHintDismissed && (
         <Alert
           type="info"
@@ -792,9 +839,18 @@ const AiPage = () => {
             }
           />
         )}
+        {useMock && (
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message={t('ai.mockProviderDisabled')}
+            description={t('ai.mockProviderDisabledDescription')}
+          />
+        )}
 
         {/* Main Input Box */}
-        <div className="relative overflow-visible border-[1.5px] backdrop-blur-xl border-white rounded-2xl bg-white/80 shadow-[0_20px_60px_-20px_rgba(80,90,180,0.18)]">
+        <div className="ai-chat-panel relative overflow-visible border-[1.5px] backdrop-blur-xl rounded-2xl">
           {/* Model Selector */}
           <div className="flex items-center justify-between gap-3 px-3.5 pt-4">
             <div className="flex flex-1 min-w-0 items-center gap-2">
@@ -807,7 +863,7 @@ const AiPage = () => {
                 variant="borderless"
                 placeholder={modelsLoading ? '加载模型中...' : '选择模型'}
                 popupMatchSelectWidth={false}
-                suffixIcon={<CaretDown size={10} color="#9CA3AF" />}
+                suffixIcon={<CaretDown size={10} color={token.colorTextTertiary} />}
                 className="model-selector"
                 style={{ fontSize: '0.893rem' }}
               />
@@ -831,18 +887,18 @@ const AiPage = () => {
               placeholder="输入你的问题或指令，例如：查看集群状态、创建 Topic、诊断消费延迟..."
             />
             <Sparkle
-              className="text-gray-400"
               style={{
                 position: 'absolute',
                 top: 18,
                 left: 26,
                 fontSize: 17,
+                color: token.colorTextTertiary,
               }}
             />
           </div>
 
           {/* Bottom Toolbar */}
-          <div className="flex justify-between text-sm items-center px-3.5 py-3 border-t border-gray-100/80">
+          <div className="ai-chat-toolbar flex justify-between text-sm items-center px-3.5 py-3 border-t">
             <div className="flex flex-1 gap-1 items-center min-w-0">
               <div className="flex items-center gap-2 w-full">
                 <div className="flex-1 min-w-0">
@@ -867,7 +923,7 @@ const AiPage = () => {
                 </div>
                 <div className="shrink-0 flex items-center gap-1">
                   <button
-                    className="flex items-center justify-center w-9 h-9 rounded-full bg-gradient-to-r from-purple-500 to-violet-600 text-white shadow-lg hover:shadow-xl transition-all hover:scale-105"
+                    className="ai-send-button flex items-center justify-center w-9 h-9 rounded-full text-white shadow-lg hover:shadow-xl transition-all hover:scale-105"
                     onClick={() => void handleSend(undefined, undefined, enhance)}
                     disabled={loading || !inputValue.trim() || !llmReady}
                     style={{

@@ -26,6 +26,8 @@ import { listClusters, type ClusterInfo } from '../../../api/cluster';
 import { getLlmConfig, getLlmModels } from '../../../api/llm';
 import AiPage from '../index';
 
+const dataModeMocks = vi.hoisted(() => ({ useMock: false }));
+
 vi.mock('../../../api/ai', () => ({
   AiStreamError: class AiStreamError extends Error {},
   chatStream: vi.fn(),
@@ -40,6 +42,10 @@ vi.mock('../../../api/llm', () => ({
 
 vi.mock('../../../api/cluster', () => ({
   listClusters: vi.fn(),
+}));
+
+vi.mock('../../../stores/dataModeStore', () => ({
+  useDataModeStore: (selector: (state: typeof dataModeMocks) => unknown) => selector(dataModeMocks),
 }));
 
 beforeAll(() => {
@@ -73,6 +79,7 @@ const renderPage = (state?: unknown) =>
 describe('AiPage tool runner', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    dataModeMocks.useMock = false;
     vi.mocked(getLlmConfig).mockResolvedValue({
       provider: 'openai',
       apiBase: 'https://api.openai.com/v1',
@@ -119,6 +126,20 @@ describe('AiPage tool runner', () => {
     });
   });
 
+  it('does not load LLM configuration or tools in mock mode', async () => {
+    dataModeMocks.useMock = true;
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(await screen.findByText('Mock 模式已禁用 AI Provider 调用')).toBeInTheDocument();
+    expect(getLlmConfig).not.toHaveBeenCalled();
+    expect(getLlmModels).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: '工具' }));
+    expect(listTools).not.toHaveBeenCalled();
+    expect(listClusters).not.toHaveBeenCalled();
+  });
+
   it('loads the catalog, creates a schema template, and renders structured output', async () => {
     const user = userEvent.setup();
     vi.mocked(executeTool).mockResolvedValue({
@@ -156,8 +177,16 @@ describe('AiPage tool runner', () => {
     let resolveOld!: (value: typeof oldTools) => void;
     let resolveLatest!: (value: typeof latestTools) => void;
     vi.mocked(listTools)
-      .mockReturnValueOnce(new Promise((resolve) => { resolveOld = resolve; }))
-      .mockReturnValueOnce(new Promise((resolve) => { resolveLatest = resolve; }));
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveOld = resolve;
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveLatest = resolve;
+        }),
+      );
     const user = userEvent.setup();
     renderPage();
 

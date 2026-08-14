@@ -70,16 +70,34 @@ public class ToolGatewayService {
 
     public List<AiToolVO> discover(String clusterId) {
         boolean clusterSelected = clusterId != null && !clusterId.isBlank();
-        Set<String> capabilities = clusterSelected
-                ? Set.copyOf(capabilityResolver.resolve(clusterId))
-                : Collections.emptySet();
+        DiscoveryCapabilities discoveryCapabilities = resolveDiscoveryCapabilities(clusterId, clusterSelected);
 
         return catalog.list().stream()
-                .filter(definition -> clusterSelected || !requiresCluster(definition))
-                .filter(definition -> capabilities.containsAll(
+                .filter(definition -> discoveryCapabilities.clusterCapabilitiesResolved()
+                        || !requiresCluster(definition))
+                .filter(definition -> discoveryCapabilities.capabilities().containsAll(
                         definition.requiredCapabilities()))
                 .map(ToolGatewayService::toView)
                 .toList();
+    }
+
+    /**
+     * A tool directory must remain available when the selected cluster cannot report its
+     * architecture. In that case expose only tools that do not require cluster capabilities;
+     * execution still resolves capabilities and returns the original diagnostic error.
+     */
+    private DiscoveryCapabilities resolveDiscoveryCapabilities(String clusterId, boolean clusterSelected) {
+        if (!clusterSelected) {
+            return new DiscoveryCapabilities(false, Collections.emptySet());
+        }
+        try {
+            return new DiscoveryCapabilities(true, Set.copyOf(capabilityResolver.resolve(clusterId)));
+        } catch (BusinessException ignored) {
+            return new DiscoveryCapabilities(false, Collections.emptySet());
+        }
+    }
+
+    private record DiscoveryCapabilities(boolean clusterCapabilitiesResolved, Set<String> capabilities) {
     }
 
     public Object execute(String name, Map<String, Object> input) {

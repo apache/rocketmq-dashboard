@@ -258,6 +258,13 @@ export const AiAssistantTab = () => {
           setApiKeyConfigured(true);
           form.setFieldValue('apiKey', undefined);
         }
+        try {
+          const models = await getLlmModels();
+          const remoteModels = models.data?.map((model) => model.id || '').filter(Boolean) ?? [];
+          setModelOptions(buildModelOptions(payload.provider, remoteModels, payload.model));
+        } catch {
+          message.warning(t('ai.modelsRefreshFailedAfterSave'));
+        }
       } else {
         message.error(result.errMsg || '保存失败');
       }

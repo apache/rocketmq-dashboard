@@ -47,5 +47,6 @@ describe('AiMessage', () => {
     expect(screen.getByText('QPS/TPS')).toBeInTheDocument();
     expect(screen.getByRole('table')).toBeInTheDocument();
     expect(screen.getByText('mqadmin clusterList')).toBeInTheDocument();
+    expect(screen.getByText('mqadmin clusterList').closest('pre')).toBeInTheDocument();
   });
 });
