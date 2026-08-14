@@ -150,27 +150,58 @@ public class TencentAclService {
 
     public AclUserVO updateUser(String instanceId, AclUserVO user) {
         Context context = resolve(instanceId);
-        if (!StringUtils.hasText(user.getUsername())) {
-            throw new BusinessException(400, "ACL username is required");
+        String roleName = StringUtils.hasText(user.getId()) ? user.getId() : user.getUsername();
+        if (!StringUtils.hasText(roleName)) {
+            throw new BusinessException(400, "ACL user id is required");
         }
+        RoleItem existing = user.getPermRead() == null || user.getPermWrite() == null
+                ? findRole(context, roleName) : null;
+        boolean permRead = user.getPermRead() == null
+                ? Boolean.TRUE.equals(existing.getPermRead()) : user.getPermRead();
+        boolean permWrite = user.getPermWrite() == null
+                ? Boolean.TRUE.equals(existing.getPermWrite()) : user.getPermWrite();
         ModifyRoleRequest request = new ModifyRoleRequest();
         request.setInstanceId(context.cloudInstanceId());
-        request.setRole(user.getUsername());
-        request.setPermRead(user.getPermRead() == null || user.getPermRead());
-        request.setPermWrite(user.getPermWrite() == null || user.getPermWrite());
+        request.setRole(roleName);
+        request.setPermRead(permRead);
+        request.setPermWrite(permWrite);
         clientFactory.call(context.credentialId(), context.regionId(),
                 client -> client.ModifyRole(request));
         return AclUserVO.builder()
-                .id(user.getUsername())
-                .username(user.getUsername())
+                .id(roleName)
+                .username(roleName)
                 .accessKey(null)
                 .secretKey(null)
                 .admin(false)
-                .permRead(user.getPermRead() == null || user.getPermRead())
-                .permWrite(user.getPermWrite() == null || user.getPermWrite())
+                .permRead(permRead)
+                .permWrite(permWrite)
                 .clusters(context.cloudInstanceId() == null ? List.of() : List.of(context.cloudInstanceId()))
                 .createdAt(user.getCreatedAt())
                 .build();
+    }
+
+    private RoleItem findRole(Context context, String roleName) {
+        for (int page = 0; page < MAX_PAGES; page++) {
+            DescribeRoleListRequest request = new DescribeRoleListRequest();
+            request.setInstanceId(context.cloudInstanceId());
+            request.setOffset((long) page * PAGE_SIZE);
+            request.setLimit((long) PAGE_SIZE);
+            DescribeRoleListResponse response = clientFactory.call(context.credentialId(),
+                    context.regionId(), client -> client.DescribeRoleList(request));
+            RoleItem[] data = response == null ? null : response.getData();
+            if (data == null || data.length == 0) {
+                break;
+            }
+            for (RoleItem role : data) {
+                if (role != null && roleName.equals(role.getRoleName())) {
+                    return role;
+                }
+            }
+            if (data.length < PAGE_SIZE) {
+                break;
+            }
+        }
+        throw new BusinessException(404, "ACL user not found: " + roleName);
     }
 
     public void deleteUser(String instanceId, String username) {
