@@ -22,6 +22,7 @@ import org.apache.rocketmq.remoting.protocol.admin.ConsumeStats;
 import org.apache.rocketmq.remoting.protocol.admin.OffsetWrapper;
 import org.apache.rocketmq.remoting.protocol.body.GroupList;
 import org.apache.rocketmq.studio.common.domain.enums.ConsumeType;
+import org.apache.rocketmq.studio.common.domain.enums.SubscriptionMode;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
 import org.apache.rocketmq.tools.admin.MQAdminExt;
@@ -93,6 +94,24 @@ class RocketMQMetadataProviderTest {
 
         assertThat(groups).hasSize(1);
         assertThat(groups.get(0).getConsumeType()).isEqualTo(ConsumeType.BROADCASTING);
+        assertThat(groups.get(0).getSubscriptionMode()).isEqualTo(SubscriptionMode.Push);
+    }
+
+    @Test
+    void listConsumerGroupsReadsPopSubscriptionMode() {
+        RmqGroup entity = new RmqGroup();
+        entity.setName("group-pop");
+        entity.setClusterId("cluster-1");
+        entity.setConsumeType("CLUSTERING");
+        entity.setMessageModel("Pop");
+        when(groupMapper.selectList(any())).thenReturn(List.of(entity));
+
+        RocketMQMetadataProvider provider = newProvider();
+
+        List<ConsumerGroupVO> groups = provider.listConsumerGroups("cluster-1", null);
+
+        assertThat(groups).hasSize(1);
+        assertThat(groups.get(0).getSubscriptionMode()).isEqualTo(SubscriptionMode.Pop);
     }
 
     @Test

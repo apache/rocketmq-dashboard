@@ -95,6 +95,22 @@ class RocketMQDashboardProviderTest {
     }
 
     @Test
+    void dashboardShouldExcludeBrokerNamedStatsTopics() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo());
+        // "broker-a" matches the broker name and is a self-named stats topic, not a user topic.
+        when(adminExt.getAllTopicConfig("10.0.0.11:10911", 5000))
+                .thenReturn(topicConfig("order-topic", "broker-a"));
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        assertThat(dashboard.getStats().getTotalTopics()).isEqualTo(1);
+        assertThat(dashboard.getClusters()).singleElement().satisfies(cluster ->
+                assertThat(cluster.getTopics()).isEqualTo(1));
+    }
+
+    @Test
     void dashboardShouldDeduplicateTopicsReportedByMultipleClusterBrokers() throws Exception {
         DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoMasters());
@@ -235,6 +251,37 @@ class RocketMQDashboardProviderTest {
         // A partial NameServer payload must not throw and zero the page.
         assertThat(dashboard.getStats()).isNotNull();
         assertThat(dashboard.getClusters()).isEmpty();
+    }
+
+    @Test
+    void dashboardShouldCountTopicsFromOrphanBrokerWithoutNpe() throws Exception {
+        DefaultMQAdminExt adminExt = mock(DefaultMQAdminExt.class);
+        // broker-a is a cluster member; broker-orphan appears in the broker table but in no
+        // clusterAddrTable set, so its cluster name resolves to null (registration race).
+        ClusterInfo info = new ClusterInfo();
+        HashMap<String, BrokerData> brokerAddrTable = new HashMap<>();
+        brokerAddrTable.put("broker-a", brokerData("broker-a", "10.0.0.11:10911"));
+        brokerAddrTable.put("broker-orphan", brokerData("broker-orphan", "10.0.0.13:10911"));
+        info.setBrokerAddrTable(brokerAddrTable);
+        HashMap<String, Set<String>> clusterAddrTable = new HashMap<>();
+        clusterAddrTable.put("DefaultCluster", Set.of("broker-a"));
+        info.setClusterAddrTable(clusterAddrTable);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(info);
+        when(adminExt.getAllTopicConfig("10.0.0.11:10911", 5000))
+                .thenReturn(topicConfig("order-topic"));
+        when(adminExt.getAllTopicConfig("10.0.0.13:10911", 5000))
+                .thenReturn(topicConfig("orphan-topic"));
+        when(adminExt.getAllSubscriptionGroup("10.0.0.11:10911", 5000))
+                .thenReturn(subscriptionGroups());
+        when(adminExt.getAllSubscriptionGroup("10.0.0.13:10911", 5000))
+                .thenReturn(subscriptionGroups());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.11:10911")).thenReturn(runtimeStats());
+        when(adminExt.fetchBrokerRuntimeStats("10.0.0.13:10911")).thenReturn(runtimeStats());
+
+        DashboardDataVO dashboard = newProvider(adminExt).getDashboardData();
+
+        // Topics from the orphan broker are counted globally without crashing.
+        assertThat(dashboard.getStats().getTotalTopics()).isEqualTo(2);
     }
 
     @Test

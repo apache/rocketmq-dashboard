@@ -209,12 +209,14 @@ public class RocketMQClientProvider implements ClientProvider {
     private List<ClientConnectionVO> findConsumerConnections(MQAdminExt adminExt, String clusterId) {
         List<ClientConnectionVO> result = new ArrayList<>();
         Map<String, String> groups = collectSubscriptionGroups(adminExt, clusterId);
+        int attemptedGroupQueries = 0;
         int successfulGroupQueries = 0;
         for (Map.Entry<String, String> groupEntry : groups.entrySet()) {
             String group = groupEntry.getKey();
             if (isSystemGroup(group)) {
                 continue;
             }
+            attemptedGroupQueries++;
             try {
                 ConsumerConnection consumerConnection = adminExt.examineConsumerConnectionInfo(group);
                 successfulGroupQueries++;
@@ -232,7 +234,9 @@ public class RocketMQClientProvider implements ClientProvider {
                 log.warn("Failed to examine consumer connection for group={}, skipping", group, e);
             }
         }
-        if (!groups.isEmpty() && successfulGroupQueries == 0) {
+        // Only fail when at least one non-system group was actually attempted and all of them
+        // failed; a cluster whose subscription table holds only system groups is not an error.
+        if (attemptedGroupQueries > 0 && successfulGroupQueries == 0) {
             throw new BusinessException(502, "Failed to query consumer connections from all groups");
         }
         return result;
