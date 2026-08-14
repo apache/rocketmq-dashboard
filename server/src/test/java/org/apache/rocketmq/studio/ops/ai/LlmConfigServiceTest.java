@@ -327,6 +327,8 @@ class LlmConfigServiceTest {
 
     @Test
     void testConfigShouldAllowOllamaWithoutApiKey() {
+        when(llmClient.supports(org.mockito.ArgumentMatchers.any())).thenReturn(true);
+
         LlmOperationResultVO result = llmConfigService.testConfig(LlmConfigVO.builder()
                 .provider("ollama")
                 .engine("http")
@@ -408,6 +410,27 @@ class LlmConfigServiceTest {
         assertThat(result.getCode()).isEqualTo("llm.provider.upstream_error");
         assertThat(result.getErrMsg()).contains("401");
         assertThat(result.getHint()).contains("credentials");
+    }
+
+    @Test
+    void testConfigShouldRejectUnsupportedHttpProvider() {
+        when(llmClient.supports(org.mockito.ArgumentMatchers.any())).thenReturn(false);
+
+        LlmOperationResultVO result = llmConfigService.testConfig(LlmConfigVO.builder()
+                .provider("bedrock")
+                .engine("http")
+                .apiKey("bedrock-key")
+                .apiBase("https://bedrock-runtime.us-east-1.amazonaws.com")
+                .model("anthropic.claude-3-sonnet")
+                .maxTokens(2048)
+                .temperature(1.0)
+                .build());
+
+        assertThat(result.getStatus()).isEqualTo(1);
+        assertThat(result.getCode()).isEqualTo("llm.config.unsupported_provider");
+        assertThat(result.getErrMsg()).contains("not supported");
+        assertThat(result.getHint()).contains("openai").contains("ollama");
+        verify(llmClient, never()).listModels(org.mockito.ArgumentMatchers.any());
     }
 
     @Test
