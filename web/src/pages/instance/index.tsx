@@ -124,6 +124,7 @@ const InstancePage = () => {
   const [submitting, setSubmitting] = useState(false);
   const requestIdRef = useRef(0);
   const mutationInFlightRef = useRef(false);
+  const listQueryRef = useRef<InstanceQuery>({});
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
@@ -132,10 +133,7 @@ const InstancePage = () => {
 
   const loadInstances = useCallback(async () => {
     const requestId = ++requestIdRef.current;
-    const query: InstanceQuery = {
-      ...(typeFilter === 'ALL' ? {} : { type: typeFilter }),
-      ...(debouncedSearch ? { search: debouncedSearch } : {}),
-    };
+    const query = listQueryRef.current;
 
     setLoading(true);
     try {
@@ -152,16 +150,20 @@ const InstancePage = () => {
         setLoading(false);
       }
     }
-  }, [debouncedSearch, typeFilter]);
+  }, []);
 
   useEffect(() => {
+    listQueryRef.current = {
+      ...(typeFilter === 'ALL' ? {} : { type: typeFilter }),
+      ...(debouncedSearch ? { search: debouncedSearch } : {}),
+    };
     const timer = window.setTimeout(() => void loadInstances(), 0);
 
     return () => {
       window.clearTimeout(timer);
       requestIdRef.current += 1;
     };
-  }, [loadInstances]);
+  }, [debouncedSearch, loadInstances, typeFilter]);
 
   const cloudVendor = vendor === 'ALIYUN' || vendor === 'TENCENT';
 

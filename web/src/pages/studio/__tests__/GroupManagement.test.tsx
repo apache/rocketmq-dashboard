@@ -102,6 +102,7 @@ describe('GroupManagement Page', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it('should render the page title', () => {
@@ -218,27 +219,40 @@ describe('GroupManagement Page', () => {
     expect(screen.queryByText('initial-group')).not.toBeInTheDocument();
   });
 
-  it('polls only while auto refresh is enabled', async () => {
-    vi.useFakeTimers();
+  it('polls only while auto refresh is enabled and the document is visible', async () => {
+    const visibilityState = vi
+      .spyOn(document, 'visibilityState', 'get')
+      .mockReturnValue('hidden');
     renderWithProviders(<GroupManagement />);
 
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
-    });
+    await screen.findByText('order-consumer-group');
     expect(consumerService.listConsumerGroups).toHaveBeenCalledTimes(1);
+    vi.useFakeTimers();
 
     const autoRefreshSwitch = screen.getByRole('switch');
     fireEvent.click(autoRefreshSwitch);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2000);
     });
+    expect(consumerService.listConsumerGroups).toHaveBeenCalledTimes(1);
+
+    visibilityState.mockReturnValue('visible');
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
     expect(consumerService.listConsumerGroups).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(consumerService.listConsumerGroups).toHaveBeenCalledTimes(3);
 
     fireEvent.click(autoRefreshSwitch);
     await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
       await vi.advanceTimersByTimeAsync(4000);
     });
-    expect(consumerService.listConsumerGroups).toHaveBeenCalledTimes(2);
+    expect(consumerService.listConsumerGroups).toHaveBeenCalledTimes(3);
   });
 
   it('should filter groups by search text', async () => {

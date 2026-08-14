@@ -183,7 +183,8 @@ public class RocketMQClientProvider implements ClientProvider {
                 if (producerInfo == null) {
                     continue;
                 }
-                String key = producerGroup + '\0'
+                String key = Objects.toString(clusterId, "") + '\0'
+                        + producerGroup + '\0'
                         + Objects.toString(producerInfo.getClientId(), "") + '\0'
                         + Objects.toString(producerInfo.getRemoteIP(), "");
                 connections.putIfAbsent(key, toConnectionVO(producerInfo, producerGroup, clusterId));

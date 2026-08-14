@@ -29,22 +29,28 @@ import java.util.Locale;
  */
 public enum MetricsBackendType {
 
-    PROMETHEUS("/api/v1/query_range"),
-    VICTORIA_METRICS("/select/0/prometheus/api/v1/query_range"),
-    THANOS("/api/v1/query_range"),
-    CORTEX("/api/v1/query_range"),
-    MIMIR("/prometheus/api/v1/query_range"),
-    ARMS("/api/v1/query_range"),
-    CUSTOM("/api/v1/query_range");
+    PROMETHEUS("/api/v1/query_range", "/api/v1/query"),
+    VICTORIA_METRICS("/select/0/prometheus/api/v1/query_range", "/select/0/prometheus/api/v1/query"),
+    THANOS("/api/v1/query_range", "/api/v1/query"),
+    CORTEX("/api/v1/query_range", "/api/v1/query"),
+    MIMIR("/prometheus/api/v1/query_range", "/prometheus/api/v1/query"),
+    ARMS("/api/v1/query_range", "/api/v1/query"),
+    CUSTOM("/api/v1/query_range", "/api/v1/query");
 
     private final String queryPath;
+    private final String instantQueryPath;
 
-    MetricsBackendType(String queryPath) {
+    MetricsBackendType(String queryPath, String instantQueryPath) {
         this.queryPath = queryPath;
+        this.instantQueryPath = instantQueryPath;
     }
 
     public String getQueryPath() {
         return queryPath;
+    }
+
+    public String getInstantQueryPath() {
+        return instantQueryPath;
     }
 
     /**

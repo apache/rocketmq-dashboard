@@ -115,4 +115,33 @@ describe('resource plan service', () => {
       { field: 'writeQueues', currentValue: '16', desiredValue: '32' },
     ]);
   });
+
+  it('marks malformed subscribedTopics as invalid without aborting the preview', async () => {
+    topicServiceMocks.listTopics.mockResolvedValue([]);
+    consumerServiceMocks.listConsumerGroups.mockResolvedValue([existingGroup]);
+
+    const bundle = parseResourceBundle(`{
+      "consumerGroups": [
+        {"name": "cg-new", "subscribedTopics": "order-create"},
+        {"name": "cg-order-notify", "subscribedTopics": ["order-create", 42]}
+      ]
+    }`);
+    const plan = await previewResourcePlan({ instanceId: 'instance-proxy-1', ...bundle });
+
+    expect(plan.summary).toMatchObject({ total: 2, invalids: 2, applicable: 0 });
+    expect(plan.entries).toEqual([
+      expect.objectContaining({
+        name: 'cg-new',
+        action: 'INVALID',
+        applicable: false,
+        reason: 'Consumer group subscribedTopics must be an array of strings',
+      }),
+      expect.objectContaining({
+        name: 'cg-order-notify',
+        action: 'INVALID',
+        applicable: false,
+        reason: 'Consumer group subscribedTopics must be an array of strings',
+      }),
+    ]);
+  });
 });

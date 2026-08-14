@@ -27,10 +27,8 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
-  Radio,
   Select,
   Space,
-  Switch,
   Table,
   Tabs,
   Tag,
@@ -88,6 +86,10 @@ const DATA_SOURCE_TYPE_OPTIONS = [
 ];
 
 type DataSourceFormValues = Partial<DataSource>;
+type CompatibilitySettings = Pick<
+  GeneralSettingsUpdate,
+  'theme' | 'compact' | 'desktopNotify' | 'notifySound'
+>;
 
 const secretFieldNames = ['username', 'password', 'bearerToken'] as const;
 const authNeedsSecret = (auth?: string) => auth === 'Basic Auth' || auth === 'Bearer Token';
@@ -113,6 +115,12 @@ export const GeneralSettingsTab = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const saveInFlightRef = useRef(false);
+  const compatibilitySettingsRef = useRef<CompatibilitySettings>({
+    theme: 'system',
+    compact: false,
+    desktopNotify: false,
+    notifySound: false,
+  });
   const [apiKeyConfigured, setApiKeyConfigured] = useState(false);
   const clearApiKey = Form.useWatch('clearApiKey', form);
 
@@ -122,6 +130,12 @@ export const GeneralSettingsTab = () => {
       .then((settings) => {
         if (!cancelled) {
           setApiKeyConfigured(settings.apiKeyConfigured);
+          compatibilitySettingsRef.current = {
+            theme: settings.theme,
+            compact: settings.compact,
+            desktopNotify: settings.desktopNotify,
+            notifySound: settings.notifySound,
+          };
           form.setFieldsValue({ ...settings, apiKey: undefined, clearApiKey: false });
         }
       })
@@ -142,7 +156,7 @@ export const GeneralSettingsTab = () => {
     saveInFlightRef.current = true;
     setSaving(true);
     try {
-      await saveGeneralSettings(values);
+      await saveGeneralSettings({ ...values, ...compatibilitySettingsRef.current });
       setApiKeyConfigured(
         values.clearApiKey ? false : apiKeyConfigured || Boolean(values.apiKey?.trim()),
       );
@@ -165,45 +179,6 @@ export const GeneralSettingsTab = () => {
       onFinish={handleFinish}
       style={{ maxWidth: 800 }}
     >
-      {/* ── 外观 ── */}
-      <Divider orientation="left">
-        <Title level={5} style={{ margin: 0 }}>
-          外观
-        </Title>
-      </Divider>
-
-      <Form.Item label="主题模式" name="theme">
-        <Radio.Group>
-          <Radio value="light">浅色</Radio>
-          <Radio value="dark">深色</Radio>
-          <Radio value="system">跟随系统</Radio>
-        </Radio.Group>
-      </Form.Item>
-
-      <Form.Item label="紧凑模式" name="compact" valuePropName="checked">
-        <Switch />
-      </Form.Item>
-
-      {/* ── 通知 ── */}
-      <Divider orientation="left">
-        <Title level={5} style={{ margin: 0 }}>
-          通知
-        </Title>
-      </Divider>
-
-      <Form.Item
-        label="桌面通知"
-        name="desktopNotify"
-        valuePropName="checked"
-        extra="启用后将通过浏览器推送告警通知"
-      >
-        <Switch />
-      </Form.Item>
-
-      <Form.Item label="通知声音" name="notifySound" valuePropName="checked">
-        <Switch />
-      </Form.Item>
-
       {/* ── 安全 ── */}
       <Divider orientation="left">
         <Title level={5} style={{ margin: 0 }}>
@@ -286,6 +261,7 @@ export const GeneralSettingsTab = () => {
 // ─── Data Source Tab ────────────────────────────────────────────────────────
 
 export const DataSourceTab = () => {
+  const { t } = useLang();
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [loading, setLoading] = useState(true);
@@ -431,7 +407,12 @@ export const DataSourceTab = () => {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      render: (s: DataSource['status']) => <StatusBadge status={s as keyof typeof STATUS_MAP} />,
+      render: (status: DataSource['status']) =>
+        status && STATUS_MAP[status] ? (
+          <StatusBadge status={status} />
+        ) : (
+          <Text type="secondary">{t('settings.dataSourceNotTested')}</Text>
+        ),
     },
     {
       title: '操作',

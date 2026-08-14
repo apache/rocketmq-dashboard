@@ -279,7 +279,9 @@ public class InstanceService {
                     "Cannot delete instance with managed resources: topics=%d, consumerGroups=%d",
                     topicCount, consumerGroupCount));
         }
-        instanceRepository.deleteById(id);
+        if (!instanceRepository.deleteById(id)) {
+            throw new BusinessException(404, "InstanceVO not found: " + id);
+        }
         releaseApacheEndpointIfUnused(existing, null);
         recordAudit("DELETE_INSTANCE", "INSTANCE", id, null,
                 instanceAuditDetail(existing));
