@@ -16,7 +16,7 @@
  */
 
 import { App } from 'antd';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type React from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -139,12 +139,13 @@ describe('Audit page', () => {
   });
 
   it('does not export a pending search before the table applies it', async () => {
-    const user = userEvent.setup();
     renderWithProviders(<AuditPage />);
 
     expect(await screen.findByText('topic-a')).toBeInTheDocument();
-    await user.type(screen.getByPlaceholderText('搜索操作人或操作对象'), 'pending');
-    await user.click(screen.getByRole('button', { name: /导出/ }));
+    fireEvent.change(screen.getByPlaceholderText('搜索操作人或操作对象'), {
+      target: { value: 'pending' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /导出/ }));
 
     await waitFor(() =>
       expect(opsService.exportAuditLogs).toHaveBeenCalledWith({
