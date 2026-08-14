@@ -476,7 +476,7 @@ const BrokerClusterPage = () => {
       </div>
 
       <Spin spinning={loading} tip={t('common.loading')}>
-        <Card bordered={false} style={{ borderRadius: 8, boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}>
+        <Card variant="borderless" style={{ borderRadius: 8, boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}>
           <Tabs
             activeKey={activeTab}
             onChange={setActiveTab}
