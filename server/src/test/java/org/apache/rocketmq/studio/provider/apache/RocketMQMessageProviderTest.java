@@ -27,6 +27,7 @@ import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageId;
 import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
@@ -48,6 +49,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -97,8 +99,10 @@ class RocketMQMessageProviderTest {
 
     @Test
     void queryByTopicReturnsEmptyListWhenQueueSetIsNull() throws Exception {
+        List<List<?>> constructorArguments = new ArrayList<>();
         try (MockedConstruction<DefaultMQPullConsumer> mockedConsumers =
                      mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
+                         constructorArguments.add(context.arguments());
                          doNothing().when(consumer).start();
                          when(consumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(null);
                          doNothing().when(consumer).shutdown();
@@ -108,6 +112,10 @@ class RocketMQMessageProviderTest {
             assertThat(messages).isEmpty();
             assertThat(mockedConsumers.constructed()).hasSize(1);
             DefaultMQPullConsumer consumer = mockedConsumers.constructed().get(0);
+            assertThat(constructorArguments).singleElement();
+            assertThat(constructorArguments.get(0)).hasSize(2);
+            assertThat(constructorArguments.get(0).get(0)).isEqualTo("studio-msg-query-group");
+            assertThat(constructorArguments.get(0).get(1)).isNull();
             verify(consumer).setNamesrvAddr("namesrv-a:9876");
             verify(consumer).start();
             verify(consumer).fetchSubscribeMessageQueues("TopicA");
@@ -115,9 +123,34 @@ class RocketMQMessageProviderTest {
             verify(consumer).shutdown();
         }
         verify(runtimeAdminClientResolver).resolveEndpoint("instance-a");
+        verify(runtimeAdminClientResolver).resolveCredentialHook("instance-a");
         verify(runtimeAdminClientResolver).execute(eq("instance-a"), any());
         verify(queryHistoryService).recordMessageQuery("instance-a", "TOPIC", "TopicA", null, null, null,
                 100L, 200L, 0);
+    }
+
+    @Test
+    void queryByTopicUsesSelectedInstanceCredentialHook() throws Exception {
+        RPCHook credentialHook = mock(RPCHook.class);
+        List<List<?>> constructorArguments = new ArrayList<>();
+        when(runtimeAdminClientResolver.resolveCredentialHook("instance-a")).thenReturn(credentialHook);
+
+        try (MockedConstruction<DefaultMQPullConsumer> mockedConsumers =
+                     mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
+                         constructorArguments.add(context.arguments());
+                         doNothing().when(consumer).start();
+                         when(consumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of());
+                         doNothing().when(consumer).shutdown();
+                     })) {
+            provider.queryMessages("instance-a", "TopicA", null, null, null, 100L, 200L);
+
+            assertThat(mockedConsumers.constructed()).singleElement();
+            assertThat(constructorArguments).singleElement();
+            assertThat(constructorArguments.get(0)).hasSize(2);
+            assertThat(constructorArguments.get(0).get(0)).isEqualTo("studio-msg-query-group");
+            assertThat(constructorArguments.get(0).get(1)).isSameAs(credentialHook);
+        }
+        verify(runtimeAdminClientResolver).resolveCredentialHook("instance-a");
     }
 
     @Test
