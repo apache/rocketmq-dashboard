@@ -137,6 +137,15 @@ class ToolGatewayServiceTest {
     }
 
     @Test
+    void discoveryWithClusterOfUnknownTypeOnlyExposesGlobalTools() {
+        when(clusterService.getCluster("unknown")).thenReturn(cluster("unknown", null));
+
+        assertThat(gateway.discover("unknown"))
+                .extracting(AiToolVO::getName)
+                .containsExactly("rmq.cluster.list");
+    }
+
+    @Test
     void executesNameServerConfigDiffWithAValidatedOutputContract() {
         when(clusterService.getCluster("cluster-v5"))
                 .thenReturn(cluster(ClusterType.V5_PROXY_CLUSTER));

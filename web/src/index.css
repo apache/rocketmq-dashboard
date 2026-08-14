@@ -178,6 +178,68 @@ body {
   color: #7c3aed;
 }
 
+/* === AI page theme surface === */
+.ai-page .ai-chat-panel {
+  background: color-mix(in srgb, var(--ai-surface) 92%, transparent);
+  border-color: var(--ai-border);
+  box-shadow: 0 20px 60px -20px color-mix(in srgb, var(--ai-text-secondary) 30%, transparent);
+}
+.ai-page .ai-chat-toolbar {
+  border-color: var(--ai-border);
+}
+.ai-page .chat-input {
+  color: var(--ai-text);
+}
+.ai-page .chat-input::placeholder {
+  color: var(--ai-text-tertiary);
+}
+.ai-page .tool-btn {
+  background: var(--ai-fill-secondary);
+  color: var(--ai-text);
+}
+.ai-page .tool-btn:hover {
+  background: var(--ai-primary-bg);
+  color: var(--ai-primary);
+}
+.ai-page .ai-send-button {
+  background: var(--ai-primary);
+}
+.ai-page .ai-send-button:hover {
+  background: var(--ai-primary-hover);
+}
+.ai-page .ai-markdown {
+  color: var(--ai-text);
+}
+.ai-page .ai-markdown h1,
+.ai-page .ai-markdown h2,
+.ai-page .ai-markdown h3,
+.ai-page .ai-markdown h4 {
+  color: var(--ai-text);
+}
+.ai-page .ai-markdown code {
+  background: var(--ai-fill-secondary);
+  color: var(--ai-primary);
+}
+.ai-page .ai-markdown pre {
+  background: var(--ai-code-bg);
+  border: 1px solid var(--ai-border);
+}
+.ai-page .ai-markdown pre code {
+  background: transparent;
+  color: var(--ai-code-text);
+}
+.ai-page .ai-markdown blockquote {
+  border-left-color: var(--ai-border);
+  color: var(--ai-text-secondary);
+}
+.ai-page .ai-markdown th,
+.ai-page .ai-markdown td {
+  border-color: var(--ai-border);
+}
+.ai-page .ai-markdown th {
+  background: var(--ai-fill-secondary);
+  color: var(--ai-text);
+}
 /* === Chat Input === */
 .chat-input {
   width: 100%;
