@@ -98,8 +98,9 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
         ProcessBuilder builder = new ProcessBuilder(command);
         processEnvironment().apply(builder, childEnv(config));
         builder.redirectErrorStream(false);
+        Process process = null;
         try {
-            Process process = builder.start();
+            process = startProcess(builder);
             AtomicBoolean emitted = new AtomicBoolean(false);
             StringBuilder resultText = new StringBuilder();
             CompletableFuture<Void> stdoutFuture = drainStdout(
@@ -128,10 +129,17 @@ public class ClaudeCodeAgentProvider extends CliAgentProvider {
                     "Failed to execute " + binaryName() + " CLI",
                     "Check that the CLI binary is installed and executable.", exception);
         } catch (InterruptedException exception) {
+            if (process != null) {
+                process.destroyForcibly();
+            }
             Thread.currentThread().interrupt();
             throw new LlmGatewayException(502, "llm.provider.interrupted",
                     binaryName() + " CLI execution was interrupted", "Retry the request.", exception);
         }
+    }
+
+    protected Process startProcess(ProcessBuilder builder) throws IOException {
+        return builder.start();
     }
 
     protected long streamTimeoutSeconds() {
