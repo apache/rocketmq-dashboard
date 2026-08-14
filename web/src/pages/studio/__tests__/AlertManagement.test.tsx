@@ -260,7 +260,7 @@ describe('AlertManagementPage', () => {
 
   it('creates a persisted alert rule from the editor modal', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<AlertManagementPage />);
+    const { unmount } = renderWithProviders(<AlertManagementPage />);
 
     await screen.findByText('BrokerDown');
     await user.click(screen.getByRole('button', { name: '添加规则' }));
@@ -303,6 +303,10 @@ describe('AlertManagementPage', () => {
       );
     });
     expect(await screen.findByText('告警规则已创建')).toBeInTheDocument();
+    unmount();
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: '添加规则' })).not.toBeInTheDocument(),
+    );
   });
 
   it('updates a persisted alert rule from the editor modal', async () => {
