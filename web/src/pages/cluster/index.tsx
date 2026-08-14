@@ -156,10 +156,10 @@ const ClusterPage = () => {
         const apacheInstances = nextInstances.filter(supportsApacheRuntime);
         setInstances(apacheInstances);
         const initialInstanceId = apacheInstances.some(
-          (instance) => instance.name === requestedInstanceId,
+          (instance) => instance.id === requestedInstanceId,
         )
           ? requestedInstanceId
-          : (apacheInstances[0]?.name ?? '');
+          : (apacheInstances[0]?.id ?? '');
         selectedInstanceIdRef.current = initialInstanceId;
         setSelectedInstanceId(initialInstanceId);
         setInstanceLoadError(null);
@@ -1018,63 +1018,6 @@ const ClusterPage = () => {
           50% { opacity: 0.6; box-shadow: 0 0 0 4px rgba(82, 196, 26, 0); }
         }
       `}</style>
-      {/* ─── NameServer Create/Edit Modal ─── */}
-      <Modal
-        title={
-          nsModalMode === 'create' ? t('cluster.createNameServer') : t('cluster.editNameServer')
-        }
-        open={nsModalOpen}
-        onCancel={() => setNsModalOpen(false)}
-        onOk={() => {
-          nsForm.validateFields().then(async (values: Record<string, string>) => {
-            if (nsModalMode === 'create') {
-              await createNameServer({ clusterId: values.clusterId, addr: values.addr });
-              message.success(`${t('cluster.nsCreated')}: ${values.addr}`);
-            } else {
-              await updateNameServer({
-                clusterId: values.clusterId,
-                addr: values.addr,
-                newAddr: values.newAddr,
-              });
-              message.success(
-                `${t('cluster.nsUpdated')}: ${values.addr}${values.newAddr ? ` → ${values.newAddr}` : ''}`,
-              );
-            }
-            await requestRefresh('operation');
-            setNsModalOpen(false);
-          });
-        }}
-        okText={t('common.confirm')}
-        cancelText={t('common.cancel')}
-        destroyOnHidden
-      >
-        <Form form={nsForm} layout="vertical" style={{ marginTop: 16 }}>
-          {nsModalMode === 'create' && (
-            <Form.Item
-              name="clusterId"
-              label={t('cluster.selectCluster')}
-              rules={[{ required: true, message: t('cluster.selectCluster') }]}
-            >
-              <Select
-                placeholder={t('cluster.selectCluster')}
-                options={clusters.map((c) => ({ label: c.name, value: c.id }))}
-              />
-            </Form.Item>
-          )}
-          <Form.Item
-            name="addr"
-            label={t('cluster.nsAddr')}
-            rules={[{ required: true, message: t('cluster.nsAddr') }]}
-          >
-            <Input placeholder={t('cluster.nsAddrPlaceholder')} disabled={nsModalMode === 'edit'} />
-          </Form.Item>
-          {nsModalMode === 'edit' && (
-            <Form.Item name="newAddr" label={t('cluster.newAddr')}>
-              <Input placeholder={t('cluster.newAddrPlaceholder')} />
-            </Form.Item>
-          )}
-        </Form>
-      </Modal>
       <Tabs items={tabItems} defaultActiveKey="broker" />
       <Modal
         title={t('cluster.proxyDetailTitle', { addr: selectedProxy?.addr ?? '' })}

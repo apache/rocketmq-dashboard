@@ -226,7 +226,9 @@ describe('DashboardPage', () => {
     await screen.findByText('apache-cluster');
     await user.click(screen.getByRole('combobox', { name: 'Dashboard instance' }));
 
-    expect(await screen.findByText('Apache instance')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Apache instance', { selector: '.ant-select-item-option-content' }),
+    ).toBeInTheDocument();
     expect(screen.queryByText('Cloud instance')).not.toBeInTheDocument();
   });
 });

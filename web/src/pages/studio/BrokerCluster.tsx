@@ -23,7 +23,6 @@ import { supportsApacheRuntime, type Instance } from '../../api/instance';
 import { listClusters } from '../../services/clusterService';
 import type { ClusterInfo } from '../../api/cluster';
 import { listInstances } from '../../services/instanceService';
-import type { Instance } from '../../api/instance';
 import { useVisiblePolling } from '../../hooks/useVisiblePolling';
 
 // ─── Types ──────────────────────────────────────────────────────
@@ -194,7 +193,7 @@ const BrokerClusterPage = () => {
         if (!active) return;
         const apacheInstances = nextInstances.filter(supportsApacheRuntime);
         setInstances(apacheInstances);
-        setSelectedInstanceId(apacheInstances[0]?.name ?? '');
+        setSelectedInstanceId(apacheInstances[0]?.id ?? '');
       })
       .catch(() => {
         if (!active) return;
@@ -474,7 +473,10 @@ const BrokerClusterPage = () => {
       </div>
 
       <Spin spinning={loading} tip={t('common.loading')}>
-        <Card variant="borderless" style={{ borderRadius: 8, boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}>
+        <Card
+          variant="borderless"
+          style={{ borderRadius: 8, boxShadow: '0 1px 6px rgba(0,0,0,0.04)' }}
+        >
           <Tabs
             activeKey={activeTab}
             onChange={setActiveTab}

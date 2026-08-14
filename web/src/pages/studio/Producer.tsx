@@ -74,9 +74,9 @@ const ProducerPage = () => {
         const apacheInstances = nextInstances.filter(supportsApacheRuntime);
         setInstances(apacheInstances);
         setSelectedInstanceId((current) =>
-          apacheInstances.some((instance) => instance.name === current)
+          apacheInstances.some((instance) => instance.id === current)
             ? current
-            : (apacheInstances[0]?.name ?? ''),
+            : (apacheInstances[0]?.id ?? ''),
         );
       })
       .catch(() => {
