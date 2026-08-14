@@ -99,6 +99,25 @@ class RocketMQConsumerDiagnosticsProviderTest {
     }
 
     @Test
+    void getConsumerStackShouldParseThreadNamesLongerThanJstackColumnWidth() throws Exception {
+        String threadName = "ConsumeMessageThreadWithANameLongerThanFortyCharacters";
+        ConsumerRunningInfo runningInfo = new ConsumerRunningInfo();
+        runningInfo.setJstack(String.format(
+                "%-40sTID: 42 STATE: RUNNABLE%n%-40scom.example.Listener.consume(Listener.java:10)%n",
+                threadName, threadName));
+        when(adminExt.getConsumerRunningInfo("cg-orders", "client-1", true)).thenReturn(runningInfo);
+
+        ConsumerStackTraceVO result = provider.getConsumerStack("instance-a", "cg-orders", "client-1");
+
+        assertThat(result.getThreadCount()).isEqualTo(1);
+        assertThat(result.getThreads().get(0).getThreadName()).isEqualTo(threadName);
+        assertThat(result.getThreads().get(0).getThreadId()).isEqualTo(42);
+        assertThat(result.getThreads().get(0).getState()).isEqualTo("RUNNABLE");
+        assertThat(result.getThreads().get(0).getStackTrace())
+                .containsExactly("com.example.Listener.consume(Listener.java:10)");
+    }
+
+    @Test
     void getConsumerStackShouldUseDefaultNameServerWhenInstanceIsBlank() throws Exception {
         ConsumerRunningInfo runningInfo = new ConsumerRunningInfo();
         runningInfo.setJstack("");
