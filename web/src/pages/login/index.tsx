@@ -41,7 +41,7 @@ const LoginPage = () => {
     setLoading(true);
     try {
       const data = await loginApi(values.username, values.password);
-      authLogin(data.token, data.user.username, data.user.admin);
+      authLogin(data.token, data.user.username, data.user.userId, data.user.admin);
       message.success(t('login.success'));
       navigate('/', { replace: true });
     } catch (err: unknown) {

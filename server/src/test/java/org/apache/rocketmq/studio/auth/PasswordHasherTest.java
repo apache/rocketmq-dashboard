@@ -14,32 +14,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.rocketmq.studio.auth;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-import lombok.ToString;
+import org.junit.jupiter.api.Test;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class LoginVO {
-    @ToString.Exclude
-    private String token;
-    private int expiresIn;
-    private UserInfo user;
+import static org.assertj.core.api.Assertions.assertThat;
 
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class UserInfo {
-        private String userId;
-        private String username;
-        private boolean admin;
+class PasswordHasherTest {
+
+    @Test
+    void hashesPasswordsWithSaltAndVerifiesOnlyTheMatchingPassword() {
+        PasswordHasher hasher = new PasswordHasher();
+
+        String firstHash = hasher.hash("a-long-enough-password");
+        String secondHash = hasher.hash("a-long-enough-password");
+
+        assertThat(firstHash).startsWith("pbkdf2$");
+        assertThat(firstHash).isNotEqualTo(secondHash);
+        assertThat(hasher.matches("a-long-enough-password", firstHash)).isTrue();
+        assertThat(hasher.matches("different-password", firstHash)).isFalse();
     }
 }

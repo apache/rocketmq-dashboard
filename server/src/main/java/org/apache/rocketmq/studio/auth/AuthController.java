@@ -31,6 +31,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -73,6 +74,19 @@ public class AuthController {
     public Result<Void> logout(@RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false)
                                String authorization) {
         authService.logout(authorization);
+        return Result.ok();
+    }
+
+    @PostMapping("/password")
+    public Result<Void> changePassword(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @Valid @RequestBody ChangePasswordDTO request) {
+        LoginVO.UserInfo user = authService.getAuthenticatedUser(authorization)
+                .orElseThrow(() -> new BusinessException(401, "Unauthorized"));
+        if (user.getUserId() == null) {
+            throw new BusinessException(503, "Studio user management is not initialized");
+        }
+        authService.changePassword(user.getUserId(), request.getCurrentPassword(), request.getNewPassword(), true);
         return Result.ok();
     }
 }

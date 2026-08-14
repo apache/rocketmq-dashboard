@@ -6,7 +6,34 @@
 -- 固定连接编码，防止 mysql 客户端以 latin1 解释 UTF-8 字节导致中文双重编码
 SET NAMES utf8mb4;
 
--- 1. NameServer / 集群地址注册表
+-- 1. Studio console users. This is distinct from RocketMQ ACL users below.
+CREATE TABLE IF NOT EXISTS rmq_studio_user (
+  id CHAR(36) PRIMARY KEY COMMENT 'Immutable Studio user ID',
+  username VARCHAR(128) NOT NULL,
+  password_hash VARCHAR(512) NOT NULL COMMENT 'PBKDF2 password hash; never store plaintext',
+  admin TINYINT(1) NOT NULL DEFAULT 0,
+  enabled TINYINT(1) NOT NULL DEFAULT 1,
+  password_changed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_studio_user_username (username)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 2. Persisted bearer-token sessions. token_hash is SHA-256(token), never the bearer token itself.
+CREATE TABLE IF NOT EXISTS rmq_studio_session (
+  id CHAR(36) PRIMARY KEY,
+  user_id CHAR(36) NOT NULL,
+  token_hash CHAR(64) NOT NULL,
+  expires_at DATETIME NOT NULL,
+  revoked_at DATETIME NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_studio_session_token_hash (token_hash),
+  INDEX idx_studio_session_user (user_id),
+  INDEX idx_studio_session_expiry (expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 3. NameServer / 集群地址注册表
 CREATE TABLE IF NOT EXISTS rmq_nameserver (
   id VARCHAR(64) PRIMARY KEY,
   name VARCHAR(128) NOT NULL,

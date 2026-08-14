@@ -49,6 +49,7 @@ describe('Auth API', () => {
       token: 'jwt-token-123',
       expiresIn: 86400,
       user: {
+        userId: 'user-1',
         username: 'admin',
         admin: true,
       },
@@ -62,6 +63,7 @@ describe('Auth API', () => {
     expect(result.token).toBe('jwt-token-123');
     expect(result.expiresIn).toBe(86400);
     expect(result.user.username).toBe('admin');
+    expect(result.user.userId).toBe('user-1');
     expect(result.user.admin).toBe(true);
   });
 

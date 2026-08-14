@@ -36,6 +36,7 @@ public class AuthInterceptor implements HandlerInterceptor {
 
     private static final Set<String> READER_POST_PATHS = Set.of(
             "/api/auth/logout",
+            "/api/auth/password",
             "/api/ai/chat",
             "/api/metrics/query",
             "/api/metrics/query/datasource");
@@ -60,7 +61,7 @@ public class AuthInterceptor implements HandlerInterceptor {
             return false;
         }
         authService.getAuthenticatedUser(authorization)
-                .ifPresent(user -> AuthenticatedUserContext.setUsername(user.getUsername()));
+                .ifPresent(user -> AuthenticatedUserContext.setUser(user.getUserId(), user.getUsername()));
         if (requiresAdmin(request, requestPath(request)) && !authService.isAdmin(authorization)) {
             writeError(response, HttpStatus.FORBIDDEN, "Admin permission required");
             return false;
@@ -102,6 +103,7 @@ public class AuthInterceptor implements HandlerInterceptor {
     private boolean isAdminOnlyGetPath(String path) {
         String normalizedPath = normalizePath(stripPathParameters(path));
         return "/api/llm/models".equals(normalizedPath)
+                || "/api/studio-users".equals(normalizedPath)
                 || isCloudCatalogPath(normalizedPath)
                 || "/api/acl/remote/rules".equals(normalizedPath)
                 || isCredentialRevealPath(normalizedPath, "/api/acl/users/")

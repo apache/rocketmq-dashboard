@@ -14,32 +14,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.rocketmq.studio.auth;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 import lombok.ToString;
 
 @Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class LoginVO {
-    @ToString.Exclude
-    private String token;
-    private int expiresIn;
-    private UserInfo user;
+public class ResetPasswordDTO {
 
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class UserInfo {
-        private String userId;
-        private String username;
-        private boolean admin;
-    }
+    @NotBlank(message = "New password is required")
+    @Size(min = 8, max = 256, message = "New password must contain 8 to 256 characters")
+    @ToString.Exclude
+    private String newPassword;
 }

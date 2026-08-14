@@ -27,6 +27,7 @@ export interface LoginResponse {
   token: string;
   expiresIn: number;
   user: {
+    userId: string;
     username: string;
     admin: boolean;
   };
@@ -50,4 +51,8 @@ export async function login(username: string, password: string) {
 
 export async function logout() {
   await client.post('/auth/logout');
+}
+
+export async function changePassword(currentPassword: string, newPassword: string) {
+  await client.post('/auth/password', { currentPassword, newPassword });
 }
