@@ -29,6 +29,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.Optional;
+
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
@@ -63,7 +65,7 @@ class AuthControllerTest {
     @Test
     void statusShouldReportDisabledLoginProtection() throws Exception {
         when(authProperties.isLoginRequired()).thenReturn(false);
-        when(authService.isAuthenticated(null)).thenReturn(false);
+        when(authService.getAuthenticatedUser(null)).thenReturn(Optional.empty());
 
         mockMvc.perform(get("/api/auth/status"))
                 .andExpect(status().isOk())
@@ -79,7 +81,7 @@ class AuthControllerTest {
         when(settingsRepository.loadGeneralSettings()).thenReturn(GeneralSettingsVO.builder()
                 .requireLogin(true)
                 .build());
-        when(authService.isAuthenticated(null)).thenReturn(false);
+        when(authService.getAuthenticatedUser(null)).thenReturn(Optional.empty());
 
         mockMvc.perform(get("/api/auth/status"))
                 .andExpect(status().isOk())
@@ -90,7 +92,7 @@ class AuthControllerTest {
     @Test
     void statusShouldReportUnauthenticatedWhenTokenIsMissing() throws Exception {
         when(authProperties.isLoginRequired()).thenReturn(true);
-        when(authService.isAuthenticated(null)).thenReturn(false);
+        when(authService.getAuthenticatedUser(null)).thenReturn(Optional.empty());
 
         mockMvc.perform(get("/api/auth/status"))
                 .andExpect(status().isOk())
@@ -101,13 +103,19 @@ class AuthControllerTest {
     @Test
     void statusShouldReportAuthenticatedForActiveToken() throws Exception {
         when(authProperties.isLoginRequired()).thenReturn(true);
-        when(authService.isAuthenticated("Bearer token-1")).thenReturn(true);
+        when(authService.getAuthenticatedUser("Bearer token-1")).thenReturn(Optional.of(LoginVO.UserInfo.builder()
+                .userId("user-1")
+                .username("studio-admin")
+                .admin(true)
+                .build()));
 
         mockMvc.perform(get("/api/auth/status")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer token-1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.loginRequired").value(true))
-                .andExpect(jsonPath("$.data.authenticated").value(true));
+                .andExpect(jsonPath("$.data.authenticated").value(true))
+                .andExpect(jsonPath("$.data.user.userId").value("user-1"))
+                .andExpect(jsonPath("$.data.user.username").value("studio-admin"));
     }
 
     @Test
@@ -206,6 +214,11 @@ class AuthControllerTest {
     void logoutShouldReturnSuccess() throws Exception {
         doNothing().when(authService).logout("Bearer token-1");
         when(authService.isAuthenticated("Bearer token-1")).thenReturn(true);
+        when(authService.getAuthenticatedUser("Bearer token-1")).thenReturn(Optional.of(LoginVO.UserInfo.builder()
+                .userId("user-1")
+                .username("studio-admin")
+                .admin(true)
+                .build()));
 
         mockMvc.perform(post("/api/auth/logout")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer token-1"))

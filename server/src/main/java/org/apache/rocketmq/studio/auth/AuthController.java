@@ -34,6 +34,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Duration;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -47,9 +48,12 @@ public class AuthController {
     @GetMapping("/status")
     public ResponseEntity<Result<AuthStatusVO>> status(
             HttpServletRequest request) {
+        Optional<LoginVO.UserInfo> user = authService.getAuthenticatedUser(
+                AuthCookie.authorization(request, authProperties));
         AuthStatusVO status = AuthStatusVO.builder()
                 .loginRequired(isLoginRequired())
-                .authenticated(authService.isAuthenticated(AuthCookie.authorization(request, authProperties)))
+                .authenticated(user.isPresent())
+                .user(user.orElse(null))
                 .build();
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())

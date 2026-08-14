@@ -22,7 +22,7 @@ interface AuthState {
   user: string | null;
   userId: string | null;
   admin: boolean | null;
-  login: (user: string, userId: string, admin: boolean) => void;
+  login: (user: string, userId: string | null, admin: boolean) => void;
   logout: () => void;
 }
 
@@ -32,7 +32,7 @@ const useAuthStore = create<AuthState>((set) => ({
   user: initialSession.user,
   userId: initialSession.userId,
   admin: initialSession.admin,
-  login: (user: string, userId: string, admin: boolean) => {
+  login: (user: string, userId: string | null, admin: boolean) => {
     persistAuthSession(user, userId, admin);
     set({ user, userId, admin });
   },

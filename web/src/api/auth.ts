@@ -25,16 +25,19 @@ export interface LoginRequest {
 
 export interface LoginResponse {
   expiresIn: number;
-  user: {
-    userId: string;
-    username: string;
-    admin: boolean;
-  };
+  user: AuthenticatedUser;
+}
+
+export interface AuthenticatedUser {
+  userId: string | null;
+  username: string;
+  admin: boolean;
 }
 
 export interface AuthStatus {
   loginRequired: boolean;
   authenticated: boolean;
+  user?: AuthenticatedUser;
 }
 
 // ─── Auth ───────────────────────────────────────────────────────

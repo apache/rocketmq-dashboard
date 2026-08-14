@@ -38,10 +38,14 @@ export function readAuthSession(): AuthSession {
   }
 }
 
-export function persistAuthSession(user: string, userId: string, admin: boolean): void {
+export function persistAuthSession(user: string, userId: string | null, admin: boolean): void {
   try {
     localStorage.setItem(USER_STORAGE_KEY, user);
-    localStorage.setItem(USER_ID_STORAGE_KEY, userId);
+    if (userId) {
+      localStorage.setItem(USER_ID_STORAGE_KEY, userId);
+    } else {
+      localStorage.removeItem(USER_ID_STORAGE_KEY);
+    }
     localStorage.setItem(USER_ADMIN_STORAGE_KEY, String(admin));
   } catch {
     // The in-memory store remains usable when browser storage is unavailable.

@@ -38,7 +38,11 @@ describe('Auth API', () => {
   });
 
   it('status should return the login requirement and session state', async () => {
-    const authStatus = { loginRequired: true, authenticated: false };
+    const authStatus = {
+      loginRequired: true,
+      authenticated: true,
+      user: { userId: 'user-1', username: 'studio-admin', admin: true },
+    };
     mock.onGet('/auth/status').reply(200, { data: authStatus });
 
     await expect(getAuthStatus()).resolves.toEqual(authStatus);

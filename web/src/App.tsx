@@ -60,6 +60,7 @@ type AuthGateState = 'checking' | 'allowed' | 'denied' | 'error';
 export function AuthGate() {
   const { t } = useLang();
   const clearAuth = useAuthStore((state) => state.logout);
+  const syncAuth = useAuthStore((state) => state.login);
   const [gateState, setGateState] = useState<AuthGateState>(isMockMode() ? 'allowed' : 'checking');
   const [attempt, setAttempt] = useState(0);
 
@@ -70,6 +71,9 @@ export function AuthGate() {
     void getAuthStatus()
       .then((status) => {
         if (cancelled) return;
+        if (status.authenticated && status.user) {
+          syncAuth(status.user.username, status.user.userId, status.user.admin);
+        }
         if (!status.loginRequired || status.authenticated) {
           setGateState('allowed');
           return;
@@ -84,7 +88,7 @@ export function AuthGate() {
     return () => {
       cancelled = true;
     };
-  }, [attempt, clearAuth]);
+  }, [attempt, clearAuth, syncAuth]);
 
   const retry = useCallback(() => {
     setGateState('checking');
