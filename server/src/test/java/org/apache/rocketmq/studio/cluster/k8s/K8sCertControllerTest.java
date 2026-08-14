@@ -210,6 +210,23 @@ class K8sCertControllerTest {
     }
 
     @Test
+    void updateCertShouldRejectUnsupportedType() throws Exception {
+        mockMvc.perform(post("/api/k8s-certs/update")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "id": 1,
+                                    "type": "PEM"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("type must be one of TLS, mTLS, ServiceAccount"));
+
+        verifyNoInteractions(k8sCertService);
+    }
+
+    @Test
     void renewCertShouldRejectBlankId() throws Exception {
         mockMvc.perform(post("/api/k8s-certs/renew")
                         .contentType(MediaType.APPLICATION_JSON)

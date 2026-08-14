@@ -95,6 +95,10 @@ public class AlertService {
         if (rule == null) {
             throw new BusinessException(400, "Alert rule request is required");
         }
+        if (!hasText(rule.getName())) {
+            throw new BusinessException(400, "Alert rule name is required");
+        }
+        rule.setName(rule.getName().trim());
         log.info("Creating alert rule: {}", rule.getName());
         AlertRuleVO saved = alertRepository.saveRule(rule);
         auditRule("CREATE_ALERT_RULE", saved, null);
@@ -106,6 +110,10 @@ public class AlertService {
         if (rule == null) {
             throw new BusinessException(400, "Alert rule request is required");
         }
+        if (!hasText(rule.getName())) {
+            throw new BusinessException(400, "Alert rule name is required");
+        }
+        rule.setName(rule.getName().trim());
         Long id = rule.getId();
         log.info("Updating alert rule: {}", id);
         validateRuleId(id);

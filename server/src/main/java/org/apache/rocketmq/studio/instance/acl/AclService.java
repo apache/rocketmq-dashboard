@@ -211,6 +211,16 @@ public class AclService {
         if (config == null || !StringUtils.hasText(config.getAccessKey())) {
             throw new BusinessException(400, "accessKey is required");
         }
+        if (config.getWhiteRemoteAddress() != null) {
+            String normalizedWhiteRemoteAddress = config.getWhiteRemoteAddress().trim();
+            config.setWhiteRemoteAddress(normalizedWhiteRemoteAddress.isEmpty()
+                    ? null : normalizedWhiteRemoteAddress);
+        }
+        if (StringUtils.hasText(config.getWhiteRemoteAddress())
+                && !IpRangeMatcher.isValidRange(config.getWhiteRemoteAddress())) {
+            throw new BusinessException(400,
+                    "whiteRemoteAddress is not a valid IP/CIDR range: " + config.getWhiteRemoteAddress());
+        }
         log.info("Creating/updating plain access config accessKey={}", config.getAccessKey());
         PlainAccessConfigVO saved = aclRepository.createAndUpdatePlainAccessConfig(config);
         String auditDetail = "admin=" + saved.isAdmin()

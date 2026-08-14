@@ -69,6 +69,10 @@ public class K8sCertService {
 
     public K8sCertVO createCert(CreateCertDTO command) {
         requireCommand(command);
+        if (command.getType() == null) {
+            throw new BusinessException(400, "type is required");
+        }
+        CertType type = parseCertType(command.getType());
         log.info("Creating K8s certificate: {}", command.getK8sId());
 
         LocalDateTime now = LocalDateTime.now(clock);
@@ -87,7 +91,7 @@ public class K8sCertService {
         K8sCertVO cert = K8sCertVO.builder()
                 .k8sId(command.getK8sId())
                 .cluster(command.getCluster())
-                .type(CertType.valueOf(command.getType()))
+                .type(type)
                 .issuer(issuer)
                 .notBefore(notBefore)
                 .notAfter(notAfter)
@@ -107,6 +111,7 @@ public class K8sCertService {
 
     public K8sCertVO updateCert(UpdateCertDTO command) {
         requireCommand(command);
+        CertType type = command.getType() == null ? null : parseCertType(command.getType());
         log.info("Updating K8s certificate: {}", command.getId());
         K8sCertVO existing = k8sCertRepository.findById(command.getId())
                 .orElseThrow(() -> new BusinessException(404, "Certificate not found: " + command.getId()));
@@ -121,8 +126,8 @@ public class K8sCertService {
         if (cluster != null) {
             updated.setCluster(cluster);
         }
-        if (command.getType() != null) {
-            updated.setType(CertType.valueOf(command.getType()));
+        if (type != null) {
+            updated.setType(type);
         }
         if (issuer != null) {
             updated.setIssuer(issuer);
@@ -172,6 +177,15 @@ public class K8sCertService {
         recordAudit("DELETE_K8S_CERTIFICATE", "K8S_CERTIFICATE", String.valueOf(command.getId()), null,
                 null);
         log.info("K8s certificate deleted: {}", command.getId());
+    }
+
+    private CertType parseCertType(String type) {
+        try {
+            return CertType.valueOf(type);
+        } catch (IllegalArgumentException e) {
+            throw new BusinessException(400, "Invalid certificate type: " + type
+                    + ". Valid types: TLS, mTLS, ServiceAccount");
+        }
     }
 
     private void requireCommand(Object command) {

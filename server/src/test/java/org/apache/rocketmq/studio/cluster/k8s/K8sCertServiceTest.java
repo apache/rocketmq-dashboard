@@ -42,8 +42,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -199,6 +199,55 @@ class K8sCertServiceTest {
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
 
         verifyNoInteractions(k8sCertRepository);
+    }
+
+    @Test
+    void createCertShouldRejectInvalidTypeBeforeSave() {
+        CreateCertDTO command = CreateCertDTO.builder()
+                .k8sId("bad-cert")
+                .cluster("test-cluster")
+                .type("INVALID")
+                .issuer("test-issuer")
+                .build();
+
+        assertThatThrownBy(() -> k8sCertService.createCert(command))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Invalid certificate type: INVALID. Valid types: TLS, mTLS, ServiceAccount")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verify(k8sCertRepository, never()).save(any());
+        verify(operationAuditService, never()).record(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void createCertShouldRejectMissingTypeBeforeSave() {
+        CreateCertDTO command = CreateCertDTO.builder()
+                .k8sId("bad-cert")
+                .cluster("test-cluster")
+                .issuer("test-issuer")
+                .build();
+
+        assertThatThrownBy(() -> k8sCertService.createCert(command))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("type is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(k8sCertRepository, operationAuditService);
+    }
+
+    @Test
+    void updateCertShouldRejectInvalidTypeBeforeSave() {
+        UpdateCertDTO command = UpdateCertDTO.builder()
+                .id(1L)
+                .type("INVALID")
+                .build();
+
+        assertThatThrownBy(() -> k8sCertService.updateCert(command))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Invalid certificate type: INVALID. Valid types: TLS, mTLS, ServiceAccount")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(k8sCertRepository, operationAuditService);
     }
 
     @Test

@@ -35,6 +35,8 @@ import java.util.Locale;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -517,6 +519,64 @@ class AlertServiceTest {
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
 
         verify(alertRepository, never()).saveRule(any());
+    }
+
+    @Test
+    void createRuleShouldRejectBlankName() {
+        AlertRuleVO input = AlertRuleVO.builder().name(" ").metric("tps").build();
+
+        assertThatThrownBy(() -> alertService.createRule(input))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Alert rule name is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verify(alertRepository, never()).saveRule(any());
+        verify(operationAuditService, never()).record(anyString(), anyString(), anyString(),
+                any(), any(), anyString(), any());
+    }
+
+    @Test
+    void updateRuleShouldRejectBlankNameBeforeRepositoryUpdate() {
+        AlertRuleVO update = AlertRuleVO.builder().id(1L).name(" ").metric("tps").build();
+
+        assertThatThrownBy(() -> alertService.updateRule(update))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Alert rule name is required")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
+
+        verify(alertRepository, never()).replaceRule(any());
+        verify(operationAuditService, never()).record(anyString(), anyString(), anyString(),
+                any(), any(), anyString(), any());
+    }
+
+    @Test
+    void createRuleShouldNormalizeNameBeforeSavingAndAuditing() {
+        AlertRuleVO input = AlertRuleVO.builder().name(" CPU Alert ").metric("tps").build();
+        when(alertRepository.saveRule(any(AlertRuleVO.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        AlertRuleVO result = alertService.createRule(input);
+
+        assertThat(result.getName()).isEqualTo("CPU Alert");
+        verify(alertRepository).saveRule(argThat(rule -> "CPU Alert".equals(rule.getName())));
+        verify(operationAuditService).record(eq("CREATE_ALERT_RULE"), eq("ALERT_RULE"), anyString(),
+                eq(null), eq("name=CPU Alert"), eq("SUCCESS"), eq(null));
+    }
+
+    @Test
+    void updateRuleShouldNormalizeNameBeforeReplacingAndAuditing() {
+        AlertRuleVO update = AlertRuleVO.builder()
+                .id(1L)
+                .name(" CPU Alert ")
+                .threshold(90.0)
+                .build();
+        when(alertRepository.replaceRule(any(AlertRuleVO.class))).thenReturn(true);
+
+        AlertRuleVO result = alertService.updateRule(update);
+
+        assertThat(result.getName()).isEqualTo("CPU Alert");
+        verify(alertRepository).replaceRule(argThat(rule -> "CPU Alert".equals(rule.getName())));
+        verify(operationAuditService).record(eq("UPDATE_ALERT_RULE"), eq("ALERT_RULE"), eq("1"),
+                eq(null), eq("name=CPU Alert"), eq("SUCCESS"), eq(null));
     }
 
     @Test
