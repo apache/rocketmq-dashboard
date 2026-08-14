@@ -53,8 +53,12 @@ class MetricProfileServiceTest {
                         "sum(rate(rocketmq_messages_in_total[1m])) by (cluster, node_id)");
         assertThat(mapping(profile, SemanticMetric.CONSUMER_LAG_MESSAGES).getPrometheusMetric())
                 .isEqualTo("rocketmq_consumer_lag_messages");
-        assertThat(mapping(profile, SemanticMetric.BROKER_HEALTH).getPrometheusMetric())
-                .isEqualTo("rocketmq_processor_watermark");
+        assertThat(mapping(profile, SemanticMetric.BROKER_HEALTH))
+                .extracting(MetricProfileVO.MetricMappingVO::getPrometheusMetric,
+                        MetricProfileVO.MetricMappingVO::getPromql,
+                        MetricProfileVO.MetricMappingVO::getLabels)
+                .containsExactly("up", "min(up{job=~\".*rocketmq.*\"}) by (job, instance)",
+                        List.of("job", "instance"));
     }
 
     @Test
