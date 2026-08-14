@@ -24,6 +24,7 @@ import { LangProvider } from '../../../i18n/LangContext';
 import { chatStream, executeTool, listTools } from '../../../api/ai';
 import { listClusters, type ClusterInfo } from '../../../api/cluster';
 import { getLlmConfig, getLlmModels } from '../../../api/llm';
+import { useAiChatHistoryStore } from '../../../stores/aiChatHistoryStore';
 import AiPage from '../index';
 
 const dataModeMocks = vi.hoisted(() => ({ useMock: false }));
@@ -80,6 +81,13 @@ describe('AiPage tool runner', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     dataModeMocks.useMock = false;
+    sessionStorage.clear();
+    useAiChatHistoryStore.setState({
+      histories: {
+        mock: { conversations: [], activeConversationId: null },
+        real: { conversations: [], activeConversationId: null },
+      },
+    });
     vi.mocked(getLlmConfig).mockResolvedValue({
       provider: 'openai',
       apiBase: 'https://api.openai.com/v1',
@@ -112,6 +120,20 @@ describe('AiPage tool runner', () => {
     ]);
   });
 
+  it('does not load LLM configuration or tools in mock mode', async () => {
+    dataModeMocks.useMock = true;
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(await screen.findByText('Mock 模式已禁用 AI Provider 调用')).toBeInTheDocument();
+    expect(getLlmConfig).not.toHaveBeenCalled();
+    expect(getLlmModels).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: '工具' }));
+    expect(listTools).not.toHaveBeenCalled();
+    expect(listClusters).not.toHaveBeenCalled();
+  });
+
   it('uses the mode carried from the home-page draft', async () => {
     vi.mocked(chatStream).mockResolvedValue(undefined);
     renderPage({ prompt: '检查集群状态', mode: 'diagnose' });
@@ -126,18 +148,144 @@ describe('AiPage tool runner', () => {
     });
   });
 
-  it('does not load LLM configuration or tools in mock mode', async () => {
-    dataModeMocks.useMock = true;
+  it('starts a new conversation when the home-page draft requests it', async () => {
+    useAiChatHistoryStore.setState({
+      histories: {
+        mock: { conversations: [], activeConversationId: null },
+        real: {
+          conversations: [
+            {
+              id: 'previous-conversation',
+              messages: [{ id: 'previous', role: 'user', text: 'Previous conversation' }],
+              updatedAt: new Date(2026, 7, 13, 9, 45).getTime(),
+            },
+          ],
+          activeConversationId: 'previous-conversation',
+        },
+      },
+    });
+    vi.mocked(chatStream).mockResolvedValue(undefined);
+
+    renderPage({ prompt: 'New conversation', newConversation: true });
+
+    await waitFor(() => {
+      expect(chatStream).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'New conversation' }),
+        expect.any(Function),
+        expect.any(AbortSignal),
+        expect.any(Function),
+      );
+    });
+    expect(useAiChatHistoryStore.getState().histories.real.conversations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          messages: expect.arrayContaining([expect.objectContaining({ text: 'Previous conversation' })]),
+        }),
+      ]),
+    );
+  });
+
+  it('uses the conversation update time for legacy messages without message timestamps', async () => {
+    useAiChatHistoryStore.setState({
+      histories: {
+        mock: { conversations: [], activeConversationId: null },
+        real: {
+          conversations: [
+            {
+              id: 'previous-conversation',
+              messages: [{ id: 'previous', role: 'user', text: 'Previous conversation' }],
+              updatedAt: new Date(2026, 7, 13, 9, 45).getTime(),
+            },
+          ],
+          activeConversationId: null,
+        },
+      },
+    });
+
+    renderPage({ conversationId: 'previous-conversation' });
+
+    expect(await screen.findByText('Previous conversation')).toBeInTheDocument();
+    expect(screen.getByText('09:45')).toBeInTheDocument();
+    expect(chatStream).not.toHaveBeenCalled();
+  });
+
+  it('switches conversations from the AI-page history drawer without sending a request', async () => {
+    const now = Date.now();
+    useAiChatHistoryStore.setState({
+      histories: {
+        mock: { conversations: [], activeConversationId: null },
+        real: {
+          conversations: [
+            {
+              id: 'active',
+              messages: [{ id: 'active-message', role: 'user', text: 'Active conversation' }],
+              updatedAt: now,
+            },
+            {
+              id: 'previous',
+              messages: [{ id: 'previous-message', role: 'user', text: 'Previous conversation' }],
+              updatedAt: now - 5 * 60_000,
+            },
+          ],
+          activeConversationId: 'active',
+        },
+      },
+    });
     const user = userEvent.setup();
     renderPage();
 
-    expect(await screen.findByText('Mock 模式已禁用 AI Provider 调用')).toBeInTheDocument();
-    expect(getLlmConfig).not.toHaveBeenCalled();
-    expect(getLlmModels).not.toHaveBeenCalled();
+    await user.click(await screen.findByRole('button', { name: 'AI 对话历史' }));
+    expect(screen.getByText('刚刚')).toBeInTheDocument();
+    expect(screen.getByText('5 分钟前')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Previous conversation5 分钟前$/ })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /^Previous conversation/ }));
 
-    await user.click(screen.getByRole('button', { name: '工具' }));
-    expect(listTools).not.toHaveBeenCalled();
-    expect(listClusters).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText('Previous conversation', { selector: 'div[style*="max-width"]' }),
+    ).toBeInTheDocument();
+    expect(useAiChatHistoryStore.getState().histories.real.activeConversationId).toBe('previous');
+    expect(chatStream).not.toHaveBeenCalled();
+  });
+
+  it('stops an in-flight response before switching conversations', async () => {
+    useAiChatHistoryStore.setState({
+      histories: {
+        mock: { conversations: [], activeConversationId: null },
+        real: {
+          conversations: [
+            {
+              id: 'previous',
+              messages: [{ id: 'previous-message', role: 'user', text: 'Previous conversation' }],
+              updatedAt: Date.now() - 60_000,
+            },
+          ],
+          activeConversationId: 'previous',
+        },
+      },
+    });
+    let requestSignal: AbortSignal | undefined;
+    vi.mocked(chatStream).mockImplementation(
+      (_request, _onChunk, signal) =>
+        new Promise<void>((resolve) => {
+          requestSignal = signal;
+          if (signal) {
+            signal.addEventListener('abort', () => resolve());
+          } else {
+            resolve();
+          }
+        }),
+    );
+    const user = userEvent.setup();
+    renderPage({ prompt: 'Start streaming', newConversation: true });
+
+    await waitFor(() => expect(requestSignal).toBeDefined());
+    await user.click(screen.getByRole('button', { name: 'AI 对话历史' }));
+    const historyDrawer = await screen.findByRole('dialog', { name: 'AI 对话历史' });
+    await user.click(within(historyDrawer).getByRole('button', { name: /^Previous conversation/ }));
+
+    expect(requestSignal?.aborted).toBe(true);
+    expect(useAiChatHistoryStore.getState().histories.real.activeConversationId).toBe('previous');
+    await waitFor(() => expect(screen.queryByRole('button', { name: '停止' })).not.toBeInTheDocument());
   });
 
   it('loads the catalog, creates a schema template, and renders structured output', async () => {
@@ -177,16 +325,8 @@ describe('AiPage tool runner', () => {
     let resolveOld!: (value: typeof oldTools) => void;
     let resolveLatest!: (value: typeof latestTools) => void;
     vi.mocked(listTools)
-      .mockReturnValueOnce(
-        new Promise((resolve) => {
-          resolveOld = resolve;
-        }),
-      )
-      .mockReturnValueOnce(
-        new Promise((resolve) => {
-          resolveLatest = resolve;
-        }),
-      );
+      .mockReturnValueOnce(new Promise((resolve) => { resolveOld = resolve; }))
+      .mockReturnValueOnce(new Promise((resolve) => { resolveLatest = resolve; }));
     const user = userEvent.setup();
     renderPage();
 

@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-import { useState, useRef, useEffect, useCallback, type CSSProperties } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, type CSSProperties } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -31,6 +31,8 @@ import {
   Descriptions,
   Flex,
   Divider,
+  Drawer,
+  Empty,
   Select,
   Alert,
   Input,
@@ -39,14 +41,26 @@ import {
   theme,
   message,
 } from 'antd';
-import { ArrowUp, Sparkle, SlidersHorizontal, CaretDown } from '@phosphor-icons/react';
+import {
+  ArrowUp,
+  CaretDown,
+  ClockCounterClockwise,
+  SlidersHorizontal,
+  Sparkle,
+} from '@phosphor-icons/react';
 import type { ColumnsType } from 'antd/es/table';
 import { useLang } from '../../i18n/LangContext';
 import { AiStreamError, chatStream, executeTool, listTools, type McpTool } from '../../api/ai';
 import { listClusters } from '../../api/cluster';
 import { getLlmConfig, getLlmModels, type LlmConfig } from '../../api/llm';
+import { formatRelativeTime, formatTimeOfDay } from '../../utils/format';
 import { useDataModeStore } from '../../stores/dataModeStore';
 import { useEngineStore } from '../../stores/engineStore';
+import {
+  getRecentAiChatConversations,
+  type AiChatDataMode,
+  useAiChatHistoryStore,
+} from '../../stores/aiChatHistoryStore';
 import { getChatDraft, type ChatMode } from './chatDraft';
 
 const { Text } = Typography;
@@ -80,6 +94,7 @@ interface DescriptionItem {
 interface Message {
   id: string;
   role: 'user' | 'ai';
+  createdAt?: number;
   text?: string;
   toolCall?: ToolCallTag;
   tableData?: TopicRow[];
@@ -93,8 +108,6 @@ interface Message {
 }
 
 /* ─── Mock Data ─── */
-
-const initialMessages: Message[] = [];
 
 /* ─── Quick Actions ─── */
 
@@ -150,7 +163,7 @@ const formatToolResult = (result: unknown): string =>
 
 /* ─── Sub-components ─── */
 
-const UserBubble = ({ text }: { text: string }) => {
+const UserBubble = ({ text, createdAt }: Pick<Message, 'text' | 'createdAt'>) => {
   const { token } = theme.useToken();
 
   return (
@@ -170,6 +183,13 @@ const UserBubble = ({ text }: { text: string }) => {
         }}
       >
         {text}
+        {createdAt && (
+          <div
+            style={{ marginTop: 4, color: token.colorTextTertiary, fontSize: 14, textAlign: 'right' }}
+          >
+            {formatTimeOfDay(createdAt)}
+          </div>
+        )}
       </div>
     </Flex>
   );
@@ -179,7 +199,7 @@ export const AiMessage = ({ msg }: { msg: Message }) => {
   const { token } = theme.useToken();
 
   return (
-    <Flex gap={12} align="flex-start" style={{ marginBottom: 16 }}>
+  <Flex gap={12} align="flex-start" style={{ marginBottom: 16 }}>
     <div
       style={{
         width: 36,
@@ -381,8 +401,14 @@ export const AiMessage = ({ msg }: { msg: Message }) => {
           </Flex>
         </>
       )}
+
+      {msg.createdAt && (
+        <div style={{ marginTop: 8, color: token.colorTextTertiary, fontSize: 14 }}>
+          {formatTimeOfDay(msg.createdAt)}
+        </div>
+      )}
     </Card>
-    </Flex>
+  </Flex>
   );
 };
 
@@ -391,12 +417,23 @@ export const AiMessage = ({ msg }: { msg: Message }) => {
    ═══════════════════════════════════════════ */
 
 const AiPage = () => {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const location = useLocation();
   const navigate = useNavigate();
   const useMock = useDataModeStore((state) => state.useMock);
+  const chatMode: AiChatDataMode = useMock ? 'mock' : 'real';
   const { token } = theme.useToken();
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
+  const history = useAiChatHistoryStore((state) => state.histories[chatMode]);
+  const activeConversation = useMemo(
+    () => history.conversations.find((item) => item.id === history.activeConversationId),
+    [history],
+  );
+  const messages = useMemo(() => activeConversation?.messages ?? [], [activeConversation]);
+  const legacyMessageTimestamp = activeConversation?.updatedAt || undefined;
+  const updateMessages = useAiChatHistoryStore((state) => state.setMessages);
+  const startConversation = useAiChatHistoryStore((state) => state.startConversation);
+  const selectConversation = useAiChatHistoryStore((state) => state.selectConversation);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(false);
   const [settingsHintDismissed, setSettingsHintDismissed] = useState(false);
@@ -418,7 +455,8 @@ const AiPage = () => {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const conversationIdRef = useRef<string | null>(null);
+  const streamRequestIdRef = useRef(0);
+  const conversationIdRef = useRef<string | null>(history.activeConversationId);
   const toolLoadRequestRef = useRef(0);
   const consumedDraftRef = useRef(false);
   const pendingAutoSendRef = useRef<{
@@ -435,6 +473,10 @@ const AiPage = () => {
   useEffect(() => {
     scrollToBottom();
   }, [messages, scrollToBottom]);
+
+  useEffect(() => {
+    conversationIdRef.current = useAiChatHistoryStore.getState().histories[chatMode].activeConversationId;
+  }, [chatMode, history.activeConversationId]);
 
   const loadLlmRuntime = useCallback(async () => {
     if (useMock) {
@@ -464,11 +506,11 @@ const AiPage = () => {
         setModelOptions([{ value: config.model, label: config.model }]);
       }
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'AI 配置加载失败');
+      message.error(error instanceof Error ? error.message : t('ai.runtimeLoadFailed'));
     } finally {
       setModelsLoading(false);
     }
-  }, [useMock]);
+  }, [t, useMock]);
 
   useEffect(() => {
     void Promise.resolve().then(loadLlmRuntime);
@@ -480,7 +522,15 @@ const AiPage = () => {
     consumedDraftRef.current = true;
 
     void Promise.resolve().then(() => {
-      setInputValue(draft.prompt);
+      if (draft.newConversation) {
+        const newConversationId = `conversation-${Date.now()}`;
+        startConversation(chatMode, newConversationId);
+        conversationIdRef.current = newConversationId;
+      } else if (draft.conversationId) {
+        selectConversation(chatMode, draft.conversationId);
+        conversationIdRef.current = draft.conversationId;
+      }
+      if (draft.prompt) setInputValue(draft.prompt);
       const draftModel = draft.model;
       if (draftModel) {
         setSelectedModel(draftModel);
@@ -490,15 +540,17 @@ const AiPage = () => {
             : [{ value: draftModel, label: draftModel }, ...options],
         );
       }
-      pendingAutoSendRef.current = {
-        prompt: draft.prompt,
-        model: draft.model,
-        mode: draft.mode,
-        enhance: draft.enhance,
-      };
+      if (draft.prompt) {
+        pendingAutoSendRef.current = {
+          prompt: draft.prompt,
+          model: draft.model,
+          mode: draft.mode,
+          enhance: draft.enhance,
+        };
+      }
       navigate('/ai', { replace: true, state: null });
     });
-  }, [location.state, navigate]);
+  }, [chatMode, location.state, navigate, selectConversation, startConversation]);
 
   /* ─── Auto-resize textarea ─── */
   useEffect(() => {
@@ -529,25 +581,30 @@ const AiPage = () => {
       const model = modelOverride ?? selectedModel;
       if (!text || loading) return;
       if (!llmReady) {
-        message.warning('请先配置并启用 LLM Provider');
+        message.warning(t('ai.providerRequired'));
         return;
       }
 
       if (!conversationIdRef.current) {
         conversationIdRef.current = `conversation-${Date.now()}`;
+        startConversation(chatMode, conversationIdRef.current);
       }
 
+      const conversationId = conversationIdRef.current;
+      const requestId = ++streamRequestIdRef.current;
+      const createdAt = Date.now();
       const userMsg: Message = {
-        id: `user-${Date.now()}`,
+        id: `user-${createdAt}`,
         role: 'user',
         text,
+        createdAt,
       };
 
       const responseId = `ai-${Date.now()}`;
-      setMessages((prev) => [
+      updateMessages(chatMode, conversationId, (prev) => [
         ...prev,
         userMsg,
-        { id: responseId, role: 'ai', summary: '', pending: true },
+        { id: responseId, role: 'ai', summary: '', pending: true, createdAt },
       ]);
       setInputValue('');
       if (textareaRef.current) {
@@ -565,10 +622,10 @@ const AiPage = () => {
             model,
             engine: useEngineStore.getState().engine,
             enhance,
-            conversationId: conversationIdRef.current,
+            conversationId,
           },
           (chunk) => {
-            setMessages((prev) =>
+            updateMessages(chatMode, conversationId, (prev) =>
               prev.map((item) =>
                 item.id === responseId
                   ? { ...item, summary: `${item.summary ?? ''}${chunk}` }
@@ -578,7 +635,7 @@ const AiPage = () => {
           },
           controller.signal,
           (enhanceDelta) => {
-            setMessages((prev) =>
+            updateMessages(chatMode, conversationId, (prev) =>
               prev.map((item) =>
                 item.id === responseId
                   ? { ...item, thinking: `${item.thinking ?? ''}${enhanceDelta}` }
@@ -589,29 +646,29 @@ const AiPage = () => {
         );
       } catch (error) {
         if (controller.signal.aborted) {
-          setMessages((prev) =>
+          updateMessages(chatMode, conversationId, (prev) =>
             prev.map((item) =>
-              item.id === responseId && !item.summary ? { ...item, summary: '回答已停止。' } : item,
+              item.id === responseId && !item.summary ? { ...item, summary: t('ai.responseStopped') } : item,
             ),
           );
         } else {
-          const errorMessage = error instanceof Error ? error.message : 'AI 请求失败';
+          const errorMessage = error instanceof Error ? error.message : t('ai.requestFailed');
           const errorHint = error instanceof AiStreamError && error.hint ? error.hint : '';
           const summary = errorHint ? `${errorMessage}\n\n> ${errorHint}` : errorMessage;
-          setMessages((prev) =>
+          updateMessages(chatMode, conversationId, (prev) =>
             prev.map((item) => (item.id === responseId ? { ...item, summary } : item)),
           );
           message.error(errorMessage);
         }
       } finally {
         if (abortControllerRef.current === controller) abortControllerRef.current = null;
-        setMessages((prev) =>
+        updateMessages(chatMode, conversationId, (prev) =>
           prev.map((item) => (item.id === responseId ? { ...item, pending: false } : item)),
         );
-        setLoading(false);
+        if (streamRequestIdRef.current === requestId) setLoading(false);
       }
     },
-    [inputValue, llmReady, loading, selectedModel],
+    [chatMode, inputValue, llmReady, loading, selectedModel, startConversation, t, updateMessages],
   );
 
   /* ─── Auto-send the draft from the home page as soon as runtime is ready ─── */
@@ -641,6 +698,18 @@ const AiPage = () => {
     textareaRef.current?.focus();
   }, []);
 
+  const recentConversations = getRecentAiChatConversations(history.conversations);
+
+  const handleConversationSelect = (conversationId: string) => {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    streamRequestIdRef.current += 1;
+    setLoading(false);
+    selectConversation(chatMode, conversationId);
+    conversationIdRef.current = conversationId;
+    setHistoryOpen(false);
+  };
+
   const selectTool = useCallback(
     (name: string, availableTools: McpTool[] = tools, clusterId: string = selectedClusterId) => {
       const tool = availableTools.find((item) => item.name === name);
@@ -648,7 +717,7 @@ const AiPage = () => {
       setToolInput(tool ? buildToolInputTemplate(tool, clusterId) : '{}');
       setToolResult(undefined);
     },
-    [selectedClusterId, tools],
+    [selectedClusterId, setSelectedToolName, setToolInput, setToolResult, tools],
   );
 
   const loadTools = useCallback(
@@ -666,13 +735,13 @@ const AiPage = () => {
       } catch {
         if (requestId === toolLoadRequestRef.current) {
           setTools([]);
-          message.error('AI 工具目录加载失败');
+          message.error(t('ai.toolCatalogLoadFailed'));
         }
       } finally {
         if (requestId === toolLoadRequestRef.current) setToolsLoading(false);
       }
     },
-    [selectTool],
+    [selectTool, t],
   );
 
   const handleOpenTools = useCallback(async () => {
@@ -693,13 +762,25 @@ const AiPage = () => {
       clusterId = options[0]?.value ?? '';
       setSelectedClusterId(clusterId);
     } catch {
-      message.warning('集群列表加载失败，已显示全局工具');
+      message.warning(t('ai.clusterListLoadFailed'));
     } finally {
       setClustersLoading(false);
     }
 
     await loadTools(clusterId);
-  }, [clustersLoading, loadTools, t, tools.length, toolsLoading, useMock]);
+  }, [
+    clustersLoading,
+    loadTools,
+    setClusterOptions,
+    setClustersLoading,
+    setSelectedClusterId,
+    setToolModalOpen,
+    setToolResult,
+    t,
+    tools.length,
+    toolsLoading,
+    useMock,
+  ]);
 
   const handleClusterChange = useCallback(
     async (scope: string) => {
@@ -762,22 +843,6 @@ const AiPage = () => {
         '--ai-code-text': token.colorTextLightSolid,
       } as CSSProperties}
     >
-      {!settingsHintDismissed && (
-        <Alert
-          type="info"
-          showIcon
-          closable
-          banner
-          onClose={() => setSettingsHintDismissed(true)}
-          style={{ marginBottom: 12, borderRadius: 8 }}
-          message={
-            <span>
-              模型服务与执行引擎可在 <a onClick={() => navigate('/settings')}>设置 → AI 助手</a>{' '}
-              中配置
-            </span>
-          }
-        />
-      )}
       {/* Chat Area */}
       <div
         className="w-full scrollbar-hide"
@@ -791,9 +856,16 @@ const AiPage = () => {
       >
         {messages.map((msg) =>
           msg.role === 'user' ? (
-            <UserBubble key={msg.id} text={msg.text!} />
+            <UserBubble
+              key={msg.id}
+              text={msg.text!}
+              createdAt={msg.createdAt ?? legacyMessageTimestamp}
+            />
           ) : (
-            <AiMessage key={msg.id} msg={msg} />
+            <AiMessage
+              key={msg.id}
+              msg={msg.createdAt || !legacyMessageTimestamp ? msg : { ...msg, createdAt: legacyMessageTimestamp }}
+            />
           ),
         )}
         <div ref={chatEndRef} />
@@ -831,11 +903,27 @@ const AiPage = () => {
             showIcon
             style={{ marginBottom: 12 }}
             message="AI 助手未启用"
-            description="请先在 设置 → AI 助手 中配置并启用模型服务，启用前不会发送请求或返回 stub 回复。"
+            description={t('ai.providerNotReadyDescription')}
             action={
-              <Button size="small" onClick={() => navigate('/settings')}>
+              <Button size="small" onClick={() => navigate('/settings?tab=ai')}>
                 去配置
               </Button>
+            }
+          />
+        )}
+        {!settingsHintDismissed && (
+          <Alert
+            type="info"
+            showIcon
+            closable
+            banner
+            onClose={() => setSettingsHintDismissed(true)}
+            style={{ marginBottom: 12, borderRadius: 8 }}
+            message={
+              <span>
+                模型服务与执行引擎可在 <a onClick={() => navigate('/settings')}>设置 → AI 助手</a>{' '}
+                中配置
+              </span>
             }
           />
         )}
@@ -863,7 +951,7 @@ const AiPage = () => {
                 variant="borderless"
                 placeholder={modelsLoading ? '加载模型中...' : '选择模型'}
                 popupMatchSelectWidth={false}
-                suffixIcon={<CaretDown size={10} color={token.colorTextTertiary} />}
+                suffixIcon={<CaretDown size={10} color="#9CA3AF" />}
                 className="model-selector"
                 style={{ fontSize: '0.893rem' }}
               />
@@ -874,6 +962,15 @@ const AiPage = () => {
                 </Tag>
               )}
             </div>
+            <button
+              type="button"
+              className="p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors"
+              aria-label={t('ai.history.title')}
+              title={t('ai.history.title')}
+              onClick={() => setHistoryOpen(true)}
+            >
+              <ClockCounterClockwise size={20} />
+            </button>
           </div>
 
           {/* Textarea */}
@@ -887,12 +984,12 @@ const AiPage = () => {
               placeholder="输入你的问题或指令，例如：查看集群状态、创建 Topic、诊断消费延迟..."
             />
             <Sparkle
+              className="text-gray-400"
               style={{
                 position: 'absolute',
                 top: 18,
                 left: 26,
                 fontSize: 17,
-                color: token.colorTextTertiary,
               }}
             />
           </div>
@@ -945,6 +1042,50 @@ const AiPage = () => {
           </div>
         </div>
       </div>
+
+      <Drawer
+        title={t('ai.history.title')}
+        placement="right"
+        width={360}
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+      >
+        {recentConversations.length === 0 ? (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('ai.history.empty')} />
+        ) : (
+          <div className="flex flex-col gap-2">
+            {recentConversations.map((conversation) => (
+              <button
+                key={conversation.id}
+                type="button"
+                onClick={() => handleConversationSelect(conversation.id)}
+                className={`w-full rounded-md border px-3 py-2 text-left text-sm transition-colors ${
+                  conversation.id === history.activeConversationId
+                    ? 'border-blue-400 bg-blue-50 text-blue-700'
+                    : 'border-gray-200 bg-white text-gray-700 hover:border-blue-300 hover:bg-blue-50'
+                }`}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {conversation.prompt}
+                  </span>
+                  <span
+                    style={{
+                      flexShrink: 0,
+                      color: token.colorTextSecondary,
+                      fontSize: 14,
+                      fontWeight: 500,
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {formatRelativeTime(conversation.updatedAt, lang, t)}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </Drawer>
 
       <Modal
         title="AI 工具"
