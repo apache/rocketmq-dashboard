@@ -14,22 +14,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.common.exception;
+package org.apache.rocketmq.studio.instance;
 
-import lombok.Getter;
+import jakarta.validation.constraints.NotBlank;
+import lombok.Data;
 
-@Getter
-public class BusinessException extends RuntimeException {
-    private final int code;
-    private final String errorCode;
+/** Request dedicated to the instance deletion safety contract. */
+@Data
+public class DeleteInstanceRequest {
 
-    public BusinessException(int code, String message) {
-        this(code, null, message);
-    }
+    @NotBlank(message = "id is required")
+    private String id;
 
-    public BusinessException(int code, String errorCode, String message) {
-        super(message);
-        this.code = code;
-        this.errorCode = errorCode;
-    }
+    /**
+     * Allows removal of the Studio registration only when the remote resource
+     * preflight cannot determine whether managed resources still exist.
+     */
+    private boolean force;
 }

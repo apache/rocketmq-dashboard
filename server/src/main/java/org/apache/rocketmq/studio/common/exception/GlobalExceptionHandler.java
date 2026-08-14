@@ -41,7 +41,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Result<?>> handleBusinessException(BusinessException ex) {
         log.warn("Business exception: {}", ex.getMessage());
         return ResponseEntity.status(ex.getCode())
-                .body(Result.error(ex.getCode(), ex.getMessage()));
+                .body(Result.error(ex.getCode(), ex.getErrorCode(), ex.getMessage()));
     }
 
     @ExceptionHandler(UnsupportedOperationException.class)

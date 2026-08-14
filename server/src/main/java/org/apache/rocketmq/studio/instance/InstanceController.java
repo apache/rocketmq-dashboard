@@ -17,7 +17,6 @@
 
 package org.apache.rocketmq.studio.instance;
 
-import org.apache.rocketmq.studio.common.domain.DeleteRequestDTO;
 import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.common.domain.enums.InstanceType;
 import jakarta.validation.Valid;
@@ -71,8 +70,9 @@ public class InstanceController {
     }
 
     @PostMapping("/delete")
-    public Result<Void> deleteInstance(@Valid @RequestBody DeleteRequestDTO request) {
-        instanceService.deleteInstance(instanceService.resolveInstanceId(request.getId()));
+    public Result<Void> deleteInstance(@Valid @RequestBody DeleteInstanceRequest request) {
+        Long instanceId = instanceService.resolveInstanceId(request.getId());
+        instanceService.deleteInstance(instanceId, request.isForce());
         return Result.ok();
     }
 

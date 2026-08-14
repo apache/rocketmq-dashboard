@@ -85,6 +85,23 @@ export interface InstanceCapabilities {
   capabilities: InstanceCapability[];
 }
 
+export const INSTANCE_DELETE_PREFLIGHT_UNAVAILABLE = 'instance.delete.preflight_unavailable';
+
+interface InstanceDeleteErrorLike {
+  response?: {
+    data?: {
+      errorCode?: unknown;
+    };
+  };
+}
+
+export function isInstanceDeletePreflightUnavailable(error: unknown): boolean {
+  return (
+    (error as InstanceDeleteErrorLike)?.response?.data?.errorCode ===
+    INSTANCE_DELETE_PREFLIGHT_UNAVAILABLE
+  );
+}
+
 // ─── Instance CRUD ──────────────────────────────────────────────
 export async function listInstances(query: InstanceQuery = {}) {
   const search = query.search?.trim();
@@ -120,8 +137,8 @@ export interface CloudImportResult {
   failed: string[];
 }
 
-export async function deleteInstance(instanceId: string) {
-  await client.post('/instances/delete', { id: instanceId });
+export async function deleteInstance(instanceId: string, force = false) {
+  await client.post('/instances/delete', { id: instanceId, force });
 }
 
 export interface BatchDeleteResult {

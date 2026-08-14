@@ -212,7 +212,7 @@ class InstanceControllerTest {
     @Test
     void deleteInstanceShouldReturnSuccess() throws Exception {
         when(instanceService.resolveInstanceId("instance-1")).thenReturn(1L);
-        doNothing().when(instanceService).deleteInstance(1L);
+        doNothing().when(instanceService).deleteInstance(1L, false);
 
         Map<String, String> body = Map.of("id", "instance-1");
 
@@ -223,25 +223,65 @@ class InstanceControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.message").value("success"));
 
-        verify(instanceService).deleteInstance(1L);
+        verify(instanceService).resolveInstanceId("instance-1");
+        verify(instanceService).deleteInstance(1L, false);
+    }
+
+    @Test
+    void deleteInstanceShouldBindExplicitForceRemoval() throws Exception {
+        when(instanceService.resolveInstanceId("instance-1")).thenReturn(1L);
+        doNothing().when(instanceService).deleteInstance(1L, true);
+
+        mockMvc.perform(post("/api/instances/delete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("id", "instance-1", "force", true))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(instanceService).resolveInstanceId("instance-1");
+        verify(instanceService).deleteInstance(1L, true);
     }
 
     @Test
     void deleteInstanceShouldReturnConflictWhenManagedResourcesExist() throws Exception {
         when(instanceService.resolveInstanceId("instance-1")).thenReturn(1L);
-        doThrow(new BusinessException(409,
+        doThrow(new BusinessException(409, InstanceDeleteErrorCodes.MANAGED_RESOURCES_PRESENT,
                 "Cannot delete instance with managed resources: topics=2, consumerGroups=1"))
-                .when(instanceService).deleteInstance(1L);
+                .when(instanceService).deleteInstance(1L, false);
 
         mockMvc.perform(post("/api/instances/delete")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("id", "instance-1"))))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value(409))
+                .andExpect(jsonPath("$.errorCode")
+                        .value(InstanceDeleteErrorCodes.MANAGED_RESOURCES_PRESENT))
                 .andExpect(jsonPath("$.message")
                         .value("Cannot delete instance with managed resources: topics=2, consumerGroups=1"));
 
-        verify(instanceService).deleteInstance(1L);
+        verify(instanceService).resolveInstanceId("instance-1");
+        verify(instanceService).deleteInstance(1L, false);
+    }
+
+    @Test
+    void deleteInstanceShouldReturnMachineReadablePreflightUnavailableError() throws Exception {
+        when(instanceService.resolveInstanceId("instance-1")).thenReturn(1L);
+        doThrow(new BusinessException(503, InstanceDeleteErrorCodes.PREFLIGHT_UNAVAILABLE,
+                "Unable to verify managed resources before deleting the instance"))
+                .when(instanceService).deleteInstance(1L, false);
+
+        mockMvc.perform(post("/api/instances/delete")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("id", "instance-1"))))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value(503))
+                .andExpect(jsonPath("$.errorCode")
+                        .value(InstanceDeleteErrorCodes.PREFLIGHT_UNAVAILABLE))
+                .andExpect(jsonPath("$.message")
+                        .value("Unable to verify managed resources before deleting the instance"));
+
+        verify(instanceService).resolveInstanceId("instance-1");
+        verify(instanceService).deleteInstance(1L, false);
     }
 
     @Test

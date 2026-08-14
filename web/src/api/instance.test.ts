@@ -22,6 +22,7 @@ import {
   createInstance,
   deleteInstance,
   getInstanceCapabilities,
+  isInstanceDeletePreflightUnavailable,
   listInstances,
   supportsApacheRuntime,
   updateInstance,
@@ -85,9 +86,9 @@ describe('instance API', () => {
     await expect(listInstances({ search: '   ' })).resolves.toEqual([instance]);
   });
 
-  it('sends the instance ID when deleting', async () => {
+  it('sends the instance name and normal preflight mode when deleting', async () => {
     mock.onPost('/instances/delete').reply((config) => {
-      expect(JSON.parse(config.data)).toEqual({ id: instance.name });
+      expect(JSON.parse(config.data)).toEqual({ id: instance.name, force: false });
       return [200, { code: 200, data: null }];
     });
 
@@ -114,5 +115,28 @@ describe('instance API', () => {
     expect(supportsApacheRuntime({})).toBe(true);
     expect(supportsApacheRuntime({ vendor: 'ALIYUN' })).toBe(false);
     expect(supportsApacheRuntime({ vendor: 'TENCENT' })).toBe(false);
+  });
+
+  it('serializes an explicit force-removal request', async () => {
+    mock.onPost('/instances/delete').reply((config) => {
+      expect(JSON.parse(config.data)).toEqual({ id: instance.name, force: true });
+      return [200, { code: 200, data: null }];
+    });
+
+    await expect(deleteInstance(instance.name, true)).resolves.toBeUndefined();
+  });
+
+  it('recognizes only the stable unavailable-preflight error identifier', () => {
+    expect(
+      isInstanceDeletePreflightUnavailable({
+        response: { data: { errorCode: 'instance.delete.preflight_unavailable' } },
+      }),
+    ).toBe(true);
+    expect(
+      isInstanceDeletePreflightUnavailable({
+        response: { data: { errorCode: 'instance.delete.managed_resources_present' } },
+      }),
+    ).toBe(false);
+    expect(isInstanceDeletePreflightUnavailable(new Error('preflight unavailable'))).toBe(false);
   });
 });

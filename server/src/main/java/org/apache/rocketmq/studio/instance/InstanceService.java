@@ -439,7 +439,12 @@ public class InstanceService {
 
     @Transactional
     public void deleteInstance(Long id) {
-        log.info("Deleting instance: {}", id);
+        deleteInstance(id, false);
+    }
+
+    @Transactional
+    public void deleteInstance(Long id, boolean force) {
+        log.info("Deleting instance: {}, force={}", id, force);
 
         if (id == null) {
             throw new BusinessException(400, "InstanceVO ID is required");
@@ -448,24 +453,68 @@ public class InstanceService {
         InstanceVO existing = instanceRepository.findById(id)
                 .orElseThrow(() -> new BusinessException(404, "InstanceVO not found: " + id));
 
-        InstanceVendor vendor = existing.getVendor() == null ? InstanceVendor.APACHE : existing.getVendor();
-        if (vendor == InstanceVendor.APACHE) {
-            InstanceProvider provider = providerRegistry.forVendor(InstanceVendor.APACHE);
-            int topicCount = provider.countTopics(String.valueOf(id));
-            int consumerGroupCount = provider.countGroups(String.valueOf(id));
-            if (topicCount > 0 || consumerGroupCount > 0) {
-                throw new BusinessException(409, String.format(
-                        "Cannot delete instance with managed resources: topics=%d, consumerGroups=%d",
-                        topicCount, consumerGroupCount));
-            }
+        InstanceDeletionPreflight preflight = inspectDeletionPreflight(existing, id);
+        if (preflight.hasManagedResources()) {
+            throw new BusinessException(409, InstanceDeleteErrorCodes.MANAGED_RESOURCES_PRESENT, String.format(
+                    "Cannot delete instance with managed resources: topics=%d, consumerGroups=%d",
+                    preflight.topicCount(), preflight.consumerGroupCount()));
+        }
+        if (preflight.isUnavailable() && !force) {
+            throw new BusinessException(503, InstanceDeleteErrorCodes.PREFLIGHT_UNAVAILABLE,
+                    "Unable to verify managed resources before deleting the instance");
         }
         if (!instanceRepository.deleteById(id)) {
             throw new BusinessException(404, "InstanceVO not found: " + id);
         }
         removeDataSourceBindings(existing.getName());
         releaseApacheEndpointIfUnused(existing, null);
+        String auditDetail = instanceAuditDetail(existing);
+        if (preflight.isUnavailable()) {
+            auditDetail += ", forced=true, preflight=unavailable, failure=" + preflight.failureSummary();
+        }
         recordAudit("DELETE_INSTANCE", "INSTANCE", String.valueOf(id), null,
-                instanceAuditDetail(existing));
+                auditDetail);
+    }
+
+    private InstanceDeletionPreflight inspectDeletionPreflight(InstanceVO existing, Long id) {
+        InstanceProvider provider;
+        try {
+            provider = providerRegistry.forVendor(
+                    existing.getVendor() == null ? InstanceVendor.APACHE : existing.getVendor());
+        } catch (RuntimeException ex) {
+            InstanceDeletionPreflight unavailable = InstanceDeletionPreflight.unavailable(ex);
+            log.warn("Unable to verify managed resources for instance {}: {}", id,
+                    unavailable.failureSummary());
+            return unavailable;
+        }
+
+        String providerInstanceId = String.valueOf(id);
+        RuntimeException failure = null;
+        int topicCount = 0;
+        int consumerGroupCount = 0;
+        try {
+            topicCount = provider.countTopics(providerInstanceId);
+        } catch (RuntimeException ex) {
+            failure = ex;
+        }
+        try {
+            consumerGroupCount = provider.countGroups(providerInstanceId);
+        } catch (RuntimeException ex) {
+            if (failure == null) {
+                failure = ex;
+            }
+        }
+
+        if (topicCount > 0 || consumerGroupCount > 0) {
+            return InstanceDeletionPreflight.verified(topicCount, consumerGroupCount);
+        }
+        if (failure != null) {
+            InstanceDeletionPreflight unavailable = InstanceDeletionPreflight.unavailable(failure);
+            log.warn("Unable to verify managed resources for instance {}: {}", id,
+                    unavailable.failureSummary());
+            return unavailable;
+        }
+        return InstanceDeletionPreflight.verified(topicCount, consumerGroupCount);
     }
 
     /**

@@ -145,12 +145,12 @@ export async function updateInstance(data: UpdateInstanceRequest): Promise<Insta
   return instanceApi.updateInstance(data);
 }
 
-export async function deleteInstance(instanceId: string): Promise<void> {
+export async function deleteInstance(instanceId: string, force = false): Promise<void> {
   if (isMockMode()) {
     const idx = mockInstances.findIndex((i) => i.name === instanceId);
     if (idx < 0) throw new Error(`Instance not found: ${instanceId}`);
     mockInstances.splice(idx, 1);
     return;
   }
-  return instanceApi.deleteInstance(instanceId);
+  return instanceApi.deleteInstance(instanceId, force);
 }

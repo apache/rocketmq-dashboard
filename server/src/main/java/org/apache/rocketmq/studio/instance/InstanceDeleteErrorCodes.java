@@ -14,22 +14,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.common.exception;
+package org.apache.rocketmq.studio.instance;
 
-import lombok.Getter;
+public final class InstanceDeleteErrorCodes {
 
-@Getter
-public class BusinessException extends RuntimeException {
-    private final int code;
-    private final String errorCode;
+    public static final String MANAGED_RESOURCES_PRESENT = "instance.delete.managed_resources_present";
+    public static final String PREFLIGHT_UNAVAILABLE = "instance.delete.preflight_unavailable";
 
-    public BusinessException(int code, String message) {
-        this(code, null, message);
-    }
-
-    public BusinessException(int code, String errorCode, String message) {
-        super(message);
-        this.code = code;
-        this.errorCode = errorCode;
+    private InstanceDeleteErrorCodes() {
     }
 }

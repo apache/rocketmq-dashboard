@@ -38,7 +38,11 @@ import { Plus, MagnifyingGlass } from '@phosphor-icons/react';
 import { EditOutlined, DeleteOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { SortOrder } from 'antd/es/table/interface';
-import type { Instance, InstanceQuery } from '../../api/instance';
+import {
+  isInstanceDeletePreflightUnavailable,
+  type Instance,
+  type InstanceQuery,
+} from '../../api/instance';
 import { listCloudCredentials, type CloudCredential } from '../../api/cloudCredential';
 import {
   listAliyunInstances,
@@ -405,10 +409,29 @@ const InstancePage = () => {
 
   const handleDelete = async (instance: Instance) => {
     try {
-      await deleteInstance(instance.name);
+      await deleteInstance(instance.name, false);
       await loadInstances();
       message.success('已删除');
     } catch (error) {
+      if (isInstanceDeletePreflightUnavailable(error)) {
+        Modal.confirm({
+          title: `无法验证 "${instance.name}" 的远端资源`,
+          content:
+            'Studio 无法确认该实例是否仍有 Topic 或消费组。只有在远端实例已停用、不可达或凭据失效时，才应继续。继续操作只会移除 Studio 中的实例记录，不会删除或验证远端 RocketMQ 资源。',
+          okText: '仅移除 Studio 记录',
+          okButtonProps: { danger: true },
+          onOk: async () => {
+            try {
+              await deleteInstance(instance.name, true);
+              await loadInstances();
+              message.success('已移除 Studio 实例记录');
+            } catch {
+              message.error('强制移除实例记录失败，请稍后重试');
+            }
+          },
+        });
+        return;
+      }
       message.error(describeApiError(error, '删除实例失败，请稍后重试'));
     }
   };

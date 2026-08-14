@@ -722,12 +722,16 @@ class InstanceServiceTest {
         InstanceVO existing = InstanceVO.builder().name("cloud-inst").vendor(InstanceVendor.ALIYUN).build();
         existing.setId(2L);
         when(instanceRepository.findById(2L)).thenReturn(Optional.of(existing));
+        when(providerRegistry.forVendor(InstanceVendor.ALIYUN)).thenReturn(instanceProvider);
+        when(instanceProvider.countTopics("2")).thenReturn(0);
+        when(instanceProvider.countGroups("2")).thenReturn(0);
         when(instanceRepository.deleteById(2L)).thenReturn(true);
 
         instanceService.deleteInstance(2L);
 
         verify(instanceRepository).deleteById(2L);
-        verifyNoInteractions(providerRegistry);
+        verify(instanceProvider).countTopics("2");
+        verify(instanceProvider).countGroups("2");
     }
 
     @Test
@@ -795,6 +799,135 @@ class InstanceServiceTest {
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(409));
 
         verify(instanceRepository, never()).deleteById(1L);
+    }
+
+    @Test
+    void deleteInstanceShouldReturnStructuredErrorWhenResourcePreflightFails() {
+        InstanceVO existing = InstanceVO.builder().name("unreachable").build();
+        existing.setId(1L);
+        when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceProvider.countTopics("1"))
+                .thenThrow(new IllegalStateException("broker unavailable"));
+
+        assertThatThrownBy(() -> instanceService.deleteInstance(1L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Unable to verify managed resources before deleting the instance")
+                .satisfies(error -> {
+                    BusinessException businessError = (BusinessException) error;
+                    assertThat(businessError.getCode()).isEqualTo(503);
+                    assertThat(businessError.getErrorCode())
+                            .isEqualTo(InstanceDeleteErrorCodes.PREFLIGHT_UNAVAILABLE);
+                });
+
+        verify(instanceRepository, never()).deleteById(1L);
+        verifyNoInteractions(operationAuditService);
+    }
+
+    @Test
+    void deleteInstanceShouldForceRemoveRegistrationWhenResourcePreflightFails() {
+        InstanceVO existing = InstanceVO.builder()
+                .name("unreachable")
+                .vendor(InstanceVendor.ALIYUN)
+                .build();
+        existing.setId(1L);
+        DataSourceVO dataSource = DataSourceVO.builder().key("prometheus")
+                .instanceIds(List.of("unreachable", "other-instance")).build();
+        when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(providerRegistry.forVendor(InstanceVendor.ALIYUN)).thenReturn(instanceProvider);
+        when(instanceProvider.countTopics("1"))
+                .thenThrow(new IllegalStateException("endpoint unavailable"));
+        when(instanceRepository.deleteById(1L)).thenReturn(true);
+        when(settingsRepository.findAllDataSources()).thenReturn(List.of(dataSource));
+        when(settingsRepository.replaceDataSource(dataSource)).thenReturn(true);
+
+        instanceService.deleteInstance(1L, true);
+
+        verify(instanceRepository).deleteById(1L);
+        assertThat(dataSource.getInstanceIds()).containsExactly("other-instance");
+        verify(settingsRepository).replaceDataSource(dataSource);
+        verify(operationAuditService).record(eq("DELETE_INSTANCE"), eq("INSTANCE"), eq("1"), eq(null),
+                eq("name=unreachable, vendor=ALIYUN, type=null, forced=true, preflight=unavailable, "
+                        + "failure=IllegalStateException"),
+                eq("SUCCESS"), eq(null));
+    }
+
+    @Test
+    void deleteInstanceShouldNotForceDeleteKnownManagedResources() {
+        InstanceVO existing = InstanceVO.builder().name("managed").build();
+        existing.setId(1L);
+        when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceProvider.countTopics("1")).thenReturn(1);
+        when(instanceProvider.countGroups("1"))
+                .thenThrow(new IllegalStateException("group inventory unavailable"));
+
+        assertThatThrownBy(() -> instanceService.deleteInstance(1L, true))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Cannot delete instance with managed resources: topics=1, consumerGroups=0")
+                .satisfies(error -> assertThat(((BusinessException) error).getErrorCode())
+                        .isEqualTo(InstanceDeleteErrorCodes.MANAGED_RESOURCES_PRESENT));
+
+        verify(instanceProvider).countGroups("1");
+        verify(instanceRepository, never()).deleteById(1L);
+        verifyNoInteractions(operationAuditService);
+    }
+
+    @Test
+    void deleteInstanceShouldTreatForceRequestAsNormalWhenPreflightIsSafe() {
+        InstanceVO existing = InstanceVO.builder().name("empty").build();
+        existing.setId(1L);
+        when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceProvider.countTopics("1")).thenReturn(0);
+        when(instanceProvider.countGroups("1")).thenReturn(0);
+        when(instanceRepository.deleteById(1L)).thenReturn(true);
+
+        instanceService.deleteInstance(1L, true);
+
+        verify(operationAuditService).record(eq("DELETE_INSTANCE"), eq("INSTANCE"), eq("1"), eq(null),
+                eq("name=empty, vendor=APACHE, type=null"), eq("SUCCESS"), eq(null));
+    }
+
+    @Test
+    void deleteInstanceShouldReleaseUnusedApacheEndpointAfterForcedRemoval() {
+        InstanceVO existing = InstanceVO.builder()
+                .name("unreachable")
+                .endpoint("namesrv:9876")
+                .build();
+        existing.setId(1L);
+        when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(instanceRepository.findAll()).thenReturn(List.of());
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceProvider.countTopics("1"))
+                .thenThrow(new IllegalStateException("connection refused"));
+        when(instanceRepository.deleteById(1L)).thenReturn(true);
+
+        instanceService.deleteInstance(1L, true);
+
+        verify(adminFactory).release("namesrv:9876");
+    }
+
+    @Test
+    void deleteInstanceShouldRejectConcurrentForcedRemovalBeforeSideEffects() {
+        InstanceVO existing = InstanceVO.builder()
+                .name("unreachable")
+                .endpoint("namesrv:9876")
+                .build();
+        existing.setId(1L);
+        when(instanceRepository.findById(1L)).thenReturn(Optional.of(existing));
+        when(providerRegistry.forVendor(InstanceVendor.APACHE)).thenReturn(instanceProvider);
+        when(instanceProvider.countTopics("1"))
+                .thenThrow(new IllegalStateException("connection refused"));
+        when(instanceRepository.deleteById(1L)).thenReturn(false);
+
+        assertThatThrownBy(() -> instanceService.deleteInstance(1L, true))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("InstanceVO not found: 1")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
+
+        verify(adminFactory, never()).release(any());
+        verifyNoInteractions(operationAuditService);
     }
 
     @Test

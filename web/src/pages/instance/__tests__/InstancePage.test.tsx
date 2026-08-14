@@ -368,7 +368,7 @@ describe('InstancePage', () => {
     const proxyName = await screen.findByText('production-proxy');
     await user.click(within(proxyName.closest('tr')!).getByRole('button', { name: /删除/ }));
     await waitFor(() =>
-      expect(instanceService.deleteInstance).toHaveBeenCalledWith('production-proxy'),
+      expect(instanceService.deleteInstance).toHaveBeenCalledWith('production-proxy', false),
     );
 
     const typeSelect = screen.getByRole('combobox');
@@ -384,6 +384,62 @@ describe('InstancePage', () => {
 
     await waitFor(() => expect(instanceService.listInstances).toHaveBeenCalledTimes(3));
     expect(instanceService.listInstances).toHaveBeenLastCalledWith({ type: 'DIRECT' });
+    confirmSpy.mockRestore();
+  });
+
+  it('offers force removal only after the deletion preflight is unavailable', async () => {
+    const user = userEvent.setup();
+    vi.mocked(instanceService.deleteInstance)
+      .mockRejectedValueOnce({
+        response: {
+          data: { errorCode: 'instance.delete.preflight_unavailable' },
+        },
+      })
+      .mockResolvedValueOnce();
+    const confirmations: Array<Parameters<typeof Modal.confirm>[0]> = [];
+    const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
+      confirmations.push(config);
+      void config.onOk?.();
+      return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
+    });
+    renderPage();
+
+    const proxyName = await screen.findByText('production-proxy');
+    await user.click(within(proxyName.closest('tr')!).getByRole('button', { name: /删除/ }));
+
+    await waitFor(() =>
+      expect(instanceService.deleteInstance).toHaveBeenNthCalledWith(1, 'production-proxy', false),
+    );
+    await waitFor(() =>
+      expect(instanceService.deleteInstance).toHaveBeenNthCalledWith(2, 'production-proxy', true),
+    );
+    expect(confirmations).toHaveLength(2);
+    expect(confirmations[1].title).toContain('无法验证');
+    expect(confirmations[1].content).toContain('只会移除 Studio 中的实例记录');
+    confirmSpy.mockRestore();
+  });
+
+  it('does not expose force removal for a managed-resource conflict', async () => {
+    const user = userEvent.setup();
+    vi.mocked(instanceService.deleteInstance).mockRejectedValue({
+      response: {
+        data: { errorCode: 'instance.delete.managed_resources_present' },
+      },
+    });
+    const confirmSpy = vi.spyOn(Modal, 'confirm').mockImplementation((config) => {
+      void config.onOk?.();
+      return { destroy: vi.fn(), update: vi.fn() } as unknown as ReturnType<typeof Modal.confirm>;
+    });
+    renderPage();
+
+    const proxyName = await screen.findByText('production-proxy');
+    await user.click(within(proxyName.closest('tr')!).getByRole('button', { name: /删除/ }));
+
+    await waitFor(() =>
+      expect(instanceService.deleteInstance).toHaveBeenCalledWith('production-proxy', false),
+    );
+    expect(instanceService.deleteInstance).toHaveBeenCalledTimes(1);
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
     confirmSpy.mockRestore();
   });
 

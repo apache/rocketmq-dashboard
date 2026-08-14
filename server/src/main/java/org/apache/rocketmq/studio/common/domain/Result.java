@@ -16,31 +16,39 @@
  */
 package org.apache.rocketmq.studio.common.domain;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Getter;
 
 @Getter
 public class Result<T> {
     private int code;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String errorCode;
     private String message;
     private T data;
 
     private Result() {}
 
-    private Result(int code, String message, T data) {
+    private Result(int code, String errorCode, String message, T data) {
         this.code = code;
+        this.errorCode = errorCode;
         this.message = message;
         this.data = data;
     }
 
     public static <T> Result<T> ok(T data) {
-        return new Result<>(200, "success", data);
+        return new Result<>(200, null, "success", data);
     }
 
     public static <T> Result<T> ok() {
-        return new Result<>(200, "success", null);
+        return new Result<>(200, null, "success", null);
     }
 
     public static <T> Result<T> error(int code, String message) {
-        return new Result<>(code, message, null);
+        return error(code, null, message);
+    }
+
+    public static <T> Result<T> error(int code, String errorCode, String message) {
+        return new Result<>(code, errorCode, message, null);
     }
 }
