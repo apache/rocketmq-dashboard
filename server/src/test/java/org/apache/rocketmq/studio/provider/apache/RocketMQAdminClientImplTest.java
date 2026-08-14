@@ -135,6 +135,18 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void resetOffsetShouldRejectBlankTopicBeforeResolvingAdmin() {
+        assertThatThrownBy(() -> adminClient.resetOffset("instance-a", "cg-orders", 1784246400000L, " "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("topic is required for offset reset")
+                .satisfies(exception -> assertThat(((BusinessException) exception).getCode()).isEqualTo(400));
+
+        verifyNoInteractions(runtimeAdminClientResolver);
+        verify(adminFactory, never()).execute(anyString(), any(), any());
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
     void getConsumerGroupSurfacesAdminTimeout() throws Exception {
         when(adminExt.examineConsumerConnectionInfo("orders"))
                 .thenThrow(new RemotingTimeoutException("broker-0", 3_000));
@@ -181,6 +193,25 @@ class RocketMQAdminClientImplTest {
         for (LambdaQueryWrapper<RmqTopic> wrapper : captor.getAllValues()) {
             assertThat(wrapper.getSqlSegment()).contains("cluster_id");
         }
+    }
+
+    @Test
+    void createTopicShouldOnlyWriteTargetClusterBrokersInMultiClusterTopology() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        ClusterInfo clusterInfo = clusterInfoWithTwoClusters();
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo);
+        when(topicMapper.selectOne(any())).thenReturn(null);
+        doNothing().when(adminExt).createAndUpdateTopicConfig(anyString(), any(TopicConfig.class));
+
+        TopicVO topic = new TopicVO();
+        topic.setName("orders");
+
+        adminClient.createTopic(topic);
+
+        verify(adminExt).createAndUpdateTopicConfig(
+                org.mockito.ArgumentMatchers.eq("10.0.0.1:10911"), any(TopicConfig.class));
+        verify(adminExt, never()).createAndUpdateTopicConfig(
+                org.mockito.ArgumentMatchers.eq("10.0.1.1:10911"), any(TopicConfig.class));
     }
 
     @Test
@@ -250,6 +281,20 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void deleteTopicScopesBrokerDeletionToSelectedClusterOnly() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoClusters());
+        doNothing().when(adminExt).deleteTopicInBroker(any(), anyString());
+        doNothing().when(adminExt).deleteTopicInNameServer(any(), anyString(), anyString());
+
+        adminClient.deleteTopic(null, "orders");
+
+        verify(adminExt).deleteTopicInBroker(Set.of("10.0.0.1:10911"), "orders");
+        verify(adminExt).deleteTopicInNameServer(Set.of("10.0.0.1:9876"), "cluster-1", "orders");
+        verify(topicMapper).delete(any());
+    }
+
+    @Test
     void createConsumerGroupUsesSelectedInstanceAdmin() throws Exception {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
         DefaultMQAdminExt selectedAdmin = org.mockito.Mockito.mock(DefaultMQAdminExt.class);
@@ -308,6 +353,20 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void deleteConsumerGroupScopesBrokerDeletionToSelectedClusterOnly() throws Exception {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqGroup.class);
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfoWithTwoClusters());
+        doNothing().when(adminExt).deleteSubscriptionGroup(anyString(), anyString(),
+                org.mockito.ArgumentMatchers.anyBoolean());
+
+        adminClient.deleteConsumerGroup(null, "cg-orders");
+
+        verify(adminExt).deleteSubscriptionGroup("10.0.0.1:10911", "cg-orders", true);
+        verify(adminExt, never()).deleteSubscriptionGroup("10.0.1.1:10911", "cg-orders", true);
+        verify(groupMapper).delete(any());
+    }
+
+    @Test
     void createTopicSucceedsWhenAuditRecordingFails() throws Exception {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RmqTopic.class);
         ClusterInfo clusterInfo = clusterInfoWithMaster();
@@ -349,6 +408,25 @@ class RocketMQAdminClientImplTest {
         brokerData.setBrokerName("broker-1");
         brokerData.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.1:10911")));
         brokerAddrTable.put("broker-1", brokerData);
+        clusterInfo.setBrokerAddrTable(brokerAddrTable);
+        return clusterInfo;
+    }
+
+    private ClusterInfo clusterInfoWithTwoClusters() {
+        ClusterInfo clusterInfo = new ClusterInfo();
+        Map<String, Set<String>> clusterAddrTable = new HashMap<>();
+        clusterAddrTable.put("cluster-1", new HashSet<>(List.of("broker-1")));
+        clusterAddrTable.put("cluster-2", new HashSet<>(List.of("broker-2")));
+        clusterInfo.setClusterAddrTable(clusterAddrTable);
+        Map<String, BrokerData> brokerAddrTable = new HashMap<>();
+        BrokerData firstBroker = new BrokerData();
+        firstBroker.setBrokerName("broker-1");
+        firstBroker.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.0.1:10911")));
+        BrokerData secondBroker = new BrokerData();
+        secondBroker.setBrokerName("broker-2");
+        secondBroker.setBrokerAddrs(new HashMap<>(Map.of(0L, "10.0.1.1:10911")));
+        brokerAddrTable.put("broker-1", firstBroker);
+        brokerAddrTable.put("broker-2", secondBroker);
         clusterInfo.setBrokerAddrTable(brokerAddrTable);
         return clusterInfo;
     }

@@ -21,7 +21,9 @@ import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
 import org.apache.rocketmq.client.consumer.PullResult;
 import org.apache.rocketmq.client.consumer.PullStatus;
 import org.apache.rocketmq.client.trace.TraceConstants;
+import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
+import org.apache.rocketmq.common.message.MessageId;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.studio.cluster.broker.MqAdminExtFactory;
 import org.apache.rocketmq.studio.cluster.broker.RuntimeAdminClientResolver;
@@ -36,10 +38,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockedConstruction;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Set;
@@ -108,6 +112,36 @@ class RocketMQMessageProviderTest {
         verify(runtimeAdminClientResolver).execute(eq("instance-a"), any());
         verify(queryHistoryService).recordMessageQuery("instance-a", "TOPIC", "TopicA", null, null, null,
                 100L, 200L, 0);
+    }
+
+    @Test
+    void queryMessagesShouldRejectInvertedTimeRangeBeforeAdminLookup() throws Exception {
+        assertThatThrownBy(() -> provider.queryMessages(
+                "instance-a", "TopicA", null, null, null, 200L, 100L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Message query start time must be before end time")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        verify(runtimeAdminClientResolver).resolveEndpoint("instance-a");
+        verify(runtimeAdminClientResolver).execute(eq("instance-a"), any());
+        verify(adminExt, never()).queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong());
+        verify(queryHistoryService, never()).recordMessageQuery(anyString(), anyString(), anyString(),
+                anyString(), anyString(), anyString(), any(), any(), anyInt());
+    }
+
+    @Test
+    void queryMessagesShouldRejectEqualTimeRangeBeforeAdminLookup() throws Exception {
+        assertThatThrownBy(() -> provider.queryMessages(
+                "instance-a", "TopicA", null, null, null, 100L, 100L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Message query start time must be before end time")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(400));
+
+        verify(runtimeAdminClientResolver).resolveEndpoint("instance-a");
+        verify(runtimeAdminClientResolver).execute(eq("instance-a"), any());
+        verify(adminExt, never()).queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong());
+        verify(queryHistoryService, never()).recordMessageQuery(anyString(), anyString(), anyString(),
+                anyString(), anyString(), anyString(), any(), any(), anyInt());
     }
 
     @Test
@@ -185,6 +219,41 @@ class RocketMQMessageProviderTest {
             assertThat(messages).extracting(MessageRecordVO::getMsgId)
                     .containsExactly("newer", "older");
         }
+    }
+
+    @Test
+    void queryByTopicRetriesFromCorrectedOffsetAfterOffsetIllegal() throws Exception {
+        MessageQueue queue = new MessageQueue("TopicA", "broker-a", 0);
+        MessageExt message = new MessageExt();
+        message.setMsgId("msg-after-correction");
+        message.setTopic("TopicA");
+        message.setBody("payload".getBytes(StandardCharsets.UTF_8));
+        message.setStoreTimestamp(150L);
+        PullResult illegalOffset = new PullResult(PullStatus.OFFSET_ILLEGAL, 20L, 0L, 30L, null);
+        PullResult foundAfterCorrection = new PullResult(PullStatus.FOUND, 40L, 20L, 30L, List.of(message));
+        PullResult endOfQueue = new PullResult(PullStatus.NO_NEW_MSG, 50L, 40L, 40L, List.of());
+        try (MockedConstruction<DefaultMQPullConsumer> mockedConsumers =
+                     mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
+                         doNothing().when(consumer).start();
+                         when(consumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
+                         when(consumer.searchOffset(queue, 100L)).thenReturn(10L);
+                         when(consumer.searchOffset(queue, 200L)).thenReturn(50L);
+                         when(consumer.pull(eq(queue), eq("*"), eq(10L), eq(32))).thenReturn(illegalOffset);
+                         when(consumer.pull(eq(queue), eq("*"), eq(20L), eq(32))).thenReturn(foundAfterCorrection);
+                         when(consumer.pull(eq(queue), eq("*"), eq(40L), eq(32))).thenReturn(endOfQueue);
+                         doNothing().when(consumer).shutdown();
+                     })) {
+            List<MessageRecordVO> messages = provider.queryMessages(
+                    "instance-a", "TopicA", null, null, null, 100L, 200L);
+
+            assertThat(messages).extracting(MessageRecordVO::getMsgId).containsExactly("msg-after-correction");
+            DefaultMQPullConsumer consumer = mockedConsumers.constructed().get(0);
+            verify(consumer).pull(queue, "*", 10L, 32);
+            verify(consumer).pull(queue, "*", 20L, 32);
+            verify(consumer).pull(queue, "*", 40L, 32);
+        }
+        verify(queryHistoryService).recordMessageQuery("instance-a", "TOPIC", "TopicA", null, null, null,
+                100L, 200L, 1);
     }
 
     @Test
@@ -296,6 +365,54 @@ class RocketMQMessageProviderTest {
                 .contains("transactionState=COMMIT_MESSAGE")
                 .doesNotContain("transactionState=false");
         assertThat(record.getConsumerStatus()).isEmpty();
+    }
+
+    @Test
+    void getMessageTraceShouldDeriveWindowFromTopicMessageStoreTimestamp() throws Exception {
+        MessageExt original = new MessageExt();
+        original.setMsgId("msg-with-topic");
+        original.setStoreTimestamp(10_000_000L);
+        when(adminExt.viewMessage("orders", "msg-with-topic")).thenReturn(original);
+        when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
+                .thenReturn(new QueryResult(0L, List.of()));
+
+        provider.getMessageTrace("instance-a", "msg-with-topic", "orders");
+
+        ArgumentCaptor<Long> beginCaptor = ArgumentCaptor.forClass(Long.class);
+        ArgumentCaptor<Long> endCaptor = ArgumentCaptor.forClass(Long.class);
+        verify(adminExt).queryMessage(eq("RMQ_SYS_TRACE_TOPIC"), eq("msg-with-topic"), eq(64),
+                beginCaptor.capture(), endCaptor.capture());
+        assertThat(beginCaptor.getValue()).isEqualTo(10_000_000L - 5 * 60_000L);
+        assertThat(endCaptor.getValue()).isGreaterThanOrEqualTo(10_000_000L + 24 * 3600_000L);
+        verify(queryHistoryService).recordTraceQuery(eq("instance-a"), eq("msg-with-topic"), eq(null), eq(0), eq(0));
+    }
+
+    @Test
+    void getMessageTraceShouldUseFallbackOneHourWindowWhenMessageTimestampCannotBeResolved() throws Exception {
+        when(adminExt.queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong()))
+                .thenReturn(new QueryResult(0L, List.of()));
+
+        provider.getMessageTrace("instance-a", "invalid-offset-id", "orders");
+
+        ArgumentCaptor<Long> beginCaptor = ArgumentCaptor.forClass(Long.class);
+        ArgumentCaptor<Long> endCaptor = ArgumentCaptor.forClass(Long.class);
+        verify(adminExt).queryMessage(eq("RMQ_SYS_TRACE_TOPIC"), eq("invalid-offset-id"), eq(64),
+                beginCaptor.capture(), endCaptor.capture());
+        assertThat(endCaptor.getValue() - beginCaptor.getValue()).isBetween(3_660_000L, 3_670_000L);
+        verify(queryHistoryService).recordTraceQuery(eq("instance-a"), eq("invalid-offset-id"), eq(null), eq(0), eq(0));
+    }
+
+    @Test
+    void offsetMessageIdFixtureShouldDecodeToBrokerAddressForTraceWindowTests() throws Exception {
+        String offsetMsgId = MessageDecoder.createMessageId(
+                new InetSocketAddress("127.0.0.1", 10911), 12345L);
+
+        MessageId decoded = MessageDecoder.decodeMessageId(offsetMsgId);
+
+        assertThat(decoded.getAddress()).isInstanceOf(InetSocketAddress.class);
+        InetSocketAddress address = (InetSocketAddress) decoded.getAddress();
+        assertThat(address.getHostString()).isEqualTo("127.0.0.1");
+        assertThat(address.getPort()).isEqualTo(10911);
     }
 
     @Test

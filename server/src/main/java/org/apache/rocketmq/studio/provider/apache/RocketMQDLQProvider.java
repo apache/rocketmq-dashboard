@@ -300,7 +300,10 @@ public class RocketMQDLQProvider implements DLQProvider {
             if (userProperties != null) {
                 for (Map.Entry<String, String> entry : userProperties.entrySet()) {
                     String key = entry.getKey();
-                    if (!MessageConst.STRING_HASH_SET.contains(key)) {
+                    if (!MessageConst.STRING_HASH_SET.contains(key)
+                            && !MessageConst.PROPERTY_TAGS.equals(key)
+                            && !MessageConst.PROPERTY_KEYS.equals(key)
+                            && !MessageConst.PROPERTY_WAIT_STORE_MSG_OK.equals(key)) {
                         message.putUserProperty(key, entry.getValue());
                     }
                 }

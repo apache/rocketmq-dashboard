@@ -267,15 +267,15 @@ public class RocketMQMessageProvider implements MessageProvider {
     @Override
     public TraceRecordVO getMessageTrace(String instanceId, String msgId, String topic) {
         return runtimeAdminClientResolver.execute(instanceId,
-                adminExt -> getMessageTrace(instanceId, (DefaultMQAdminExt) adminExt, msgId));
+                adminExt -> getMessageTrace(instanceId, (DefaultMQAdminExt) adminExt, msgId, topic));
     }
 
-    private TraceRecordVO getMessageTrace(String instanceId, DefaultMQAdminExt adminExt, String msgId) {
+    private TraceRecordVO getMessageTrace(String instanceId, DefaultMQAdminExt adminExt, String msgId, String topic) {
 
         long now = System.currentTimeMillis();
         long begin;
         long end;
-        long messageStoreTimestamp = resolveMessageStoreTimestamp(adminExt, msgId);
+        long messageStoreTimestamp = resolveMessageStoreTimestamp(adminExt, msgId, topic);
         if (messageStoreTimestamp > 0) {
             // Derive the trace query window from the message's own store timestamp
             // instead of a hardcoded 1-hour lookback. This ensures traces for messages
@@ -320,7 +320,18 @@ public class RocketMQMessageProvider implements MessageProvider {
      * query window can be derived from the message's own timeline rather than the
      * current time. Returns 0 if the message cannot be located.
      */
-    private long resolveMessageStoreTimestamp(DefaultMQAdminExt adminExt, String msgId) {
+    private long resolveMessageStoreTimestamp(DefaultMQAdminExt adminExt, String msgId, String topic) {
+        if (StringUtils.hasText(topic)) {
+            try {
+                MessageExt messageExt = adminExt.viewMessage(topic, msgId);
+                if (messageExt != null) {
+                    return messageExt.getStoreTimestamp();
+                }
+            } catch (Exception e) {
+                log.debug("Could not view message {} in topic {} for trace timestamp: {}",
+                        msgId, topic, e.getMessage());
+            }
+        }
         try {
             // No topic hint is available in the trace flow, so locate the message purely
             // by its offset msgId.

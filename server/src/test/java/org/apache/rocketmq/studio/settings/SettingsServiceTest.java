@@ -515,6 +515,19 @@ class SettingsServiceTest {
     }
 
     @Test
+    void testConnectionShouldRejectLoopbackIpv4Address() {
+        DataSourceTestDTO request = DataSourceTestDTO.builder()
+                .url("http://127.0.0.1:9090")
+                .type("Prometheus")
+                .build();
+
+        DataSourceTestResultVO result = settingsService.testDataSource(request);
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getMessage()).contains("local or private address");
+    }
+
+    @Test
     void testConnectionShouldRejectLinkLocalMetadataAddress() {
         DataSourceTestDTO request = DataSourceTestDTO.builder()
                 .url("http://169.254.169.254/latest/meta-data/")
