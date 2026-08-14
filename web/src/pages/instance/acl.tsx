@@ -105,13 +105,14 @@ const isFormValidationError = (error: unknown) =>
    ═══════════════════════════════════════════ */
 type AclPageContentProps = Pick<
   ReturnType<typeof useInstanceFilter>,
-  'selectedInstanceId' | 'selectInstance' | 'instanceOptions'
+  'selectedInstanceId' | 'selectInstance' | 'instanceOptions' | 'instances'
 >;
 
 const AclPageContent = ({
   selectedInstanceId,
   selectInstance,
   instanceOptions,
+  instances,
 }: AclPageContentProps) => {
   const { t } = useLang();
   const hasSelectedInstance = Boolean(selectedInstanceId);
