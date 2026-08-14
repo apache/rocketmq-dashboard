@@ -236,11 +236,11 @@ describe('NameServerConfigDriftPage', () => {
     renderWithProviders(<NameServerConfigDriftPage />);
 
     await user.click(await screen.findByRole('combobox', { name: 'NameServer drift instance' }));
-    await user.click(await screen.findByText('Backup instance'));
+    await user.click(await screen.findByTitle('Backup instance'));
 
     await waitFor(() => {
-      expect(listClusters).toHaveBeenCalledWith('instance-b');
-      expect(getNameServerConfigDiff).toHaveBeenCalledWith('cluster-b', 'instance-b');
+      expect(listClusters).toHaveBeenCalledWith(instanceB.name);
+      expect(getNameServerConfigDiff).toHaveBeenCalledWith('cluster-b', instanceB.name);
     });
     expect(await screen.findByText('39876')).toBeInTheDocument();
 
