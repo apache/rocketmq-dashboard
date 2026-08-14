@@ -266,7 +266,7 @@ const HomePage = () => {
               <div className="flex justify-center items-center px-4 py-2 min-h-[36px]">
                 <span className="inline-flex items-center gap-2 text-sm text-amber-600 cursor-pointer hover:text-amber-700 transition-colors">
                   <MegaphoneSimple size={16} weight="fill" />
-                  <span>RocketMQ Studio — 跨集群 · 跨架构 · 跨云的统一管控平台</span>
+                  <span>{t('home.banner')}</span>
                 </span>
               </div>
             </div>

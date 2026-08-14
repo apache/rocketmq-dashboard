@@ -95,7 +95,7 @@ function mapClusters(clusters: ClusterInfo[]): {
   clusters.forEach((cluster) => {
     const clusterLabel = cluster.nsClusterName || cluster.name || cluster.id;
 
-    cluster.brokers.forEach((broker, index) => {
+    (cluster.brokers ?? []).forEach((broker, index) => {
       brokers.push({
         key: `${cluster.id}-broker-${broker.addr || index}`,
         clusterId: cluster.id,
@@ -110,7 +110,7 @@ function mapClusters(clusters: ClusterInfo[]): {
       });
     });
 
-    cluster.nameServers.forEach((nameServer, index) => {
+    (cluster.nameServers ?? []).forEach((nameServer, index) => {
       nameServers.push({
         key: `${cluster.id}-ns-${nameServer.addr || index}`,
         k8sCluster: clusterLabel,
@@ -122,7 +122,7 @@ function mapClusters(clusters: ClusterInfo[]): {
       });
     });
 
-    cluster.proxies.forEach((proxy, index) => {
+    (cluster.proxies ?? []).forEach((proxy, index) => {
       const host = hostOf(proxy.addr);
       proxies.push({
         key: `${cluster.id}-proxy-${proxy.addr || index}`,

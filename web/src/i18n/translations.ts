@@ -296,6 +296,10 @@ const translations: Record<string, Record<Lang, string>> = {
   'ai.commonCommands': { zh: '常用指令', en: 'Common Commands' },
 
   // ─── Home Page ───
+  'home.banner': {
+    zh: 'RocketMQ Studio — 跨集群 · 跨架构 · 跨云的统一管控平台',
+    en: 'RocketMQ Studio — unified control plane across clusters, architectures and clouds',
+  },
   'home.greeting.night': { zh: '夜深了', en: 'Late night' },
   'home.greeting.morning': { zh: '上午好', en: 'Good morning' },
   'home.greeting.noon': { zh: '中午好', en: 'Good afternoon' },
@@ -516,10 +520,6 @@ const translations: Record<string, Record<Lang, string>> = {
   'consumer.resetFailed': { zh: '消费位点重置失败', en: 'Failed to reset consume offset' },
 
   // ─── Home Page (additional) ───
-  'home.banner': {
-    zh: 'RocketMQ Studio — 跨集群 · 跨架构 · 跨云的统一管控平台',
-    en: 'RocketMQ Studio — Cross-cluster · Cross-arch · Cross-cloud unified management',
-  },
   'home.placeholder': {
     zh: '向 RocketMQ Bot 提问，全程加密、安全、可信',
     en: 'Ask RocketMQ Bot, fully encrypted, secure, trusted',

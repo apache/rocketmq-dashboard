@@ -21,14 +21,9 @@ import type { ColumnsType } from 'antd/es/table';
 import PageHeader from '../../components/PageHeader';
 import type { K8sCertInfo } from '../../api/cluster';
 import { listK8sCerts } from '../../services/clusterService';
+import { formatDateTime } from '../../utils/format';
 
 const { Text } = Typography;
-
-const formatDateTime = (iso: string): string => {
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-};
 
 const getErrorMessage = (error: unknown): string =>
   error instanceof Error && error.message ? error.message : '请求失败，请稍后重试';

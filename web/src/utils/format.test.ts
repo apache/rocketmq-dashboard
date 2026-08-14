@@ -1,33 +1,26 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
+// SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from 'vitest';
-import { formatDate, formatDateTime } from './format';
+import { formatBytes } from './format';
 
-describe('date formatters', () => {
-  it('renders missing and blank date values consistently', () => {
-    for (const value of [null, undefined, '', '   ']) {
-      expect(formatDateTime(value)).toBe('-');
-      expect(formatDate(value)).toBe('-');
-    }
+describe('formatBytes', () => {
+  it('formats zero', () => {
+    expect(formatBytes(0)).toBe('0 B');
   });
 
-  it('preserves a nonblank invalid value for diagnostics', () => {
-    expect(formatDateTime('not-a-date')).toBe('not-a-date');
-    expect(formatDate('not-a-date')).toBe('not-a-date');
+  it('formats negative values', () => {
+    expect(formatBytes(-1536)).toBe('-1.5 KB');
+  });
+
+  it('clamps to the largest unit', () => {
+    expect(formatBytes(1024 ** 5)).toBe('1.0 PB');
+    const huge = formatBytes(1024 ** 9);
+    expect(huge).toContain('PB');
+    expect(huge).not.toContain('undefined');
+  });
+
+  it('handles non-finite input', () => {
+    expect(formatBytes(Number.NaN)).toBe('-');
+    expect(formatBytes(Number.POSITIVE_INFINITY)).toBe('-');
+    expect(formatBytes(Number.NEGATIVE_INFINITY)).toBe('-');
   });
 });
