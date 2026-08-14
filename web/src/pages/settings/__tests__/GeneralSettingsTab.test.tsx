@@ -72,4 +72,15 @@ describe('GeneralSettingsTab', () => {
 
     await waitFor(() => expect(saveGeneralSettings).toHaveBeenCalledTimes(1));
   });
+
+  it('keeps the session timeout field bound when displaying its unit', async () => {
+    render(
+      <App>
+        <GeneralSettingsTab />
+      </App>,
+    );
+
+    expect(await screen.findByDisplayValue('30')).toBeInTheDocument();
+    expect(screen.getByLabelText('会话超时单位')).toHaveValue('分钟');
+  });
 });
