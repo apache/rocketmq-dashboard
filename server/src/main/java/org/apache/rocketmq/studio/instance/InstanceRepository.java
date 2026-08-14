@@ -48,7 +48,7 @@ public interface InstanceRepository {
 
     InstanceVO save(InstanceVO instance);
 
-    void deleteById(String id);
+    boolean deleteById(String id);
 
     boolean existsByCredentialId(String credentialId);
 

@@ -63,6 +63,18 @@ class MybatisPlusK8sCertRepositoryTest {
     }
 
     @Test
+    void deleteByIdShouldReportWhetherARowWasRemoved() {
+        RmqK8sCertificateMapper mapper = mock(RmqK8sCertificateMapper.class);
+        when(mapper.deleteById("deleted")).thenReturn(1);
+        when(mapper.deleteById("missing")).thenReturn(0);
+
+        MybatisPlusK8sCertRepository repository = repository(mapper);
+
+        assertThat(repository.deleteById("deleted")).isTrue();
+        assertThat(repository.deleteById("missing")).isFalse();
+    }
+
+    @Test
     void findByIdSurfacesInvalidPersistedCertificateType() {
         RmqK8sCertificateMapper mapper = mock(RmqK8sCertificateMapper.class);
         RmqK8sCertificate entity = certificate();

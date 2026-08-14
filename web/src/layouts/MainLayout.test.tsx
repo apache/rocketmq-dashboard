@@ -39,7 +39,12 @@ vi.mock('antd', async () => {
   return {
     Layout,
     Menu: () => null,
-    Breadcrumb: () => null,
+    Breadcrumb: ({ items }: { items: Array<{ key: string; title: React.ReactNode }> }) =>
+      React.createElement(
+        'nav',
+        null,
+        items.map((item) => React.createElement(React.Fragment, { key: item.key }, item.title)),
+      ),
     Avatar: () => React.createElement('span', null, 'avatar'),
     Dropdown: ({ children, menu }: { children?: React.ReactNode; menu: DropdownMenu }) =>
       React.createElement(
@@ -66,6 +71,7 @@ vi.mock('antd', async () => {
 
 describe('MainLayout authentication navigation', () => {
   beforeEach(() => {
+    localStorage.clear();
     vi.mocked(logout).mockReset().mockResolvedValue(undefined);
     useAuthStore.getState().login('test-token', 'admin', true);
   });
@@ -94,5 +100,41 @@ describe('MainLayout authentication navigation', () => {
     expect(screen.queryByText('protected home')).not.toBeInTheDocument();
     expect(logout).toHaveBeenCalledOnce();
     expect(localStorage.getItem('token')).toBeNull();
+  });
+
+  it('exposes global layout commands as localized semantic buttons', () => {
+    render(
+      <LangProvider>
+        <ThemeProvider>
+          <MemoryRouter initialEntries={['/']}>
+            <Routes>
+              <Route path="/" element={<MainLayout />}>
+                <Route index element={<div>protected home</div>} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
+      </LangProvider>,
+    );
+
+    expect(screen.getByRole('button', { name: '返回首页' })).toBeInTheDocument();
+    const searchButton = screen.getByRole('button', { name: '打开导航搜索' });
+    expect(searchButton).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '切换到模拟数据' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    expect(screen.getByRole('button', { name: '切换到英语' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '切换到深色主题' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    expect(screen.getByRole('button', { name: '打开用户菜单' })).toBeInTheDocument();
+
+    fireEvent.click(searchButton);
+    expect(screen.getByRole('button', { name: '首页' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '切换到英语' }));
+    expect(screen.getByRole('button', { name: 'Switch to Chinese' })).toBeInTheDocument();
   });
 });

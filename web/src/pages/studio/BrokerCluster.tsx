@@ -23,6 +23,7 @@ import { listClusters } from '../../services/clusterService';
 import type { ClusterInfo } from '../../api/cluster';
 import { listInstances } from '../../services/instanceService';
 import type { Instance } from '../../api/instance';
+import { useVisiblePolling } from '../../hooks/useVisiblePolling';
 
 // ─── Types ──────────────────────────────────────────────────────
 type NodeStatus = 'running' | 'readonly' | 'maintenance' | 'unknown';
@@ -150,6 +151,7 @@ const BrokerClusterPage = () => {
   const [proxyData, setProxyData] = useState<ProxyRecord[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [selectedInstanceId, setSelectedInstanceId] = useState('');
+  const mountedRef = useRef(true);
   const loadRequestId = useRef(0);
   const { t } = useLang();
   const { message } = App.useApp();
@@ -169,16 +171,16 @@ const BrokerClusterPage = () => {
     setLoading(true);
     try {
       const clusters = await listClusters(selectedInstanceId);
-      if (requestId !== loadRequestId.current) return;
+      if (!mountedRef.current || requestId !== loadRequestId.current) return;
       const mapped = mapClusters(clusters);
       setBrokerData(mapped.brokers);
       setNameServerData(mapped.nameServers);
       setProxyData(mapped.proxies);
     } catch {
-      if (requestId !== loadRequestId.current) return;
+      if (!mountedRef.current || requestId !== loadRequestId.current) return;
       message.error(t('common.refreshFailed'));
     } finally {
-      if (requestId === loadRequestId.current) {
+      if (mountedRef.current && requestId === loadRequestId.current) {
         setLoading(false);
       }
     }
@@ -203,23 +205,17 @@ const BrokerClusterPage = () => {
   }, [clearData, message, t]);
 
   useEffect(() => {
+    mountedRef.current = true;
     const requestId = loadRequestId.current;
-    // The state updates are performed by the asynchronous cluster API request, not by this effect itself.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadData();
+    const timeoutId = window.setTimeout(() => void loadData());
     return () => {
+      window.clearTimeout(timeoutId);
       loadRequestId.current = requestId + 1;
+      mountedRef.current = false;
     };
   }, [loadData]);
 
-  useEffect(() => {
-    if (!autoRefresh) return;
-
-    const intervalId = window.setInterval(() => {
-      void loadData();
-    }, REFRESH_INTERVAL_MS);
-    return () => window.clearInterval(intervalId);
-  }, [autoRefresh, loadData]);
+  useVisiblePolling(autoRefresh, REFRESH_INTERVAL_MS, loadData);
 
   const renderStatus = (status: string) => {
     const config: Record<string, { color: string; label: string }> = {

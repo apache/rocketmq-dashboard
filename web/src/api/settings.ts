@@ -45,7 +45,7 @@ export interface DataSource {
   username?: string;
   password?: string;
   bearerToken?: string;
-  status: string;
+  status?: string | null;
   instanceIds?: string[];
 }
 

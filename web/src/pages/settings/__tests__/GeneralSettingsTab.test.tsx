@@ -83,4 +83,33 @@ describe('GeneralSettingsTab', () => {
     expect(await screen.findByDisplayValue('30')).toBeInTheDocument();
     expect(screen.getByLabelText('会话超时单位')).toHaveValue('分钟');
   });
+
+  it('hides unsupported appearance and notification controls while preserving their values', async () => {
+    vi.mocked(saveGeneralSettings).mockResolvedValue();
+    render(
+      <App>
+        <GeneralSettingsTab />
+      </App>,
+    );
+
+    const saveButton = await screen.findByRole('button', { name: '保存设置' });
+    expect(screen.queryByText('主题模式')).not.toBeInTheDocument();
+    expect(screen.queryByText('紧凑模式')).not.toBeInTheDocument();
+    expect(screen.queryByText('桌面通知')).not.toBeInTheDocument();
+    expect(screen.queryByText('通知声音')).not.toBeInTheDocument();
+
+    fireEvent.click(saveButton);
+
+    await waitFor(() =>
+      expect(saveGeneralSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          theme: 'system',
+          compact: false,
+          desktopNotify: false,
+          notifySound: false,
+        }),
+      ),
+    );
+
+  });
 });

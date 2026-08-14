@@ -196,8 +196,16 @@ class MybatisPlusInstanceRepositoryTest {
     @Test
     void deleteByIdShouldDelegateToMapper() {
         repository.deleteById("instance-direct-1");
-
         verify(instanceMapper).deleteById("instance-direct-1");
+    }
+
+    @Test
+    void deleteByIdShouldReportWhetherARowWasRemoved() {
+        when(instanceMapper.deleteById("deleted")).thenReturn(1);
+        when(instanceMapper.deleteById("missing")).thenReturn(0);
+
+        assertThat(repository.deleteById("deleted")).isTrue();
+        assertThat(repository.deleteById("missing")).isFalse();
     }
 
     private RmqInstance entity(String id, InstanceType type) {

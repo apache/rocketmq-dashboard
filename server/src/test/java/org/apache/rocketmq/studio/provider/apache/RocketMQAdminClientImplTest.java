@@ -149,6 +149,33 @@ class RocketMQAdminClientImplTest {
     }
 
     @Test
+    void resetOffsetShouldPreserveStructuredResolverFailure() {
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("missing-instance"), any()))
+                .thenThrow(new BusinessException(404, "Instance not found: missing-instance"));
+
+        assertThatThrownBy(() -> adminClient.resetOffset(
+                "missing-instance", "cg-orders", 1784246400000L, "orders"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Instance not found: missing-instance")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(404));
+        verify(auditService).record("RESET_OFFSET", "cg-orders",
+                "Instance not found: missing-instance", "FAILED");
+    }
+
+    @Test
+    void resetOffsetShouldWrapUnexpectedAdminFailure() {
+        when(runtimeAdminClientResolver.execute(org.mockito.ArgumentMatchers.eq("instance-a"), any()))
+                .thenThrow(new IllegalStateException("broker unavailable"));
+
+        assertThatThrownBy(() -> adminClient.resetOffset(
+                "instance-a", "cg-orders", 1784246400000L, "orders"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Failed to reset offset: broker unavailable")
+                .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(500));
+        verify(auditService).record("RESET_OFFSET", "cg-orders", "broker unavailable", "FAILED");
+    }
+
+    @Test
     void getConsumerGroupSurfacesAdminTimeout() throws Exception {
         when(adminExt.examineConsumerConnectionInfo("orders"))
                 .thenThrow(new RemotingTimeoutException("broker-0", 3_000));

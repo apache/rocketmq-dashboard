@@ -116,6 +116,25 @@ class RocketMQClientProviderTest {
     }
 
     @Test
+    void producerScanPreservesIdenticalConnectionsAcrossClusters() throws Exception {
+        when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo(Map.of(
+                "127.0.0.1:10911", "cluster-a",
+                "127.0.0.2:10911", "cluster-b")));
+        ProducerInfo shared = producerInfo("producer-client", "10.0.0.1:1000");
+        when(adminExt.getAllProducerInfo("127.0.0.1:10911"))
+                .thenReturn(new ProducerTableInfo(Map.of("pg-order", List.of(shared))));
+        when(adminExt.getAllProducerInfo("127.0.0.2:10911"))
+                .thenReturn(new ProducerTableInfo(Map.of("pg-order", List.of(shared))));
+
+        List<ClientConnectionVO> connections = provider.findConnections("instance-a", null, "Producer");
+
+        assertThat(connections).hasSize(2);
+        assertThat(connections)
+                .extracting(ClientConnectionVO::getClusterName)
+                .containsExactlyInAnyOrder("cluster-a", "cluster-b");
+    }
+
+    @Test
     void clientScanUsesActualBrokerClustersAndFiltersRequestedCluster() throws Exception {
         when(adminExt.examineBrokerClusterInfo()).thenReturn(clusterInfo(Map.of(
                 "127.0.0.1:10911", "cluster-a",

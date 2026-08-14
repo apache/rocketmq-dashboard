@@ -271,6 +271,14 @@ function planConsumerGroupEntries(
         'Consumer group delaySeconds must be zero or positive',
       );
     }
+    if (!isStringArrayOrUndefined(group.subscribedTopics)) {
+      return invalidEntry(
+        'CONSUMER_GROUP',
+        name,
+        index,
+        'Consumer group subscribedTopics must be an array of strings',
+      );
+    }
 
     const existing = existingGroups.get(name);
     if (!existing) {
@@ -392,4 +400,11 @@ function sortedTopics(topics?: string[]): string | undefined {
     .map((topic) => topic.trim())
     .sort()
     .join(',');
+}
+
+function isStringArrayOrUndefined(value: unknown): value is string[] | undefined {
+  return (
+    value === undefined ||
+    (Array.isArray(value) && value.every((item) => typeof item === 'string'))
+  );
 }

@@ -97,20 +97,24 @@ public class K8sCertService {
                 .orElseThrow(() -> new BusinessException(404, "Certificate not found: " + command.getId()));
 
         K8sCertVO updated = copyOf(existing);
-        if (command.getName() != null) {
-            updated.setName(command.getName());
+        String name = normalizeOptionalIdentity(command.getName(), "name");
+        String namespace = normalizeOptionalIdentity(command.getNamespace(), "namespace");
+        String cluster = normalizeOptionalIdentity(command.getCluster(), "cluster");
+        String issuer = normalizeOptionalIdentity(command.getIssuer(), "issuer");
+        if (name != null) {
+            updated.setName(name);
         }
-        if (command.getNamespace() != null) {
-            updated.setNamespace(command.getNamespace());
+        if (namespace != null) {
+            updated.setNamespace(namespace);
         }
-        if (command.getCluster() != null) {
-            updated.setCluster(command.getCluster());
+        if (cluster != null) {
+            updated.setCluster(cluster);
         }
         if (command.getType() != null) {
             updated.setType(CertType.valueOf(command.getType()));
         }
-        if (command.getIssuer() != null) {
-            updated.setIssuer(command.getIssuer());
+        if (issuer != null) {
+            updated.setIssuer(issuer);
         }
         if (command.getSan() != null) {
             updated.setSan(command.getSan());
@@ -151,7 +155,9 @@ public class K8sCertService {
         log.info("Deleting K8s certificate: {}", command.getId());
         k8sCertRepository.findById(command.getId())
                 .orElseThrow(() -> new BusinessException(404, "Certificate not found: " + command.getId()));
-        k8sCertRepository.deleteById(command.getId());
+        if (!k8sCertRepository.deleteById(command.getId())) {
+            throw new BusinessException(404, "Certificate not found: " + command.getId());
+        }
         recordAudit("DELETE_K8S_CERTIFICATE", "K8S_CERTIFICATE", command.getId(), null,
                 null);
         log.info("K8s certificate deleted: {}", command.getId());
@@ -161,6 +167,17 @@ public class K8sCertService {
         if (command == null) {
             throw new BusinessException(400, "K8s certificate request is required");
         }
+    }
+
+    private String normalizeOptionalIdentity(String value, String field) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = value.trim();
+        if (normalized.isEmpty()) {
+            throw new BusinessException(400, "Certificate " + field + " cannot be blank");
+        }
+        return normalized;
     }
 
     private K8sCertVO refreshExpirationState(K8sCertVO cert, LocalDateTime now) {

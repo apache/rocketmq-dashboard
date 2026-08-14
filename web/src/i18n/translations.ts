@@ -76,6 +76,18 @@ const translations: Record<string, Record<Lang, string>> = {
   'common.no': { zh: '否', en: 'No' },
   'common.retry': { zh: '重试', en: 'Retry' },
 
+  // ─── Global layout controls ───
+  'layout.skipToMain': { zh: '跳到主要内容', en: 'Skip to main content' },
+  'layout.goHome': { zh: '返回首页', en: 'Go to home' },
+  'layout.openSearch': { zh: '打开导航搜索', en: 'Open navigation search' },
+  'layout.switchToRealData': { zh: '切换到真实数据', en: 'Switch to real data' },
+  'layout.switchToMockData': { zh: '切换到模拟数据', en: 'Switch to mock data' },
+  'layout.switchToEnglish': { zh: '切换到英语', en: 'Switch to English' },
+  'layout.switchToChinese': { zh: '切换到中文', en: 'Switch to Chinese' },
+  'layout.switchToLightTheme': { zh: '切换到浅色主题', en: 'Switch to light theme' },
+  'layout.switchToDarkTheme': { zh: '切换到深色主题', en: 'Switch to dark theme' },
+  'layout.openUserMenu': { zh: '打开用户菜单', en: 'Open user menu' },
+
   // ─── Dashboard ───
   'dashboard.title': { zh: '监控面板', en: 'Dashboard' },
   'dashboard.subtitle': { zh: 'RocketMQ 集群运行概览', en: 'RocketMQ Cluster Overview' },
@@ -553,6 +565,7 @@ const translations: Record<string, Record<Lang, string>> = {
   // ─── Settings ───
   'settings.title': { zh: '设置', en: 'Settings' },
   'settings.subtitle': { zh: '管理应用配置与数据源', en: 'Manage app settings and data sources' },
+  'settings.dataSourceNotTested': { zh: '未检测', en: 'Not tested' },
 
   // ─── Certs ───
   'cert.clusterName': { zh: 'K8s 集群名称', en: 'K8s Cluster Name' },

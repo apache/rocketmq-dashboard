@@ -21,6 +21,7 @@ import userEvent from '@testing-library/user-event';
 import { App } from 'antd';
 import type { DataSource } from '../../../api/settings';
 import { createDataSource, listDataSources, testDataSource } from '../../../api/settings';
+import { LangProvider } from '../../../i18n/LangContext';
 import { DataSourceTab } from '../index';
 
 vi.mock('../../../api/settings', () => ({
@@ -40,7 +41,6 @@ const sources: DataSource[] = [
     type: 'Prometheus',
     url: 'http://prometheus:9090',
     auth: 'None',
-    status: 'healthy',
   },
   {
     key: 'thanos-dr',
@@ -51,6 +51,16 @@ const sources: DataSource[] = [
     status: 'healthy',
   },
 ];
+
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+};
 
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
@@ -72,6 +82,43 @@ describe('DataSourceTab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(listDataSources).mockResolvedValue(sources);
+  });
+
+  it('keeps data source creation disabled until the initial list is ready', async () => {
+    const initialList = deferred<DataSource[]>();
+    vi.mocked(listDataSources).mockReturnValue(initialList.promise);
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <App>
+        <DataSourceTab />
+      </App>,
+    );
+
+    const addButton = screen.getByRole('button', { name: /添加数据源/ });
+    expect(addButton).toBeDisabled();
+    await user.click(addButton);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    initialList.resolve(sources);
+
+    await waitFor(() => expect(addButton).toBeEnabled());
+    await user.click(addButton);
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('does not report a data source as offline when the backend has not tested it', async () => {
+    render(
+      <LangProvider>
+        <App>
+          <DataSourceTab />
+        </App>
+      </LangProvider>,
+    );
+
+    await screen.findByText('Prometheus prod');
+
+    expect(screen.getByText('未检测')).toBeInTheDocument();
+    expect(screen.queryByText('离线')).not.toBeInTheDocument();
   });
 
   it('shows connection test loading only on the clicked row', async () => {

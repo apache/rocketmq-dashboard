@@ -14,19 +14,28 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.rocketmq.studio.cluster.k8s;
 
+import { useEffect } from 'react';
 
-import java.util.List;
-import java.util.Optional;
+export function useVisiblePolling(
+  enabled: boolean,
+  intervalMs: number,
+  poll: () => void | Promise<void>,
+): void {
+  useEffect(() => {
+    if (!enabled) return;
 
-public interface K8sCertRepository {
+    const pollWhenVisible = () => {
+      if (document.visibilityState === 'visible') {
+        void poll();
+      }
+    };
+    const intervalId = window.setInterval(pollWhenVisible, intervalMs);
+    document.addEventListener('visibilitychange', pollWhenVisible);
 
-    List<K8sCertVO> findAll();
-
-    Optional<K8sCertVO> findById(String id);
-
-    K8sCertVO save(K8sCertVO cert);
-
-    boolean deleteById(String id);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', pollWhenVisible);
+    };
+  }, [enabled, intervalMs, poll]);
 }
