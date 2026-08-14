@@ -48,10 +48,16 @@ public class TencentClientFactory {
 
     public TrocketClient client(Long credentialId, String region) {
         String key = cacheKey(credentialId, region);
-        return clients.computeIfAbsent(key, ignored -> createClient(credentialId, region));
+        TrocketClient cached = clients.get(key);
+        if (cached != null) {
+            return cached;
+        }
+        synchronized (this) {
+            return clients.computeIfAbsent(key, ignored -> createClient(credentialId, region));
+        }
     }
 
-    public void invalidateCredential(Long credentialId) {
+    public synchronized void invalidateCredential(Long credentialId) {
         String prefix = credentialId + "#";
         clients.keySet().removeIf(key -> key.startsWith(prefix));
     }
