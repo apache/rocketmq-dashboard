@@ -20,6 +20,7 @@ import { Card, Space } from 'antd';
 import { ChartLine } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
 import GrafanaDashboardList from '../../components/GrafanaDashboardList';
+import ObservabilityAssetGuide from '../../components/ObservabilityAssetGuide';
 
 const GrafanaDashboardsPage: React.FC = () => {
   const { t } = useLang();
@@ -35,7 +36,10 @@ const GrafanaDashboardsPage: React.FC = () => {
           </Space>
         }
       >
-        <GrafanaDashboardList />
+        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          <ObservabilityAssetGuide kind="grafana" />
+          <GrafanaDashboardList />
+        </Space>
       </Card>
     </div>
   );

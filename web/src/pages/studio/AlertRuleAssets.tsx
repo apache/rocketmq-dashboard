@@ -20,6 +20,7 @@ import { Card, Space } from 'antd';
 import { Warning } from '@phosphor-icons/react';
 import { useLang } from '../../i18n/LangContext';
 import AlertRuleAssetList from '../../components/AlertRuleAssetList';
+import ObservabilityAssetGuide from '../../components/ObservabilityAssetGuide';
 
 const AlertRuleAssetsPage: React.FC = () => {
   const { t } = useLang();
@@ -35,7 +36,10 @@ const AlertRuleAssetsPage: React.FC = () => {
           </Space>
         }
       >
-        <AlertRuleAssetList />
+        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          <ObservabilityAssetGuide kind="prometheus" />
+          <AlertRuleAssetList />
+        </Space>
       </Card>
     </div>
   );
