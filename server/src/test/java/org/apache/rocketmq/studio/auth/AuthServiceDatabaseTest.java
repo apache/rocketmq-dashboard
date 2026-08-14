@@ -29,13 +29,16 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -102,6 +105,67 @@ class AuthServiceDatabaseTest {
         assertThatThrownBy(() -> authService.setUserEnabled("id-1", false))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("The last enabled administrator cannot be disabled");
+    }
+
+    @Test
+    void databaseAuthenticationThrottlesLastSeenWrites() {
+        RmqStudioUser user = user("id-1", "operator", false, true, "password-1");
+        RmqStudioSession session = activeSession("session-1", "id-1",
+                LocalDateTime.parse("2026-08-13T00:00:00"));
+        when(sessionMapper.selectOne(any(Wrapper.class))).thenReturn(session);
+        when(userMapper.selectById("id-1")).thenReturn(user);
+
+        assertThat(authService.isAuthenticated("Bearer token-1")).isTrue();
+
+        verify(sessionMapper, never()).update(isNull(), any(Wrapper.class));
+    }
+
+    @Test
+    void databaseAuthenticationUpdatesStaleLastSeenTimestamp() {
+        RmqStudioUser user = user("id-1", "operator", false, true, "password-1");
+        RmqStudioSession session = activeSession("session-1", "id-1",
+                LocalDateTime.parse("2026-08-12T23:54:59"));
+        when(sessionMapper.selectOne(any(Wrapper.class))).thenReturn(session);
+        when(userMapper.selectById("id-1")).thenReturn(user);
+
+        assertThat(authService.isAuthenticated("Bearer token-1")).isTrue();
+
+        verify(sessionMapper).update(isNull(), any(Wrapper.class));
+    }
+
+    @Test
+    void databaseBootstrapIgnoresConcurrentUserCreation() {
+        AuthProperties.User configuredUser = new AuthProperties.User();
+        configuredUser.setUsername("operator");
+        configuredUser.setPassword("password-1");
+        AuthProperties properties = new AuthProperties();
+        properties.setUsers(List.of(configuredUser));
+        RmqStudioUser user = user("id-1", "operator", false, true, "password-1");
+        when(userMapper.selectCount(isNull())).thenReturn(0L);
+        when(userMapper.selectOne(any(Wrapper.class))).thenReturn(user);
+        when(userMapper.insert(any(RmqStudioUser.class)))
+                .thenThrow(new org.springframework.dao.DuplicateKeyException("duplicate username"));
+        SettingsRepository databaseSettingsRepository = mock(SettingsRepository.class);
+        when(databaseSettingsRepository.loadGeneralSettings())
+                .thenReturn(GeneralSettingsVO.builder().sessionTimeout(30).build());
+        authService = new AuthService(properties, databaseSettingsRepository,
+                Clock.fixed(Instant.parse("2026-08-13T00:00:00Z"), ZoneOffset.UTC), userMapper,
+                sessionMapper, passwordHasher);
+
+        LoginDTO request = new LoginDTO();
+        request.setUsername("operator");
+        request.setPassword("password-1");
+
+        assertThat(authService.login(request).getUser().getUsername()).isEqualTo("operator");
+    }
+
+    private RmqStudioSession activeSession(String id, String userId, LocalDateTime lastSeenAt) {
+        RmqStudioSession session = new RmqStudioSession();
+        session.setId(id);
+        session.setUserId(userId);
+        session.setLastSeenAt(lastSeenAt);
+        session.setExpiresAt(LocalDateTime.parse("2026-08-14T00:00:00"));
+        return session;
     }
 
     private RmqStudioUser user(String id, String username, boolean admin, boolean enabled, String password) {

@@ -170,6 +170,28 @@ class AuthControllerTest {
     }
 
     @Test
+    void loginShouldReturnBearerTokenOnlyWhenExplicitlyRequested() throws Exception {
+        LoginVO mockResponse = LoginVO.builder()
+                .token("mock-jwt-api-client")
+                .expiresIn(86400)
+                .user(LoginVO.UserInfo.builder().username("automation").build())
+                .build();
+        when(authService.login(any(LoginDTO.class))).thenReturn(mockResponse);
+
+        LoginDTO request = new LoginDTO();
+        request.setUsername("automation");
+        request.setPassword("testpass");
+
+        mockMvc.perform(post("/api/auth/login")
+                        .header(AuthCookie.SESSION_DELIVERY_HEADER, "bearer")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE))
+                .andExpect(jsonPath("$.data.token").value("mock-jwt-api-client"));
+    }
+
+    @Test
     void loginShouldRejectMissingRequestBody() throws Exception {
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON))

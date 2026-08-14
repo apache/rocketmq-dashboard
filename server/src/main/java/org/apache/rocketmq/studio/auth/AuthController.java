@@ -66,12 +66,17 @@ public class AuthController {
 
     @PostMapping("/login")
     public Result<LoginVO> login(@RequestBody(required = false) LoginDTO request,
+                                 HttpServletRequest servletRequest,
                                  HttpServletResponse response) {
         if (request == null) {
             throw new BusinessException(400, "Login request is required");
         }
         LoginVO login = authService.login(request);
+        if (AuthCookie.requestsBearerToken(servletRequest)) {
+            return Result.ok(login);
+        }
         AuthCookie.write(response, authProperties, login.getToken(), Duration.ofSeconds(login.getExpiresIn()));
+        login.setToken(null);
         return Result.ok(login);
     }
 

@@ -29,6 +29,8 @@ final class AuthCookie {
     private static final String TOKEN_PREFIX = "Bearer ";
     private static final String DEFAULT_COOKIE_NAME = "rmq_studio_session";
     private static final String DEFAULT_SAME_SITE = "Strict";
+    static final String SESSION_DELIVERY_HEADER = "X-RocketMQ-Studio-Session-Delivery";
+    private static final String BEARER_SESSION_DELIVERY = "bearer";
 
     private AuthCookie() {
     }
@@ -43,8 +45,12 @@ final class AuthCookie {
                 }
             }
         }
-        // Keep non-browser callers compatible while browser clients use HttpOnly cookies.
+        // API clients that explicitly requested a bearer token at login authenticate with this header.
         return request.getHeader(HttpHeaders.AUTHORIZATION);
+    }
+
+    static boolean requestsBearerToken(HttpServletRequest request) {
+        return BEARER_SESSION_DELIVERY.equalsIgnoreCase(request.getHeader(SESSION_DELIVERY_HEADER));
     }
 
     static void write(HttpServletResponse response, AuthProperties properties, String token,

@@ -28,6 +28,7 @@ import org.apache.rocketmq.studio.persistence.mapper.RmqStudioUserMapper;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -62,6 +63,7 @@ public class AuthService {
     private static final int DEFAULT_SESSION_TIMEOUT_MINUTES = 30;
     private static final int MIN_SESSION_TIMEOUT_MINUTES = 5;
     private static final int MAX_SESSION_TIMEOUT_MINUTES = 1440;
+    private static final Duration LAST_SEEN_UPDATE_INTERVAL = Duration.ofMinutes(5);
     private static final String TOKEN_PREFIX = "Bearer ";
     private static final SecureRandom TOKEN_RANDOM = new SecureRandom();
 
@@ -246,9 +248,13 @@ public class AuthService {
         if (user == null || !Boolean.TRUE.equals(user.getEnabled())) {
             return Optional.empty();
         }
-        sessionMapper.update(null, new UpdateWrapper<RmqStudioSession>()
-                .eq("id", session.getId())
-                .set("last_seen_at", now()));
+        LocalDateTime current = now();
+        if (session.getLastSeenAt() == null
+                || !session.getLastSeenAt().plus(LAST_SEEN_UPDATE_INTERVAL).isAfter(current)) {
+            sessionMapper.update(null, new UpdateWrapper<RmqStudioSession>()
+                    .eq("id", session.getId())
+                    .set("last_seen_at", current));
+        }
         return Optional.of(userInfo(user));
     }
 
@@ -284,7 +290,12 @@ public class AuthService {
             user.setAdmin(configuredUser.isAdmin());
             user.setEnabled(true);
             user.setPasswordChangedAt(now());
-            userMapper.insert(user);
+            try {
+                userMapper.insert(user);
+            } catch (DuplicateKeyException exception) {
+                // Another Studio instance can initialize the same configured user concurrently.
+                log.debug("Bootstrap user {} was created concurrently", configuredUser.getUsername());
+            }
         }
     }
 
