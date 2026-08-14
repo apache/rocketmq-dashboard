@@ -20,6 +20,8 @@ import org.apache.rocketmq.client.QueryResult;
 import org.apache.rocketmq.client.consumer.DefaultMQPullConsumer;
 import org.apache.rocketmq.client.consumer.PullResult;
 import org.apache.rocketmq.client.consumer.PullStatus;
+import org.apache.rocketmq.client.impl.MQClientAPIImpl;
+import org.apache.rocketmq.client.impl.factory.MQClientInstance;
 import org.apache.rocketmq.client.trace.TraceConstants;
 import org.apache.rocketmq.common.message.MessageDecoder;
 import org.apache.rocketmq.common.message.MessageExt;
@@ -34,6 +36,7 @@ import org.apache.rocketmq.studio.instance.message.TraceNodeVO;
 import org.apache.rocketmq.studio.instance.message.TraceRecordVO;
 import org.apache.rocketmq.studio.instance.message.QueryHistoryService;
 import org.apache.rocketmq.tools.admin.DefaultMQAdminExt;
+import org.apache.rocketmq.tools.admin.DefaultMQAdminExtImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -61,6 +64,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -156,6 +160,25 @@ class RocketMQMessageProviderTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Failed to query messages by key: broker unavailable")
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
+    }
+
+    @Test
+    void queryByMsgIdUsesDecodedPhysicalOffsetForFallback() throws Exception {
+        String msgId = "AC1E0A6400002A9F0000000001A3F2B1";
+        MQClientAPIImpl clientApi = mockOffsetLookupClient();
+        MessageExt message = new MessageExt();
+        message.setMsgId(msgId);
+        message.setTopic("TopicA");
+        when(adminExt.viewMessage("TopicA", msgId))
+                .thenThrow(new IllegalStateException("primary lookup failed"));
+        when(clientApi.viewMessage("172.30.10.100:10911", "TopicA", 27521713L, 3000L))
+                .thenReturn(message);
+
+        List<MessageRecordVO> result = provider.queryMessages(
+                "instance-a", "TopicA", msgId, null, null, 100L, 200L);
+
+        assertThat(result).singleElement().extracting(MessageRecordVO::getMsgId).isEqualTo(msgId);
+        verify(clientApi).viewMessage("172.30.10.100:10911", "TopicA", 27521713L, 3000L);
     }
 
     @Test
@@ -481,6 +504,42 @@ class RocketMQMessageProviderTest {
                 .satisfies(error -> assertThat(((BusinessException) error).getCode()).isEqualTo(502));
 
         verify(queryHistoryService, never()).recordTraceQuery(anyString(), anyString(), any(), anyInt(), anyInt());
+    }
+
+    @Test
+    void getMessageTraceUsesDecodedOffsetToResolveQueryWindow() throws Exception {
+        String msgId = "AC1E0A6400002A9F0000000001A3F2B1";
+        long storeTimestamp = System.currentTimeMillis() - 2 * 60 * 60 * 1000L;
+        MQClientAPIImpl clientApi = mockOffsetLookupClient();
+        MessageExt message = new MessageExt();
+        message.setMsgId(msgId);
+        message.setTopic("TopicA");
+        message.setStoreTimestamp(storeTimestamp);
+        when(clientApi.viewMessage("172.30.10.100:10911", "TopicA", 27521713L, 3000L))
+                .thenReturn(message);
+        when(adminExt.queryMessage(
+                "RMQ_SYS_TRACE_TOPIC", msgId, 64, storeTimestamp - 5 * 60_000L,
+                storeTimestamp + 24 * 60 * 60 * 1000L))
+                .thenReturn(new QueryResult(0L, List.of()));
+
+        TraceRecordVO result = provider.getMessageTrace("instance-a", msgId, "TopicA");
+
+        assertThat(result.getNodes()).isEmpty();
+        assertThat(result.getConsumerStatus()).isEmpty();
+        verify(clientApi).viewMessage("172.30.10.100:10911", "TopicA", 27521713L, 3000L);
+        verify(adminExt).queryMessage(
+                "RMQ_SYS_TRACE_TOPIC", msgId, 64, storeTimestamp - 5 * 60_000L,
+                storeTimestamp + 24 * 60 * 60 * 1000L);
+    }
+
+    private MQClientAPIImpl mockOffsetLookupClient() {
+        DefaultMQAdminExtImpl adminExtImpl = mock(DefaultMQAdminExtImpl.class);
+        MQClientInstance clientInstance = mock(MQClientInstance.class);
+        MQClientAPIImpl clientApi = mock(MQClientAPIImpl.class);
+        when(adminExt.getDefaultMQAdminExtImpl()).thenReturn(adminExtImpl);
+        when(adminExtImpl.getMqClientInstance()).thenReturn(clientInstance);
+        when(clientInstance.getMQClientAPIImpl()).thenReturn(clientApi);
+        return clientApi;
     }
 
     private static String traceContext(String... fields) {

@@ -79,6 +79,7 @@ public class RocketMQMessageProvider implements MessageProvider {
     private static final int MAX_BINARY_BODY_DISPLAY_BYTES = 48 * 1024;
     private static final int MAX_PROPERTIES = 64;
     private static final int MAX_PROPERTY_VALUE_CHARS = 1024;
+    private static final long VIEW_MESSAGE_TIMEOUT_MILLIS = 3000L;
     private static final long ONE_HOUR_MILLIS = 3600_000L;
     private static final long ONE_DAY_MILLIS = 24 * ONE_HOUR_MILLIS;
     private static final int MAX_CONSECUTIVE_OFFSET_ILLEGAL = 3;
@@ -138,7 +139,7 @@ public class RocketMQMessageProvider implements MessageProvider {
             }
         }
         if (messageExt == null) {
-            messageExt = viewMessageByOffsetId(adminExt, msgId);
+            messageExt = viewMessageByOffsetId(adminExt, topic, msgId);
         }
         if (messageExt == null) {
             return Collections.emptyList();
@@ -147,10 +148,10 @@ public class RocketMQMessageProvider implements MessageProvider {
     }
 
     /**
-     * Locate a message purely by its offset msgId by decoding the broker address embedded in the
-     * id and querying that broker directly. Used when no topic hint is available.
+     * Locate a message by decoding the broker address and physical offset embedded in its offset
+     * msgId, then querying that broker directly.
      */
-    private MessageExt viewMessageByOffsetId(DefaultMQAdminExt adminExt, String msgId) {
+    private MessageExt viewMessageByOffsetId(DefaultMQAdminExt adminExt, String topic, String msgId) {
         try {
             MessageId messageId = MessageDecoder.decodeMessageId(msgId);
             SocketAddress address = messageId.getAddress();
@@ -162,7 +163,7 @@ public class RocketMQMessageProvider implements MessageProvider {
             return adminExt.getDefaultMQAdminExtImpl()
                     .getMqClientInstance()
                     .getMQClientAPIImpl()
-                    .viewMessage(brokerAddr, msgId, 3000L, 3000L);
+                    .viewMessage(brokerAddr, topic, messageId.getOffset(), VIEW_MESSAGE_TIMEOUT_MILLIS);
         } catch (Exception e) {
             log.warn("viewMessage by decoded offset id failed for msgId={}: {}", msgId, e.getMessage());
             return null;
@@ -348,9 +349,7 @@ public class RocketMQMessageProvider implements MessageProvider {
             }
         }
         try {
-            // No topic hint is available in the trace flow, so locate the message purely
-            // by its offset msgId.
-            MessageExt messageExt = viewMessageByOffsetId(adminExt, msgId);
+            MessageExt messageExt = viewMessageByOffsetId(adminExt, topic, msgId);
             if (messageExt != null) {
                 return messageExt.getStoreTimestamp();
             }
