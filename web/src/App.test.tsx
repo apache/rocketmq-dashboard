@@ -20,8 +20,9 @@ import { lazy, type ComponentType } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getAuthStatus } from './api/auth';
-import { AuthGate, LazyRouteOutlet } from './App';
+import { AuthGate, LazyRouteOutlet, NotFoundPage } from './App';
 import { LangProvider } from './i18n/LangContext';
+import { LANGUAGE_STORAGE_KEY } from './i18n/languagePreference';
 
 vi.mock('./api/auth', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./api/auth')>();
@@ -66,6 +67,45 @@ describe('LazyRouteOutlet', () => {
 
     expect(await screen.findByText('lazy page loaded')).toBeInTheDocument();
     expect(screen.queryByRole('status', { name: '加载中' })).not.toBeInTheDocument();
+  });
+});
+
+describe('NotFoundPage', () => {
+  afterEach(() => cleanup());
+
+  it('explains an unknown route and navigates back home', () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+
+    render(
+      <LangProvider>
+        <MemoryRouter initialEntries={['/missing']}>
+          <Routes>
+            <Route path="/" element={<div>home page</div>} />
+            <Route path="*" element={<NotFoundPage />} />
+          </Routes>
+        </MemoryRouter>
+      </LangProvider>,
+    );
+
+    expect(screen.getByText('Page not found')).toBeInTheDocument();
+    expect(screen.getByText(/link may be outdated/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to home' }));
+
+    expect(screen.getByText('home page')).toBeInTheDocument();
+  });
+
+  it('uses Chinese copy by default', () => {
+    render(
+      <LangProvider>
+        <MemoryRouter>
+          <NotFoundPage />
+        </MemoryRouter>
+      </LangProvider>,
+    );
+
+    expect(screen.getByText('页面不存在')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '返回首页' })).toBeInTheDocument();
   });
 });
 

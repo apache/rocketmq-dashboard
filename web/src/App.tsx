@@ -17,7 +17,7 @@
 
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { Button, Result, Spin } from 'antd';
-import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { Routes, Route, Navigate, Outlet, useNavigate } from 'react-router-dom';
 import { getAuthStatus } from './api/auth';
 import { isMockMode } from './services/dataMode';
 import { useLang } from './i18n/LangContext';
@@ -138,6 +138,42 @@ export function LazyRouteOutlet() {
   );
 }
 
+export function NotFoundPage() {
+  const { lang } = useLang();
+  const navigate = useNavigate();
+  const copy =
+    lang === 'zh'
+      ? {
+          title: '页面不存在',
+          description: '此链接可能已失效，或页面地址输入有误。',
+          action: '返回首页',
+        }
+      : {
+          title: 'Page not found',
+          description: 'This link may be outdated, or the page address may be incorrect.',
+          action: 'Back to home',
+        };
+
+  return (
+    <Result
+      status="404"
+      title="404"
+      subTitle={
+        <span>
+          <strong>{copy.title}</strong>
+          <br />
+          {copy.description}
+        </span>
+      }
+      extra={
+        <Button type="primary" onClick={() => navigate('/')}>
+          {copy.action}
+        </Button>
+      }
+    />
+  );
+}
+
 function App() {
   return (
     <Routes>
@@ -196,7 +232,7 @@ function App() {
             <Route path="studio/producer" element={<ProducerPage />} />
             <Route path="studio/ops" element={<OpsPage />} />
             <Route path="ops/alert-rule-templates" element={<AlertRuleAssetsPage />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<NotFoundPage />} />
           </Route>
         </Route>
       </Route>
