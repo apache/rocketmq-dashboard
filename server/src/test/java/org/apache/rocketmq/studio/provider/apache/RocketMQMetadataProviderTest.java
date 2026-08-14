@@ -54,6 +54,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -109,6 +110,31 @@ class RocketMQMetadataProviderTest {
 
         assertThat(groups).hasSize(1);
         assertThat(groups.get(0).getConsumeType()).isEqualTo(ConsumeType.CLUSTERING);
+    }
+
+    @Test
+    void listConsumerGroupsShouldNotFetchLiveAdminInfoForEachGroup() {
+        RmqGroup first = new RmqGroup();
+        first.setName("group-a");
+        first.setClusterId("cluster-1");
+        first.setConsumeType("CLUSTERING");
+        first.setMaxRetry(16);
+        RmqGroup second = new RmqGroup();
+        second.setName("group-b");
+        second.setClusterId("cluster-1");
+        second.setConsumeType("BROADCASTING");
+        second.setMaxRetry(3);
+        when(groupMapper.selectList(any())).thenReturn(List.of(first, second));
+
+        RocketMQMetadataProvider provider = newProvider();
+
+        List<ConsumerGroupVO> groups = provider.listConsumerGroups("cluster-1", null);
+
+        assertThat(groups).extracting(ConsumerGroupVO::getName).containsExactly("group-a", "group-b");
+        assertThat(groups).extracting(ConsumerGroupVO::getOnlineInstances).containsExactly(0, 0);
+        assertThat(groups).extracting(ConsumerGroupVO::getTotalLag).containsExactly(0L, 0L);
+        verify(groupMapper).selectList(any());
+        verifyNoInteractions(runtimeAdminClientResolver);
     }
 
     @Test

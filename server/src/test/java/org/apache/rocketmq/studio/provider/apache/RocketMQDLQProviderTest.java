@@ -24,6 +24,7 @@ import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.client.producer.SendStatus;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.message.Message;
+import org.apache.rocketmq.common.message.MessageConst;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.protocol.admin.TopicStatsTable;
@@ -38,6 +39,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockedConstruction;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -227,6 +229,55 @@ class RocketMQDLQProviderTest {
     }
 
     @Test
+    void resendMessagesRetriesFromCorrectedOffsetAfterOffsetIllegal() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
+        MessageExt deadLetter = new MessageExt();
+        deadLetter.setMsgId("dlq-after-correction");
+        deadLetter.setTopic(dlqTopic);
+        deadLetter.setBody(new byte[] {1, 2, 3});
+        deadLetter.setStoreTimestamp(150L);
+        PullResult illegalOffset = new PullResult(PullStatus.OFFSET_ILLEGAL, 20L, 0L, 30L, null);
+        PullResult foundAfterCorrection = new PullResult(PullStatus.FOUND, 40L, 20L, 30L, List.of(deadLetter));
+        PullResult endOfQueue = new PullResult(PullStatus.NO_NEW_MSG, 50L, 40L, 40L, List.of());
+        SendResult sendResult = new SendResult();
+        sendResult.setSendStatus(SendStatus.SEND_OK);
+
+        try (MockedConstruction<DefaultMQPullConsumer> mockedConsumers =
+                     mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
+                         doNothing().when(consumer).start();
+                         when(consumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
+                         when(consumer.searchOffset(queue, 100L)).thenReturn(10L);
+                         when(consumer.searchOffset(queue, 200L)).thenReturn(50L);
+                         when(consumer.pull(queue, "*", 10L, 32)).thenReturn(illegalOffset);
+                         when(consumer.pull(queue, "*", 20L, 32)).thenReturn(foundAfterCorrection);
+                         when(consumer.pull(queue, "*", 40L, 32)).thenReturn(endOfQueue);
+                         doNothing().when(consumer).shutdown();
+                     });
+             MockedConstruction<DefaultMQProducer> mockedProducers =
+                     mockConstruction(DefaultMQProducer.class, (producer, context) -> {
+                         doNothing().when(producer).start();
+                         when(producer.send(any(Message.class))).thenReturn(sendResult);
+                         doNothing().when(producer).shutdown();
+                     })) {
+            assertThat(provider.resendMessages("instance-a", "group-a", 100L, 200L, "orders"))
+                    .extracting("matched", "resent", "failed", "outcome")
+                    .containsExactly(1, 1, 0, "SUCCESS");
+
+            DefaultMQPullConsumer consumer = mockedConsumers.constructed().get(0);
+            verify(consumer).pull(queue, "*", 10L, 32);
+            verify(consumer).pull(queue, "*", 20L, 32);
+            verify(consumer).pull(queue, "*", 40L, 32);
+            verify(mockedProducers.constructed().get(0)).send(any(Message.class));
+        }
+        verify(auditService).record(
+                eq("RESEND_DLQ"),
+                eq("group-a"),
+                contains("matched=1, resent=1, failed=0"),
+                eq("SUCCESS"));
+    }
+
+    @Test
     void resendMessagesCountsNonSendOkResultsAsFailures() throws Exception {
         String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
         MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
@@ -267,6 +318,53 @@ class RocketMQDLQProviderTest {
                 eq("group-a"),
                 contains("matched=1, resent=0, failed=1"),
                 eq("FAILED"));
+    }
+
+    @Test
+    void resendMessagesShouldCopyUserPropertiesAndSkipSystemProperties() throws Exception {
+        String dlqTopic = MixAll.DLQ_GROUP_TOPIC_PREFIX + "group-a";
+        MessageQueue queue = new MessageQueue(dlqTopic, "broker-a", 0);
+        MessageExt deadLetter = new MessageExt();
+        deadLetter.setMsgId("msg-with-properties");
+        deadLetter.setTopic(dlqTopic);
+        deadLetter.setBody(new byte[] {1});
+        deadLetter.setStoreTimestamp(150L);
+        deadLetter.putUserProperty("traceId", "trace-123");
+        deadLetter.putUserProperty("tenantId", "tenant-a");
+        deadLetter.getProperties().put(MessageConst.PROPERTY_REAL_TOPIC, "system-topic-should-not-copy");
+        PullResult pullResult = new PullResult(PullStatus.FOUND, 1L, 0L, 0L, List.of(deadLetter));
+        SendResult sendResult = new SendResult();
+        sendResult.setSendStatus(SendStatus.SEND_OK);
+
+        try (MockedConstruction<DefaultMQPullConsumer> ignoredConsumers =
+                     mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
+                         doNothing().when(consumer).start();
+                         when(consumer.fetchSubscribeMessageQueues(dlqTopic)).thenReturn(Set.of(queue));
+                         when(consumer.searchOffset(queue, 100L)).thenReturn(0L);
+                         when(consumer.searchOffset(queue, 200L)).thenReturn(0L);
+                         when(consumer.pull(queue, "*", 0L, 32)).thenReturn(pullResult);
+                         doNothing().when(consumer).shutdown();
+                     });
+             MockedConstruction<DefaultMQProducer> mockedProducers =
+                     mockConstruction(DefaultMQProducer.class, (producer, context) -> {
+                         doNothing().when(producer).start();
+                         when(producer.send(any(Message.class))).thenReturn(sendResult);
+                         doNothing().when(producer).shutdown();
+                     })) {
+            assertThat(provider.resendMessages("instance-a", "group-a", 100L, 200L, "target-topic"))
+                    .extracting("matched", "resent", "failed", "outcome")
+                    .containsExactly(1, 1, 0, "SUCCESS");
+
+            ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
+            verify(mockedProducers.constructed().get(0)).send(messageCaptor.capture());
+            Message resent = messageCaptor.getValue();
+            assertThat(resent.getProperties()).containsEntry("traceId", "trace-123")
+                    .containsEntry("tenantId", "tenant-a")
+                    .containsEntry("studio_dlq_origin_message_id", "msg-with-properties")
+                    .containsEntry("studio_dlq_origin_topic", dlqTopic);
+            assertThat(resent.getProperties())
+                    .doesNotContainEntry(MessageConst.PROPERTY_REAL_TOPIC, "system-topic-should-not-copy");
+        }
     }
 
     @Test
