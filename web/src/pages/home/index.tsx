@@ -18,7 +18,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { RobotOutlined } from '@ant-design/icons';
-import { Select, ConfigProvider, theme } from 'antd';
+import { Drawer, Empty, Select, ConfigProvider, theme } from 'antd';
 import {
   Stethoscope,
   ChatCircleDots,
@@ -35,7 +35,13 @@ import {
 import { getLlmConfig } from '../../api/llm';
 import { useEngineStore } from '../../stores/engineStore';
 import { useDataModeStore } from '../../stores/dataModeStore';
+import {
+  getRecentAiChatConversations,
+  type AiChatDataMode,
+  useAiChatHistoryStore,
+} from '../../stores/aiChatHistoryStore';
 import { useLang } from '../../i18n/LangContext';
+import { formatRelativeTime } from '../../utils/format';
 
 /* ─── Time-aware greeting key ─── */
 function getGreetingKey(): string {
@@ -87,7 +93,11 @@ const HomePage = () => {
   const [selectedModel, setSelectedModel] = useState('');
   const engine = useEngineStore((s) => s.engine);
   const setEnginePreference = useEngineStore((s) => s.setEngine);
+  const useMock = useDataModeStore((state) => state.useMock);
+  const chatMode: AiChatDataMode = useMock ? 'mock' : 'real';
+  const conversations = useAiChatHistoryStore((state) => state.histories[chatMode].conversations);
   const [promoteOn, setPromoteOn] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [indicatorStyle, setIndicatorStyle] = useState({ width: 83, left: 6 });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -205,10 +215,18 @@ const HomePage = () => {
             ...(selectedModel ? { model: selectedModel } : {}),
             engine,
             mode: activeMode,
+            newConversation: true,
             ...(promoteOn ? { enhance: true } : {}),
           }
         : null,
     });
+  };
+
+  const recentConversations = getRecentAiChatConversations(conversations);
+
+  const openConversation = (conversationId: string) => {
+    setHistoryOpen(false);
+    navigate('/ai', { state: { conversationId } });
   };
 
   return (
@@ -413,7 +431,13 @@ const HomePage = () => {
                     />
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
-                    <button className="p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors">
+                    <button
+                      type="button"
+                      className="p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors"
+                      aria-label={t('ai.history.title')}
+                      title={t('ai.history.title')}
+                      onClick={() => setHistoryOpen(true)}
+                    >
                       <ClockCounterClockwise size={20} />
                     </button>
                   </div>
@@ -535,6 +559,38 @@ const HomePage = () => {
           </span>
         </footer>
       </div>
+      <Drawer
+        title={t('ai.history.title')}
+        placement="right"
+        width={360}
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+      >
+        {recentConversations.length === 0 ? (
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={t('ai.history.empty')}
+          />
+        ) : (
+          <div className="flex flex-col gap-2">
+            {recentConversations.map((conversation) => (
+              <button
+                key={conversation.id}
+                type="button"
+                onClick={() => openConversation(conversation.id)}
+                className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:border-blue-300 hover:bg-blue-50"
+              >
+                <span className="flex items-center justify-between gap-3">
+                  <span className="min-w-0 truncate">{conversation.prompt}</span>
+                  <span className="shrink-0 text-xs text-gray-400">
+                    {formatRelativeTime(conversation.updatedAt, lang, t)}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </Drawer>
     </ConfigProvider>
   );
 };

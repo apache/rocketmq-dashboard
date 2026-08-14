@@ -306,6 +306,16 @@ const translations: Record<string, Record<Lang, string>> = {
   // ─── AI Page ───
   'ai.title': { zh: 'AI 交互', en: 'AI Chat' },
   'ai.commonCommands': { zh: '常用指令', en: 'Common Commands' },
+  'ai.history.title': { zh: 'AI 对话历史', en: 'AI conversation history' },
+  'ai.history.empty': { zh: '当前模式暂无对话记录', en: 'No conversations in this mode' },
+  'ai.history.justNow': { zh: '刚刚', en: 'Just now' },
+  'ai.history.minutesAgo': { zh: '{count} 分钟前', en: '{count} min ago' },
+  'ai.responseStopped': { zh: '回答已停止。', en: 'Response stopped.' },
+  'ai.requestFailed': { zh: 'AI 请求失败', en: 'AI request failed' },
+  'ai.runtimeLoadFailed': { zh: 'AI 配置加载失败', en: 'Failed to load AI configuration' },
+  'ai.providerRequired': { zh: '请先配置并启用 LLM Provider', en: 'Configure and enable an LLM provider first' },
+  'ai.toolCatalogLoadFailed': { zh: 'AI 工具目录加载失败', en: 'Failed to load the AI tool catalog' },
+  'ai.clusterListLoadFailed': { zh: '集群列表加载失败，已显示全局工具', en: 'Failed to load clusters; showing global tools' },
 
   // ─── Home Page ───
   'home.banner': {

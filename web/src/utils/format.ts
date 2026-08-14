@@ -40,6 +40,41 @@ export function formatDate(date: string | Date | null | undefined): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+type RelativeTimeTranslator = (key: string, params?: Record<string, string | number>) => string;
+
+/**
+ * Format a recent timestamp for compact conversation history entries.
+ */
+export function formatRelativeTime(
+  timestamp: number,
+  lang: 'zh' | 'en',
+  t: RelativeTimeTranslator,
+  now = Date.now(),
+): string {
+  if (!timestamp) return t('ai.history.justNow');
+
+  const elapsed = Math.max(0, now - timestamp);
+  const minutes = Math.floor(elapsed / 60_000);
+  if (minutes < 1) return t('ai.history.justNow');
+  if (minutes < 60) return t('ai.history.minutesAgo', { count: minutes });
+
+  const updatedAt = new Date(timestamp);
+  const current = new Date(now);
+  const locale = lang === 'zh' ? 'zh-CN' : 'en-US';
+  if (updatedAt.toDateString() === current.toDateString()) {
+    return new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit', hour12: false }).format(updatedAt);
+  }
+  return new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric' }).format(updatedAt);
+}
+
+/**
+ * Format a message timestamp for a compact chat bubble footer.
+ */
+export function formatTimeOfDay(timestamp: number): string {
+  const date = new Date(timestamp);
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 /**
  * Format bytes into human-readable string (1024-based).
  * e.g. 1536 → '1.5 KB', 1048576 → '1 MB'
