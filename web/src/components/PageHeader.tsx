@@ -16,7 +16,7 @@
  */
 
 import { Flex, Typography } from 'antd';
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 
 const { Title, Text } = Typography;
 
@@ -25,22 +25,43 @@ interface PageHeaderProps {
   subtitle?: ReactNode;
   extra?: ReactNode;
   headingLevel?: 1 | 2 | 3 | 4 | 5;
+  /** Override the browser-tab title, or set to false to leave it unchanged. */
+  documentTitle?: string | false;
 }
 
-const PageHeader = ({ title, subtitle, extra, headingLevel = 1 }: PageHeaderProps) => (
-  <Flex justify="space-between" align="center" style={{ marginBottom: 24 }}>
-    <Flex align="center" gap={12}>
-      <Title level={headingLevel} style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>
-        {title}
-      </Title>
-      {subtitle && (
-        <Text type="secondary" style={{ fontSize: 13 }}>
-          {subtitle}
-        </Text>
-      )}
+const PageHeader = ({
+  title,
+  subtitle,
+  extra,
+  headingLevel = 1,
+  documentTitle,
+}: PageHeaderProps) => {
+  useEffect(() => {
+    if (documentTitle === false) return;
+
+    const previousTitle = document.title;
+    document.title = `${documentTitle ?? title} | RocketMQ Studio`;
+
+    return () => {
+      document.title = previousTitle;
+    };
+  }, [documentTitle, title]);
+
+  return (
+    <Flex justify="space-between" align="center" style={{ marginBottom: 24 }}>
+      <Flex align="center" gap={12}>
+        <Title level={headingLevel} style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>
+          {title}
+        </Title>
+        {subtitle && (
+          <Text type="secondary" style={{ fontSize: 13 }}>
+            {subtitle}
+          </Text>
+        )}
+      </Flex>
+      {extra && <Flex gap={8}>{extra}</Flex>}
     </Flex>
-    {extra && <Flex gap={8}>{extra}</Flex>}
-  </Flex>
-);
+  );
+};
 
 export default PageHeader;
