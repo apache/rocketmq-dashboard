@@ -30,6 +30,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -625,25 +626,29 @@ class AclServiceTest {
     }
 
 
-    @Test
-    void createAndUpdatePlainAccessConfigShouldRejectInvalidWhiteRemoteAddress() {
+    @ParameterizedTest
+    @ValueSource(strings = {"999.999.999.999", "10.0.0.0/8", "192.168.100-1.*", "192.168.1.{}"})
+    void createAndUpdatePlainAccessConfigShouldRejectInvalidWhiteRemoteAddress(String whiteRemoteAddress) {
         PlainAccessConfigVO config = PlainAccessConfigVO.builder()
                 .accessKey("ak-1")
-                .whiteRemoteAddress("999.999.999.999")
+                .whiteRemoteAddress(whiteRemoteAddress)
                 .build();
 
         assertThatThrownBy(() -> aclService.createAndUpdatePlainAccessConfig(config))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("whiteRemoteAddress is not a valid IP/CIDR range")
+                .hasMessageContaining("whiteRemoteAddress is not a valid plain ACL address expression")
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(400));
         verify(aclRepository, never()).createAndUpdatePlainAccessConfig(any());
+        verify(operationAuditService, never()).record(any(), any(), any(), any(), any(), any(), any());
     }
 
-    @Test
-    void createAndUpdatePlainAccessConfigShouldAcceptValidWhiteRemoteAddress() {
+    @ParameterizedTest
+    @ValueSource(strings = {"*", "192.168.*.*", "192.168.1-100.*", "192.168.1.{1,2,3}",
+        "192.168.1.10,192.168.1.11", "2001:db8::1"})
+    void createAndUpdatePlainAccessConfigShouldAcceptValidWhiteRemoteAddress(String whiteRemoteAddress) {
         PlainAccessConfigVO config = PlainAccessConfigVO.builder()
                 .accessKey("ak-1")
-                .whiteRemoteAddress("10.0.0.0/8")
+                .whiteRemoteAddress(whiteRemoteAddress)
                 .build();
         when(aclRepository.createAndUpdatePlainAccessConfig(config)).thenReturn(config);
 
@@ -703,7 +708,7 @@ class AclServiceTest {
         PlainAccessConfigVO config = PlainAccessConfigVO.builder()
                 .accessKey("ak-sensitive")
                 .secretKey("secret-value")
-                .whiteRemoteAddress("10.0.0.0/8")
+                .whiteRemoteAddress("192.168.*.*")
                 .admin(true)
                 .build();
         when(aclRepository.createAndUpdatePlainAccessConfig(config)).thenReturn(config);
@@ -713,7 +718,7 @@ class AclServiceTest {
         verify(operationAuditService).record(eq("UPSERT_PLAIN_ACCESS_CONFIG"), eq("ACL_USER"),
                 eq("ak-sensitive"), eq(null),
                 argThat(detail -> detail.equals("admin=true, whiteRemoteAddressConfigured=true")
-                        && !detail.contains("secret-value") && !detail.contains("10.0.0.0/8")),
+                        && !detail.contains("secret-value") && !detail.contains("192.168.*.*")),
                 eq("SUCCESS"), eq(null));
     }
 

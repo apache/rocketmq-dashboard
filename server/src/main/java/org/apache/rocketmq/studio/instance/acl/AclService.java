@@ -217,9 +217,10 @@ public class AclService {
                     ? null : normalizedWhiteRemoteAddress);
         }
         if (StringUtils.hasText(config.getWhiteRemoteAddress())
-                && !IpRangeMatcher.isValidRange(config.getWhiteRemoteAddress())) {
+                && !PlainAclRemoteAddressValidator.isValid(config.getWhiteRemoteAddress())) {
             throw new BusinessException(400,
-                    "whiteRemoteAddress is not a valid IP/CIDR range: " + config.getWhiteRemoteAddress());
+                    "whiteRemoteAddress is not a valid plain ACL address expression: "
+                            + config.getWhiteRemoteAddress());
         }
         log.info("Creating/updating plain access config accessKey={}", config.getAccessKey());
         PlainAccessConfigVO saved = aclRepository.createAndUpdatePlainAccessConfig(config);
