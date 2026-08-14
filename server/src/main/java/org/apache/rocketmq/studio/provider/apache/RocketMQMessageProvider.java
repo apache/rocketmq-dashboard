@@ -56,6 +56,7 @@ import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.PriorityQueue;
 import java.util.Set;
 
 /**
@@ -81,6 +82,9 @@ public class RocketMQMessageProvider implements MessageProvider {
     private static final long ONE_HOUR_MILLIS = 3600_000L;
     private static final long ONE_DAY_MILLIS = 24 * ONE_HOUR_MILLIS;
     private static final int MAX_CONSECUTIVE_OFFSET_ILLEGAL = 3;
+    private static final Comparator<MessageRecordVO> TOPIC_QUERY_ORDER = Comparator
+            .comparingLong(MessageRecordVO::getStoreTime)
+            .thenComparing(MessageRecordVO::getMsgId, Comparator.nullsFirst(String::compareTo));
 
     private final RuntimeAdminClientResolver runtimeAdminClientResolver;
     private final QueryHistoryService queryHistoryService;
@@ -191,22 +195,19 @@ public class RocketMQMessageProvider implements MessageProvider {
      */
     private List<MessageRecordVO> queryByTopic(String endpoint, String topic, String tag, long begin, long end, int limit) {
         DefaultMQPullConsumer consumer = newPullConsumer("studio-msg-query", endpoint);
-        List<MessageRecordVO> result = new ArrayList<>();
+        int resultLimit = Math.min(limit, TOPIC_QUERY_HARD_CAP);
+        PriorityQueue<MessageRecordVO> newestMessages = new PriorityQueue<>(TOPIC_QUERY_ORDER);
         try {
             consumer.start();
             Set<MessageQueue> queues = consumer.fetchSubscribeMessageQueues(topic);
             if (queues == null || queues.isEmpty()) {
-                return result;
+                return Collections.emptyList();
             }
-            outer:
             for (MessageQueue queue : queues) {
                 long minOffset = consumer.searchOffset(queue, begin);
                 long maxOffset = consumer.searchOffset(queue, end);
                 int consecutiveIllegalOffsets = 0;
                 for (long offset = minOffset; offset <= maxOffset; ) {
-                    if (result.size() >= Math.min(limit, TOPIC_QUERY_HARD_CAP)) {
-                        break outer;
-                    }
                     PullResult pullResult = consumer.pull(queue, "*", offset, 32);
                     if (pullResult == null) {
                         log.warn("Stop topic query for {} because queue {} returned no pull result", topic, queue);
@@ -247,10 +248,7 @@ public class RocketMQMessageProvider implements MessageProvider {
                         if (!matchesTag(messageExt, tag)) {
                             continue;
                         }
-                        result.add(toRecordVO(messageExt));
-                        if (result.size() >= Math.min(limit, TOPIC_QUERY_HARD_CAP)) {
-                            break outer;
-                        }
+                        addTopicQueryCandidate(newestMessages, toRecordVO(messageExt), resultLimit);
                     }
                 }
             }
@@ -260,8 +258,25 @@ public class RocketMQMessageProvider implements MessageProvider {
         } finally {
             consumer.shutdown();
         }
-        result.sort(Comparator.comparingLong(MessageRecordVO::getStoreTime).reversed());
-        return result;
+        return newestMessages.stream()
+                .sorted(TOPIC_QUERY_ORDER.reversed())
+                .toList();
+    }
+
+    private void addTopicQueryCandidate(PriorityQueue<MessageRecordVO> newestMessages,
+                                        MessageRecordVO candidate, int resultLimit) {
+        if (resultLimit <= 0) {
+            return;
+        }
+        if (newestMessages.size() < resultLimit) {
+            newestMessages.offer(candidate);
+            return;
+        }
+        MessageRecordVO oldestKept = newestMessages.peek();
+        if (oldestKept != null && TOPIC_QUERY_ORDER.compare(candidate, oldestKept) > 0) {
+            newestMessages.poll();
+            newestMessages.offer(candidate);
+        }
     }
 
     @Override

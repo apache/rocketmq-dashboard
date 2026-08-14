@@ -45,9 +45,11 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -193,24 +195,21 @@ class RocketMQMessageProviderTest {
     }
 
     @Test
-    void queryByTopicReturnsNewestMessagesFirst() throws Exception {
-        MessageQueue queue = new MessageQueue("TopicA", "broker-a", 0);
-        MessageExt older = new MessageExt();
-        older.setMsgId("older");
-        older.setTopic("TopicA");
-        older.setStoreTimestamp(150L);
-        MessageExt newer = new MessageExt();
-        newer.setMsgId("newer");
-        newer.setTopic("TopicA");
-        newer.setStoreTimestamp(250L);
-        PullResult pullResult = new PullResult(PullStatus.FOUND, 11L, 10L, 11L,
-                List.of(older, newer));
+    void queryByTopicSortsMessagesAcrossQueuesNewestFirst() throws Exception {
+        MessageQueue olderQueue = new MessageQueue("TopicA", "broker-a", 0);
+        MessageQueue newerQueue = new MessageQueue("TopicA", "broker-a", 1);
+        PullResult olderPullResult = new PullResult(PullStatus.FOUND, 11L, 10L, 10L,
+                List.of(topicMessage("older", 150L)));
+        PullResult newerPullResult = new PullResult(PullStatus.FOUND, 11L, 10L, 10L,
+                List.of(topicMessage("newer", 250L)));
         try (MockedConstruction<DefaultMQPullConsumer> ignored =
                      mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
                          doNothing().when(consumer).start();
-                         when(consumer.fetchSubscribeMessageQueues("TopicA")).thenReturn(Set.of(queue));
-                         when(consumer.searchOffset(eq(queue), anyLong())).thenReturn(10L);
-                         when(consumer.pull(queue, "*", 10L, 32)).thenReturn(pullResult);
+                         when(consumer.fetchSubscribeMessageQueues("TopicA"))
+                                 .thenReturn(new LinkedHashSet<>(List.of(olderQueue, newerQueue)));
+                         when(consumer.searchOffset(any(MessageQueue.class), anyLong())).thenReturn(10L);
+                         when(consumer.pull(olderQueue, "*", 10L, 32)).thenReturn(olderPullResult);
+                         when(consumer.pull(newerQueue, "*", 10L, 32)).thenReturn(newerPullResult);
                          doNothing().when(consumer).shutdown();
                      })) {
             List<MessageRecordVO> messages = provider.queryMessages(
@@ -254,6 +253,62 @@ class RocketMQMessageProviderTest {
         }
         verify(queryHistoryService).recordMessageQuery("instance-a", "TOPIC", "TopicA", null, null, null,
                 100L, 200L, 1);
+    }
+
+    @Test
+    void queryByTopicKeepsNewestMessagesWhenEarlierQueuesFillTheDefaultLimit() throws Exception {
+        MessageQueue olderQueue = new MessageQueue("TopicA", "broker-a", 0);
+        MessageQueue newerQueue = new MessageQueue("TopicA", "broker-a", 1);
+        PullResult olderPullResult = new PullResult(PullStatus.FOUND, 11L, 10L, 10L,
+                IntStream.range(0, 200)
+                        .mapToObj(index -> topicMessage("older-" + index, 150L))
+                        .toList());
+        PullResult newerPullResult = new PullResult(PullStatus.FOUND, 11L, 10L, 10L,
+                List.of(topicMessage("newer", 250L)));
+        try (MockedConstruction<DefaultMQPullConsumer> ignored =
+                     mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
+                         doNothing().when(consumer).start();
+                         when(consumer.fetchSubscribeMessageQueues("TopicA"))
+                                 .thenReturn(new LinkedHashSet<>(List.of(olderQueue, newerQueue)));
+                         when(consumer.searchOffset(any(MessageQueue.class), anyLong())).thenReturn(10L);
+                         when(consumer.pull(olderQueue, "*", 10L, 32)).thenReturn(olderPullResult);
+                         when(consumer.pull(newerQueue, "*", 10L, 32)).thenReturn(newerPullResult);
+                         doNothing().when(consumer).shutdown();
+                     })) {
+            List<MessageRecordVO> messages = provider.queryMessages(
+                    "instance-a", "TopicA", null, null, null, 100L, 300L);
+
+            assertThat(messages).hasSize(200);
+            assertThat(messages.get(0).getMsgId()).isEqualTo("newer");
+            assertThat(messages).extracting(MessageRecordVO::getMsgId)
+                    .contains("newer");
+        }
+    }
+
+    @Test
+    void queryByTopicUsesMessageIdAsStableTieBreakerForEqualTimestamps() throws Exception {
+        MessageQueue firstQueue = new MessageQueue("TopicA", "broker-a", 0);
+        MessageQueue secondQueue = new MessageQueue("TopicA", "broker-a", 1);
+        PullResult firstPullResult = new PullResult(PullStatus.FOUND, 11L, 10L, 10L,
+                List.of(topicMessage("message-a", 250L)));
+        PullResult secondPullResult = new PullResult(PullStatus.FOUND, 11L, 10L, 10L,
+                List.of(topicMessage("message-b", 250L)));
+        try (MockedConstruction<DefaultMQPullConsumer> ignored =
+                     mockConstruction(DefaultMQPullConsumer.class, (consumer, context) -> {
+                         doNothing().when(consumer).start();
+                         when(consumer.fetchSubscribeMessageQueues("TopicA"))
+                                 .thenReturn(new LinkedHashSet<>(List.of(firstQueue, secondQueue)));
+                         when(consumer.searchOffset(any(MessageQueue.class), anyLong())).thenReturn(10L);
+                         when(consumer.pull(firstQueue, "*", 10L, 32)).thenReturn(firstPullResult);
+                         when(consumer.pull(secondQueue, "*", 10L, 32)).thenReturn(secondPullResult);
+                         doNothing().when(consumer).shutdown();
+                     })) {
+            List<MessageRecordVO> messages = provider.queryMessages(
+                    "instance-a", "TopicA", null, null, null, 100L, 300L);
+
+            assertThat(messages).extracting(MessageRecordVO::getMsgId)
+                    .containsExactly("message-b", "message-a");
+        }
     }
 
     @Test
@@ -435,5 +490,14 @@ class RocketMQMessageProviderTest {
     private static String traceBody(String... contexts) {
         return String.join(String.valueOf(TraceConstants.FIELD_SPLITOR), contexts)
                 + TraceConstants.FIELD_SPLITOR;
+    }
+
+    private static MessageExt topicMessage(String msgId, long storeTimestamp) {
+        MessageExt message = new MessageExt();
+        message.setMsgId(msgId);
+        message.setTopic("TopicA");
+        message.setStoreTimestamp(storeTimestamp);
+        message.setBody(("body-" + msgId).getBytes(StandardCharsets.UTF_8));
+        return message;
     }
 }
