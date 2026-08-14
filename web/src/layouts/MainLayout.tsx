@@ -44,6 +44,7 @@ import { useLang } from '../i18n/LangContext';
 import { useTheme } from '../theme/useTheme';
 import { logout as requestLogout } from '../api/auth';
 import useAuthStore from '../stores/authStore';
+import { clearAiChatHistories } from '../stores/aiChatHistoryStore';
 import {
   filterNavigationEntries,
   isNavigationSearchShortcut,
@@ -86,6 +87,7 @@ const MainLayout = () => {
     } catch {
       message.warning('服务端退出失败，已清除本地登录状态');
     } finally {
+      clearAiChatHistories();
       clearAuth();
       navigate('/login', { replace: true });
     }

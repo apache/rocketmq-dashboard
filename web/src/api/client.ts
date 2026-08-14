@@ -18,6 +18,7 @@
 import axios from 'axios';
 import { message } from 'antd';
 import { clearAuthSession, TOKEN_STORAGE_KEY } from '../stores/authStorage';
+import { clearAiChatHistories } from '../stores/aiChatHistoryStore';
 import { API_BASE_URL } from '../config';
 
 const SUCCESS_BUSINESS_CODES = new Set([0, 200]);
@@ -88,6 +89,7 @@ client.interceptors.response.use(
   },
   (error) => {
     if (error.response?.status === 401 && !isPublicAuthRequest(error.config?.url)) {
+      clearAiChatHistories();
       clearAuthSession();
       window.location.href = '/';
     }
