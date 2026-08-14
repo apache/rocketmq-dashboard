@@ -25,6 +25,7 @@ async function loadStore(persisted?: object) {
 
 describe('aiChatHistoryStore', () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.resetModules();
     sessionStorage.clear();
   });
@@ -86,6 +87,39 @@ describe('aiChatHistoryStore', () => {
     expect(conversations[0]?.id).toBe('conversation-20');
     expect(conversations[0]?.messages).toHaveLength(100);
     expect(conversations[0]?.messages[0]?.id).toBe('message-1');
+  });
+
+  it('rejects malformed persisted conversation data instead of failing hydration', async () => {
+    const store = await loadStore({
+      histories: { real: { conversations: { invalid: true }, activeConversationId: 'missing' } },
+    });
+
+    expect(store.getState().histories.real).toEqual({ conversations: [], activeConversationId: null });
+  });
+
+  it('bounds a persisted message field before it can exhaust session storage', async () => {
+    const { MAX_AI_CHAT_MESSAGE_FIELD_LENGTH } = await import('./aiChatHistoryStore');
+    const store = await loadStore();
+    store.getState().setMessages('real', 'conversation-1', [{
+      id: 'answer',
+      role: 'ai',
+      summary: 'x'.repeat(MAX_AI_CHAT_MESSAGE_FIELD_LENGTH + 100),
+    }]);
+
+    expect(store.getState().histories.real.conversations[0]?.messages[0]?.summary).toHaveLength(
+      MAX_AI_CHAT_MESSAGE_FIELD_LENGTH + '\n\n[Truncated]'.length,
+    );
+  });
+
+  it('clears pending throttled persistence when histories are cleared', async () => {
+    vi.useFakeTimers();
+    const store = await loadStore();
+    const { clearAiChatHistories, flushAiChatHistoryPersistence } = await import('./aiChatHistoryStore');
+    store.getState().setMessages('real', 'conversation-1', [{ id: 'message', role: 'user', text: 'secret' }]);
+    clearAiChatHistories();
+    flushAiChatHistoryPersistence();
+
+    expect(sessionStorage.getItem(STORAGE_KEY)).toContain('"conversations":[]');
   });
 
   it('derives recent conversations from the first user message', async () => {

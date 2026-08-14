@@ -58,6 +58,7 @@ import { useDataModeStore } from '../../stores/dataModeStore';
 import { useEngineStore } from '../../stores/engineStore';
 import {
   getRecentAiChatConversations,
+  flushAiChatHistoryPersistence,
   type AiChatDataMode,
   useAiChatHistoryStore,
 } from '../../stores/aiChatHistoryStore';
@@ -121,6 +122,9 @@ const quickActions = [
 ];
 
 const GLOBAL_TOOL_SCOPE = '__global__';
+
+const newConversationId = (): string =>
+  `conversation-${typeof crypto?.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`}`;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -439,6 +443,7 @@ const AiPage = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const streamRequestIdRef = useRef(0);
+  const previousChatModeRef = useRef(chatMode);
   const conversationIdRef = useRef<string | null>(history.activeConversationId);
   const toolLoadRequestRef = useRef(0);
   const consumedDraftRef = useRef(false);
@@ -458,6 +463,13 @@ const AiPage = () => {
   }, [messages, scrollToBottom]);
 
   useEffect(() => {
+    if (previousChatModeRef.current !== chatMode) {
+      abortControllerRef.current?.abort();
+      abortControllerRef.current = null;
+      streamRequestIdRef.current += 1;
+      setLoading(false);
+      previousChatModeRef.current = chatMode;
+    }
     conversationIdRef.current = useAiChatHistoryStore.getState().histories[chatMode].activeConversationId;
   }, [chatMode, history.activeConversationId]);
 
@@ -499,9 +511,9 @@ const AiPage = () => {
 
     void Promise.resolve().then(() => {
       if (draft.newConversation) {
-        const newConversationId = `conversation-${Date.now()}`;
-        startConversation(chatMode, newConversationId);
-        conversationIdRef.current = newConversationId;
+        const nextConversationId = newConversationId();
+        startConversation(chatMode, nextConversationId);
+        conversationIdRef.current = nextConversationId;
       } else if (draft.conversationId) {
         selectConversation(chatMode, draft.conversationId);
         conversationIdRef.current = draft.conversationId;
@@ -562,7 +574,7 @@ const AiPage = () => {
       }
 
       if (!conversationIdRef.current) {
-        conversationIdRef.current = `conversation-${Date.now()}`;
+        conversationIdRef.current = newConversationId();
         startConversation(chatMode, conversationIdRef.current);
       }
 
@@ -601,6 +613,7 @@ const AiPage = () => {
             conversationId,
           },
           (chunk) => {
+            if (streamRequestIdRef.current !== requestId || controller.signal.aborted) return;
             updateMessages(chatMode, conversationId, (prev) =>
               prev.map((item) =>
                 item.id === responseId
@@ -611,6 +624,7 @@ const AiPage = () => {
           },
           controller.signal,
           (enhanceDelta) => {
+            if (streamRequestIdRef.current !== requestId || controller.signal.aborted) return;
             updateMessages(chatMode, conversationId, (prev) =>
               prev.map((item) =>
                 item.id === responseId
@@ -641,6 +655,7 @@ const AiPage = () => {
         updateMessages(chatMode, conversationId, (prev) =>
           prev.map((item) => (item.id === responseId ? { ...item, pending: false } : item)),
         );
+        flushAiChatHistoryPersistence();
         if (streamRequestIdRef.current === requestId) setLoading(false);
       }
     },
