@@ -20,6 +20,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import org.apache.rocketmq.studio.common.domain.Result;
+import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -65,7 +66,9 @@ public class AlertRuleAssetController {
         String yaml = alertRuleAssetService.getAssetYaml(name);
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.parseMediaType("application/x-yaml"));
-        headers.setContentDispositionFormData("attachment", name + ".yaml");
+        headers.setContentDisposition(ContentDisposition.attachment()
+                .filename(name + ".yaml")
+                .build());
         return new ResponseEntity<>(yaml.getBytes(StandardCharsets.UTF_8), headers, HttpStatus.OK);
     }
 }

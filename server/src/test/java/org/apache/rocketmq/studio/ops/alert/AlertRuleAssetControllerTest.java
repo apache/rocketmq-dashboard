@@ -76,6 +76,6 @@ class AlertRuleAssetControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Type", "application/x-yaml"))
                 .andExpect(header().string("Content-Disposition",
-                        "form-data; name=\"attachment\"; filename=\"rocketmq-broker-down.yaml\""));
+                        "attachment; filename=\"rocketmq-broker-down.yaml\""));
     }
 }
