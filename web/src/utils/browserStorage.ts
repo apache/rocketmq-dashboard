@@ -15,16 +15,28 @@
  * limitations under the License.
  */
 
-import type { Lang } from './translations';
-import { readLocalStorage, writeLocalStorage } from '../utils/browserStorage';
-
-export const LANGUAGE_STORAGE_KEY = 'rocketmq-studio-language';
-
-export function getInitialLanguage(): Lang {
-  const stored = readLocalStorage(LANGUAGE_STORAGE_KEY);
-  return stored === 'en' || stored === 'zh' ? stored : 'zh';
+export function readLocalStorage(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
 }
 
-export function persistLanguage(lang: Lang): void {
-  writeLocalStorage(LANGUAGE_STORAGE_KEY, lang);
+export function writeLocalStorage(key: string, value: string): boolean {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function removeLocalStorage(key: string): boolean {
+  try {
+    localStorage.removeItem(key);
+    return true;
+  } catch {
+    return false;
+  }
 }
