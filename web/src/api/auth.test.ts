@@ -46,7 +46,6 @@ describe('Auth API', () => {
 
   it('login should post credentials and return token data', async () => {
     const mockResponse = {
-      token: 'jwt-token-123',
       expiresIn: 86400,
       user: {
         userId: 'user-1',
@@ -60,7 +59,6 @@ describe('Auth API', () => {
 
     const result = await login('admin', 'secret');
     expect(result).toEqual(mockResponse);
-    expect(result.token).toBe('jwt-token-123');
     expect(result.expiresIn).toBe(86400);
     expect(result.user.username).toBe('admin');
     expect(result.user.userId).toBe('user-1');

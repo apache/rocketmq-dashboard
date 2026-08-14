@@ -21,9 +21,8 @@ import { clearAuthSession, persistAuthSession, readAuthSession } from './authSto
 interface AuthState {
   user: string | null;
   userId: string | null;
-  token: string | null;
   admin: boolean | null;
-  login: (token: string, user: string, userId: string, admin: boolean) => void;
+  login: (user: string, userId: string, admin: boolean) => void;
   logout: () => void;
 }
 
@@ -32,15 +31,14 @@ const initialSession = readAuthSession();
 const useAuthStore = create<AuthState>((set) => ({
   user: initialSession.user,
   userId: initialSession.userId,
-  token: initialSession.token,
   admin: initialSession.admin,
-  login: (token: string, user: string, userId: string, admin: boolean) => {
-    persistAuthSession(token, user, userId, admin);
-    set({ token, user, userId, admin });
+  login: (user: string, userId: string, admin: boolean) => {
+    persistAuthSession(user, userId, admin);
+    set({ user, userId, admin });
   },
   logout: () => {
     clearAuthSession();
-    set({ token: null, user: null, userId: null, admin: null });
+    set({ user: null, userId: null, admin: null });
   },
 }));
 

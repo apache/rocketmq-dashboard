@@ -22,7 +22,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -55,7 +54,7 @@ public class AuthInterceptor implements HandlerInterceptor {
             // enforcement, matching the documented AuthWebConfig behaviour.
             return true;
         }
-        String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
+        String authorization = AuthCookie.authorization(request, authProperties);
         if (!authService.isAuthenticated(authorization)) {
             writeError(response, HttpStatus.UNAUTHORIZED, "Unauthorized");
             return false;

@@ -16,7 +16,6 @@
  */
 
 import client from './client';
-import { readAuthSession } from '../stores/authStorage';
 
 const MAX_SSE_EVENT_CHARS = 1024 * 1024;
 
@@ -161,12 +160,11 @@ export async function chatStream(
   signal?: AbortSignal,
   onEnhance?: (prompt: string) => void,
 ) {
-  const token = readAuthSession().token;
   const response = await fetch('/api/ai/chat', {
     method: 'POST',
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify(data),
     signal,

@@ -32,6 +32,9 @@ import java.util.List;
 @ConfigurationProperties(prefix = "studio.auth")
 public class AuthProperties {
     private boolean loginRequired;
+    private String sessionCookieName = "rmq_studio_session";
+    private boolean sessionCookieSecure = true;
+    private String sessionCookieSameSite = "Strict";
     private List<User> users = new ArrayList<>();
 
     public List<User> configuredUsers() {

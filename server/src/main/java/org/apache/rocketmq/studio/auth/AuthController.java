@@ -17,21 +17,23 @@
 
 package org.apache.rocketmq.studio.auth;
 
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
 import org.apache.rocketmq.studio.common.domain.Result;
 import org.apache.rocketmq.studio.common.exception.BusinessException;
 import org.apache.rocketmq.studio.settings.GeneralSettingsVO;
 import org.apache.rocketmq.studio.settings.SettingsRepository;
-import lombok.RequiredArgsConstructor;
 import org.springframework.http.CacheControl;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import jakarta.validation.Valid;
+
+import java.time.Duration;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -44,10 +46,10 @@ public class AuthController {
 
     @GetMapping("/status")
     public ResponseEntity<Result<AuthStatusVO>> status(
-            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization) {
+            HttpServletRequest request) {
         AuthStatusVO status = AuthStatusVO.builder()
                 .loginRequired(isLoginRequired())
-                .authenticated(authService.isAuthenticated(authorization))
+                .authenticated(authService.isAuthenticated(AuthCookie.authorization(request, authProperties)))
                 .build();
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
@@ -63,25 +65,28 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public Result<LoginVO> login(@RequestBody(required = false) LoginDTO request) {
+    public Result<LoginVO> login(@RequestBody(required = false) LoginDTO request,
+                                 HttpServletResponse response) {
         if (request == null) {
             throw new BusinessException(400, "Login request is required");
         }
-        return Result.ok(authService.login(request));
+        LoginVO login = authService.login(request);
+        AuthCookie.write(response, authProperties, login.getToken(), Duration.ofSeconds(login.getExpiresIn()));
+        return Result.ok(login);
     }
 
     @PostMapping("/logout")
-    public Result<Void> logout(@RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false)
-                               String authorization) {
-        authService.logout(authorization);
+    public Result<Void> logout(HttpServletRequest request, HttpServletResponse response) {
+        authService.logout(AuthCookie.authorization(request, authProperties));
+        AuthCookie.clear(response, authProperties);
         return Result.ok();
     }
 
     @PostMapping("/password")
     public Result<Void> changePassword(
-            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            HttpServletRequest servletRequest,
             @Valid @RequestBody ChangePasswordDTO request) {
-        LoginVO.UserInfo user = authService.getAuthenticatedUser(authorization)
+        LoginVO.UserInfo user = authService.getAuthenticatedUser(AuthCookie.authorization(servletRequest, authProperties))
                 .orElseThrow(() -> new BusinessException(401, "Unauthorized"));
         if (user.getUserId() == null) {
             throw new BusinessException(503, "Studio user management is not initialized");

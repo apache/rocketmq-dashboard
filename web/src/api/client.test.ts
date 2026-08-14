@@ -110,10 +110,10 @@ describe('API client response contract', () => {
     expect(message.error).not.toHaveBeenCalled();
   });
 
-  it('attaches the stored bearer token to outgoing requests', async () => {
-    localStorage.setItem('token', 'test-token');
+  it('uses credentials without attaching a client-readable bearer token', async () => {
     mock.onGet('/clusters').reply((config) => {
-      expect(config.headers?.Authorization).toBe('Bearer test-token');
+      expect(config.headers?.Authorization).toBeUndefined();
+      expect(config.withCredentials).toBe(true);
       return [200, { code: 200, message: 'success', data: [] }];
     });
 
@@ -123,38 +123,33 @@ describe('API client response contract', () => {
   it.each(['/auth/login', '/auth/status'])(
     'does not clear the current session when public auth request %s returns 401',
     async (path) => {
-      localStorage.setItem('token', 'current-token');
       localStorage.setItem('rocketmq-studio-user', 'admin');
       localStorage.setItem('rocketmq-studio-user-admin', 'true');
       mock.onAny(path).reply(401, { code: 401, message: 'Unauthorized', data: null });
 
       await expect(client.get(path)).rejects.toMatchObject({ response: { status: 401 } });
 
-      expect(localStorage.getItem('token')).toBe('current-token');
+      expect(localStorage.getItem('token')).toBeNull();
       expect(localStorage.getItem('rocketmq-studio-user')).toBe('admin');
       expect(localStorage.getItem('rocketmq-studio-user-admin')).toBe('true');
     },
   );
 
   it('clears the current session when a protected API request returns 401', async () => {
-    localStorage.setItem('token', 'expired-token');
     localStorage.setItem('rocketmq-studio-user', 'admin');
     localStorage.setItem('rocketmq-studio-user-admin', 'true');
     mock.onGet('/clusters').reply(401, { code: 401, message: 'Unauthorized', data: null });
 
     await expect(client.get('/clusters')).rejects.toMatchObject({ response: { status: 401 } });
 
-    expect(localStorage.getItem('token')).toBeNull();
     expect(localStorage.getItem('rocketmq-studio-user')).toBeNull();
     expect(localStorage.getItem('rocketmq-studio-user-admin')).toBeNull();
   });
 
   it('preserves the original 401 error when the request URL is malformed', async () => {
-    localStorage.setItem('token', 'expired-token');
     mock.onGet('http://[').reply(401, { code: 401, message: 'Unauthorized', data: null });
 
     await expect(client.get('http://[')).rejects.toMatchObject({ response: { status: 401 } });
 
-    expect(localStorage.getItem('token')).toBeNull();
   });
 });

@@ -111,7 +111,7 @@ class AuthControllerTest {
     }
 
     @Test
-    void loginShouldReturnTokenOnValidRequest() throws Exception {
+    void loginShouldSetHttpOnlySessionCookieOnValidRequest() throws Exception {
         LoginVO mockResponse = LoginVO.builder()
                 .token("mock-jwt-abc123")
                 .expiresIn(86400)
@@ -133,7 +133,12 @@ class AuthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.message").value("success"))
-                .andExpect(jsonPath("$.data.token").value("mock-jwt-abc123"))
+                .andExpect(header().string(HttpHeaders.SET_COOKIE,
+                        org.hamcrest.Matchers.allOf(
+                                org.hamcrest.Matchers.containsString("rmq_studio_session=mock-jwt-abc123"),
+                                org.hamcrest.Matchers.containsString("HttpOnly"),
+                                org.hamcrest.Matchers.containsString("SameSite=Strict"))))
+                .andExpect(jsonPath("$.data.token").doesNotExist())
                 .andExpect(jsonPath("$.data.expiresIn").value(86400))
                 .andExpect(jsonPath("$.data.user.username").value("testuser"))
                 .andExpect(jsonPath("$.data.user.admin").value(false));

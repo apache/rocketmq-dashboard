@@ -24,7 +24,6 @@ export interface LoginRequest {
 }
 
 export interface LoginResponse {
-  token: string;
   expiresIn: number;
   user: {
     userId: string;
