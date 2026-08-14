@@ -44,6 +44,8 @@ class ToolCatalogTest {
                         "rmq.dashboard.summary",
                         "rmq.topic.list",
                         "rmq.group.list",
+                        "rmq.message.query",
+                        "rmq.message.trace",
                         "rmq.alert.rule.list",
                         "rmq.nameserver.config.diff");
         assertThat(catalog.find("rmq.cluster.list")).isPresent();

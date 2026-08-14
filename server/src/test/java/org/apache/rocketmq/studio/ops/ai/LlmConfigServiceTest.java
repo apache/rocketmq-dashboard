@@ -185,7 +185,11 @@ class LlmConfigServiceTest {
         assertThat(saved.getApiKey()).isEqualTo("sk-deepseek");
         assertThat(saved.getModel()).isEqualTo("deepseek-chat");
         assertThat(saved.getBaseUrl()).isEqualTo("https://api.deepseek.com/v1");
+        assertThat(saved.getMaxTokens()).isEqualTo(8192);
+        assertThat(saved.getTemperature()).isEqualTo(0.2);
         assertThat(llmConfigService.getConfig().getProvider()).isEqualTo("deepseek");
+        assertThat(llmConfigService.getConfig().getMaxTokens()).isEqualTo(8192);
+        assertThat(llmConfigService.getConfig().getTemperature()).isEqualTo(0.2);
     }
 
     @Test

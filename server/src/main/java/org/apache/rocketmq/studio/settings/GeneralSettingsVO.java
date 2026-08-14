@@ -47,6 +47,8 @@ public class GeneralSettingsVO {
     private String deploymentName;
     private String apiVersion;
     private String awsRegion;
+    private Integer maxTokens;
+    private Double temperature;
 
     @JsonProperty(value = "apiKeyConfigured", access = JsonProperty.Access.READ_ONLY)
     public boolean isApiKeyConfigured() {
