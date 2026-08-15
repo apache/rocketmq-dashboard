@@ -31,6 +31,15 @@ export interface ClientConnection {
 
 /* ─── Mock Data ─── */
 
+/**
+ * Associates mock client inventories with the NameServer endpoints that own them. The real
+ * endpoint is NameServer-scoped, so mock mode must not expose every cluster for every selection.
+ */
+export const mockClientClusterByNamesrvAddr: Readonly<Record<string, string>> = {
+  '10.101.2.1:9876': 'ns-prod',
+  '10.102.5.1:9876': 'ns-pre',
+};
+
 export const mockClients: ClientConnection[] = [
   {
     clientId: 'order-svc-0@10.0.1.12:49152',
