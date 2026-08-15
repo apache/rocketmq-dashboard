@@ -29,6 +29,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -131,6 +132,45 @@ class RealClusterProviderTest {
     @Test
     void describeClustersShouldTolerateNullClusterInfo() throws Exception {
         stubClusterInfo("10.0.0.1:9876", null);
+
+        assertThat(provider.describeClusters("10.0.0.1:9876")).isEmpty();
+    }
+
+    @Test
+    void describeClustersShouldSkipMalformedTopologyEntries() throws Exception {
+        ClusterInfo info = new ClusterInfo();
+        HashMap<String, BrokerData> brokers = new HashMap<>();
+        brokers.put("broker-a", new BrokerData("ValidCluster", "broker-a",
+                new HashMap<>(java.util.Map.of(0L, "10.0.0.11:10911"))));
+        brokers.put("broken", null);
+        info.setBrokerAddrTable(brokers);
+
+        HashSet<String> brokerNames = new HashSet<>();
+        brokerNames.add("broker-a");
+        brokerNames.add("missing");
+        brokerNames.add(null);
+        HashMap<String, Set<String>> clusters = new HashMap<>();
+        clusters.put("ValidCluster", brokerNames);
+        clusters.put("NullSetCluster", null);
+        clusters.put(null, Set.of("broker-a"));
+        info.setClusterAddrTable(clusters);
+        stubClusterInfo("10.0.0.1:9876", info);
+
+        List<ClusterVO> result = provider.describeClusters("10.0.0.1:9876");
+
+        assertThat(result).extracting(ClusterVO::getName).containsExactly("ValidCluster");
+        assertThat(result.get(0).getBrokers()).extracting(BrokerVO::getName)
+                .containsExactly("broker-a");
+    }
+
+    @Test
+    void describeClustersShouldReturnEmptyWhenTopologyHasNoValidBrokers() throws Exception {
+        ClusterInfo info = new ClusterInfo();
+        HashMap<String, BrokerData> brokers = new HashMap<>();
+        brokers.put("broken", null);
+        info.setBrokerAddrTable(brokers);
+        info.setClusterAddrTable(new HashMap<>());
+        stubClusterInfo("10.0.0.1:9876", info);
 
         assertThat(provider.describeClusters("10.0.0.1:9876")).isEmpty();
     }
