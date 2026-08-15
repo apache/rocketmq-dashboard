@@ -327,6 +327,8 @@ class LlmConfigServiceTest {
 
     @Test
     void testConfigShouldAllowOllamaWithoutApiKey() {
+        when(llmClient.supports(any())).thenReturn(true);
+
         LlmOperationResultVO result = llmConfigService.testConfig(LlmConfigVO.builder()
                 .provider("ollama")
                 .engine("http")
@@ -336,6 +338,31 @@ class LlmConfigServiceTest {
 
         assertThat(result.getStatus()).isZero();
         assertThat(result.getMsg()).isEqualTo("Connection successful");
+    }
+
+    @Test
+    void testConfigShouldRejectHttpProvidersUnsupportedByRuntimeGateway() {
+        LlmOperationResultVO azure = llmConfigService.testConfig(LlmConfigVO.builder()
+                .provider("azure")
+                .engine("http")
+                .apiKey("azure-key")
+                .apiBase("https://example.openai.azure.com")
+                .deploymentName("production-gpt")
+                .model("gpt-4o")
+                .build());
+        LlmOperationResultVO bedrock = llmConfigService.testConfig(LlmConfigVO.builder()
+                .provider("bedrock")
+                .engine("http")
+                .apiKey("bedrock-key")
+                .apiBase("https://bedrock-runtime.us-east-1.amazonaws.com")
+                .model("anthropic.claude-3-sonnet")
+                .build());
+
+        assertThat(azure.getStatus()).isEqualTo(1);
+        assertThat(azure.getCode()).isEqualTo("llm.config.unsupported_provider");
+        assertThat(bedrock.getStatus()).isEqualTo(1);
+        assertThat(bedrock.getCode()).isEqualTo("llm.config.unsupported_provider");
+        verify(llmClient, never()).listModels(any());
     }
 
     @Test
