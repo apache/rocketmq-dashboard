@@ -19,6 +19,7 @@ package org.apache.rocketmq.studio.settings;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import lombok.Data;
+import org.apache.rocketmq.studio.cluster.metrics.MetricsBackendType;
 
 import java.util.List;
 
@@ -44,16 +45,18 @@ public class DataSourceDTO {
             message = "Unsupported metrics data source authentication")
     private String auth;
 
-    private List<String> instanceIds;
+    private List<@NotBlank(message = "instanceIds must not contain blank values") String> instanceIds;
 
     public DataSourceVO toDataSourceVO() {
         return DataSourceVO.builder()
                 .key(key)
                 .name(name)
-                .type(type.trim())
+                .type(MetricsBackendType.fromProviderType(type).getProviderType())
                 .url(url)
                 .auth(auth == null ? null : auth.trim())
-                .instanceIds(instanceIds)
+                .instanceIds(instanceIds == null
+                        ? null
+                        : instanceIds.stream().map(String::trim).distinct().toList())
                 .build();
     }
 }

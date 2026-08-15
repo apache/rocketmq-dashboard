@@ -29,20 +29,27 @@ import java.util.Locale;
  */
 public enum MetricsBackendType {
 
-    PROMETHEUS("/api/v1/query_range", "/api/v1/query"),
-    VICTORIA_METRICS("/select/0/prometheus/api/v1/query_range", "/select/0/prometheus/api/v1/query"),
-    THANOS("/api/v1/query_range", "/api/v1/query"),
-    CORTEX("/api/v1/query_range", "/api/v1/query"),
-    MIMIR("/prometheus/api/v1/query_range", "/prometheus/api/v1/query"),
-    ARMS("/api/v1/query_range", "/api/v1/query"),
-    CUSTOM("/api/v1/query_range", "/api/v1/query");
+    PROMETHEUS("Prometheus", "/api/v1/query_range", "/api/v1/query"),
+    VICTORIA_METRICS(
+            "VictoriaMetrics", "/select/0/prometheus/api/v1/query_range", "/select/0/prometheus/api/v1/query"),
+    THANOS("Thanos", "/api/v1/query_range", "/api/v1/query"),
+    CORTEX("Cortex", "/api/v1/query_range", "/api/v1/query"),
+    MIMIR("Mimir", "/prometheus/api/v1/query_range", "/prometheus/api/v1/query"),
+    ARMS("ARMS", "/api/v1/query_range", "/api/v1/query"),
+    CUSTOM("Custom", "/api/v1/query_range", "/api/v1/query");
 
+    private final String providerType;
     private final String queryPath;
     private final String instantQueryPath;
 
-    MetricsBackendType(String queryPath, String instantQueryPath) {
+    MetricsBackendType(String providerType, String queryPath, String instantQueryPath) {
+        this.providerType = providerType;
         this.queryPath = queryPath;
         this.instantQueryPath = instantQueryPath;
+    }
+
+    public String getProviderType() {
+        return providerType;
     }
 
     public String getQueryPath() {
@@ -61,9 +68,12 @@ public enum MetricsBackendType {
         if (providerType == null) {
             return PROMETHEUS;
         }
-        return switch (providerType.trim().toUpperCase(Locale.ROOT)) {
+        String normalizedProviderType = providerType.trim()
+                .replaceAll("[\\s_-]+", "")
+                .toUpperCase(Locale.ROOT);
+        return switch (normalizedProviderType) {
             case "PROMETHEUS" -> PROMETHEUS;
-            case "VICTORIAMETRICS", "VICTORIA_METRICS", "VICTORIA" -> VICTORIA_METRICS;
+            case "VICTORIAMETRICS", "VICTORIA" -> VICTORIA_METRICS;
             case "THANOS" -> THANOS;
             case "CORTEX" -> CORTEX;
             case "MIMIR" -> MIMIR;
