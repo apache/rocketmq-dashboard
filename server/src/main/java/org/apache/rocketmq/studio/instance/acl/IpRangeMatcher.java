@@ -17,6 +17,10 @@
 
 package org.apache.rocketmq.studio.instance.acl;
 
+import java.net.Inet6Address;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import java.util.Arrays;
 import java.util.regex.Pattern;
 
 /**
@@ -35,13 +39,11 @@ public final class IpRangeMatcher {
     private IpRangeMatcher() {
     }
 
-    /**
-     * Matches a strict dotted-quad IPv4 literal (each octet 0-255). Avoids {@link InetAddress#getByName}
-     * on purpose: that method performs DNS resolution, which would make ACL whitelist validation
-     * network-dependent and non-deterministic.
-     */
+    /** Matches a strict dotted-quad IPv4 literal (each octet 0-255). */
     private static final Pattern IPV4_LITERAL =
             Pattern.compile("^(25[0-5]|2[0-4]\\d|1?\\d?\\d)(\\.(25[0-5]|2[0-4]\\d|1?\\d?\\d)){3}$");
+    private static final Pattern IPV6_LITERAL_CHARACTERS =
+            Pattern.compile("^[0-9a-fA-F:.]+$");
 
     private static boolean isIpv4Literal(String value) {
         return value != null && IPV4_LITERAL.matcher(value).matches();
@@ -52,9 +54,9 @@ public final class IpRangeMatcher {
      *
      * <ul>
      *   <li>{@code 0.0.0.0}, {@code 0.0.0.0/0} or {@code ::/0} match any non-blank ip.</li>
-     *   <li>An entry without a {@code /} is matched by exact equality.</li>
-     *   <li>An entry of the form {@code x.x.x.x/n} is matched against the IPv4 subnet.</li>
-     *   <li>Any unparseable input (or IPv6 CIDR other than {@code ::/0}) returns {@code false}.</li>
+     *   <li>An entry without a {@code /} matches the equivalent IPv4 or IPv6 literal.</li>
+     *   <li>IPv4 and IPv6 CIDR entries are matched using their respective prefix widths.</li>
+     *   <li>Any unparseable input or address-family mismatch returns {@code false}.</li>
      * </ul>
      *
      * @param ip       the address being checked (IPv4 or IPv6)
@@ -65,6 +67,7 @@ public final class IpRangeMatcher {
         if (ip == null || ip.isBlank() || cidrOrIp == null || cidrOrIp.isBlank()) {
             return false;
         }
+        String target = ip.trim();
         String entry = cidrOrIp.trim();
 
         if (WILDCARD_V4.equals(entry) || WILDCARD_V4_CIDR.equals(entry) || WILDCARD_V6_CIDR.equals(entry)) {
@@ -73,7 +76,9 @@ public final class IpRangeMatcher {
 
         int slash = entry.indexOf('/');
         if (slash < 0) {
-            return ip.trim().equals(entry);
+            byte[] targetBytes = parseAddressLiteral(target);
+            byte[] entryBytes = parseAddressLiteral(entry);
+            return targetBytes != null && Arrays.equals(targetBytes, entryBytes);
         }
 
         String baseIp = entry.substring(0, slash);
@@ -84,15 +89,12 @@ public final class IpRangeMatcher {
         } catch (NumberFormatException e) {
             return false;
         }
-        if (prefix < 0 || prefix > 32) {
+        byte[] targetBytes = parseAddressLiteral(target);
+        byte[] baseBytes = parseAddressLiteral(baseIp);
+        if (targetBytes == null || baseBytes == null || targetBytes.length != baseBytes.length
+                || prefix < 0 || prefix > baseBytes.length * Byte.SIZE) {
             return false;
         }
-        if (!isIpv4Literal(ip.trim()) || !isIpv4Literal(baseIp)) {
-            return false;
-        }
-
-        byte[] targetBytes = ipToBytes(ip.trim());
-        byte[] baseBytes = ipToBytes(baseIp);
         int bits = prefix;
         for (int i = 0; i < targetBytes.length && bits > 0; i++) {
             int mask = (bits >= 8) ? 0xFF : (0xFF << (8 - bits)) & 0xFF;
@@ -105,23 +107,37 @@ public final class IpRangeMatcher {
     }
 
     /**
-     * Converts a validated dotted-quad IPv4 literal to its 4-byte representation.
-     * Callers must ensure the input passes {@link #isIpv4Literal(String)} first.
+     * Parses an IPv4 or IPv6 literal without resolving hostnames. IPv6 input is restricted to
+     * address-literal characters before using {@link InetAddress#getByName(String)}, so this path
+     * cannot issue a DNS query. Scoped addresses are intentionally rejected because interface
+     * names are host-specific and cannot form portable ACL entries.
      */
-    private static byte[] ipToBytes(String ip) {
-        String[] parts = ip.split("\\.");
-        byte[] bytes = new byte[4];
-        for (int i = 0; i < 4; i++) {
-            bytes[i] = (byte) Integer.parseInt(parts[i]);
+    private static byte[] parseAddressLiteral(String value) {
+        if (isIpv4Literal(value)) {
+            String[] parts = value.split("\\.");
+            byte[] bytes = new byte[4];
+            for (int i = 0; i < bytes.length; i++) {
+                bytes[i] = (byte) Integer.parseInt(parts[i]);
+            }
+            return bytes;
         }
-        return bytes;
+        if (value == null || !value.contains(":")
+                || !IPV6_LITERAL_CHARACTERS.matcher(value).matches()) {
+            return null;
+        }
+        try {
+            InetAddress address = InetAddress.getByName(value);
+            return address instanceof Inet6Address ? address.getAddress() : null;
+        } catch (UnknownHostException exception) {
+            return null;
+        }
     }
 
     /**
      * Returns {@code true} when {@code cidrOrIp} is a well-formed whitelist entry: a wildcard
-     * ({@code 0.0.0.0}, {@code 0.0.0.0/0}, {@code ::/0}), a bare IPv4 address, or an IPv4 CIDR with a
-     * prefix between 0 and 32. Used to validate ACL 2.0 {@code whiteSet} entries before they are
-     * applied.
+     * ({@code 0.0.0.0}, {@code 0.0.0.0/0}, {@code ::/0}), a bare IPv4/IPv6 address, or a CIDR with a
+     * prefix valid for that address family. Used to validate ACL 2.0 {@code whiteSet} entries before
+     * they are applied.
      */
     public static boolean isValidRange(String cidrOrIp) {
         if (cidrOrIp == null || cidrOrIp.isBlank()) {
@@ -133,7 +149,7 @@ public final class IpRangeMatcher {
         }
         int slash = entry.indexOf('/');
         if (slash < 0) {
-            return isIpv4Literal(entry);
+            return parseAddressLiteral(entry) != null;
         }
         String baseIp = entry.substring(0, slash);
         String prefixStr = entry.substring(slash + 1);
@@ -143,9 +159,7 @@ public final class IpRangeMatcher {
         } catch (NumberFormatException e) {
             return false;
         }
-        if (prefix < 0 || prefix > 32) {
-            return false;
-        }
-        return isIpv4Literal(baseIp);
+        byte[] baseBytes = parseAddressLiteral(baseIp);
+        return baseBytes != null && prefix >= 0 && prefix <= baseBytes.length * Byte.SIZE;
     }
 }
