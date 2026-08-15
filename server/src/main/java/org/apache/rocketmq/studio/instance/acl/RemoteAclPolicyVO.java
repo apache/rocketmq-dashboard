@@ -19,12 +19,14 @@ package org.apache.rocketmq.studio.instance.acl;
 import org.apache.rocketmq.remoting.protocol.body.AclInfo;
 
 import java.util.List;
+import java.util.Objects;
 
 /** REST representation of an Apache ACL 2.0 policy. */
 public record RemoteAclPolicyVO(String subject, List<PolicyGroupVO> policies) {
 
     public static RemoteAclPolicyVO from(AclInfo policy) {
         List<PolicyGroupVO> groups = policy.getPolicies() == null ? List.of() : policy.getPolicies().stream()
+                .filter(Objects::nonNull)
                 .map(PolicyGroupVO::from)
                 .toList();
         return new RemoteAclPolicyVO(policy.getSubject(), groups);
@@ -33,6 +35,7 @@ public record RemoteAclPolicyVO(String subject, List<PolicyGroupVO> policies) {
     public record PolicyGroupVO(String policyType, List<PolicyEntryVO> entries) {
         private static PolicyGroupVO from(AclInfo.PolicyInfo policy) {
             List<PolicyEntryVO> policyEntries = policy.getEntries() == null ? List.of() : policy.getEntries().stream()
+                    .filter(Objects::nonNull)
                     .map(PolicyEntryVO::from)
                     .toList();
             return new PolicyGroupVO(policy.getPolicyType(), policyEntries);
@@ -46,7 +49,9 @@ public record RemoteAclPolicyVO(String subject, List<PolicyGroupVO> policies) {
         }
 
         private static List<String> listOrEmpty(List<String> values) {
-            return values == null ? List.of() : List.copyOf(values);
+            return values == null ? List.of() : values.stream()
+                    .filter(Objects::nonNull)
+                    .toList();
         }
     }
 }
