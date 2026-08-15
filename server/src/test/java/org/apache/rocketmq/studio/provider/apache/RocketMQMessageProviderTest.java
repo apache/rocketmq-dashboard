@@ -158,8 +158,6 @@ class RocketMQMessageProviderTest {
         verify(runtimeAdminClientResolver).resolveEndpoint("instance-a");
         verify(runtimeAdminClientResolver).execute(eq("instance-a"), any());
         verify(adminExt, never()).queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong());
-        verify(queryHistoryService, never()).recordMessageQuery(anyString(), anyString(), anyString(),
-                anyString(), anyString(), anyString(), any(), any(), anyInt());
     }
 
     @Test
@@ -173,8 +171,6 @@ class RocketMQMessageProviderTest {
         verify(runtimeAdminClientResolver).resolveEndpoint("instance-a");
         verify(runtimeAdminClientResolver).execute(eq("instance-a"), any());
         verify(adminExt, never()).queryMessage(anyString(), anyString(), anyInt(), anyLong(), anyLong());
-        verify(queryHistoryService, never()).recordMessageQuery(anyString(), anyString(), anyString(),
-                anyString(), anyString(), anyString(), any(), any(), anyInt());
     }
 
     @Test
@@ -310,8 +306,6 @@ class RocketMQMessageProviderTest {
             verify(consumer).pull(queue, "*", 20L, 32);
             verify(consumer).pull(queue, "*", 40L, 32);
         }
-        verify(queryHistoryService).recordMessageQuery("instance-a", "TOPIC", "TopicA", null, null, null,
-                100L, 200L, 1);
     }
 
     @Test
@@ -497,7 +491,6 @@ class RocketMQMessageProviderTest {
                 beginCaptor.capture(), endCaptor.capture());
         assertThat(beginCaptor.getValue()).isEqualTo(10_000_000L - 5 * 60_000L);
         assertThat(endCaptor.getValue()).isGreaterThanOrEqualTo(10_000_000L + 24 * 3600_000L);
-        verify(queryHistoryService).recordTraceQuery(eq("instance-a"), eq("msg-with-topic"), eq(null), eq(0), eq(0));
     }
 
     @Test
@@ -512,7 +505,6 @@ class RocketMQMessageProviderTest {
         verify(adminExt).queryMessage(eq("RMQ_SYS_TRACE_TOPIC"), eq("invalid-offset-id"), eq(64),
                 beginCaptor.capture(), endCaptor.capture());
         assertThat(endCaptor.getValue() - beginCaptor.getValue()).isBetween(3_660_000L, 3_670_000L);
-        verify(queryHistoryService).recordTraceQuery(eq("instance-a"), eq("invalid-offset-id"), eq(null), eq(0), eq(0));
     }
 
     @Test

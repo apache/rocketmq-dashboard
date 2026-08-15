@@ -129,7 +129,11 @@ const MessageQueryHistoryDrawer = ({ open, clusterId, onClose }: Props) => {
           showIcon
           message="查询历史加载失败"
           description={error}
-          action={<Button size="small" onClick={() => void load()}>重试</Button>}
+          action={
+            <Button size="small" onClick={() => void load()}>
+              重试
+            </Button>
+          }
           style={{ marginBottom: 12 }}
         />
       )}

@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.util.StringUtils;
 
 @RestController
 @RequestMapping("/api/query-history")
@@ -31,7 +32,8 @@ public class QueryHistoryController {
             @RequestParam(defaultValue = "20") int pageSize) {
         validatePage(page, pageSize);
         return Result.ok(queryHistoryService.listMessageQueries(
-                clusterId, queryType, search, page, pageSize));
+                normalizeFilter(clusterId), normalizeFilter(queryType), normalizeFilter(search),
+                page, pageSize));
     }
 
     @GetMapping("/traces")
@@ -41,12 +43,13 @@ public class QueryHistoryController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int pageSize) {
         validatePage(page, pageSize);
-        return Result.ok(queryHistoryService.listTraceQueries(clusterId, search, page, pageSize));
+        return Result.ok(queryHistoryService.listTraceQueries(
+                normalizeFilter(clusterId), normalizeFilter(search), page, pageSize));
     }
 
     @GetMapping("/summary")
     public Result<QueryHistorySummaryVO> summary(@RequestParam(required = false) String clusterId) {
-        return Result.ok(queryHistoryService.summarize(clusterId));
+        return Result.ok(queryHistoryService.summarize(normalizeFilter(clusterId)));
     }
 
     private void validatePage(int page, int pageSize) {
@@ -56,5 +59,9 @@ public class QueryHistoryController {
         if (pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
             throw new BusinessException(400, "pageSize must be between 1 and " + MAX_PAGE_SIZE);
         }
+    }
+
+    private String normalizeFilter(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
     }
 }
