@@ -76,14 +76,34 @@ class IpRangeMatcherTest {
     }
 
     @Test
-    void ipv6CidrOtherThanWildcardIsNotMatched() {
-        assertThat(IpRangeMatcher.isInRange("2001:db8::1", "2001:db8::/32")).isFalse();
+    void ipv6CidrMatchesEquivalentAddressesInSubnet() {
+        assertThat(IpRangeMatcher.isInRange("2001:db8::1", "2001:db8::/32")).isTrue();
+        assertThat(IpRangeMatcher.isInRange("2001:db8:10::abcd", "2001:db8:10::/64")).isTrue();
+        assertThat(IpRangeMatcher.isInRange("2001:db9::1", "2001:db8::/32")).isFalse();
+        assertThat(IpRangeMatcher.isInRange("2001:db8:11::1", "2001:db8:10::/64")).isFalse();
+    }
+
+    @Test
+    void ipv6ExactAndSingleHostCidrUseCanonicalAddressBytes() {
+        assertThat(IpRangeMatcher.isInRange(
+                "2001:0db8:0000:0000:0000:0000:0000:0001", "2001:db8::1")).isTrue();
+        assertThat(IpRangeMatcher.isInRange("2001:db8::1", "2001:db8::1/128")).isTrue();
+        assertThat(IpRangeMatcher.isInRange("2001:db8::2", "2001:db8::1/128")).isFalse();
     }
 
     @Test
     void mismatchedAddressFamiliesReturnFalse() {
         assertThat(IpRangeMatcher.isInRange("2001:db8::1", "192.168.1.0/24")).isFalse();
         assertThat(IpRangeMatcher.isInRange("192.168.1.10", "2001:db8::/64")).isFalse();
+    }
+
+    @Test
+    void malformedIpv6AndInvalidPrefixesReturnFalse() {
+        assertThat(IpRangeMatcher.isInRange("2001:db8::1", "2001:db8::/129")).isFalse();
+        assertThat(IpRangeMatcher.isInRange("2001:db8::1", "2001:db8::/-1")).isFalse();
+        assertThat(IpRangeMatcher.isInRange("2001:db8::1", "2001:db8::/abc")).isFalse();
+        assertThat(IpRangeMatcher.isInRange("2001:db8::1", "2001:db8::1::2/64")).isFalse();
+        assertThat(IpRangeMatcher.isInRange("fe80::1%eth0", "fe80::/10")).isFalse();
     }
 
     @Test
@@ -104,6 +124,9 @@ class IpRangeMatcherTest {
         assertThat(IpRangeMatcher.isValidRange("192.168.1.10")).isTrue();
         assertThat(IpRangeMatcher.isValidRange("192.168.1.0/24")).isTrue();
         assertThat(IpRangeMatcher.isValidRange("10.0.0.1/32")).isTrue();
+        assertThat(IpRangeMatcher.isValidRange("2001:db8::1")).isTrue();
+        assertThat(IpRangeMatcher.isValidRange("2001:db8::/32")).isTrue();
+        assertThat(IpRangeMatcher.isValidRange("2001:db8::1/128")).isTrue();
     }
 
     @Test
@@ -115,5 +138,8 @@ class IpRangeMatcherTest {
         assertThat(IpRangeMatcher.isValidRange("192.168.1.0/")).isFalse();
         assertThat(IpRangeMatcher.isValidRange("10.0.0.1/abc")).isFalse();
         assertThat(IpRangeMatcher.isValidRange("256.1.1.1")).isFalse();
+        assertThat(IpRangeMatcher.isValidRange("2001:db8::/129")).isFalse();
+        assertThat(IpRangeMatcher.isValidRange("2001:db8::1::2")).isFalse();
+        assertThat(IpRangeMatcher.isValidRange("fe80::1%eth0")).isFalse();
     }
 }
