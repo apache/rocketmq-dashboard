@@ -206,7 +206,7 @@ class RocketMQClusterProviderTest {
                 .adminCredentialRef("cluster-admin")
                 .build();
         instance.setId("instance-a");
-        when(instanceRepository.findById("instance-a")).thenReturn(Optional.of(instance));
+        when(instanceRepository.findByIdentifier("instance-a")).thenReturn(Optional.of(instance));
         MqAdminProperties adminProperties = new MqAdminProperties();
         MqAdminProperties.Credential credential = new MqAdminProperties.Credential();
         credential.setAccessKey("admin-ak");
